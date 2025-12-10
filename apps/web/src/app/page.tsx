@@ -5,36 +5,34 @@ import {
   SignedOut,
 } from "@clerk/nextjs";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+    <main className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <header className="border-b border-border">
+        <div className="mx-auto max-w-6xl px-6">
           <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center">
-              <span className="text-xl font-bold text-gray-900">Seq3nce.ai</span>
-            </div>
+            <span className="text-lg font-semibold">Seq3nce.ai</span>
             <div className="flex items-center gap-4">
               <SignedOut>
                 <SignInButton mode="modal">
-                  <button className="text-sm font-medium text-gray-700 hover:text-gray-900">
+                  <Button variant="ghost" size="sm">
                     Sign In
-                  </button>
+                  </Button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                    Get Started
-                  </button>
+                  <Button size="sm">Get Started</Button>
                 </SignUpButton>
               </SignedOut>
               <SignedIn>
-                <Link
-                  href="/dashboard"
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  Go to Dashboard
+                <Link href="/dashboard">
+                  <Button size="sm">
+                    Dashboard
+                    <ArrowRight className="h-3 w-3 ml-1" strokeWidth={1.5} />
+                  </Button>
                 </Link>
               </SignedIn>
             </div>
@@ -42,61 +40,77 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl md:text-6xl">
-            Sales Call Intelligence
-            <span className="block text-blue-600">for High-Ticket Teams</span>
+      {/* Hero */}
+      <div className="mx-auto max-w-6xl px-6 py-24">
+        <div className="max-w-3xl">
+          <h1 className="text-5xl font-semibold tracking-tight">
+            Sales call intelligence
+            <br />
+            <span className="text-muted-foreground">for high-ticket teams</span>
           </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-600">
+          <p className="mt-6 text-lg text-muted-foreground max-w-xl">
             See what&apos;s happening on every call in real-time. Get structured
-            data on why deals close or don&apos;t. Coach your reps based on data,
-            not guesswork.
+            data on why deals close or don&apos;t. Coach your reps based on
+            data, not guesswork.
           </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
+          <div className="mt-10 flex items-center gap-4">
             <SignedOut>
               <SignUpButton mode="modal">
-                <button className="rounded-md bg-blue-600 px-8 py-3 text-base font-medium text-white hover:bg-blue-700">
+                <Button size="lg">
                   Start Free Trial
-                </button>
+                  <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                </Button>
               </SignUpButton>
             </SignedOut>
             <SignedIn>
-              <Link
-                href="/dashboard"
-                className="rounded-md bg-blue-600 px-8 py-3 text-base font-medium text-white hover:bg-blue-700"
-              >
-                Go to Dashboard
+              <Link href="/dashboard">
+                <Button size="lg">
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                </Button>
               </Link>
             </SignedIn>
           </div>
         </div>
       </div>
 
-      {/* Features Section */}
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid gap-8 md:grid-cols-3">
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900">Live Call Tracking</h3>
-            <p className="mt-2 text-gray-600">
-              See who&apos;s on calls right now. Watch key moments unfold in real-time.
-            </p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900">AI-Powered Ammo</h3>
-            <p className="mt-2 text-gray-600">
-              Key prospect quotes extracted automatically. Never forget what they said.
-            </p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-gray-900">No-Show Detection</h3>
-            <p className="mt-2 text-gray-600">
-              Automatically track when prospects don&apos;t show up. Hold marketing accountable.
-            </p>
+      {/* Features */}
+      <div className="border-t border-border">
+        <div className="mx-auto max-w-6xl px-6 py-24">
+          <div className="grid gap-12 md:grid-cols-3">
+            <div>
+              <h3 className="font-semibold">Live Call Tracking</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                See who&apos;s on calls right now. Watch key moments unfold in
+                real-time without interrupting.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold">AI-Powered Ammo</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Key prospect quotes extracted automatically. Your closers never
+                forget what the prospect said.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold">No-Show Detection</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Automatically track when prospects don&apos;t show up. Hold
+                marketing accountable for lead quality.
+              </p>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="border-t border-border">
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <p className="text-sm text-muted-foreground">
+            © 2024 Seq3nce.ai. All rights reserved.
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }

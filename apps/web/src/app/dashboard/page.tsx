@@ -1,97 +1,199 @@
-import { UserButton } from "@clerk/nextjs";
-import { currentUser } from "@clerk/nextjs/server";
+import { Header } from "@/components/dashboard/header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Phone,
+  Radio,
+  TrendingUp,
+  UserX,
+  ArrowRight,
+  Clock,
+} from "lucide-react";
 import Link from "next/link";
+import {
+  mockStats,
+  mockLiveCalls,
+  mockCompletedCalls,
+  formatDuration,
+  formatCurrency,
+} from "@/lib/mock-data";
 
-export default async function DashboardPage() {
-  const user = await currentUser();
+export default function DashboardPage() {
+  const recentCalls = mockCompletedCalls.slice(0, 5);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-8">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                Seq3nce.ai
-              </Link>
-              <nav className="hidden md:flex items-center gap-6">
-                <Link
-                  href="/dashboard"
-                  className="text-sm font-medium text-blue-600"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/dashboard/calls"
-                  className="text-sm font-medium text-gray-600 hover:text-gray-900"
-                >
-                  Calls
-                </Link>
-                <Link
-                  href="/dashboard/team"
-                  className="text-sm font-medium text-gray-600 hover:text-gray-900"
-                >
-                  Team
-                </Link>
-              </nav>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {user?.emailAddresses[0]?.emailAddress}
-              </span>
-              <UserButton afterSignOutUrl="/" />
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-gray-600">
-            Welcome back{user?.firstName ? `, ${user.firstName}` : ""}! Here&apos;s what&apos;s happening with your team.
-          </p>
-        </div>
-
+    <>
+      <Header title="Dashboard" />
+      <div className="p-6 space-y-6">
         {/* Stats Grid */}
-        <div className="grid gap-6 md:grid-cols-3 mb-8">
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-sm font-medium text-gray-500">Live Calls</h3>
-            <p className="mt-2 text-3xl font-bold text-gray-900">0</p>
-            <p className="mt-1 text-sm text-gray-600">No active calls right now</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-sm font-medium text-gray-500">Today&apos;s Calls</h3>
-            <p className="mt-2 text-3xl font-bold text-gray-900">0</p>
-            <p className="mt-1 text-sm text-gray-600">Completed today</p>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h3 className="text-sm font-medium text-gray-500">Scheduled</h3>
-            <p className="mt-2 text-3xl font-bold text-gray-900">0</p>
-            <p className="mt-1 text-sm text-gray-600">Upcoming calls</p>
-          </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Calls Today
+              </CardTitle>
+              <Phone className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{mockStats.callsToday}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Live Now
+              </CardTitle>
+              <Radio className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{mockStats.liveNow}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Close Rate (Week)
+              </CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{mockStats.closeRateWeek}%</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                No-Shows (Week)
+              </CardTitle>
+              <UserX className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{mockStats.noShowsWeek}</div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Placeholder Sections */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Live Calls</h2>
-            <div className="text-center py-8 text-gray-500">
-              <p>No live calls at the moment.</p>
-              <p className="text-sm mt-1">Calls will appear here when closers start recording.</p>
+        {/* Live Calls Preview */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base font-semibold">Live Calls</CardTitle>
+            <Link
+              href="/dashboard/live"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              View all
+              <ArrowRight className="h-3 w-3" strokeWidth={1.5} />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {mockLiveCalls.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                No live calls at the moment
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {mockLiveCalls.slice(0, 3).map((call) => (
+                  <div
+                    key={call.id}
+                    className="flex items-center justify-between py-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback className="text-xs bg-primary text-primary-foreground">
+                          {call.closerInitials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">{call.closerName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          with {call.prospectName}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Clock className="h-3 w-3" strokeWidth={1.5} />
+                          {formatDuration(call.duration)}
+                        </div>
+                      </div>
+                      <Badge variant={call.status === "ON_CALL" ? "live" : "secondary"}>
+                        {call.status === "ON_CALL" ? "On Call" : "Waiting"}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Calls */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base font-semibold">Recent Calls</CardTitle>
+            <Link
+              href="/dashboard/calls"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              View all
+              <ArrowRight className="h-3 w-3" strokeWidth={1.5} />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {recentCalls.map((call) => (
+                <div
+                  key={call.id}
+                  className="flex items-center justify-between py-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="text-xs">
+                        {call.closerInitials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium">{call.prospectName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {call.closerName} · {formatDuration(call.duration)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {call.dealValue && (
+                      <span className="text-sm font-medium">
+                        {formatCurrency(call.dealValue)}
+                      </span>
+                    )}
+                    <Badge
+                      variant={
+                        call.outcome === "CLOSED"
+                          ? "default"
+                          : call.outcome === "NO_SHOW"
+                          ? "destructive"
+                          : "secondary"
+                      }
+                    >
+                      {call.outcome === "CLOSED"
+                        ? "Closed"
+                        : call.outcome === "NOT_CLOSED"
+                        ? "Not Closed"
+                        : call.outcome === "NO_SHOW"
+                        ? "No-Show"
+                        : "Rescheduled"}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
-            <div className="text-center py-8 text-gray-500">
-              <p>No recent activity.</p>
-              <p className="text-sm mt-1">Completed calls and outcomes will appear here.</p>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   );
 }
