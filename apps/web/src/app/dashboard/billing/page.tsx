@@ -75,11 +75,10 @@ export default function BillingPage() {
   const handleSubscribe = async () => {
     setIsCheckoutLoading(true);
     try {
-      const seatCount = Math.max(billing?.activeCloserCount || 1, 1);
       const response = await fetch("/api/stripe/create-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seatCount }),
+        body: JSON.stringify({}),
       });
 
       const data = await response.json();
@@ -265,8 +264,8 @@ export default function BillingPage() {
                   <p className="font-medium">Closer Seats</p>
                   <p className="text-sm text-muted-foreground">
                     {hasActiveSubscription
-                      ? `${billing?.seatCount || 0} paid seats`
-                      : `${billing?.activeCloserCount || 0} closers on your team`}
+                      ? `${billing?.seatCount || 0} paid seats (${billing?.activeCloserCount || 0} closers)`
+                      : "Billed automatically when you add closers"}
                   </p>
                 </div>
               </div>
@@ -282,12 +281,10 @@ export default function BillingPage() {
               </div>
             )}
 
-            {!hasActiveSubscription && billing?.activeCloserCount && billing.activeCloserCount > 0 && (
+            {!hasActiveSubscription && (
               <div className="flex items-center justify-between pt-2 text-muted-foreground">
-                <span>Estimated total</span>
-                <span>
-                  ${PLATFORM_FEE + billing.activeCloserCount * SEAT_FEE}/mo
-                </span>
+                <span>Starting at</span>
+                <span>${PLATFORM_FEE}/mo</span>
               </div>
             )}
           </CardContent>

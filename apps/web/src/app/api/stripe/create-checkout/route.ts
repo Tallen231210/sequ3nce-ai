@@ -16,9 +16,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { seatCount = 1 } = body;
-
     // Get team billing info
     const billing = await convex.query(api.billing.getTeamBilling, {
       clerkId: userId,
@@ -42,7 +39,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Create checkout session with both prices
+    // Create checkout session with platform fee only (seats added separately when closers are added)
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
@@ -51,10 +48,6 @@ export async function POST(req: Request) {
         {
           price: process.env.STRIPE_PLATFORM_PRICE_ID!,
           quantity: 1,
-        },
-        {
-          price: process.env.STRIPE_SEAT_PRICE_ID!,
-          quantity: seatCount,
         },
       ],
       success_url: `${req.headers.get("origin")}/dashboard/billing?success=true`,
