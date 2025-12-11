@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
@@ -50,6 +50,7 @@ function getStatusBadge(status: string | undefined) {
 export default function BillingPage() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -60,17 +61,24 @@ export default function BillingPage() {
     clerkId ? { clerkId } : "skip"
   );
 
-  // Handle success/canceled URL params
+  // Handle success/canceled URL params and clear them
   useEffect(() => {
-    if (searchParams.get("success") === "true") {
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 5000);
+    const success = searchParams.get("success");
+    const canceled = searchParams.get("canceled");
+
+    if (success === "true" || canceled === "true") {
+      if (success === "true") {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 5000);
+      }
+      if (canceled === "true") {
+        setShowCanceled(true);
+        setTimeout(() => setShowCanceled(false), 5000);
+      }
+      // Clear URL params to prevent showing on refresh
+      router.replace("/dashboard/billing", { scroll: false });
     }
-    if (searchParams.get("canceled") === "true") {
-      setShowCanceled(true);
-      setTimeout(() => setShowCanceled(false), 5000);
-    }
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   const handleSubscribe = async () => {
     setIsCheckoutLoading(true);

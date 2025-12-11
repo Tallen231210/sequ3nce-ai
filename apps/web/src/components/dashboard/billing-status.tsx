@@ -24,13 +24,11 @@ export function BillingStatus() {
     billing?.subscriptionStatus === "past_due" ||
     billing?.subscriptionStatus === "unpaid";
 
-  const needsSubscription =
-    !billing?.subscriptionStatus ||
-    billing.subscriptionStatus === "canceled";
-
+  // Only show "seat limit exceeded" if the difference is significant (more than 1)
+  // This prevents flashing during the brief moment between adding a closer and Stripe updating
   const exceedsSeats =
     billing?.subscriptionStatus === "active" &&
-    billing.activeCloserCount > (billing.seatCount || 0);
+    billing.activeCloserCount > (billing.seatCount || 0) + 1;
 
   // No issues, don't render anything
   if (!hasBillingIssue && !exceedsSeats) {

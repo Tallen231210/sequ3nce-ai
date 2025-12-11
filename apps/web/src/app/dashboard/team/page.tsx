@@ -96,17 +96,25 @@ export default function TeamPage() {
   const removeCloser = useMutation(api.closers.removeCloser);
   const updateCloserStatus = useMutation(api.closers.updateCloserStatus);
 
+  // Check if user has active subscription
+  const hasActiveSubscription =
+    billing?.subscriptionStatus === "active" ||
+    billing?.subscriptionStatus === "trialing";
+
   // Helper to update Stripe seats
   const updateStripeSeats = async (newSeatCount: number) => {
     // Only update if user has an active subscription
-    if (!billing?.stripeSubscriptionId) return;
+    if (!hasActiveSubscription) return;
 
     try {
-      await fetch("/api/stripe/update-seats", {
+      const response = await fetch("/api/stripe/update-seats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seatCount: newSeatCount }),
       });
+      if (!response.ok) {
+        console.error("Failed to update seats:", await response.text());
+      }
     } catch (err) {
       console.error("Failed to update Stripe seats:", err);
     }
