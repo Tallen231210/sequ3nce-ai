@@ -32,8 +32,8 @@ let audioStatus: AudioCaptureStatus = 'idle';
 let wsConnection: WebSocket | null = null;
 let currentCallId: string | null = null;
 
-// Audio service URL
-const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL || 'ws://localhost:8080';
+// Audio service URL - Production Railway deployment
+const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL || 'wss://amusing-charm-production.up.railway.app';
 
 const createWindow = (): void => {
   // Create the browser window.
