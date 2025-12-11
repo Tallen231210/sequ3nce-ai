@@ -87,6 +87,8 @@ export async function POST(req: Request) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const stripe = getStripe();
+  const convex = getConvex();
   const customerId = session.customer as string;
   const subscriptionId = session.subscription as string;
 
@@ -125,6 +127,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
+  const convex = getConvex();
   const customerId = subscription.customer as string;
 
   // Calculate seat count
@@ -155,6 +158,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+  const convex = getConvex();
   const customerId = subscription.customer as string;
 
   await convex.mutation(api.billing.updateTeamBilling, {
@@ -167,6 +171,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 }
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {
+  const convex = getConvex();
   const customerId = invoice.customer as string;
 
   if (!customerId) return;
@@ -180,6 +185,8 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
+  const stripe = getStripe();
+  const convex = getConvex();
   const customerId = invoice.customer as string;
   const subscriptionId =
     "subscription" in invoice ? (invoice.subscription as string) : null;
