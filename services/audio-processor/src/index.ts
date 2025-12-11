@@ -1,0 +1,130 @@
+// Main entry point - WebSocket server for audio processing
+
+import "dotenv/config";
+import { WebSocketServer, WebSocket } from "ws";
+import { CallHandler } from "./call-handler.js";
+import { logger } from "./logger.js";
+import type { CallMetadata } from "./types.js";
+
+const PORT = parseInt(process.env.PORT || "8080", 10);
+
+// Store active call handlers by connection
+const activeCalls = new Map<WebSocket, CallHandler>();
+
+// Create WebSocket server
+const wss = new WebSocketServer({ port: PORT });
+
+logger.info(`Audio processing server starting on port ${PORT}`);
+
+wss.on("connection", async (ws, req) => {
+  logger.info(`New WebSocket connection from ${req.socket.remoteAddress}`);
+
+  let callHandler: CallHandler | null = null;
+  let isInitialized = false;
+
+  ws.on("message", async (data, isBinary) => {
+    try {
+      // First message should be JSON metadata
+      if (!isInitialized) {
+        const message = data.toString();
+
+        try {
+          const metadata: CallMetadata = JSON.parse(message);
+
+          // Validate required fields
+          if (!metadata.callId || !metadata.teamId || !metadata.closerId) {
+            logger.error("Invalid metadata - missing required fields", metadata);
+            ws.send(JSON.stringify({ error: "Missing required fields: callId, teamId, closerId" }));
+            ws.close();
+            return;
+          }
+
+          // Create and start call handler
+          callHandler = new CallHandler(metadata);
+          await callHandler.start();
+
+          activeCalls.set(ws, callHandler);
+          isInitialized = true;
+
+          ws.send(JSON.stringify({ status: "ready", callId: metadata.callId }));
+          logger.info(`Call initialized: ${metadata.callId}`);
+        } catch (parseError) {
+          logger.error("Failed to parse metadata JSON", parseError);
+          ws.send(JSON.stringify({ error: "Invalid JSON metadata" }));
+          ws.close();
+          return;
+        }
+      } else if (isBinary && callHandler) {
+        // Binary data is audio
+        const audioBuffer = Buffer.from(data as Buffer);
+        callHandler.processAudio(audioBuffer);
+      } else if (!isBinary) {
+        // Handle text commands
+        const message = data.toString();
+        try {
+          const command = JSON.parse(message);
+
+          if (command.type === "end" && callHandler) {
+            logger.info(`Received end command for call`);
+            await callHandler.end();
+            ws.send(JSON.stringify({ status: "ended", stats: callHandler.getStats() }));
+          } else if (command.type === "stats" && callHandler) {
+            ws.send(JSON.stringify({ status: "stats", stats: callHandler.getStats() }));
+          }
+        } catch {
+          // Ignore non-JSON text messages
+        }
+      }
+    } catch (error) {
+      logger.error("Error processing message", error);
+    }
+  });
+
+  ws.on("close", async () => {
+    logger.info("WebSocket connection closed");
+
+    const handler = activeCalls.get(ws);
+    if (handler) {
+      await handler.end();
+      activeCalls.delete(ws);
+    }
+  });
+
+  ws.on("error", (error) => {
+    logger.error("WebSocket error", error);
+  });
+});
+
+wss.on("listening", () => {
+  logger.info(`Audio processing server listening on ws://localhost:${PORT}`);
+  logger.info("Waiting for connections...");
+});
+
+wss.on("error", (error) => {
+  logger.error("WebSocket server error", error);
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  logger.info("Shutting down...");
+
+  // End all active calls
+  for (const [ws, handler] of activeCalls) {
+    await handler.end();
+    ws.close();
+  }
+
+  wss.close(() => {
+    logger.info("Server closed");
+    process.exit(0);
+  });
+});
+
+// Health check endpoint info
+logger.info("Service ready. Protocol:");
+logger.info("1. Connect via WebSocket to ws://localhost:" + PORT);
+logger.info("2. Send JSON metadata: { callId, teamId, closerId, prospectName? }");
+logger.info("3. Receive { status: 'ready' } confirmation");
+logger.info("4. Stream binary audio data");
+logger.info("5. Send { type: 'end' } when call ends");
+logger.info("6. Receive { status: 'ended', stats } confirmation");

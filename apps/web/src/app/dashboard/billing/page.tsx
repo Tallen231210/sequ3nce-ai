@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -47,7 +47,23 @@ function getStatusBadge(status: string | undefined) {
   }
 }
 
+// Wrapper component to handle Suspense for useSearchParams
 export default function BillingPage() {
+  return (
+    <Suspense fallback={
+      <>
+        <Header title="Billing" description="Manage your subscription and billing" />
+        <div className="p-6 flex items-center justify-center min-h-[400px]">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </>
+    }>
+      <BillingPageContent />
+    </Suspense>
+  );
+}
+
+function BillingPageContent() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
   const searchParams = useSearchParams();
   const router = useRouter();

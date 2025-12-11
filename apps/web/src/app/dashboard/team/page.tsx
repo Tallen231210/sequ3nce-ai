@@ -169,8 +169,23 @@ export default function TeamPage() {
       setEmail("");
       setSuccess(`${name} has been added to your team`);
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add closer");
+    } catch (err: unknown) {
+      // Extract clean error message from Convex error
+      let message = "Failed to add closer";
+      if (err instanceof Error) {
+        const fullMessage = err.message;
+        // Convex errors come in format: "[CONVEX M(...)] ... Uncaught Error: MESSAGE at handler ..."
+        // Extract just the user-friendly message part
+        const match = fullMessage.match(/Uncaught Error:\s*(.+?)\s*at handler/);
+        if (match && match[1]) {
+          message = match[1].trim();
+        } else {
+          // Fallback: use the full message if pattern doesn't match
+          message = fullMessage;
+        }
+      }
+      setError(message);
+      setTimeout(() => setError(null), 5000);
     } finally {
       setIsSubmitting(false);
     }

@@ -78,6 +78,14 @@ export const createTeamAndUser = mutation({
   },
 });
 
+// Get team by ID (used by audio processor)
+export const getTeamById = query({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.teamId);
+  },
+});
+
 // Update team name
 export const updateTeamName = mutation({
   args: {
