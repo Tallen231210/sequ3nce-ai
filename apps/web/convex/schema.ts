@@ -8,9 +8,13 @@ export default defineSchema({
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
     plan: v.string(), // "active", "cancelled", "trialing", etc.
+    subscriptionStatus: v.optional(v.string()), // "active", "past_due", "canceled", "unpaid", "trialing"
+    currentPeriodEnd: v.optional(v.number()), // Unix timestamp of when current billing period ends
+    seatCount: v.optional(v.number()), // Number of paid closer seats
     customAiPrompt: v.optional(v.string()), // Company-specific ammo extraction instructions
     createdAt: v.number(),
-  }),
+  })
+    .index("by_stripe_customer", ["stripeCustomerId"]),
 
   // Users (admins/managers who access the web dashboard)
   users: defineTable({

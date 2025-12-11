@@ -8,9 +8,11 @@ import {
   Calendar,
   Phone,
   Users,
+  CreditCard,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BillingStatus } from "./billing-status";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -18,6 +20,7 @@ const navigation = [
   { name: "Scheduled", href: "/dashboard/scheduled", icon: Calendar },
   { name: "Completed", href: "/dashboard/calls", icon: Phone },
   { name: "Team", href: "/dashboard/team", icon: Users },
+  { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
@@ -58,6 +61,9 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* Billing Status Alert */}
+        <BillingStatus />
 
         {/* Footer */}
         <div className="border-t border-border p-4">
