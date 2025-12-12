@@ -17,7 +17,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     name: 'Seq3nce',
-    executableName: 'seq3nce',
+    executableName: 'Seq3nce',
     appBundleId: 'ai.seq3nce.desktop',
     appCategoryType: 'public.app-category.productivity',
     // Icon paths (relative to project root)
@@ -74,6 +74,8 @@ const config: ForgeConfig = {
     // Linux DEB
     new MakerDeb({
       options: {
+        name: 'seq3nce',
+        bin: 'Seq3nce',
         maintainer: 'Seq3nce',
         homepage: 'https://seq3nce.ai',
         icon: './assets/icon.png',
@@ -83,6 +85,8 @@ const config: ForgeConfig = {
     // Linux RPM
     new MakerRpm({
       options: {
+        name: 'seq3nce',
+        bin: 'Seq3nce',
         homepage: 'https://seq3nce.ai',
         icon: './assets/icon.png',
         categories: ['Office', 'Utility'],
