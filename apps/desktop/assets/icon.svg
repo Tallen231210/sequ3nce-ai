@@ -1,0 +1,28 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- White background -->
+  <rect width="1024" height="1024" fill="white"/>
+
+  <!-- Stylized S with waveform aesthetic -->
+  <path
+    d="M680 240
+       C680 170 580 130 512 130
+       C360 130 290 210 290 320
+       C290 420 390 480 512 512
+       C634 544 734 604 734 704
+       C734 814 664 894 512 894
+       C420 894 340 854 340 784"
+    stroke="black"
+    stroke-width="56"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+
+  <!-- Waveform dots for visual interest -->
+  <circle cx="210" cy="420" r="22" fill="black"/>
+  <circle cx="814" cy="604" r="22" fill="black"/>
+
+  <!-- Small accent lines (waveform) -->
+  <line x1="180" y1="360" x2="180" y2="480" stroke="black" stroke-width="12" stroke-linecap="round"/>
+  <line x1="844" y1="544" x2="844" y2="664" stroke="black" stroke-width="12" stroke-linecap="round"/>
+</svg>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Logo } from "@/components/ui/logo";
 
 interface Release {
   tag_name: string;
@@ -135,9 +136,7 @@ export default function DownloadPage() {
       {/* Header */}
       <header className="border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-2xl font-bold text-black">
-            Seq3nce
-          </Link>
+          <Logo href="/" height={28} />
           <Link
             href="/sign-in"
             className="text-gray-600 hover:text-black transition-colors"
@@ -184,10 +183,15 @@ export default function DownloadPage() {
                 Download for {platformInfo[platform].name}
               </a>
             ) : (
-              <div className="text-gray-500">
-                <p className="mb-4">No release available yet.</p>
-                <p className="text-sm">
-                  Check back soon or contact your team manager.
+              <div>
+                <button
+                  disabled
+                  className="inline-block bg-gray-300 text-gray-500 font-medium px-8 py-3 rounded-lg cursor-not-allowed mb-4"
+                >
+                  Download for {platformInfo[platform].name}
+                </button>
+                <p className="text-gray-500 text-sm">
+                  First release coming soon! Your team manager will notify you when it&apos;s available.
                 </p>
               </div>
             )}

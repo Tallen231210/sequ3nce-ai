@@ -1,25 +1,18 @@
-# Icons Needed for Production Builds
+# App Icons
 
-Before creating production builds, you need to add the following icon files to this directory:
+## Available Icons
+- **icon.png** - 1024x1024 PNG (source, created)
+- **icon.icns** - macOS icon (created from PNG)
+- **icon.svg** - SVG source file
 
-## Required Icons
-
-### macOS
-- **icon.icns** - Apple Icon Image format
-  - Size: 512x512 or 1024x1024 pixels
-  - Create using `iconutil` or apps like Image2Icon
+## Still Needed
 
 ### Windows
 - **icon.ico** - Windows Icon format
   - Must be multi-resolution (16x16, 32x32, 48x48, 256x256)
   - Create using tools like GIMP, ImageMagick, or online converters
 
-### Linux
-- **icon.png** - PNG format
-  - Size: 512x512 pixels
-  - Standard PNG with transparency
-
-### DMG Background (macOS)
+### DMG Background (macOS, optional)
 - **dmg-background.png** - Background image for Mac installer
   - Recommended size: 540x380 pixels
   - Shows behind the app icon and Applications folder shortcut
