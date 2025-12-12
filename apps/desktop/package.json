@@ -9,7 +9,13 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "build:mac": "electron-forge make --platform darwin",
+    "build:win": "electron-forge make --platform win32",
+    "build:linux": "electron-forge make --platform linux",
+    "build:all": "electron-forge make --platform darwin,win32,linux",
+    "release": "electron-forge publish",
+    "release:draft": "electron-forge publish"
   },
   "keywords": [],
   "author": {
@@ -20,12 +26,14 @@
   "devDependencies": {
     "@electron-forge/cli": "^7.10.2",
     "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-dmg": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
     "@electron-forge/maker-squirrel": "^7.10.2",
     "@electron-forge/maker-zip": "^7.10.2",
     "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
     "@electron-forge/plugin-fuses": "^7.10.2",
     "@electron-forge/plugin-webpack": "^7.10.2",
+    "@electron-forge/publisher-github": "^7.10.2",
     "@electron/fuses": "^1.8.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AudioStatus } from './types/electron';
 import { StatusIndicator } from './components/StatusIndicator';
 import { AudioLevelMeter } from './components/AudioLevelMeter';
@@ -8,95 +8,315 @@ import { useAudioCapture } from './hooks/useAudioCapture';
 import { getCloserByEmail, activateCloser, completeCallWithOutcome, type CloserInfo } from './convex';
 import logoImage from '../assets/logo.png';
 
-// Simple local storage for persisting login
+// Storage keys
 const STORAGE_KEY = 'seq3nce_closer_email';
+const SESSION_KEY = 'seq3nce_session';
+
+// Auth states
+type AuthState =
+  | 'initial_loading'    // Checking if user is already logged in
+  | 'email_entry'        // Showing email input
+  | 'sending_link'       // Sending magic link
+  | 'waiting_for_link'   // Waiting for user to click magic link
+  | 'verifying'          // Verifying the session
+  | 'checking_closer'    // Authenticated, checking if they're a closer
+  | 'authenticated'      // Fully logged in
+  | 'error';             // Error state
+
+interface AuthError {
+  message: string;
+  action?: 'retry' | 'different_email' | 'contact_admin';
+}
 
 export function App() {
+  const [authState, setAuthState] = useState<AuthState>('initial_loading');
   const [email, setEmail] = useState('');
   const [closerInfo, setCloserInfo] = useState<CloserInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<AuthError | null>(null);
+  const [canResend, setCanResend] = useState(false);
+  const resendTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Check for saved email on mount
+  // Check for existing session on mount
   useEffect(() => {
-    const savedEmail = localStorage.getItem(STORAGE_KEY);
-    if (savedEmail) {
-      handleLogin(savedEmail);
-    } else {
-      setIsLoading(false);
-    }
-  }, []);
+    checkExistingSession();
 
-  const handleLogin = async (loginEmail: string) => {
-    setIsLoading(true);
-    setError(null);
+    // Listen for auth callback from main process
+    const handleAuthCallback = (event: CustomEvent<{ token?: string; email?: string; error?: string }>) => {
+      console.log('[App] Auth callback received:', event.detail);
+      if (event.detail.error) {
+        setAuthError({ message: event.detail.error, action: 'retry' });
+        setAuthState('error');
+      } else if (event.detail.token) {
+        // Use email from callback if available, otherwise use the current email state
+        const authEmail = event.detail.email || email;
+        if (authEmail) {
+          setEmail(authEmail);
+        }
+        handleAuthSuccess(event.detail.token, authEmail);
+      }
+    };
+
+    window.addEventListener('auth:callback' as any, handleAuthCallback);
+
+    return () => {
+      window.removeEventListener('auth:callback' as any, handleAuthCallback);
+      if (resendTimerRef.current) {
+        clearTimeout(resendTimerRef.current);
+      }
+    };
+  }, [email]);
+
+  const checkExistingSession = async () => {
+    const savedEmail = localStorage.getItem(STORAGE_KEY);
+    const savedSession = localStorage.getItem(SESSION_KEY);
+
+    if (savedEmail && savedSession) {
+      // Verify the session is still valid
+      setAuthState('verifying');
+      try {
+        const isValid = await window.electron.auth.verifySession(savedSession);
+        if (isValid) {
+          await verifyCloserAndLogin(savedEmail);
+        } else {
+          // Session expired, clear and show login
+          clearSession();
+          setAuthState('email_entry');
+        }
+      } catch (err) {
+        console.error('[App] Session verification error:', err);
+        clearSession();
+        setAuthState('email_entry');
+      }
+    } else {
+      setAuthState('email_entry');
+    }
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SESSION_KEY);
+    setCloserInfo(null);
+  };
+
+  const handleSendMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+
+    const normalizedEmail = email.trim().toLowerCase();
+    setAuthState('sending_link');
+    setAuthError(null);
 
     try {
-      const info = await getCloserByEmail(loginEmail.trim().toLowerCase());
+      const result = await window.electron.auth.sendMagicLink(normalizedEmail);
 
-      if (info) {
-        // Activate the closer (changes status from pending to active)
-        await activateCloser(loginEmail.trim().toLowerCase());
-
-        setCloserInfo(info);
-        localStorage.setItem(STORAGE_KEY, loginEmail.trim().toLowerCase());
+      if (result.success) {
+        setAuthState('waiting_for_link');
+        // Start resend timer (30 seconds)
+        setCanResend(false);
+        resendTimerRef.current = setTimeout(() => {
+          setCanResend(true);
+        }, 30000);
       } else {
-        setError('No account found with that email. Make sure your team admin has added you.');
+        setAuthError({
+          message: result.error || 'Failed to send magic link. Please try again.',
+          action: 'retry'
+        });
+        setAuthState('error');
       }
     } catch (err) {
-      console.error('[App] Login error:', err);
-      setError('Failed to connect. Please check your internet connection.');
+      console.error('[App] Error sending magic link:', err);
+      setAuthError({
+        message: 'Network error. Please check your connection and try again.',
+        action: 'retry'
+      });
+      setAuthState('error');
     }
-
-    setIsLoading(false);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setCloserInfo(null);
+  const handleAuthSuccess = async (sessionToken: string, authEmail?: string) => {
+    setAuthState('checking_closer');
+    localStorage.setItem(SESSION_KEY, sessionToken);
+
+    // Use the email from callback if provided, otherwise use current state
+    const normalizedEmail = (authEmail || email).trim().toLowerCase();
+    await verifyCloserAndLogin(normalizedEmail);
+  };
+
+  const verifyCloserAndLogin = async (userEmail: string) => {
+    setAuthState('checking_closer');
+
+    try {
+      const info = await getCloserByEmail(userEmail);
+
+      if (!info) {
+        setAuthError({
+          message: "You haven't been added to a team yet. Contact your manager to get set up.",
+          action: 'contact_admin'
+        });
+        setAuthState('error');
+        return;
+      }
+
+      if (info.status === 'deactivated') {
+        setAuthError({
+          message: "Your account has been deactivated. Contact your manager for assistance.",
+          action: 'contact_admin'
+        });
+        setAuthState('error');
+        return;
+      }
+
+      // Activate the closer if pending
+      await activateCloser(userEmail);
+
+      localStorage.setItem(STORAGE_KEY, userEmail);
+      setCloserInfo(info);
+      setAuthState('authenticated');
+    } catch (err) {
+      console.error('[App] Error verifying closer:', err);
+      setAuthError({
+        message: 'Unable to verify your account. Please try again.',
+        action: 'retry'
+      });
+      setAuthState('error');
+    }
+  };
+
+  const handleResendLink = async () => {
+    if (!canResend) return;
+
+    setCanResend(false);
+    setAuthState('sending_link');
+
+    try {
+      const result = await window.electron.auth.sendMagicLink(email.trim().toLowerCase());
+
+      if (result.success) {
+        setAuthState('waiting_for_link');
+        resendTimerRef.current = setTimeout(() => {
+          setCanResend(true);
+        }, 30000);
+      } else {
+        setAuthError({
+          message: result.error || 'Failed to resend link.',
+          action: 'retry'
+        });
+        setAuthState('error');
+      }
+    } catch (err) {
+      setAuthError({
+        message: 'Network error. Please try again.',
+        action: 'retry'
+      });
+      setAuthState('error');
+    }
+  };
+
+  const handleUseDifferentEmail = () => {
     setEmail('');
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (email.trim()) {
-      handleLogin(email);
+    setAuthError(null);
+    setAuthState('email_entry');
+    if (resendTimerRef.current) {
+      clearTimeout(resendTimerRef.current);
     }
   };
 
-  if (isLoading) {
+  const handleLogout = async () => {
+    try {
+      await window.electron.auth.signOut();
+    } catch (err) {
+      console.error('[App] Logout error:', err);
+    }
+    clearSession();
+    setEmail('');
+    setAuthState('email_entry');
+  };
+
+  const handleRetry = () => {
+    setAuthError(null);
+    if (authError?.action === 'different_email') {
+      setAuthState('email_entry');
+    } else {
+      // Retry sending magic link
+      handleSendMagicLink({ preventDefault: () => {} } as React.FormEvent);
+    }
+  };
+
+  // Render based on auth state
+  if (authState === 'initial_loading' || authState === 'verifying') {
     return (
       <div className="h-screen flex flex-col bg-white text-black items-center justify-center">
-        <div className="animate-pulse text-gray-400">Loading...</div>
+        <div className="titlebar h-8 border-b border-gray-200 w-full" />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin w-8 h-8 border-2 border-gray-300 border-t-black rounded-full mx-auto mb-4" />
+            <p className="text-gray-500 text-sm">Loading...</p>
+          </div>
+        </div>
       </div>
     );
   }
 
-  if (!closerInfo) {
-    return <LoginScreen
-      email={email}
-      setEmail={setEmail}
-      onSubmit={handleSubmit}
-      error={error}
-      isLoading={isLoading}
-    />;
+  if (authState === 'email_entry' || authState === 'sending_link') {
+    return (
+      <EmailEntryScreen
+        email={email}
+        setEmail={setEmail}
+        onSubmit={handleSendMagicLink}
+        isLoading={authState === 'sending_link'}
+      />
+    );
   }
 
-  return <MainApp closerInfo={closerInfo} onLogout={handleLogout} />;
+  if (authState === 'waiting_for_link' || authState === 'checking_closer') {
+    return (
+      <WaitingForLinkScreen
+        email={email}
+        canResend={canResend && authState === 'waiting_for_link'}
+        onResend={handleResendLink}
+        onUseDifferentEmail={handleUseDifferentEmail}
+        isVerifying={authState === 'checking_closer'}
+      />
+    );
+  }
+
+  if (authState === 'error' && authError) {
+    return (
+      <ErrorScreen
+        error={authError}
+        onRetry={handleRetry}
+        onUseDifferentEmail={handleUseDifferentEmail}
+      />
+    );
+  }
+
+  if (authState === 'authenticated' && closerInfo) {
+    return <MainApp closerInfo={closerInfo} onLogout={handleLogout} />;
+  }
+
+  // Fallback - shouldn't reach here
+  return (
+    <EmailEntryScreen
+      email={email}
+      setEmail={setEmail}
+      onSubmit={handleSendMagicLink}
+      isLoading={false}
+    />
+  );
 }
 
-interface LoginScreenProps {
+// ==================== Auth Screens ====================
+
+interface EmailEntryScreenProps {
   email: string;
   setEmail: (email: string) => void;
   onSubmit: (e: React.FormEvent) => void;
-  error: string | null;
   isLoading: boolean;
 }
 
-function LoginScreen({ email, setEmail, onSubmit, error, isLoading }: LoginScreenProps) {
+function EmailEntryScreen({ email, setEmail, onSubmit, isLoading }: EmailEntryScreenProps) {
   return (
     <div className="h-screen flex flex-col bg-white text-black">
-      {/* Draggable title bar - no logo, just drag area */}
       <div className="titlebar h-8 border-b border-gray-200" />
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
@@ -118,26 +338,156 @@ function LoginScreen({ email, setEmail, onSubmit, error, isLoading }: LoginScree
             />
           </div>
 
-          {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
-          )}
-
           <button
             type="submit"
             disabled={isLoading || !email.trim()}
-            className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {isLoading ? 'Signing in...' : 'Continue'}
+            {isLoading ? (
+              <>
+                <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
+                Sending link...
+              </>
+            ) : (
+              'Continue'
+            )}
           </button>
         </form>
 
         <p className="mt-8 text-xs text-gray-400 text-center max-w-xs">
-          Use the email your team admin invited you with
+          We'll send a secure login link to your email
         </p>
       </div>
     </div>
   );
 }
+
+interface WaitingForLinkScreenProps {
+  email: string;
+  canResend: boolean;
+  onResend: () => void;
+  onUseDifferentEmail: () => void;
+  isVerifying: boolean;
+}
+
+function WaitingForLinkScreen({ email, canResend, onResend, onUseDifferentEmail, isVerifying }: WaitingForLinkScreenProps) {
+  return (
+    <div className="h-screen flex flex-col bg-white text-black">
+      <div className="titlebar h-8 border-b border-gray-200" />
+
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="mb-8 text-center">
+          <img src={logoImage} alt="Seq3nce" className="h-14 mx-auto" />
+        </div>
+
+        {isVerifying ? (
+          <div className="text-center">
+            <div className="animate-spin w-8 h-8 border-2 border-gray-300 border-t-black rounded-full mx-auto mb-4" />
+            <p className="text-gray-900 font-medium">Logging you in...</p>
+          </div>
+        ) : (
+          <>
+            {/* Email icon */}
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-6">
+              <svg className="w-8 h-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Check your email</h2>
+            <p className="text-gray-500 text-sm text-center mb-2">
+              We sent a login link to
+            </p>
+            <p className="text-gray-900 font-medium mb-6">{email}</p>
+            <p className="text-gray-500 text-sm text-center mb-8 max-w-xs">
+              Click the link in your email to continue. The link will expire in 10 minutes.
+            </p>
+
+            <div className="space-y-3 w-full max-w-xs">
+              <button
+                onClick={onResend}
+                disabled={!canResend}
+                className="w-full py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {canResend ? 'Resend link' : 'Resend available in 30s'}
+              </button>
+
+              <button
+                onClick={onUseDifferentEmail}
+                className="w-full py-2.5 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Use a different email
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface ErrorScreenProps {
+  error: AuthError;
+  onRetry: () => void;
+  onUseDifferentEmail: () => void;
+}
+
+function ErrorScreen({ error, onRetry, onUseDifferentEmail }: ErrorScreenProps) {
+  return (
+    <div className="h-screen flex flex-col bg-white text-black">
+      <div className="titlebar h-8 border-b border-gray-200" />
+
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="mb-8 text-center">
+          <img src={logoImage} alt="Seq3nce" className="h-14 mx-auto" />
+        </div>
+
+        {/* Error icon */}
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-6">
+          <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h2>
+        <p className="text-gray-500 text-sm text-center mb-8 max-w-xs">
+          {error.message}
+        </p>
+
+        <div className="space-y-3 w-full max-w-xs">
+          {error.action === 'retry' && (
+            <button
+              onClick={onRetry}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150"
+            >
+              Try again
+            </button>
+          )}
+
+          {error.action !== 'contact_admin' && (
+            <button
+              onClick={onUseDifferentEmail}
+              className="w-full py-2.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Use a different email
+            </button>
+          )}
+
+          {error.action === 'contact_admin' && (
+            <button
+              onClick={onUseDifferentEmail}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150"
+            >
+              Try a different email
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== Main App ====================
 
 interface MainAppProps {
   closerInfo: CloserInfo;

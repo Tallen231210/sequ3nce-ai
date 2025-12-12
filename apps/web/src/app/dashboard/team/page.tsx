@@ -35,9 +35,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, MoreHorizontal, UserPlus, Loader2 } from "lucide-react";
+import { Users, MoreHorizontal, UserPlus, Loader2, Download, Copy, Check, Mail } from "lucide-react";
 import { useTeam } from "@/hooks/useTeam";
 import { Id } from "../../../../convex/_generated/dataModel";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -76,6 +83,39 @@ export default function TeamPage() {
     id: Id<"closers">;
     name: string;
   } | null>(null);
+
+  // Download link dialog state
+  const [downloadDialogCloser, setDownloadDialogCloser] = useState<{
+    name: string;
+    email: string;
+  } | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // Get download link for a closer
+  const getDownloadLink = () => {
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://seq3nce.ai";
+    return `${baseUrl}/download`;
+  };
+
+  // Copy download link to clipboard
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(getDownloadLink());
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  // Send download email (opens email client)
+  const handleSendDownloadEmail = (email: string, name: string) => {
+    const subject = encodeURIComponent("Download Seq3nce Desktop App");
+    const body = encodeURIComponent(
+      `Hi ${name},\n\nYou've been added to the team on Seq3nce. Please download the desktop app to get started:\n\n${getDownloadLink()}\n\nSign in with this email address: ${email}\n\nOnce installed, the app will capture your sales calls and provide real-time insights to help you close more deals.\n\nBest,\n${user?.firstName || "Your Manager"}`
+    );
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`);
+  };
 
   // Convex queries and mutations
   const closers = useQuery(
@@ -410,6 +450,18 @@ export default function TeamPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                setDownloadDialogCloser({
+                                  name: closer.name,
+                                  email: closer.email,
+                                })
+                              }
+                            >
+                              <Download className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                              Send Download Link
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             {closer.status !== "active" && (
                               <DropdownMenuItem
                                 onClick={() =>
@@ -482,6 +534,79 @@ export default function TeamPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Download Link Dialog */}
+      <Dialog
+        open={!!downloadDialogCloser}
+        onOpenChange={() => setDownloadDialogCloser(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send Download Link</DialogTitle>
+            <DialogDescription>
+              Share the desktop app download link with {downloadDialogCloser?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Download Link */}
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Download Link</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value={getDownloadLink()}
+                  className="flex-1 bg-muted"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopyLink}
+                  className="flex-shrink-0"
+                >
+                  {copiedLink ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Email Info */}
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Sign-in Email</Label>
+              <p className="text-sm font-medium">{downloadDialogCloser?.email}</p>
+              <p className="text-xs text-muted-foreground">
+                They&apos;ll need to sign in with this email in the desktop app
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2">
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  if (downloadDialogCloser) {
+                    handleSendDownloadEmail(
+                      downloadDialogCloser.email,
+                      downloadDialogCloser.name
+                    );
+                  }
+                }}
+              >
+                <Mail className="h-4 w-4 mr-2" />
+                Send via Email
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleCopyLink}
+              >
+                {copiedLink ? "Copied!" : "Copy Link"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

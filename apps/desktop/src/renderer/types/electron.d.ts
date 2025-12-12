@@ -29,10 +29,17 @@ export interface AmmoAPI {
   isVisible: () => Promise<boolean>;
 }
 
+export interface AuthAPI {
+  sendMagicLink: (email: string) => Promise<{ success: boolean; error?: string }>;
+  verifySession: (token: string) => Promise<boolean>;
+  signOut: () => Promise<void>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
   ammo: AmmoAPI;
+  auth: AuthAPI;
 }
 
 // Ammo item type

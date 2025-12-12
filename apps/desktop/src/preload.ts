@@ -31,10 +31,17 @@ export interface AmmoAPI {
   isVisible: () => Promise<boolean>;
 }
 
+export interface AuthAPI {
+  sendMagicLink: (email: string) => Promise<{ success: boolean; error?: string }>;
+  verifySession: (token: string) => Promise<boolean>;
+  signOut: () => Promise<void>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
   ammo: AmmoAPI;
+  auth: AuthAPI;
 }
 
 // Expose protected methods to renderer via contextBridge
@@ -73,6 +80,11 @@ contextBridge.exposeInMainWorld('electron', {
     toggle: () => ipcRenderer.invoke('ammo:toggle'),
     isVisible: () => ipcRenderer.invoke('ammo:is-visible'),
   },
+  auth: {
+    sendMagicLink: (email: string) => ipcRenderer.invoke('auth:send-magic-link', email),
+    verifySession: (token: string) => ipcRenderer.invoke('auth:verify-session', token),
+    signOut: () => ipcRenderer.invoke('auth:sign-out'),
+  },
 } as ElectronAPI);
 
 // Also expose for tray menu actions
@@ -82,4 +94,9 @@ ipcRenderer.on('tray:start-recording', () => {
 
 ipcRenderer.on('tray:stop-recording', () => {
   window.dispatchEvent(new CustomEvent('tray:stop-recording'));
+});
+
+// Auth callback from deep link
+ipcRenderer.on('auth:callback', (_event, data: { token?: string; error?: string }) => {
+  window.dispatchEvent(new CustomEvent('auth:callback', { detail: data }));
 });

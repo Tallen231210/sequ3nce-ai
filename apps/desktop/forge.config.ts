@@ -1,12 +1,14 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { PublisherGithub } from '@electron-forge/publisher-github';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
@@ -14,13 +16,88 @@ import { rendererConfig } from './webpack.renderer.config';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    name: 'Seq3nce',
+    executableName: 'seq3nce',
+    appBundleId: 'ai.seq3nce.desktop',
+    appCategoryType: 'public.app-category.productivity',
+    // Icon paths (relative to project root)
+    // Mac: .icns file, Windows: .ico file
+    icon: './assets/icon',
+    // macOS specific settings
+    osxSign: {
+      identity: undefined, // Use auto-signing for development, set for production
+    },
+    // Protocol handler for magic link auth
+    protocols: [
+      {
+        name: 'Seq3nce',
+        schemes: ['seq3nce'],
+      },
+    ],
+    // Extra resources to include
+    extraResource: [
+      './assets',
+    ],
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    // Windows installer
+    new MakerSquirrel({
+      name: 'Seq3nce',
+      setupIcon: './assets/icon.ico',
+      // The ICO file to use as the icon for the generated Setup.exe
+      iconUrl: 'https://raw.githubusercontent.com/Tallen231210/sequ3nce-ai/main/apps/desktop/assets/icon.ico',
+    }),
+    // macOS DMG
+    new MakerDMG({
+      name: 'Seq3nce',
+      icon: './assets/icon.icns',
+      format: 'ULFO', // Use ULFO for best compression
+      background: './assets/dmg-background.png',
+      contents: [
+        {
+          x: 130,
+          y: 220,
+          type: 'file',
+          path: '', // Will be filled with the actual app path
+        },
+        {
+          x: 410,
+          y: 220,
+          type: 'link',
+          path: '/Applications',
+        },
+      ],
+    }),
+    // macOS ZIP (for auto-updates)
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    // Linux DEB
+    new MakerDeb({
+      options: {
+        maintainer: 'Seq3nce',
+        homepage: 'https://seq3nce.ai',
+        icon: './assets/icon.png',
+        categories: ['Office', 'Utility'],
+      },
+    }),
+    // Linux RPM
+    new MakerRpm({
+      options: {
+        homepage: 'https://seq3nce.ai',
+        icon: './assets/icon.png',
+        categories: ['Office', 'Utility'],
+      },
+    }),
+  ],
+  publishers: [
+    new PublisherGithub({
+      repository: {
+        owner: 'Tallen231210',
+        name: 'sequ3nce-ai',
+      },
+      prerelease: false,
+      draft: true, // Create as draft first, then publish manually
+    }),
   ],
   plugins: [
     new AutoUnpackNativesPlugin({}),

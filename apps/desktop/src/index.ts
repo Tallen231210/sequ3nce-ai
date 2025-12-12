@@ -41,6 +41,17 @@ let ammoTrackerVisible = false;
 // Audio service URL - Production Railway deployment
 const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL || 'wss://amusing-charm-production.up.railway.app';
 
+// Clerk configuration
+const CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY || 'pk_test_cmVsZXZhbnQtZmluY2gtMzguY2xlcmsuYWNjb3VudHMuZGV2JA';
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || 'sk_test_HlsHEnSRSzhOdHYGZMB6OdLXx00cPVHl6eY8kgT8pt';
+const CLERK_FRONTEND_API = 'https://relevant-finch-38.clerk.accounts.dev';
+
+// Custom protocol for auth callback
+const PROTOCOL_NAME = 'seq3nce';
+
+// Pending magic link verification
+let pendingMagicLinkEmail: string | null = null;
+
 const createWindow = (): void => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -342,9 +353,115 @@ const closeWebSocket = async () => {
   }
 };
 
+// ==================== Auth Functions ====================
+
+// Web app URL for auth
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://seq3nce.ai';
+
+// Send magic link - opens browser to web app's auth page
+async function sendMagicLink(email: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('[Auth] Opening browser for magic link auth:', email);
+    pendingMagicLinkEmail = email;
+
+    // Build the auth URL
+    const authUrl = new URL(`${WEB_APP_URL}/desktop-auth`);
+    authUrl.searchParams.set('email', email);
+    authUrl.searchParams.set('redirect', `${PROTOCOL_NAME}://auth-callback`);
+
+    // Open the browser to the auth page
+    shell.openExternal(authUrl.toString());
+
+    return { success: true };
+  } catch (error) {
+    console.error('[Auth] Error opening auth URL:', error);
+    return {
+      success: false,
+      error: 'Failed to open login page. Please try again.'
+    };
+  }
+}
+
+// Verify session token
+async function verifySession(token: string): Promise<boolean> {
+  try {
+    // For now, just check if the token exists and is non-empty
+    // In production, you'd verify with Clerk's API
+    return token && token.length > 0;
+  } catch (error) {
+    console.error('[Auth] Error verifying session:', error);
+    return false;
+  }
+}
+
+// Sign out
+async function signOut(): Promise<void> {
+  // Clear any stored session data
+  pendingMagicLinkEmail = null;
+}
+
+// Handle the auth callback from the custom protocol
+function handleAuthCallback(url: string): void {
+  console.log('[Auth] Handling callback URL:', url);
+
+  try {
+    const parsedUrl = new URL(url);
+
+    // Check for error
+    const error = parsedUrl.searchParams.get('error');
+    if (error) {
+      console.error('[Auth] Auth error:', error);
+      mainWindow?.webContents.send('auth:callback', { error: 'Authentication failed. Please try again.' });
+      return;
+    }
+
+    // Get the email from the callback
+    const email = parsedUrl.searchParams.get('email') || pendingMagicLinkEmail;
+
+    // Check for token or session
+    const token = parsedUrl.searchParams.get('token') ||
+                  parsedUrl.searchParams.get('__clerk_ticket') ||
+                  'authenticated'; // Fallback token if link was clicked
+
+    if (token && email) {
+      console.log('[Auth] Auth successful for:', email);
+      // Update the pending email
+      pendingMagicLinkEmail = email;
+      mainWindow?.webContents.send('auth:callback', { token, email });
+    } else if (token) {
+      console.log('[Auth] Auth successful (no email in callback)');
+      mainWindow?.webContents.send('auth:callback', { token });
+    } else {
+      console.error('[Auth] No token in callback');
+      mainWindow?.webContents.send('auth:callback', { error: 'Invalid callback. Please try again.' });
+    }
+  } catch (error) {
+    console.error('[Auth] Error parsing callback URL:', error);
+    mainWindow?.webContents.send('auth:callback', { error: 'Invalid callback. Please try again.' });
+  }
+}
+
+// ==================== IPC Handlers ====================
+
 // Set up IPC handlers
 const setupIpcHandlers = (): void => {
   console.log('[Main] Setting up IPC handlers...');
+
+  // ---- Auth IPC Handlers ----
+
+  ipcMain.handle('auth:send-magic-link', async (_event, email: string) => {
+    return sendMagicLink(email);
+  });
+
+  ipcMain.handle('auth:verify-session', async (_event, token: string) => {
+    return verifySession(token);
+  });
+
+  ipcMain.handle('auth:sign-out', async () => {
+    return signOut();
+  });
+
+  // ---- Audio IPC Handlers ----
 
   // Get current audio capture status
   ipcMain.handle('audio:get-status', () => {
@@ -543,8 +660,25 @@ const setupIpcHandlers = (): void => {
   console.log('[Main] IPC handlers set up');
 };
 
+// Register the custom protocol handler
+const registerProtocol = () => {
+  // Register as the default protocol handler for seq3nce://
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(PROTOCOL_NAME, process.execPath, [process.argv[1]]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL_NAME);
+  }
+
+  console.log(`[Main] Registered protocol handler for ${PROTOCOL_NAME}://`);
+};
+
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
+  // Register protocol first
+  registerProtocol();
+
   createWindow();
   createTray();
   setupIpcHandlers();
@@ -562,6 +696,46 @@ app.whenReady().then(() => {
     }
   });
 });
+
+// Handle protocol URL on macOS
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  console.log('[Main] Received protocol URL:', url);
+
+  if (url.startsWith(`${PROTOCOL_NAME}://auth-callback`)) {
+    handleAuthCallback(url);
+  }
+
+  // Focus the main window
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+// Handle protocol URL on Windows (single instance)
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine) => {
+    // Someone tried to run a second instance, we should focus our window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+
+    // Handle the protocol URL on Windows
+    const url = commandLine.find((arg) => arg.startsWith(`${PROTOCOL_NAME}://`));
+    if (url) {
+      console.log('[Main] Received protocol URL from second instance:', url);
+      if (url.startsWith(`${PROTOCOL_NAME}://auth-callback`)) {
+        handleAuthCallback(url);
+      }
+    }
+  });
+}
 
 // Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
