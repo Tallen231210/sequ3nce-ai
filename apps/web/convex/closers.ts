@@ -608,6 +608,199 @@ export const getCloserStats = query({
   },
 });
 
+// Team aggregate stats interface
+interface TeamStats {
+  // Current period stats
+  totalCashCollected: number;
+  totalClosedDeals: number;
+  totalCallsTaken: number;
+  teamCloseRate: number;
+  averageDealValue: number;
+  showRate: number;
+  // Previous period stats for trends
+  previousCashCollected: number;
+  previousClosedDeals: number;
+  previousCallsTaken: number;
+  previousCloseRate: number;
+  previousAverageDealValue: number;
+  previousShowRate: number;
+  // Calculated trends (percentage change)
+  cashCollectedTrend: number | null;
+  closedDealsTrend: number | null;
+  callsTakenTrend: number | null;
+  closeRateTrend: number | null;
+  averageDealValueTrend: number | null;
+  showRateTrend: number | null;
+}
+
+// Get aggregate team stats
+export const getTeamStats = query({
+  args: {
+    clerkId: v.string(),
+    dateRange: v.union(
+      v.literal("this_week"),
+      v.literal("this_month"),
+      v.literal("last_30_days"),
+      v.literal("all_time")
+    ),
+  },
+  handler: async (ctx, args): Promise<TeamStats | null> => {
+    // Get the user to find their team
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      return null;
+    }
+
+    // Calculate date ranges
+    const now = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sunday
+
+    const startOfMonth = new Date(startOfToday);
+    startOfMonth.setDate(1);
+
+    const last30Days = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+    // Determine the filter date based on dateRange
+    let filterDate: number;
+    let previousPeriodStart: number;
+    let previousPeriodEnd: number;
+
+    switch (args.dateRange) {
+      case "this_week":
+        filterDate = startOfWeek.getTime();
+        previousPeriodStart = filterDate - 7 * 24 * 60 * 60 * 1000;
+        previousPeriodEnd = filterDate;
+        break;
+      case "this_month":
+        filterDate = startOfMonth.getTime();
+        const prevMonth = new Date(startOfMonth);
+        prevMonth.setMonth(prevMonth.getMonth() - 1);
+        previousPeriodStart = prevMonth.getTime();
+        previousPeriodEnd = filterDate;
+        break;
+      case "last_30_days":
+        filterDate = last30Days.getTime();
+        previousPeriodStart = filterDate - 30 * 24 * 60 * 60 * 1000;
+        previousPeriodEnd = filterDate;
+        break;
+      case "all_time":
+      default:
+        filterDate = 0;
+        previousPeriodStart = 0;
+        previousPeriodEnd = 0;
+        break;
+    }
+
+    // Get all calls for the team
+    const allCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", user.teamId))
+      .collect();
+
+    // Current period calls
+    const periodCalls = allCalls.filter((c) => c.createdAt >= filterDate);
+
+    // Previous period calls (for trends)
+    const prevPeriodCalls = args.dateRange !== "all_time"
+      ? allCalls.filter(
+          (c) => c.createdAt >= previousPeriodStart && c.createdAt < previousPeriodEnd
+        )
+      : [];
+
+    // Current period stats
+    const completedCalls = periodCalls.filter((c) => c.status === "completed");
+    const closedCalls = completedCalls.filter((c) => c.outcome === "closed");
+
+    const totalCashCollected = closedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+    const totalClosedDeals = closedCalls.length;
+    const totalCallsTaken = completedCalls.length;
+    const teamCloseRate = completedCalls.length > 0
+      ? (closedCalls.length / completedCalls.length) * 100
+      : 0;
+    const averageDealValue = closedCalls.length > 0
+      ? totalCashCollected / closedCalls.length
+      : 0;
+
+    // Show rate (scheduled calls that actually happened vs no-shows)
+    const scheduledCalls = periodCalls.filter(
+      (c) => c.status === "completed" || c.outcome === "no_show"
+    );
+    const actualCalls = scheduledCalls.filter((c) => c.status === "completed");
+    const showRate = scheduledCalls.length > 0
+      ? (actualCalls.length / scheduledCalls.length) * 100
+      : 100;
+
+    // Previous period stats
+    const prevCompletedCalls = prevPeriodCalls.filter((c) => c.status === "completed");
+    const prevClosedCalls = prevCompletedCalls.filter((c) => c.outcome === "closed");
+
+    const previousCashCollected = prevClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+    const previousClosedDeals = prevClosedCalls.length;
+    const previousCallsTaken = prevCompletedCalls.length;
+    const previousCloseRate = prevCompletedCalls.length > 0
+      ? (prevClosedCalls.length / prevCompletedCalls.length) * 100
+      : 0;
+    const previousAverageDealValue = prevClosedCalls.length > 0
+      ? previousCashCollected / prevClosedCalls.length
+      : 0;
+
+    // Previous show rate
+    const prevScheduledCalls = prevPeriodCalls.filter(
+      (c) => c.status === "completed" || c.outcome === "no_show"
+    );
+    const prevActualCalls = prevScheduledCalls.filter((c) => c.status === "completed");
+    const previousShowRate = prevScheduledCalls.length > 0
+      ? (prevActualCalls.length / prevScheduledCalls.length) * 100
+      : 100;
+
+    // Calculate percentage change trends (only if we have previous data)
+    const calculateTrend = (current: number, previous: number): number | null => {
+      if (args.dateRange === "all_time") return null;
+      if (previous === 0) {
+        // If previous is 0 and current > 0, show as positive (but can't calculate percentage)
+        return current > 0 ? 100 : null;
+      }
+      return ((current - previous) / previous) * 100;
+    };
+
+    // For rate trends, use the difference in points rather than percentage change
+    const calculateRateTrend = (current: number, previous: number): number | null => {
+      if (args.dateRange === "all_time") return null;
+      if (previous === 0 && current === 0) return null;
+      return current - previous; // Points difference
+    };
+
+    return {
+      totalCashCollected,
+      totalClosedDeals,
+      totalCallsTaken,
+      teamCloseRate,
+      averageDealValue,
+      showRate,
+      previousCashCollected,
+      previousClosedDeals,
+      previousCallsTaken,
+      previousCloseRate,
+      previousAverageDealValue,
+      previousShowRate,
+      cashCollectedTrend: calculateTrend(totalCashCollected, previousCashCollected),
+      closedDealsTrend: calculateTrend(totalClosedDeals, previousClosedDeals),
+      callsTakenTrend: calculateTrend(totalCallsTaken, previousCallsTaken),
+      closeRateTrend: calculateRateTrend(teamCloseRate, previousCloseRate),
+      averageDealValueTrend: calculateTrend(averageDealValue, previousAverageDealValue),
+      showRateTrend: calculateRateTrend(showRate, previousShowRate),
+    };
+  },
+});
+
 // Get live call status for closers (who is on a call right now)
 export const getCloserLiveStatus = query({
   args: { clerkId: v.string() },

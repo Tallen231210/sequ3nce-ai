@@ -26,9 +26,18 @@ import {
   Loader2,
   Zap,
   Users,
+  CheckCircle2,
+  Calendar,
 } from "lucide-react";
 
 type DateRange = "this_week" | "this_month" | "last_30_days" | "all_time";
+
+const DATE_RANGE_LABELS: Record<DateRange, string> = {
+  this_week: "This Week",
+  this_month: "This Month",
+  last_30_days: "Last 30 Days",
+  all_time: "All Time",
+};
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -326,12 +335,147 @@ function EmptyState() {
   );
 }
 
+// Team Stats Card Component
+interface TeamStatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  trend: number | null;
+  trendSuffix?: string;
+}
+
+function TeamStatCard({ icon, label, value, trend, trendSuffix = "%" }: TeamStatCardProps) {
+  return (
+    <div className="p-4 bg-white border border-zinc-200 rounded-lg">
+      <div className="flex items-center gap-2 text-zinc-500 mb-2">
+        {icon}
+        <span className="text-xs font-medium">{label}</span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-semibold text-foreground">{value}</span>
+        <TrendIndicator value={trend} suffix={trendSuffix} />
+      </div>
+    </div>
+  );
+}
+
+// Team Overview Section Component
+interface TeamStatsSectionProps {
+  teamStats: {
+    totalCashCollected: number;
+    totalClosedDeals: number;
+    totalCallsTaken: number;
+    teamCloseRate: number;
+    averageDealValue: number;
+    showRate: number;
+    cashCollectedTrend: number | null;
+    closedDealsTrend: number | null;
+    callsTakenTrend: number | null;
+    closeRateTrend: number | null;
+    averageDealValueTrend: number | null;
+    showRateTrend: number | null;
+  } | null;
+  dateRange: DateRange;
+}
+
+function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
+  // Show empty state if no stats
+  if (!teamStats) {
+    return (
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Team Overview</h2>
+            <p className="text-sm text-zinc-500">{DATE_RANGE_LABELS[dateRange]}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="p-4 bg-zinc-50 border border-zinc-200 rounded-lg animate-pulse">
+              <div className="h-4 w-20 bg-zinc-200 rounded mb-2" />
+              <div className="h-8 w-16 bg-zinc-200 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Team Overview</h2>
+          <p className="text-sm text-zinc-500">{DATE_RANGE_LABELS[dateRange]}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* Total Cash Collected */}
+        <TeamStatCard
+          icon={<DollarSign className="h-4 w-4" />}
+          label="Cash Collected"
+          value={formatCurrency(teamStats.totalCashCollected)}
+          trend={teamStats.cashCollectedTrend}
+        />
+
+        {/* Total Closed Deals */}
+        <TeamStatCard
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          label="Closed Deals"
+          value={teamStats.totalClosedDeals.toString()}
+          trend={teamStats.closedDealsTrend}
+        />
+
+        {/* Total Calls Taken */}
+        <TeamStatCard
+          icon={<Phone className="h-4 w-4" />}
+          label="Calls Taken"
+          value={teamStats.totalCallsTaken.toString()}
+          trend={teamStats.callsTakenTrend}
+        />
+
+        {/* Team Close Rate */}
+        <TeamStatCard
+          icon={<Target className="h-4 w-4" />}
+          label="Close Rate"
+          value={formatPercent(teamStats.teamCloseRate)}
+          trend={teamStats.closeRateTrend}
+          trendSuffix=" pts"
+        />
+
+        {/* Average Deal Value */}
+        <TeamStatCard
+          icon={<BarChart3 className="h-4 w-4" />}
+          label="Avg Deal Value"
+          value={teamStats.averageDealValue > 0 ? formatCurrency(teamStats.averageDealValue) : "—"}
+          trend={teamStats.averageDealValueTrend}
+        />
+
+        {/* Show Rate */}
+        <TeamStatCard
+          icon={<Calendar className="h-4 w-4" />}
+          label="Show Rate"
+          value={formatPercent(teamStats.showRate)}
+          trend={teamStats.showRateTrend}
+          trendSuffix=" pts"
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function CloserStatsPage() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
   const [dateRange, setDateRange] = useState<DateRange>("last_30_days");
 
   const stats = useQuery(
     api.closers.getCloserStats,
+    clerkId ? { clerkId, dateRange } : "skip"
+  );
+
+  const teamStats = useQuery(
+    api.closers.getTeamStats,
     clerkId ? { clerkId, dateRange } : "skip"
   );
 
@@ -393,6 +537,15 @@ export default function CloserStatsPage() {
               <SelectItem value="all_time">All Time</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        {/* Team Overview Section */}
+        <TeamStatsSection teamStats={teamStats ?? null} dateRange={dateRange} />
+
+        {/* Section Divider */}
+        <div className="flex items-center gap-3 mb-6">
+          <h2 className="text-lg font-semibold text-foreground">Individual Performance</h2>
+          <div className="flex-1 h-px bg-zinc-200" />
         </div>
 
         {/* Stats Grid */}

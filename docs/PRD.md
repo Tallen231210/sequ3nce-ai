@@ -636,11 +636,70 @@ Key moments from the conversation that the closer can use later. Extracted in re
 
 #### 7.1.7 Closer Stats (Implemented)
 
-**Purpose:** Provide managers with a visual overview of each closer's performance metrics for quick assessment of team performance.
+**Purpose:** Provide managers with a visual overview of team-wide and individual closer performance metrics for quick assessment of team performance.
 
 **Page Location:** `/dashboard/closer-stats`
 
+**Page Structure:**
+1. **Team Overview Section** (aggregate stats at top)
+2. **Individual Performance Section** (closer cards below)
+
+---
+
+##### Team Overview Section
+
+**Purpose:** Show aggregate team performance metrics at a glance with trend indicators.
+
 **Displays:**
+- 6 stat cards in responsive grid (3 columns desktop, 2 tablet, 1 mobile)
+- Section header with date range label (e.g., "Team Overview • This Week")
+
+**Team Metrics:**
+
+| Metric | Description | Format |
+|--------|-------------|--------|
+| Cash Collected | Total deal value from all closed deals | Currency ($X,XXX) |
+| Closed Deals | Total number of closed deals | Number |
+| Calls Taken | Total completed calls across team | Number |
+| Close Rate | Team-wide close percentage | Percentage (XX%) |
+| Avg Deal Value | Average value per closed deal | Currency ($X,XXX) |
+| Show Rate | Percentage of calls that weren't no-shows | Percentage (XX%) |
+
+**Trend Indicators:**
+- Each metric shows trend comparing current period to previous period
+- Green up arrow for improvement, red down arrow for decline
+- Trend calculation: ((current - previous) / previous) × 100
+- Shows "—" when no previous period data available
+
+**Trend Period Mapping:**
+| Selected Range | Compared To |
+|----------------|-------------|
+| This Week | Last Week |
+| This Month | Last Month |
+| Last 30 Days | Previous 30 Days |
+| All Time | No trend shown |
+
+**Calculation Logic:**
+
+| Metric | Calculation |
+|--------|-------------|
+| Cash Collected | Sum of dealValue where outcome = "closed" |
+| Closed Deals | Count where outcome = "closed" |
+| Calls Taken | Count where status = "completed" |
+| Close Rate | (Closed Deals / Calls Taken) × 100 |
+| Avg Deal Value | Cash Collected / Closed Deals |
+| Show Rate | (Completed Calls / (Completed + No-Shows)) × 100 |
+
+**Empty States:**
+- Loading: Shows skeleton placeholders for all 6 cards
+- No data: Shows $0 / 0 / 0% with "—" for trends
+
+---
+
+##### Individual Performance Section
+
+**Displays:**
+- Section header: "Individual Performance" with divider line
 - Grid of cards (one per active closer)
 - Responsive: 3 columns on desktop, 2 on tablet, 1 on mobile
 

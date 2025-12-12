@@ -18,7 +18,7 @@ body {
   -webkit-app-region: no-drag;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - light theme */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -28,12 +28,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: #d1d5db;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: #9ca3af;
 }
 
 /* Audio level indicator animation */

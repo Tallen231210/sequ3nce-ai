@@ -43,6 +43,7 @@ import {
   Loader2,
   BarChart3,
   Pencil,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -1203,6 +1204,28 @@ export default function CallDetailPage() {
             </Card>
           </div>
         </div>
+
+        {/* Notes Section - Only show if notes exist */}
+        {call.notes && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-zinc-500" />
+                <span>Closer Notes</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-zinc-50 rounded-lg p-4 border border-zinc-200">
+                <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                  {call.notes}
+                </p>
+              </div>
+              <p className="text-xs text-zinc-500 mt-3">
+                Notes captured by {call.closer?.name || "the closer"} during or after the call
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Floating Save to Playbook Button */}

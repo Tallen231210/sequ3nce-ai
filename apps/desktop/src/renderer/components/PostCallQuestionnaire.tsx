@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 export type CallOutcome = 'closed' | 'follow_up' | 'lost' | 'no_show';
 
@@ -61,12 +61,12 @@ export function PostCallQuestionnaire({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-xl w-full max-w-md mx-4 shadow-2xl border border-zinc-700">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl w-full max-w-md mx-4 shadow-xl border border-gray-200">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-zinc-700">
-          <h2 className="text-lg font-semibold text-white">Call Summary</h2>
-          <p className="text-sm text-zinc-400 mt-1">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">Call Summary</h2>
+          <p className="text-sm text-gray-500 mt-1">
             Complete this before your next call
           </p>
         </div>
@@ -75,23 +75,23 @@ export function PostCallQuestionnaire({
         <div className="px-6 py-5 space-y-5">
           {/* Prospect Name */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
-              Prospect Name <span className="text-red-400">*</span>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Prospect Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={prospectName}
               onChange={(e) => setProspectName(e.target.value)}
               placeholder="Enter prospect's name"
-              className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400 transition-colors"
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
               autoFocus
             />
           </div>
 
           {/* Outcome */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
-              Call Outcome <span className="text-red-400">*</span>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Call Outcome <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               <OutcomeButton
@@ -99,28 +99,28 @@ export function PostCallQuestionnaire({
                 value="closed"
                 selected={outcome === 'closed'}
                 onClick={() => setOutcome('closed')}
-                color="green"
+                variant="success"
               />
               <OutcomeButton
                 label="Follow Up"
                 value="follow_up"
                 selected={outcome === 'follow_up'}
                 onClick={() => setOutcome('follow_up')}
-                color="blue"
+                variant="default"
               />
               <OutcomeButton
                 label="Lost"
                 value="lost"
                 selected={outcome === 'lost'}
                 onClick={() => setOutcome('lost')}
-                color="red"
+                variant="danger"
               />
               <OutcomeButton
                 label="No Show"
                 value="no_show"
                 selected={outcome === 'no_show'}
                 onClick={() => setOutcome('no_show')}
-                color="gray"
+                variant="muted"
               />
             </div>
           </div>
@@ -128,8 +128,8 @@ export function PostCallQuestionnaire({
           {/* Deal Value (only shown if outcome is "closed") */}
           {outcome === 'closed' && (
             <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Deal Value <span className="text-red-400">*</span>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Deal Value <span className="text-red-500">*</span>
               </label>
 
               {/* Quick select buttons */}
@@ -138,10 +138,10 @@ export function PostCallQuestionnaire({
                   <button
                     key={preset}
                     onClick={() => setDealValue(preset)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                       dealValue === preset
-                        ? 'bg-green-600 text-white'
-                        : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                        ? 'bg-black text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                   >
                     {formatCurrency(preset)}
@@ -151,13 +151,13 @@ export function PostCallQuestionnaire({
 
               {/* Custom input */}
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                 <input
                   type="number"
                   value={dealValue}
                   onChange={(e) => setDealValue(e.target.value ? Number(e.target.value) : '')}
                   placeholder="Custom amount"
-                  className="w-full pl-8 pr-4 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400 transition-colors"
+                  className="w-full pl-8 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
                 />
               </div>
             </div>
@@ -165,43 +165,43 @@ export function PostCallQuestionnaire({
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
-              Notes <span className="text-zinc-500">(optional)</span>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Notes <span className="text-gray-400">(optional)</span>
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Any additional notes about the call..."
               rows={3}
-              className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-400 transition-colors resize-none"
+              className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150 resize-none"
             />
           </div>
         </div>
 
         {/* Warning message */}
         {showCloseWarning && !isValid && (
-          <div className="mx-6 mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg">
-            <p className="text-sm text-red-300">
+          <div className="mx-6 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600">
               Please complete all required fields before closing.
             </p>
           </div>
         )}
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-zinc-700 flex justify-end gap-3">
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
           <button
             onClick={handleAttemptClose}
-            className="px-4 py-2 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors"
+            className="px-4 py-2 text-gray-500 hover:text-gray-700 text-sm font-medium transition-colors duration-150"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={!isValid}
-            className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-6 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
               isValid
-                ? 'bg-white text-black hover:bg-zinc-200'
-                : 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                ? 'bg-black text-white hover:bg-gray-800'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
             Save & Finish
@@ -217,29 +217,29 @@ interface OutcomeButtonProps {
   value: CallOutcome;
   selected: boolean;
   onClick: () => void;
-  color: 'green' | 'blue' | 'red' | 'gray';
+  variant: 'success' | 'default' | 'danger' | 'muted';
 }
 
-function OutcomeButton({ label, selected, onClick, color }: OutcomeButtonProps) {
-  const colorClasses = {
-    green: selected
-      ? 'bg-green-600 border-green-500 text-white'
-      : 'bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-green-600 hover:text-green-400',
-    blue: selected
-      ? 'bg-blue-600 border-blue-500 text-white'
-      : 'bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-blue-600 hover:text-blue-400',
-    red: selected
-      ? 'bg-red-600 border-red-500 text-white'
-      : 'bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-red-600 hover:text-red-400',
-    gray: selected
-      ? 'bg-zinc-600 border-zinc-500 text-white'
-      : 'bg-zinc-800 border-zinc-600 text-zinc-300 hover:border-zinc-500 hover:text-zinc-200',
+function OutcomeButton({ label, selected, onClick, variant }: OutcomeButtonProps) {
+  const getClasses = () => {
+    if (selected) {
+      return 'bg-black border-black text-white';
+    }
+
+    const hoverClasses: Record<typeof variant, string> = {
+      success: 'bg-gray-50 border-gray-200 text-gray-700 hover:border-green-500 hover:text-green-600',
+      default: 'bg-gray-50 border-gray-200 text-gray-700 hover:border-gray-400 hover:text-gray-900',
+      danger: 'bg-gray-50 border-gray-200 text-gray-700 hover:border-red-400 hover:text-red-600',
+      muted: 'bg-gray-50 border-gray-200 text-gray-700 hover:border-gray-400 hover:text-gray-600',
+    };
+
+    return hoverClasses[variant];
   };
 
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all ${colorClasses[color]}`}
+      className={`px-4 py-3 rounded-lg border text-sm font-medium transition-all duration-150 ${getClasses()}`}
     >
       {label}
     </button>

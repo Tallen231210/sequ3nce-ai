@@ -6,6 +6,7 @@ import { RecordButton } from './components/RecordButton';
 import { PostCallQuestionnaire, CallOutcome } from './components/PostCallQuestionnaire';
 import { useAudioCapture } from './hooks/useAudioCapture';
 import { getCloserByEmail, activateCloser, completeCallWithOutcome, type CloserInfo } from './convex';
+import logoImage from '../assets/logo.png';
 
 // Simple local storage for persisting login
 const STORAGE_KEY = 'seq3nce_closer_email';
@@ -65,8 +66,8 @@ export function App() {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex flex-col bg-black text-white items-center justify-center">
-        <div className="animate-pulse text-zinc-400">Loading...</div>
+      <div className="h-screen flex flex-col bg-white text-black items-center justify-center">
+        <div className="animate-pulse text-gray-400">Loading...</div>
       </div>
     );
   }
@@ -94,16 +95,14 @@ interface LoginScreenProps {
 
 function LoginScreen({ email, setEmail, onSubmit, error, isLoading }: LoginScreenProps) {
   return (
-    <div className="h-screen flex flex-col bg-black text-white">
-      {/* Draggable title bar */}
-      <div className="titlebar h-8 flex items-center justify-center border-b border-zinc-800">
-        <span className="text-xs text-zinc-500 font-medium">Seq3nce</span>
-      </div>
+    <div className="h-screen flex flex-col bg-white text-black">
+      {/* Draggable title bar - no logo, just drag area */}
+      <div className="titlebar h-8 border-b border-gray-200" />
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold">Seq3nce</h1>
-          <p className="text-zinc-500 text-sm mt-2">Enter your email to get started</p>
+          <img src={logoImage} alt="Seq3nce" className="h-14 mx-auto" />
+          <p className="text-gray-500 text-sm mt-4">Enter your email to get started</p>
         </div>
 
         <form onSubmit={onSubmit} className="w-full max-w-xs space-y-4">
@@ -113,26 +112,26 @@ function LoginScreen({ email, setEmail, onSubmit, error, isLoading }: LoginScree
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
               disabled={isLoading}
               autoFocus
             />
           </div>
 
           {error && (
-            <p className="text-red-400 text-sm text-center">{error}</p>
+            <p className="text-red-500 text-sm text-center">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={isLoading || !email.trim()}
-            className="w-full py-3 bg-white text-black font-medium rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Signing in...' : 'Continue'}
           </button>
         </form>
 
-        <p className="mt-8 text-xs text-zinc-600 text-center max-w-xs">
+        <p className="mt-8 text-xs text-gray-400 text-center max-w-xs">
           Use the email your team admin invited you with
         </p>
       </div>
@@ -326,7 +325,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const isConnecting = status === 'connecting';
 
   return (
-    <div className="h-screen flex flex-col bg-black text-white">
+    <div className="h-screen flex flex-col bg-white text-black">
       {/* Post-Call Questionnaire Modal */}
       {showQuestionnaire && pendingCallId && (
         <PostCallQuestionnaire
@@ -336,21 +335,25 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         />
       )}
 
-      {/* Draggable title bar */}
-      <div className="titlebar h-8 flex items-center justify-between px-4 border-b border-zinc-800">
-        <span className="text-xs text-zinc-500 font-medium">Seq3nce</span>
+      {/* Draggable title bar with sign out */}
+      <div className="titlebar h-8 flex items-center justify-end px-4 border-b border-gray-200">
         <button
           onClick={onLogout}
-          className="text-xs text-zinc-600 hover:text-zinc-400"
+          className="text-xs text-gray-400 hover:text-gray-600 transition-colors duration-150"
         >
           Sign out
         </button>
       </div>
 
+      {/* Logo centered at top */}
+      <div className="pt-4 pb-2 flex justify-center">
+        <img src={logoImage} alt="Seq3nce" className="h-12" />
+      </div>
+
       {/* User info */}
-      <div className="px-4 py-2 border-b border-zinc-800/50 bg-zinc-900/50">
-        <div className="text-sm text-zinc-300">{closerInfo.name}</div>
-        <div className="text-xs text-zinc-600">{closerInfo.teamName}</div>
+      <div className="px-4 py-2 border-b border-gray-100 bg-gray-50/50">
+        <div className="text-sm font-medium text-gray-900 text-center">{closerInfo.name}</div>
+        <div className="text-xs text-gray-500 text-center">{closerInfo.teamName}</div>
       </div>
 
       {/* Main content */}
@@ -360,7 +363,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
 
         {/* Duration */}
         {isRecording && (
-          <div className="mt-4 text-2xl font-mono text-zinc-300">
+          <div className="mt-4 text-2xl font-mono text-gray-900 tabular-nums">
             {formatDuration(duration)}
           </div>
         )}
@@ -380,43 +383,43 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
           />
         </div>
 
-        {/* Ammo Tracker toggle button */}
+        {/* Panel toggle button */}
         <button
           onClick={handleToggleAmmoTracker}
-          className={`mt-4 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+          className={`mt-4 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 ${
             ammoTrackerVisible
-              ? 'bg-zinc-800 text-white hover:bg-zinc-700'
-              : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
+              ? 'bg-black text-white hover:bg-gray-800'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800'
           }`}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
           </svg>
-          {ammoTrackerVisible ? 'Hide Ammo' : 'Show Ammo'}
+          {ammoTrackerVisible ? 'Hide Panel' : 'Show Panel'}
         </button>
 
         {/* Call ID */}
         {callId && (
-          <p className="mt-4 text-xs text-zinc-600 font-mono">
+          <p className="mt-4 text-xs text-gray-400 font-mono">
             Call: {callId.slice(0, 8)}...
           </p>
         )}
 
         {/* Error message */}
         {error && (
-          <div className="mt-4 p-3 bg-red-900/20 border border-red-800 rounded-lg max-w-xs">
-            <p className="text-red-300 text-sm text-center">{error}</p>
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg max-w-xs">
+            <p className="text-red-600 text-sm text-center">{error}</p>
           </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-zinc-800">
-        <div className="flex items-center justify-between text-xs text-zinc-600">
+      <div className="p-4 border-t border-gray-200">
+        <div className="flex items-center justify-between text-xs text-gray-500">
           <span>v{version}</span>
-          <span className="flex items-center gap-1">
-            <span className={`w-1.5 h-1.5 rounded-full ${
-              status === 'idle' ? 'bg-zinc-600' :
+          <span className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full transition-colors duration-150 ${
+              status === 'idle' ? 'bg-gray-400' :
               status === 'connecting' ? 'bg-yellow-500' :
               status === 'capturing' ? 'bg-green-500' :
               'bg-red-500'

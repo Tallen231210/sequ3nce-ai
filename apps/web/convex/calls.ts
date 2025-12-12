@@ -968,6 +968,20 @@ export const swapSpeakerMapping = mutation({
   },
 });
 
+// Update call notes (from desktop app during call)
+export const updateCallNotes = mutation({
+  args: {
+    callId: v.id("calls"),
+    notes: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      notes: args.notes,
+    });
+    return { success: true };
+  },
+});
+
 // Clean up test live calls
 export const cleanupLiveCalls = mutation({
   args: {},

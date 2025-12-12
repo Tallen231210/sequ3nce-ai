@@ -1,84 +1,52 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AmmoItem } from './types/electron';
+import { AmmoItem, TranscriptSegment } from './types/electron';
 
 const CONVEX_SITE_URL = 'https://fastidious-dragon-782.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds
+const NOTES_SAVE_DELAY = 2000; // Auto-save notes after 2 seconds of no typing
+
+// Tab types
+type TabType = 'ammo' | 'transcript' | 'notes';
 
 // Speaker mapping type
 interface SpeakerMapping {
-  closerSpeaker: string; // "speaker_0" or "speaker_1"
+  closerSpeaker: string;
   confirmed: boolean;
 }
 
-// Speaker identification banner component
-function SpeakerIdentificationBanner({
-  speakerMapping,
-  closerSnippet,
-  onSwap,
-  onConfirm,
-  isSwapping,
-}: {
-  speakerMapping: SpeakerMapping;
-  closerSnippet?: string; // First thing the detected closer said
-  onSwap: () => void;
-  onConfirm: () => void;
-  isSwapping: boolean;
-}) {
-  // Don't show if already confirmed
-  if (speakerMapping.confirmed) return null;
-
-  // Truncate snippet if too long
-  const truncatedSnippet = closerSnippet && closerSnippet.length > 60
-    ? closerSnippet.slice(0, 60) + '...'
-    : closerSnippet;
-
+// Tab Icon Components
+function AmmoIcon({ active }: { active: boolean }) {
   return (
-    <div className="mx-2 mb-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/30 animate-fade-in">
-      {/* Question */}
-      <p className="text-[11px] text-blue-300 mb-2">
-        Did you say this?
-      </p>
+    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+  );
+}
 
-      {/* Snippet quote */}
-      {truncatedSnippet ? (
-        <p className="text-[12px] text-zinc-200 mb-2.5 leading-snug italic">
-          "{truncatedSnippet}"
-        </p>
-      ) : (
-        <p className="text-[11px] text-zinc-500 mb-2.5 italic">
-          Waiting for speech...
-        </p>
-      )}
+function TranscriptIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  );
+}
 
-      {/* Action buttons */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onConfirm}
-          disabled={isSwapping || !closerSnippet}
-          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors disabled:opacity-50"
-        >
-          Yes, that's me
-        </button>
-        <button
-          onClick={onSwap}
-          disabled={isSwapping || !closerSnippet}
-          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600 transition-colors disabled:opacity-50"
-        >
-          {isSwapping ? '...' : "No, that's the prospect"}
-        </button>
-      </div>
-    </div>
+function NotesIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+    </svg>
   );
 }
 
 // Ammo type configuration for styling
-const AMMO_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  emotional: { label: 'Emotional', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-  urgency: { label: 'Urgency', color: 'bg-orange-500/20 text-orange-300 border-orange-500/30' },
-  budget: { label: 'Budget', color: 'bg-green-500/20 text-green-300 border-green-500/30' },
-  commitment: { label: 'Commitment', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-  objection_preview: { label: 'Objection', color: 'bg-red-500/20 text-red-300 border-red-500/30' },
-  pain_point: { label: 'Pain Point', color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' },
+const AMMO_TYPE_CONFIG: Record<string, { label: string; bgColor: string; textColor: string; borderColor: string }> = {
+  emotional: { label: 'Emotional', bgColor: 'bg-purple-50', textColor: 'text-purple-600', borderColor: 'border-purple-200' },
+  urgency: { label: 'Urgency', bgColor: 'bg-orange-50', textColor: 'text-orange-600', borderColor: 'border-orange-200' },
+  budget: { label: 'Budget', bgColor: 'bg-green-50', textColor: 'text-green-600', borderColor: 'border-green-200' },
+  commitment: { label: 'Commitment', bgColor: 'bg-blue-50', textColor: 'text-blue-600', borderColor: 'border-blue-200' },
+  objection_preview: { label: 'Objection', bgColor: 'bg-red-50', textColor: 'text-red-600', borderColor: 'border-red-200' },
+  pain_point: { label: 'Pain Point', bgColor: 'bg-yellow-50', textColor: 'text-yellow-700', borderColor: 'border-yellow-200' },
 };
 
 // Format timestamp to relative time
@@ -91,10 +59,99 @@ function formatRelativeTime(createdAt: number): string {
   return `${Math.floor(minutes / 60)}h ago`;
 }
 
-// Single ammo item component
+// Format seconds to MM:SS
+function formatTimestamp(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// ============================================
+// SPEAKER IDENTIFICATION BANNER
+// ============================================
+function SpeakerIdentificationBanner({
+  speakerMapping,
+  closerSnippet,
+  onSwap,
+  onConfirm,
+  isSwapping,
+}: {
+  speakerMapping: SpeakerMapping;
+  closerSnippet?: string;
+  onSwap: () => void;
+  onConfirm: () => void;
+  isSwapping: boolean;
+}) {
+  if (speakerMapping.confirmed) return null;
+
+  const truncatedSnippet = closerSnippet && closerSnippet.length > 60
+    ? closerSnippet.slice(0, 60) + '...'
+    : closerSnippet;
+
+  return (
+    <div className="mx-2 mb-2 p-3 rounded-lg bg-blue-50 border border-blue-200 animate-fade-in">
+      <p className="text-[11px] font-medium text-blue-600 mb-2">Did you say this?</p>
+      {truncatedSnippet ? (
+        <p className="text-[12px] text-gray-700 mb-2.5 leading-snug italic">"{truncatedSnippet}"</p>
+      ) : (
+        <p className="text-[11px] text-gray-400 mb-2.5 italic">Waiting for speech...</p>
+      )}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={isSwapping || !closerSnippet}
+          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md bg-black text-white hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Yes, that's me
+        </button>
+        <button
+          onClick={onSwap}
+          disabled={isSwapping || !closerSnippet}
+          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSwapping ? '...' : "No, that's the prospect"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// AMMO TAB COMPONENT
+// ============================================
+function AmmoTab({ callId, ammoItems, onCopy }: { callId: string | null; ammoItems: AmmoItem[]; onCopy: (text: string) => void }) {
+  if (!callId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+        <AmmoIcon active={false} />
+        <p className="text-xs text-center px-4 mt-2">Start a call to see ammo appear here</p>
+      </div>
+    );
+  }
+
+  if (ammoItems.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+        <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+        <p className="text-xs text-center px-4">Listening for key moments...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-2 space-y-2">
+      {ammoItems.map((item) => (
+        <AmmoItemCard key={item._id} item={item} onCopy={onCopy} />
+      ))}
+    </div>
+  );
+}
+
 function AmmoItemCard({ item, onCopy }: { item: AmmoItem; onCopy: (text: string) => void }) {
   const [copied, setCopied] = useState(false);
-  const config = AMMO_TYPE_CONFIG[item.type] || { label: item.type, color: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30' };
+  const config = AMMO_TYPE_CONFIG[item.type] || { label: item.type, bgColor: 'bg-gray-50', textColor: 'text-gray-600', borderColor: 'border-gray-200' };
 
   const handleClick = () => {
     onCopy(item.text);
@@ -105,152 +162,317 @@ function AmmoItemCard({ item, onCopy }: { item: AmmoItem; onCopy: (text: string)
   return (
     <div
       onClick={handleClick}
-      className="group relative p-3 rounded-lg bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700 cursor-pointer transition-all duration-200 hover:bg-zinc-800/80 animate-fade-in"
+      className="group relative p-3 rounded-lg bg-white border border-gray-200 hover:border-gray-300 hover:shadow-sm cursor-pointer transition-all duration-150 animate-fade-in"
     >
-      {/* Type badge and time */}
       <div className="flex items-center justify-between mb-1.5">
-        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${config.color}`}>
+        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${config.bgColor} ${config.textColor} ${config.borderColor}`}>
           {config.label}
         </span>
-        <span className="text-[10px] text-zinc-500">
-          {formatRelativeTime(item.createdAt)}
-        </span>
+        <span className="text-[10px] text-gray-400">{formatRelativeTime(item.createdAt)}</span>
       </div>
-
-      {/* Quote text */}
-      <p className="text-sm text-zinc-200 leading-snug line-clamp-3">
-        "{item.text}"
-      </p>
-
-      {/* Copy indicator */}
-      <div className={`absolute inset-0 rounded-lg flex items-center justify-center bg-zinc-900/95 transition-opacity duration-200 ${copied ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <div className="flex items-center gap-1.5 text-green-400">
+      <p className="text-sm text-gray-700 leading-snug line-clamp-3">"{item.text}"</p>
+      <div className={`absolute inset-0 rounded-lg flex items-center justify-center bg-white/95 transition-opacity duration-150 ${copied ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="flex items-center gap-1.5 text-green-600">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
           <span className="text-sm font-medium">Copied!</span>
         </div>
       </div>
-
-      {/* Hover hint */}
-      <div className="absolute bottom-1 right-2 text-[9px] text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute bottom-1 right-2 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         click to copy
       </div>
     </div>
   );
 }
 
+// ============================================
+// TRANSCRIPT TAB COMPONENT
+// ============================================
+function TranscriptTab({ callId, segments }: { callId: string | null; segments: TranscriptSegment[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const lastSegmentCountRef = useRef(0);
+
+  useEffect(() => {
+    if (autoScroll && scrollRef.current && segments.length > lastSegmentCountRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+    lastSegmentCountRef.current = segments.length;
+  }, [segments, autoScroll]);
+
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    setAutoScroll(isAtBottom);
+  };
+
+  const jumpToLatest = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      setAutoScroll(true);
+    }
+  };
+
+  if (!callId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+        <TranscriptIcon active={false} />
+        <p className="text-xs text-center px-4 mt-2">Start a call to see the transcript here</p>
+      </div>
+    );
+  }
+
+  if (segments.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+        <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+        </svg>
+        <p className="text-xs text-center px-4">Waiting for speech...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full flex flex-col">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
+        {segments.map((segment, index) => (
+          <TranscriptLine key={segment._id || index} segment={segment} />
+        ))}
+      </div>
+      {!autoScroll && (
+        <button
+          onClick={jumpToLatest}
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black text-white text-[11px] font-medium rounded-full shadow-lg hover:bg-gray-800 transition-colors duration-150"
+        >
+          ↓ Jump to latest
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TranscriptLine({ segment }: { segment: TranscriptSegment }) {
+  const isCloser = segment.speaker.toLowerCase() === 'closer';
+
+  return (
+    <div className={`p-2 rounded-lg ${isCloser ? 'bg-gray-50' : 'bg-white border border-gray-100'} animate-fade-in`}>
+      <div className="flex items-center gap-2 mb-0.5">
+        <span className={`text-[10px] font-medium ${isCloser ? 'text-gray-500' : 'text-blue-600'}`}>
+          {isCloser ? 'You' : 'Prospect'}
+        </span>
+        <span className="text-[10px] text-gray-400">{formatTimestamp(segment.timestamp)}</span>
+      </div>
+      <p className="text-sm text-gray-700 leading-snug">{segment.text}</p>
+    </div>
+  );
+}
+
+// ============================================
+// NOTES TAB COMPONENT
+// ============================================
+function NotesTab({ callId, notes, onNotesChange, isSaving, lastSaved }: {
+  callId: string | null;
+  notes: string;
+  onNotesChange: (notes: string) => void;
+  isSaving: boolean;
+  lastSaved: Date | null;
+}) {
+  if (!callId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+        <NotesIcon active={false} />
+        <p className="text-xs text-center px-4 mt-2">Start a call to take notes</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col p-2">
+      <textarea
+        value={notes}
+        onChange={(e) => onNotesChange(e.target.value)}
+        placeholder="Jot down notes during the call..."
+        className="flex-1 w-full p-3 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg resize-none focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150 placeholder-gray-400"
+      />
+      <div className="flex items-center justify-between mt-2 px-1">
+        <span className="text-[10px] text-gray-400">{notes.length} characters</span>
+        <span className="text-[10px] text-gray-400">{isSaving ? 'Saving...' : lastSaved ? 'Saved' : ''}</span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// TAB BUTTON COMPONENT
+// ============================================
+function TabButton({ active, onClick, icon, label, badge }: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  badge?: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 ${
+        active
+          ? 'bg-white text-black shadow-sm border border-gray-200'
+          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="absolute -top-1 -right-1 w-4 h-4 bg-black text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ============================================
+// MAIN APP COMPONENT
+// ============================================
 export function AmmoTrackerApp() {
+  const [activeTab, setActiveTab] = useState<TabType>('ammo');
   const [callId, setCallId] = useState<string | null>(null);
   const [ammoItems, setAmmoItems] = useState<AmmoItem[]>([]);
+  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
+  const [notes, setNotes] = useState('');
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [speakerMapping, setSpeakerMapping] = useState<SpeakerMapping | null>(null);
   const [closerSnippet, setCloserSnippet] = useState<string | undefined>(undefined);
   const [isSwapping, setIsSwapping] = useState(false);
-  const seenIds = useRef<Set<string>>(new Set());
 
-  // Fetch call info including speaker mapping and closer snippet
+  const seenAmmoIds = useRef<Set<string>>(new Set());
+  const seenSegmentIds = useRef<Set<string>>(new Set());
+  const notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch call info including speaker mapping
   const fetchCallInfo = useCallback(async (currentCallId: string) => {
     try {
-      const response = await fetch(
-        `${CONVEX_SITE_URL}/getCallInfo?callId=${encodeURIComponent(currentCallId)}`
-      );
+      const response = await fetch(`${CONVEX_SITE_URL}/getCallInfo?callId=${encodeURIComponent(currentCallId)}`);
       if (!response.ok) return;
 
       const data = await response.json();
-      if (data.speakerMapping) {
-        setSpeakerMapping(data.speakerMapping);
-      }
-      if (data.closerSnippet) {
-        setCloserSnippet(data.closerSnippet);
-      }
+      if (data.speakerMapping) setSpeakerMapping(data.speakerMapping);
+      if (data.closerSnippet) setCloserSnippet(data.closerSnippet);
     } catch (error) {
-      console.error('[AmmoTracker] Failed to fetch call info:', error);
+      console.error('[Panel] Failed to fetch call info:', error);
     }
   }, []);
 
   // Fetch ammo from Convex
   const fetchAmmo = useCallback(async (currentCallId: string) => {
     try {
-      const response = await fetch(
-        `${CONVEX_SITE_URL}/getAmmoByCall?callId=${encodeURIComponent(currentCallId)}`
-      );
+      const response = await fetch(`${CONVEX_SITE_URL}/getAmmoByCall?callId=${encodeURIComponent(currentCallId)}`);
       if (!response.ok) return;
 
       const data: AmmoItem[] = await response.json();
-
-      // Sort by createdAt descending, take latest 5
-      const sorted = data.sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
-
-      // Check for new items (for potential animation triggers)
-      sorted.forEach(item => {
-        if (!seenIds.current.has(item._id)) {
-          seenIds.current.add(item._id);
-        }
-      });
-
+      const sorted = data.sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
+      sorted.forEach(item => seenAmmoIds.current.add(item._id));
       setAmmoItems(sorted);
-      setIsLoading(false);
     } catch (error) {
-      console.error('[AmmoTracker] Failed to fetch ammo:', error);
+      console.error('[Panel] Failed to fetch ammo:', error);
     }
   }, []);
 
-  // Swap speaker mapping (user indicates detection was wrong)
+  // Fetch transcript segments from Convex
+  const fetchTranscript = useCallback(async (currentCallId: string) => {
+    try {
+      const response = await fetch(`${CONVEX_SITE_URL}/getTranscriptSegments?callId=${encodeURIComponent(currentCallId)}`);
+      if (!response.ok) return;
+
+      const data: TranscriptSegment[] = await response.json();
+      data.forEach(seg => seenSegmentIds.current.add(seg._id));
+      setTranscriptSegments(data);
+    } catch (error) {
+      console.error('[Panel] Failed to fetch transcript:', error);
+    }
+  }, []);
+
+  // Fetch notes from Convex
+  const fetchNotes = useCallback(async (currentCallId: string) => {
+    try {
+      const notesData = await window.ammoTracker?.getNotes(currentCallId);
+      if (notesData) setNotes(notesData);
+    } catch (error) {
+      console.error('[Panel] Failed to fetch notes:', error);
+    }
+  }, []);
+
+  // Save notes to Convex
+  const saveNotes = useCallback(async (currentCallId: string, currentNotes: string) => {
+    if (!currentCallId) return;
+    setIsSavingNotes(true);
+    try {
+      const result = await window.ammoTracker?.saveNotes(currentCallId, currentNotes);
+      if (result?.success) setLastSaved(new Date());
+    } catch (error) {
+      console.error('[Panel] Failed to save notes:', error);
+    }
+    setIsSavingNotes(false);
+  }, []);
+
+  // Handle notes change with debounced auto-save
+  const handleNotesChange = useCallback((newNotes: string) => {
+    setNotes(newNotes);
+    if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
+    if (callId) {
+      notesTimeoutRef.current = setTimeout(() => saveNotes(callId, newNotes), NOTES_SAVE_DELAY);
+    }
+  }, [callId, saveNotes]);
+
+  // Speaker mapping handlers
   const handleSwapSpeaker = useCallback(async () => {
     if (!callId) return;
     setIsSwapping(true);
-
     try {
       const response = await fetch(`${CONVEX_SITE_URL}/swapSpeakerMapping`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callId }),
       });
-
       if (response.ok) {
-        // Update local state optimistically
         setSpeakerMapping(prev => prev ? {
           closerSpeaker: prev.closerSpeaker === 'speaker_0' ? 'speaker_1' : 'speaker_0',
           confirmed: true,
         } : null);
       }
     } catch (error) {
-      console.error('[AmmoTracker] Failed to swap speaker mapping:', error);
+      console.error('[Panel] Failed to swap speaker mapping:', error);
     }
-
     setIsSwapping(false);
   }, [callId]);
 
-  // Confirm speaker mapping (user indicates detection was correct)
   const handleConfirmSpeaker = useCallback(async () => {
     if (!callId) return;
     setIsSwapping(true);
-
     try {
       const response = await fetch(`${CONVEX_SITE_URL}/confirmSpeakerMapping`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callId }),
       });
-
-      if (response.ok) {
-        // Update local state
-        setSpeakerMapping(prev => prev ? { ...prev, confirmed: true } : null);
-      }
+      if (response.ok) setSpeakerMapping(prev => prev ? { ...prev, confirmed: true } : null);
     } catch (error) {
-      console.error('[AmmoTracker] Failed to confirm speaker mapping:', error);
+      console.error('[Panel] Failed to confirm speaker mapping:', error);
     }
-
     setIsSwapping(false);
   }, [callId]);
 
-  // Copy to clipboard via IPC
+  // Copy to clipboard
   const handleCopy = useCallback(async (text: string) => {
     if (window.ammoTracker) {
       await window.ammoTracker.copyToClipboard(text);
     } else {
-      // Fallback to browser API
       navigator.clipboard.writeText(text);
     }
   }, []);
@@ -258,71 +480,82 @@ export function AmmoTrackerApp() {
   // Initialize and set up listeners
   useEffect(() => {
     let pollInterval: NodeJS.Timeout | null = null;
-    let callInfoInterval: NodeJS.Timeout | null = null;
 
     const init = async () => {
       if (!window.ammoTracker) {
-        console.error('[AmmoTracker] ammoTracker API not available');
+        console.error('[Panel] ammoTracker API not available');
         setIsLoading(false);
         return;
       }
 
-      // Get initial call ID
       const initialCallId = await window.ammoTracker.getCallId();
-      console.log('[AmmoTracker] Initial callId:', initialCallId);
+      console.log('[Panel] Initial callId:', initialCallId);
       setCallId(initialCallId);
 
       if (initialCallId) {
         fetchAmmo(initialCallId);
+        fetchTranscript(initialCallId);
+        fetchNotes(initialCallId);
         fetchCallInfo(initialCallId);
-        // Start polling
-        pollInterval = setInterval(() => fetchAmmo(initialCallId), POLL_INTERVAL);
-        // Also poll call info for speaker mapping updates (less frequently)
-        callInfoInterval = setInterval(() => fetchCallInfo(initialCallId), POLL_INTERVAL * 2);
-      } else {
-        setIsLoading(false);
+        pollInterval = setInterval(() => {
+          fetchAmmo(initialCallId);
+          fetchTranscript(initialCallId);
+          fetchCallInfo(initialCallId);
+        }, POLL_INTERVAL);
       }
 
-      // Listen for call ID changes
-      const unsubCallId = window.ammoTracker.onCallIdChange((newCallId) => {
-        console.log('[AmmoTracker] Call ID changed:', newCallId);
-        setCallId(newCallId);
-        seenIds.current.clear();
-        setAmmoItems([]);
-        setSpeakerMapping(null); // Reset speaker mapping on new call
-        setCloserSnippet(undefined); // Reset closer snippet on new call
+      setIsLoading(false);
 
-        // Clear old polling
+      const unsubCallId = window.ammoTracker.onCallIdChange((newCallId) => {
+        console.log('[Panel] Call ID changed:', newCallId);
+        setCallId(newCallId);
+        seenAmmoIds.current.clear();
+        seenSegmentIds.current.clear();
+        setAmmoItems([]);
+        setTranscriptSegments([]);
+        setNotes('');
+        setLastSaved(null);
+        setSpeakerMapping(null);
+        setCloserSnippet(undefined);
+
         if (pollInterval) clearInterval(pollInterval);
-        if (callInfoInterval) clearInterval(callInfoInterval);
 
         if (newCallId) {
-          setIsLoading(true);
           fetchAmmo(newCallId);
+          fetchTranscript(newCallId);
+          fetchNotes(newCallId);
           fetchCallInfo(newCallId);
-          pollInterval = setInterval(() => fetchAmmo(newCallId), POLL_INTERVAL);
-          callInfoInterval = setInterval(() => fetchCallInfo(newCallId), POLL_INTERVAL * 2);
-        } else {
-          setIsLoading(false);
+          pollInterval = setInterval(() => {
+            fetchAmmo(newCallId);
+            fetchTranscript(newCallId);
+            fetchCallInfo(newCallId);
+          }, POLL_INTERVAL);
         }
       });
 
-      // Listen for pushed ammo items (instant updates from main process)
       const unsubNewAmmo = window.ammoTracker.onNewAmmo((newAmmo) => {
-        console.log('[AmmoTracker] New ammo received:', newAmmo);
+        console.log('[Panel] New ammo received:', newAmmo);
         setAmmoItems(prev => {
           if (prev.some(item => item._id === newAmmo._id)) return prev;
-          const updated = [newAmmo, ...prev].slice(0, 5);
-          seenIds.current.add(newAmmo._id);
-          return updated;
+          seenAmmoIds.current.add(newAmmo._id);
+          return [newAmmo, ...prev].slice(0, 10);
+        });
+      });
+
+      const unsubNewTranscript = window.ammoTracker.onNewTranscript((segment) => {
+        console.log('[Panel] New transcript received:', segment);
+        setTranscriptSegments(prev => {
+          if (prev.some(s => s._id === segment._id)) return prev;
+          seenSegmentIds.current.add(segment._id);
+          return [...prev, segment];
         });
       });
 
       return () => {
         unsubCallId();
         unsubNewAmmo();
+        unsubNewTranscript();
         if (pollInterval) clearInterval(pollInterval);
-        if (callInfoInterval) clearInterval(callInfoInterval);
       };
     };
 
@@ -330,31 +563,74 @@ export function AmmoTrackerApp() {
 
     return () => {
       if (pollInterval) clearInterval(pollInterval);
-      if (callInfoInterval) clearInterval(callInfoInterval);
+      if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
     };
-  }, [fetchAmmo, fetchCallInfo]);
+  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchCallInfo]);
+
+  // Save notes before closing
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (callId && notes && notesTimeoutRef.current) {
+        clearTimeout(notesTimeoutRef.current);
+        saveNotes(callId, notes);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [callId, notes, saveNotes]);
+
+  if (isLoading) {
+    return (
+      <div className="h-screen w-screen bg-white text-gray-900 flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="h-screen w-screen bg-black/95 backdrop-blur-sm text-white overflow-hidden flex flex-col">
-      {/* Draggable title bar */}
-      <div className="h-8 flex items-center justify-between px-3 border-b border-zinc-800/50 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${callId ? 'bg-green-500 animate-pulse' : 'bg-zinc-600'}`} />
-          <span className="text-xs font-medium text-zinc-400">Ammo Tracker</span>
+    <div className="h-screen w-screen bg-white text-gray-900 overflow-hidden flex flex-col shadow-xl rounded-lg">
+      {/* Header with tabs */}
+      <div
+        className="h-10 flex items-center justify-between px-2 border-b border-gray-200 shrink-0 bg-gray-50/50"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
+        <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <TabButton
+            active={activeTab === 'ammo'}
+            onClick={() => setActiveTab('ammo')}
+            icon={<AmmoIcon active={activeTab === 'ammo'} />}
+            label="Ammo"
+            badge={ammoItems.length > 0 ? ammoItems.length : undefined}
+          />
+          <TabButton
+            active={activeTab === 'transcript'}
+            onClick={() => setActiveTab('transcript')}
+            icon={<TranscriptIcon active={activeTab === 'transcript'} />}
+            label="Transcript"
+          />
+          <TabButton
+            active={activeTab === 'notes'}
+            onClick={() => setActiveTab('notes')}
+            icon={<NotesIcon active={activeTab === 'notes'} />}
+            label="Notes"
+          />
         </div>
-        <button
-          onClick={() => window.ammoTracker?.close()}
-          className="w-5 h-5 rounded hover:bg-zinc-800 flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-colors"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <span className={`w-2 h-2 rounded-full transition-colors duration-150 ${callId ? 'bg-green-500' : 'bg-gray-300'}`} />
+          <button
+            onClick={() => window.ammoTracker?.close()}
+            className="w-5 h-5 rounded hover:bg-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors duration-150"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Speaker identification banner */}
-      {callId && speakerMapping && !speakerMapping.confirmed && (
+      {/* Speaker identification banner (only show on Ammo tab) */}
+      {activeTab === 'ammo' && callId && speakerMapping && !speakerMapping.confirmed && (
         <SpeakerIdentificationBanner
           speakerMapping={speakerMapping}
           closerSnippet={closerSnippet}
@@ -365,44 +641,25 @@ export function AmmoTrackerApp() {
       )}
 
       {/* Content area */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin">
-        {!callId ? (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-500 py-8">
-            <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            <p className="text-xs text-center px-4">
-              Start a call to see ammo appear here
-            </p>
+      <div className="flex-1 overflow-hidden bg-gray-50/30">
+        {activeTab === 'ammo' && (
+          <div className="h-full overflow-y-auto scrollbar-thin">
+            <AmmoTab callId={callId} ammoItems={ammoItems} onCopy={handleCopy} />
           </div>
-        ) : isLoading ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="w-5 h-5 border-2 border-zinc-700 border-t-zinc-400 rounded-full animate-spin" />
-          </div>
-        ) : ammoItems.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-zinc-500 py-8">
-            <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            <p className="text-xs text-center px-4">
-              Listening for key moments...
-            </p>
-          </div>
-        ) : (
-          ammoItems.map((item) => (
-            <AmmoItemCard key={item._id} item={item} onCopy={handleCopy} />
-          ))
+        )}
+        {activeTab === 'transcript' && (
+          <TranscriptTab callId={callId} segments={transcriptSegments} />
+        )}
+        {activeTab === 'notes' && (
+          <NotesTab
+            callId={callId}
+            notes={notes}
+            onNotesChange={handleNotesChange}
+            isSaving={isSavingNotes}
+            lastSaved={lastSaved}
+          />
         )}
       </div>
-
-      {/* Footer with call ID */}
-      {callId && (
-        <div className="px-3 py-1.5 border-t border-zinc-800/50 shrink-0">
-          <p className="text-[9px] text-zinc-600 truncate">
-            Call: {callId.slice(0, 20)}...
-          </p>
-        </div>
-      )}
     </div>
   );
 }

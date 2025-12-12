@@ -452,6 +452,180 @@ http.route({
 });
 
 // ============================================
+// NOTES ENDPOINTS (for desktop app)
+// ============================================
+
+// POST endpoint to update call notes
+http.route({
+  path: "/updateCallNotes",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, notes } = body;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      await ctx.runMutation(api.calls.updateCallNotes, {
+        callId: callId as any,
+        notes: notes || "",
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error updating call notes:", error);
+      return new Response(JSON.stringify({ error: "Failed to update notes" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for updateCallNotes
+http.route({
+  path: "/updateCallNotes",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to fetch call notes
+http.route({
+  path: "/getCallNotes",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+
+    if (!callId) {
+      return new Response(JSON.stringify({ error: "callId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const call = await ctx.runQuery(api.calls.getCallWithAmmo, { callId: callId as any });
+      return new Response(JSON.stringify({ notes: call?.notes || null }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Invalid callId" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getCallNotes
+http.route({
+  path: "/getCallNotes",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to fetch transcript segments for a call
+http.route({
+  path: "/getTranscriptSegments",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+
+    if (!callId) {
+      return new Response(JSON.stringify({ error: "callId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const segments = await ctx.runQuery(api.calls.getTranscriptSegments, { callId: callId as any });
+      return new Response(JSON.stringify(segments || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Invalid callId" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getTranscriptSegments
+http.route({
+  path: "/getTranscriptSegments",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
 // CALENDLY WEBHOOK
 // ============================================
 

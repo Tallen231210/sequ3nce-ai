@@ -46,13 +46,26 @@ export interface AmmoItem {
   createdAt: number;
 }
 
+// Transcript segment type
+export interface TranscriptSegment {
+  _id: string;
+  callId: string;
+  speaker: string;
+  text: string;
+  timestamp: number;
+  createdAt: number;
+}
+
 // Ammo tracker window API (exposed via ammo-tracker-preload.ts)
 export interface AmmoTrackerAPI {
   getCallId: () => Promise<string | null>;
   copyToClipboard: (text: string) => Promise<void>;
   close: () => Promise<void>;
+  saveNotes: (callId: string, notes: string) => Promise<{ success: boolean }>;
+  getNotes: (callId: string) => Promise<string | null>;
   onCallIdChange: (callback: (callId: string | null) => void) => () => void;
   onNewAmmo: (callback: (ammo: AmmoItem) => void) => () => void;
+  onNewTranscript: (callback: (segment: TranscriptSegment) => void) => () => void;
 }
 
 declare global {

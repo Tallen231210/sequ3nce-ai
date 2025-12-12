@@ -49,7 +49,7 @@ const createWindow = (): void => {
     minWidth: 350,
     minHeight: 500,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
     show: false,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
@@ -499,6 +499,45 @@ const setupIpcHandlers = (): void => {
   // Get ammo tracker visibility status
   ipcMain.handle('ammo:is-visible', () => {
     return ammoTrackerVisible;
+  });
+
+  // Save notes to a call (via Convex HTTP endpoint)
+  ipcMain.handle('ammo:save-notes', async (_event, callId: string, notes: string) => {
+    try {
+      const response = await fetch('https://fastidious-dragon-782.convex.site/updateCallNotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId, notes }),
+      });
+
+      if (!response.ok) {
+        console.error('[Main] Failed to save notes:', response.statusText);
+        return { success: false };
+      }
+
+      console.log('[Main] Notes saved for call:', callId);
+      return { success: true };
+    } catch (error) {
+      console.error('[Main] Error saving notes:', error);
+      return { success: false };
+    }
+  });
+
+  // Get notes for a call
+  ipcMain.handle('ammo:get-notes', async (_event, callId: string) => {
+    try {
+      const response = await fetch(`https://fastidious-dragon-782.convex.site/getCallNotes?callId=${encodeURIComponent(callId)}`);
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json();
+      return data.notes || null;
+    } catch (error) {
+      console.error('[Main] Error getting notes:', error);
+      return null;
+    }
   });
 
   console.log('[Main] IPC handlers set up');

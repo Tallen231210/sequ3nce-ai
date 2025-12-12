@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld('ammoTracker', {
   // Close the ammo window
   close: () => ipcRenderer.invoke('ammo:close'),
 
+  // Save notes to the call
+  saveNotes: (callId: string, notes: string) => ipcRenderer.invoke('ammo:save-notes', callId, notes),
+
+  // Get notes for a call
+  getNotes: (callId: string) => ipcRenderer.invoke('ammo:get-notes', callId),
+
   // Listen for call ID updates (when a new call starts)
   onCallIdChange: (callback: (callId: string | null) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, callId: string | null) => callback(callId);
@@ -24,5 +30,12 @@ contextBridge.exposeInMainWorld('ammoTracker', {
     const handler = (_event: Electron.IpcRendererEvent, ammo: any) => callback(ammo);
     ipcRenderer.on('ammo:new-item', handler);
     return () => ipcRenderer.removeListener('ammo:new-item', handler);
+  },
+
+  // Listen for new transcript segments
+  onNewTranscript: (callback: (segment: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, segment: any) => callback(segment);
+    ipcRenderer.on('ammo:new-transcript', handler);
+    return () => ipcRenderer.removeListener('ammo:new-transcript', handler);
   },
 });
