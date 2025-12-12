@@ -45,3 +45,32 @@ body {
 .recording-indicator {
   animation: pulse 1.5s ease-in-out infinite;
 }
+
+/* Ammo item fade-in animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Thin scrollbar for ammo tracker */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* Line clamp utility */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

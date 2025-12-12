@@ -10,15 +10,20 @@ import {
   Users,
   CreditCard,
   Settings,
+  BarChart3,
+  BookMarked,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
+import { Logo } from "@/components/ui/logo";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Live Calls", href: "/dashboard/live", icon: Radio },
   { name: "Scheduled", href: "/dashboard/scheduled", icon: Calendar },
   { name: "Completed", href: "/dashboard/calls", icon: Phone },
+  { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
+  { name: "Playbook", href: "/dashboard/playbook", icon: BookMarked },
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
@@ -31,10 +36,8 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-background">
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex h-16 items-center border-b border-border px-6">
-          <Link href="/dashboard" className="text-xl font-semibold">
-            Seq3nce.ai
-          </Link>
+        <div className="flex h-20 items-center justify-center border-b border-border px-4">
+          <Logo href="/dashboard" height={33} />
         </div>
 
         {/* Navigation */}

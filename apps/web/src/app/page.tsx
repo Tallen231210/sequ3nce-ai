@@ -6,6 +6,7 @@ import {
 } from "@clerk/nextjs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/ui/logo";
 import { ArrowRight } from "lucide-react";
 
 export default function Home() {
@@ -15,7 +16,7 @@ export default function Home() {
       <header className="border-b border-border">
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex h-16 items-center justify-between">
-            <span className="text-lg font-semibold">Seq3nce.ai</span>
+            <Logo href="/" height={20} />
             <div className="flex items-center gap-4">
               <SignedOut>
                 <SignInButton mode="modal">

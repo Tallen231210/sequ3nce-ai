@@ -13,6 +13,18 @@ export default defineSchema({
     seatCount: v.optional(v.number()), // Number of paid closer seats
     customAiPrompt: v.optional(v.string()), // Company-specific ammo extraction instructions
     createdAt: v.number(),
+    // Settings
+    timezone: v.optional(v.string()), // Team timezone (e.g., "America/New_York")
+    customOutcomes: v.optional(v.array(v.string())), // Custom call outcome options
+    customPlaybookCategories: v.optional(v.array(v.string())), // Custom playbook categories
+    googleCalendarConnected: v.optional(v.boolean()), // Calendar integration status (future)
+    // Calendly integration
+    calendlyAccessToken: v.optional(v.string()), // Personal Access Token from Calendly
+    calendlyUserUri: v.optional(v.string()), // Calendly user URI (e.g., "https://api.calendly.com/users/xxx")
+    calendlyOrganizationUri: v.optional(v.string()), // Calendly organization URI
+    calendlyWebhookId: v.optional(v.string()), // Webhook subscription ID for cleanup
+    calendlyConnectedEmail: v.optional(v.string()), // Email of connected Calendly account
+    calendlyLastSyncAt: v.optional(v.number()), // Last sync timestamp
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -44,19 +56,23 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_clerk_id", ["clerkId"]),
 
-  // Scheduled calls (synced from Google Calendar)
+  // Scheduled calls (synced from Calendly or other calendar integrations)
   scheduledCalls: defineTable({
-    closerId: v.id("closers"),
+    closerId: v.optional(v.id("closers")), // Optional - can be unassigned if no closer match
     teamId: v.id("teams"),
-    calendarEventId: v.string(),
+    calendarEventId: v.string(), // Calendly event URI or other calendar event ID
     prospectName: v.optional(v.string()),
     prospectEmail: v.optional(v.string()),
     scheduledAt: v.number(), // Unix timestamp
     meetingLink: v.optional(v.string()),
     syncedAt: v.number(),
+    source: v.optional(v.string()), // "calendly", "google", "manual" - defaults to "manual" for legacy
+    status: v.optional(v.string()), // "scheduled", "cancelled" - for tracking cancellations
+    calendlyInviteeUri: v.optional(v.string()), // For updating/cancelling specific invitee
   })
     .index("by_closer", ["closerId"])
-    .index("by_team_and_date", ["teamId", "scheduledAt"]),
+    .index("by_team_and_date", ["teamId", "scheduledAt"])
+    .index("by_calendar_event", ["calendarEventId"]),
 
   // Calls (actual calls - live or completed)
   calls: defineTable({
@@ -105,4 +121,23 @@ export default defineSchema({
   })
     .index("by_call", ["callId"])
     .index("by_team", ["teamId"]),
+
+  // Playbook highlights (saved call segments for training)
+  highlights: defineTable({
+    callId: v.id("calls"),
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    title: v.string(), // Short description like "Handling 'I need to think about it'"
+    notes: v.optional(v.string()), // Manager's coaching notes
+    category: v.string(), // "objection_handling", "pitch", "close", "pain_discovery"
+    transcriptText: v.string(), // The selected transcript text
+    startTimestamp: v.number(), // Start time in seconds
+    endTimestamp: v.number(), // End time in seconds
+    createdAt: v.number(),
+    createdBy: v.id("users"), // Manager who created this highlight
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_category", ["teamId", "category"])
+    .index("by_closer", ["closerId"])
+    .index("by_call", ["callId"]),
 });

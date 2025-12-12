@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 const http = httpRouter();
 
@@ -97,6 +97,61 @@ http.route({
   }),
 });
 
+// GET endpoint to fetch ammo for a specific call (used by desktop app floating tracker)
+http.route({
+  path: "/getAmmoByCall",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+
+    if (!callId) {
+      return new Response(JSON.stringify({ error: "callId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const ammo = await ctx.runQuery(api.calls.getAmmoByCall, { callId: callId as any });
+      return new Response(JSON.stringify(ammo || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Invalid callId" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getAmmoByCall
+http.route({
+  path: "/getAmmoByCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 // DEBUG: List all closers (remove in production)
 http.route({
   path: "/debug/closers",
@@ -108,6 +163,144 @@ http.route({
       headers: {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }),
+});
+
+// ============================================
+// CALENDLY WEBHOOK
+// ============================================
+
+// Calendly webhook endpoint - receives events when bookings are created or cancelled
+http.route({
+  path: "/calendly-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+
+      // Log webhook event for debugging
+      console.log("Calendly webhook received:", body.event, body.payload?.event?.uri);
+
+      const event = body.event;
+      const payload = body.payload;
+
+      if (!event || !payload) {
+        return new Response(JSON.stringify({ error: "Invalid webhook payload" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // Extract organization URI to find the team
+      const organizationUri = payload.event?.event_memberships?.[0]?.user_email
+        ? null // We'll look up by event URI instead
+        : null;
+
+      if (event === "invitee.created") {
+        // New booking created
+        const invitee = payload.invitee;
+        const scheduledEvent = payload.event;
+
+        if (!scheduledEvent || !invitee) {
+          return new Response(JSON.stringify({ error: "Missing event data" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // Find the team by checking which team has this organization
+        // We need to look up by the event membership user email
+        const hostEmail = scheduledEvent.event_memberships?.[0]?.user_email;
+
+        // For now, we'll try to find an existing scheduled call or team by the event URI pattern
+        // The proper way would be to store team info in webhook metadata
+
+        // Try to find a closer matching the host email to get the team
+        let teamId = null;
+        let closerId = null;
+
+        if (hostEmail) {
+          // Find closer by email to get team
+          const closerResult = await ctx.runQuery(api.closers.getCloserByEmail, { email: hostEmail });
+          if (closerResult) {
+            teamId = closerResult.teamId;
+            closerId = closerResult.closerId;
+          }
+        }
+
+        // If we couldn't find a team, we can't process this webhook
+        // In production, you'd want to store team ID in webhook metadata
+        if (!teamId) {
+          console.log("Could not find team for Calendly webhook, host email:", hostEmail);
+          // Return 200 to acknowledge receipt (Calendly expects this)
+          return new Response(JSON.stringify({ received: true, processed: false, reason: "Team not found" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // Create or update the scheduled call
+        await ctx.runMutation(internal.calendly.upsertScheduledCall, {
+          teamId,
+          calendarEventId: scheduledEvent.uri,
+          prospectName: invitee.name,
+          prospectEmail: invitee.email,
+          scheduledAt: new Date(scheduledEvent.start_time).getTime(),
+          meetingLink: scheduledEvent.location?.join_url || undefined,
+          closerId: closerId || undefined,
+          calendlyInviteeUri: invitee.uri,
+        });
+
+        console.log("Created/updated scheduled call from Calendly webhook");
+
+      } else if (event === "invitee.canceled") {
+        // Booking cancelled
+        const scheduledEvent = payload.event;
+
+        if (!scheduledEvent) {
+          return new Response(JSON.stringify({ error: "Missing event data" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        // Mark the scheduled call as cancelled
+        await ctx.runMutation(internal.calendly.cancelScheduledCall, {
+          calendarEventId: scheduledEvent.uri,
+        });
+
+        console.log("Cancelled scheduled call from Calendly webhook");
+      }
+
+      return new Response(JSON.stringify({ received: true, processed: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    } catch (error) {
+      console.error("Error processing Calendly webhook:", error);
+      // Return 200 to prevent Calendly from retrying
+      return new Response(JSON.stringify({ received: true, error: "Processing error" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+// Handle OPTIONS for Calendly webhook (CORS preflight)
+http.route({
+  path: "/calendly-webhook",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Calendly-Webhook-Signature",
       },
     });
   }),

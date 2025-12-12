@@ -634,20 +634,352 @@ Key moments from the conversation that the closer can use later. Extracted in re
 - View/download invoices
 - (Seats auto-update when closers added/removed)
 
-#### 7.1.7 Account Settings
+#### 7.1.7 Closer Stats (Implemented)
 
-**Purpose:** Manage admin account details.
+**Purpose:** Provide managers with a visual overview of each closer's performance metrics for quick assessment of team performance.
+
+**Page Location:** `/dashboard/closer-stats`
 
 **Displays:**
-- Company name
-- Admin email
-- Password change option
+- Grid of cards (one per active closer)
+- Responsive: 3 columns on desktop, 2 on tablet, 1 on mobile
 
-**Actions:**
-- Update company name
-- Change email
-- Change password
-- Logout
+**Card Contents:**
+
+*Header Section:*
+- Closer name and email
+- Avatar with initials
+- Live status indicator (On Call / Waiting) when applicable
+- Rank badge (#1, #2, #3) for top performers based on close rate
+
+*Primary Stats (prominent):*
+- **Close Rate**: Percentage of completed calls marked as "Closed" outcome
+- **Cash Collected**: Total deal value from closed deals
+- **Calls Taken**: Total number of completed calls
+- **Average Call Length**: Mean duration of completed calls
+
+*Secondary Stats (compact grid):*
+- **Show Rate**: Percentage of scheduled calls that happened vs no-shows
+- **Average Deal Value**: Mean deal value for closed deals
+- **Ammo per Call**: Average number of ammo items extracted per call (engagement indicator)
+- **Talk-to-Listen Ratio**: Placeholder for future transcript analysis
+
+*Time-Based Stats:*
+- Revenue this week
+- Revenue this month
+- Calls this week
+- Calls this month
+
+*Trend Indicators:*
+- Up/down arrows with percentage change comparing to previous period
+- Green for improvement, red for decline
+- Metrics tracked: Close Rate, Cash Collected, Calls Taken
+
+**Filtering:**
+- Date range filter: This Week, This Month, Last 30 Days, All Time
+- All stats recalculate dynamically based on selected range
+- Time-based stats (week/month) always show current week/month regardless of filter
+
+**Edge Cases Handled:**
+- New closer with no calls: Shows "No data yet" message
+- Closer with no closed deals: Shows 0% close rate, $0 collected
+- Closer with no calls in selected period: Calculated metrics show 0
+
+**Calculation Logic:**
+
+| Metric | Calculation |
+|--------|-------------|
+| Close Rate | (Closed Calls / Completed Calls) × 100 |
+| Cash Collected | Sum of dealValue for closed calls |
+| Calls Taken | Count of completed calls |
+| Avg Call Length | Sum of durations / Count of calls with duration |
+| Show Rate | (Completed Calls / (Completed + No-Shows)) × 100 |
+| Avg Deal Value | Cash Collected / Closed Calls |
+| Ammo per Call | Total ammo items / Completed calls |
+| Rank | Sorted by close rate descending, ties get same rank |
+| Trends | Current period value - Previous period value (or % change) |
+
+**Data Sources:**
+- `calls` table: status, outcome, dealValue, duration, closerId, createdAt
+- `ammo` table: callId for counting ammo per call
+- `closers` table: name, email, status
+
+#### 7.1.8 Playbook (Training Highlights) (Implemented)
+
+**Purpose:** Build a curated library of training highlights from call transcripts. Managers can save key moments from calls to create a searchable training resource for the team.
+
+**Page Location:** `/dashboard/playbook`
+
+**Part 1: Save to Playbook (Call Detail Page)**
+
+*Transcript Selection:*
+- Click on transcript segment to seek audio to that point
+- Double-click on a segment to select it for playbook
+- Shift+click to select a range of segments
+- Selected segments show blue highlight with checkmark indicator
+- Selection tip text displayed above transcript
+
+*Floating Action Bar:*
+- Appears at bottom center when segments are selected
+- Shows count of selected segments
+- "Clear" button to deselect
+- "Save to Playbook" button with bookmark icon
+
+*Save to Playbook Modal:*
+- Displays selected transcript text in scrollable preview
+- Audio snippet player that plays only the selected time range
+- Category dropdown (required): Objection Handling, Pitch, Close, Pain Discovery
+- Title field (required): Descriptive name for the highlight
+- Notes field (optional): Additional context or teaching notes
+- Closer name auto-displayed from call data
+- Cancel and Save buttons with loading state
+- Success confirmation before modal closes
+
+**Part 2: Playbook Page**
+
+*Filter Bar:*
+- Category dropdown: All Categories, Objection Handling, Pitch, Close, Pain Discovery
+- Closer dropdown: All Closers, [list of active closers]
+- Search input: Search across title, notes, and transcript text
+- Results count displayed
+
+*Highlight Cards (Grid Layout):*
+- Responsive: 3 columns desktop, 2 tablet, 1 mobile
+- Each card displays:
+  - Title (truncated if long)
+  - Category badge with color coding:
+    - Objection Handling: orange
+    - Pitch: blue
+    - Close: green
+    - Pain Discovery: purple
+  - Closer name with user icon
+  - Date created with calendar icon
+  - Audio snippet player for the selected time range
+  - Transcript text preview (4-line clamp)
+  - Notes section (if present)
+  - "View Full Call" link to original call detail page
+  - Delete button with confirmation dialog
+
+*Empty States:*
+- No highlights yet: Shows message with link to browse completed calls
+- No matching filters: Shows message suggesting filter adjustment
+
+**Data Model:**
+
+```typescript
+highlights: defineTable({
+  callId: v.id("calls"),
+  closerId: v.id("closers"),
+  teamId: v.id("teams"),
+  title: v.string(),
+  notes: v.optional(v.string()),
+  category: v.string(), // "objection_handling", "pitch", "close", "pain_discovery"
+  transcriptText: v.string(),
+  startTimestamp: v.number(),
+  endTimestamp: v.number(),
+  createdAt: v.number(),
+  createdBy: v.id("users"),
+})
+  .index("by_team", ["teamId"])
+  .index("by_team_and_category", ["teamId", "category"])
+  .index("by_closer", ["closerId"])
+  .index("by_call", ["callId"])
+```
+
+**API Endpoints (Convex):**
+- `createHighlight`: Creates a new highlight with team permission check
+- `deleteHighlight`: Deletes highlight with permission verification
+- `getHighlights`: Fetches highlights with optional filters (category, closerId, searchQuery)
+- `getHighlightsByCall`: Gets all highlights for a specific call
+- `getClosersForFilter`: Returns active closers for filter dropdown
+
+**Sidebar Navigation:**
+- "Playbook" tab added after "Closer Stats" and before "Team"
+- Uses BookMarked icon from lucide-react
+
+#### 7.1.9 Settings Page (Implemented)
+
+**Purpose:** Comprehensive settings page for team admins to manage account, preferences, and integrations.
+
+**Page Location:** `/dashboard/settings`
+
+**Section 1: Account Settings**
+- Company/Team Name (editable with Save button)
+- Admin Name (editable with Save button)
+- Email Address (display only, managed through Clerk)
+- Each field has loading spinner and success indicator on save
+
+**Section 2: Billing Summary**
+- Current plan display (e.g., "Pro Plan - 5 seats" or "No active subscription")
+- "Manage Billing" button linking to dedicated billing page
+- Does not duplicate full billing UI
+
+**Section 3: Team Preferences**
+- **Team Timezone:** Dropdown with common US and international timezones
+  - Affects call time display across dashboard
+  - Auto-saves on selection
+- **Call Outcome Options:**
+  - Default outcomes (non-removable): Closed, Not Closed, No Show, Rescheduled
+  - Custom outcomes: Add/remove custom tags
+  - Auto-saves on add/remove
+- **Playbook Categories:**
+  - Default categories (non-removable): Objection Handling, Pitch, Close, Pain Discovery
+  - Custom categories: Add/remove custom categories
+  - Auto-saves on add/remove
+
+**Section 4: Integrations**
+- **Calendly:** Full integration for syncing scheduled calls (see 7.1.10)
+- **Google Calendar:** Coming Soon badge (planned for when domain verification complete)
+- **Slack:** Coming Soon badge (placeholder)
+- **GoHighLevel:** Coming Soon badge (placeholder)
+- **Close CRM:** Coming Soon badge (placeholder)
+- Each integration shows icon, name, description, and action button
+
+**Section 5: Danger Zone**
+- Red-accented section for destructive actions
+- **Delete Team** button with confirmation modal:
+  - Lists all data that will be deleted
+  - Requires typing exact team name to confirm
+  - Loading state during deletion
+  - Redirects to home page after successful deletion
+
+**Data Model Additions (teams table):**
+```typescript
+timezone: v.optional(v.string()),
+customOutcomes: v.optional(v.array(v.string())),
+customPlaybookCategories: v.optional(v.array(v.string())),
+googleCalendarConnected: v.optional(v.boolean()),
+```
+
+**API Endpoints (Convex):**
+- `getSettings`: Returns user and team settings data
+- `updateTeamName`: Update team/company name
+- `updateUserName`: Update admin's display name
+- `updateTeamTimezone`: Update team timezone
+- `updateCustomOutcomes`: Update custom call outcomes array
+- `updateCustomPlaybookCategories`: Update custom playbook categories array
+- `deleteTeam`: Delete team and ALL associated data (requires name confirmation)
+
+**UX Features:**
+- Loading spinners on all save operations
+- "Saved" success indicators that auto-hide after 2 seconds
+- Optimistic UI updates for tag additions/removals
+- Form validation (empty values disabled)
+- Dirty state detection (Save button disabled when unchanged)
+
+#### 7.1.10 Calendly Integration (Implemented)
+
+**Purpose:** Automatically sync scheduled calls from the team's Calendly account to populate the Scheduled tab.
+
+**Why Calendly (not Google Calendar):**
+- Calendly uses Personal Access Tokens (no OAuth app approval needed)
+- Most high-ticket sales teams already use Calendly for booking
+- Google Calendar OAuth requires domain verification and app approval (deferred until privacy policy/terms are ready)
+
+**Connection Flow:**
+1. Admin goes to Settings → Integrations
+2. Clicks "Show setup instructions" for step-by-step guide
+3. Goes to Calendly → Integrations → API & Webhooks
+4. Generates Personal Access Token
+5. Pastes token into Seq3nce Settings
+6. System validates token with Calendly API
+7. On success, stores token securely and initiates sync
+8. Shows "Connected" status with account email and last sync time
+
+**Settings UI (Connected State):**
+- Calendly icon with green "Connected" badge
+- Connected account email displayed
+- Last synced timestamp
+- "Sync Now" button for manual refresh
+- "Disconnect" button (removes token and deletes synced events)
+
+**Settings UI (Disconnected State):**
+- Calendly icon
+- "Show setup instructions" toggle
+- Instructions for getting Personal Access Token from Calendly
+- Password input field for token
+- "Connect" button (validates before saving)
+- Error message display if token invalid
+
+**Syncing Logic:**
+
+*Initial Sync (on connect):*
+- Fetches all scheduled events for next 14 days
+- Creates scheduledCalls records for each event
+- Matches event host email to closers in system
+
+*Ongoing Sync:*
+- Webhook subscription created for real-time updates
+- Events: `invitee.created` (new booking), `invitee.canceled` (cancellation)
+- Webhook URL: `/calendly-webhook` HTTP action in Convex
+
+**Event Mapping:**
+
+| Calendly Field | scheduledCalls Field |
+|----------------|---------------------|
+| Event URI | calendarEventId |
+| Invitee name | prospectName |
+| Invitee email | prospectEmail |
+| Event start_time | scheduledAt |
+| Event location.join_url | meetingLink |
+| Event membership user_email | closerId (matched to closer) |
+
+**Closer Matching:**
+- Checks event host (membership) email against closers table
+- Case-insensitive email comparison
+- If no match found, closerId left null (shows as "Unassigned")
+
+**Scheduled Tab Updates:**
+- Shows real data from scheduledCalls table (not mock data)
+- Calendly events show blue "Calendly" badge
+- Unassigned calls show dropdown to assign closer
+- Empty state links to Settings page to connect Calendly
+
+**Data Model Additions (teams table):**
+```typescript
+calendlyAccessToken: v.optional(v.string()),
+calendlyUserUri: v.optional(v.string()),
+calendlyOrganizationUri: v.optional(v.string()),
+calendlyWebhookId: v.optional(v.string()),
+calendlyConnectedEmail: v.optional(v.string()),
+calendlyLastSyncAt: v.optional(v.number()),
+```
+
+**Data Model Updates (scheduledCalls table):**
+```typescript
+closerId: v.optional(v.id("closers")), // Now optional for unassigned
+source: v.optional(v.string()), // "calendly", "google", "manual"
+status: v.optional(v.string()), // "scheduled", "cancelled"
+calendlyInviteeUri: v.optional(v.string()),
+// New index:
+.index("by_calendar_event", ["calendarEventId"])
+```
+
+**API Endpoints (Convex):**
+- `calendly.validateToken`: Validates token with Calendly API, returns user info
+- `calendly.connectCalendly`: Saves credentials after validation
+- `calendly.disconnectCalendly`: Removes credentials and synced events
+- `calendly.syncEvents`: Fetches and syncs events for next 14 days
+- `calendly.getScheduledCalls`: Returns scheduled calls for team
+- `calendly.assignCloser`: Assigns closer to unassigned call
+- `calendly.getCalendlyStatus`: Returns connection status for settings
+
+**HTTP Action (Webhook):**
+- Route: POST `/calendly-webhook`
+- Handles `invitee.created`: Creates/updates scheduledCalls record
+- Handles `invitee.canceled`: Marks call as cancelled
+- Returns 200 to acknowledge receipt (prevents Calendly retries)
+
+**Security:**
+- Token stored securely in Convex
+- Token never exposed to frontend after initial save
+- API calls made server-side only
+- Team isolation (can only access own team's data)
+
+**Error Handling:**
+- Invalid token: Shows error message, doesn't save
+- Sync failures: Logs error, continues with other events
+- Webhook failures: Returns 200 to prevent retries, logs error
 
 ### 7.2 Desktop App Features
 
@@ -1546,12 +1878,21 @@ async function sendCloserInvite(email, name, companyName, downloadLink) {
 - [ ] Privacy policy
 - [ ] Terms of service
 
+### Completed MVP Features
+
+- [x] **Closer Stats Dashboard** — Performance metrics for each closer including close rate, cash collected, calls taken, average call length, show rate, deal values, ammo per call, time-based revenue/calls, and trend indicators. Includes date range filtering and live call status indicators.
+
+- [x] **Playbook (Training Highlights)** — Curated library of training highlights from call transcripts. Features include transcript segment selection on call detail pages (click, double-click, shift+click), floating "Save to Playbook" action bar, modal with audio snippet player and category/title/notes fields, dedicated Playbook page with category/closer/search filters, highlight cards with audio playback, and delete functionality. Categories: Objection Handling, Pitch, Close, Pain Discovery.
+
+- [x] **Settings Page** — Comprehensive settings page with 5 sections: Account Settings (team name, admin name, email display), Billing Summary (plan display with link to billing page), Team Preferences (timezone, custom call outcomes, custom playbook categories), Integrations (Calendly functional, Google Calendar/Slack/GoHighLevel/Close CRM coming soon), and Danger Zone (delete team with confirmation). All fields auto-save with loading/success indicators.
+
+- [x] **Calendly Integration** — Full calendar integration using Calendly Personal Access Tokens. Features include: Settings page UI with setup instructions and token input, token validation against Calendly API, automatic sync of scheduled events for next 14 days, webhook endpoint for real-time booking/cancellation updates, closer matching by email (case-insensitive), unassigned call handling with dropdown to assign closers, Scheduled tab updated to show real data with Calendly badge on synced events.
+
 ### Nice to Have (Defer to Post-MVP)
 
 - [ ] Video recording and playback
 - [ ] Outlook/Microsoft 365 calendar
 - [ ] Transcript search
-- [ ] Team analytics (close rates, patterns)
 - [ ] Slack integration
 - [ ] Daily/weekly email digests
 - [ ] Objection categorization and analytics

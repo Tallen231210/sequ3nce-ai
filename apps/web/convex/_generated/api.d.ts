@@ -9,8 +9,10 @@
  */
 
 import type * as billing from "../billing.js";
+import type * as calendly from "../calendly.js";
 import type * as calls from "../calls.js";
 import type * as closers from "../closers.js";
+import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
 import type * as teams from "../teams.js";
 
@@ -22,8 +24,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   billing: typeof billing;
+  calendly: typeof calendly;
   calls: typeof calls;
   closers: typeof closers;
+  highlights: typeof highlights;
   http: typeof http;
   teams: typeof teams;
 }>;

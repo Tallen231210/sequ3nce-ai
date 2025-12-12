@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@clerk/nextjs": "^6.36.2",
+    "@radix-ui/react-dialog": "^1.1.15",
     "convex": "^1.30.0"
   }
 }

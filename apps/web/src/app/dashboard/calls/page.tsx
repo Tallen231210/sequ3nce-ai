@@ -1,3 +1,8 @@
+"use client";
+
+import { useQuery } from "convex/react";
+import { api } from "../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { Header } from "@/components/dashboard/header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +15,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { mockCompletedCalls, formatDuration, formatCurrency } from "@/lib/mock-data";
+import { useRouter } from "next/navigation";
+import { Phone } from "lucide-react";
 
-function formatDate(date: Date): string {
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatDate(timestamp: number): string {
+  const date = new Date(timestamp);
   const now = new Date();
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -47,22 +68,89 @@ function formatDate(date: Date): string {
   }
 }
 
-function getOutcomeBadge(outcome: string) {
+function getOutcomeBadge(outcome?: string) {
   switch (outcome) {
-    case "CLOSED":
+    case "closed":
       return <Badge variant="default">Closed</Badge>;
-    case "NOT_CLOSED":
+    case "not_closed":
       return <Badge variant="secondary">Not Closed</Badge>;
-    case "NO_SHOW":
+    case "no_show":
       return <Badge variant="outline">No-Show</Badge>;
-    case "RESCHEDULED":
+    case "rescheduled":
       return <Badge variant="secondary">Rescheduled</Badge>;
     default:
-      return <Badge variant="secondary">{outcome}</Badge>;
+      return <Badge variant="outline">Pending</Badge>;
   }
 }
 
+function LoadingState() {
+  return (
+    <div className="p-6">
+      <Card>
+        <CardContent className="p-0">
+          <div className="animate-pulse">
+            <div className="h-12 bg-zinc-100 border-b border-zinc-200" />
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-16 bg-zinc-50 border-b border-zinc-100" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="p-6">
+      <Card>
+        <CardContent className="py-16">
+          <div className="flex flex-col items-center justify-center text-center">
+            <Phone className="h-12 w-12 text-zinc-600 mb-4" />
+            <h3 className="text-lg font-medium mb-2">No completed calls yet</h3>
+            <p className="text-zinc-500 text-sm max-w-sm">
+              When your team completes calls, they&apos;ll appear here with recordings, transcripts, and extracted ammo.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function CompletedCallsPage() {
+  const { team, isLoading: isTeamLoading } = useTeam();
+  const router = useRouter();
+
+  const calls = useQuery(
+    api.calls.getCompletedCallsWithCloser,
+    team?._id ? { teamId: team._id } : "skip"
+  );
+
+  if (isTeamLoading || calls === undefined) {
+    return (
+      <>
+        <Header
+          title="Completed Calls"
+          description="Review past calls, recordings, and outcomes"
+        />
+        <LoadingState />
+      </>
+    );
+  }
+
+  if (!calls || calls.length === 0) {
+    return (
+      <>
+        <Header
+          title="Completed Calls"
+          description="Review past calls, recordings, and outcomes"
+        />
+        <EmptyState />
+      </>
+    );
+  }
+
   return (
     <>
       <Header
@@ -84,13 +172,14 @@ export default function CompletedCallsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {mockCompletedCalls.map((call) => (
+                {calls.map((call) => (
                   <TableRow
-                    key={call.id}
-                    className="cursor-pointer"
+                    key={call._id}
+                    className="cursor-pointer hover:bg-zinc-50"
+                    onClick={() => router.push(`/dashboard/calls/${call._id}`)}
                   >
                     <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(call.date)}
+                      {call.startedAt ? formatDate(call.startedAt) : formatDate(call.createdAt)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -103,10 +192,10 @@ export default function CompletedCallsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="font-medium">
-                      {call.prospectName}
+                      {call.prospectName || "Unknown Prospect"}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {call.duration > 0 ? formatDuration(call.duration) : "—"}
+                      {call.duration && call.duration > 0 ? formatDuration(call.duration) : "—"}
                     </TableCell>
                     <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
                     <TableCell className="text-right font-medium">

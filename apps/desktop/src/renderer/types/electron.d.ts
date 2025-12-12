@@ -24,14 +24,41 @@ export interface AppAPI {
   getPlatform: () => Promise<{ platform: string; arch: string }>;
 }
 
+export interface AmmoAPI {
+  toggle: () => Promise<boolean>;
+  isVisible: () => Promise<boolean>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
+  ammo: AmmoAPI;
+}
+
+// Ammo item type
+export interface AmmoItem {
+  _id: string;
+  callId: string;
+  teamId: string;
+  text: string;
+  type: 'emotional' | 'urgency' | 'budget' | 'commitment' | 'objection_preview' | 'pain_point';
+  timestamp?: number;
+  createdAt: number;
+}
+
+// Ammo tracker window API (exposed via ammo-tracker-preload.ts)
+export interface AmmoTrackerAPI {
+  getCallId: () => Promise<string | null>;
+  copyToClipboard: (text: string) => Promise<void>;
+  close: () => Promise<void>;
+  onCallIdChange: (callback: (callId: string | null) => void) => () => void;
+  onNewAmmo: (callback: (ammo: AmmoItem) => void) => () => void;
 }
 
 declare global {
   interface Window {
     electron: ElectronAPI;
+    ammoTracker?: AmmoTrackerAPI;
   }
 }
 

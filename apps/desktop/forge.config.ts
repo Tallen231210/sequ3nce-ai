@@ -42,6 +42,14 @@ const config: ForgeConfig = {
               js: './src/preload.ts',
             },
           },
+          {
+            html: './src/ammo-tracker.html',
+            js: './src/ammo-tracker-renderer.ts',
+            name: 'ammo_tracker',
+            preload: {
+              js: './src/ammo-tracker-preload.ts',
+            },
+          },
         ],
       },
     }),

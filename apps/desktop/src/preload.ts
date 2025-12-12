@@ -26,9 +26,15 @@ export interface AppAPI {
   getPlatform: () => Promise<{ platform: string; arch: string }>;
 }
 
+export interface AmmoAPI {
+  toggle: () => Promise<boolean>;
+  isVisible: () => Promise<boolean>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
+  ammo: AmmoAPI;
 }
 
 // Expose protected methods to renderer via contextBridge
@@ -62,6 +68,10 @@ contextBridge.exposeInMainWorld('electron', {
   app: {
     getVersion: () => ipcRenderer.invoke('app:get-version'),
     getPlatform: () => ipcRenderer.invoke('app:get-platform'),
+  },
+  ammo: {
+    toggle: () => ipcRenderer.invoke('ammo:toggle'),
+    isVisible: () => ipcRenderer.invoke('ammo:is-visible'),
   },
 } as ElectronAPI);
 

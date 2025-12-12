@@ -152,6 +152,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [duration, setDuration] = useState(0);
   const [version, setVersion] = useState('');
+  const [ammoTrackerVisible, setAmmoTrackerVisible] = useState(false);
   const isCapturingRef = useRef(false);
 
   // Audio capture hook
@@ -163,7 +164,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     },
   });
 
-  // Check permissions on mount
+  // Check permissions and ammo tracker state on mount
   useEffect(() => {
     const checkPermissions = async () => {
       const permitted = await window.electron.audio.checkPermissions();
@@ -171,6 +172,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     };
     checkPermissions();
     window.electron.app.getVersion().then(setVersion);
+    window.electron.ammo.isVisible().then(setAmmoTrackerVisible);
   }, []);
 
   // Subscribe to audio events
@@ -268,6 +270,11 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleToggleAmmoTracker = async () => {
+    const isVisible = await window.electron.ammo.toggle();
+    setAmmoTrackerVisible(isVisible);
+  };
+
   const isRecording = status === 'capturing';
   const isConnecting = status === 'connecting';
 
@@ -316,6 +323,21 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
             onStop={handleStop}
           />
         </div>
+
+        {/* Ammo Tracker toggle button */}
+        <button
+          onClick={handleToggleAmmoTracker}
+          className={`mt-4 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            ammoTrackerVisible
+              ? 'bg-zinc-800 text-white hover:bg-zinc-700'
+              : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          {ammoTrackerVisible ? 'Hide Ammo' : 'Show Ammo'}
+        </button>
 
         {/* Call ID */}
         {callId && (
