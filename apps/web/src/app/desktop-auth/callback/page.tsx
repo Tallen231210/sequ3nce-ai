@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAuth, useSignIn } from "@clerk/nextjs";
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 
 export default function DesktopAuthCallbackPage() {
-  const { isSignedIn, userId } = useAuth();
-  const { signIn, setActive } = useSignIn();
+  const { isSignedIn, isLoaded } = useAuth();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
   const [error, setError] = useState<string | null>(null);
@@ -14,61 +13,7 @@ export default function DesktopAuthCallbackPage() {
   const redirectUrl = searchParams.get("redirect") || "seq3nce://auth-callback";
   const email = searchParams.get("email") || "";
 
-  useEffect(() => {
-    const handleCallback = async () => {
-      // Check if already signed in
-      if (isSignedIn) {
-        setStatus("success");
-        redirectToApp();
-        return;
-      }
-
-      // Get the magic link token from URL
-      const ticket = searchParams.get("__clerk_ticket");
-
-      if (!ticket) {
-        // No ticket but might have been verified already
-        // Wait a moment for Clerk to process
-        setTimeout(() => {
-          if (isSignedIn) {
-            setStatus("success");
-            redirectToApp();
-          } else {
-            setError("No verification token found. Please try again.");
-            setStatus("error");
-          }
-        }, 2000);
-        return;
-      }
-
-      try {
-        // Attempt to verify the magic link
-        if (signIn) {
-          const result = await signIn.attemptFirstFactor({
-            strategy: "email_link",
-            emailLinkToken: ticket,
-          });
-
-          if (result.status === "complete" && result.createdSessionId) {
-            await setActive?.({ session: result.createdSessionId });
-            setStatus("success");
-            redirectToApp();
-          } else {
-            setError("Verification incomplete. Please try again.");
-            setStatus("error");
-          }
-        }
-      } catch (err: any) {
-        console.error("Verification error:", err);
-        setError(err.errors?.[0]?.message || "Verification failed. Please try again.");
-        setStatus("error");
-      }
-    };
-
-    handleCallback();
-  }, [isSignedIn, signIn, setActive, searchParams]);
-
-  const redirectToApp = () => {
+  const redirectToApp = useCallback(() => {
     // Generate a verification token
     const token = `verified_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
@@ -76,7 +21,31 @@ export default function DesktopAuthCallbackPage() {
     setTimeout(() => {
       window.location.href = `${redirectUrl}?token=${token}&email=${encodeURIComponent(email)}`;
     }, 1500);
-  };
+  }, [redirectUrl, email]);
+
+  useEffect(() => {
+    // Wait for Clerk to load
+    if (!isLoaded) return;
+
+    // If user is signed in, redirect to desktop app
+    if (isSignedIn) {
+      setStatus("success");
+      redirectToApp();
+      return;
+    }
+
+    // If not signed in after Clerk loaded, show error
+    // The magic link verification is handled automatically by Clerk
+    // If we reach here without being signed in, something went wrong
+    const timer = setTimeout(() => {
+      if (!isSignedIn) {
+        setError("Sign in failed. Please try the magic link again or request a new one.");
+        setStatus("error");
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [isSignedIn, isLoaded, redirectToApp]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white p-4">
