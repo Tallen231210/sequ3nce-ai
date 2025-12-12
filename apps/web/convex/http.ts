@@ -169,6 +169,289 @@ http.route({
 });
 
 // ============================================
+// SPEAKER MAPPING ENDPOINTS (for desktop app)
+// ============================================
+
+// GET endpoint to fetch call info including speaker mapping
+http.route({
+  path: "/getCallInfo",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+
+    if (!callId) {
+      return new Response(JSON.stringify({ error: "callId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const call = await ctx.runQuery(api.calls.getCallWithAmmo, { callId: callId as any });
+      if (!call) {
+        return new Response(JSON.stringify({ error: "Call not found" }), {
+          status: 404,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Get the first transcript segment from the detected closer speaker
+      let closerSnippet: string | undefined;
+      if (call.speakerMapping && !call.speakerMapping.confirmed) {
+        // Fetch transcript segments to find the first thing the closer said
+        const segments = await ctx.runQuery(api.calls.getTranscriptSegments, { callId: callId as any });
+        if (segments && segments.length > 0) {
+          // Find the first segment from the detected closer speaker
+          const closerSpeaker = call.speakerMapping.closerSpeaker;
+          // The speaker label in segments is "closer" or "prospect"
+          // If closerSpeaker is "speaker_0", closer = Speaker 1, so we look for "closer" label
+          // Our transcriptSegments already have "closer" or "prospect" labels
+          const closerSegment = segments.find(seg => seg.speaker.toLowerCase() === "closer");
+          if (closerSegment) {
+            closerSnippet = closerSegment.text;
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({
+        _id: call._id,
+        speakerMapping: call.speakerMapping,
+        closerTalkTime: call.closerTalkTime,
+        prospectTalkTime: call.prospectTalkTime,
+        status: call.status,
+        closerSnippet,
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Invalid callId" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getCallInfo
+http.route({
+  path: "/getCallInfo",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to swap speaker mapping
+http.route({
+  path: "/swapSpeakerMapping",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const callId = body.callId;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      await ctx.runMutation(api.calls.swapSpeakerMapping, { callId: callId as any });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Failed to swap speaker mapping" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for swapSpeakerMapping
+http.route({
+  path: "/swapSpeakerMapping",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to confirm speaker mapping
+http.route({
+  path: "/confirmSpeakerMapping",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const callId = body.callId;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      await ctx.runMutation(api.calls.confirmSpeakerMapping, { callId: callId as any });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Failed to confirm speaker mapping" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for confirmSpeakerMapping
+http.route({
+  path: "/confirmSpeakerMapping",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
+// POST-CALL QUESTIONNAIRE ENDPOINT (for desktop app)
+// ============================================
+
+// POST endpoint to save post-call questionnaire data
+http.route({
+  path: "/completeCallWithOutcome",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, prospectName, outcome, dealValue, notes } = body;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      if (!prospectName || !outcome) {
+        return new Response(JSON.stringify({ error: "prospectName and outcome are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      await ctx.runMutation(api.calls.completeCallWithOutcome, {
+        callId: callId as any,
+        prospectName,
+        outcome,
+        dealValue: dealValue || undefined,
+        notes: notes || undefined,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error completing call with outcome:", error);
+      return new Response(JSON.stringify({ error: "Failed to complete call" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for completeCallWithOutcome
+http.route({
+  path: "/completeCallWithOutcome",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
 // CALENDLY WEBHOOK
 // ============================================
 

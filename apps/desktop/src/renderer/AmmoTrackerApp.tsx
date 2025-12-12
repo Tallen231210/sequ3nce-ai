@@ -4,6 +4,73 @@ import { AmmoItem } from './types/electron';
 const CONVEX_SITE_URL = 'https://fastidious-dragon-782.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds
 
+// Speaker mapping type
+interface SpeakerMapping {
+  closerSpeaker: string; // "speaker_0" or "speaker_1"
+  confirmed: boolean;
+}
+
+// Speaker identification banner component
+function SpeakerIdentificationBanner({
+  speakerMapping,
+  closerSnippet,
+  onSwap,
+  onConfirm,
+  isSwapping,
+}: {
+  speakerMapping: SpeakerMapping;
+  closerSnippet?: string; // First thing the detected closer said
+  onSwap: () => void;
+  onConfirm: () => void;
+  isSwapping: boolean;
+}) {
+  // Don't show if already confirmed
+  if (speakerMapping.confirmed) return null;
+
+  // Truncate snippet if too long
+  const truncatedSnippet = closerSnippet && closerSnippet.length > 60
+    ? closerSnippet.slice(0, 60) + '...'
+    : closerSnippet;
+
+  return (
+    <div className="mx-2 mb-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/30 animate-fade-in">
+      {/* Question */}
+      <p className="text-[11px] text-blue-300 mb-2">
+        Did you say this?
+      </p>
+
+      {/* Snippet quote */}
+      {truncatedSnippet ? (
+        <p className="text-[12px] text-zinc-200 mb-2.5 leading-snug italic">
+          "{truncatedSnippet}"
+        </p>
+      ) : (
+        <p className="text-[11px] text-zinc-500 mb-2.5 italic">
+          Waiting for speech...
+        </p>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={isSwapping || !closerSnippet}
+          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors disabled:opacity-50"
+        >
+          Yes, that's me
+        </button>
+        <button
+          onClick={onSwap}
+          disabled={isSwapping || !closerSnippet}
+          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600 transition-colors disabled:opacity-50"
+        >
+          {isSwapping ? '...' : "No, that's the prospect"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Ammo type configuration for styling
 const AMMO_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   emotional: { label: 'Emotional', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
@@ -77,7 +144,30 @@ export function AmmoTrackerApp() {
   const [callId, setCallId] = useState<string | null>(null);
   const [ammoItems, setAmmoItems] = useState<AmmoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [speakerMapping, setSpeakerMapping] = useState<SpeakerMapping | null>(null);
+  const [closerSnippet, setCloserSnippet] = useState<string | undefined>(undefined);
+  const [isSwapping, setIsSwapping] = useState(false);
   const seenIds = useRef<Set<string>>(new Set());
+
+  // Fetch call info including speaker mapping and closer snippet
+  const fetchCallInfo = useCallback(async (currentCallId: string) => {
+    try {
+      const response = await fetch(
+        `${CONVEX_SITE_URL}/getCallInfo?callId=${encodeURIComponent(currentCallId)}`
+      );
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data.speakerMapping) {
+        setSpeakerMapping(data.speakerMapping);
+      }
+      if (data.closerSnippet) {
+        setCloserSnippet(data.closerSnippet);
+      }
+    } catch (error) {
+      console.error('[AmmoTracker] Failed to fetch call info:', error);
+    }
+  }, []);
 
   // Fetch ammo from Convex
   const fetchAmmo = useCallback(async (currentCallId: string) => {
@@ -106,6 +196,55 @@ export function AmmoTrackerApp() {
     }
   }, []);
 
+  // Swap speaker mapping (user indicates detection was wrong)
+  const handleSwapSpeaker = useCallback(async () => {
+    if (!callId) return;
+    setIsSwapping(true);
+
+    try {
+      const response = await fetch(`${CONVEX_SITE_URL}/swapSpeakerMapping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId }),
+      });
+
+      if (response.ok) {
+        // Update local state optimistically
+        setSpeakerMapping(prev => prev ? {
+          closerSpeaker: prev.closerSpeaker === 'speaker_0' ? 'speaker_1' : 'speaker_0',
+          confirmed: true,
+        } : null);
+      }
+    } catch (error) {
+      console.error('[AmmoTracker] Failed to swap speaker mapping:', error);
+    }
+
+    setIsSwapping(false);
+  }, [callId]);
+
+  // Confirm speaker mapping (user indicates detection was correct)
+  const handleConfirmSpeaker = useCallback(async () => {
+    if (!callId) return;
+    setIsSwapping(true);
+
+    try {
+      const response = await fetch(`${CONVEX_SITE_URL}/confirmSpeakerMapping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId }),
+      });
+
+      if (response.ok) {
+        // Update local state
+        setSpeakerMapping(prev => prev ? { ...prev, confirmed: true } : null);
+      }
+    } catch (error) {
+      console.error('[AmmoTracker] Failed to confirm speaker mapping:', error);
+    }
+
+    setIsSwapping(false);
+  }, [callId]);
+
   // Copy to clipboard via IPC
   const handleCopy = useCallback(async (text: string) => {
     if (window.ammoTracker) {
@@ -119,6 +258,7 @@ export function AmmoTrackerApp() {
   // Initialize and set up listeners
   useEffect(() => {
     let pollInterval: NodeJS.Timeout | null = null;
+    let callInfoInterval: NodeJS.Timeout | null = null;
 
     const init = async () => {
       if (!window.ammoTracker) {
@@ -134,8 +274,11 @@ export function AmmoTrackerApp() {
 
       if (initialCallId) {
         fetchAmmo(initialCallId);
+        fetchCallInfo(initialCallId);
         // Start polling
         pollInterval = setInterval(() => fetchAmmo(initialCallId), POLL_INTERVAL);
+        // Also poll call info for speaker mapping updates (less frequently)
+        callInfoInterval = setInterval(() => fetchCallInfo(initialCallId), POLL_INTERVAL * 2);
       } else {
         setIsLoading(false);
       }
@@ -146,14 +289,19 @@ export function AmmoTrackerApp() {
         setCallId(newCallId);
         seenIds.current.clear();
         setAmmoItems([]);
+        setSpeakerMapping(null); // Reset speaker mapping on new call
+        setCloserSnippet(undefined); // Reset closer snippet on new call
 
         // Clear old polling
         if (pollInterval) clearInterval(pollInterval);
+        if (callInfoInterval) clearInterval(callInfoInterval);
 
         if (newCallId) {
           setIsLoading(true);
           fetchAmmo(newCallId);
+          fetchCallInfo(newCallId);
           pollInterval = setInterval(() => fetchAmmo(newCallId), POLL_INTERVAL);
+          callInfoInterval = setInterval(() => fetchCallInfo(newCallId), POLL_INTERVAL * 2);
         } else {
           setIsLoading(false);
         }
@@ -174,6 +322,7 @@ export function AmmoTrackerApp() {
         unsubCallId();
         unsubNewAmmo();
         if (pollInterval) clearInterval(pollInterval);
+        if (callInfoInterval) clearInterval(callInfoInterval);
       };
     };
 
@@ -181,8 +330,9 @@ export function AmmoTrackerApp() {
 
     return () => {
       if (pollInterval) clearInterval(pollInterval);
+      if (callInfoInterval) clearInterval(callInfoInterval);
     };
-  }, [fetchAmmo]);
+  }, [fetchAmmo, fetchCallInfo]);
 
   return (
     <div className="h-screen w-screen bg-black/95 backdrop-blur-sm text-white overflow-hidden flex flex-col">
@@ -202,6 +352,17 @@ export function AmmoTrackerApp() {
           </svg>
         </button>
       </div>
+
+      {/* Speaker identification banner */}
+      {callId && speakerMapping && !speakerMapping.confirmed && (
+        <SpeakerIdentificationBanner
+          speakerMapping={speakerMapping}
+          closerSnippet={closerSnippet}
+          onSwap={handleSwapSpeaker}
+          onConfirm={handleConfirmSpeaker}
+          isSwapping={isSwapping}
+        />
+      )}
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin">

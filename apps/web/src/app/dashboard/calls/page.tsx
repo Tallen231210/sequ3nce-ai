@@ -32,6 +32,35 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+// Talk-to-Listen Ratio Bar Component
+function TalkRatioBar({ closerTalkTime, prospectTalkTime }: { closerTalkTime?: number; prospectTalkTime?: number }) {
+  const total = (closerTalkTime || 0) + (prospectTalkTime || 0);
+
+  if (total === 0) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+
+  const closerPercent = Math.round(((closerTalkTime || 0) / total) * 100);
+  const prospectPercent = 100 - closerPercent;
+
+  return (
+    <div className="w-24">
+      <div className="flex items-center gap-1">
+        <div className="flex-1 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-zinc-800 transition-all duration-500"
+            style={{ width: `${closerPercent}%` }}
+          />
+        </div>
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+        <span>{closerPercent}%</span>
+        <span>{prospectPercent}%</span>
+      </div>
+    </div>
+  );
+}
+
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp);
   const now = new Date();
@@ -72,8 +101,12 @@ function getOutcomeBadge(outcome?: string) {
   switch (outcome) {
     case "closed":
       return <Badge variant="default">Closed</Badge>;
+    case "follow_up":
+      return <Badge variant="secondary">Follow Up</Badge>;
     case "not_closed":
       return <Badge variant="secondary">Not Closed</Badge>;
+    case "lost":
+      return <Badge variant="destructive">Lost</Badge>;
     case "no_show":
       return <Badge variant="outline">No-Show</Badge>;
     case "rescheduled":
@@ -167,6 +200,7 @@ export default function CompletedCallsPage() {
                   <TableHead>Closer</TableHead>
                   <TableHead>Prospect</TableHead>
                   <TableHead className="w-[100px]">Duration</TableHead>
+                  <TableHead className="w-[120px]">Talk Ratio</TableHead>
                   <TableHead className="w-[120px]">Outcome</TableHead>
                   <TableHead className="w-[100px] text-right">Value</TableHead>
                 </TableRow>
@@ -196,6 +230,12 @@ export default function CompletedCallsPage() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {call.duration && call.duration > 0 ? formatDuration(call.duration) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <TalkRatioBar
+                        closerTalkTime={call.closerTalkTime}
+                        prospectTalkTime={call.prospectTalkTime}
+                      />
                     </TableCell>
                     <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
                     <TableCell className="text-right font-medium">

@@ -242,6 +242,123 @@ export const getCallDetails = query({
   },
 });
 
+// Update talk-to-listen ratio (called periodically during call by audio processor)
+export const updateTalkTime = mutation({
+  args: {
+    callId: v.string(),
+    closerTalkTime: v.number(),
+    prospectTalkTime: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId as any, {
+      closerTalkTime: args.closerTalkTime,
+      prospectTalkTime: args.prospectTalkTime,
+    });
+  },
+});
+
+// Add a transcript segment (for live streaming)
+export const addTranscriptSegment = mutation({
+  args: {
+    callId: v.string(),
+    teamId: v.string(),
+    speaker: v.string(),
+    text: v.string(),
+    timestamp: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("transcriptSegments", {
+      callId: args.callId as any,
+      teamId: args.teamId as any,
+      speaker: args.speaker,
+      text: args.text,
+      timestamp: args.timestamp,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+// Get transcript segments for a call (for live streaming)
+export const getTranscriptSegments = query({
+  args: {
+    callId: v.id("calls"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 50;
+    return await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_call_and_time", (q) => q.eq("callId", args.callId))
+      .order("asc")
+      .take(limit);
+  },
+});
+
+// Get live calls with full details (closer info, latest ammo, transcript segments)
+export const getLiveCallsWithDetails = query({
+  args: {
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const waitingCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "waiting")
+      )
+      .collect();
+
+    const onCallCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "on_call")
+      )
+      .collect();
+
+    const allCalls = [...waitingCalls, ...onCallCalls];
+
+    // Fetch details for each call
+    const callsWithDetails = await Promise.all(
+      allCalls.map(async (call) => {
+        // Get closer info
+        const closer = await ctx.db.get(call.closerId);
+
+        // Get ammo for this call (sorted by timestamp)
+        const ammo = await ctx.db
+          .query("ammo")
+          .withIndex("by_call", (q) => q.eq("callId", call._id))
+          .collect();
+
+        // Get recent transcript segments (last 20)
+        const transcriptSegments = await ctx.db
+          .query("transcriptSegments")
+          .withIndex("by_call_and_time", (q) => q.eq("callId", call._id))
+          .order("desc")
+          .take(20);
+
+        // Reverse to get chronological order
+        transcriptSegments.reverse();
+
+        return {
+          ...call,
+          closerName: closer?.name || "Unknown",
+          closerInitials: closer?.name
+            ? closer.name
+                .split(" ")
+                .map((n: string) => n[0])
+                .join("")
+                .toUpperCase()
+                .slice(0, 2)
+            : "??",
+          ammo: ammo.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)),
+          transcriptSegments,
+        };
+      })
+    );
+
+    return callsWithDetails;
+  },
+});
+
 // Update call outcome (called from desktop app after call ends)
 export const updateCallOutcome = mutation({
   args: {
@@ -254,6 +371,62 @@ export const updateCallOutcome = mutation({
       outcome: args.outcome,
       dealValue: args.dealValue,
     });
+  },
+});
+
+// Complete call with post-call questionnaire data (called from desktop app)
+export const completeCallWithOutcome = mutation({
+  args: {
+    callId: v.id("calls"),
+    prospectName: v.string(),
+    outcome: v.string(), // "closed", "follow_up", "lost", "no_show"
+    dealValue: v.optional(v.number()),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      prospectName: args.prospectName,
+      outcome: args.outcome,
+      dealValue: args.dealValue,
+      notes: args.notes,
+      status: "completed",
+      completedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// Update call data (for manager edits from web dashboard)
+export const updateCallData = mutation({
+  args: {
+    callId: v.id("calls"),
+    prospectName: v.optional(v.string()),
+    outcome: v.optional(v.string()),
+    dealValue: v.optional(v.number()),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const updates: Record<string, any> = {};
+
+    if (args.prospectName !== undefined) {
+      updates.prospectName = args.prospectName;
+    }
+    if (args.outcome !== undefined) {
+      updates.outcome = args.outcome;
+    }
+    if (args.dealValue !== undefined) {
+      updates.dealValue = args.dealValue;
+    }
+    if (args.notes !== undefined) {
+      updates.notes = args.notes;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await ctx.db.patch(args.callId, updates);
+    }
+
+    return { success: true };
   },
 });
 
@@ -306,6 +479,12 @@ export const seedTestCallAuto = mutation({
       duration: callDuration,
       speakerCount: 2,
       recordingUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      closerTalkTime: 600, // ~10 minutes talk time
+      prospectTalkTime: 1247, // ~21 minutes talk time (prospect talked more - good!)
+      speakerMapping: {
+        closerSpeaker: "speaker_0", // Speaker 1 = Closer
+        confirmed: true,
+      },
       transcriptText: `[00:00:05] Speaker 1: Hi Sarah, thanks for taking the time to chat with me today. How are you doing?
 
 [00:00:12] Speaker 2: I'm doing well, thanks for asking. I've actually been looking forward to this call. I've been thinking about this for months now.
@@ -476,5 +655,359 @@ export const seedTestCall = mutation({
     });
 
     return callId;
+  },
+});
+
+// Seed live call test data (for development only) - creates active calls with talk ratio and transcript
+export const seedLiveCallsTest = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // Get the first team
+    const team = await ctx.db.query("teams").first();
+    if (!team) {
+      throw new Error("No team found. Please create a team first.");
+    }
+
+    // Get closers for this team, or create them if none exist
+    let closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", team._id))
+      .collect();
+
+    if (closers.length === 0) {
+      // Create test closers
+      const closerData = [
+        { name: "Mike Johnson", email: "mike@example.com" },
+        { name: "Sarah Chen", email: "sarah@example.com" },
+        { name: "David Park", email: "david@example.com" },
+      ];
+
+      for (const closer of closerData) {
+        await ctx.db.insert("closers", {
+          email: closer.email,
+          name: closer.name,
+          teamId: team._id,
+          status: "active",
+          calendarConnected: false,
+          invitedAt: Date.now(),
+          activatedAt: Date.now(),
+        });
+      }
+
+      closers = await ctx.db
+        .query("closers")
+        .withIndex("by_team", (q) => q.eq("teamId", team._id))
+        .collect();
+    }
+
+    const now = Date.now();
+    const createdCallIds: string[] = [];
+
+    // Call 1: Active call with good talk ratio (prospect talking more) - 8 minutes in
+    const call1StartTime = now - 8 * 60 * 1000; // 8 minutes ago
+    const call1Id = await ctx.db.insert("calls", {
+      teamId: team._id,
+      closerId: closers[0]._id,
+      prospectName: "Jennifer Martinez",
+      status: "on_call",
+      speakerCount: 2,
+      startedAt: call1StartTime,
+      closerTalkTime: 180, // 3 minutes
+      prospectTalkTime: 300, // 5 minutes
+      speakerMapping: {
+        closerSpeaker: "speaker_0", // Speaker 1 = Closer (confirmed)
+        confirmed: true,
+      },
+      createdAt: call1StartTime,
+    });
+    createdCallIds.push(call1Id);
+
+    // Add transcript segments for call 1
+    const call1Segments = [
+      { speaker: "closer", text: "Hi Jennifer, thanks for hopping on today. How are you doing?", timestamp: 5 },
+      { speaker: "prospect", text: "I'm doing okay, thanks. Been a crazy week but I'm hanging in there.", timestamp: 15 },
+      { speaker: "closer", text: "I hear you. So tell me a bit about what's going on with your business right now.", timestamp: 25 },
+      { speaker: "prospect", text: "Well honestly, I've been stuck at the same revenue level for about 18 months now. No matter what I try, I can't seem to break through.", timestamp: 35 },
+      { speaker: "prospect", text: "I've tried hiring VAs, running more ads, even raised my prices... but nothing seems to move the needle.", timestamp: 55 },
+      { speaker: "closer", text: "That sounds frustrating. What would it mean for you if you could finally break through that ceiling?", timestamp: 75 },
+      { speaker: "prospect", text: "Oh man, it would change everything. I could finally pay myself a real salary. Maybe even take a vacation.", timestamp: 85 },
+      { speaker: "prospect", text: "My husband keeps asking when things are going to get better. I don't know what to tell him anymore.", timestamp: 105 },
+      { speaker: "closer", text: "I can hear how much pressure you're under. Tell me more about what you've already tried.", timestamp: 125 },
+      { speaker: "prospect", text: "I spent $15,000 on a marketing agency last year. Complete waste of money.", timestamp: 140 },
+      { speaker: "prospect", text: "They promised me 50 leads a month and I maybe got 10. And none of them converted.", timestamp: 160 },
+      { speaker: "closer", text: "That's rough. What do you think went wrong there?", timestamp: 180 },
+      { speaker: "prospect", text: "I think they just didn't understand my audience. Everything felt generic.", timestamp: 195 },
+    ];
+
+    for (const segment of call1Segments) {
+      await ctx.db.insert("transcriptSegments", {
+        callId: call1Id,
+        teamId: team._id,
+        speaker: segment.speaker,
+        text: segment.text,
+        timestamp: segment.timestamp,
+        createdAt: call1StartTime + segment.timestamp * 1000,
+      });
+    }
+
+    // Add ammo for call 1
+    const call1Ammo = [
+      { text: "I've been stuck at the same revenue level for about 18 months now", type: "pain_point", timestamp: 35 },
+      { text: "My husband keeps asking when things are going to get better. I don't know what to tell him anymore.", type: "emotional", timestamp: 105 },
+      { text: "I spent $15,000 on a marketing agency last year. Complete waste of money.", type: "budget", timestamp: 140 },
+    ];
+
+    for (const ammo of call1Ammo) {
+      await ctx.db.insert("ammo", {
+        callId: call1Id,
+        teamId: team._id,
+        text: ammo.text,
+        type: ammo.type,
+        timestamp: ammo.timestamp,
+        createdAt: now,
+      });
+    }
+
+    // Call 2: Call where closer is talking too much - 12 minutes in
+    const call2StartTime = now - 12 * 60 * 1000; // 12 minutes ago
+    const call2Id = await ctx.db.insert("calls", {
+      teamId: team._id,
+      closerId: closers[1]._id,
+      prospectName: "Robert Thompson",
+      status: "on_call",
+      speakerCount: 2,
+      startedAt: call2StartTime,
+      closerTalkTime: 480, // 8 minutes (too much!)
+      prospectTalkTime: 240, // 4 minutes
+      speakerMapping: {
+        closerSpeaker: "speaker_0", // Speaker 1 = Closer (not yet confirmed)
+        confirmed: false,
+      },
+      createdAt: call2StartTime,
+    });
+    createdCallIds.push(call2Id);
+
+    // Add transcript segments for call 2
+    const call2Segments = [
+      { speaker: "closer", text: "Robert, great to connect with you today. Let me tell you a bit about what we do here.", timestamp: 10 },
+      { speaker: "closer", text: "We've helped over 200 businesses scale past 7 figures using our proprietary system.", timestamp: 25 },
+      { speaker: "prospect", text: "That sounds interesting. How long does it usually take?", timestamp: 45 },
+      { speaker: "closer", text: "Great question. So our program is 12 weeks, and in that time we cover lead generation, sales systems, fulfillment optimization...", timestamp: 55 },
+      { speaker: "closer", text: "...and then we also do weekly coaching calls, plus you get access to our private community.", timestamp: 75 },
+      { speaker: "prospect", text: "Okay, what does it cost?", timestamp: 95 },
+      { speaker: "closer", text: "Before I get into that, let me explain the full value you're getting. So the course alone is worth $10,000...", timestamp: 105 },
+      { speaker: "prospect", text: "I really just need to know the price. I'm on a tight budget.", timestamp: 145 },
+    ];
+
+    for (const segment of call2Segments) {
+      await ctx.db.insert("transcriptSegments", {
+        callId: call2Id,
+        teamId: team._id,
+        speaker: segment.speaker,
+        text: segment.text,
+        timestamp: segment.timestamp,
+        createdAt: call2StartTime + segment.timestamp * 1000,
+      });
+    }
+
+    // Add ammo for call 2
+    const call2Ammo = [
+      { text: "I'm on a tight budget", type: "budget", timestamp: 145 },
+    ];
+
+    for (const ammo of call2Ammo) {
+      await ctx.db.insert("ammo", {
+        callId: call2Id,
+        teamId: team._id,
+        text: ammo.text,
+        type: ammo.type,
+        timestamp: ammo.timestamp,
+        createdAt: now,
+      });
+    }
+
+    // Call 3: Waiting room - prospect hasn't joined yet - 2 minutes waiting
+    const call3StartTime = now - 2 * 60 * 1000; // 2 minutes ago
+    const call3Id = await ctx.db.insert("calls", {
+      teamId: team._id,
+      closerId: closers[2]._id,
+      prospectName: "Amanda Wilson",
+      status: "waiting",
+      speakerCount: 1,
+      startedAt: call3StartTime,
+      createdAt: call3StartTime,
+    });
+    createdCallIds.push(call3Id);
+
+    // Call 4: Just started, balanced talk ratio - 3 minutes in
+    const call4StartTime = now - 3 * 60 * 1000; // 3 minutes ago
+    const call4Id = await ctx.db.insert("calls", {
+      teamId: team._id,
+      closerId: closers[0]._id,
+      prospectName: "Chris Anderson",
+      status: "on_call",
+      speakerCount: 2,
+      startedAt: call4StartTime,
+      closerTalkTime: 85, // ~1.5 minutes
+      prospectTalkTime: 95, // ~1.5 minutes
+      speakerMapping: {
+        closerSpeaker: "speaker_0", // Speaker 1 = Closer (confirmed)
+        confirmed: true,
+      },
+      createdAt: call4StartTime,
+    });
+    createdCallIds.push(call4Id);
+
+    // Add transcript segments for call 4
+    const call4Segments = [
+      { speaker: "closer", text: "Hey Chris! Good to meet you. How's your day going?", timestamp: 5 },
+      { speaker: "prospect", text: "Pretty good, thanks. Busy as always but excited to chat.", timestamp: 12 },
+      { speaker: "closer", text: "Awesome. So what prompted you to book this call today?", timestamp: 22 },
+      { speaker: "prospect", text: "I saw your ad about scaling coaching businesses. I'm at about $30k/month right now and want to get to $100k.", timestamp: 32 },
+      { speaker: "closer", text: "Nice! $30k is a great foundation. What's been the biggest bottleneck for you?", timestamp: 52 },
+      { speaker: "prospect", text: "Honestly, I'm doing everything myself. Sales, delivery, content... I'm burned out.", timestamp: 65 },
+    ];
+
+    for (const segment of call4Segments) {
+      await ctx.db.insert("transcriptSegments", {
+        callId: call4Id,
+        teamId: team._id,
+        speaker: segment.speaker,
+        text: segment.text,
+        timestamp: segment.timestamp,
+        createdAt: call4StartTime + segment.timestamp * 1000,
+      });
+    }
+
+    // Add ammo for call 4
+    const call4Ammo = [
+      { text: "I'm at about $30k/month right now and want to get to $100k", type: "commitment", timestamp: 32 },
+      { text: "I'm doing everything myself. Sales, delivery, content... I'm burned out.", type: "pain_point", timestamp: 65 },
+    ];
+
+    for (const ammo of call4Ammo) {
+      await ctx.db.insert("ammo", {
+        callId: call4Id,
+        teamId: team._id,
+        text: ammo.text,
+        type: ammo.type,
+        timestamp: ammo.timestamp,
+        createdAt: now,
+      });
+    }
+
+    return {
+      message: "Created 4 test live calls",
+      callIds: createdCallIds,
+      teamId: team._id,
+    };
+  },
+});
+
+// Set initial speaker mapping (auto-detected by audio processor)
+export const setSpeakerMapping = mutation({
+  args: {
+    callId: v.id("calls"),
+    closerSpeaker: v.string(), // "speaker_0" or "speaker_1"
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      speakerMapping: {
+        closerSpeaker: args.closerSpeaker,
+        confirmed: false,
+      },
+    });
+  },
+});
+
+// Confirm speaker mapping (closer confirms auto-detection was correct)
+export const confirmSpeakerMapping = mutation({
+  args: {
+    callId: v.id("calls"),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call || !call.speakerMapping) return;
+
+    await ctx.db.patch(args.callId, {
+      speakerMapping: {
+        ...call.speakerMapping,
+        confirmed: true,
+      },
+    });
+  },
+});
+
+// Swap speaker mapping (closer indicates auto-detection was wrong)
+export const swapSpeakerMapping = mutation({
+  args: {
+    callId: v.id("calls"),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call || !call.speakerMapping) return;
+
+    // Swap the speaker assignment
+    const currentCloser = call.speakerMapping.closerSpeaker;
+    const newCloser = currentCloser === "speaker_0" ? "speaker_1" : "speaker_0";
+
+    await ctx.db.patch(args.callId, {
+      speakerMapping: {
+        closerSpeaker: newCloser,
+        confirmed: true, // User confirmed by swapping
+      },
+    });
+
+    // Also swap the talk time values so they're accurate
+    if (call.closerTalkTime !== undefined && call.prospectTalkTime !== undefined) {
+      await ctx.db.patch(args.callId, {
+        closerTalkTime: call.prospectTalkTime,
+        prospectTalkTime: call.closerTalkTime,
+      });
+    }
+  },
+});
+
+// Clean up test live calls
+export const cleanupLiveCalls = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // Delete all waiting and on_call status calls
+    const team = await ctx.db.query("teams").first();
+    if (!team) return { deleted: 0 };
+
+    const liveCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", team._id))
+      .collect();
+
+    let deleted = 0;
+    for (const call of liveCalls) {
+      if (call.status === "waiting" || call.status === "on_call") {
+        // Delete associated ammo
+        const ammo = await ctx.db
+          .query("ammo")
+          .withIndex("by_call", (q) => q.eq("callId", call._id))
+          .collect();
+        for (const a of ammo) {
+          await ctx.db.delete(a._id);
+        }
+
+        // Delete associated transcript segments
+        const segments = await ctx.db
+          .query("transcriptSegments")
+          .withIndex("by_call", (q) => q.eq("callId", call._id))
+          .collect();
+        for (const s of segments) {
+          await ctx.db.delete(s._id);
+        }
+
+        // Delete the call
+        await ctx.db.delete(call._id);
+        deleted++;
+      }
+    }
+
+    return { deleted };
   },
 });

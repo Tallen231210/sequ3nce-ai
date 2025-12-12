@@ -77,3 +77,37 @@ export async function activateCloser(email: string): Promise<boolean> {
     return false;
   }
 }
+
+// Complete call with post-call questionnaire data
+export async function completeCallWithOutcome(data: {
+  callId: string;
+  prospectName: string;
+  outcome: string;
+  dealValue?: number;
+  notes?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log("[Convex] Completing call with outcome:", data);
+
+    const response = await fetch(`${CONVEX_SITE_URL}/completeCallWithOutcome`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("[Convex] Failed to complete call:", errorData);
+      return { success: false, error: errorData.error || "Failed to complete call" };
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Complete call result:", result);
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to complete call:", error);
+    return { success: false, error: "Network error" };
+  }
+}

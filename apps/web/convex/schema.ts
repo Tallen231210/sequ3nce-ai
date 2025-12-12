@@ -89,6 +89,17 @@ export default defineSchema({
     speakerCount: v.number(), // 1 = waiting, 2+ = on call
     recordingUrl: v.optional(v.string()), // S3 URL
     transcriptText: v.optional(v.string()), // Full transcript
+    // Talk-to-listen ratio (from Deepgram speaker diarization)
+    closerTalkTime: v.optional(v.number()), // Closer talk time in seconds
+    prospectTalkTime: v.optional(v.number()), // Prospect talk time in seconds
+    // Speaker mapping (maps Deepgram speakers to closer/prospect)
+    speakerMapping: v.optional(v.object({
+      closerSpeaker: v.string(), // "speaker_0" or "speaker_1" from Deepgram
+      confirmed: v.boolean(), // Whether the closer has confirmed/corrected this mapping
+    })),
+    // Post-call data (from closer questionnaire)
+    notes: v.optional(v.string()), // Optional notes from closer
+    completedAt: v.optional(v.number()), // Timestamp when closer submitted questionnaire
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])
@@ -121,6 +132,18 @@ export default defineSchema({
   })
     .index("by_call", ["callId"])
     .index("by_team", ["teamId"]),
+
+  // Live transcript segments (for real-time streaming during calls)
+  transcriptSegments: defineTable({
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    speaker: v.string(), // "closer" or "prospect"
+    text: v.string(),
+    timestamp: v.number(), // seconds from call start
+    createdAt: v.number(),
+  })
+    .index("by_call", ["callId"])
+    .index("by_call_and_time", ["callId", "timestamp"]),
 
   // Playbook highlights (saved call segments for training)
   highlights: defineTable({

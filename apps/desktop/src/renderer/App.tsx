@@ -3,8 +3,9 @@ import { AudioStatus } from './types/electron';
 import { StatusIndicator } from './components/StatusIndicator';
 import { AudioLevelMeter } from './components/AudioLevelMeter';
 import { RecordButton } from './components/RecordButton';
+import { PostCallQuestionnaire, CallOutcome } from './components/PostCallQuestionnaire';
 import { useAudioCapture } from './hooks/useAudioCapture';
-import { getCloserByEmail, activateCloser, type CloserInfo } from './convex';
+import { getCloserByEmail, activateCloser, completeCallWithOutcome, type CloserInfo } from './convex';
 
 // Simple local storage for persisting login
 const STORAGE_KEY = 'seq3nce_closer_email';
@@ -153,6 +154,9 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [duration, setDuration] = useState(0);
   const [version, setVersion] = useState('');
   const [ammoTrackerVisible, setAmmoTrackerVisible] = useState(false);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [pendingCallId, setPendingCallId] = useState<string | null>(null);
+  const [isSubmittingQuestionnaire, setIsSubmittingQuestionnaire] = useState(false);
   const isCapturingRef = useRef(false);
 
   // Audio capture hook
@@ -257,11 +261,54 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   };
 
   const handleStop = async () => {
+    // Store the current callId before stopping
+    if (callId) {
+      setPendingCallId(callId);
+      setShowQuestionnaire(true);
+    }
+
+    // Stop audio capture
     if (isCapturingRef.current) {
       stopCapture();
       isCapturingRef.current = false;
     }
     await window.electron.audio.stop();
+  };
+
+  const handleQuestionnaireSubmit = async (data: {
+    prospectName: string;
+    outcome: CallOutcome;
+    dealValue?: number;
+    notes?: string;
+  }) => {
+    if (!pendingCallId) return;
+
+    setIsSubmittingQuestionnaire(true);
+
+    const result = await completeCallWithOutcome({
+      callId: pendingCallId,
+      prospectName: data.prospectName,
+      outcome: data.outcome,
+      dealValue: data.dealValue,
+      notes: data.notes,
+    });
+
+    setIsSubmittingQuestionnaire(false);
+
+    if (result.success) {
+      setShowQuestionnaire(false);
+      setPendingCallId(null);
+    } else {
+      setError(result.error || 'Failed to save call data');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const handleQuestionnaireCancel = () => {
+    // Allow cancel but warn user - for now just close
+    // In production, you might want to confirm first
+    setShowQuestionnaire(false);
+    setPendingCallId(null);
   };
 
   const formatDuration = (seconds: number): string => {
@@ -280,6 +327,15 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
 
   return (
     <div className="h-screen flex flex-col bg-black text-white">
+      {/* Post-Call Questionnaire Modal */}
+      {showQuestionnaire && pendingCallId && (
+        <PostCallQuestionnaire
+          callId={pendingCallId}
+          onSubmit={handleQuestionnaireSubmit}
+          onCancel={handleQuestionnaireCancel}
+        />
+      )}
+
       {/* Draggable title bar */}
       <div className="titlebar h-8 flex items-center justify-between px-4 border-b border-zinc-800">
         <span className="text-xs text-zinc-500 font-medium">Seq3nce</span>

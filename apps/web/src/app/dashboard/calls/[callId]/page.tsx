@@ -41,6 +41,8 @@ import {
   Mic,
   Bookmark,
   Loader2,
+  BarChart3,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -65,12 +67,19 @@ interface CallDetails {
   status: string;
   outcome?: string;
   dealValue?: number;
+  notes?: string;
   startedAt?: number;
   endedAt?: number;
   duration?: number;
   speakerCount: number;
   recordingUrl?: string;
   transcriptText?: string;
+  closerTalkTime?: number;
+  prospectTalkTime?: number;
+  speakerMapping?: {
+    closerSpeaker: string;
+    confirmed: boolean;
+  };
   createdAt: number;
   closer: { name: string; email: string } | null;
   teamName: string | null;
@@ -124,8 +133,12 @@ function getOutcomeBadge(outcome?: string) {
   switch (outcome) {
     case "closed":
       return <Badge variant="default">Closed</Badge>;
+    case "follow_up":
+      return <Badge variant="secondary">Follow Up</Badge>;
     case "not_closed":
       return <Badge variant="secondary">Not Closed</Badge>;
+    case "lost":
+      return <Badge variant="destructive">Lost</Badge>;
     case "no_show":
       return <Badge variant="outline">No-Show</Badge>;
     case "rescheduled":
@@ -134,6 +147,17 @@ function getOutcomeBadge(outcome?: string) {
       return <Badge variant="outline">Pending</Badge>;
   }
 }
+
+// Outcome options for the edit modal
+const OUTCOME_OPTIONS = [
+  { value: "closed", label: "Closed" },
+  { value: "follow_up", label: "Follow Up" },
+  { value: "lost", label: "Lost" },
+  { value: "no_show", label: "No Show" },
+];
+
+// Quick-select deal value presets
+const DEAL_VALUE_PRESETS = [1000, 3000, 5000, 10000, 15000];
 
 function getAmmoTypeColor(type: string): string {
   switch (type) {
@@ -171,6 +195,36 @@ function getAmmoTypeLabel(type: string): string {
     default:
       return type;
   }
+}
+
+// Talk-to-Listen Ratio Bar Component
+function TalkRatioBar({ closerTalkTime, prospectTalkTime }: { closerTalkTime?: number; prospectTalkTime?: number }) {
+  const total = (closerTalkTime || 0) + (prospectTalkTime || 0);
+
+  if (total === 0) {
+    return <span className="text-sm text-muted-foreground">No data</span>;
+  }
+
+  const closerPercent = Math.round(((closerTalkTime || 0) / total) * 100);
+  const prospectPercent = 100 - closerPercent;
+
+  return (
+    <div className="w-36">
+      <p className="text-[10px] text-muted-foreground text-center mb-1">Talk-to-Listen Ratio</p>
+      <div className="flex items-center gap-1">
+        <div className="flex-1 h-2 bg-zinc-200 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-zinc-800 transition-all duration-500"
+            style={{ width: `${closerPercent}%` }}
+          />
+        </div>
+      </div>
+      <div className="flex justify-between text-xs text-muted-foreground mt-1">
+        <span>Closer {closerPercent}%</span>
+        <span>Prospect {prospectPercent}%</span>
+      </div>
+    </div>
+  );
 }
 
 // Audio Player Component
@@ -309,8 +363,47 @@ interface TranscriptSegment {
   ammoText?: string;
 }
 
+// Map speaker label based on speaker mapping
+function mapSpeakerLabel(
+  rawSpeaker: string,
+  speakerMapping?: { closerSpeaker: string; confirmed: boolean }
+): string {
+  // If already labeled as Closer/Prospect, return as is
+  if (rawSpeaker.toLowerCase() === "closer") return "Closer";
+  if (rawSpeaker.toLowerCase() === "prospect") return "Prospect";
+
+  // If no mapping, just clean up the speaker label but still try to map to Closer/Prospect
+  if (!speakerMapping) {
+    // Default: Speaker 1 = Closer, Speaker 2 = Prospect (common assumption)
+    if (rawSpeaker.match(/speaker\s*1/i)) return "Closer";
+    if (rawSpeaker.match(/speaker\s*2/i)) return "Prospect";
+    return rawSpeaker;
+  }
+
+  // Use the speaker mapping to determine who is closer vs prospect
+  // speakerMapping.closerSpeaker is "speaker_0" or "speaker_1" from Deepgram
+  // In transcript format, it appears as "Speaker 1" (speaker_0) or "Speaker 2" (speaker_1)
+  const closerSpeaker = speakerMapping.closerSpeaker;
+
+  // Map transcript speaker labels to Deepgram speaker IDs
+  // "Speaker 1" in transcript = "speaker_0" in Deepgram
+  // "Speaker 2" in transcript = "speaker_1" in Deepgram
+  if (rawSpeaker.match(/speaker\s*1/i)) {
+    return closerSpeaker === "speaker_0" ? "Closer" : "Prospect";
+  }
+  if (rawSpeaker.match(/speaker\s*2/i)) {
+    return closerSpeaker === "speaker_1" ? "Closer" : "Prospect";
+  }
+
+  return rawSpeaker;
+}
+
 // Parse transcript text into segments
-function parseTranscript(text: string, ammoItems: AmmoItem[]): TranscriptSegment[] {
+function parseTranscript(
+  text: string,
+  ammoItems: AmmoItem[],
+  speakerMapping?: { closerSpeaker: string; confirmed: boolean }
+): TranscriptSegment[] {
   if (!text) return [];
 
   // Simple parsing - split by newlines, try to detect speaker patterns
@@ -330,8 +423,11 @@ function parseTranscript(text: string, ammoItems: AmmoItem[]): TranscriptSegment
     const speakerMatch = line.match(/^(?:\[[\d:]+\]\s*)?(Speaker\s*\d+|Closer|Prospect|Unknown):\s*(.+)/i);
 
     if (speakerMatch) {
-      const speaker = speakerMatch[1];
+      const rawSpeaker = speakerMatch[1];
       const content = speakerMatch[2].trim();
+
+      // Map the speaker label using the speaker mapping
+      const speaker = mapSpeakerLabel(rawSpeaker, speakerMapping);
 
       // Check if this segment contains any ammo
       const matchingAmmo = ammoItems.find(
@@ -349,8 +445,9 @@ function parseTranscript(text: string, ammoItems: AmmoItem[]): TranscriptSegment
       });
     } else if (line.trim()) {
       // No speaker detected, add as continuation or new segment
+      const rawSpeaker = segments.length % 2 === 0 ? "Speaker 1" : "Speaker 2";
       segments.push({
-        speaker: segments.length % 2 === 0 ? "Speaker 1" : "Speaker 2",
+        speaker: mapSpeakerLabel(rawSpeaker, speakerMapping),
         text: line.trim(),
         timestamp: currentTimestamp,
         hasAmmo: false,
@@ -381,6 +478,7 @@ interface TranscriptViewProps {
   highlightedAmmo?: string;
   onSelectionChange?: (selection: SelectionState | null) => void;
   selectedIndices?: Set<number>;
+  speakerMapping?: { closerSpeaker: string; confirmed: boolean };
 }
 
 function TranscriptView({
@@ -391,8 +489,9 @@ function TranscriptView({
   highlightedAmmo,
   onSelectionChange,
   selectedIndices,
+  speakerMapping,
 }: TranscriptViewProps) {
-  const segments = useMemo(() => parseTranscript(transcript, ammoItems), [transcript, ammoItems]);
+  const segments = useMemo(() => parseTranscript(transcript, ammoItems, speakerMapping), [transcript, ammoItems, speakerMapping]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
@@ -830,6 +929,7 @@ export default function CallDetailPage() {
   ) as CallDetails | null | undefined;
 
   const createHighlight = useMutation(api.highlights.createHighlight);
+  const updateCallData = useMutation(api.calls.updateCallData);
 
   const [audioSeekTime, setAudioSeekTime] = useState<number | undefined>(undefined);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
@@ -843,6 +943,15 @@ export default function CallDetailPage() {
   const [highlightCategory, setHighlightCategory] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Edit call modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editProspectName, setEditProspectName] = useState("");
+  const [editOutcome, setEditOutcome] = useState("");
+  const [editDealValue, setEditDealValue] = useState<number | "">("");
+  const [editNotes, setEditNotes] = useState("");
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [editSaveSuccess, setEditSaveSuccess] = useState(false);
 
   const handleSegmentClick = useCallback((timestamp: number) => {
     setAudioSeekTime(timestamp);
@@ -904,6 +1013,42 @@ export default function CallDetailPage() {
     setSelection(null);
   };
 
+  // Edit call handlers
+  const handleOpenEditModal = () => {
+    if (!call) return;
+    setEditProspectName(call.prospectName || "");
+    setEditOutcome(call.outcome || "");
+    setEditDealValue(call.dealValue || "");
+    setEditNotes(call.notes || "");
+    setEditSaveSuccess(false);
+    setShowEditModal(true);
+  };
+
+  const handleSaveCallEdit = async () => {
+    if (!call) return;
+
+    setIsEditSaving(true);
+    try {
+      await updateCallData({
+        callId: call._id,
+        prospectName: editProspectName || undefined,
+        outcome: editOutcome || undefined,
+        dealValue: editDealValue ? Number(editDealValue) : undefined,
+        notes: editNotes || undefined,
+      });
+
+      setEditSaveSuccess(true);
+      setTimeout(() => {
+        setEditSaveSuccess(false);
+        setShowEditModal(false);
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to update call:", error);
+    } finally {
+      setIsEditSaving(false);
+    }
+  };
+
   // Loading state
   if (call === undefined) {
     return <LoadingState />;
@@ -963,6 +1108,12 @@ export default function CallDetailPage() {
                   </span>
                 </div>
 
+                {/* Talk-to-Listen Ratio */}
+                <TalkRatioBar
+                  closerTalkTime={call.closerTalkTime}
+                  prospectTalkTime={call.prospectTalkTime}
+                />
+
                 {/* Outcome */}
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-zinc-500" />
@@ -978,6 +1129,17 @@ export default function CallDetailPage() {
                     </span>
                   </div>
                 )}
+
+                {/* Edit Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenEditModal}
+                  className="gap-2"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -1020,6 +1182,7 @@ export default function CallDetailPage() {
                   highlightedAmmo={highlightedAmmo}
                   onSelectionChange={handleSelectionChange}
                   selectedIndices={selection ? new Set(Array.from({ length: selection.endIndex - selection.startIndex + 1 }, (_, i) => selection.startIndex + i)) : undefined}
+                  speakerMapping={call.speakerMapping}
                 />
               </CardContent>
             </Card>
@@ -1179,6 +1342,135 @@ export default function CallDetailPage() {
                   </>
                 ) : (
                   "Save Highlight"
+                )}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Call Modal */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Call Details</DialogTitle>
+            <DialogDescription>
+              Update the call information. Changes will be saved immediately.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editSaveSuccess ? (
+            <div className="flex flex-col items-center justify-center py-8">
+              <div className="h-12 w-12 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
+                <Check className="h-6 w-6 text-green-500" />
+              </div>
+              <p className="text-lg font-medium">Changes Saved!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Prospect Name */}
+              <div>
+                <Label htmlFor="editProspectName" className="text-sm font-medium">
+                  Prospect Name
+                </Label>
+                <Input
+                  id="editProspectName"
+                  value={editProspectName}
+                  onChange={(e) => setEditProspectName(e.target.value)}
+                  placeholder="Enter prospect name"
+                  className="mt-2"
+                />
+              </div>
+
+              {/* Outcome */}
+              <div>
+                <Label htmlFor="editOutcome" className="text-sm font-medium">
+                  Outcome
+                </Label>
+                <Select value={editOutcome} onValueChange={setEditOutcome}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select outcome" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OUTCOME_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Deal Value (only show if outcome is closed) */}
+              {editOutcome === "closed" && (
+                <div>
+                  <Label htmlFor="editDealValue" className="text-sm font-medium">
+                    Deal Value
+                  </Label>
+                  {/* Quick select buttons */}
+                  <div className="flex flex-wrap gap-2 mt-2 mb-3">
+                    {DEAL_VALUE_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setEditDealValue(preset)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          editDealValue === preset
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                        }`}
+                      >
+                        {formatCurrency(preset)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                    <Input
+                      id="editDealValue"
+                      type="number"
+                      value={editDealValue}
+                      onChange={(e) => setEditDealValue(e.target.value ? Number(e.target.value) : "")}
+                      placeholder="Custom amount"
+                      className="pl-8"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div>
+                <Label htmlFor="editNotes" className="text-sm font-medium">
+                  Notes
+                </Label>
+                <Textarea
+                  id="editNotes"
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add any notes about this call..."
+                  className="mt-2"
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          {!editSaveSuccess && (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowEditModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveCallEdit}
+                disabled={isEditSaving}
+              >
+                {isEditSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
                 )}
               </Button>
             </DialogFooter>
