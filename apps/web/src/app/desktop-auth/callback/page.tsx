@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 
-export default function DesktopAuthCallbackPage() {
+function DesktopAuthCallbackContent() {
   const { isSignedIn, isLoaded } = useAuth();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
@@ -144,5 +144,32 @@ export default function DesktopAuthCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-black mb-2">Seq3nce</h1>
+          <p className="text-gray-500">Desktop App Login</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">
+          <div className="w-16 h-16 border-4 border-gray-200 border-t-black rounded-full animate-spin mx-auto mb-6" />
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Loading...
+          </h2>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DesktopAuthCallbackPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <DesktopAuthCallbackContent />
+    </Suspense>
   );
 }
