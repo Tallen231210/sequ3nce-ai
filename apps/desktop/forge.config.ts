@@ -53,21 +53,6 @@ const config: ForgeConfig = {
       name: 'Seq3nce',
       icon: './assets/icon.icns',
       format: 'ULFO', // Use ULFO for best compression
-      background: './assets/dmg-background.png',
-      contents: [
-        {
-          x: 130,
-          y: 220,
-          type: 'file',
-          path: '', // Will be filled with the actual app path
-        },
-        {
-          x: 410,
-          y: 220,
-          type: 'link',
-          path: '/Applications',
-        },
-      ],
     }),
     // macOS ZIP (for auto-updates)
     new MakerZIP({}, ['darwin']),
