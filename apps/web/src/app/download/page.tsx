@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
 
 interface Release {
@@ -133,14 +132,8 @@ export default function DownloadPage() {
     <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-4">
           <Logo href="/" height={28} />
-          <Link
-            href="/sign-in"
-            className="text-gray-600 hover:text-black transition-colors"
-          >
-            Sign In
-          </Link>
         </div>
       </header>
 
