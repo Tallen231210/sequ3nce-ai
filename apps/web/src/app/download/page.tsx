@@ -33,12 +33,10 @@ export default function DownloadPage() {
       setPlatform("linux");
     }
 
-    // Fetch latest release from GitHub
+    // Fetch latest release from our API (proxies to GitHub with auth)
     const fetchRelease = async () => {
       try {
-        const response = await fetch(
-          "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases/latest"
-        );
+        const response = await fetch("/api/releases");
         if (response.ok) {
           const data = await response.json();
           setRelease(data);
