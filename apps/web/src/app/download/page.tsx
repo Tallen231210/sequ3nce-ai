@@ -104,7 +104,7 @@ export default function DownloadPage() {
         </svg>
       ),
       extension: ".dmg",
-      instructions: "After installing, open Terminal and run: xattr -cr /Applications/Seq3nce.app then open the app.",
+      instructions: "Open the DMG, drag Seq3nce to Applications, then open the app.",
     },
     windows: {
       name: "Windows",
