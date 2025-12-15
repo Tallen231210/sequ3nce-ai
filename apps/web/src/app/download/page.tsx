@@ -17,7 +17,7 @@ interface Release {
 type Platform = "mac" | "windows" | "linux" | null;
 
 // Mac installer script command
-const MAC_INSTALL_COMMAND = "curl -sSL https://seq3nce.ai/install.sh | bash";
+const MAC_INSTALL_COMMAND = "curl -sSL https://sequ3nce.ai/install.sh | bash";
 
 export default function DownloadPage() {
   const [platform, setPlatform] = useState<Platform>(null);

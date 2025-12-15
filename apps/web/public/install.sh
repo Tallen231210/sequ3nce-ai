@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Seq3nce Desktop Installer for macOS
-# Usage: curl -sSL https://seq3nce.ai/install.sh | bash
+# Usage: curl -sSL https://sequ3nce.ai/install.sh | bash
 #
 # This script downloads and installs Seq3nce without triggering Gatekeeper issues
 # by using curl (which doesn't add quarantine flags) and ad-hoc signing
