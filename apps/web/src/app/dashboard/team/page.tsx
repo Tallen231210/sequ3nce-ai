@@ -223,20 +223,27 @@ export default function TeamPage() {
       setSuccess(`${name} has been added to your team`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: unknown) {
-      // Extract clean error message from Convex error
-      let message = "Failed to add closer";
+      // Show user-friendly error messages, log technical details for debugging
+      console.error("Error adding closer:", err);
+
+      let message = "Unable to add closer. Please try again.";
+
       if (err instanceof Error) {
-        const fullMessage = err.message;
-        // Convex errors come in format: "[CONVEX M(...)] ... Uncaught Error: MESSAGE at handler ..."
-        // Extract just the user-friendly message part
-        const match = fullMessage.match(/Uncaught Error:\s*(.+?)\s*at handler/);
-        if (match && match[1]) {
-          message = match[1].trim();
-        } else {
-          // Fallback: use the full message if pattern doesn't match
-          message = fullMessage;
+        const fullMessage = err.message.toLowerCase();
+
+        // Map technical errors to user-friendly messages
+        if (fullMessage.includes("already added") || fullMessage.includes("already exists")) {
+          message = "A closer with this email already exists on your team.";
+        } else if (fullMessage.includes("password") && fullMessage.includes("6")) {
+          message = "Password must be at least 6 characters.";
+        } else if (fullMessage.includes("invalid email") || fullMessage.includes("email")) {
+          message = "Please enter a valid email address.";
+        } else if (fullMessage.includes("network") || fullMessage.includes("fetch")) {
+          message = "Network error. Please check your connection and try again.";
         }
+        // For any other error, use the generic message (don't expose technical details)
       }
+
       setError(message);
       setTimeout(() => setError(null), 5000);
     } finally {
