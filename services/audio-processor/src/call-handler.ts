@@ -207,21 +207,35 @@ export class CallHandler {
 
     // Upload recording to S3
     let recordingUrl = "";
-    if (this.session.audioBuffer.length > 0) {
+    const audioChunkCount = this.session.audioBuffer.length;
+    logger.info(`Recording upload: ${audioChunkCount} audio chunks collected`);
+
+    if (audioChunkCount > 0) {
       try {
         const combinedBuffer = Buffer.concat(this.session.audioBuffer);
+        logger.info(`Recording upload: Combined buffer size = ${combinedBuffer.length} bytes`);
+
         recordingUrl = await uploadRecording(
           this.session.metadata.teamId,
           this.session.metadata.callId,
           combinedBuffer
         );
+
+        if (recordingUrl) {
+          logger.info(`Recording uploaded successfully: ${recordingUrl}`);
+        } else {
+          logger.warn(`Recording upload returned empty URL - check S3 configuration`);
+        }
       } catch (error) {
         logger.error("Failed to upload recording", error);
       }
+    } else {
+      logger.warn(`No audio chunks collected for call ${this.session.metadata.callId} - no recording to upload`);
     }
 
     // Mark call as completed in Convex
     if (this.convexCallId) {
+      logger.info(`Completing call in Convex: ${this.convexCallId}, recordingUrl=${recordingUrl ? 'set' : 'empty'}`);
       await completeCall(
         this.convexCallId,
         recordingUrl,
@@ -230,7 +244,7 @@ export class CallHandler {
       );
     }
 
-    logger.info(`Call ended: ${this.session.metadata.callId} (duration: ${duration}s)`);
+    logger.info(`Call ended: ${this.session.metadata.callId} (duration: ${duration}s, chunks: ${audioChunkCount}, hasRecording: ${!!recordingUrl})`);
   }
 
   getStats() {
