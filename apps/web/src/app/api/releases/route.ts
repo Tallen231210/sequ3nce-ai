@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+// Disable static caching - always fetch fresh
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const token = process.env.GITHUB_TOKEN;
 
@@ -18,8 +21,7 @@ export async function GET() {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
         },
-        // Cache for 5 minutes
-        next: { revalidate: 300 },
+        cache: "no-store",
       }
     );
 
