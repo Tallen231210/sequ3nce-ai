@@ -16,6 +16,9 @@ interface Release {
 
 type Platform = "mac" | "windows" | "linux" | null;
 
+// Mac installer script command
+const MAC_INSTALL_COMMAND = "curl -sSL https://seq3nce.ai/install.sh | bash";
+
 export default function DownloadPage() {
   const [platform, setPlatform] = useState<Platform>(null);
   const [release, setRelease] = useState<Release | null>(null);
@@ -95,6 +98,14 @@ export default function DownloadPage() {
     return asset ? formatSize(asset.size) : "";
   };
 
+  const [copied, setCopied] = useState(false);
+
+  const copyInstallCommand = () => {
+    navigator.clipboard.writeText(MAC_INSTALL_COMMAND);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const platformInfo = {
     mac: {
       name: "macOS",
@@ -104,7 +115,8 @@ export default function DownloadPage() {
         </svg>
       ),
       extension: ".dmg",
-      instructions: "Open the DMG, drag Seq3nce to Applications, then open the app.",
+      instructions: "Run the installer command in Terminal to download and install.",
+      isBeta: true,
     },
     windows: {
       name: "Windows",
@@ -157,6 +169,11 @@ export default function DownloadPage() {
             </div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
               Seq3nce for {platformInfo[platform].name}
+              {platform === "mac" && (
+                <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-normal">
+                  Beta
+                </span>
+              )}
             </h2>
             {release && (
               <p className="text-gray-500 mb-6">
@@ -164,7 +181,40 @@ export default function DownloadPage() {
                 {getAssetSize(platform) && ` • ${getAssetSize(platform)}`}
               </p>
             )}
-            {loading ? (
+
+            {/* Special Mac installer flow */}
+            {platform === "mac" ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600 mb-4">
+                  Open Terminal and run this command to install:
+                </p>
+                <div className="bg-gray-900 rounded-lg p-4 text-left relative group">
+                  <code className="text-green-400 text-sm font-mono break-all">
+                    {MAC_INSTALL_COMMAND}
+                  </code>
+                  <button
+                    onClick={copyInstallCommand}
+                    className="absolute right-3 top-3 text-gray-400 hover:text-white transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    {copied ? (
+                      <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  This installer downloads and sets up Seq3nce automatically.
+                  <br />
+                  Full code signing coming soon for direct downloads.
+                </p>
+              </div>
+            ) : loading ? (
               <div className="w-8 h-8 border-2 border-gray-300 border-t-black rounded-full animate-spin mx-auto" />
             ) : getDownloadUrl(platform) ? (
               <a
@@ -186,9 +236,11 @@ export default function DownloadPage() {
                 </p>
               </div>
             )}
-            <p className="text-sm text-gray-500 mt-4">
-              {platformInfo[platform].instructions}
-            </p>
+            {platform !== "mac" && (
+              <p className="text-sm text-gray-500 mt-4">
+                {platformInfo[platform].instructions}
+              </p>
+            )}
           </div>
         )}
 
@@ -212,12 +264,24 @@ export default function DownloadPage() {
                 </div>
                 <h4 className="font-medium text-gray-900 mb-1">
                   {platformInfo[p].name}
+                  {p === "mac" && (
+                    <span className="ml-1 text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full">
+                      Beta
+                    </span>
+                  )}
                 </h4>
                 <p className="text-sm text-gray-500 mb-4">
                   {platformInfo[p].extension}
                   {getAssetSize(p) && ` • ${getAssetSize(p)}`}
                 </p>
-                {getDownloadUrl(p) ? (
+                {p === "mac" ? (
+                  <button
+                    onClick={copyInstallCommand}
+                    className="text-sm font-medium text-black hover:underline"
+                  >
+                    {copied ? "Copied!" : "Copy installer command"}
+                  </button>
+                ) : getDownloadUrl(p) ? (
                   <a
                     href={getDownloadUrl(p)!}
                     className="text-sm font-medium text-black hover:underline"
@@ -274,7 +338,9 @@ export default function DownloadPage() {
                 1
               </span>
               <span>
-                Download and install the app for your operating system
+                <strong>Mac:</strong> Open Terminal and run the installer command above
+                <br />
+                <strong>Windows/Linux:</strong> Download and run the installer
               </span>
             </li>
             <li className="flex items-start">
@@ -290,7 +356,7 @@ export default function DownloadPage() {
                 3
               </span>
               <span>
-                Grant screen recording permission (required for audio capture)
+                Grant screen recording permission when prompted (required for audio capture)
               </span>
             </li>
             <li className="flex items-start">
