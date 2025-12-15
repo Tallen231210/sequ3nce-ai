@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AudioStatus } from './types/electron';
 import { StatusIndicator } from './components/StatusIndicator';
 import { AudioLevelMeter } from './components/AudioLevelMeter';
@@ -7,8 +7,7 @@ import { PostCallQuestionnaire, CallOutcome } from './components/PostCallQuestio
 import { ProspectNamePrompt } from './components/ProspectNamePrompt';
 import { useAudioCapture } from './hooks/useAudioCapture';
 import {
-  getCloserByEmail,
-  activateCloser,
+  loginCloser,
   completeCallWithOutcome,
   findMatchingScheduledCall,
   updateProspectName,
@@ -18,241 +17,99 @@ import {
 import logoImage from '../assets/logo.png';
 
 // Storage keys
-const STORAGE_KEY = 'sequ3nce_closer_email';
-const SESSION_KEY = 'sequ3nce_session';
+const STORAGE_KEY = 'sequ3nce_closer_info';
 
 // Auth states
 type AuthState =
   | 'initial_loading'    // Checking if user is already logged in
-  | 'email_entry'        // Showing email input
-  | 'sending_link'       // Sending magic link
-  | 'waiting_for_link'   // Waiting for user to click magic link
-  | 'verifying'          // Verifying the session
-  | 'checking_closer'    // Authenticated, checking if they're a closer
+  | 'login'              // Showing login form
+  | 'logging_in'         // Attempting login
   | 'authenticated'      // Fully logged in
   | 'error';             // Error state
 
 interface AuthError {
   message: string;
-  action?: 'retry' | 'different_email' | 'contact_admin';
 }
 
 export function App() {
   const [authState, setAuthState] = useState<AuthState>('initial_loading');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [closerInfo, setCloserInfo] = useState<CloserInfo | null>(null);
   const [authError, setAuthError] = useState<AuthError | null>(null);
-  const [canResend, setCanResend] = useState(false);
-  const resendTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check for existing session on mount
   useEffect(() => {
     checkExistingSession();
+  }, []);
 
-    // Listen for auth callback from main process
-    const handleAuthCallback = (event: CustomEvent<{ token?: string; email?: string; error?: string }>) => {
-      console.log('[App] Auth callback received:', event.detail);
-      if (event.detail.error) {
-        setAuthError({ message: event.detail.error, action: 'retry' });
-        setAuthState('error');
-      } else if (event.detail.token) {
-        // Use email from callback if available, otherwise use the current email state
-        const authEmail = event.detail.email || email;
-        if (authEmail) {
-          setEmail(authEmail);
-        }
-        handleAuthSuccess(event.detail.token, authEmail);
-      }
-    };
+  const checkExistingSession = () => {
+    const savedCloserInfo = localStorage.getItem(STORAGE_KEY);
 
-    window.addEventListener('auth:callback' as any, handleAuthCallback);
-
-    return () => {
-      window.removeEventListener('auth:callback' as any, handleAuthCallback);
-      if (resendTimerRef.current) {
-        clearTimeout(resendTimerRef.current);
-      }
-    };
-  }, [email]);
-
-  const checkExistingSession = async () => {
-    const savedEmail = localStorage.getItem(STORAGE_KEY);
-    const savedSession = localStorage.getItem(SESSION_KEY);
-
-    if (savedEmail && savedSession) {
-      // Verify the session is still valid
-      setAuthState('verifying');
+    if (savedCloserInfo) {
       try {
-        const isValid = await window.electron.auth.verifySession(savedSession);
-        if (isValid) {
-          await verifyCloserAndLogin(savedEmail);
-        } else {
-          // Session expired, clear and show login
-          clearSession();
-          setAuthState('email_entry');
-        }
+        const info = JSON.parse(savedCloserInfo) as CloserInfo;
+        setCloserInfo(info);
+        setAuthState('authenticated');
       } catch (err) {
-        console.error('[App] Session verification error:', err);
+        console.error('[App] Error parsing saved closer info:', err);
         clearSession();
-        setAuthState('email_entry');
+        setAuthState('login');
       }
     } else {
-      setAuthState('email_entry');
+      setAuthState('login');
     }
   };
 
   const clearSession = () => {
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(SESSION_KEY);
     setCloserInfo(null);
   };
 
-  const handleSendMagicLink = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (!email.trim() || !password.trim()) return;
 
-    const normalizedEmail = email.trim().toLowerCase();
-    setAuthState('sending_link');
+    setAuthState('logging_in');
     setAuthError(null);
 
     try {
-      const result = await window.electron.auth.sendMagicLink(normalizedEmail);
+      const result = await loginCloser(email.trim().toLowerCase(), password);
 
-      if (result.success) {
-        setAuthState('waiting_for_link');
-        // Start resend timer (30 seconds)
-        setCanResend(false);
-        resendTimerRef.current = setTimeout(() => {
-          setCanResend(true);
-        }, 30000);
+      if (result.success && result.closer) {
+        // Save closer info to localStorage
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(result.closer));
+        setCloserInfo(result.closer);
+        setAuthState('authenticated');
       } else {
         setAuthError({
-          message: result.error || 'Failed to send magic link. Please try again.',
-          action: 'retry'
+          message: result.error || 'Login failed. Please try again.',
         });
         setAuthState('error');
       }
     } catch (err) {
-      console.error('[App] Error sending magic link:', err);
+      console.error('[App] Login error:', err);
       setAuthError({
         message: 'Network error. Please check your connection and try again.',
-        action: 'retry'
       });
       setAuthState('error');
     }
   };
 
-  const handleAuthSuccess = async (sessionToken: string, authEmail?: string) => {
-    setAuthState('checking_closer');
-    localStorage.setItem(SESSION_KEY, sessionToken);
-
-    // Use the email from callback if provided, otherwise use current state
-    const normalizedEmail = (authEmail || email).trim().toLowerCase();
-    await verifyCloserAndLogin(normalizedEmail);
-  };
-
-  const verifyCloserAndLogin = async (userEmail: string) => {
-    setAuthState('checking_closer');
-
-    try {
-      const info = await getCloserByEmail(userEmail);
-
-      if (!info) {
-        setAuthError({
-          message: "You haven't been added to a team yet. Contact your manager to get set up.",
-          action: 'contact_admin'
-        });
-        setAuthState('error');
-        return;
-      }
-
-      if (info.status === 'deactivated') {
-        setAuthError({
-          message: "Your account has been deactivated. Contact your manager for assistance.",
-          action: 'contact_admin'
-        });
-        setAuthState('error');
-        return;
-      }
-
-      // Activate the closer if pending
-      await activateCloser(userEmail);
-
-      localStorage.setItem(STORAGE_KEY, userEmail);
-      setCloserInfo(info);
-      setAuthState('authenticated');
-    } catch (err) {
-      console.error('[App] Error verifying closer:', err);
-      setAuthError({
-        message: 'Unable to verify your account. Please try again.',
-        action: 'retry'
-      });
-      setAuthState('error');
-    }
-  };
-
-  const handleResendLink = async () => {
-    if (!canResend) return;
-
-    setCanResend(false);
-    setAuthState('sending_link');
-
-    try {
-      const result = await window.electron.auth.sendMagicLink(email.trim().toLowerCase());
-
-      if (result.success) {
-        setAuthState('waiting_for_link');
-        resendTimerRef.current = setTimeout(() => {
-          setCanResend(true);
-        }, 30000);
-      } else {
-        setAuthError({
-          message: result.error || 'Failed to resend link.',
-          action: 'retry'
-        });
-        setAuthState('error');
-      }
-    } catch (err) {
-      setAuthError({
-        message: 'Network error. Please try again.',
-        action: 'retry'
-      });
-      setAuthState('error');
-    }
-  };
-
-  const handleUseDifferentEmail = () => {
-    setEmail('');
-    setAuthError(null);
-    setAuthState('email_entry');
-    if (resendTimerRef.current) {
-      clearTimeout(resendTimerRef.current);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await window.electron.auth.signOut();
-    } catch (err) {
-      console.error('[App] Logout error:', err);
-    }
+  const handleLogout = () => {
     clearSession();
     setEmail('');
-    setAuthState('email_entry');
+    setPassword('');
+    setAuthState('login');
   };
 
   const handleRetry = () => {
     setAuthError(null);
-    if (authError?.action === 'different_email') {
-      setAuthState('email_entry');
-    } else {
-      // Retry sending magic link
-      handleSendMagicLink({ preventDefault: () => {} } as React.FormEvent);
-    }
+    setAuthState('login');
   };
 
   // Render based on auth state
-  if (authState === 'initial_loading' || authState === 'verifying') {
+  if (authState === 'initial_loading') {
     return (
       <div className="h-screen flex flex-col bg-white text-black items-center justify-center">
         <div className="titlebar h-8 border-b border-gray-200 w-full" />
@@ -266,25 +123,15 @@ export function App() {
     );
   }
 
-  if (authState === 'email_entry' || authState === 'sending_link') {
+  if (authState === 'login' || authState === 'logging_in') {
     return (
-      <EmailEntryScreen
+      <LoginScreen
         email={email}
         setEmail={setEmail}
-        onSubmit={handleSendMagicLink}
-        isLoading={authState === 'sending_link'}
-      />
-    );
-  }
-
-  if (authState === 'waiting_for_link' || authState === 'checking_closer') {
-    return (
-      <WaitingForLinkScreen
-        email={email}
-        canResend={canResend && authState === 'waiting_for_link'}
-        onResend={handleResendLink}
-        onUseDifferentEmail={handleUseDifferentEmail}
-        isVerifying={authState === 'checking_closer'}
+        password={password}
+        setPassword={setPassword}
+        onSubmit={handleLogin}
+        isLoading={authState === 'logging_in'}
       />
     );
   }
@@ -294,7 +141,6 @@ export function App() {
       <ErrorScreen
         error={authError}
         onRetry={handleRetry}
-        onUseDifferentEmail={handleUseDifferentEmail}
       />
     );
   }
@@ -305,10 +151,12 @@ export function App() {
 
   // Fallback - shouldn't reach here
   return (
-    <EmailEntryScreen
+    <LoginScreen
       email={email}
       setEmail={setEmail}
-      onSubmit={handleSendMagicLink}
+      password={password}
+      setPassword={setPassword}
+      onSubmit={handleLogin}
       isLoading={false}
     />
   );
@@ -316,14 +164,16 @@ export function App() {
 
 // ==================== Auth Screens ====================
 
-interface EmailEntryScreenProps {
+interface LoginScreenProps {
   email: string;
   setEmail: (email: string) => void;
+  password: string;
+  setPassword: (password: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   isLoading: boolean;
 }
 
-function EmailEntryScreen({ email, setEmail, onSubmit, isLoading }: EmailEntryScreenProps) {
+function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoading }: LoginScreenProps) {
   return (
     <div className="h-screen flex flex-col bg-white text-black">
       <div className="titlebar h-8 border-b border-gray-200" />
@@ -331,7 +181,7 @@ function EmailEntryScreen({ email, setEmail, onSubmit, isLoading }: EmailEntrySc
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="mb-8 text-center">
           <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto" />
-          <p className="text-gray-500 text-sm mt-4">Enter your email to get started</p>
+          <p className="text-gray-500 text-sm mt-4">Sign in to your account</p>
         </div>
 
         <form onSubmit={onSubmit} className="w-full max-w-xs space-y-4">
@@ -340,96 +190,43 @@ function EmailEntryScreen({ email, setEmail, onSubmit, isLoading }: EmailEntrySc
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder="Email"
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
               disabled={isLoading}
               autoFocus
             />
           </div>
 
+          <div>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+              disabled={isLoading}
+            />
+          </div>
+
           <button
             type="submit"
-            disabled={isLoading || !email.trim()}
+            disabled={isLoading || !email.trim() || !password.trim()}
             className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <>
                 <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
-                Sending link...
+                Signing in...
               </>
             ) : (
-              'Continue'
+              'Sign In'
             )}
           </button>
         </form>
 
         <p className="mt-8 text-xs text-gray-400 text-center max-w-xs">
-          We'll send a secure login link to your email
+          Use the email and password your manager provided
         </p>
-      </div>
-    </div>
-  );
-}
-
-interface WaitingForLinkScreenProps {
-  email: string;
-  canResend: boolean;
-  onResend: () => void;
-  onUseDifferentEmail: () => void;
-  isVerifying: boolean;
-}
-
-function WaitingForLinkScreen({ email, canResend, onResend, onUseDifferentEmail, isVerifying }: WaitingForLinkScreenProps) {
-  return (
-    <div className="h-screen flex flex-col bg-white text-black">
-      <div className="titlebar h-8 border-b border-gray-200" />
-
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
-        <div className="mb-8 text-center">
-          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto" />
-        </div>
-
-        {isVerifying ? (
-          <div className="text-center">
-            <div className="animate-spin w-8 h-8 border-2 border-gray-300 border-t-black rounded-full mx-auto mb-4" />
-            <p className="text-gray-900 font-medium">Logging you in...</p>
-          </div>
-        ) : (
-          <>
-            {/* Email icon */}
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-6">
-              <svg className="w-8 h-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Check your email</h2>
-            <p className="text-gray-500 text-sm text-center mb-2">
-              We sent a login link to
-            </p>
-            <p className="text-gray-900 font-medium mb-6">{email}</p>
-            <p className="text-gray-500 text-sm text-center mb-8 max-w-xs">
-              Click the link in your email to continue. The link will expire in 10 minutes.
-            </p>
-
-            <div className="space-y-3 w-full max-w-xs">
-              <button
-                onClick={onResend}
-                disabled={!canResend}
-                className="w-full py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {canResend ? 'Resend link' : 'Resend available in 30s'}
-              </button>
-
-              <button
-                onClick={onUseDifferentEmail}
-                className="w-full py-2.5 text-sm text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                Use a different email
-              </button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
@@ -438,10 +235,9 @@ function WaitingForLinkScreen({ email, canResend, onResend, onUseDifferentEmail,
 interface ErrorScreenProps {
   error: AuthError;
   onRetry: () => void;
-  onUseDifferentEmail: () => void;
 }
 
-function ErrorScreen({ error, onRetry, onUseDifferentEmail }: ErrorScreenProps) {
+function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
   return (
     <div className="h-screen flex flex-col bg-white text-black">
       <div className="titlebar h-8 border-b border-gray-200" />
@@ -458,38 +254,18 @@ function ErrorScreen({ error, onRetry, onUseDifferentEmail }: ErrorScreenProps) 
           </svg>
         </div>
 
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Login Failed</h2>
         <p className="text-gray-500 text-sm text-center mb-8 max-w-xs">
           {error.message}
         </p>
 
         <div className="space-y-3 w-full max-w-xs">
-          {error.action === 'retry' && (
-            <button
-              onClick={onRetry}
-              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150"
-            >
-              Try again
-            </button>
-          )}
-
-          {error.action !== 'contact_admin' && (
-            <button
-              onClick={onUseDifferentEmail}
-              className="w-full py-2.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              Use a different email
-            </button>
-          )}
-
-          {error.action === 'contact_admin' && (
-            <button
-              onClick={onUseDifferentEmail}
-              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150"
-            >
-              Try a different email
-            </button>
-          )}
+          <button
+            onClick={onRetry}
+            className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150"
+          >
+            Try again
+          </button>
         </div>
       </div>
     </div>

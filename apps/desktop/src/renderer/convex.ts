@@ -23,6 +23,42 @@ export interface LinkCloserResult {
   message?: string;
 }
 
+export interface LoginResult {
+  success: boolean;
+  error?: string;
+  closer?: CloserInfo;
+}
+
+// Login a closer with email and password
+export async function loginCloser(email: string, password: string): Promise<LoginResult> {
+  try {
+    console.log("[Convex] Logging in closer:", email);
+
+    const response = await fetch(`${CONVEX_SITE_URL}/loginCloser`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+
+    console.log("[Convex] Login response status:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("[Convex] Login error response:", errorData);
+      return { success: false, error: errorData.error || "Login failed" };
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Login result:", result);
+    return result as LoginResult;
+  } catch (error) {
+    console.error("[Convex] Failed to login closer:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
 // Get closer info by email (for desktop app login)
 // Uses HTTP Action endpoint - simple HTTP GET, no WebSocket needed
 export async function getCloserByEmail(email: string): Promise<CloserInfo | null> {

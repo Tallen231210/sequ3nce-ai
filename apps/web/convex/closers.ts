@@ -2,6 +2,21 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 
+// Simple password hashing using Web Crypto API (available in Convex runtime)
+// In production, you might want to use a more robust solution
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  const inputHash = await hashPassword(password);
+  return inputHash === hash;
+}
+
 // DEBUG: List all closers (for debugging)
 export const listAllClosers = query({
   args: {},
@@ -843,5 +858,214 @@ export const getCloserLiveStatus = query({
     }
 
     return liveStatusMap;
+  },
+});
+
+// ==================== CLOSER AUTHENTICATION ====================
+
+// Login a closer with email and password (for desktop app)
+export const loginCloser = mutation({
+  args: {
+    email: v.string(),
+    password: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+
+    // Find closer by email
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+
+    if (!closer) {
+      return { success: false, error: "Invalid email or password" };
+    }
+
+    // Check if closer is deactivated
+    if (closer.status === "deactivated") {
+      return { success: false, error: "Your account has been deactivated. Please contact your team admin." };
+    }
+
+    // Check if password is set
+    if (!closer.passwordHash) {
+      return { success: false, error: "No password set. Please contact your team admin to set up your account." };
+    }
+
+    // Verify password
+    const isValid = await verifyPassword(args.password, closer.passwordHash);
+    if (!isValid) {
+      return { success: false, error: "Invalid email or password" };
+    }
+
+    // Update last login and activate if pending
+    const updates: { lastLoginAt: number; status?: string; activatedAt?: number } = {
+      lastLoginAt: Date.now(),
+    };
+
+    if (closer.status === "pending") {
+      updates.status = "active";
+      updates.activatedAt = Date.now();
+    }
+
+    await ctx.db.patch(closer._id, updates);
+
+    // Get team info
+    const team = await ctx.db.get(closer.teamId);
+
+    return {
+      success: true,
+      closer: {
+        closerId: closer._id,
+        teamId: closer.teamId,
+        name: closer.name,
+        email: closer.email,
+        status: updates.status || closer.status,
+        teamName: team?.name,
+      },
+    };
+  },
+});
+
+// Add a closer with initial password (called by manager)
+export const addCloserWithPassword = mutation({
+  args: {
+    clerkId: v.string(),
+    email: v.string(),
+    name: v.string(),
+    password: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Get the user to find their team
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const email = args.email.trim().toLowerCase();
+
+    // Check if closer with this email already exists in the team
+    const existingCloser = await ctx.db
+      .query("closers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+
+    if (existingCloser && existingCloser.teamId === user.teamId) {
+      throw new Error("You already added a closer with that email");
+    }
+
+    // Validate password
+    if (args.password.length < 6) {
+      throw new Error("Password must be at least 6 characters");
+    }
+
+    // Hash the password
+    const passwordHash = await hashPassword(args.password);
+
+    // Create the closer with password
+    const closerId = await ctx.db.insert("closers", {
+      email,
+      name: args.name,
+      teamId: user.teamId,
+      status: "pending",
+      passwordHash,
+      calendarConnected: false,
+      invitedAt: Date.now(),
+    });
+
+    return { closerId };
+  },
+});
+
+// Set or update a closer's password (called by manager)
+export const setCloserPassword = mutation({
+  args: {
+    clerkId: v.string(),
+    closerId: v.id("closers"),
+    password: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Get the user to verify they own this team
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Get the closer
+    const closer = await ctx.db.get(args.closerId);
+
+    if (!closer) {
+      throw new Error("Closer not found");
+    }
+
+    // Verify the closer belongs to the user's team
+    if (closer.teamId !== user.teamId) {
+      throw new Error("You don't have permission to update this closer");
+    }
+
+    // Validate password
+    if (args.password.length < 6) {
+      throw new Error("Password must be at least 6 characters");
+    }
+
+    // Hash and update the password
+    const passwordHash = await hashPassword(args.password);
+    await ctx.db.patch(args.closerId, { passwordHash });
+
+    return { success: true };
+  },
+});
+
+// Closer changes their own password (from desktop app)
+export const changeCloserPassword = mutation({
+  args: {
+    closerId: v.id("closers"),
+    currentPassword: v.string(),
+    newPassword: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const closer = await ctx.db.get(args.closerId);
+
+    if (!closer) {
+      return { success: false, error: "Closer not found" };
+    }
+
+    if (!closer.passwordHash) {
+      return { success: false, error: "No password set" };
+    }
+
+    // Verify current password
+    const isValid = await verifyPassword(args.currentPassword, closer.passwordHash);
+    if (!isValid) {
+      return { success: false, error: "Current password is incorrect" };
+    }
+
+    // Validate new password
+    if (args.newPassword.length < 6) {
+      return { success: false, error: "New password must be at least 6 characters" };
+    }
+
+    // Hash and update the password
+    const passwordHash = await hashPassword(args.newPassword);
+    await ctx.db.patch(args.closerId, { passwordHash });
+
+    return { success: true };
+  },
+});
+
+// Check if a closer has a password set (for UI purposes)
+export const closerHasPassword = query({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    const closer = await ctx.db.get(args.closerId);
+    return closer ? !!closer.passwordHash : false;
   },
 });

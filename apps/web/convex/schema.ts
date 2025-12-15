@@ -47,10 +47,12 @@ export default defineSchema({
     teamId: v.id("teams"),
     status: v.string(), // "pending", "active", "deactivated"
     clerkId: v.optional(v.string()), // Set when they complete signup
+    passwordHash: v.optional(v.string()), // Hashed password for desktop app login
     calendarConnected: v.boolean(),
     calendarRefreshToken: v.optional(v.string()), // Encrypted
     invitedAt: v.number(),
     activatedAt: v.optional(v.number()),
+    lastLoginAt: v.optional(v.number()), // Track last desktop app login
   })
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])

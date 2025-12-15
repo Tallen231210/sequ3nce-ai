@@ -97,6 +97,67 @@ http.route({
   }),
 });
 
+// ============================================
+// CLOSER LOGIN (for desktop app email/password auth)
+// ============================================
+
+// POST endpoint to login a closer with email and password
+http.route({
+  path: "/loginCloser",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, password } = body;
+
+      if (!email || !password) {
+        return new Response(JSON.stringify({ success: false, error: "Email and password are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.closers.loginCloser, { email, password });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error logging in closer:", error);
+      return new Response(JSON.stringify({ success: false, error: "Login failed" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for loginCloser
+http.route({
+  path: "/loginCloser",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 // GET endpoint to fetch ammo for a specific call (used by desktop app floating tracker)
 http.route({
   path: "/getAmmoByCall",

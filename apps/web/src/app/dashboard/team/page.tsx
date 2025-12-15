@@ -74,6 +74,7 @@ export default function TeamPage() {
   // Form state
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -132,7 +133,7 @@ export default function TeamPage() {
     clerkId ? { clerkId } : "skip"
   );
 
-  const addCloser = useMutation(api.closers.addCloser);
+  const addCloserWithPassword = useMutation(api.closers.addCloserWithPassword);
   const removeCloser = useMutation(api.closers.removeCloser);
   const updateCloserStatus = useMutation(api.closers.updateCloserStatus);
 
@@ -191,13 +192,24 @@ export default function TeamPage() {
       return;
     }
 
+    if (!password.trim()) {
+      setError("Password is required");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await addCloser({
+      await addCloserWithPassword({
         clerkId,
         name: name.trim(),
         email: email.trim().toLowerCase(),
+        password: password,
       });
 
       // Update Stripe seats (current active/pending count + 1 for the new closer)
@@ -207,6 +219,7 @@ export default function TeamPage() {
 
       setName("");
       setEmail("");
+      setPassword("");
       setSuccess(`${name} has been added to your team`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: unknown) {
@@ -357,7 +370,7 @@ export default function TeamPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleAddCloser} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="name">Name</Label>
                   <Input
@@ -378,6 +391,20 @@ export default function TeamPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isSubmitting}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Min 6 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The closer will use this password to log into the desktop app
+                  </p>
                 </div>
               </div>
 
