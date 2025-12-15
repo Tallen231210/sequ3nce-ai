@@ -63,20 +63,19 @@ echo ""
 
 echo -e "${YELLOW}Step 2/5:${NC} Mounting disk image..."
 
-# Mount the DMG and capture mount point
-MOUNT_OUTPUT=$(hdiutil attach "$TEMP_DIR/$DMG_NAME" -nobrowse -quiet 2>&1)
-MOUNT_POINT="/Volumes/Seq3nce"
+# Mount the DMG and capture the actual mount point from hdiutil output
+MOUNT_OUTPUT=$(hdiutil attach "$TEMP_DIR/$DMG_NAME" -nobrowse 2>&1)
+
+# Extract the mount point from hdiutil output (last column of last line containing /Volumes/)
+MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -o '/Volumes/[^"]*' | tail -1)
 
 # Wait a moment for mount to complete
 sleep 1
 
-if [ ! -d "$MOUNT_POINT" ]; then
-    # Try to find the actual mount point
-    MOUNT_POINT=$(df | grep -E '/Volumes/Seq3nce' | awk '{print $NF}' | head -1)
-    if [ -z "$MOUNT_POINT" ] || [ ! -d "$MOUNT_POINT" ]; then
-        echo -e "${RED}Error: Failed to mount disk image.${NC}"
-        exit 1
-    fi
+if [ -z "$MOUNT_POINT" ] || [ ! -d "$MOUNT_POINT" ]; then
+    echo -e "${RED}Error: Failed to mount disk image.${NC}"
+    echo -e "${RED}Mount output: $MOUNT_OUTPUT${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✓ Mounted at $MOUNT_POINT${NC}"
