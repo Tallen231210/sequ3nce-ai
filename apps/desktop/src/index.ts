@@ -640,7 +640,7 @@ const setupIpcHandlers = (): void => {
   // Save notes to a call (via Convex HTTP endpoint)
   ipcMain.handle('ammo:save-notes', async (_event, callId: string, notes: string) => {
     try {
-      const response = await fetch('https://fastidious-dragon-782.convex.site/updateCallNotes', {
+      const response = await fetch('https://ideal-ram-982.convex.site/updateCallNotes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callId, notes }),
@@ -662,7 +662,7 @@ const setupIpcHandlers = (): void => {
   // Get notes for a call
   ipcMain.handle('ammo:get-notes', async (_event, callId: string) => {
     try {
-      const response = await fetch(`https://fastidious-dragon-782.convex.site/getCallNotes?callId=${encodeURIComponent(callId)}`);
+      const response = await fetch(`https://ideal-ram-982.convex.site/getCallNotes?callId=${encodeURIComponent(callId)}`);
 
       if (!response.ok) {
         return null;

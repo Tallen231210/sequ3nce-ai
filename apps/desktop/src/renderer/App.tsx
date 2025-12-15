@@ -446,7 +446,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
 
       // Fetch saved notes from the database to pre-populate the questionnaire
       try {
-        const response = await fetch(`https://fastidious-dragon-782.convex.site/getCallNotes?callId=${encodeURIComponent(callId)}`);
+        const response = await fetch(`https://ideal-ram-982.convex.site/getCallNotes?callId=${encodeURIComponent(callId)}`);
         if (response.ok) {
           const notesData = await response.json();
           setSavedNotes(notesData.notes || null);
@@ -513,7 +513,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       if (!finalNotes || finalNotes.trim() === '') {
         // Try to get notes that were saved during the call
         try {
-          const response = await fetch(`https://fastidious-dragon-782.convex.site/getCallNotes?callId=${encodeURIComponent(pendingCallId)}`);
+          const response = await fetch(`https://ideal-ram-982.convex.site/getCallNotes?callId=${encodeURIComponent(pendingCallId)}`);
           if (response.ok) {
             const notesData = await response.json();
             if (notesData.notes) {

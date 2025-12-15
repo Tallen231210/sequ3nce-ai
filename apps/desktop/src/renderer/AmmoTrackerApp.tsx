@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AmmoItem, TranscriptSegment } from './types/electron';
 
-const CONVEX_SITE_URL = 'https://fastidious-dragon-782.convex.site';
+const CONVEX_SITE_URL = 'https://ideal-ram-982.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds
 const NOTES_SAVE_DELAY = 2000; // Auto-save notes after 2 seconds of no typing
 

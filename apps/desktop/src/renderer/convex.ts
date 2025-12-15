@@ -2,7 +2,7 @@
 // Using HTTP Action endpoint instead of WebSocket (more reliable in Electron)
 
 // HTTP Action endpoint - hosted at .convex.site (not .convex.cloud)
-const CONVEX_SITE_URL = "https://fastidious-dragon-782.convex.site";
+const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
 export interface CloserInfo {
   closerId: string;
