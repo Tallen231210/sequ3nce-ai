@@ -127,3 +127,22 @@ export async function getTeamCustomPrompt(teamId: string): Promise<string | unde
     return undefined;
   }
 }
+
+// Set initial speaker mapping when 2 speakers are detected
+// Desktop app will prompt closer to confirm or swap
+export async function setSpeakerMapping(
+  callId: string,
+  closerSpeaker: string,
+  sampleText?: string
+): Promise<void> {
+  try {
+    await convex.mutation("calls:setSpeakerMapping" as any, {
+      callId,
+      closerSpeaker,
+      sampleText,
+    });
+    logger.info(`Speaker mapping set: ${callId} -> closer is ${closerSpeaker}`);
+  } catch (error) {
+    logger.error("Failed to set speaker mapping", error);
+  }
+}

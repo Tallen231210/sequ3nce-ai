@@ -908,13 +908,16 @@ export const seedLiveCallsTest = mutation({
 });
 
 // Set initial speaker mapping (auto-detected by audio processor)
+// Called when 2 speakers are detected to trigger identification popup in desktop
+// Note: closerSnippet for the popup is computed dynamically from transcript segments
 export const setSpeakerMapping = mutation({
   args: {
-    callId: v.id("calls"),
+    callId: v.string(), // String ID from audio processor
     closerSpeaker: v.string(), // "speaker_0" or "speaker_1"
+    sampleText: v.optional(v.string()), // Optional - not stored, snippet is computed from transcript
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.callId, {
+    await ctx.db.patch(args.callId as any, {
       speakerMapping: {
         closerSpeaker: args.closerSpeaker,
         confirmed: false,

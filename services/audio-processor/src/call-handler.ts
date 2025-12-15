@@ -11,6 +11,7 @@ import {
   addTranscript,
   addTranscriptSegment,
   getTeamCustomPrompt,
+  setSpeakerMapping,
 } from "./convex.js";
 import { logger } from "./logger.js";
 import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem } from "./types.js";
@@ -129,7 +130,30 @@ export class CallHandler {
     if (previousCount < 2 && currentCount >= 2 && this.convexCallId) {
       logger.info(`Two speakers detected - call is now active: ${this.session.metadata.callId}`);
       await updateCallStatus(this.convexCallId, "on_call", currentCount);
+
+      // Trigger speaker identification popup in desktop app
+      // Get a sample of what speaker_0 said from the transcript
+      const sampleText = this.getSpeakerSampleText(0);
+      await setSpeakerMapping(this.convexCallId, "speaker_0", sampleText);
     }
+  }
+
+  // Get a sample of what a specific speaker said from the transcript
+  private getSpeakerSampleText(speakerId: number): string {
+    const speakerLabel = speakerId === 0 ? "[Closer]" : "[Prospect]";
+    const lines = this.session.fullTranscript.split('\n').filter(l => l.trim());
+
+    // Find lines from this speaker
+    const speakerLines = lines.filter(line => line.startsWith(speakerLabel));
+
+    if (speakerLines.length > 0) {
+      // Return the first non-empty line from this speaker (without the label)
+      const firstLine = speakerLines[0].replace(speakerLabel + ': ', '');
+      // Limit to reasonable length for popup
+      return firstLine.substring(0, 150);
+    }
+
+    return "";
   }
 
   private handleDeepgramError(error: Error): void {
