@@ -23,10 +23,9 @@ const config: ForgeConfig = {
     // Icon paths (relative to project root)
     // Mac: .icns file, Windows: .ico file
     icon: './assets/icon',
-    // macOS specific settings
-    osxSign: {
-      identity: undefined, // Use auto-signing for development, set for production
-    },
+    // Disable code signing for now (will enable with Apple Developer certificate)
+    osxSign: false as any,
+    osxNotarize: false as any,
     // Protocol handler for magic link auth
     protocols: [
       {
