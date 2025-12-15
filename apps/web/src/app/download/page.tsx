@@ -375,7 +375,7 @@ export default function DownloadPage() {
           <p>
             Need help?{" "}
             <a
-              href="mailto:support@seq3nce.ai"
+              href="mailto:support@sequ3nce.ai"
               className="text-black hover:underline"
             >
               Contact support

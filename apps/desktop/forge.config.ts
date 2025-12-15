@@ -61,7 +61,7 @@ const config: ForgeConfig = {
         name: 'seq3nce',
         bin: 'Seq3nce',
         maintainer: 'Seq3nce',
-        homepage: 'https://seq3nce.ai',
+        homepage: 'https://sequ3nce.ai',
         icon: './assets/icon.png',
         categories: ['Office', 'Utility'],
       },
@@ -71,7 +71,7 @@ const config: ForgeConfig = {
       options: {
         name: 'seq3nce',
         bin: 'Seq3nce',
-        homepage: 'https://seq3nce.ai',
+        homepage: 'https://sequ3nce.ai',
         icon: './assets/icon.png',
         categories: ['Office', 'Utility'],
       },

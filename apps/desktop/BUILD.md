@@ -45,7 +45,7 @@ AUDIO_SERVICE_URL=wss://amusing-charm-production.up.railway.app
 
 ### Production (`.env.production`)
 ```
-WEB_APP_URL=https://seq3nce.ai
+WEB_APP_URL=https://sequ3nce.ai
 AUDIO_SERVICE_URL=wss://amusing-charm-production.up.railway.app
 ```
 

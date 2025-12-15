@@ -98,7 +98,7 @@ export default function TermsPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-4">8. Contact</h2>
             <p className="text-muted-foreground">
-              For questions about these Terms, please contact us at legal@seq3nce.ai
+              For questions about these Terms, please contact us at legal@sequ3nce.ai
             </p>
           </section>
         </div>

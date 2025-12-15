@@ -318,7 +318,7 @@ function DesktopAuthContent() {
         {/* Footer */}
         <p className="text-xs text-gray-400 text-center mt-8">
           Having trouble?{" "}
-          <a href="mailto:support@seq3nce.ai" className="underline">
+          <a href="mailto:support@sequ3nce.ai" className="underline">
             Contact support
           </a>
         </p>

@@ -93,7 +93,7 @@ export default function TeamPage() {
 
   // Get download link for a closer
   const getDownloadLink = () => {
-    const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://seq3nce.ai";
+    const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://sequ3nce.ai";
     return `${baseUrl}/download`;
   };
 

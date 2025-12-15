@@ -356,7 +356,7 @@ const closeWebSocket = async () => {
 // ==================== Auth Functions ====================
 
 // Web app URL for auth
-const WEB_APP_URL = process.env.WEB_APP_URL || 'https://seq3nce.ai';
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://sequ3nce.ai';
 
 // Send magic link - opens browser to web app's auth page
 async function sendMagicLink(email: string): Promise<{ success: boolean; error?: string }> {
