@@ -142,7 +142,7 @@ const createAmmoTrackerWindow = (): void => {
     hasShadow: true,
     backgroundColor: '#00000000',
     show: false,
-    focusable: false, // Don't steal focus from other apps
+    focusable: true, // Allow text input in notes field
     webPreferences: {
       preload: AMMO_TRACKER_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,

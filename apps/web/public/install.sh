@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 
 # Configuration - UPDATE THESE FOR EACH RELEASE
 GITHUB_REPO="Tallen231210/sequ3nce-ai"
-RELEASE_TAG="v1.0.8"
+RELEASE_TAG="v1.0.9"
 DMG_NAME="Sequ3nce.dmg"
 APP_NAME="Sequ3nce.app"
 INSTALL_DIR="/Applications"

@@ -206,6 +206,12 @@ export async function completeCallWithOutcome(data: {
 
     const result = await response.json();
     console.log("[Convex] Complete call result:", result);
+
+    // Check if backend returned success
+    if (result.success === false || result.error) {
+      return { success: false, error: result.error || "Failed to complete call" };
+    }
+
     return { success: true };
   } catch (error) {
     console.error("[Convex] Failed to complete call:", error);
