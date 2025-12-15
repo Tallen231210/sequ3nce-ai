@@ -4,8 +4,17 @@ import { StatusIndicator } from './components/StatusIndicator';
 import { AudioLevelMeter } from './components/AudioLevelMeter';
 import { RecordButton } from './components/RecordButton';
 import { PostCallQuestionnaire, CallOutcome } from './components/PostCallQuestionnaire';
+import { ProspectNamePrompt } from './components/ProspectNamePrompt';
 import { useAudioCapture } from './hooks/useAudioCapture';
-import { getCloserByEmail, activateCloser, completeCallWithOutcome, type CloserInfo } from './convex';
+import {
+  getCloserByEmail,
+  activateCloser,
+  completeCallWithOutcome,
+  findMatchingScheduledCall,
+  updateProspectName,
+  type CloserInfo,
+  type ScheduledCallMatch,
+} from './convex';
 import logoImage from '../assets/logo.png';
 
 // Storage keys
@@ -508,6 +517,12 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [isSubmittingQuestionnaire, setIsSubmittingQuestionnaire] = useState(false);
   const isCapturingRef = useRef(false);
 
+  // Prospect name prompt state
+  const [showProspectPrompt, setShowProspectPrompt] = useState(false);
+  const [scheduledCallMatch, setScheduledCallMatch] = useState<ScheduledCallMatch | null>(null);
+  const [prospectName, setProspectName] = useState<string | null>(null);
+  const [prospectNameSaved, setProspectNameSaved] = useState(false);
+
   // Audio capture hook
   const { startCapture, stopCapture } = useAudioCapture({
     onAudioLevel: setAudioLevel,
@@ -582,6 +597,11 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const handleStart = async () => {
     setError(null);
 
+    // Reset prospect name state for new call
+    setProspectName(null);
+    setProspectNameSaved(false);
+    setScheduledCallMatch(null);
+
     // Use real IDs from Convex
     const config: { teamId: string; closerId: string; prospectName?: string } = {
       teamId: closerInfo.teamId,
@@ -591,6 +611,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
 
     console.log('[App] Starting call with config:', config);
 
+    // Start recording IMMEDIATELY - zero delay
     const result = await window.electron.audio.start(config);
 
     if (result.success && result.callId) {
@@ -604,6 +625,26 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       }
       isCapturingRef.current = true;
       setHasPermission(true);
+
+      // Show prospect name prompt immediately after recording starts
+      setShowProspectPrompt(true);
+
+      // Check for matching scheduled call in parallel (doesn't block recording)
+      findMatchingScheduledCall(closerInfo.closerId, closerInfo.teamId)
+        .then((match) => {
+          if (match) {
+            console.log('[App] Found matching scheduled call:', match);
+            setScheduledCallMatch(match);
+            if (match.prospectName) {
+              setProspectName(match.prospectName);
+            }
+          } else {
+            console.log('[App] No matching scheduled call found');
+          }
+        })
+        .catch((err) => {
+          console.error('[App] Error finding scheduled call:', err);
+        });
     } else if (result.error) {
       setError(result.error);
     }
@@ -616,12 +657,37 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       setShowQuestionnaire(true);
     }
 
+    // Hide prospect name prompt
+    setShowProspectPrompt(false);
+
     // Stop audio capture
     if (isCapturingRef.current) {
       stopCapture();
       isCapturingRef.current = false;
     }
     await window.electron.audio.stop();
+  };
+
+  // Handle prospect name submission from the inline prompt
+  const handleProspectNameSubmit = async (name: string) => {
+    if (!callId) return;
+
+    console.log('[App] Submitting prospect name:', name);
+    setProspectName(name);
+    setProspectNameSaved(true);
+    setShowProspectPrompt(false);
+
+    // Update the call record in Convex
+    const result = await updateProspectName({
+      callId,
+      prospectName: name,
+      scheduledCallId: scheduledCallMatch?.scheduledCallId,
+    });
+
+    if (!result.success) {
+      console.error('[App] Failed to save prospect name:', result.error);
+      // Don't show error to user - they can still edit in post-call questionnaire
+    }
   };
 
   const handleQuestionnaireSubmit = async (data: {
@@ -680,6 +746,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       {showQuestionnaire && pendingCallId && (
         <PostCallQuestionnaire
           callId={pendingCallId}
+          initialProspectName={prospectName || undefined}
           onSubmit={handleQuestionnaireSubmit}
           onCancel={handleQuestionnaireCancel}
         />
@@ -715,6 +782,29 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         {isRecording && (
           <div className="mt-4 text-2xl font-mono text-gray-900 tabular-nums">
             {formatDuration(duration)}
+          </div>
+        )}
+
+        {/* Prospect Name Prompt - shown when recording and name not yet saved */}
+        {isRecording && showProspectPrompt && !prospectNameSaved && (
+          <div className="mt-4 w-full max-w-xs">
+            <ProspectNamePrompt
+              suggestedName={scheduledCallMatch?.prospectName}
+              source={scheduledCallMatch?.source}
+              onSubmit={handleProspectNameSubmit}
+            />
+          </div>
+        )}
+
+        {/* Prospect Name Confirmed - shown when name is saved */}
+        {isRecording && prospectNameSaved && prospectName && (
+          <div className="mt-4 w-full max-w-xs">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2">
+              <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="text-sm text-green-800">Calling {prospectName}</span>
+            </div>
           </div>
         )}
 

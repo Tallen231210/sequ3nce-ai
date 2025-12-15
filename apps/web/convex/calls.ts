@@ -968,6 +968,82 @@ export const swapSpeakerMapping = mutation({
   },
 });
 
+// Update prospect name on an existing call (from desktop app inline prompt)
+export const updateProspectName = mutation({
+  args: {
+    callId: v.id("calls"),
+    prospectName: v.string(),
+    scheduledCallId: v.optional(v.id("scheduledCalls")),
+  },
+  handler: async (ctx, args) => {
+    const updates: Record<string, any> = {
+      prospectName: args.prospectName,
+    };
+
+    // Link to scheduled call if provided
+    if (args.scheduledCallId) {
+      updates.scheduledCallId = args.scheduledCallId;
+    }
+
+    await ctx.db.patch(args.callId, updates);
+    return { success: true };
+  },
+});
+
+// Find a matching scheduled call for a closer within ±15 minutes of now
+// Calendar-agnostic: works with any calendar source (Calendly, Google, manual)
+export const findMatchingScheduledCall = query({
+  args: {
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const fifteenMinutes = 15 * 60 * 1000;
+    const windowStart = now - fifteenMinutes;
+    const windowEnd = now + fifteenMinutes;
+
+    // Get scheduled calls for this team within the time window
+    const scheduledCalls = await ctx.db
+      .query("scheduledCalls")
+      .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
+      .filter((q) =>
+        q.and(
+          q.gte(q.field("scheduledAt"), windowStart),
+          q.lte(q.field("scheduledAt"), windowEnd),
+          q.neq(q.field("status"), "cancelled")
+        )
+      )
+      .collect();
+
+    // Filter to calls assigned to this closer, or unassigned calls
+    const matchingCalls = scheduledCalls.filter(
+      (call) => call.closerId === args.closerId || !call.closerId
+    );
+
+    if (matchingCalls.length === 0) {
+      return null;
+    }
+
+    // If multiple matches, pick the one closest to current time
+    const sortedByProximity = matchingCalls.sort((a, b) => {
+      const diffA = Math.abs(a.scheduledAt - now);
+      const diffB = Math.abs(b.scheduledAt - now);
+      return diffA - diffB;
+    });
+
+    const bestMatch = sortedByProximity[0];
+
+    return {
+      scheduledCallId: bestMatch._id,
+      prospectName: bestMatch.prospectName || null,
+      prospectEmail: bestMatch.prospectEmail || null,
+      scheduledAt: bestMatch.scheduledAt,
+      source: bestMatch.source || "manual",
+    };
+  },
+});
+
 // Update call notes (from desktop app during call)
 export const updateCallNotes = mutation({
   args: {

@@ -78,6 +78,71 @@ export async function activateCloser(email: string): Promise<boolean> {
   }
 }
 
+// Find a matching scheduled call for a closer within ±15 minutes
+export interface ScheduledCallMatch {
+  scheduledCallId: string;
+  prospectName: string | null;
+  prospectEmail: string | null;
+  scheduledAt: number;
+  source: string;
+}
+
+export async function findMatchingScheduledCall(
+  closerId: string,
+  teamId: string
+): Promise<ScheduledCallMatch | null> {
+  try {
+    console.log("[Convex] Finding matching scheduled call for closer:", closerId);
+
+    const url = `${CONVEX_SITE_URL}/findMatchingScheduledCall?closerId=${encodeURIComponent(closerId)}&teamId=${encodeURIComponent(teamId)}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.error("[Convex] Error finding scheduled call:", response.status);
+      return null;
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Scheduled call match result:", result);
+    return result as ScheduledCallMatch | null;
+  } catch (error) {
+    console.error("[Convex] Failed to find matching scheduled call:", error);
+    return null;
+  }
+}
+
+// Update prospect name on an existing call
+export async function updateProspectName(data: {
+  callId: string;
+  prospectName: string;
+  scheduledCallId?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log("[Convex] Updating prospect name:", data);
+
+    const response = await fetch(`${CONVEX_SITE_URL}/updateProspectName`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("[Convex] Failed to update prospect name:", errorData);
+      return { success: false, error: errorData.error || "Failed to update prospect name" };
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Update prospect name result:", result);
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to update prospect name:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
 // Complete call with post-call questionnaire data
 export async function completeCallWithOutcome(data: {
   callId: string;

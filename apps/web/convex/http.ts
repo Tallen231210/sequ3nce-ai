@@ -626,6 +626,132 @@ http.route({
 });
 
 // ============================================
+// PROSPECT NAME / SCHEDULED CALL MATCHING (for desktop app)
+// ============================================
+
+// GET endpoint to find a matching scheduled call for a closer within ±15 minutes
+http.route({
+  path: "/findMatchingScheduledCall",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const closerId = url.searchParams.get("closerId");
+    const teamId = url.searchParams.get("teamId");
+
+    if (!closerId || !teamId) {
+      return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const match = await ctx.runQuery(api.calls.findMatchingScheduledCall, {
+        closerId: closerId as any,
+        teamId: teamId as any,
+      });
+
+      return new Response(JSON.stringify(match), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error finding matching scheduled call:", error);
+      return new Response(JSON.stringify({ error: "Failed to find matching call" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for findMatchingScheduledCall
+http.route({
+  path: "/findMatchingScheduledCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to update prospect name on an existing call
+http.route({
+  path: "/updateProspectName",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, prospectName, scheduledCallId } = body;
+
+      if (!callId || !prospectName) {
+        return new Response(JSON.stringify({ error: "callId and prospectName are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      await ctx.runMutation(api.calls.updateProspectName, {
+        callId: callId as any,
+        prospectName,
+        scheduledCallId: scheduledCallId as any || undefined,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error updating prospect name:", error);
+      return new Response(JSON.stringify({ error: "Failed to update prospect name" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for updateProspectName
+http.route({
+  path: "/updateProspectName",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
 // CALENDLY WEBHOOK
 // ============================================
 
