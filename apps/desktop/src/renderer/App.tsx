@@ -472,25 +472,42 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     dealValue?: number;
     notes?: string;
   }) => {
-    if (!pendingCallId) return;
+    if (!pendingCallId) {
+      console.error('[App] No pending call ID for questionnaire submission');
+      return;
+    }
 
+    console.log('[App] Submitting questionnaire for call:', pendingCallId, data);
     setIsSubmittingQuestionnaire(true);
 
-    const result = await completeCallWithOutcome({
-      callId: pendingCallId,
-      prospectName: data.prospectName,
-      outcome: data.outcome,
-      dealValue: data.dealValue,
-      notes: data.notes,
-    });
+    try {
+      const result = await completeCallWithOutcome({
+        callId: pendingCallId,
+        prospectName: data.prospectName,
+        outcome: data.outcome,
+        dealValue: data.dealValue,
+        notes: data.notes,
+      });
 
-    setIsSubmittingQuestionnaire(false);
+      console.log('[App] Questionnaire submission result:', result);
+      setIsSubmittingQuestionnaire(false);
 
-    if (result.success) {
-      setShowQuestionnaire(false);
-      setPendingCallId(null);
-    } else {
-      setError(result.error || 'Failed to save call data');
+      if (result.success) {
+        console.log('[App] Questionnaire saved successfully, closing modal');
+        setShowQuestionnaire(false);
+        setPendingCallId(null);
+        // Reset prospect name state for next call
+        setProspectName(null);
+        setProspectNameSaved(false);
+      } else {
+        console.error('[App] Questionnaire submission failed:', result.error);
+        setError(result.error || 'Failed to save call data');
+        setTimeout(() => setError(null), 5000);
+      }
+    } catch (err) {
+      console.error('[App] Questionnaire submission error:', err);
+      setIsSubmittingQuestionnaire(false);
+      setError('Network error. Please try again.');
       setTimeout(() => setError(null), 5000);
     }
   };
@@ -525,6 +542,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
           initialProspectName={prospectName || undefined}
           onSubmit={handleQuestionnaireSubmit}
           onCancel={handleQuestionnaireCancel}
+          isSubmitting={isSubmittingQuestionnaire}
         />
       )}
 

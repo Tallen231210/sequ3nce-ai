@@ -195,6 +195,10 @@ const toggleAmmoTracker = (): void => {
   } else {
     ammoTrackerWindow.showInactive();
     ammoTrackerVisible = true;
+    // Send current call ID when showing (in case it changed while hidden)
+    if (currentCallId) {
+      ammoTrackerWindow.webContents.send('ammo:call-id-changed', currentCallId);
+    }
   }
 };
 

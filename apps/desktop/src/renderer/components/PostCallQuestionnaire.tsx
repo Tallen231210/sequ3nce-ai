@@ -12,6 +12,7 @@ interface PostCallQuestionnaireProps {
     notes?: string;
   }) => void;
   onCancel: () => void;
+  isSubmitting?: boolean;
 }
 
 const DEAL_VALUE_PRESETS = [1000, 3000, 5000, 10000, 15000];
@@ -21,6 +22,7 @@ export function PostCallQuestionnaire({
   initialProspectName = '',
   onSubmit,
   onCancel,
+  isSubmitting = false,
 }: PostCallQuestionnaireProps) {
   const [prospectName, setProspectName] = useState(initialProspectName);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
@@ -191,20 +193,28 @@ export function PostCallQuestionnaire({
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
           <button
             onClick={handleAttemptClose}
-            className="px-4 py-2 text-gray-500 hover:text-gray-700 text-sm font-medium transition-colors duration-150"
+            disabled={isSubmitting}
+            className="px-4 py-2 text-gray-500 hover:text-gray-700 text-sm font-medium transition-colors duration-150 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!isValid}
-            className={`px-6 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-              isValid
+            disabled={!isValid || isSubmitting}
+            className={`px-6 py-2 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 ${
+              isValid && !isSubmitting
                 ? 'bg-black text-white hover:bg-gray-800'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
             }`}
           >
-            Save & Finish
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Save & Finish'
+            )}
           </button>
         </div>
       </div>
