@@ -17,6 +17,7 @@ export interface AudioAPI {
   onStatusChange: (callback: (status: AudioStatus) => void) => () => void;
   onError: (callback: (error: string) => void) => () => void;
   onAudioLevel: (callback: (level: number) => void) => () => void;
+  onCallIdUpdated: (callback: (callId: string) => void) => () => void;
 }
 
 export interface AppAPI {

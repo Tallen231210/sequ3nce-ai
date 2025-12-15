@@ -19,6 +19,7 @@ export interface AudioAPI {
   onStatusChange: (callback: (status: AudioStatus) => void) => () => void;
   onError: (callback: (error: string) => void) => () => void;
   onAudioLevel: (callback: (level: number) => void) => () => void;
+  onCallIdUpdated: (callback: (callId: string) => void) => () => void;
 }
 
 export interface AppAPI {
@@ -70,6 +71,11 @@ contextBridge.exposeInMainWorld('electron', {
       const handler = (_event: Electron.IpcRendererEvent, level: number) => callback(level);
       ipcRenderer.on('audio:level', handler);
       return () => ipcRenderer.removeListener('audio:level', handler);
+    },
+    onCallIdUpdated: (callback: (callId: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, callId: string) => callback(callId);
+      ipcRenderer.on('audio:call-id-updated', handler);
+      return () => ipcRenderer.removeListener('audio:call-id-updated', handler);
     },
   },
   app: {

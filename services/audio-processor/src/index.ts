@@ -41,13 +41,19 @@ wss.on("connection", async (ws, req) => {
 
           // Create and start call handler
           callHandler = new CallHandler(metadata);
-          await callHandler.start();
+          const convexCallId = await callHandler.start();
 
           activeCalls.set(ws, callHandler);
           isInitialized = true;
 
-          ws.send(JSON.stringify({ status: "ready", callId: metadata.callId }));
-          logger.info(`Call initialized: ${metadata.callId}`);
+          // Send back BOTH the original callId AND the Convex-generated callId
+          // Desktop MUST use convexCallId for all subsequent operations
+          ws.send(JSON.stringify({
+            status: "ready",
+            callId: metadata.callId,
+            convexCallId: convexCallId  // This is the actual Convex _id to use for queries/mutations
+          }));
+          logger.info(`Call initialized: ${metadata.callId}, Convex ID: ${convexCallId}`);
         } catch (parseError) {
           logger.error("Failed to parse metadata JSON", parseError);
           ws.send(JSON.stringify({ error: "Invalid JSON metadata" }));

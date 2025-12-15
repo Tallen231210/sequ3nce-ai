@@ -303,6 +303,20 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Prom
 
           if (message.status === 'ready') {
             console.log('[Main] Server ready, can start streaming');
+
+            // CRITICAL: Use the Convex-generated callId for all operations
+            // The server returns convexCallId which is the actual database ID
+            if (message.convexCallId) {
+              console.log('[Main] Updating callId from:', currentCallId, 'to Convex ID:', message.convexCallId);
+              currentCallId = message.convexCallId;
+
+              // Notify renderer and ammo tracker of the correct call ID
+              mainWindow?.webContents.send('audio:call-id-updated', message.convexCallId);
+              if (ammoTrackerWindow) {
+                ammoTrackerWindow.webContents.send('ammo:call-id-changed', message.convexCallId);
+              }
+            }
+
             resolve(true);
           } else if (message.error) {
             console.error('[Main] Server error:', message.error);

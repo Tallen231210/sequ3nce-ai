@@ -38,9 +38,9 @@ export class CallHandler {
     logger.info(`Call handler created for call ${metadata.callId}`, metadata);
   }
 
-  async start(): Promise<void> {
+  async start(): Promise<string | null> {
     try {
-      // Create call record in Convex
+      // Create call record in Convex - this returns the Convex _id
       this.convexCallId = await createCall(this.session.metadata);
 
       // Get team's custom AI prompt if any
@@ -53,7 +53,10 @@ export class CallHandler {
         this.handleDeepgramError.bind(this)
       );
 
-      logger.info(`Call started: ${this.session.metadata.callId}`);
+      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}`);
+
+      // Return the Convex-generated call ID so desktop can use it
+      return this.convexCallId;
     } catch (error) {
       logger.error("Failed to start call", error);
       throw error;

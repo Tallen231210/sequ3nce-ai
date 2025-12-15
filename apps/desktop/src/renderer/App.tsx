@@ -340,6 +340,13 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       setAudioLevel(level);
     });
 
+    // CRITICAL: Listen for Convex callId updates from the audio processor
+    // The audio processor creates the call in Convex and returns the actual _id
+    const unsubCallIdUpdated = window.electron.audio.onCallIdUpdated((convexCallId) => {
+      console.log('[App] Received Convex callId:', convexCallId);
+      setCallId(convexCallId);
+    });
+
     const handleTrayStart = () => handleStart();
     const handleTrayStop = () => handleStop();
 
@@ -350,6 +357,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       unsubStatus();
       unsubError();
       unsubLevel();
+      unsubCallIdUpdated();
       window.removeEventListener('tray:start-recording', handleTrayStart);
       window.removeEventListener('tray:stop-recording', handleTrayStop);
     };
