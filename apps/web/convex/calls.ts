@@ -1058,46 +1058,79 @@ export const updateCallNotes = mutation({
   },
 });
 
-// Clean up test live calls
+// Clean up ALL test calls - deletes everything
 export const cleanupLiveCalls = mutation({
   args: {},
   handler: async (ctx) => {
-    // Delete all waiting and on_call status calls
-    const team = await ctx.db.query("teams").first();
-    if (!team) return { deleted: 0 };
-
-    const liveCalls = await ctx.db
-      .query("calls")
-      .withIndex("by_team", (q) => q.eq("teamId", team._id))
-      .collect();
+    // Get all calls and delete them all
+    const allCalls = await ctx.db.query("calls").collect();
 
     let deleted = 0;
-    for (const call of liveCalls) {
-      if (call.status === "waiting" || call.status === "on_call") {
-        // Delete associated ammo
-        const ammo = await ctx.db
-          .query("ammo")
-          .withIndex("by_call", (q) => q.eq("callId", call._id))
-          .collect();
-        for (const a of ammo) {
-          await ctx.db.delete(a._id);
-        }
-
-        // Delete associated transcript segments
-        const segments = await ctx.db
-          .query("transcriptSegments")
-          .withIndex("by_call", (q) => q.eq("callId", call._id))
-          .collect();
-        for (const s of segments) {
-          await ctx.db.delete(s._id);
-        }
-
-        // Delete the call
-        await ctx.db.delete(call._id);
-        deleted++;
+    for (const call of allCalls) {
+      // Delete associated ammo
+      const ammo = await ctx.db
+        .query("ammo")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .collect();
+      for (const a of ammo) {
+        await ctx.db.delete(a._id);
       }
+
+      // Delete associated transcript segments
+      const segments = await ctx.db
+        .query("transcriptSegments")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .collect();
+      for (const s of segments) {
+        await ctx.db.delete(s._id);
+      }
+
+      // Delete the call
+      await ctx.db.delete(call._id);
+      deleted++;
     }
 
     return { deleted };
+  },
+});
+
+// NUCLEAR OPTION: Delete everything - new function name to force Convex to pick it up
+export const nukeAllTestData = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // Get all calls
+    const allCalls = await ctx.db.query("calls").collect();
+
+    let deletedCalls = 0;
+    let deletedAmmo = 0;
+    let deletedSegments = 0;
+
+    for (const call of allCalls) {
+      // Delete associated ammo
+      const ammo = await ctx.db
+        .query("ammo")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .collect();
+      for (const a of ammo) {
+        await ctx.db.delete(a._id);
+        deletedAmmo++;
+      }
+
+      // Delete associated transcript segments
+      const segments = await ctx.db
+        .query("transcriptSegments")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .collect();
+      for (const s of segments) {
+        await ctx.db.delete(s._id);
+        deletedSegments++;
+      }
+
+      // Delete the call
+      await ctx.db.delete(call._id);
+      deletedCalls++;
+    }
+
+    return { deletedCalls, deletedAmmo, deletedSegments };
   },
 });
