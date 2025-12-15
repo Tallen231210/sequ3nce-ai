@@ -542,13 +542,14 @@ const setupIpcHandlers = (): void => {
       return { success: false, error: 'Failed to connect to audio service' };
     }
 
-    // Notify ammo tracker of new call
+    // Notify ammo tracker of new call (use currentCallId which has the Convex ID)
     if (ammoTrackerWindow) {
-      ammoTrackerWindow.webContents.send('ammo:call-id-changed', callId);
+      ammoTrackerWindow.webContents.send('ammo:call-id-changed', currentCallId);
     }
 
     // Status will be updated to 'capturing' when renderer starts sending audio
-    return { success: true, callId };
+    // Return currentCallId which has been updated to the Convex ID
+    return { success: true, callId: currentCallId };
   });
 
   // Receive audio data from renderer and forward to WebSocket

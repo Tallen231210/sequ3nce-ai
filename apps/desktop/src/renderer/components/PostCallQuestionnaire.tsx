@@ -5,6 +5,7 @@ export type CallOutcome = 'closed' | 'follow_up' | 'lost' | 'no_show';
 interface PostCallQuestionnaireProps {
   callId: string;
   initialProspectName?: string;
+  initialNotes?: string;
   onSubmit: (data: {
     prospectName: string;
     outcome: CallOutcome;
@@ -20,6 +21,7 @@ const DEAL_VALUE_PRESETS = [1000, 3000, 5000, 10000, 15000];
 export function PostCallQuestionnaire({
   callId,
   initialProspectName = '',
+  initialNotes = '',
   onSubmit,
   onCancel,
   isSubmitting = false,
@@ -27,7 +29,7 @@ export function PostCallQuestionnaire({
   const [prospectName, setProspectName] = useState(initialProspectName);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [dealValue, setDealValue] = useState<number | ''>('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(initialNotes);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
 
   // Check if form is valid for submission

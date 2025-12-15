@@ -284,6 +284,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
+  const callIdRef = useRef<string | null>(null); // Ref to always have latest callId
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [duration, setDuration] = useState(0);
   const [version, setVersion] = useState('');
@@ -291,6 +292,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [pendingCallId, setPendingCallId] = useState<string | null>(null);
   const [isSubmittingQuestionnaire, setIsSubmittingQuestionnaire] = useState(false);
+  const [savedNotes, setSavedNotes] = useState<string | null>(null);
   const isCapturingRef = useRef(false);
 
   // Prospect name prompt state
@@ -326,6 +328,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       setStatus(newStatus);
       if (newStatus === 'idle') {
         setCallId(null);
+        callIdRef.current = null; // Reset ref too
         setDuration(0);
       }
     });
@@ -345,6 +348,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     const unsubCallIdUpdated = window.electron.audio.onCallIdUpdated((convexCallId) => {
       console.log('[App] Received Convex callId:', convexCallId);
       setCallId(convexCallId);
+      callIdRef.current = convexCallId; // Keep ref in sync for immediate access
     });
 
     const handleTrayStart = () => handleStart();
@@ -400,6 +404,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
 
     if (result.success && result.callId) {
       setCallId(result.callId);
+      callIdRef.current = result.callId; // Also set ref (will be overwritten by Convex ID later)
 
       const captureStarted = await startCapture();
       if (!captureStarted) {
@@ -438,6 +443,20 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     // Store the current callId before stopping
     if (callId) {
       setPendingCallId(callId);
+
+      // Fetch saved notes from the database to pre-populate the questionnaire
+      try {
+        const response = await fetch(`https://fastidious-dragon-782.convex.site/getCallNotes?callId=${encodeURIComponent(callId)}`);
+        if (response.ok) {
+          const notesData = await response.json();
+          setSavedNotes(notesData.notes || null);
+          console.log('[App] Fetched saved notes for questionnaire:', notesData.notes);
+        }
+      } catch (err) {
+        console.error('[App] Error fetching notes for questionnaire:', err);
+        setSavedNotes(null);
+      }
+
       setShowQuestionnaire(true);
     }
 
@@ -489,12 +508,31 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     setIsSubmittingQuestionnaire(true);
 
     try {
+      // Fetch existing notes from the database if user didn't add any in the questionnaire
+      let finalNotes = data.notes;
+      if (!finalNotes || finalNotes.trim() === '') {
+        // Try to get notes that were saved during the call
+        try {
+          const response = await fetch(`https://fastidious-dragon-782.convex.site/getCallNotes?callId=${encodeURIComponent(pendingCallId)}`);
+          if (response.ok) {
+            const notesData = await response.json();
+            if (notesData.notes) {
+              finalNotes = notesData.notes;
+              console.log('[App] Using saved notes from database:', finalNotes);
+            }
+          }
+        } catch (err) {
+          console.error('[App] Error fetching saved notes:', err);
+          // Continue without notes if fetch fails
+        }
+      }
+
       const result = await completeCallWithOutcome({
         callId: pendingCallId,
         prospectName: data.prospectName,
         outcome: data.outcome,
         dealValue: data.dealValue,
-        notes: data.notes,
+        notes: finalNotes,
       });
 
       console.log('[App] Questionnaire submission result:', result);
@@ -548,6 +586,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         <PostCallQuestionnaire
           callId={pendingCallId}
           initialProspectName={prospectName || undefined}
+          initialNotes={savedNotes || undefined}
           onSubmit={handleQuestionnaireSubmit}
           onCancel={handleQuestionnaireCancel}
           isSubmitting={isSubmittingQuestionnaire}

@@ -513,7 +513,11 @@ export function AmmoTrackerApp() {
         seenSegmentIds.current.clear();
         setAmmoItems([]);
         setTranscriptSegments([]);
-        setNotes('');
+        // DON'T clear notes when call ends - keep them visible for user to review
+        // Only clear notes when a NEW call starts
+        if (newCallId) {
+          setNotes('');
+        }
         setLastSaved(null);
         setSpeakerMapping(null);
         setCloserSnippet(undefined);

@@ -57,6 +57,28 @@ export async function addTranscript(callId: string, transcript: string): Promise
   }
 }
 
+// Add individual transcript segment for real-time display
+export async function addTranscriptSegment(
+  callId: string,
+  teamId: string,
+  speaker: string,
+  text: string,
+  timestamp: number
+): Promise<void> {
+  try {
+    await convex.mutation("calls:addTranscriptSegment" as any, {
+      callId,
+      teamId,
+      speaker,
+      text,
+      timestamp,
+    });
+    logger.info(`Transcript segment added: [${speaker}] "${text.substring(0, 50)}..."`);
+  } catch (error) {
+    logger.error("Failed to add transcript segment", error);
+  }
+}
+
 export async function addAmmoItem(
   callId: string,
   teamId: string,

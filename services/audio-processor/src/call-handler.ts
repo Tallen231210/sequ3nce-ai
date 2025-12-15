@@ -9,6 +9,7 @@ import {
   addAmmoItem,
   completeCall,
   addTranscript,
+  addTranscriptSegment,
   getTeamCustomPrompt,
 } from "./convex.js";
 import { logger } from "./logger.js";
@@ -79,15 +80,32 @@ export class CallHandler {
     if (this.isEnded) return;
 
     // Add to transcript buffer
-    if (chunk.isFinal) {
+    if (chunk.isFinal && chunk.text.trim()) {
       const speakerLabel = chunk.speaker === 0 ? "[Closer]" : "[Prospect]";
       const line = `${speakerLabel}: ${chunk.text}`;
       this.session.fullTranscript += line + "\n";
       this.session.transcriptBuffer += chunk.text + " ";
 
-      // Update transcript in Convex periodically
-      if (this.convexCallId && this.session.fullTranscript.length % 500 < 100) {
-        await addTranscript(this.convexCallId, this.session.fullTranscript);
+      // CRITICAL: Add transcript segment to Convex for real-time display in dashboard
+      if (this.convexCallId) {
+        const speaker = chunk.speaker === 0 ? "closer" : "prospect";
+        const timestampSeconds = Math.floor((Date.now() - this.session.startedAt) / 1000);
+
+        // Add segment for real-time viewing (non-blocking)
+        addTranscriptSegment(
+          this.convexCallId,
+          this.session.metadata.teamId,
+          speaker,
+          chunk.text,
+          timestampSeconds
+        ).catch(err => logger.error("Failed to add transcript segment", err));
+      }
+
+      // Update full transcript more frequently (every 5 lines instead of sporadic)
+      const lineCount = this.session.fullTranscript.split('\n').filter(l => l.trim()).length;
+      if (this.convexCallId && lineCount % 5 === 0) {
+        addTranscript(this.convexCallId, this.session.fullTranscript)
+          .catch(err => logger.error("Failed to update transcript", err));
       }
     }
 
