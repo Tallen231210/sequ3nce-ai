@@ -15,36 +15,39 @@ permissions:
   contents: write
 
 jobs:
-  build-mac:
-    runs-on: macos-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: apps/desktop/package-lock.json
-
-      - name: Install dependencies
-        working-directory: apps/desktop
-        run: npm ci
-
-      - name: Build macOS app
-        working-directory: apps/desktop
-        run: npm run make -- --platform darwin
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-build
-          path: |
-            apps/desktop/out/make/**/*.dmg
-            apps/desktop/out/make/**/*.zip
+  # NOTE: macOS build is disabled until we have Apple Developer code signing.
+  # CI-built unsigned macOS apps show "damaged" error due to Gatekeeper.
+  # For now, build macOS locally and upload manually.
+  # build-mac:
+  #   runs-on: macos-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #         cache: 'npm'
+  #         cache-dependency-path: apps/desktop/package-lock.json
+  #
+  #     - name: Install dependencies
+  #       working-directory: apps/desktop
+  #       run: npm ci
+  #
+  #     - name: Build macOS app
+  #       working-directory: apps/desktop
+  #       run: npm run make -- --platform darwin
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #
+  #     - name: Upload macOS artifacts
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: mac-build
+  #         path: |
+  #           apps/desktop/out/make/**/*.dmg
+  #           apps/desktop/out/make/**/*.zip
 
   build-windows:
     runs-on: windows-latest
@@ -112,7 +115,7 @@ jobs:
             apps/desktop/out/make/**/*.rpm
 
   create-release:
-    needs: [build-mac, build-windows, build-linux]
+    needs: [build-windows, build-linux]  # macOS is built locally until we have code signing
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
