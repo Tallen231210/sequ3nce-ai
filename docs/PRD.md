@@ -1,5 +1,5 @@
 # Product Requirements Document (PRD)
-# Seq3nce.ai — Sales Call Intelligence Platform
+# Sequ3nce.ai — Sales Call Intelligence Platform
 
 **Version:** 1.0
 **Last Updated:** December 2024
@@ -940,7 +940,7 @@ googleCalendarConnected: v.optional(v.boolean()),
 2. Clicks "Show setup instructions" for step-by-step guide
 3. Goes to Calendly → Integrations → API & Webhooks
 4. Generates Personal Access Token
-5. Pastes token into Seq3nce Settings
+5. Pastes token into Sequ3nce Settings
 6. System validates token with Calendly API
 7. On success, stores token securely and initiates sync
 8. Shows "Connected" status with account email and last sync time

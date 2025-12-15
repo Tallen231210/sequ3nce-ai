@@ -339,7 +339,7 @@ function CalendlyIntegration({
             <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
               <li>Go to <a href="https://calendly.com/integrations/api_webhooks" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Calendly Integrations</a></li>
               <li>Click "Generate New Token"</li>
-              <li>Give it a name (e.g., "Seq3nce Integration")</li>
+              <li>Give it a name (e.g., "Sequ3nce Integration")</li>
               <li>Copy the token and paste it below</li>
             </ol>
           </div>

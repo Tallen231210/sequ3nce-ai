@@ -11,7 +11,7 @@ export function Logo({ className = "", height = 24, href }: LogoProps) {
   const logoImage = (
     <Image
       src="/logo.png"
-      alt="Seq3nce.ai"
+      alt="Sequ3nce.ai"
       width={height * 5.5} // Approximate aspect ratio from the logo
       height={height}
       className={className}

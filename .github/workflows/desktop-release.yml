@@ -138,7 +138,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Seq3nce Desktop v${{ steps.get_version.outputs.VERSION }}
+          name: Sequ3nce Desktop v${{ steps.get_version.outputs.VERSION }}
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('desktop-v{0}', github.event.inputs.version) || github.ref_name }}
           draft: true
           prerelease: false
@@ -149,7 +149,7 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
           body: |
-            ## Seq3nce Desktop v${{ steps.get_version.outputs.VERSION }}
+            ## Sequ3nce Desktop v${{ steps.get_version.outputs.VERSION }}
 
             ### Downloads
             - **macOS**: Download the `.dmg` file and drag to Applications

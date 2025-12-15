@@ -1,4 +1,4 @@
-# Seq3nce Desktop App
+# Sequ3nce Desktop App
 
 Electron desktop application for sales closers. Captures system audio during calls, streams to the audio processing service for real-time transcription and ammo extraction.
 
@@ -157,7 +157,7 @@ On macOS, the app requires **Screen Recording** permission to capture system aud
 When you first start recording:
 1. A system prompt will appear asking for permission
 2. Click "Open System Preferences"
-3. Enable the checkbox for "Seq3nce" (or "Electron" in dev mode)
+3. Enable the checkbox for "Sequ3nce" (or "Electron" in dev mode)
 4. Restart the app
 
 You can also grant permission manually:

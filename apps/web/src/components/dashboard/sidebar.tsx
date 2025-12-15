@@ -71,7 +71,7 @@ export function Sidebar() {
         {/* Footer */}
         <div className="border-t border-border p-4">
           <p className="text-xs text-muted-foreground">
-            © 2024 Seq3nce.ai
+            © 2024 Sequ3nce.ai
           </p>
         </div>
       </div>

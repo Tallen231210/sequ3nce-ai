@@ -1,8 +1,8 @@
-# Seq3nce Desktop App - Build & Release Guide
+# Sequ3nce Desktop App - Build & Release Guide
 
 ## Overview
 
-The Seq3nce desktop app is built with Electron and Electron Forge. This guide covers building, testing, and releasing the app for macOS, Windows, and Linux.
+The Sequ3nce desktop app is built with Electron and Electron Forge. This guide covers building, testing, and releasing the app for macOS, Windows, and Linux.
 
 ## Prerequisites
 
@@ -172,7 +172,7 @@ new MakerSquirrel({
 # After building
 open out/make/*.dmg  # macOS
 # or
-./out/make/squirrel.windows/x64/Seq3nceSetup.exe  # Windows
+./out/make/squirrel.windows/x64/Sequ3nceSetup.exe  # Windows
 ```
 
 ### Pre-release Testing

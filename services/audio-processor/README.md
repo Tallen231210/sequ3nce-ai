@@ -1,4 +1,4 @@
-# Seq3nce Audio Processor
+# Sequ3nce Audio Processor
 
 Real-time audio processing service that handles live call audio from the desktop app, transcribes it using Deepgram, extracts "ammo" (sales intelligence) using Claude, and saves everything to Convex.
 

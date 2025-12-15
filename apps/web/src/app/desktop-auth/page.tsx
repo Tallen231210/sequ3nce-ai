@@ -16,7 +16,7 @@ function DesktopAuthContent() {
   const [error, setError] = useState<string | null>(null);
   const [canResend, setCanResend] = useState(false);
 
-  const redirectUrl = searchParams.get("redirect") || "seq3nce://auth-callback";
+  const redirectUrl = searchParams.get("redirect") || "sequ3nce://auth-callback";
 
   // If already signed in, redirect immediately
   useEffect(() => {
@@ -134,7 +134,7 @@ function DesktopAuthContent() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-black mb-2">Seq3nce</h1>
+          <h1 className="text-3xl font-bold text-black mb-2">Sequ3nce</h1>
           <p className="text-gray-500">Desktop App Login</p>
         </div>
 
@@ -142,7 +142,7 @@ function DesktopAuthContent() {
         {(step === "email" || step === "sending") && (
           <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              Sign in to Seq3nce
+              Sign in to Sequ3nce
             </h2>
             <p className="text-gray-500 text-sm mb-6">
               Enter your email and we'll send you a magic link to sign in.
@@ -269,7 +269,7 @@ function DesktopAuthContent() {
               You're signed in!
             </h2>
             <p className="text-gray-500 text-sm mb-6">
-              Redirecting you back to the Seq3nce app...
+              Redirecting you back to the Sequ3nce app...
             </p>
 
             <div className="w-8 h-8 border-2 border-gray-300 border-t-black rounded-full animate-spin mx-auto" />
@@ -332,7 +332,7 @@ function LoadingFallback() {
     <div className="min-h-screen flex items-center justify-center bg-white p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-black mb-2">Seq3nce</h1>
+          <h1 className="text-3xl font-bold text-black mb-2">Sequ3nce</h1>
           <p className="text-gray-500">Desktop App Login</p>
         </div>
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">

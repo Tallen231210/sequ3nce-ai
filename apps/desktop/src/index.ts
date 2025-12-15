@@ -47,7 +47,7 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || 'sk_test_HlsHEnSRSzhOdH
 const CLERK_FRONTEND_API = 'https://relevant-finch-38.clerk.accounts.dev';
 
 // Custom protocol for auth callback
-const PROTOCOL_NAME = 'seq3nce';
+const PROTOCOL_NAME = 'sequ3nce';
 
 // Pending magic link verification
 let pendingMagicLinkEmail: string | null = null;
@@ -208,7 +208,7 @@ const createTray = (): void => {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show Seq3nce',
+      label: 'Show Sequ3nce',
       click: () => {
         mainWindow?.show();
         mainWindow?.focus();
@@ -237,7 +237,7 @@ const createTray = (): void => {
     },
     { type: 'separator' },
     {
-      label: 'Quit Seq3nce',
+      label: 'Quit Sequ3nce',
       click: () => {
         isQuitting = true;
         app.quit();
@@ -245,7 +245,7 @@ const createTray = (): void => {
     },
   ]);
 
-  tray.setToolTip('Seq3nce');
+  tray.setToolTip('Sequ3nce');
   tray.setContextMenu(contextMenu);
 
   // Double-click to show window
@@ -662,7 +662,7 @@ const setupIpcHandlers = (): void => {
 
 // Register the custom protocol handler
 const registerProtocol = () => {
-  // Register as the default protocol handler for seq3nce://
+  // Register as the default protocol handler for sequ3nce://
   if (process.defaultApp) {
     if (process.argv.length >= 2) {
       app.setAsDefaultProtocolClient(PROTOCOL_NAME, process.execPath, [process.argv[1]]);

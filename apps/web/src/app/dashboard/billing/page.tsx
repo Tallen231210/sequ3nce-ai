@@ -275,7 +275,7 @@ function BillingPageContent() {
               <div>
                 <p className="font-medium">Platform Fee</p>
                 <p className="text-sm text-muted-foreground">
-                  Access to Seq3nce dashboard
+                  Access to Sequ3nce dashboard
                 </p>
               </div>
               <span className="font-medium">${PLATFORM_FEE}/mo</span>

@@ -21,7 +21,7 @@ async function main() {
 // Navigate to your deployment > Data > teams (copy an _id)
 // Then navigate to > Data > closers (copy an _id)
 
-// Then run this in your browser console on the Seq3nce dashboard:
+// Then run this in your browser console on the Sequ3nce dashboard:
 
 const teamId = "YOUR_TEAM_ID_HERE"; // Replace with actual team ID from Convex dashboard
 const closerId = "YOUR_CLOSER_ID_HERE"; // Replace with actual closer ID from Convex dashboard

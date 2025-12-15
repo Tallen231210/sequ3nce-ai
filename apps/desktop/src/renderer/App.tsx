@@ -18,8 +18,8 @@ import {
 import logoImage from '../assets/logo.png';
 
 // Storage keys
-const STORAGE_KEY = 'seq3nce_closer_email';
-const SESSION_KEY = 'seq3nce_session';
+const STORAGE_KEY = 'sequ3nce_closer_email';
+const SESSION_KEY = 'sequ3nce_session';
 
 // Auth states
 type AuthState =
@@ -330,7 +330,7 @@ function EmailEntryScreen({ email, setEmail, onSubmit, isLoading }: EmailEntrySc
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="mb-8 text-center">
-          <img src={logoImage} alt="Seq3nce" className="h-14 mx-auto" />
+          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto" />
           <p className="text-gray-500 text-sm mt-4">Enter your email to get started</p>
         </div>
 
@@ -386,7 +386,7 @@ function WaitingForLinkScreen({ email, canResend, onResend, onUseDifferentEmail,
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="mb-8 text-center">
-          <img src={logoImage} alt="Seq3nce" className="h-14 mx-auto" />
+          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto" />
         </div>
 
         {isVerifying ? (
@@ -448,7 +448,7 @@ function ErrorScreen({ error, onRetry, onUseDifferentEmail }: ErrorScreenProps) 
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="mb-8 text-center">
-          <img src={logoImage} alt="Seq3nce" className="h-14 mx-auto" />
+          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto" />
         </div>
 
         {/* Error icon */}
@@ -764,7 +764,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
 
       {/* Logo centered at top */}
       <div className="pt-4 pb-2 flex justify-center">
-        <img src={logoImage} alt="Seq3nce" className="h-12" />
+        <img src={logoImage} alt="Sequ3nce" className="h-12" />
       </div>
 
       {/* User info */}

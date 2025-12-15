@@ -153,7 +153,7 @@ export default function DownloadPage() {
         {/* Hero */}
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Download Seq3nce for Desktop
+            Download Sequ3nce for Desktop
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Get real-time ammo during your sales calls. The desktop app captures
@@ -168,7 +168,7 @@ export default function DownloadPage() {
               {platformInfo[platform].icon}
             </div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              Seq3nce for {platformInfo[platform].name}
+              Sequ3nce for {platformInfo[platform].name}
               {platform === "mac" && (
                 <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-normal">
                   Beta
@@ -209,7 +209,7 @@ export default function DownloadPage() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  This installer downloads and sets up Seq3nce automatically.
+                  This installer downloads and sets up Sequ3nce automatically.
                   <br />
                   Full code signing coming soon for direct downloads.
                 </p>

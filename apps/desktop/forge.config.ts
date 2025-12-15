@@ -16,9 +16,9 @@ import { rendererConfig } from './webpack.renderer.config';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
-    name: 'Seq3nce',
-    executableName: 'Seq3nce',
-    appBundleId: 'ai.seq3nce.desktop',
+    name: 'Sequ3nce',
+    executableName: 'Sequ3nce',
+    appBundleId: 'ai.sequ3nce.desktop',
     appCategoryType: 'public.app-category.productivity',
     // Icon paths (relative to project root)
     // Mac: .icns file, Windows: .ico file
@@ -29,8 +29,8 @@ const config: ForgeConfig = {
     // Protocol handler for magic link auth
     protocols: [
       {
-        name: 'Seq3nce',
-        schemes: ['seq3nce'],
+        name: 'Sequ3nce',
+        schemes: ['sequ3nce'],
       },
     ],
     // Extra resources to include
@@ -42,14 +42,14 @@ const config: ForgeConfig = {
   makers: [
     // Windows installer
     new MakerSquirrel({
-      name: 'Seq3nce',
+      name: 'Sequ3nce',
       setupIcon: './assets/icon.ico',
       // The ICO file to use as the icon for the generated Setup.exe
       iconUrl: 'https://raw.githubusercontent.com/Tallen231210/sequ3nce-ai/main/apps/desktop/assets/icon.ico',
     }),
     // macOS DMG
     new MakerDMG({
-      name: 'Seq3nce',
+      name: 'Sequ3nce',
       icon: './assets/icon.icns',
       format: 'ULFO', // Use ULFO for best compression
     }),
@@ -58,9 +58,9 @@ const config: ForgeConfig = {
     // Linux DEB
     new MakerDeb({
       options: {
-        name: 'seq3nce',
-        bin: 'Seq3nce',
-        maintainer: 'Seq3nce',
+        name: 'sequ3nce',
+        bin: 'Sequ3nce',
+        maintainer: 'Sequ3nce',
         homepage: 'https://sequ3nce.ai',
         icon: './assets/icon.png',
         categories: ['Office', 'Utility'],
@@ -69,8 +69,8 @@ const config: ForgeConfig = {
     // Linux RPM
     new MakerRpm({
       options: {
-        name: 'seq3nce',
-        bin: 'Seq3nce',
+        name: 'sequ3nce',
+        bin: 'Sequ3nce',
         homepage: 'https://sequ3nce.ai',
         icon: './assets/icon.png',
         categories: ['Office', 'Utility'],

@@ -110,9 +110,9 @@ export default function TeamPage() {
 
   // Send download email (opens email client)
   const handleSendDownloadEmail = (email: string, name: string) => {
-    const subject = encodeURIComponent("Download Seq3nce Desktop App");
+    const subject = encodeURIComponent("Download Sequ3nce Desktop App");
     const body = encodeURIComponent(
-      `Hi ${name},\n\nYou've been added to the team on Seq3nce. Please download the desktop app to get started:\n\n${getDownloadLink()}\n\nSign in with this email address: ${email}\n\nOnce installed, the app will capture your sales calls and provide real-time insights to help you close more deals.\n\nBest,\n${user?.firstName || "Your Manager"}`
+      `Hi ${name},\n\nYou've been added to the team on Sequ3nce. Please download the desktop app to get started:\n\n${getDownloadLink()}\n\nSign in with this email address: ${email}\n\nOnce installed, the app will capture your sales calls and provide real-time insights to help you close more deals.\n\nBest,\n${user?.firstName || "Your Manager"}`
     );
     window.open(`mailto:${email}?subject=${subject}&body=${body}`);
   };

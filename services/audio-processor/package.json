@@ -1,7 +1,7 @@
 {
-  "name": "seq3nce-audio-processor",
+  "name": "sequ3nce-audio-processor",
   "version": "1.0.0",
-  "description": "Audio processing service for Seq3nce.ai - handles real-time transcription and ammo extraction",
+  "description": "Audio processing service for Sequ3nce.ai - handles real-time transcription and ammo extraction",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

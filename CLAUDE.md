@@ -1,4 +1,4 @@
-# Seq3nce.ai
+# Sequ3nce.ai
 
 Sales call intelligence platform for high-ticket online sales teams (coaching, agencies, info products).
 

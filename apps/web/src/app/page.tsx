@@ -576,7 +576,7 @@ export default function Home() {
           <AnimatedSection delay={100}>
             <div className="max-w-2xl mx-auto">
               <FAQItem
-                question="What types of calls does Seq3nce work with?"
+                question="What types of calls does Sequ3nce work with?"
                 answer="Zoom, Google Meet, phone calls — any audio your computer plays. The desktop app captures system audio, so it works with any calling platform."
               />
               <FAQItem
@@ -589,7 +589,7 @@ export default function Home() {
               />
               <FAQItem
                 question="What if my closers aren't tech-savvy?"
-                answer="The app is dead simple. Download, login with your email, click the big record button. If they can use Zoom, they can use Seq3nce."
+                answer="The app is dead simple. Download, login with your email, click the big record button. If they can use Zoom, they can use Sequ3nce."
               />
               <FAQItem
                 question="Do you integrate with my CRM?"
@@ -714,7 +714,7 @@ export default function Home() {
 
           <div className="border-t border-border mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
             <p className="text-sm text-muted-foreground">
-              © 2025 Seq3nce.ai. All rights reserved.
+              © 2025 Sequ3nce.ai. All rights reserved.
             </p>
             <div className="flex gap-6 text-sm text-muted-foreground">
               <Link href="/privacy" className="hover:text-foreground transition-colors">

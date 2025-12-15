@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Seq3nce Desktop Installer for macOS
+# Sequ3nce Desktop Installer for macOS
 # Usage: curl -sSL https://sequ3nce.ai/install.sh | bash
 #
-# This script downloads and installs Seq3nce without triggering Gatekeeper issues
+# This script downloads and installs Sequ3nce without triggering Gatekeeper issues
 # by using curl (which doesn't add quarantine flags) and ad-hoc signing
 
 set -e
@@ -17,14 +17,14 @@ NC='\033[0m' # No Color
 
 # Configuration - UPDATE THESE FOR EACH RELEASE
 GITHUB_REPO="Tallen231210/sequ3nce-ai"
-RELEASE_TAG="desktop-v1.0.4"
-DMG_NAME="Seq3nce.dmg"
-APP_NAME="Seq3nce.app"
+RELEASE_TAG="v1.0.6"
+DMG_NAME="Sequ3nce.dmg"
+APP_NAME="Sequ3nce.app"
 INSTALL_DIR="/Applications"
 
 echo ""
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Seq3nce Desktop Installer          ║${NC}"
+echo -e "${BLUE}║     Sequ3nce Desktop Installer          ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -46,7 +46,7 @@ fi
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-echo -e "${YELLOW}Step 1/5:${NC} Downloading Seq3nce..."
+echo -e "${YELLOW}Step 1/5:${NC} Downloading Sequ3nce..."
 
 # Construct download URL
 DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_TAG}/${DMG_NAME}"
@@ -138,12 +138,12 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║     Installation Complete!             ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "Seq3nce has been installed to ${BLUE}/Applications/Seq3nce.app${NC}"
+echo -e "Sequ3nce has been installed to ${BLUE}/Applications/Sequ3nce.app${NC}"
 echo ""
-echo "To launch Seq3nce, run:"
-echo -e "  ${BLUE}open /Applications/Seq3nce.app${NC}"
+echo "To launch Sequ3nce, run:"
+echo -e "  ${BLUE}open /Applications/Sequ3nce.app${NC}"
 echo ""
 echo "Or find it in your Applications folder."
 echo ""
-echo -e "${BLUE}Thank you for using Seq3nce!${NC}"
+echo -e "${BLUE}Thank you for using Sequ3nce!${NC}"
 echo ""

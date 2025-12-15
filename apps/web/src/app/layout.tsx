@@ -5,7 +5,7 @@ import { ConvexClientProvider } from "@/components/providers/ConvexClientProvide
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Seq3nce.ai - Sales Call Intelligence",
+  title: "Sequ3nce.ai - Sales Call Intelligence",
   description: "AI-powered sales call intelligence for high-ticket sales teams",
 };
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Seq3nce Desktop Installer for macOS
-# This script downloads and installs Seq3nce without triggering Gatekeeper issues
+# Sequ3nce Desktop Installer for macOS
+# This script downloads and installs Sequ3nce without triggering Gatekeeper issues
 # by using curl (which doesn't add quarantine flags) and ad-hoc signing
 
 set -e
@@ -16,13 +16,13 @@ NC='\033[0m' # No Color
 # Configuration
 GITHUB_REPO="Tallen231210/sequ3nce-ai"
 RELEASE_TAG="desktop-v1.0.4"  # UPDATE THIS for each release
-DMG_NAME="Seq3nce.dmg"
-APP_NAME="Seq3nce.app"
+DMG_NAME="Sequ3nce.dmg"
+APP_NAME="Sequ3nce.app"
 INSTALL_DIR="/Applications"
 
 echo ""
 echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     Seq3nce Desktop Installer          ║${NC}"
+echo -e "${BLUE}║     Sequ3nce Desktop Installer          ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -42,7 +42,7 @@ fi
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
-echo -e "${YELLOW}Step 1/5:${NC} Downloading Seq3nce..."
+echo -e "${YELLOW}Step 1/5:${NC} Downloading Sequ3nce..."
 
 # Construct download URL
 # Try to get the latest release DMG URL
@@ -65,7 +65,7 @@ MOUNT_POINT=$(hdiutil attach "$TEMP_DIR/$DMG_NAME" -nobrowse -quiet | grep -E '^
 
 if [ -z "$MOUNT_POINT" ]; then
     # Try alternative parsing
-    MOUNT_POINT="/Volumes/Seq3nce"
+    MOUNT_POINT="/Volumes/Sequ3nce"
     if [ ! -d "$MOUNT_POINT" ]; then
         echo -e "${RED}Error: Failed to mount disk image.${NC}"
         exit 1
@@ -114,17 +114,17 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║     Installation Complete!             ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "Seq3nce has been installed to ${BLUE}/Applications/Seq3nce.app${NC}"
+echo -e "Sequ3nce has been installed to ${BLUE}/Applications/Sequ3nce.app${NC}"
 echo ""
 
 # Ask to launch
-read -p "Would you like to open Seq3nce now? (y/n) " -n 1 -r
+read -p "Would you like to open Sequ3nce now? (y/n) " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "Launching Seq3nce..."
+    echo "Launching Sequ3nce..."
     open "$INSTALL_DIR/$APP_NAME"
 fi
 
 echo ""
-echo -e "${BLUE}Thank you for using Seq3nce!${NC}"
+echo -e "${BLUE}Thank you for using Sequ3nce!${NC}"
 echo ""

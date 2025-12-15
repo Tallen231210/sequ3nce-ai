@@ -9,7 +9,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './renderer/App';
 
-console.log('[Renderer] Starting Seq3nce desktop app...');
+console.log('[Renderer] Starting Sequ3nce desktop app...');
 
 const container = document.getElementById('root');
 if (!container) {

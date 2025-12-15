@@ -50,7 +50,7 @@ export async function POST(request: Request) {
         success: true,
         message: 'Please check your email for the login link',
         // Return the auth URL for the desktop app to open in browser if needed
-        authUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://sequ3nce.ai'}/desktop-auth?email=${encodeURIComponent(normalizedEmail)}&redirect=${encodeURIComponent(redirectUrl || 'seq3nce://auth-callback')}`,
+        authUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://sequ3nce.ai'}/desktop-auth?email=${encodeURIComponent(normalizedEmail)}&redirect=${encodeURIComponent(redirectUrl || 'sequ3nce://auth-callback')}`,
       });
     } catch (clerkError: any) {
       console.error('Clerk error:', clerkError);
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           success: true,
           message: 'Please check your email for the login link',
-          authUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://sequ3nce.ai'}/desktop-auth?email=${encodeURIComponent(normalizedEmail)}&redirect=${encodeURIComponent(redirectUrl || 'seq3nce://auth-callback')}`,
+          authUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://sequ3nce.ai'}/desktop-auth?email=${encodeURIComponent(normalizedEmail)}&redirect=${encodeURIComponent(redirectUrl || 'sequ3nce://auth-callback')}`,
         });
       }
 

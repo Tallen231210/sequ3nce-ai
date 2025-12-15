@@ -34,7 +34,7 @@ export default function TermsPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-4">1. Acceptance of Terms</h2>
             <p className="text-muted-foreground">
-              By accessing or using Seq3nce.ai, you agree to be bound by these Terms
+              By accessing or using Sequ3nce.ai, you agree to be bound by these Terms
               of Service. If you do not agree to these terms, please do not use our
               service.
             </p>
@@ -43,7 +43,7 @@ export default function TermsPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-4">2. Description of Service</h2>
             <p className="text-muted-foreground">
-              Seq3nce.ai provides sales call intelligence software that enables
+              Sequ3nce.ai provides sales call intelligence software that enables
               real-time call monitoring, transcription, and analytics for sales teams.
             </p>
           </section>
@@ -73,7 +73,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold mb-4">5. Intellectual Property</h2>
             <p className="text-muted-foreground">
               The service and its original content, features, and functionality are
-              owned by Seq3nce.ai and are protected by international copyright,
+              owned by Sequ3nce.ai and are protected by international copyright,
               trademark, and other intellectual property laws.
             </p>
           </section>
@@ -81,7 +81,7 @@ export default function TermsPage() {
           <section className="mb-8">
             <h2 className="text-xl font-semibold mb-4">6. Limitation of Liability</h2>
             <p className="text-muted-foreground">
-              Seq3nce.ai shall not be liable for any indirect, incidental, special,
+              Sequ3nce.ai shall not be liable for any indirect, incidental, special,
               consequential, or punitive damages resulting from your use of or
               inability to use the service.
             </p>
