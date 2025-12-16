@@ -345,14 +345,21 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
       onTimeUpdate?.(audioRef.current.currentTime);
+      // For webm files, duration might only be available after playback starts
+      if (audioRef.current.duration && isFinite(audioRef.current.duration) && audioRef.current.duration !== duration) {
+        setDuration(audioRef.current.duration);
+      }
     }
   };
 
   const handleLoadedMetadata = () => {
-    if (audioRef.current) {
+    if (audioRef.current && isFinite(audioRef.current.duration)) {
       setDuration(audioRef.current.duration);
     }
   };
+
+  // Calculate progress percentage safely (avoid division by zero or Infinity)
+  const progressPercent = duration > 0 && isFinite(duration) ? (currentTime / duration) * 100 : 0;
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
@@ -401,7 +408,7 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
         <div className="flex items-center gap-2 text-sm font-mono text-zinc-400 min-w-[100px]">
           <span>{formatTimestamp(currentTime)}</span>
           <span>/</span>
-          <span>{formatTimestamp(duration)}</span>
+          <span>{duration > 0 && isFinite(duration) ? formatTimestamp(duration) : "--:--"}</span>
         </div>
 
         {/* Scrubber */}
@@ -409,12 +416,12 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
           <input
             type="range"
             min={0}
-            max={duration || 0}
+            max={duration > 0 && isFinite(duration) ? duration : 100}
             value={currentTime}
             onChange={handleSeek}
             className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer slider"
             style={{
-              background: `linear-gradient(to right, white ${(currentTime / duration) * 100}%, #3f3f46 ${(currentTime / duration) * 100}%)`,
+              background: `linear-gradient(to right, white ${progressPercent}%, #3f3f46 ${progressPercent}%)`,
             }}
           />
         </div>
@@ -424,7 +431,7 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
           variant="ghost"
           size="sm"
           onClick={changePlaybackRate}
-          className="text-zinc-400 hover:text-white font-mono text-sm min-w-[48px]"
+          className="text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 font-mono text-sm min-w-[48px]"
         >
           {playbackRate}x
         </Button>
