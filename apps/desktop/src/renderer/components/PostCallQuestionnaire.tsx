@@ -66,17 +66,17 @@ export function PostCallQuestionnaire({
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-full max-w-md mx-4 shadow-xl border border-gray-200">
+      <div className="bg-white rounded-xl w-full max-w-md mx-4 shadow-xl border border-gray-200 max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">Call Summary</h2>
           <p className="text-sm text-gray-500 mt-1">
             Complete this before your next call
           </p>
         </div>
 
-        {/* Form */}
-        <div className="px-6 py-5 space-y-5">
+        {/* Form - Scrollable */}
+        <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
           {/* Prospect Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -180,19 +180,19 @@ export function PostCallQuestionnaire({
               className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150 resize-none"
             />
           </div>
+
+          {/* Warning message */}
+          {showCloseWarning && !isValid && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">
+                Please complete all required fields before closing.
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Warning message */}
-        {showCloseWarning && !isValid && (
-          <div className="mx-6 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-600">
-              Please complete all required fields before closing.
-            </p>
-          </div>
-        )}
-
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 flex-shrink-0">
           <button
             onClick={handleAttemptClose}
             disabled={isSubmitting}
