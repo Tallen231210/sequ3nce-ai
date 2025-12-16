@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as ai from "../ai.js";
 import type * as billing from "../billing.js";
 import type * as calendly from "../calendly.js";
 import type * as calls from "../calls.js";
@@ -23,6 +24,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  ai: typeof ai;
   billing: typeof billing;
   calendly: typeof calendly;
   calls: typeof calls;
