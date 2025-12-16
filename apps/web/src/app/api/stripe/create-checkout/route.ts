@@ -52,8 +52,8 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${req.headers.get("origin")}/dashboard/billing?success=true`,
-      cancel_url: `${req.headers.get("origin")}/dashboard/billing?canceled=true`,
+      success_url: `${req.headers.get("origin")}/dashboard?success=true`,
+      cancel_url: `${req.headers.get("origin")}/subscribe?canceled=true`,
       subscription_data: {
         metadata: {
           clerkId: userId,

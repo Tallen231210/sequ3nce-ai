@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { SubscriptionGate } from "@/components/dashboard/subscription-gate";
 
 export default function DashboardLayout({
   children,
@@ -6,9 +7,11 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <main className="pl-64">{children}</main>
-    </div>
+    <SubscriptionGate>
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <main className="pl-64">{children}</main>
+      </div>
+    </SubscriptionGate>
   );
 }
