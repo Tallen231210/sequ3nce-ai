@@ -52,7 +52,7 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${req.headers.get("origin")}/dashboard?success=true`,
+      success_url: `${req.headers.get("origin")}/subscribe?success=true`,
       cancel_url: `${req.headers.get("origin")}/subscribe?canceled=true`,
       subscription_data: {
         metadata: {
