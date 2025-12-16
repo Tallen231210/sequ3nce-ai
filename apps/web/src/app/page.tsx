@@ -258,16 +258,16 @@ export default function Home() {
             <div>
               <AnimatedSection>
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.1]">
-                  Know exactly what your closers are saying.
-                  <span className="text-muted-foreground"> In real-time.</span>
+                  Finally see why deals close
+                  <span className="text-muted-foreground"> — and why they don&apos;t.</span>
                 </h1>
               </AnimatedSection>
 
               <AnimatedSection delay={100}>
                 <p className="mt-6 text-lg text-muted-foreground max-w-xl">
-                  Stop wondering why deals fall through. See every call as it
-                  happens, catch winning moments, and coach your team with real
-                  data — not guesswork.
+                  Stop managing your sales team blind. See every call as it happens,
+                  know exactly what&apos;s being said, and make decisions based on data
+                  — not what your closers tell you after the fact.
                 </p>
               </AnimatedSection>
 
@@ -330,10 +330,10 @@ export default function Home() {
           <AnimatedSection>
             <div className="text-center mb-16">
               <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                See it in action
+                Your sales floor, in one dashboard
               </h2>
               <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-                Real-time visibility into every call your team takes
+                Real-time visibility into every call, every closer, every deal
               </p>
             </div>
           </AnimatedSection>
@@ -350,22 +350,25 @@ export default function Home() {
           <AnimatedSection>
             <div className="text-center mb-16">
               <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                Sound familiar?
+                You&apos;re running a sales team blind
               </h2>
+              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+                Right now, you only know what your closers choose to tell you
+              </p>
             </div>
           </AnimatedSection>
 
           <div className="grid sm:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {[
-              "You have no idea what's happening on calls until they're over",
-              "Your best closer's techniques are stuck in their head, not shared with the team",
-              "You're paying for leads that no-show and can't prove it to marketing",
-              "Coaching sessions are based on memory, not what actually happened",
+              "Deal fell through? You'll never know if your closer fumbled or if the lead was bad",
+              "Your top performer is closing 3x more — but you can't replicate what they're doing",
+              "You're spending $50k/month on leads, but have zero proof when they no-show",
+              "Coaching is a guessing game. You're giving feedback on calls you never heard",
             ].map((pain, index) => (
               <AnimatedSection key={index} delay={index * 100}>
                 <div className="p-6 rounded-xl border border-border bg-zinc-50/50">
                   <p className="text-lg font-medium leading-relaxed">
-                    &ldquo;{pain}&rdquo;
+                    {pain}
                   </p>
                 </div>
               </AnimatedSection>
@@ -380,8 +383,11 @@ export default function Home() {
           <AnimatedSection>
             <div className="text-center mb-16">
               <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                Everything you need to see what&apos;s really happening
+                Stop guessing. Start knowing.
               </h2>
+              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+                Everything you need to manage a high-performing sales team
+              </p>
             </div>
           </AnimatedSection>
 
@@ -389,39 +395,39 @@ export default function Home() {
             {[
               {
                 icon: Radio,
-                title: "Live Call Monitoring",
+                title: "Know what's happening right now",
                 description:
-                  "See all active calls in real-time. Know who's on, who's waiting, who's closing.",
+                  "See every live call on your team. Who's on, how long they've been on, and what's being said — in real-time.",
               },
               {
                 icon: Sparkles,
-                title: "Real-Time Ammo Extraction",
+                title: "Catch buying signals instantly",
                 description:
-                  'AI pulls key quotes as they\'re spoken. "Money isn\'t the issue" → your closer sees it instantly.',
+                  "AI extracts key quotes as they're spoken. When a prospect says \"money isn't the issue,\" you'll know before the call ends.",
               },
               {
                 icon: BarChart3,
-                title: "Talk-to-Listen Ratio",
+                title: "Identify who's costing you deals",
                 description:
-                  "See who's talking too much. Great closers listen more — now you have the data.",
+                  "Talk-to-listen ratios, close rates, and cash collected. Spot underperformers before they burn through your leads.",
               },
               {
                 icon: BookOpen,
-                title: "Playbook Builder",
+                title: "Clone your best closer",
                 description:
-                  "Save the best call moments. Build a training library from real wins.",
+                  "Save winning call moments and build a training library from real closes. New hires learn from what actually works.",
               },
               {
                 icon: Users,
-                title: "Closer Stats Dashboard",
+                title: "Hold closers accountable",
                 description:
-                  "Close rates, cash collected, call volume. Know who's performing at a glance.",
+                  "Full call recordings, transcripts, and stats. No more \"the lead was bad\" — you have the proof.",
               },
               {
                 icon: Calendar,
-                title: "Calendly Integration",
+                title: "Never miss a scheduled call",
                 description:
-                  "Scheduled calls sync automatically. No manual entry, no missed calls.",
+                  "Calendly syncs automatically. Know exactly when calls should happen and if they actually did.",
               },
             ].map((feature, index) => (
               <AnimatedSection key={index} delay={index * 100}>
@@ -444,8 +450,11 @@ export default function Home() {
           <AnimatedSection>
             <div className="text-center mb-16">
               <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                Up and running in 5 minutes
+                Start seeing everything in minutes
               </h2>
+              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+                No complex setup. No IT required. Just visibility.
+              </p>
             </div>
           </AnimatedSection>
 
@@ -454,23 +463,23 @@ export default function Home() {
               {
                 icon: UserPlus,
                 step: "1",
-                title: "Manager creates account",
+                title: "Create your team",
                 description:
-                  "Set up your team, connect Calendly, invite closers.",
+                  "Set up your account, connect Calendly, and add your closers.",
               },
               {
                 icon: Monitor,
                 step: "2",
-                title: "Closers download the app",
+                title: "Closers install the app",
                 description:
-                  "Simple desktop app that captures calls. One click to start.",
+                  "One download, one login. They click record when calls start. That's it.",
               },
               {
                 icon: Eye,
                 step: "3",
-                title: "Watch calls in real-time",
+                title: "You see everything",
                 description:
-                  "See transcripts, ammo, and stats as calls happen. Coach smarter.",
+                  "Watch calls live, review transcripts, track performance. Full visibility from day one.",
               },
             ].map((step, index) => (
               <AnimatedSection key={index} delay={index * 150}>
@@ -606,10 +615,10 @@ export default function Home() {
           <AnimatedSection>
             <div className="text-center">
               <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                Ready to see what&apos;s really happening on your calls?
+                Stop wondering. Start knowing.
               </h2>
               <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-                Join sales teams who close more deals with real-time intelligence.
+                See exactly why deals close and why they don&apos;t — starting today.
               </p>
               <div className="mt-10">
                 <SignedOut>
@@ -642,8 +651,8 @@ export default function Home() {
             <div className="md:col-span-2">
               <Logo height={30} />
               <p className="mt-4 text-sm text-muted-foreground max-w-xs">
-                Sales call intelligence for high-ticket teams. See what&apos;s
-                happening on every call in real-time.
+                Sales management software for high-ticket teams. Full visibility
+                into every call, every closer, every deal.
               </p>
             </div>
 
