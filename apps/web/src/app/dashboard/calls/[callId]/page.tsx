@@ -358,6 +358,13 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
     }
   };
 
+  // Handle duration changes - WebM files often update duration as more data loads
+  const handleDurationChange = () => {
+    if (audioRef.current && isFinite(audioRef.current.duration)) {
+      setDuration(audioRef.current.duration);
+    }
+  };
+
   // Calculate progress percentage safely (avoid division by zero or Infinity)
   const progressPercent = duration > 0 && isFinite(duration) ? (currentTime / duration) * 100 : 0;
 
@@ -381,6 +388,10 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
 
   const handleEnded = () => {
     setIsPlaying(false);
+    // Capture true duration when audio actually ends (WebM files may have inaccurate metadata)
+    if (audioRef.current && audioRef.current.currentTime > duration) {
+      setDuration(audioRef.current.currentTime);
+    }
   };
 
   return (
@@ -390,6 +401,7 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
         src={src}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
+        onDurationChange={handleDurationChange}
         onEnded={handleEnded}
       />
 
@@ -605,7 +617,10 @@ function TranscriptView({
       const selectedSegments = segments.slice(start, end + 1);
       const text = selectedSegments.map(s => `[${formatTimestamp(s.timestamp)}] ${s.speaker}: ${s.text}`).join("\n\n");
       const startTs = segments[start].timestamp;
-      const endTs = segments[end].timestamp + 30; // Estimate end as start + 30 seconds
+      // Use next segment's timestamp as end, or +30 for last segment
+      const endTs = end < segments.length - 1
+        ? segments[end + 1].timestamp
+        : segments[end].timestamp + 30;
 
       onSelectionChange?.({
         startIndex: start,
@@ -647,7 +662,10 @@ function TranscriptView({
         const selectedSegments = segments.slice(start, end + 1);
         const text = selectedSegments.map(s => `[${formatTimestamp(s.timestamp)}] ${s.speaker}: ${s.text}`).join("\n\n");
         const startTs = segments[start].timestamp;
-        const endTs = segments[end].timestamp + 30;
+        // Use next segment's timestamp as end, or +30 for last segment
+        const endTs = end < segments.length - 1
+          ? segments[end + 1].timestamp
+          : segments[end].timestamp + 30;
 
         setSelectionStart(start);
         setSelectionEnd(end);
@@ -673,12 +691,16 @@ function TranscriptView({
       setSelectionEnd(index);
 
       const seg = segments[index];
+      // Use next segment's timestamp as end, or +30 for last segment
+      const endTs = index < segments.length - 1
+        ? segments[index + 1].timestamp
+        : seg.timestamp + 30;
       onSelectionChange?.({
         startIndex: index,
         endIndex: index,
         text: `[${formatTimestamp(seg.timestamp)}] ${seg.speaker}: ${seg.text}`,
         startTimestamp: seg.timestamp,
-        endTimestamp: seg.timestamp + 30,
+        endTimestamp: endTs,
       });
     }
   };
@@ -689,12 +711,16 @@ function TranscriptView({
     setSelectionEnd(index);
 
     const seg = segments[index];
+    // Use next segment's timestamp as end, or +30 for last segment
+    const endTs = index < segments.length - 1
+      ? segments[index + 1].timestamp
+      : seg.timestamp + 30;
     onSelectionChange?.({
       startIndex: index,
       endIndex: index,
       text: `[${formatTimestamp(seg.timestamp)}] ${seg.speaker}: ${seg.text}`,
       startTimestamp: seg.timestamp,
-      endTimestamp: seg.timestamp + 30,
+      endTimestamp: endTs,
     });
   };
 
