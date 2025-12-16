@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Future config options go here
+  skipTrailingSlashRedirect: true,
 };
 
 export default nextConfig;
