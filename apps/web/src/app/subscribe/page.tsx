@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { Check, Loader2, AlertCircle } from "lucide-react";
 
-export default function SubscribePage() {
+function SubscribeContent() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
@@ -151,5 +151,17 @@ export default function SubscribePage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function SubscribePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
+      </div>
+    }>
+      <SubscribeContent />
+    </Suspense>
   );
 }
