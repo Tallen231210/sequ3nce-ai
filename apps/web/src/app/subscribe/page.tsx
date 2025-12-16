@@ -7,6 +7,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Check, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
+import { useTeam } from "@/hooks/useTeam";
 
 function SubscribeContent() {
   const { user } = useUser();
@@ -15,6 +16,9 @@ function SubscribeContent() {
   const [isLoading, setIsLoading] = useState(false);
   const wasCanceled = searchParams.get("canceled") === "true";
   const wasSuccess = searchParams.get("success") === "true";
+
+  // This hook ensures the user and team exist in Convex
+  const { isReady: isTeamReady } = useTeam();
 
   // Query billing status to check if subscription is active
   const billing = useQuery(
@@ -164,10 +168,15 @@ function SubscribeContent() {
 
               <button
                 onClick={handleSubscribe}
-                disabled={isLoading}
+                disabled={isLoading || !isTeamReady}
                 className="w-full bg-zinc-900 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {isLoading ? (
+                {!isTeamReady ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Setting up account...
+                  </>
+                ) : isLoading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Redirecting to checkout...
