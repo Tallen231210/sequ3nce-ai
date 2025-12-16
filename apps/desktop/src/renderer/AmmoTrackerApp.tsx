@@ -192,17 +192,29 @@ function AmmoItemCard({ item, onCopy }: { item: AmmoItem; onCopy: (text: string)
 function TranscriptTab({ callId, segments }: { callId: string | null; segments: TranscriptSegment[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const lastSegmentCountRef = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter segments based on search query
+  const filteredSegments = searchQuery.trim()
+    ? segments.filter(seg => seg.text.toLowerCase().includes(searchQuery.toLowerCase()))
+    : segments;
+
+  // Count of matches
+  const matchCount = searchQuery.trim() ? filteredSegments.length : 0;
 
   useEffect(() => {
-    if (autoScroll && scrollRef.current && segments.length > lastSegmentCountRef.current) {
+    // Only auto-scroll if not searching
+    if (!searchQuery && autoScroll && scrollRef.current && segments.length > lastSegmentCountRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
     lastSegmentCountRef.current = segments.length;
-  }, [segments, autoScroll]);
+  }, [segments, autoScroll, searchQuery]);
 
   const handleScroll = () => {
-    if (!scrollRef.current) return;
+    if (!scrollRef.current || searchQuery) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
     setAutoScroll(isAtBottom);
@@ -213,6 +225,11 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       setAutoScroll(true);
     }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    searchInputRef.current?.focus();
   };
 
   if (!callId) {
@@ -237,12 +254,55 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
 
   return (
     <div className="relative h-full flex flex-col">
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
-        {segments.map((segment, index) => (
-          <TranscriptLine key={segment._id || index} segment={segment} />
-        ))}
+      {/* Search bar */}
+      <div className="px-2 pt-2 pb-1 shrink-0">
+        <div className={`relative flex items-center bg-white border rounded-lg transition-all duration-150 ${isSearchFocused ? 'border-gray-400 ring-1 ring-gray-400' : 'border-gray-200'}`}>
+          <svg className="w-3.5 h-3.5 ml-2.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            placeholder="Search transcript..."
+            className="flex-1 px-2 py-1.5 text-[12px] text-gray-700 bg-transparent focus:outline-none placeholder-gray-400"
+          />
+          {searchQuery && (
+            <>
+              <span className="text-[10px] text-gray-400 mr-1">
+                {matchCount} {matchCount === 1 ? 'match' : 'matches'}
+              </span>
+              <button
+                onClick={clearSearch}
+                className="p-1 mr-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors duration-150"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      {!autoScroll && (
+
+      {/* Transcript content */}
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
+        {filteredSegments.length === 0 && searchQuery ? (
+          <div className="flex flex-col items-center justify-center text-gray-400 py-8">
+            <p className="text-xs text-center px-4">No matches for "{searchQuery}"</p>
+          </div>
+        ) : (
+          filteredSegments.map((segment, index) => (
+            <TranscriptLine key={segment._id || index} segment={segment} searchQuery={searchQuery} />
+          ))
+        )}
+      </div>
+
+      {/* Jump to latest button (only show when not searching) */}
+      {!autoScroll && !searchQuery && (
         <button
           onClick={jumpToLatest}
           className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black text-white text-[11px] font-medium rounded-full shadow-lg hover:bg-gray-800 transition-colors duration-150"
@@ -254,18 +314,36 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
   );
 }
 
-function TranscriptLine({ segment }: { segment: TranscriptSegment }) {
+function TranscriptLine({ segment, searchQuery }: { segment: TranscriptSegment; searchQuery?: string }) {
   const isCloser = segment.speaker.toLowerCase() === 'closer';
 
+  // Highlight matching text
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim()) return text;
+
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+
+    return parts.map((part, i) =>
+      regex.test(part) ? (
+        <mark key={i} className="bg-yellow-200 text-gray-900 px-0.5 rounded">{part}</mark>
+      ) : (
+        part
+      )
+    );
+  };
+
   return (
-    <div className={`p-2 rounded-lg ${isCloser ? 'bg-gray-50' : 'bg-white border border-gray-100'} animate-fade-in`}>
+    <div className={`p-2 rounded-lg ${isCloser ? 'bg-gray-50' : 'bg-white border border-gray-100'} ${searchQuery ? 'border-yellow-300 bg-yellow-50/30' : ''} animate-fade-in`}>
       <div className="flex items-center gap-2 mb-0.5">
         <span className={`text-[10px] font-medium ${isCloser ? 'text-gray-500' : 'text-blue-600'}`}>
           {isCloser ? 'You' : 'Prospect'}
         </span>
         <span className="text-[10px] text-gray-400">{formatTimestamp(segment.timestamp)}</span>
       </div>
-      <p className="text-sm text-gray-700 leading-snug">{segment.text}</p>
+      <p className="text-sm text-gray-700 leading-snug">
+        {searchQuery ? highlightText(segment.text, searchQuery) : segment.text}
+      </p>
     </div>
   );
 }
