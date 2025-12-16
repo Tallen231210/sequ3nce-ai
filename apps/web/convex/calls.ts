@@ -120,6 +120,110 @@ export const getCallsByTeam = query({
   },
 });
 
+// Get dashboard stats (calls today, live now, close rate, no-shows)
+export const getDashboardStats = query({
+  args: {
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartMs = todayStart.getTime();
+
+    const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+    // Get all calls for this team
+    const allCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    // Calls today (any call that started today)
+    const callsToday = allCalls.filter(
+      (call) => call.startedAt && call.startedAt >= todayStartMs
+    ).length;
+
+    // Live calls (waiting or on_call status)
+    const liveNow = allCalls.filter(
+      (call) => call.status === "waiting" || call.status === "on_call"
+    ).length;
+
+    // Calls from last 7 days with outcomes
+    const weekCalls = allCalls.filter(
+      (call) =>
+        call.startedAt &&
+        call.startedAt >= weekAgo &&
+        call.outcome != null
+    );
+
+    // Close rate calculation
+    const closedCalls = weekCalls.filter(
+      (call) => call.outcome === "closed"
+    ).length;
+    const totalOutcomeCalls = weekCalls.length;
+    const closeRateWeek =
+      totalOutcomeCalls > 0
+        ? Math.round((closedCalls / totalOutcomeCalls) * 100)
+        : 0;
+
+    // No-shows this week
+    const noShowsWeek = weekCalls.filter(
+      (call) => call.outcome === "no_show"
+    ).length;
+
+    return {
+      callsToday,
+      liveNow,
+      closeRateWeek,
+      noShowsWeek,
+    };
+  },
+});
+
+// Get recent completed calls with closer info (for dashboard - limited to 5)
+export const getRecentCompletedCalls = query({
+  args: {
+    teamId: v.id("teams"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit || 5;
+
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "completed")
+      )
+      .order("desc")
+      .take(limit * 2); // Get extra in case some don't have outcomes
+
+    // Filter to only include calls that have an outcome (questionnaire completed)
+    const callsWithOutcome = calls.filter((call) => call.outcome != null).slice(0, limit);
+
+    // Fetch closer info for each call
+    const callsWithCloser = await Promise.all(
+      callsWithOutcome.map(async (call) => {
+        const closer = await ctx.db.get(call.closerId);
+        return {
+          ...call,
+          closerName: closer?.name || "Unknown",
+          closerInitials: closer?.name
+            ? closer.name
+                .split(" ")
+                .map((n: string) => n[0])
+                .join("")
+                .toUpperCase()
+                .slice(0, 2)
+            : "??",
+        };
+      })
+    );
+
+    return callsWithCloser;
+  },
+});
+
 // Get completed calls with closer info (for completed calls list)
 export const getCompletedCallsWithCloser = query({
   args: {
