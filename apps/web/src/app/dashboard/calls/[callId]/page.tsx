@@ -44,6 +44,9 @@ import {
   BarChart3,
   Pencil,
   FileText,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -81,6 +84,7 @@ interface CallDetails {
     closerSpeaker: string;
     confirmed: boolean;
   };
+  summary?: string;
   createdAt: number;
   closer: { name: string; email: string } | null;
   teamName: string | null;
@@ -196,6 +200,80 @@ function getAmmoTypeLabel(type: string): string {
     default:
       return type;
   }
+}
+
+// Call Summary Component (expandable/collapsible)
+interface CallSummaryProps {
+  summary?: string;
+  isLoading?: boolean;
+}
+
+function CallSummary({ summary, isLoading }: CallSummaryProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Don't render if no summary and not loading
+  if (!summary && !isLoading) {
+    return null;
+  }
+
+  // Get first sentence for collapsed view
+  const firstSentence = summary
+    ? summary.split(/[.!?]/).filter(s => s.trim())[0]?.trim() + "."
+    : "";
+
+  return (
+    <div
+      onClick={() => setIsExpanded(!isExpanded)}
+      className="mb-6 bg-gradient-to-r from-zinc-50 to-zinc-100 border border-zinc-200 rounded-lg cursor-pointer hover:border-zinc-300 transition-all duration-200"
+    >
+      <div className="p-4">
+        {/* Header Row */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {/* AI Badge */}
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium shrink-0">
+              <Sparkles className="h-3 w-3" />
+              <span>AI</span>
+            </div>
+
+            <span className="text-sm font-medium text-zinc-700 shrink-0">Call Summary</span>
+
+            {/* Loading or Collapsed Preview */}
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-zinc-500 text-sm">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Generating summary...</span>
+              </div>
+            ) : !isExpanded && summary ? (
+              <span className="text-sm text-zinc-500 truncate">
+                — {firstSentence}
+              </span>
+            ) : null}
+          </div>
+
+          {/* Expand/Collapse Icon */}
+          <div className="shrink-0 text-zinc-400">
+            {isExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && summary && (
+          <div
+            className="mt-3 pt-3 border-t border-zinc-200 animate-in slide-in-from-top-2 duration-200"
+          >
+            <p className="text-sm text-zinc-600 leading-relaxed">
+              {summary}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Talk-to-Listen Ratio Bar Component
@@ -1145,6 +1223,12 @@ export default function CallDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* AI Call Summary - Expandable */}
+        <CallSummary
+          summary={call.summary}
+          isLoading={call.status === "completed" && !call.summary && call.transcriptText ? true : false}
+        />
 
         {/* Audio Player - Sticky */}
         {call.recordingUrl ? (

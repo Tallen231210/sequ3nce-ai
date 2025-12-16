@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
+import { api } from "./_generated/api";
 
 // Create a new call record (called by audio processor when call starts)
 export const createCall = mutation({
@@ -491,6 +492,9 @@ export const completeCallWithOutcome = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Get the call to access the transcript
+    const call = await ctx.db.get(args.callId);
+
     await ctx.db.patch(args.callId, {
       prospectName: args.prospectName,
       outcome: args.outcome,
@@ -499,6 +503,16 @@ export const completeCallWithOutcome = mutation({
       status: "completed",
       completedAt: Date.now(),
     });
+
+    // Schedule AI summary generation (runs async, doesn't block completion)
+    if (call?.transcriptText) {
+      await ctx.scheduler.runAfter(0, api.ai.generateCallSummary, {
+        callId: args.callId,
+        transcript: call.transcriptText,
+        outcome: args.outcome,
+        prospectName: args.prospectName,
+      });
+    }
 
     return { success: true };
   },
@@ -1242,5 +1256,18 @@ export const nukeAllTestData = mutation({
     }
 
     return { deletedCalls, deletedAmmo, deletedSegments };
+  },
+});
+
+// Internal mutation to update call summary (called by AI action)
+export const updateCallSummary = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    summary: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      summary: args.summary,
+    });
   },
 });

@@ -102,6 +102,8 @@ export default defineSchema({
     // Post-call data (from closer questionnaire)
     notes: v.optional(v.string()), // Optional notes from closer
     completedAt: v.optional(v.number()), // Timestamp when closer submitted questionnaire
+    // AI-generated summary
+    summary: v.optional(v.string()), // AI summary of the call for quick manager review
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])
