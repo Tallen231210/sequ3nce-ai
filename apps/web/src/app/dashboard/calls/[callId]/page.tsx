@@ -46,7 +46,6 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
-  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -228,11 +227,15 @@ function CallSummary({ summary, isLoading }: CallSummaryProps) {
     >
       <div className="p-4">
         {/* Header Row */}
-        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {/* AI Badge */}
-            <div className="flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium shrink-0">
-              <Sparkles className="h-3 w-3" />
+            <div className="flex items-center gap-1 px-2 py-0.5 bg-zinc-900 text-white rounded-full text-xs font-medium shrink-0">
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
               <span>AI</span>
             </div>
 
