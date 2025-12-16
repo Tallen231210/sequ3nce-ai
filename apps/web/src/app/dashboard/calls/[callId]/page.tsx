@@ -1071,7 +1071,7 @@ export default function CallDetailPage() {
         {/* Back button */}
         <Link
           href="/dashboard/calls"
-          className="inline-flex items-center text-sm text-zinc-400 hover:text-white mb-6"
+          className="inline-flex items-center text-sm text-zinc-400 hover:text-black mb-6"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Calls
