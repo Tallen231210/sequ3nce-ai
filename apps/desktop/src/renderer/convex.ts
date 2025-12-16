@@ -34,10 +34,12 @@ export async function loginCloser(email: string, password: string): Promise<Logi
   try {
     console.log("[Convex] Logging in closer:", email);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/loginCloser`, {
+    // Add cache-busting query param to prevent Electron caching issues
+    const response = await fetch(`${CONVEX_SITE_URL}/loginCloser?_=${Date.now()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
       },
       body: JSON.stringify({ email, password }),
     });
@@ -52,6 +54,7 @@ export async function loginCloser(email: string, password: string): Promise<Logi
 
     const result = await response.json();
     console.log("[Convex] Login result:", result);
+    console.log("[Convex] result.success:", result.success, "result.closer:", !!result.closer);
     return result as LoginResult;
   } catch (error) {
     console.error("[Convex] Failed to login closer:", error);
