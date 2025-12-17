@@ -646,6 +646,9 @@ function TranscriptView({
   // Fall back to parsing transcriptText only if no database segments
   const segments = useMemo(() => {
     if (dbSegments && dbSegments.length > 0) {
+      console.log('[TranscriptView] Using database segments:', dbSegments.length, 'segments');
+      console.log('[TranscriptView] First 3 segments:', dbSegments.slice(0, 3).map(s => ({ text: s.text.slice(0, 30), timestamp: s.timestamp })));
+      
       // Convert database segments to TranscriptSegment format
       return dbSegments.map((dbSeg) => {
         // Check if this segment contains any ammo
@@ -665,12 +668,67 @@ function TranscriptView({
       });
     }
     // Fallback: parse transcript text (less accurate timestamps)
+    console.log('[TranscriptView] FALLBACK: No database segments, parsing transcript text');
     return parseTranscript(transcript, ammoItems, speakerMapping);
   }, [dbSegments, transcript, ammoItems, speakerMapping]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
+  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-scroll during drag selection when cursor is near viewport edges
+  useEffect(() => {
+    if (!isSelecting) {
+      // Clean up scroll interval when not selecting
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+        scrollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const SCROLL_ZONE = 80; // pixels from viewport edge to trigger scroll
+    const SCROLL_SPEED = 10; // pixels per frame
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const mouseY = e.clientY;
+      const viewportHeight = window.innerHeight;
+
+      // Clear any existing scroll interval
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+        scrollIntervalRef.current = null;
+      }
+
+      // Check if cursor is near top of viewport
+      if (mouseY < SCROLL_ZONE) {
+        const intensity = 1 - mouseY / SCROLL_ZONE;
+        const speed = Math.max(SCROLL_SPEED * intensity, 3);
+        scrollIntervalRef.current = setInterval(() => {
+          window.scrollBy(0, -speed);
+        }, 16);
+      }
+      // Check if cursor is near bottom of viewport
+      else if (mouseY > viewportHeight - SCROLL_ZONE) {
+        const intensity = 1 - (viewportHeight - mouseY) / SCROLL_ZONE;
+        const speed = Math.max(SCROLL_SPEED * intensity, 3);
+        scrollIntervalRef.current = setInterval(() => {
+          window.scrollBy(0, speed);
+        }, 16);
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+        scrollIntervalRef.current = null;
+      }
+    };
+  }, [isSelecting]);
 
   // Find the active segment based on current playback time
   const activeSegmentIndex = segments.findIndex(
@@ -695,6 +753,8 @@ function TranscriptView({
       const endTs = end < segments.length - 1
         ? segments[end + 1].timestamp
         : segments[end].timestamp + 30;
+
+      console.log('[Selection] Shift-click selection:', { start, end, startTs, endTs, selectedSegments: selectedSegments.map(s => ({ text: s.text.slice(0, 20), timestamp: s.timestamp })) });
 
       onSelectionChange?.({
         startIndex: start,
@@ -740,6 +800,8 @@ function TranscriptView({
         const endTs = end < segments.length - 1
           ? segments[end + 1].timestamp
           : segments[end].timestamp + 30;
+
+        console.log('[Selection] Drag selection:', { start, end, startTs, endTs, selectedSegments: selectedSegments.map(s => ({ text: s.text.slice(0, 20), timestamp: s.timestamp })) });
 
         setSelectionStart(start);
         setSelectionEnd(end);
@@ -1053,8 +1115,12 @@ function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(startTime);
 
+  // Debug logging
+  console.log('[SnippetAudioPlayer] Received props:', { startTime, endTime, duration: endTime - startTime });
+
   useEffect(() => {
     if (audioRef.current) {
+      console.log('[SnippetAudioPlayer] Setting initial currentTime to:', startTime);
       audioRef.current.currentTime = startTime;
     }
   }, [startTime]);
@@ -1064,6 +1130,7 @@ function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps
       if (isPlaying) {
         audioRef.current.pause();
       } else {
+        console.log('[SnippetAudioPlayer] Starting playback at:', startTime, 'will stop at:', endTime);
         audioRef.current.currentTime = startTime;
         audioRef.current.play();
       }
@@ -1077,6 +1144,7 @@ function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps
       setCurrentTime(time);
       // Stop at end time
       if (time >= endTime) {
+        console.log('[SnippetAudioPlayer] Reached end time, stopping. time:', time, 'endTime:', endTime);
         audioRef.current.pause();
         setIsPlaying(false);
         audioRef.current.currentTime = startTime;

@@ -96,11 +96,15 @@ function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(startTime);
 
+  // Debug logging
+  console.log('[Playbook SnippetAudioPlayer] Props:', { startTime, endTime, snippetDuration: endTime - startTime, src: src?.slice(0, 50) });
+
   const togglePlay = () => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
       } else {
+        console.log('[Playbook SnippetAudioPlayer] Starting at:', startTime, 'ending at:', endTime);
         audioRef.current.currentTime = startTime;
         audioRef.current.play();
       }
@@ -114,6 +118,7 @@ function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps
       setCurrentTime(time);
       // Stop at end time
       if (time >= endTime) {
+        console.log('[Playbook SnippetAudioPlayer] Stopping at:', time);
         audioRef.current.pause();
         setIsPlaying(false);
         audioRef.current.currentTime = startTime;
