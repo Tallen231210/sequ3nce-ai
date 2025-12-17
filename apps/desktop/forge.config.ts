@@ -52,6 +52,7 @@ const config: ForgeConfig = {
     extendInfo: {
       NSMicrophoneUsageDescription: 'Sequ3nce needs microphone access to record sales calls and provide real-time transcription.',
       NSAppleEventsUsageDescription: 'Sequ3nce needs to control system audio for call recording.',
+      NSScreenCaptureUsageDescription: 'Sequ3nce needs screen recording access to capture system audio from your sales calls.',
     },
   },
   rebuildConfig: {},

@@ -730,6 +730,16 @@ app.whenReady().then(() => {
   setupIpcHandlers();
   setupAutoUpdater(); // Initialize auto-updater
 
+  // Request microphone permission on startup (macOS only)
+  // This ensures the app appears in System Settings > Privacy > Microphone
+  if (process.platform === 'darwin') {
+    systemPreferences.askForMediaAccess('microphone').then((granted) => {
+      console.log(`[Main] Microphone permission on startup: ${granted ? 'granted' : 'denied'}`);
+    }).catch((err) => {
+      console.error('[Main] Failed to request microphone permission:', err);
+    });
+  }
+
   // Register global keyboard shortcut for ammo tracker
   globalShortcut.register('CommandOrControl+Shift+A', () => {
     toggleAmmoTracker();
