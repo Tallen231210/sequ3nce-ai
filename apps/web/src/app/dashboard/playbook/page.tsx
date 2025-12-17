@@ -95,7 +95,7 @@ function parseTranscriptSegments(transcriptText: string): TranscriptSegment[] {
   const segments: TranscriptSegment[] = [];
   
   // Match patterns like "[5:55] Prospect:" or "[6:00] Closer:"
-  const regex = /\[(\d+):(\d+)\]\s*(Prospect|Closer):\s*(?:\[(?:Prospect|Closer)\]:\s*)?(.+?)(?=\[|\n\n|$)/gs;
+  const regex = /\[(\d+):(\d+)\]\s*(Prospect|Closer):\s*(?:\[(?:Prospect|Closer)\]:\s*)?(.+?)(?=\[|\n\n|$)/g;
   
   let match;
   while ((match = regex.exec(transcriptText)) !== null) {

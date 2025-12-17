@@ -1,12 +1,13 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Header } from "@/components/dashboard/header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -15,8 +16,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useRouter } from "next/navigation";
-import { Phone } from "lucide-react";
+import { Phone, Trash2, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Id } from "../../../../convex/_generated/dataModel";
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -151,6 +165,81 @@ function EmptyState() {
   );
 }
 
+// Delete Button Component with confirmation
+function DeleteCallButton({
+  callId,
+  prospectName
+}: {
+  callId: Id<"calls">;
+  prospectName: string;
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const deleteCall = useMutation(api.calls.deleteCall);
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    setIsDeleting(true);
+    try {
+      await deleteCall({ callId });
+      setIsOpen(false);
+    } catch (error) {
+      console.error("Failed to delete call:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
+      <AlertDialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-zinc-400 hover:text-red-600 hover:bg-red-50"
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent row click
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this call?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently delete the call with <strong>{prospectName}</strong>,
+            including the recording, transcript, and all extracted data. This action cannot be undone.
+            <br /><br />
+            <span className="text-amber-600">
+              Note: This will also update closer and team statistics.
+            </span>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={(e) => e.stopPropagation()}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleDelete}
+            className="bg-red-600 hover:bg-red-700"
+            disabled={isDeleting}
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              "Delete Call"
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export default function CompletedCallsPage() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const router = useRouter();
@@ -203,6 +292,7 @@ export default function CompletedCallsPage() {
                   <TableHead className="w-[120px]">Talk Ratio</TableHead>
                   <TableHead className="w-[120px]">Outcome</TableHead>
                   <TableHead className="w-[100px] text-right">Value</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -240,6 +330,12 @@ export default function CompletedCallsPage() {
                     <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
                     <TableCell className="text-right font-medium">
                       {call.dealValue ? formatCurrency(call.dealValue) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <DeleteCallButton
+                        callId={call._id}
+                        prospectName={call.prospectName || "Unknown Prospect"}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

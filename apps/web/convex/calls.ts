@@ -1279,3 +1279,76 @@ export const updateCallSummary = internalMutation({
     });
   },
 });
+
+// Delete a call and all associated data (for admin use - removes accidental calls from stats)
+export const deleteCall = mutation({
+  args: {
+    callId: v.id("calls"),
+  },
+  handler: async (ctx, args) => {
+    // Get the call to verify it exists
+    const call = await ctx.db.get(args.callId);
+    if (!call) {
+      return { success: false, error: "Call not found" };
+    }
+
+    let deletedAmmo = 0;
+    let deletedSegments = 0;
+    let deletedObjections = 0;
+    let deletedHighlights = 0;
+
+    // Delete associated ammo
+    const ammo = await ctx.db
+      .query("ammo")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+    for (const a of ammo) {
+      await ctx.db.delete(a._id);
+      deletedAmmo++;
+    }
+
+    // Delete associated transcript segments
+    const segments = await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+    for (const s of segments) {
+      await ctx.db.delete(s._id);
+      deletedSegments++;
+    }
+
+    // Delete associated objections
+    const objections = await ctx.db
+      .query("objections")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+    for (const o of objections) {
+      await ctx.db.delete(o._id);
+      deletedObjections++;
+    }
+
+    // Delete associated highlights (saved to playbook)
+    const highlights = await ctx.db
+      .query("highlights")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+    for (const h of highlights) {
+      await ctx.db.delete(h._id);
+      deletedHighlights++;
+    }
+
+    // Delete the call itself
+    await ctx.db.delete(args.callId);
+
+    return {
+      success: true,
+      deleted: {
+        call: 1,
+        ammo: deletedAmmo,
+        transcriptSegments: deletedSegments,
+        objections: deletedObjections,
+        highlights: deletedHighlights,
+      },
+    };
+  },
+});
