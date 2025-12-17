@@ -341,11 +341,19 @@ export const getCallDetails = query({
       .withIndex("by_call", (q) => q.eq("callId", args.callId))
       .collect();
 
+    // Get transcript segments (these have accurate timestamps from the audio processor)
+    const transcriptSegments = await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_call_and_time", (q) => q.eq("callId", args.callId))
+      .order("asc")
+      .collect();
+
     return {
       ...call,
       closer: closer ? { name: closer.name, email: closer.email } : null,
       teamName: team?.name || null,
       ammo,
+      transcriptSegments,
     };
   },
 });

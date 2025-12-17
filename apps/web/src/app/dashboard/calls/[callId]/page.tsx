@@ -62,6 +62,17 @@ interface AmmoItem {
   createdAt: number;
 }
 
+// Database transcript segment (from transcriptSegments table)
+interface DbTranscriptSegment {
+  _id: string;
+  callId: Id<"calls">;
+  teamId: Id<"teams">;
+  speaker: string; // "closer" or "prospect"
+  text: string;
+  timestamp: number; // Accurate timestamp in seconds from audio processor
+  createdAt: number;
+}
+
 interface CallDetails {
   _id: Id<"calls">;
   closerId: Id<"closers">;
@@ -88,6 +99,7 @@ interface CallDetails {
   closer: { name: string; email: string } | null;
   teamName: string | null;
   ammo: AmmoItem[];
+  transcriptSegments?: DbTranscriptSegment[]; // Segments with accurate timestamps
 }
 
 // Utility functions
@@ -616,6 +628,7 @@ interface TranscriptViewProps {
   onSelectionChange?: (selection: SelectionState | null) => void;
   selectedIndices?: Set<number>;
   speakerMapping?: { closerSpeaker: string; confirmed: boolean };
+  dbSegments?: DbTranscriptSegment[]; // Database segments with accurate timestamps
 }
 
 function TranscriptView({
@@ -627,8 +640,33 @@ function TranscriptView({
   onSelectionChange,
   selectedIndices,
   speakerMapping,
+  dbSegments,
 }: TranscriptViewProps) {
-  const segments = useMemo(() => parseTranscript(transcript, ammoItems, speakerMapping), [transcript, ammoItems, speakerMapping]);
+  // Use database segments if available (they have accurate timestamps from audio processor)
+  // Fall back to parsing transcriptText only if no database segments
+  const segments = useMemo(() => {
+    if (dbSegments && dbSegments.length > 0) {
+      // Convert database segments to TranscriptSegment format
+      return dbSegments.map((dbSeg) => {
+        // Check if this segment contains any ammo
+        const matchingAmmo = ammoItems.find(
+          (ammo) =>
+            dbSeg.text.toLowerCase().includes(ammo.text.toLowerCase().slice(0, 30)) ||
+            ammo.text.toLowerCase().includes(dbSeg.text.toLowerCase().slice(0, 30))
+        );
+        
+        return {
+          speaker: dbSeg.speaker === "closer" ? "Closer" : dbSeg.speaker === "prospect" ? "Prospect" : dbSeg.speaker,
+          text: dbSeg.text,
+          timestamp: dbSeg.timestamp, // This is the ACCURATE timestamp!
+          hasAmmo: !!matchingAmmo,
+          ammoText: matchingAmmo?.text,
+        };
+      });
+    }
+    // Fallback: parse transcript text (less accurate timestamps)
+    return parseTranscript(transcript, ammoItems, speakerMapping);
+  }, [dbSegments, transcript, ammoItems, speakerMapping]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
@@ -1340,6 +1378,7 @@ export default function CallDetailPage() {
                   onSelectionChange={handleSelectionChange}
                   selectedIndices={selection ? new Set(Array.from({ length: selection.endIndex - selection.startIndex + 1 }, (_, i) => selection.startIndex + i)) : undefined}
                   speakerMapping={call.speakerMapping}
+                  dbSegments={call.transcriptSegments}
                 />
               </CardContent>
             </Card>
