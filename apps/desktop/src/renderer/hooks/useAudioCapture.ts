@@ -52,9 +52,32 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         console.log('[AudioCapture] Got system audio track:', systemAudioTracks[0].label);
       }
 
-      // 2. Get microphone audio
+      // 2. Get microphone audio (with proper macOS permission request)
       let micStream: MediaStream | null = null;
       try {
+        // First, request microphone permission through Electron's systemPreferences API
+        // This is required on macOS for the app to appear in System Settings > Privacy > Microphone
+        console.log('[AudioCapture] Checking microphone permission...');
+        const micPermission = await window.electron.audio.checkMicrophonePermission();
+        console.log('[AudioCapture] Microphone permission status:', micPermission);
+
+        if (micPermission === 'not-determined') {
+          console.log('[AudioCapture] Requesting microphone permission via system dialog...');
+          const granted = await window.electron.audio.requestMicrophonePermission();
+          console.log('[AudioCapture] Microphone permission granted:', granted);
+          if (!granted) {
+            console.warn('[AudioCapture] Microphone permission denied');
+            // Open System Preferences so user can grant permission
+            await window.electron.audio.openMicrophonePreferences();
+            throw new Error('Microphone permission denied - please grant access in System Settings');
+          }
+        } else if (micPermission === 'denied') {
+          console.warn('[AudioCapture] Microphone permission previously denied');
+          // Open System Preferences so user can grant permission
+          await window.electron.audio.openMicrophonePreferences();
+          throw new Error('Microphone permission denied - please grant access in System Settings');
+        }
+
         console.log('[AudioCapture] Requesting microphone access...');
         micStream = await navigator.mediaDevices.getUserMedia({
           audio: {

@@ -5,6 +5,9 @@ export interface AudioAPI {
   getStatus: () => Promise<AudioStatus>;
   checkPermissions: () => Promise<boolean>;
   requestPermissions: () => Promise<boolean>;
+  checkMicrophonePermission: () => Promise<string>;
+  requestMicrophonePermission: () => Promise<boolean>;
+  openMicrophonePreferences: () => Promise<void>;
   start: (config: {
     teamId: string;
     closerId: string;

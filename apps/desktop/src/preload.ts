@@ -7,6 +7,9 @@ export interface AudioAPI {
   getStatus: () => Promise<AudioStatus>;
   checkPermissions: () => Promise<boolean>;
   requestPermissions: () => Promise<boolean>;
+  checkMicrophonePermission: () => Promise<string>;
+  requestMicrophonePermission: () => Promise<boolean>;
+  openMicrophonePreferences: () => Promise<void>;
   start: (config: {
     teamId: string;
     closerId: string;
@@ -51,6 +54,9 @@ contextBridge.exposeInMainWorld('electron', {
     getStatus: () => ipcRenderer.invoke('audio:get-status'),
     checkPermissions: () => ipcRenderer.invoke('audio:check-permissions'),
     requestPermissions: () => ipcRenderer.invoke('audio:request-permissions'),
+    checkMicrophonePermission: () => ipcRenderer.invoke('audio:check-microphone-permission'),
+    requestMicrophonePermission: () => ipcRenderer.invoke('audio:request-microphone-permission'),
+    openMicrophonePreferences: () => ipcRenderer.invoke('audio:open-microphone-preferences'),
     start: (config: { teamId: string; closerId: string; prospectName?: string }) =>
       ipcRenderer.invoke('audio:start', config),
     stop: () => ipcRenderer.invoke('audio:stop'),

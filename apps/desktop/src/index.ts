@@ -518,6 +518,32 @@ const setupIpcHandlers = (): void => {
     }
   });
 
+  // Microphone permission handlers
+  ipcMain.handle('audio:check-microphone-permission', async () => {
+    if (process.platform === 'darwin') {
+      const status = systemPreferences.getMediaAccessStatus('microphone');
+      console.log(`[Main] Microphone permission status: ${status}`);
+      return status; // 'not-determined', 'granted', 'denied', 'restricted', 'unknown'
+    }
+    return 'granted'; // Non-macOS platforms don't need this
+  });
+
+  ipcMain.handle('audio:request-microphone-permission', async () => {
+    if (process.platform === 'darwin') {
+      console.log('[Main] Requesting microphone permission...');
+      const granted = await systemPreferences.askForMediaAccess('microphone');
+      console.log(`[Main] Microphone permission granted: ${granted}`);
+      return granted;
+    }
+    return true; // Non-macOS platforms don't need this
+  });
+
+  ipcMain.handle('audio:open-microphone-preferences', () => {
+    if (process.platform === 'darwin') {
+      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone');
+    }
+  });
+
   // Start audio capture - returns callId, actual capture happens in renderer
   ipcMain.handle('audio:start', async (_event, config: AudioCaptureConfig) => {
     console.log('[Main] Starting audio capture with config:', config);
