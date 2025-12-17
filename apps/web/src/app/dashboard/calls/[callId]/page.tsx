@@ -620,6 +620,33 @@ interface SelectionState {
   endTimestamp: number;
 }
 
+// Estimate segment duration based on word count
+// Average speaking rate is ~150 words/minute = ~2.5 words/second
+// We add a small buffer for natural pauses
+function estimateSegmentDuration(text: string): number {
+  const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+  // ~2.5 words/sec = ~0.4 seconds per word, plus 1 second buffer
+  const estimatedDuration = Math.max(3, Math.ceil(wordCount * 0.4) + 1);
+  return Math.min(estimatedDuration, 60); // Cap at 60 seconds max
+}
+
+// Calculate end timestamp for a segment
+function calculateEndTimestamp(
+  segments: TranscriptSegment[],
+  endIndex: number
+): number {
+  const endSegment = segments[endIndex];
+
+  // If there's a next segment, use its start time
+  if (endIndex < segments.length - 1) {
+    return segments[endIndex + 1].timestamp;
+  }
+
+  // For the last segment, estimate based on word count
+  const estimatedDuration = estimateSegmentDuration(endSegment.text);
+  return endSegment.timestamp + estimatedDuration;
+}
+
 // Transcript View Component
 interface TranscriptViewProps {
   transcript: string;
@@ -751,10 +778,7 @@ function TranscriptView({
       const selectedSegments = segments.slice(start, end + 1);
       const text = selectedSegments.map(s => `[${formatTimestamp(s.timestamp)}] ${s.speaker}: ${s.text}`).join("\n\n");
       const startTs = segments[start].timestamp;
-      // Use next segment's timestamp as end, or +30 for last segment
-      const endTs = end < segments.length - 1
-        ? segments[end + 1].timestamp
-        : segments[end].timestamp + 30;
+      const endTs = calculateEndTimestamp(segments, end);
 
       console.log('[Selection] Shift-click selection:', { start, end, startTs, endTs, selectedSegments: selectedSegments.map(s => ({ text: s.text.slice(0, 20), timestamp: s.timestamp })) });
 
@@ -798,10 +822,7 @@ function TranscriptView({
         const selectedSegments = segments.slice(start, end + 1);
         const text = selectedSegments.map(s => `[${formatTimestamp(s.timestamp)}] ${s.speaker}: ${s.text}`).join("\n\n");
         const startTs = segments[start].timestamp;
-        // Use next segment's timestamp as end, or +30 for last segment
-        const endTs = end < segments.length - 1
-          ? segments[end + 1].timestamp
-          : segments[end].timestamp + 30;
+        const endTs = calculateEndTimestamp(segments, end);
 
         console.log('[Selection] Drag selection:', { start, end, startTs, endTs, selectedSegments: selectedSegments.map(s => ({ text: s.text.slice(0, 20), timestamp: s.timestamp })) });
 
@@ -829,10 +850,7 @@ function TranscriptView({
       setSelectionEnd(index);
 
       const seg = segments[index];
-      // Use next segment's timestamp as end, or +30 for last segment
-      const endTs = index < segments.length - 1
-        ? segments[index + 1].timestamp
-        : seg.timestamp + 30;
+      const endTs = calculateEndTimestamp(segments, index);
       onSelectionChange?.({
         startIndex: index,
         endIndex: index,
@@ -849,10 +867,7 @@ function TranscriptView({
     setSelectionEnd(index);
 
     const seg = segments[index];
-    // Use next segment's timestamp as end, or +30 for last segment
-    const endTs = index < segments.length - 1
-      ? segments[index + 1].timestamp
-      : seg.timestamp + 30;
+    const endTs = calculateEndTimestamp(segments, index);
     onSelectionChange?.({
       startIndex: index,
       endIndex: index,
