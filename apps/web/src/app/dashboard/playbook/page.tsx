@@ -84,31 +84,93 @@ function formatDate(timestamp: number): string {
   });
 }
 
-// Snippet Audio Player Component
+// Parse transcript text into segments with timestamps
+interface TranscriptSegment {
+  timestamp: number;
+  speaker: string;
+  text: string;
+}
+
+function parseTranscriptSegments(transcriptText: string): TranscriptSegment[] {
+  const segments: TranscriptSegment[] = [];
+  
+  // Match patterns like "[5:55] Prospect:" or "[6:00] Closer:"
+  const regex = /\[(\d+):(\d+)\]\s*(Prospect|Closer):\s*(?:\[(?:Prospect|Closer)\]:\s*)?(.+?)(?=\[|\n\n|$)/gs;
+  
+  let match;
+  while ((match = regex.exec(transcriptText)) !== null) {
+    const minutes = parseInt(match[1], 10);
+    const seconds = parseInt(match[2], 10);
+    const timestamp = minutes * 60 + seconds;
+    const speaker = match[3];
+    const text = match[4].trim();
+    
+    if (text) {
+      segments.push({ timestamp, speaker, text });
+    }
+  }
+  
+  return segments;
+}
+
+// Snippet Audio Player Component with transcript following
 interface SnippetAudioPlayerProps {
   src: string;
   startTime: number;
   endTime: number;
+  transcriptText: string;
 }
 
-function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps) {
+function SnippetAudioPlayer({ src, startTime, endTime, transcriptText }: SnippetAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(startTime);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [activeSegmentIndex, setActiveSegmentIndex] = useState(0);
 
-  // Debug logging
-  console.log('[Playbook SnippetAudioPlayer] Props:', { startTime, endTime, snippetDuration: endTime - startTime, src: src?.slice(0, 50) });
+  // Parse transcript into segments
+  const segments = parseTranscriptSegments(transcriptText);
 
-  const togglePlay = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        console.log('[Playbook SnippetAudioPlayer] Starting at:', startTime, 'ending at:', endTime);
-        audioRef.current.currentTime = startTime;
-        audioRef.current.play();
+  // Find active segment based on current time
+  const updateActiveSegment = (time: number) => {
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (time >= segments[i].timestamp) {
+        setActiveSegmentIndex(i);
+        return;
       }
-      setIsPlaying(!isPlaying);
+    }
+    setActiveSegmentIndex(0);
+  };
+
+  const handleCanPlay = () => {
+    setIsLoading(false);
+    console.log('[Playbook Audio] Ready to play');
+  };
+
+  const handleError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
+    setIsLoading(false);
+    setHasError(true);
+    console.error('[Playbook Audio] Error loading audio:', e);
+  };
+
+  const togglePlay = async () => {
+    if (!audioRef.current || hasError) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      try {
+        audioRef.current.currentTime = startTime;
+        setCurrentTime(startTime);
+        updateActiveSegment(startTime);
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error('[Playbook Audio] Play failed:', err);
+        setHasError(true);
+      }
     }
   };
 
@@ -116,36 +178,96 @@ function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps
     if (audioRef.current) {
       const time = audioRef.current.currentTime;
       setCurrentTime(time);
+      updateActiveSegment(time);
+      
       // Stop at end time
       if (time >= endTime) {
-        console.log('[Playbook SnippetAudioPlayer] Stopping at:', time);
         audioRef.current.pause();
         setIsPlaying(false);
         audioRef.current.currentTime = startTime;
         setCurrentTime(startTime);
+        setActiveSegmentIndex(0);
       }
     }
   };
 
+  const snippetDuration = endTime - startTime;
+  const progress = Math.min(100, ((currentTime - startTime) / snippetDuration) * 100);
+
   return (
-    <div className="flex items-center gap-3 p-3 bg-zinc-100 rounded-lg">
-      <audio
-        ref={audioRef}
-        src={src}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={() => setIsPlaying(false)}
-      />
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={togglePlay}
-        className="h-8 w-8 rounded-full bg-foreground text-background hover:bg-zinc-700"
-      >
-        {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 ml-0.5" />}
-      </Button>
-      <div className="text-xs text-zinc-500 font-mono">
-        {formatTimestamp(currentTime)} / {formatTimestamp(endTime)}
+    <div className="space-y-3">
+      {/* Audio Player Controls */}
+      <div className="flex items-center gap-3 p-3 bg-zinc-100 rounded-lg">
+        <audio
+          ref={audioRef}
+          src={src}
+          preload="auto"
+          crossOrigin="anonymous"
+          onCanPlay={handleCanPlay}
+          onLoadedData={handleCanPlay}
+          onError={handleError}
+          onTimeUpdate={handleTimeUpdate}
+          onEnded={() => {
+            setIsPlaying(false);
+            setActiveSegmentIndex(0);
+          }}
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={togglePlay}
+          disabled={isLoading || hasError}
+          className="h-10 w-10 rounded-full bg-foreground text-background hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4 ml-0.5" />
+          )}
+        </Button>
+        <div className="flex-1">
+          {/* Progress bar */}
+          <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden mb-1">
+            <div 
+              className="h-full bg-foreground transition-all duration-100"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="text-xs text-zinc-500 font-mono">
+            {formatTimestamp(currentTime)} / {formatTimestamp(endTime)}
+          </div>
+        </div>
       </div>
+
+      {/* Scrolling Transcript */}
+      {segments.length > 0 && (
+        <div className="space-y-2 max-h-32 overflow-y-auto">
+          {segments.map((segment, index) => (
+            <div
+              key={index}
+              className={`text-sm p-2 rounded transition-all duration-200 ${
+                index === activeSegmentIndex && isPlaying
+                  ? "bg-yellow-100 border-l-2 border-yellow-500"
+                  : "text-zinc-600"
+              }`}
+            >
+              <span className="text-xs text-zinc-400 mr-2">
+                [{formatTimestamp(segment.timestamp)}]
+              </span>
+              <span className={`font-medium ${segment.speaker === "Closer" ? "text-blue-600" : "text-green-600"}`}>
+                {segment.speaker}:
+              </span>{" "}
+              {segment.text}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasError && (
+        <p className="text-xs text-red-500">Unable to load audio. Please try again.</p>
+      )}
     </div>
   );
 }
@@ -231,23 +353,24 @@ function HighlightCard({ highlight, onDelete, isDeleting }: HighlightCardProps) 
           </div>
         </div>
 
-        {/* Audio Player */}
-        {highlight.recordingUrl && (
+        {/* Audio Player with Scrolling Transcript */}
+        {highlight.recordingUrl ? (
           <div className="mb-3">
             <SnippetAudioPlayer
               src={highlight.recordingUrl}
               startTime={highlight.startTimestamp}
               endTime={highlight.endTimestamp}
+              transcriptText={highlight.transcriptText}
             />
           </div>
+        ) : (
+          /* Fallback: Show transcript without audio */
+          <div className="mb-3">
+            <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-4">
+              {highlight.transcriptText}
+            </p>
+          </div>
         )}
-
-        {/* Transcript */}
-        <div className="mb-3">
-          <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-4">
-            {highlight.transcriptText}
-          </p>
-        </div>
 
         {/* Notes */}
         {highlight.notes && (
