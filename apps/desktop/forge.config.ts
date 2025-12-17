@@ -43,6 +43,11 @@ const config: ForgeConfig = {
     extraResource: [
       './assets',
     ],
+    // macOS Info.plist additions for privacy permissions
+    extendInfo: {
+      NSMicrophoneUsageDescription: 'Sequ3nce needs microphone access to record sales calls and provide real-time transcription.',
+      NSAppleEventsUsageDescription: 'Sequ3nce needs to control system audio for call recording.',
+    },
   },
   rebuildConfig: {},
   makers: [
