@@ -187,7 +187,9 @@ export async function completeCallWithOutcome(data: {
   callId: string;
   prospectName: string;
   outcome: string;
-  dealValue?: number;
+  cashCollected?: number;
+  contractValue?: number;
+  dealValue?: number; // Legacy - kept for backward compat
   notes?: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {

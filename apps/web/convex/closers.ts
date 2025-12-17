@@ -354,9 +354,14 @@ interface CloserStats {
 
   // Primary stats
   closeRate: number; // percentage
-  cashCollected: number;
+  cashCollected: number; // Legacy: uses dealValue for old calls
   callsTaken: number;
   avgCallLength: number; // in seconds
+
+  // NEW: Split revenue metrics (only from calls with new fields)
+  totalCashCollected: number; // Sum of cashCollected field (upfront payments)
+  totalContractValue: number; // Sum of contractValue field (total commitments)
+  avgContractValue: number; // Average contract size
 
   // Secondary stats
   showRate: number; // percentage
@@ -368,12 +373,17 @@ interface CloserStats {
   // Time-based stats
   revenueThisWeek: number;
   revenueThisMonth: number;
+  cashCollectedThisWeek: number; // NEW: Upfront payments this week
+  cashCollectedThisMonth: number; // NEW: Upfront payments this month
+  contractValueThisWeek: number; // NEW: Contract value this week
+  contractValueThisMonth: number; // NEW: Contract value this month
   callsThisWeek: number;
   callsThisMonth: number;
 
   // Trend data (comparing current period to previous period)
   closeRateTrend: number | null; // positive = improvement, negative = decline
   cashCollectedTrend: number | null;
+  contractValueTrend: number | null; // NEW
   callsTakenTrend: number | null;
 
   // For ranking
@@ -514,9 +524,21 @@ export const getCloserStats = query({
         ? (prevClosedCalls.length / prevCompletedCalls.length) * 100
         : null;
 
-      // Cash collected
+      // Cash collected (legacy - uses dealValue for backward compat)
       const cashCollected = closedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
       const prevCashCollected = prevClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+
+      // NEW: Split metrics (only from calls with the new fields)
+      const callsWithNewFields = closedCalls.filter((c) => c.contractValue !== undefined);
+      const prevCallsWithNewFields = prevClosedCalls.filter((c) => c.contractValue !== undefined);
+
+      const totalCashCollected = callsWithNewFields.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+      const totalContractValue = callsWithNewFields.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+      const prevTotalContractValue = prevCallsWithNewFields.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+
+      const avgContractValue = callsWithNewFields.length > 0
+        ? totalContractValue / callsWithNewFields.length
+        : 0;
 
       // Calls taken
       const callsTaken = completedCalls.length;
@@ -565,8 +587,18 @@ export const getCloserStats = query({
       const weekClosedCalls = weekCalls.filter((c) => c.outcome === "closed");
       const monthClosedCalls = monthCalls.filter((c) => c.outcome === "closed");
 
+      // Legacy revenue (uses dealValue)
       const revenueThisWeek = weekClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
       const revenueThisMonth = monthClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+
+      // NEW: Split metrics for week/month (only from calls with new fields)
+      const weekNewFieldCalls = weekClosedCalls.filter((c) => c.contractValue !== undefined);
+      const monthNewFieldCalls = monthClosedCalls.filter((c) => c.contractValue !== undefined);
+
+      const cashCollectedThisWeek = weekNewFieldCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+      const cashCollectedThisMonth = monthNewFieldCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+      const contractValueThisWeek = weekNewFieldCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+      const contractValueThisMonth = monthNewFieldCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
       // Calculate trends
       const closeRateTrend = prevCloseRate !== null && prevCloseRate > 0
@@ -575,6 +607,11 @@ export const getCloserStats = query({
 
       const cashCollectedTrend = prevCashCollected > 0
         ? ((cashCollected - prevCashCollected) / prevCashCollected) * 100
+        : null;
+
+      // NEW: Contract value trend
+      const contractValueTrend = prevTotalContractValue > 0
+        ? ((totalContractValue - prevTotalContractValue) / prevTotalContractValue) * 100
         : null;
 
       const callsTakenTrend = prevCallsTaken > 0
@@ -590,6 +627,10 @@ export const getCloserStats = query({
         cashCollected,
         callsTaken,
         avgCallLength,
+        // NEW: Split metrics
+        totalCashCollected,
+        totalContractValue,
+        avgContractValue,
         showRate,
         avgDealValue,
         followUpConversionRate,
@@ -597,10 +638,15 @@ export const getCloserStats = query({
         talkToListenRatio,
         revenueThisWeek,
         revenueThisMonth,
+        cashCollectedThisWeek,
+        cashCollectedThisMonth,
+        contractValueThisWeek,
+        contractValueThisMonth,
         callsThisWeek: weekCalls.length,
         callsThisMonth: monthCalls.length,
         closeRateTrend,
         cashCollectedTrend,
+        contractValueTrend,
         callsTakenTrend,
         rank: 0, // Will be set after sorting
       });
@@ -625,13 +671,19 @@ export const getCloserStats = query({
 
 // Team aggregate stats interface
 interface TeamStats {
-  // Current period stats
+  // Current period stats (legacy - uses dealValue)
   totalCashCollected: number;
   totalClosedDeals: number;
   totalCallsTaken: number;
   teamCloseRate: number;
   averageDealValue: number;
   showRate: number;
+
+  // NEW: Split revenue metrics (only from calls with new fields)
+  teamCashCollected: number; // Sum of cashCollected field (upfront payments)
+  teamContractValue: number; // Sum of contractValue field (total commitments)
+  avgContractValue: number; // Average contract size
+
   // Previous period stats for trends
   previousCashCollected: number;
   previousClosedDeals: number;
@@ -639,6 +691,8 @@ interface TeamStats {
   previousCloseRate: number;
   previousAverageDealValue: number;
   previousShowRate: number;
+  previousContractValue: number; // NEW
+
   // Calculated trends (percentage change)
   cashCollectedTrend: number | null;
   closedDealsTrend: number | null;
@@ -646,6 +700,7 @@ interface TeamStats {
   closeRateTrend: number | null;
   averageDealValueTrend: number | null;
   showRateTrend: number | null;
+  contractValueTrend: number | null; // NEW
 }
 
 // Get aggregate team stats
@@ -734,6 +789,7 @@ export const getTeamStats = query({
     const completedCalls = periodCalls.filter((c) => c.status === "completed");
     const closedCalls = completedCalls.filter((c) => c.outcome === "closed");
 
+    // Legacy metrics (uses dealValue)
     const totalCashCollected = closedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
     const totalClosedDeals = closedCalls.length;
     const totalCallsTaken = completedCalls.length;
@@ -742,6 +798,14 @@ export const getTeamStats = query({
       : 0;
     const averageDealValue = closedCalls.length > 0
       ? totalCashCollected / closedCalls.length
+      : 0;
+
+    // NEW: Split metrics (only from calls with new fields)
+    const callsWithNewFields = closedCalls.filter((c) => c.contractValue !== undefined);
+    const teamCashCollected = callsWithNewFields.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+    const teamContractValue = callsWithNewFields.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+    const avgContractValue = callsWithNewFields.length > 0
+      ? teamContractValue / callsWithNewFields.length
       : 0;
 
     // Show rate (scheduled calls that actually happened vs no-shows)
@@ -766,6 +830,10 @@ export const getTeamStats = query({
     const previousAverageDealValue = prevClosedCalls.length > 0
       ? previousCashCollected / prevClosedCalls.length
       : 0;
+
+    // NEW: Previous contract value (only from calls with new fields)
+    const prevCallsWithNewFields = prevClosedCalls.filter((c) => c.contractValue !== undefined);
+    const previousContractValue = prevCallsWithNewFields.reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
     // Previous show rate
     const prevScheduledCalls = prevPeriodCalls.filter(
@@ -800,18 +868,24 @@ export const getTeamStats = query({
       teamCloseRate,
       averageDealValue,
       showRate,
+      // NEW: Split metrics
+      teamCashCollected,
+      teamContractValue,
+      avgContractValue,
       previousCashCollected,
       previousClosedDeals,
       previousCallsTaken,
       previousCloseRate,
       previousAverageDealValue,
       previousShowRate,
+      previousContractValue,
       cashCollectedTrend: calculateTrend(totalCashCollected, previousCashCollected),
       closedDealsTrend: calculateTrend(totalClosedDeals, previousClosedDeals),
       callsTakenTrend: calculateTrend(totalCallsTaken, previousCallsTaken),
       closeRateTrend: calculateRateTrend(teamCloseRate, previousCloseRate),
       averageDealValueTrend: calculateTrend(averageDealValue, previousAverageDealValue),
       showRateTrend: calculateRateTrend(showRate, previousShowRate),
+      contractValueTrend: calculateTrend(teamContractValue, previousContractValue),
     };
   },
 });

@@ -9,14 +9,17 @@ interface PostCallQuestionnaireProps {
   onSubmit: (data: {
     prospectName: string;
     outcome: CallOutcome;
-    dealValue?: number;
+    cashCollected?: number;
+    contractValue?: number;
+    dealValue?: number; // Legacy - kept for backward compat
     notes?: string;
   }) => void;
   onCancel: () => void;
   isSubmitting?: boolean;
 }
 
-const DEAL_VALUE_PRESETS = [1000, 3000, 5000, 10000, 15000];
+const CASH_COLLECTED_PRESETS = [1000, 3000, 5000, 10000, 15000];
+const CONTRACT_VALUE_PRESETS = [3000, 5000, 10000, 15000, 25000];
 
 export function PostCallQuestionnaire({
   callId,
@@ -28,13 +31,22 @@ export function PostCallQuestionnaire({
 }: PostCallQuestionnaireProps) {
   const [prospectName, setProspectName] = useState(initialProspectName);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
-  const [dealValue, setDealValue] = useState<number | ''>('');
+  const [cashCollected, setCashCollected] = useState<number | ''>('');
+  const [contractValue, setContractValue] = useState<number | ''>('');
   const [notes, setNotes] = useState(initialNotes);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
 
   // Check if form is valid for submission
   const isValid = prospectName.trim() !== '' && outcome !== null &&
-    (outcome !== 'closed' || (dealValue !== '' && dealValue > 0));
+    (outcome !== 'closed' || (
+      cashCollected !== '' && cashCollected > 0 &&
+      contractValue !== '' && contractValue > 0
+    ));
+
+  // Validation warning for cash > contract
+  const cashExceedsContract = outcome === 'closed' &&
+    cashCollected !== '' && contractValue !== '' &&
+    cashCollected > contractValue;
 
   const handleSubmit = () => {
     if (!isValid || !outcome) return;
@@ -42,7 +54,10 @@ export function PostCallQuestionnaire({
     onSubmit({
       prospectName: prospectName.trim(),
       outcome,
-      dealValue: outcome === 'closed' && dealValue ? Number(dealValue) : undefined,
+      cashCollected: outcome === 'closed' && cashCollected ? Number(cashCollected) : undefined,
+      contractValue: outcome === 'closed' && contractValue ? Number(contractValue) : undefined,
+      // Also set dealValue to contractValue for backward compat with old stats
+      dealValue: outcome === 'closed' && contractValue ? Number(contractValue) : undefined,
       notes: notes.trim() || undefined,
     });
   };
@@ -129,42 +144,90 @@ export function PostCallQuestionnaire({
             </div>
           </div>
 
-          {/* Deal Value (only shown if outcome is "closed") */}
+          {/* Cash Collected & Contract Value (only shown if outcome is "closed") */}
           {outcome === 'closed' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Deal Value <span className="text-red-500">*</span>
-              </label>
+            <>
+              {/* Cash Collected */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cash Collected <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-2">Amount paid on this call</p>
 
-              {/* Quick select buttons */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                {DEAL_VALUE_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    onClick={() => setDealValue(preset)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-                      dealValue === preset
-                        ? 'bg-black text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    {formatCurrency(preset)}
-                  </button>
-                ))}
+                {/* Quick select buttons */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {CASH_COLLECTED_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setCashCollected(preset)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                        cashCollected === preset
+                          ? 'bg-black text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {formatCurrency(preset)}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom input */}
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input
+                    type="number"
+                    value={cashCollected}
+                    onChange={(e) => setCashCollected(e.target.value ? Number(e.target.value) : '')}
+                    placeholder="Custom amount"
+                    className="w-full pl-8 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+                  />
+                </div>
               </div>
 
-              {/* Custom input */}
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                <input
-                  type="number"
-                  value={dealValue}
-                  onChange={(e) => setDealValue(e.target.value ? Number(e.target.value) : '')}
-                  placeholder="Custom amount"
-                  className="w-full pl-8 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
-                />
+              {/* Contract Value */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Contract Value <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-2">Total contract commitment</p>
+
+                {/* Quick select buttons */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {CONTRACT_VALUE_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setContractValue(preset)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                        contractValue === preset
+                          ? 'bg-black text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {formatCurrency(preset)}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom input */}
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input
+                    type="number"
+                    value={contractValue}
+                    onChange={(e) => setContractValue(e.target.value ? Number(e.target.value) : '')}
+                    placeholder="Custom amount"
+                    className="w-full pl-8 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+                  />
+                </div>
+
+                {/* Warning if cash > contract */}
+                {cashExceedsContract && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    Cash collected is higher than contract value - is this correct?
+                  </p>
+                )}
               </div>
-            </div>
+            </>
           )}
 
           {/* Notes */}

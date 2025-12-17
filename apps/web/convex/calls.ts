@@ -480,12 +480,16 @@ export const updateCallOutcome = mutation({
   args: {
     callId: v.id("calls"),
     outcome: v.string(),
-    dealValue: v.optional(v.number()),
+    dealValue: v.optional(v.number()), // Legacy - kept for backward compat
+    cashCollected: v.optional(v.number()), // Amount paid on the call
+    contractValue: v.optional(v.number()), // Total contract commitment
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.callId, {
       outcome: args.outcome,
       dealValue: args.dealValue,
+      cashCollected: args.cashCollected,
+      contractValue: args.contractValue,
     });
   },
 });
@@ -496,7 +500,9 @@ export const completeCallWithOutcome = mutation({
     callId: v.id("calls"),
     prospectName: v.string(),
     outcome: v.string(), // "closed", "follow_up", "lost", "no_show"
-    dealValue: v.optional(v.number()),
+    dealValue: v.optional(v.number()), // Legacy - kept for backward compat
+    cashCollected: v.optional(v.number()), // Amount paid on the call
+    contractValue: v.optional(v.number()), // Total contract commitment
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -507,6 +513,8 @@ export const completeCallWithOutcome = mutation({
       prospectName: args.prospectName,
       outcome: args.outcome,
       dealValue: args.dealValue,
+      cashCollected: args.cashCollected,
+      contractValue: args.contractValue,
       notes: args.notes,
       status: "completed",
       completedAt: Date.now(),
@@ -532,7 +540,9 @@ export const updateCallData = mutation({
     callId: v.id("calls"),
     prospectName: v.optional(v.string()),
     outcome: v.optional(v.string()),
-    dealValue: v.optional(v.number()),
+    dealValue: v.optional(v.number()), // Legacy - kept for backward compat
+    cashCollected: v.optional(v.number()), // Amount paid on the call
+    contractValue: v.optional(v.number()), // Total contract commitment
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -546,6 +556,12 @@ export const updateCallData = mutation({
     }
     if (args.dealValue !== undefined) {
       updates.dealValue = args.dealValue;
+    }
+    if (args.cashCollected !== undefined) {
+      updates.cashCollected = args.cashCollected;
+    }
+    if (args.contractValue !== undefined) {
+      updates.contractValue = args.contractValue;
     }
     if (args.notes !== undefined) {
       updates.notes = args.notes;

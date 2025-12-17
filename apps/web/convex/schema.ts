@@ -84,7 +84,9 @@ export default defineSchema({
     prospectName: v.optional(v.string()),
     status: v.string(), // "scheduled", "waiting", "on_call", "completed", "no_show", "cancelled"
     outcome: v.optional(v.string()), // "closed", "not_closed", "no_show", "rescheduled"
-    dealValue: v.optional(v.number()),
+    dealValue: v.optional(v.number()), // Legacy field - kept for backward compatibility
+    cashCollected: v.optional(v.number()), // Amount paid on the call (upfront payment)
+    contractValue: v.optional(v.number()), // Total contract commitment
     startedAt: v.optional(v.number()),
     endedAt: v.optional(v.number()),
     duration: v.optional(v.number()), // In seconds

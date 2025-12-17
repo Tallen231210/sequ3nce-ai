@@ -513,7 +513,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { callId, prospectName, outcome, dealValue, notes } = body;
+      const { callId, prospectName, outcome, dealValue, cashCollected, contractValue, notes } = body;
 
       if (!callId) {
         return new Response(JSON.stringify({ error: "callId is required" }), {
@@ -540,6 +540,8 @@ http.route({
         prospectName,
         outcome,
         dealValue: dealValue || undefined,
+        cashCollected: cashCollected || undefined,
+        contractValue: contractValue || undefined,
         notes: notes || undefined,
       });
 

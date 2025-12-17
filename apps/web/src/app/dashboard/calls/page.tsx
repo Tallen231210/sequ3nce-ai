@@ -291,7 +291,7 @@ export default function CompletedCallsPage() {
                   <TableHead className="w-[100px]">Duration</TableHead>
                   <TableHead className="w-[120px]">Talk Ratio</TableHead>
                   <TableHead className="w-[120px]">Outcome</TableHead>
-                  <TableHead className="w-[100px] text-right">Value</TableHead>
+                  <TableHead className="w-[140px] text-right">Cash / Contract</TableHead>
                   <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -329,7 +329,15 @@ export default function CompletedCallsPage() {
                     </TableCell>
                     <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
                     <TableCell className="text-right font-medium">
-                      {call.dealValue ? formatCurrency(call.dealValue) : "—"}
+                      {call.contractValue ? (
+                        <span className="flex flex-col items-end">
+                          <span>{formatCurrency(call.cashCollected || 0)} / {formatCurrency(call.contractValue)}</span>
+                        </span>
+                      ) : call.dealValue ? (
+                        formatCurrency(call.dealValue)
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell>
                       <DeleteCallButton

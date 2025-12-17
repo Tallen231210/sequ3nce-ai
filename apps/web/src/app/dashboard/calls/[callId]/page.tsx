@@ -80,7 +80,9 @@ interface CallDetails {
   prospectName?: string;
   status: string;
   outcome?: string;
-  dealValue?: number;
+  dealValue?: number; // Legacy field
+  cashCollected?: number; // NEW: Amount paid on the call
+  contractValue?: number; // NEW: Total contract commitment
   notes?: string;
   startedAt?: number;
   endedAt?: number;
@@ -1377,13 +1379,22 @@ export default function CallDetailPage() {
                   {getOutcomeBadge(call.outcome)}
                 </div>
 
-                {/* Deal Value */}
-                {call.dealValue && (
+                {/* Deal Value - Show split values for new calls, legacy value for old calls */}
+                {(call.contractValue || call.dealValue) && (
                   <div className="flex items-center gap-2">
                     <DollarSign className="h-4 w-4 text-green-500" />
-                    <span className="text-sm font-medium text-green-400">
-                      {formatCurrency(call.dealValue)}
-                    </span>
+                    {call.contractValue ? (
+                      <div className="flex flex-col text-sm">
+                        <span className="font-medium text-green-500">
+                          {formatCurrency(call.cashCollected || 0)} / {formatCurrency(call.contractValue)}
+                        </span>
+                        <span className="text-xs text-zinc-500">Cash / Contract</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-medium text-green-500">
+                        {formatCurrency(call.dealValue || 0)}
+                      </span>
+                    )}
                   </div>
                 )}
 
