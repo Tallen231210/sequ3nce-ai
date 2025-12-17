@@ -322,13 +322,17 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [isDiscoveringDuration, setIsDiscoveringDuration] = useState(true);
+  
+  // For WebM files, we need to discover the true duration by seeking to the end
+  const hasDiscoveredDuration = useRef(false);
 
   useEffect(() => {
-    if (seekTo !== undefined && audioRef.current) {
+    if (seekTo !== undefined && audioRef.current && !isDiscoveringDuration) {
       audioRef.current.currentTime = seekTo;
       setCurrentTime(seekTo);
     }
-  }, [seekTo]);
+  }, [seekTo, isDiscoveringDuration]);
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -342,41 +346,55 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
   };
 
   const handleTimeUpdate = () => {
-    if (audioRef.current) {
+    if (audioRef.current && !isDiscoveringDuration) {
       const time = audioRef.current.currentTime;
       setCurrentTime(time);
       onTimeUpdate?.(time);
-      
-      // WebM files from MediaRecorder have notoriously incorrect duration metadata.
-      // The browser reports a duration shorter than actual. We handle this by:
-      // 1. Using the browser's duration if it seems valid
-      // 2. Dynamically extending duration if currentTime exceeds it (the key fix!)
-      const reportedDuration = audioRef.current.duration;
-      
-      if (time > duration) {
-        // Current playback position exceeds our stored duration - extend it!
-        // Add a small buffer (5%) to prevent the scrubber from constantly hitting the end
-        setDuration(time * 1.05);
-      } else if (reportedDuration && isFinite(reportedDuration) && reportedDuration > duration) {
-        // Browser reported a longer duration than we have - use it
-        setDuration(reportedDuration);
-      }
     }
   };
 
   const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      const reportedDuration = audioRef.current.duration;
-      // Only set if it's a valid finite number and greater than what we have
-      if (isFinite(reportedDuration) && reportedDuration > 0) {
-        setDuration(reportedDuration);
-      }
+    if (!audioRef.current || hasDiscoveredDuration.current) return;
+    
+    const audio = audioRef.current;
+    const reportedDuration = audio.duration;
+    
+    // If duration seems valid and finite, use it
+    if (isFinite(reportedDuration) && reportedDuration > 0) {
+      setDuration(reportedDuration);
+      setIsDiscoveringDuration(false);
+      hasDiscoveredDuration.current = true;
+      return;
     }
+    
+    // WebM files often report Infinity initially - we need to discover true duration
+    // Technique: seek to a very large time, browser will clamp to actual end
+    setIsDiscoveringDuration(true);
+    
+    const handleSeeked = () => {
+      if (audioRef.current) {
+        // After seeking to "end", currentTime is now the true duration
+        const trueDuration = audioRef.current.currentTime;
+        if (trueDuration > 0) {
+          setDuration(trueDuration);
+        }
+        // Seek back to start
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+        setIsDiscoveringDuration(false);
+        hasDiscoveredDuration.current = true;
+        audioRef.current.removeEventListener('seeked', handleSeeked);
+      }
+    };
+    
+    audio.addEventListener('seeked', handleSeeked);
+    // Seek to a very large time - browser will clamp to actual end
+    audio.currentTime = 1e10;
   };
 
-  // Handle duration changes - WebM files often update duration as more data loads
+  // Handle duration changes - browser may update duration as it loads more of the file
   const handleDurationChange = () => {
-    if (audioRef.current) {
+    if (audioRef.current && !isDiscoveringDuration) {
       const reportedDuration = audioRef.current.duration;
       if (isFinite(reportedDuration) && reportedDuration > duration) {
         setDuration(reportedDuration);
@@ -384,9 +402,8 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
     }
   };
 
-  // Calculate progress percentage safely
-  // Cap at 100% to prevent visual overflow
-  const progressPercent = duration > 0 && isFinite(duration) 
+  // Calculate progress percentage
+  const progressPercent = duration > 0 
     ? Math.min((currentTime / duration) * 100, 100) 
     : 0;
 
@@ -410,14 +427,7 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
 
   const handleEnded = () => {
     setIsPlaying(false);
-    // When audio ends, we now know the TRUE duration - set it exactly
-    if (audioRef.current) {
-      const trueDuration = audioRef.current.currentTime;
-      if (trueDuration > 0) {
-        setDuration(trueDuration);
-        setCurrentTime(trueDuration); // Sync position to end
-      }
-    }
+    setCurrentTime(duration); // Ensure we show 100% at the end
   };
 
   return (
