@@ -335,6 +335,9 @@ function CalendlyIntegration({
 
         {showInstructions && (
           <div className="p-3 bg-zinc-50 rounded-lg text-sm space-y-3">
+            <div className="p-2 bg-blue-50 rounded border border-blue-200 text-blue-700 text-xs">
+              <strong>Nice to have, not essential:</strong> Calendly integration lets managers view scheduled calls in the Schedule tab without leaving the app, and auto-fills prospect names in the desktop app (though these are now editable manually). The app works great without it!
+            </div>
             <p className="font-medium">To get your Personal Access Token:</p>
             <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
               <li>Log in to Calendly at calendly.com</li>
