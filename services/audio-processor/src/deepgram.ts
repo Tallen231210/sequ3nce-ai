@@ -41,19 +41,27 @@ export function createDeepgramConnection(
     const text = transcript.transcript;
     if (!text || text.trim() === "") return;
 
-    // Get speaker from words if available
+    // Get speaker and audio-aligned timestamp from words if available
     const words = transcript.words || [];
     let speaker = 0;
+    let audioTimestamp = 0; // Seconds from start of audio stream
 
-    if (words.length > 0 && words[0].speaker !== undefined) {
-      speaker = words[0].speaker;
-      onSpeakerDetected(speaker);
+    if (words.length > 0) {
+      // Use Deepgram's audio-aligned timestamp (start time of first word)
+      if (words[0].start !== undefined) {
+        audioTimestamp = words[0].start;
+      }
+      if (words[0].speaker !== undefined) {
+        speaker = words[0].speaker;
+        onSpeakerDetected(speaker);
+      }
     }
 
     const chunk: TranscriptChunk = {
       text,
       speaker,
       timestamp: Date.now(),
+      audioTimestamp, // NEW: Actual position in audio stream (seconds)
       isFinal: data.is_final || false,
     };
 

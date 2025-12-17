@@ -18,6 +18,7 @@ export interface TranscriptChunk {
   text: string;
   speaker: number;
   timestamp: number;
+  audioTimestamp: number; // Deepgram's audio-aligned timestamp (seconds from audio start)
   isFinal: boolean;
 }
 

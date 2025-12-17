@@ -90,7 +90,9 @@ export class CallHandler {
       // CRITICAL: Add transcript segment to Convex for real-time display in dashboard
       if (this.convexCallId) {
         const speaker = chunk.speaker === 0 ? "closer" : "prospect";
-        const timestampSeconds = Math.floor((Date.now() - this.session.startedAt) / 1000);
+        // Use Deepgram's audio-aligned timestamp (accurate to the actual recording)
+        // This ensures playbook snippets play at the correct position
+        const timestampSeconds = Math.floor(chunk.audioTimestamp);
 
         // Add segment for real-time viewing (non-blocking)
         addTranscriptSegment(
