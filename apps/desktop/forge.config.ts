@@ -18,14 +18,20 @@ const config: ForgeConfig = {
     asar: true,
     name: 'Sequ3nce',
     executableName: 'Sequ3nce',
-    appBundleId: 'ai.sequ3nce.desktop',
+    appBundleId: 'com.sequ3nce.desktop',
     appCategoryType: 'public.app-category.productivity',
     // Icon paths (relative to project root)
     // Mac: .icns file, Windows: .ico file
     icon: './assets/icon',
-    // Disable code signing for now (will enable with Apple Developer certificate)
-    osxSign: false as any,
-    osxNotarize: false as any,
+    // Code signing configuration (auto-detects Developer ID Application certificate)
+    osxSign: {
+      entitlements: './entitlements.plist',
+      'entitlements-inherit': './entitlements.plist',
+    },
+    // Notarization configuration (uses keychain profile for credentials)
+    osxNotarize: {
+      keychainProfile: 'sequ3nce-notarize',
+    },
     // Protocol handler for magic link auth
     protocols: [
       {
