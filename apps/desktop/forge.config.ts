@@ -42,6 +42,7 @@ const config: ForgeConfig = {
     // Extra resources to include
     extraResource: [
       './assets',
+      './app-update.yml',
     ],
     // macOS Info.plist additions for privacy permissions
     extendInfo: {
