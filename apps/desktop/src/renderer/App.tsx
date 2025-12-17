@@ -613,7 +613,9 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     setIsChangingPassword(true);
 
     try {
+      console.log('[ChangePassword] Attempting password change for closerId:', closerInfo.closerId);
       const result = await changePassword(closerInfo.closerId, currentPassword, newPassword);
+      console.log('[ChangePassword] Result:', result);
 
       if (result.success) {
         setPasswordSuccess(true);
@@ -622,9 +624,11 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
           closeSettingsModal();
         }, 2000);
       } else {
+        console.error('[ChangePassword] Failed:', result.error);
         setPasswordError(result.error || "Failed to change password");
       }
     } catch (err) {
+      console.error('[ChangePassword] Exception:', err);
       setPasswordError("Network error. Please try again.");
     } finally {
       setIsChangingPassword(false);
@@ -721,10 +725,22 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-sm"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-black focus:border-transparent text-sm ${
+                      confirmPassword && newPassword !== confirmPassword
+                        ? 'border-red-300 bg-red-50'
+                        : confirmPassword && newPassword === confirmPassword
+                          ? 'border-green-300 bg-green-50'
+                          : 'border-gray-300'
+                    }`}
                     required
                     minLength={6}
                   />
+                  {confirmPassword && newPassword !== confirmPassword && (
+                    <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+                  )}
+                  {confirmPassword && newPassword === confirmPassword && newPassword.length >= 6 && (
+                    <p className="text-xs text-green-500 mt-1">Passwords match ✓</p>
+                  )}
                 </div>
 
                 {passwordError && (

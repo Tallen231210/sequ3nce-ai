@@ -173,7 +173,10 @@ http.route({
       const body = await request.json();
       const { closerId, currentPassword, newPassword } = body;
 
+      console.log("[changePassword] Request received for closerId:", closerId);
+
       if (!closerId || !currentPassword || !newPassword) {
+        console.log("[changePassword] Missing fields:", { hasCloserId: !!closerId, hasCurrentPassword: !!currentPassword, hasNewPassword: !!newPassword });
         return new Response(JSON.stringify({ success: false, error: "All fields are required" }), {
           status: 400,
           headers: {
@@ -183,11 +186,14 @@ http.route({
         });
       }
 
+      // Cast closerId string to the expected Convex ID type
       const result = await ctx.runMutation(api.closers.changeCloserPassword, {
-        closerId,
+        closerId: closerId as any, // Convex will validate the ID format
         currentPassword,
         newPassword,
       });
+
+      console.log("[changePassword] Mutation result:", result);
 
       return new Response(JSON.stringify(result), {
         status: result.success ? 200 : 400,
@@ -197,8 +203,9 @@ http.route({
         },
       });
     } catch (error) {
-      console.error("Error changing password:", error);
-      return new Response(JSON.stringify({ success: false, error: "Failed to change password" }), {
+      console.error("[changePassword] Error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to change password";
+      return new Response(JSON.stringify({ success: false, error: errorMessage }), {
         status: 500,
         headers: {
           "Content-Type": "application/json",
