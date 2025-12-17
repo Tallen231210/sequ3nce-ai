@@ -25,8 +25,12 @@ const config: ForgeConfig = {
     icon: './assets/icon',
     // Code signing configuration (auto-detects Developer ID Application certificate)
     osxSign: {
-      entitlements: './entitlements.plist',
-      'entitlements-inherit': './entitlements.plist',
+      optionsForFile: () => {
+        return {
+          entitlements: './entitlements.plist',
+          hardenedRuntime: true,
+        };
+      },
     },
     // Notarization configuration (uses keychain profile for credentials)
     osxNotarize: {
