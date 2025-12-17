@@ -128,6 +128,16 @@ function SnippetAudioPlayer({ src, startTime, endTime, transcriptText }: Snippet
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+
+  // Debug logging on mount
+  console.log('[Playbook Audio] Component mounted with:', {
+    startTime,
+    endTime,
+    snippetDuration: endTime - startTime,
+    srcPreview: src?.slice(0, 80),
+    transcriptPreview: transcriptText?.slice(0, 100)
+  });
 
   // Parse transcript into segments
   const segments = parseTranscriptSegments(transcriptText);
@@ -145,7 +155,16 @@ function SnippetAudioPlayer({ src, startTime, endTime, transcriptText }: Snippet
 
   const handleCanPlay = () => {
     setIsLoading(false);
-    console.log('[Playbook Audio] Ready to play');
+    if (audioRef.current) {
+      setAudioDuration(audioRef.current.duration);
+      console.log('[Playbook Audio] Ready to play. Audio duration:', audioRef.current.duration, 'seconds');
+      console.log('[Playbook Audio] Snippet range:', startTime, 'to', endTime, '(', endTime - startTime, 'seconds)');
+      
+      // Verify timestamps are within audio range
+      if (startTime > audioRef.current.duration) {
+        console.warn('[Playbook Audio] WARNING: startTime', startTime, 'exceeds audio duration', audioRef.current.duration);
+      }
+    }
   };
 
   const handleError = (e: React.SyntheticEvent<HTMLAudioElement, Event>) => {
@@ -160,13 +179,17 @@ function SnippetAudioPlayer({ src, startTime, endTime, transcriptText }: Snippet
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      console.log('[Playbook Audio] Paused at:', audioRef.current.currentTime);
     } else {
       try {
+        console.log('[Playbook Audio] Attempting to play from:', startTime, 'to:', endTime);
         audioRef.current.currentTime = startTime;
+        console.log('[Playbook Audio] Set currentTime to:', audioRef.current.currentTime);
         setCurrentTime(startTime);
         updateActiveSegment(startTime);
         await audioRef.current.play();
         setIsPlaying(true);
+        console.log('[Playbook Audio] Playing! Current time:', audioRef.current.currentTime);
       } catch (err) {
         console.error('[Playbook Audio] Play failed:', err);
         setHasError(true);
@@ -202,7 +225,6 @@ function SnippetAudioPlayer({ src, startTime, endTime, transcriptText }: Snippet
           ref={audioRef}
           src={src}
           preload="auto"
-          crossOrigin="anonymous"
           onCanPlay={handleCanPlay}
           onLoadedData={handleCanPlay}
           onError={handleError}
