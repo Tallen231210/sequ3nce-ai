@@ -16,8 +16,10 @@
 	<key>com.apple.security.network.server</key>
 	<true/>
 	
-	<!-- Audio recording permission -->
+	<!-- Audio recording permission - BOTH are required for microphone -->
 	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.device.microphone</key>
 	<true/>
 	
 	<!-- File access -->
