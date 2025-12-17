@@ -334,14 +334,31 @@ function CalendlyIntegration({
         </button>
 
         {showInstructions && (
-          <div className="p-3 bg-zinc-50 rounded-lg text-sm space-y-2">
+          <div className="p-3 bg-zinc-50 rounded-lg text-sm space-y-3">
             <p className="font-medium">To get your Personal Access Token:</p>
-            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>Go to <a href="https://calendly.com/integrations/api_webhooks" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Calendly Integrations</a></li>
-              <li>Click "Generate New Token"</li>
-              <li>Give it a name (e.g., "Sequ3nce Integration")</li>
-              <li>Copy the token and paste it below</li>
+            <ol className="list-decimal list-inside space-y-2 text-muted-foreground">
+              <li>Log in to Calendly at calendly.com</li>
+              <li>
+                Go to <strong className="text-zinc-700">Integrations</strong> → <strong className="text-zinc-700">API & Webhooks</strong>
+                <br />
+                <a
+                  href="https://calendly.com/integrations/api_webhooks"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline inline-flex items-center gap-1 ml-5 mt-1"
+                >
+                  calendly.com/integrations/api_webhooks
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </li>
+              <li>Under "Personal Access Tokens", click <strong className="text-zinc-700">"Get a token now"</strong> (or "Generate new token" if you already have tokens)</li>
+              <li>Name it "Sequ3nce Integration" and click <strong className="text-zinc-700">Create Token</strong></li>
+              <li>Click <strong className="text-zinc-700">Copy token</strong> - you'll only see this once!</li>
+              <li>Paste the token below and click Connect</li>
             </ol>
+            <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+              Note: You need a paid Calendly plan to use webhooks for automatic syncing.
+            </p>
           </div>
         )}
 
