@@ -164,6 +164,67 @@ http.route({
   }),
 });
 
+// POST endpoint to change closer password (from desktop app)
+http.route({
+  path: "/changePassword",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, currentPassword, newPassword } = body;
+
+      if (!closerId || !currentPassword || !newPassword) {
+        return new Response(JSON.stringify({ success: false, error: "All fields are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.closers.changeCloserPassword, {
+        closerId,
+        currentPassword,
+        newPassword,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: result.success ? 200 : 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      return new Response(JSON.stringify({ success: false, error: "Failed to change password" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for changePassword
+http.route({
+  path: "/changePassword",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 // GET endpoint to fetch ammo for a specific call (used by desktop app floating tracker)
 http.route({
   path: "/getAmmoByCall",

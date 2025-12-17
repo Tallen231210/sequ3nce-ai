@@ -221,3 +221,34 @@ export async function completeCallWithOutcome(data: {
     return { success: false, error: "Network error" };
   }
 }
+
+// Change closer password
+export async function changePassword(
+  closerId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log("[Convex] Changing password for closer:", closerId);
+
+    const response = await fetch(`${CONVEX_SITE_URL}/changePassword`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ closerId, currentPassword, newPassword }),
+    });
+
+    const result = await response.json();
+    console.log("[Convex] Change password result:", result);
+
+    if (!response.ok || !result.success) {
+      return { success: false, error: result.error || "Failed to change password" };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to change password:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
