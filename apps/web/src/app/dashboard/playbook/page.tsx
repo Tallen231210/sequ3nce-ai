@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
@@ -153,13 +153,24 @@ function SnippetAudioPlayer({ src, startTime, endTime, transcriptText }: Snippet
     setActiveSegmentIndex(0);
   };
 
+  // Enable play button after timeout as fallback (WebM files sometimes don't fire canplay)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (isLoading && !hasError) {
+        console.log('[Playbook Audio] Enabling play via timeout fallback');
+        setIsLoading(false);
+      }
+    }, 2000);
+    return () => clearTimeout(timeout);
+  }, [isLoading, hasError]);
+
   const handleCanPlay = () => {
     setIsLoading(false);
     if (audioRef.current) {
       setAudioDuration(audioRef.current.duration);
       console.log('[Playbook Audio] Ready to play. Audio duration:', audioRef.current.duration, 'seconds');
       console.log('[Playbook Audio] Snippet range:', startTime, 'to', endTime, '(', endTime - startTime, 'seconds)');
-      
+
       // Verify timestamps are within audio range
       if (startTime > audioRef.current.duration) {
         console.warn('[Playbook Audio] WARNING: startTime', startTime, 'exceeds audio duration', audioRef.current.duration);
@@ -175,7 +186,12 @@ function SnippetAudioPlayer({ src, startTime, endTime, transcriptText }: Snippet
 
   const togglePlay = async () => {
     if (!audioRef.current || hasError) return;
-    
+
+    // If still showing loading, force it off and try to play
+    if (isLoading) {
+      setIsLoading(false);
+    }
+
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
