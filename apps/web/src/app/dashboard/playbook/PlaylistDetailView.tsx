@@ -256,7 +256,7 @@ export function PlaylistDetailView({ clerkId, playlistId, onBack }: PlaylistDeta
         </Card>
       ) : (
         <div className="space-y-3">
-          {playlist.items.map((item, index) => (
+          {playlist.items.filter((item) => item !== null).map((item, index) => (
             <Card
               key={item._id}
               draggable
