@@ -163,7 +163,7 @@ export function PlaylistsView({ clerkId }: PlaylistsViewProps) {
                   <div className="flex items-center gap-1 text-sm text-zinc-500 mb-4">
                     <Users className="h-3.5 w-3.5" />
                     <span>
-                      {playlist.assignedClosers.slice(0, 2).map((c: { name: string }) => c.name).join(", ")}
+                      {playlist.assignedClosers.filter((c) => c !== null).slice(0, 2).map((c) => c.name).join(", ")}
                       {playlist.assignedClosers.length > 2 && ` +${playlist.assignedClosers.length - 2} more`}
                     </span>
                   </div>

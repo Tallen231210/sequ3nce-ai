@@ -335,7 +335,7 @@ export function PlaylistDetailView({ clerkId, playlistId, onBack }: PlaylistDeta
       <AddClipsModal
         clerkId={clerkId}
         playlistId={playlistId}
-        existingHighlightIds={playlist.items.map((item) => item.highlight._id)}
+        existingHighlightIds={playlist.items.filter((item) => item !== null).map((item) => item.highlight._id)}
         open={showAddClips}
         onClose={() => setShowAddClips(false)}
       />
