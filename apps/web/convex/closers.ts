@@ -505,9 +505,9 @@ export const getCloserStats = query({
           )
         : [];
 
-      // Completed calls in period
-      const completedCalls = periodCalls.filter((c) => c.status === "completed");
-      const prevCompletedCalls = prevPeriodCalls.filter((c) => c.status === "completed");
+      // Completed calls in period (only count calls with outcome set - matches Completed Calls view)
+      const completedCalls = periodCalls.filter((c) => c.status === "completed" && c.outcome != null);
+      const prevCompletedCalls = prevPeriodCalls.filter((c) => c.status === "completed" && c.outcome != null);
 
       // Closed deals
       const closedCalls = completedCalls.filter((c) => c.outcome === "closed");
@@ -782,8 +782,8 @@ export const getTeamStats = query({
         )
       : [];
 
-    // Current period stats
-    const completedCalls = periodCalls.filter((c) => c.status === "completed");
+    // Current period stats (only count calls with outcome set - matches Completed Calls view)
+    const completedCalls = periodCalls.filter((c) => c.status === "completed" && c.outcome != null);
     const closedCalls = completedCalls.filter((c) => c.outcome === "closed");
 
     // Legacy metrics (uses dealValue)
@@ -814,8 +814,8 @@ export const getTeamStats = query({
       ? (actualCalls.length / scheduledCalls.length) * 100
       : 100;
 
-    // Previous period stats
-    const prevCompletedCalls = prevPeriodCalls.filter((c) => c.status === "completed");
+    // Previous period stats (only count calls with outcome set)
+    const prevCompletedCalls = prevPeriodCalls.filter((c) => c.status === "completed" && c.outcome != null);
     const prevClosedCalls = prevCompletedCalls.filter((c) => c.outcome === "closed");
 
     const previousCashCollected = prevClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
