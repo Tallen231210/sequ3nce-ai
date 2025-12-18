@@ -470,12 +470,6 @@ export const getCloserStats = query({
         break;
     }
 
-    // Get all calls for the team
-    const allCalls = await ctx.db
-      .query("calls")
-      .withIndex("by_team", (q) => q.eq("teamId", user.teamId))
-      .collect();
-
     // Get all ammo for the team
     const allAmmo = await ctx.db
       .query("ammo")
@@ -493,8 +487,11 @@ export const getCloserStats = query({
     const closerStatsMap = new Map<string, CloserStats>();
 
     for (const closer of activeClosers) {
-      // Filter calls for this closer
-      const closerCalls = allCalls.filter((c) => c.closerId === closer._id);
+      // Query calls directly for this closer using index (ensures Convex reactivity)
+      const closerCalls = await ctx.db
+        .query("calls")
+        .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
+        .collect();
 
       // Current period calls
       const periodCalls = closerCalls.filter(
