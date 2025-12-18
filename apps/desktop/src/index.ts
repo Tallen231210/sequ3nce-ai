@@ -548,6 +548,31 @@ const setupIpcHandlers = (): void => {
   ipcMain.handle('audio:start', async (_event, config: AudioCaptureConfig) => {
     console.log('[Main] Starting audio capture with config:', config);
 
+    // Check screen recording permission first (macOS only)
+    if (process.platform === 'darwin') {
+      const screenStatus = systemPreferences.getMediaAccessStatus('screen');
+      console.log('[Main] Screen recording permission status:', screenStatus);
+
+      if (screenStatus !== 'granted') {
+        // Show dialog to guide user
+        const result = await dialog.showMessageBox(mainWindow!, {
+          type: 'warning',
+          title: 'Screen Recording Permission Required',
+          message: 'Sequ3nce needs Screen Recording permission to capture audio from your sales calls.',
+          detail: 'Click "Open Settings" and enable Sequ3nce in the Screen Recording list. You may need to click the "+" button to add it first.',
+          buttons: ['Open Settings', 'Cancel'],
+          defaultId: 0,
+        });
+
+        if (result.response === 0) {
+          // Open System Settings to Screen Recording
+          shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+        }
+
+        return { success: false, error: 'Screen recording permission required' };
+      }
+    }
+
     if (!config.teamId || !config.closerId) {
       return { success: false, error: 'Missing teamId or closerId' };
     }
@@ -730,14 +755,30 @@ app.whenReady().then(() => {
   setupIpcHandlers();
   setupAutoUpdater(); // Initialize auto-updater
 
-  // Request microphone permission on startup (macOS only)
-  // This ensures the app appears in System Settings > Privacy > Microphone
+  // Request permissions on startup (macOS only)
   if (process.platform === 'darwin') {
+    // Request microphone permission - this shows a prompt
     systemPreferences.askForMediaAccess('microphone').then((granted) => {
       console.log(`[Main] Microphone permission on startup: ${granted ? 'granted' : 'denied'}`);
     }).catch((err) => {
       console.error('[Main] Failed to request microphone permission:', err);
     });
+
+    // Trigger screen recording registration by attempting to get sources
+    // This makes the app appear in System Settings > Screen Recording
+    // Note: This will fail if permission isn't granted, but it registers the app
+    const screenStatus = systemPreferences.getMediaAccessStatus('screen');
+    console.log(`[Main] Screen recording permission status: ${screenStatus}`);
+
+    if (screenStatus !== 'granted') {
+      // Attempt to get sources to register the app with TCC
+      desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+        console.log(`[Main] Screen sources available: ${sources.length}`);
+      }).catch((err) => {
+        // This is expected to fail if permission is denied, but it registers the app
+        console.log('[Main] Screen capture registration attempted (permission may be required):', err.message);
+      });
+    }
   }
 
   // Register global keyboard shortcut for ammo tracker
