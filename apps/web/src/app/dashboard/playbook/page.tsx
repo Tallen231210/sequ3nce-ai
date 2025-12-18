@@ -38,8 +38,10 @@ import {
   Loader2,
   User,
   Calendar,
+  ListMusic,
 } from "lucide-react";
 import Link from "next/link";
+import { PlaylistsView } from "./PlaylistsView";
 
 // Highlight categories
 const HIGHLIGHT_CATEGORIES = [
@@ -473,6 +475,9 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
 export default function PlaybookPage() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"highlights" | "playlists">("highlights");
+
   // Filter state
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [closerFilter, setCloserFilter] = useState<string>("all");
@@ -515,7 +520,7 @@ export default function PlaybookPage() {
   const hasFilters =
     categoryFilter !== "all" || closerFilter !== "all" || searchQuery.trim() !== "";
 
-  if (isTeamLoading || highlights === undefined) {
+  if (isTeamLoading) {
     return (
       <>
         <Header
@@ -535,69 +540,110 @@ export default function PlaybookPage() {
       />
 
       <div className="p-6">
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-4 mb-6">
-          {/* Category Filter */}
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All Categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {HIGHLIGHT_CATEGORIES.map((cat) => (
-                <SelectItem key={cat.value} value={cat.value}>
-                  {cat.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Closer Filter */}
-          <Select value={closerFilter} onValueChange={setCloserFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="All Closers" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Closers</SelectItem>
-              {closers?.map((closer) => (
-                <SelectItem key={closer._id} value={closer._id}>
-                  {closer.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-            <Input
-              placeholder="Search highlights..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          {/* Results count */}
-          <div className="text-sm text-zinc-500">
-            {highlights.length} highlight{highlights.length !== 1 ? "s" : ""}
-          </div>
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-1 mb-6 border-b border-zinc-200">
+          <button
+            onClick={() => setActiveTab("highlights")}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === "highlights"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            <BookMarked className="h-4 w-4" />
+            Highlights
+          </button>
+          <button
+            onClick={() => setActiveTab("playlists")}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === "playlists"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            <ListMusic className="h-4 w-4" />
+            Training Playlists
+          </button>
         </div>
 
-        {/* Highlights Grid */}
-        {highlights.length === 0 ? (
-          <EmptyState hasFilters={hasFilters} />
+        {/* Tab Content */}
+        {activeTab === "highlights" ? (
+          <>
+            {highlights === undefined ? (
+              <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+                {/* Filters */}
+                <div className="flex flex-wrap items-center gap-4 mb-6">
+                  {/* Category Filter */}
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="All Categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {HIGHLIGHT_CATEGORIES.map((cat) => (
+                        <SelectItem key={cat.value} value={cat.value}>
+                          {cat.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Closer Filter */}
+                  <Select value={closerFilter} onValueChange={setCloserFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="All Closers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Closers</SelectItem>
+                      {closers?.map((closer) => (
+                        <SelectItem key={closer._id} value={closer._id}>
+                          {closer.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Search */}
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                    <Input
+                      placeholder="Search highlights..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
+                  {/* Results count */}
+                  <div className="text-sm text-zinc-500">
+                    {highlights.length} highlight{highlights.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+
+                {/* Highlights Grid */}
+                {highlights.length === 0 ? (
+                  <EmptyState hasFilters={hasFilters} />
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {highlights.map((highlight) => (
+                      <HighlightCard
+                        key={highlight._id}
+                        highlight={highlight}
+                        onDelete={handleDelete}
+                        isDeleting={deletingId === highlight._id}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {highlights.map((highlight) => (
-              <HighlightCard
-                key={highlight._id}
-                highlight={highlight}
-                onDelete={handleDelete}
-                isDeleting={deletingId === highlight._id}
-              />
-            ))}
-          </div>
+          <PlaylistsView clerkId={clerkId || ""} />
         )}
       </div>
     </>

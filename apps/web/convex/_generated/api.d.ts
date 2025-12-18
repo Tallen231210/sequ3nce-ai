@@ -16,6 +16,7 @@ import type * as closers from "../closers.js";
 import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
 import type * as teams from "../teams.js";
+import type * as trainingPlaylists from "../trainingPlaylists.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   highlights: typeof highlights;
   http: typeof http;
   teams: typeof teams;
+  trainingPlaylists: typeof trainingPlaylists;
 }>;
 
 /**

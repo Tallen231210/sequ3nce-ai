@@ -169,4 +169,38 @@ export default defineSchema({
     .index("by_team_and_category", ["teamId", "category"])
     .index("by_closer", ["closerId"])
     .index("by_call", ["callId"]),
+
+  // Training Playlists (curated collections of highlights for training closers)
+  trainingPlaylists: defineTable({
+    teamId: v.id("teams"),
+    name: v.string(), // "New Closer Onboarding", "Objection Handling Masterclass"
+    description: v.optional(v.string()), // Optional description of the playlist
+    createdBy: v.id("users"), // Manager who created this playlist
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_creator", ["createdBy"]),
+
+  // Training Playlist Items (ordered highlights within a playlist)
+  trainingPlaylistItems: defineTable({
+    playlistId: v.id("trainingPlaylists"),
+    highlightId: v.id("highlights"),
+    order: v.number(), // Position in the playlist (0, 1, 2, ...)
+    addedAt: v.number(),
+  })
+    .index("by_playlist", ["playlistId"])
+    .index("by_playlist_order", ["playlistId", "order"])
+    .index("by_highlight", ["highlightId"]),
+
+  // Training Playlist Assignments (which closers have which playlists assigned)
+  trainingPlaylistAssignments: defineTable({
+    playlistId: v.id("trainingPlaylists"),
+    closerId: v.id("closers"),
+    assignedBy: v.id("users"), // Manager who assigned this
+    assignedAt: v.number(),
+  })
+    .index("by_closer", ["closerId"])
+    .index("by_playlist", ["playlistId"])
+    .index("by_closer_playlist", ["closerId", "playlistId"]),
 });

@@ -39,11 +39,17 @@ export interface AuthAPI {
   signOut: () => Promise<void>;
 }
 
+export interface TrainingAPI {
+  open: () => Promise<boolean>;
+  setCloserId: (closerId: string | null) => Promise<boolean>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
   ammo: AmmoAPI;
   auth: AuthAPI;
+  training: TrainingAPI;
 }
 
 // Ammo item type
@@ -79,10 +85,54 @@ export interface AmmoTrackerAPI {
   onNewTranscript: (callback: (segment: TranscriptSegment) => void) => () => void;
 }
 
+// Training playlist types
+export interface TrainingPlaylist {
+  _id: string;
+  name: string;
+  description?: string;
+  itemCount: number;
+  totalDuration: number;
+  assignedAt: number;
+  assignedByName: string;
+}
+
+export interface TrainingHighlight {
+  _id: string;
+  title: string;
+  notes?: string;
+  category: string;
+  transcriptText: string;
+  startTimestamp: number;
+  endTimestamp: number;
+  recordingUrl: string | null;
+  closerName: string;
+}
+
+export interface TrainingPlaylistItem {
+  _id: string;
+  order: number;
+  highlight: TrainingHighlight;
+}
+
+export interface TrainingPlaylistWithItems extends TrainingPlaylist {
+  items: TrainingPlaylistItem[];
+}
+
+// Training window API (exposed via training-preload.ts)
+export interface TrainingWindowAPI {
+  getCloserId: () => Promise<string | null>;
+  getAssignedPlaylists: (closerId: string) => Promise<TrainingPlaylist[]>;
+  getPlaylistDetails: (playlistId: string, closerId: string) => Promise<TrainingPlaylistWithItems | null>;
+  close: () => Promise<void>;
+  minimize: () => Promise<void>;
+  onCloserIdChange: (callback: (closerId: string | null) => void) => () => void;
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI;
     ammoTracker?: AmmoTrackerAPI;
+    training?: TrainingWindowAPI;
   }
 }
 

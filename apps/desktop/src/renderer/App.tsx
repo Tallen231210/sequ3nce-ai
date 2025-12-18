@@ -52,6 +52,9 @@ export function App() {
         const info = JSON.parse(savedCloserInfo) as CloserInfo;
         setCloserInfo(info);
         setAuthState('authenticated');
+
+        // Set closer ID for the training window
+        window.electron.training?.setCloserId(info.closerId);
       } catch (err) {
         console.error('[App] Error parsing saved closer info:', err);
         clearSession();
@@ -82,6 +85,9 @@ export function App() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(result.closer));
         setCloserInfo(result.closer);
         setAuthState('authenticated');
+
+        // Set closer ID for the training window
+        window.electron.training?.setCloserId(result.closer.closerId);
       } else {
         setAuthError({
           message: result.error || 'Login failed. Please try again.',
@@ -102,6 +108,9 @@ export function App() {
     setEmail('');
     setPassword('');
     setAuthState('login');
+
+    // Clear closer ID for the training window
+    window.electron.training?.setCloserId(null);
   };
 
   const handleRetry = () => {
@@ -863,6 +872,14 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
           </svg>
           {ammoTrackerVisible ? 'Hide Panel' : 'Show Panel'}
+        </button>
+
+        {/* Training button */}
+        <button
+          onClick={() => window.electron.training?.open()}
+          className="mt-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800"
+        >
+          Training
         </button>
 
         {/* Call ID */}

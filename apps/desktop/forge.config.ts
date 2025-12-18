@@ -132,6 +132,14 @@ const config: ForgeConfig = {
               js: './src/ammo-tracker-preload.ts',
             },
           },
+          {
+            html: './src/training.html',
+            js: './src/training-renderer.ts',
+            name: 'training',
+            preload: {
+              js: './src/training-preload.ts',
+            },
+          },
         ],
       },
     }),

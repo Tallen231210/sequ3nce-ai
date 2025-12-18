@@ -9,6 +9,8 @@ declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 declare const AMMO_TRACKER_WEBPACK_ENTRY: string;
 declare const AMMO_TRACKER_PRELOAD_WEBPACK_ENTRY: string;
+declare const TRAINING_WEBPACK_ENTRY: string;
+declare const TRAINING_PRELOAD_WEBPACK_ENTRY: string;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -28,6 +30,7 @@ interface AudioCaptureConfig {
 
 let mainWindow: BrowserWindow | null = null;
 let ammoTrackerWindow: BrowserWindow | null = null;
+let trainingWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
@@ -38,6 +41,9 @@ let currentCallId: string | null = null;
 
 // Ammo tracker window state
 let ammoTrackerVisible = false;
+
+// Current logged-in closer ID (for training window)
+let currentCloserId: string | null = null;
 
 // Audio service URL - Production Railway deployment
 const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL || 'wss://amusing-charm-production.up.railway.app';
@@ -200,6 +206,53 @@ const toggleAmmoTracker = (): void => {
     if (currentCallId) {
       ammoTrackerWindow.webContents.send('ammo:call-id-changed', currentCallId);
     }
+  }
+};
+
+// Create the training window
+const createTrainingWindow = (): void => {
+  if (trainingWindow) {
+    trainingWindow.show();
+    trainingWindow.focus();
+    return;
+  }
+
+  trainingWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    minWidth: 600,
+    minHeight: 400,
+    title: 'Training',
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#ffffff',
+    show: false,
+    webPreferences: {
+      preload: TRAINING_PRELOAD_WEBPACK_ENTRY,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  trainingWindow.loadURL(TRAINING_WEBPACK_ENTRY);
+
+  // Show window when ready
+  trainingWindow.once('ready-to-show', () => {
+    trainingWindow?.show();
+
+    // Send current closer ID to the training window
+    if (currentCloserId) {
+      trainingWindow?.webContents.send('training:closer-id-changed', currentCloserId);
+    }
+  });
+
+  // Handle window close
+  trainingWindow.on('closed', () => {
+    trainingWindow = null;
+  });
+
+  // Open DevTools in development
+  if (process.env.NODE_ENV === 'development' || process.defaultApp) {
+    // trainingWindow.webContents.openDevTools({ mode: 'detach' });
   }
 };
 
@@ -724,6 +777,86 @@ const setupIpcHandlers = (): void => {
       return data.notes || null;
     } catch (error) {
       console.error('[Main] Error getting notes:', error);
+      return null;
+    }
+  });
+
+  // ---- Training Window IPC Handlers ----
+
+  // Open training window
+  ipcMain.handle('training:open', () => {
+    createTrainingWindow();
+    return true;
+  });
+
+  // Close training window
+  ipcMain.handle('training:close', () => {
+    if (trainingWindow) {
+      trainingWindow.close();
+      trainingWindow = null;
+    }
+    return true;
+  });
+
+  // Minimize training window
+  ipcMain.handle('training:minimize', () => {
+    if (trainingWindow) {
+      trainingWindow.minimize();
+    }
+    return true;
+  });
+
+  // Get current closer ID
+  ipcMain.handle('training:get-closer-id', () => {
+    return currentCloserId;
+  });
+
+  // Set closer ID (called from main window when user logs in)
+  ipcMain.handle('training:set-closer-id', (_event, closerId: string | null) => {
+    currentCloserId = closerId;
+    // Notify training window if it's open
+    if (trainingWindow && closerId) {
+      trainingWindow.webContents.send('training:closer-id-changed', closerId);
+    }
+    return true;
+  });
+
+  // Get assigned playlists for a closer
+  ipcMain.handle('training:get-playlists', async (_event, closerId: string) => {
+    try {
+      const response = await fetch(
+        `https://ideal-ram-982.convex.site/getAssignedTraining?closerId=${encodeURIComponent(closerId)}`
+      );
+
+      if (!response.ok) {
+        console.error('[Main] Failed to get playlists:', response.statusText);
+        return [];
+      }
+
+      const playlists = await response.json();
+      return playlists;
+    } catch (error) {
+      console.error('[Main] Error getting playlists:', error);
+      return [];
+    }
+  });
+
+  // Get playlist details with items
+  ipcMain.handle('training:get-playlist-details', async (_event, playlistId: string, closerId: string) => {
+    try {
+      const response = await fetch(
+        `https://ideal-ram-982.convex.site/getTrainingPlaylistDetails?playlistId=${encodeURIComponent(playlistId)}&closerId=${encodeURIComponent(closerId)}`
+      );
+
+      if (!response.ok) {
+        console.error('[Main] Failed to get playlist details:', response.statusText);
+        return null;
+      }
+
+      const playlist = await response.json();
+      return playlist;
+    } catch (error) {
+      console.error('[Main] Error getting playlist details:', error);
       return null;
     }
   });

@@ -1026,4 +1026,161 @@ http.route({
   }),
 });
 
+// ============================================
+// TRAINING PLAYLISTS ENDPOINTS (for desktop app)
+// ============================================
+
+// GET endpoint to fetch training playlists assigned to a closer
+http.route({
+  path: "/getAssignedTraining",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const closerId = url.searchParams.get("closerId");
+
+    if (!closerId) {
+      return new Response(JSON.stringify({ error: "closerId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const playlists = await ctx.runQuery(api.trainingPlaylists.getAssignedPlaylists, {
+        closerId: closerId as any,
+      });
+      return new Response(JSON.stringify(playlists || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching assigned training:", error);
+      return new Response(JSON.stringify({ error: "Failed to fetch training" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getAssignedTraining
+http.route({
+  path: "/getAssignedTraining",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to fetch a training playlist with all its items (for desktop app player)
+http.route({
+  path: "/getTrainingPlaylistDetails",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const playlistId = url.searchParams.get("playlistId");
+    const closerId = url.searchParams.get("closerId");
+
+    if (!playlistId || !closerId) {
+      return new Response(JSON.stringify({ error: "playlistId and closerId are required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      // Verify closer is assigned to this playlist
+      const assignments = await ctx.runQuery(api.trainingPlaylists.getAssignedPlaylists, {
+        closerId: closerId as any,
+      });
+
+      const isAssigned = assignments?.some((p: any) => p._id === playlistId);
+      if (!isAssigned) {
+        return new Response(JSON.stringify({ error: "Playlist not assigned to this closer" }), {
+          status: 403,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Get playlist with items - we need to get the full details
+      // Since we can't directly call getPlaylistWithItems (requires clerkId),
+      // we'll build the response from the data we have
+      const playlist = assignments?.find((p: any) => p._id === playlistId);
+
+      if (!playlist) {
+        return new Response(JSON.stringify({ error: "Playlist not found" }), {
+          status: 404,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Get the items for this playlist
+      const items = await ctx.runQuery(internal.trainingPlaylists.getPlaylistItemsInternal, {
+        playlistId: playlistId as any,
+      });
+
+      return new Response(JSON.stringify({
+        ...playlist,
+        items: items || [],
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching training playlist details:", error);
+      return new Response(JSON.stringify({ error: "Failed to fetch playlist" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getTrainingPlaylistDetails
+http.route({
+  path: "/getTrainingPlaylistDetails",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

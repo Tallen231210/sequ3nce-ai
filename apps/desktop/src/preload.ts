@@ -41,11 +41,17 @@ export interface AuthAPI {
   signOut: () => Promise<void>;
 }
 
+export interface TrainingAPI {
+  open: () => Promise<boolean>;
+  setCloserId: (closerId: string | null) => Promise<boolean>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
   ammo: AmmoAPI;
   auth: AuthAPI;
+  training: TrainingAPI;
 }
 
 // Expose protected methods to renderer via contextBridge
@@ -96,6 +102,10 @@ contextBridge.exposeInMainWorld('electron', {
     sendMagicLink: (email: string) => ipcRenderer.invoke('auth:send-magic-link', email),
     verifySession: (token: string) => ipcRenderer.invoke('auth:verify-session', token),
     signOut: () => ipcRenderer.invoke('auth:sign-out'),
+  },
+  training: {
+    open: () => ipcRenderer.invoke('training:open'),
+    setCloserId: (closerId: string | null) => ipcRenderer.invoke('training:set-closer-id', closerId),
   },
 } as ElectronAPI);
 

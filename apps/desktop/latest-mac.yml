@@ -1,8 +1,8 @@
-version: 1.2.2
+version: 1.2.5
 files:
-  - url: Sequ3nce-darwin-arm64-1.2.2.zip
-    sha512: VCJUGnKEhOEl11zsYKeQDdRWCeAcBpDusKbeLftbd/StVGWOHnvjDvpI+JUYJH3/Sm9lb7U80kP6lR+TH+tVEw==
-    size: 111006341
-path: Sequ3nce-darwin-arm64-1.2.2.zip
-sha512: VCJUGnKEhOEl11zsYKeQDdRWCeAcBpDusKbeLftbd/StVGWOHnvjDvpI+JUYJH3/Sm9lb7U80kP6lR+TH+tVEw==
-releaseDate: '2025-12-17T23:47:00.000Z'
+  - url: Sequ3nce-darwin-arm64-1.2.5.zip
+    sha512: bK5AsBoMLCxjtcX4M5bGXPlFoTK0ETMSt31it+x0pwBD88zcrB3OHZhrPF1wmW163/XegvXk+JZrOh4qHfbcxQ==
+    size: 111091233
+path: Sequ3nce-darwin-arm64-1.2.5.zip
+sha512: bK5AsBoMLCxjtcX4M5bGXPlFoTK0ETMSt31it+x0pwBD88zcrB3OHZhrPF1wmW163/XegvXk+JZrOh4qHfbcxQ==
+releaseDate: '2025-12-18T02:30:00.000Z'
