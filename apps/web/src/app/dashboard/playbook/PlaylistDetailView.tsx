@@ -152,7 +152,7 @@ export function PlaylistDetailView({ clerkId, playlistId, onBack }: PlaylistDeta
     items.splice(dropIndex, 0, draggedItem);
 
     // Get the new order of highlight IDs
-    const newOrder = items.map((item) => item.highlight._id);
+    const newOrder = items.filter((item) => item !== null).map((item) => item.highlight._id);
 
     setDraggedIndex(null);
 
