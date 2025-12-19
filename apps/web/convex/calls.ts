@@ -401,7 +401,7 @@ export const getTranscriptSegments = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const limit = args.limit || 50;
+    const limit = args.limit || 2000;
     return await ctx.db
       .query("transcriptSegments")
       .withIndex("by_call_and_time", (q) => q.eq("callId", args.callId))
@@ -444,15 +444,12 @@ export const getLiveCallsWithDetails = query({
           .withIndex("by_call", (q) => q.eq("callId", call._id))
           .collect();
 
-        // Get recent transcript segments (last 20)
+        // Get transcript segments (up to 2000 for long calls)
         const transcriptSegments = await ctx.db
           .query("transcriptSegments")
           .withIndex("by_call_and_time", (q) => q.eq("callId", call._id))
-          .order("desc")
-          .take(20);
-
-        // Reverse to get chronological order
-        transcriptSegments.reverse();
+          .order("asc")
+          .take(2000);
 
         return {
           ...call,
