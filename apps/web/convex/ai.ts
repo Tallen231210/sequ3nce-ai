@@ -19,14 +19,23 @@ Write a 3-5 sentence summary that includes:
 4. The outcome and any next steps
 5. Overall prospect sentiment (interested, hesitant, not interested, ready to buy)
 
+After the summary, add a blank line and then these three bullet points:
+
+• Buyer Language: [Yes/No] - [Brief explanation of buying signals or lack thereof. Examples of buyer language: "I'm ready", "let's do it", "how do I sign up", "I want this". Examples of non-buyer language: "I need to think about it", "not sure", "maybe later".]
+
+• Why Purchased/Didn't Purchase: [One sentence explaining the key factor that led to the outcome. If closed, what convinced them. If not closed, what was the main objection or hesitation.]
+
+• Price Pitched: [The dollar amount mentioned for the offer/program, e.g. "$5,000" or "$10K". If no clear price was stated during the call, write "Not mentioned".]
+
 RULES:
-- Keep it concise - the manager should read this in 10 seconds
+- Keep the summary concise - the manager should read it in 10 seconds
 - Use plain language, avoid sales jargon
 - If the call was very short or the transcript is sparse, just summarize what you can
 - Focus on actionable insights the manager would care about
 - Don't include timestamps or speaker labels in the summary
+- Always include the three bullet points at the end, even if you have to write "Unclear from transcript"
 
-Return ONLY the summary text, no markdown formatting or labels.`;
+Return the summary text followed by the bullet points. No markdown headers or extra formatting.`;
 
 // Generate a summary for a completed call
 export const generateCallSummary = action({
@@ -66,7 +75,7 @@ export const generateCallSummary = action({
 
       const message = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 500,
+        max_tokens: 700,
         system: SUMMARY_PROMPT,
         messages: [
           {
