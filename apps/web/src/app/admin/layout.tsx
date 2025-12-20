@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Logo } from "@/components/ui/logo";
 import { Loader2, Lock, LogOut } from "lucide-react";
 
 export default function AdminLayout({
@@ -142,10 +143,9 @@ export default function AdminLayout({
       <header className="bg-white border-b border-zinc-200 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center">
-              <Lock className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-semibold text-zinc-900">Seq3nce Admin</span>
+            <Logo height={28} />
+            <span className="text-zinc-400">|</span>
+            <span className="font-medium text-zinc-600">Admin</span>
           </div>
           <Button
             variant="ghost"
