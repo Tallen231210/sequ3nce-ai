@@ -203,4 +203,47 @@ export default defineSchema({
     .index("by_closer", ["closerId"])
     .index("by_playlist", ["playlistId"])
     .index("by_closer_playlist", ["closerId", "playlistId"]),
+
+  // Ammo Configs (per-team customization for ammo extraction and nudges)
+  ammoConfigs: defineTable({
+    teamId: v.id("teams"),
+
+    // Required Information List - what info must closers uncover on every call
+    requiredInfo: v.array(v.object({
+      id: v.string(),
+      label: v.string(),
+      description: v.optional(v.string()),
+    })),
+
+    // Script Framework - call stages in order
+    scriptFramework: v.array(v.object({
+      id: v.string(),
+      name: v.string(),
+      description: v.optional(v.string()),
+      order: v.number(),
+    })),
+
+    // Common Objections - what objections prospects typically raise
+    commonObjections: v.array(v.object({
+      id: v.string(),
+      label: v.string(),
+      keywords: v.array(v.string()), // phrases that indicate this objection
+    })),
+
+    // Ammo Categories - custom categories with keywords to listen for
+    ammoCategories: v.array(v.object({
+      id: v.string(),
+      name: v.string(),
+      color: v.string(), // for UI display (e.g., "purple", "green", "blue")
+      keywords: v.array(v.string()), // phrases to listen for
+    })),
+
+    // Offer Details
+    offerDescription: v.string(), // What do they sell?
+    problemSolved: v.string(), // What problem does it solve?
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"]),
 });
