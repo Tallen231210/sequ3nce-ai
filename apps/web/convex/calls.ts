@@ -55,7 +55,7 @@ export const updateTranscript = mutation({
   },
 });
 
-// Add ammo item
+// Add ammo item with scoring
 export const addAmmo = mutation({
   args: {
     callId: v.string(),
@@ -63,6 +63,12 @@ export const addAmmo = mutation({
     text: v.string(),
     type: v.string(),
     timestamp: v.optional(v.number()),
+    // Scoring fields
+    score: v.optional(v.number()),
+    repetitionCount: v.optional(v.number()),
+    isHeavyHitter: v.optional(v.boolean()),
+    categoryId: v.optional(v.string()),
+    suggestedUse: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("ammo", {
@@ -71,6 +77,11 @@ export const addAmmo = mutation({
       text: args.text,
       type: args.type,
       timestamp: args.timestamp,
+      score: args.score,
+      repetitionCount: args.repetitionCount,
+      isHeavyHitter: args.isHeavyHitter,
+      categoryId: args.categoryId,
+      suggestedUse: args.suggestedUse,
       createdAt: Date.now(),
     });
   },
@@ -1363,5 +1374,64 @@ export const deleteCall = mutation({
         highlights: deletedHighlights,
       },
     };
+  },
+});
+
+// ============================================
+// SMART NUDGES
+// ============================================
+
+// Add a new nudge (called by audio processor)
+export const addNudge = mutation({
+  args: {
+    callId: v.string(),
+    teamId: v.string(),
+    type: v.string(), // "dig_deeper" | "missing_info" | "script_reminder" | "objection_warning"
+    message: v.string(),
+    detail: v.optional(v.string()),
+    triggeredBy: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const nudgeId = await ctx.db.insert("nudges", {
+      callId: args.callId as any,
+      teamId: args.teamId as any,
+      type: args.type,
+      message: args.message,
+      detail: args.detail,
+      triggeredBy: args.triggeredBy,
+      status: "active",
+      createdAt: Date.now(),
+    });
+    return nudgeId;
+  },
+});
+
+// Get active nudges for a call (for desktop app polling)
+export const getNudgesByCall = query({
+  args: {
+    callId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Get all nudges for this call, ordered by creation time
+    const nudges = await ctx.db
+      .query("nudges")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId as any))
+      .order("desc")
+      .take(50);
+
+    return nudges;
+  },
+});
+
+// Update nudge status (save or dismiss)
+export const updateNudgeStatus = mutation({
+  args: {
+    nudgeId: v.id("nudges"),
+    status: v.string(), // "saved" | "dismissed"
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.nudgeId, {
+      status: args.status,
+    });
   },
 });

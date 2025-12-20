@@ -61,6 +61,12 @@ export interface AmmoItem {
   type: 'emotional' | 'urgency' | 'budget' | 'commitment' | 'objection_preview' | 'pain_point';
   timestamp?: number;
   createdAt: number;
+  // Scoring fields for heavy hitter detection
+  score?: number; // 0-100 heavy hitter score
+  repetitionCount?: number; // How many times this topic was mentioned
+  isHeavyHitter?: boolean; // score >= 50
+  categoryId?: string; // Custom category ID from ammoConfig
+  suggestedUse?: string; // AI-generated suggestion for how to use this ammo
 }
 
 // Transcript segment type
@@ -70,6 +76,19 @@ export interface TranscriptSegment {
   speaker: string;
   text: string;
   timestamp: number;
+  createdAt: number;
+}
+
+// Smart Nudge type (real-time coaching suggestions)
+export interface Nudge {
+  _id: string;
+  callId: string;
+  teamId: string;
+  type: 'dig_deeper' | 'missing_info' | 'script_reminder' | 'objection_warning';
+  message: string;
+  detail?: string;
+  status: 'active' | 'saved' | 'dismissed';
+  triggeredBy?: string;
   createdAt: number;
 }
 

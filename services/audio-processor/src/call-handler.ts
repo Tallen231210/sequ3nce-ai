@@ -1,7 +1,7 @@
 // Call session handler - manages a single call's lifecycle
 
 import { createDeepgramConnection, type DeepgramConnection } from "./deepgram.js";
-import { extractAmmo } from "./claude.js";
+import { extractAmmo, type ExtractionContext } from "./claude.js";
 import { uploadRecording } from "./s3.js";
 import {
   createCall,
@@ -12,9 +12,17 @@ import {
   addTranscriptSegment,
   getTeamCustomPrompt,
   setSpeakerMapping,
+  getAmmoConfig,
+  addNudge,
 } from "./convex.js";
 import { logger } from "./logger.js";
-import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem } from "./types.js";
+import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem, AmmoConfig } from "./types.js";
+import {
+  generateNudge,
+  createNudgeState,
+  checkUncoveredInfo,
+  type NudgeContext,
+} from "./nudges.js";
 
 const AMMO_EXTRACTION_INTERVAL_MS = 30000; // Extract ammo every 30 seconds
 const MIN_TRANSCRIPT_LENGTH_FOR_AMMO = 100; // Minimum characters before attempting extraction
@@ -23,6 +31,10 @@ export class CallHandler {
   private session: CallSession;
   private deepgram: DeepgramConnection | null = null;
   private customPrompt?: string;
+  private ammoConfig?: AmmoConfig | null;
+  private repetitionTracker: Map<string, number> = new Map();
+  private nudgeState = createNudgeState();
+  private uncoveredInfo: Set<string> = new Set();
   private convexCallId: string | null = null;
   private isEnded = false;
 
@@ -45,7 +57,10 @@ export class CallHandler {
       // Create call record in Convex - this returns the Convex _id
       this.convexCallId = await createCall(this.session.metadata);
 
-      // Get team's custom AI prompt if any
+      // Get team's ammo config (custom categories, offer details, etc.)
+      this.ammoConfig = await getAmmoConfig(this.session.metadata.teamId);
+
+      // Get team's custom AI prompt if any (legacy, still used as fallback)
       this.customPrompt = await getTeamCustomPrompt(this.session.metadata.teamId);
 
       // Initialize Deepgram connection
@@ -55,7 +70,7 @@ export class CallHandler {
         this.handleDeepgramError.bind(this)
       );
 
-      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}`);
+      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}`);
 
       // Return the Convex-generated call ID so desktop can use it
       return this.convexCallId;
@@ -119,6 +134,38 @@ export class CallHandler {
     if (timeSinceLastExtraction >= AMMO_EXTRACTION_INTERVAL_MS && hasEnoughContent) {
       await this.extractAndSaveAmmo();
     }
+
+    // Check for nudges (non-blocking)
+    this.checkAndSendNudge().catch(err => logger.error("Failed to check nudges", err));
+  }
+
+  private async checkAndSendNudge(): Promise<void> {
+    if (!this.convexCallId || this.session.fullTranscript.length < 100) {
+      return;
+    }
+
+    // Update uncovered info tracking
+    if (this.ammoConfig?.requiredInfo) {
+      this.uncoveredInfo = checkUncoveredInfo(
+        this.session.fullTranscript,
+        this.ammoConfig.requiredInfo
+      );
+    }
+
+    // Build nudge context
+    const callDurationSeconds = Math.floor((Date.now() - this.session.startedAt) / 1000);
+    const context: NudgeContext = {
+      ammoConfig: this.ammoConfig || null,
+      transcript: this.session.fullTranscript,
+      callDurationSeconds,
+      uncoveredInfo: this.uncoveredInfo,
+    };
+
+    // Generate nudge if applicable
+    const nudge = generateNudge(context, this.nudgeState);
+    if (nudge) {
+      await addNudge(this.convexCallId, this.session.metadata.teamId, nudge);
+    }
   }
 
   private async handleSpeakerDetected(speakerId: number): Promise<void> {
@@ -173,8 +220,20 @@ export class CallHandler {
     this.session.lastAmmoExtractionTime = Date.now();
 
     try {
-      const ammoItems = await extractAmmo(textToProcess, this.customPrompt);
+      // Build extraction context with ammo config and repetition tracking
+      const context: ExtractionContext = {
+        ammoConfig: this.ammoConfig,
+        customPrompt: this.customPrompt,
+        repetitionTracker: this.repetitionTracker,
+      };
 
+      // Extract ammo with scoring
+      const { items: ammoItems, updatedRepetitions } = await extractAmmo(textToProcess, context);
+
+      // Update repetition tracker for next extraction
+      this.repetitionTracker = updatedRepetitions;
+
+      // Save each ammo item with scoring fields
       for (const ammo of ammoItems) {
         const ammoWithTimestamp: AmmoItem = {
           ...ammo,

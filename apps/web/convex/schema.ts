@@ -118,9 +118,15 @@ export default defineSchema({
     callId: v.id("calls"),
     teamId: v.id("teams"),
     text: v.string(), // The actual quote
-    type: v.string(), // "emotional", "urgency", "budget", "commitment", "objection_preview", "pain_point"
+    type: v.string(), // "emotional", "urgency", "budget", "commitment", "objection_preview", "pain_point" or custom category
     timestamp: v.optional(v.number()), // When in the call this was said (seconds from start)
     createdAt: v.number(),
+    // Scoring fields for heavy hitter detection
+    score: v.optional(v.number()), // 0-100 heavy hitter score
+    repetitionCount: v.optional(v.number()), // How many times this topic was mentioned
+    isHeavyHitter: v.optional(v.boolean()), // score >= 50
+    categoryId: v.optional(v.string()), // Custom category ID from ammoConfig (if using custom categories)
+    suggestedUse: v.optional(v.string()), // AI-generated suggestion for how to use this ammo
   })
     .index("by_call", ["callId"])
     .index("by_team", ["teamId"]),
@@ -246,4 +252,18 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_team", ["teamId"]),
+
+  // Smart Nudges (real-time coaching suggestions during calls)
+  nudges: defineTable({
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    type: v.string(), // "dig_deeper" | "missing_info" | "script_reminder" | "objection_warning"
+    message: v.string(), // Short message shown to closer
+    detail: v.optional(v.string()), // Additional context or suggestion
+    status: v.string(), // "active" | "saved" | "dismissed"
+    triggeredBy: v.optional(v.string()), // What keyword/phrase triggered this nudge
+    createdAt: v.number(),
+  })
+    .index("by_call", ["callId"])
+    .index("by_call_and_status", ["callId", "status"]),
 });

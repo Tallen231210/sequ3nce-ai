@@ -2,7 +2,8 @@
 
 import { ConvexHttpClient } from "convex/browser";
 import { logger } from "./logger.js";
-import type { AmmoItem, CallMetadata } from "./types.js";
+import type { AmmoItem, AmmoConfig, CallMetadata } from "./types.js";
+import type { Nudge } from "./nudges.js";
 
 const convexUrl = process.env.CONVEX_URL!;
 const convex = new ConvexHttpClient(convexUrl);
@@ -91,10 +92,32 @@ export async function addAmmoItem(
       text: ammo.text,
       type: ammo.type,
       timestamp: ammo.timestamp,
+      // Scoring fields
+      score: ammo.score,
+      repetitionCount: ammo.repetitionCount,
+      isHeavyHitter: ammo.isHeavyHitter,
+      categoryId: ammo.categoryId,
+      suggestedUse: ammo.suggestedUse,
     });
-    logger.info(`Ammo added: "${ammo.text.substring(0, 50)}..." (${ammo.type})`);
+    const heavyHitterLabel = ammo.isHeavyHitter ? " [HEAVY HITTER]" : "";
+    logger.info(`Ammo added: "${ammo.text.substring(0, 50)}..." (${ammo.type}, score: ${ammo.score || 0})${heavyHitterLabel}`);
   } catch (error) {
     logger.error("Failed to add ammo item", error);
+  }
+}
+
+export async function getAmmoConfig(teamId: string): Promise<AmmoConfig | null> {
+  try {
+    const config = await convex.query("admin:getAmmoConfig" as any, { teamId });
+    if (config) {
+      logger.info(`Loaded ammo config for team ${teamId}`);
+      return config as AmmoConfig;
+    }
+    logger.info(`No ammo config found for team ${teamId}, will use defaults`);
+    return null;
+  } catch (error) {
+    logger.error("Failed to get ammo config", error);
+    return null;
   }
 }
 
@@ -144,5 +167,26 @@ export async function setSpeakerMapping(
     logger.info(`Speaker mapping set: ${callId} -> closer is ${closerSpeaker}`);
   } catch (error) {
     logger.error("Failed to set speaker mapping", error);
+  }
+}
+
+// Add a smart nudge for real-time coaching
+export async function addNudge(
+  callId: string,
+  teamId: string,
+  nudge: Nudge
+): Promise<void> {
+  try {
+    await convex.mutation("calls:addNudge" as any, {
+      callId,
+      teamId,
+      type: nudge.type,
+      message: nudge.message,
+      detail: nudge.detail,
+      triggeredBy: nudge.triggeredBy,
+    });
+    logger.info(`Nudge added: [${nudge.type}] ${nudge.message}`);
+  } catch (error) {
+    logger.error("Failed to add nudge", error);
   }
 }

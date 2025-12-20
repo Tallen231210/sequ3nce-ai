@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AmmoItem, TranscriptSegment } from './types/electron';
+import { AmmoItem, TranscriptSegment, Nudge } from './types/electron';
 
 const CONVEX_SITE_URL = 'https://ideal-ram-982.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds
 const NOTES_SAVE_DELAY = 2000; // Auto-save notes after 2 seconds of no typing
 
 // Tab types
-type TabType = 'ammo' | 'transcript' | 'notes';
+type TabType = 'ammo' | 'nudges' | 'transcript' | 'notes';
 
 // Speaker mapping type
 interface SpeakerMapping {
@@ -35,6 +35,14 @@ function NotesIcon({ active }: { active: boolean }) {
   return (
     <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+    </svg>
+  );
+}
+
+function NudgesIcon({ active }: { active: boolean }) {
+  return (
+    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
     </svg>
   );
 }
@@ -117,9 +125,116 @@ function SpeakerIdentificationBanner({
 }
 
 // ============================================
-// AMMO TAB COMPONENT
+// AMMO STRENGTH INDICATOR
 // ============================================
-function AmmoTab({ callId, ammoItems, onCopy }: { callId: string | null; ammoItems: AmmoItem[]; onCopy: (text: string) => void }) {
+function AmmoStrengthIndicator({ heavyHitterCount }: { heavyHitterCount: number }) {
+  let label: string;
+  let color: string;
+  let icon: string;
+
+  if (heavyHitterCount >= 8) {
+    label = 'Strong';
+    color = 'text-green-600 bg-green-50 border-green-200';
+    icon = '🎯';
+  } else if (heavyHitterCount >= 4) {
+    label = 'Moderate';
+    color = 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    icon = '🎯';
+  } else if (heavyHitterCount >= 1) {
+    label = 'Light';
+    color = 'text-orange-600 bg-orange-50 border-orange-200';
+    icon = '⚠️';
+  } else {
+    label = 'Not enough data';
+    color = 'text-gray-500 bg-gray-50 border-gray-200';
+    icon = '⚠️';
+  }
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${color}`}>
+      <span className="text-sm">{icon}</span>
+      <span className="text-xs font-medium">Ammo Strength: {label}</span>
+      {heavyHitterCount > 0 && (
+        <span className="text-[10px] opacity-70">({heavyHitterCount} heavy hitters)</span>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// REVEALED AMMO CARD (with suggested use)
+// ============================================
+function RevealedAmmoCard({ item, onCopy }: { item: AmmoItem; onCopy: (text: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  const config = AMMO_TYPE_CONFIG[item.type] || { label: item.type, bgColor: 'bg-gray-50', textColor: 'text-gray-600', borderColor: 'border-gray-200' };
+
+  const handleClick = () => {
+    onCopy(item.text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div
+      onClick={handleClick}
+      className="group relative p-3 rounded-lg bg-white border border-gray-200 hover:border-gray-300 hover:shadow-sm cursor-pointer transition-all duration-150 animate-fade-in"
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${config.bgColor} ${config.textColor} ${config.borderColor}`}>
+            {config.label}
+          </span>
+          {item.isHeavyHitter && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-black text-white">
+              Heavy Hitter
+            </span>
+          )}
+        </div>
+        {item.score !== undefined && (
+          <span className="text-[10px] text-gray-400">Score: {item.score}</span>
+        )}
+      </div>
+      <p className="text-sm text-gray-700 leading-snug mb-2">"{item.text}"</p>
+      {item.suggestedUse && (
+        <p className="text-[11px] text-gray-500 italic leading-snug border-t border-gray-100 pt-2 mt-2">
+          → {item.suggestedUse}
+        </p>
+      )}
+      <div className={`absolute inset-0 rounded-lg flex items-center justify-center bg-white/95 transition-opacity duration-150 ${copied ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="flex items-center gap-1.5 text-green-600">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="text-sm font-medium">Copied!</span>
+        </div>
+      </div>
+      <div className="absolute bottom-1 right-2 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        click to copy
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// AMMO TAB COMPONENT (with Gathering/Reveal states)
+// ============================================
+function AmmoTab({
+  callId,
+  ammoItems,
+  onCopy,
+  isRevealed,
+  onReveal
+}: {
+  callId: string | null;
+  ammoItems: AmmoItem[];
+  onCopy: (text: string) => void;
+  isRevealed: boolean;
+  onReveal: () => void;
+}) {
+  // Get heavy hitters only
+  const heavyHitters = ammoItems.filter(item => item.isHeavyHitter);
+  const totalGathered = ammoItems.length;
+
   if (!callId) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
@@ -129,22 +244,78 @@ function AmmoTab({ callId, ammoItems, onCopy }: { callId: string | null; ammoIte
     );
   }
 
-  if (ammoItems.length === 0) {
+  // GATHERING STATE - before reveal
+  if (!isRevealed) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
-        <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
-        <p className="text-xs text-center px-4">Listening for key moments...</p>
+      <div className="h-full flex flex-col items-center justify-center py-8">
+        {/* Pulsing animation */}
+        <div className="relative mb-4">
+          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+            <AmmoIcon active={true} />
+          </div>
+          {totalGathered > 0 && (
+            <div className="absolute -top-1 -right-1 w-6 h-6 bg-black text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+              {totalGathered > 99 ? '99+' : totalGathered}
+            </div>
+          )}
+          {/* Pulsing ring */}
+          <div className="absolute inset-0 rounded-full border-2 border-gray-300 animate-ping opacity-30" />
+        </div>
+
+        <p className="text-sm font-medium text-gray-700 mb-1">Gathering Ammo...</p>
+        <p className="text-xs text-gray-400 mb-6">
+          {totalGathered === 0
+            ? 'Listening for key moments'
+            : `${totalGathered} item${totalGathered === 1 ? '' : 's'} gathered`
+          }
+        </p>
+
+        {/* Reveal button - only show if we have items */}
+        {totalGathered > 0 && (
+          <button
+            onClick={onReveal}
+            className="px-6 py-2.5 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 shadow-sm"
+          >
+            Reveal Ammo
+          </button>
+        )}
       </div>
     );
   }
 
+  // REVEALED STATE - show heavy hitters
   return (
-    <div className="p-2 space-y-2">
-      {ammoItems.map((item) => (
-        <AmmoItemCard key={item._id} item={item} onCopy={onCopy} />
-      ))}
+    <div className="p-2 space-y-3">
+      {/* Ammo strength indicator */}
+      <AmmoStrengthIndicator heavyHitterCount={heavyHitters.length} />
+
+      {/* Heavy hitters list */}
+      {heavyHitters.length === 0 ? (
+        <div className="flex flex-col items-center justify-center text-gray-400 py-6">
+          <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.962-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <p className="text-xs text-center px-4">No heavy hitters detected yet</p>
+          <p className="text-[10px] text-center px-4 mt-1 text-gray-300">
+            Heavy hitters are emotionally charged, repeated, or specific statements
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {heavyHitters.map((item) => (
+            <RevealedAmmoCard key={item._id} item={item} onCopy={onCopy} />
+          ))}
+        </div>
+      )}
+
+      {/* Show all ammo toggle (optional, for debugging/reference) */}
+      {ammoItems.length > heavyHitters.length && (
+        <div className="pt-2 border-t border-gray-100">
+          <p className="text-[10px] text-gray-400 text-center">
+            {ammoItems.length - heavyHitters.length} more items gathered (not heavy hitters)
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -384,6 +555,148 @@ function NotesTab({ callId, notes, onNotesChange, isSaving, lastSaved }: {
 }
 
 // ============================================
+// NUDGES TAB COMPONENT
+// ============================================
+
+// Nudge type configuration for styling
+const NUDGE_TYPE_CONFIG: Record<string, { label: string; icon: string; bgColor: string; textColor: string; borderColor: string }> = {
+  dig_deeper: { label: 'Dig Deeper', icon: '🔍', bgColor: 'bg-blue-50', textColor: 'text-blue-600', borderColor: 'border-blue-200' },
+  missing_info: { label: 'Missing Info', icon: '📋', bgColor: 'bg-orange-50', textColor: 'text-orange-600', borderColor: 'border-orange-200' },
+  script_reminder: { label: 'Framework', icon: '📝', bgColor: 'bg-purple-50', textColor: 'text-purple-600', borderColor: 'border-purple-200' },
+  objection_warning: { label: 'Objection', icon: '⚠️', bgColor: 'bg-red-50', textColor: 'text-red-600', borderColor: 'border-red-200' },
+};
+
+function NudgeCard({ nudge, onSave, onDismiss }: {
+  nudge: Nudge;
+  onSave: () => void;
+  onDismiss: () => void;
+}) {
+  const config = NUDGE_TYPE_CONFIG[nudge.type] || {
+    label: nudge.type,
+    icon: '💡',
+    bgColor: 'bg-gray-50',
+    textColor: 'text-gray-600',
+    borderColor: 'border-gray-200'
+  };
+
+  // Don't show dismissed nudges
+  if (nudge.status === 'dismissed') return null;
+
+  const isSaved = nudge.status === 'saved';
+
+  return (
+    <div className={`p-3 rounded-lg border ${config.borderColor} ${isSaved ? 'bg-green-50' : config.bgColor} animate-fade-in transition-all duration-150`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm">{config.icon}</span>
+            <span className={`text-[10px] font-medium ${config.textColor}`}>{config.label}</span>
+            {isSaved && (
+              <span className="text-[10px] font-medium text-green-600">Saved</span>
+            )}
+          </div>
+          <p className="text-sm font-medium text-gray-800 leading-snug">{nudge.message}</p>
+          {nudge.detail && (
+            <p className="text-[11px] text-gray-500 mt-1 leading-snug">{nudge.detail}</p>
+          )}
+        </div>
+        {!isSaved && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={onSave}
+              className="p-1.5 rounded hover:bg-white/50 text-gray-400 hover:text-green-600 transition-colors duration-150"
+              title="Save nudge"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </button>
+            <button
+              onClick={onDismiss}
+              className="p-1.5 rounded hover:bg-white/50 text-gray-400 hover:text-gray-600 transition-colors duration-150"
+              title="Dismiss nudge"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NudgesTab({
+  callId,
+  nudges,
+  onSaveNudge,
+  onDismissNudge
+}: {
+  callId: string | null;
+  nudges: Nudge[];
+  onSaveNudge: (nudgeId: string) => void;
+  onDismissNudge: (nudgeId: string) => void;
+}) {
+  // Filter to only show active and saved nudges (not dismissed)
+  const visibleNudges = nudges.filter(n => n.status !== 'dismissed');
+  const activeNudges = visibleNudges.filter(n => n.status === 'active');
+  const savedNudges = visibleNudges.filter(n => n.status === 'saved');
+
+  if (!callId) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+        <NudgesIcon active={false} />
+        <p className="text-xs text-center px-4 mt-2">Start a call to see coaching nudges</p>
+      </div>
+    );
+  }
+
+  if (visibleNudges.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+          <NudgesIcon active={false} />
+        </div>
+        <p className="text-xs text-center px-4">Listening for coaching opportunities...</p>
+        <p className="text-[10px] text-center px-4 mt-1 text-gray-300">
+          Nudges appear when key moments are detected
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-2 space-y-2">
+      {/* Active nudges first */}
+      {activeNudges.map((nudge) => (
+        <NudgeCard
+          key={nudge._id}
+          nudge={nudge}
+          onSave={() => onSaveNudge(nudge._id)}
+          onDismiss={() => onDismissNudge(nudge._id)}
+        />
+      ))}
+
+      {/* Saved nudges section */}
+      {savedNudges.length > 0 && activeNudges.length > 0 && (
+        <div className="pt-2 border-t border-gray-100">
+          <p className="text-[10px] text-gray-400 mb-2">Saved for later</p>
+        </div>
+      )}
+      {savedNudges.map((nudge) => (
+        <NudgeCard
+          key={nudge._id}
+          nudge={nudge}
+          onSave={() => {}}
+          onDismiss={() => onDismissNudge(nudge._id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ============================================
 // TAB BUTTON COMPONENT
 // ============================================
 function TabButton({ active, onClick, icon, label, badge }: {
@@ -428,9 +741,12 @@ export function AmmoTrackerApp() {
   const [speakerMapping, setSpeakerMapping] = useState<SpeakerMapping | null>(null);
   const [closerSnippet, setCloserSnippet] = useState<string | undefined>(undefined);
   const [isSwapping, setIsSwapping] = useState(false);
+  const [isAmmoRevealed, setIsAmmoRevealed] = useState(false);
+  const [nudges, setNudges] = useState<Nudge[]>([]);
 
   const seenAmmoIds = useRef<Set<string>>(new Set());
   const seenSegmentIds = useRef<Set<string>>(new Set());
+  const seenNudgeIds = useRef<Set<string>>(new Set());
   const notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch call info including speaker mapping
@@ -483,6 +799,67 @@ export function AmmoTrackerApp() {
       if (notesData) setNotes(notesData);
     } catch (error) {
       console.error('[Panel] Failed to fetch notes:', error);
+    }
+  }, []);
+
+  // Fetch nudges from Convex
+  const fetchNudges = useCallback(async (currentCallId: string) => {
+    try {
+      const response = await fetch(`${CONVEX_SITE_URL}/getNudgesByCall?callId=${encodeURIComponent(currentCallId)}`);
+      if (!response.ok) return;
+
+      const data: Nudge[] = await response.json();
+      // Update nudges, keeping local state for ones we've already seen
+      setNudges(prevNudges => {
+        const existingMap = new Map(prevNudges.map(n => [n._id, n]));
+        return data.map(nudge => {
+          const existing = existingMap.get(nudge._id);
+          // If we have a local status change that's different from server, keep local
+          if (existing && existing.status !== 'active' && nudge.status === 'active') {
+            return existing;
+          }
+          seenNudgeIds.current.add(nudge._id);
+          return nudge;
+        }).sort((a, b) => b.createdAt - a.createdAt);
+      });
+    } catch (error) {
+      console.error('[Panel] Failed to fetch nudges:', error);
+    }
+  }, []);
+
+  // Save a nudge
+  const handleSaveNudge = useCallback(async (nudgeId: string) => {
+    // Optimistic update
+    setNudges(prev => prev.map(n => n._id === nudgeId ? { ...n, status: 'saved' as const } : n));
+
+    try {
+      await fetch(`${CONVEX_SITE_URL}/updateNudgeStatus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nudgeId, status: 'saved' }),
+      });
+    } catch (error) {
+      console.error('[Panel] Failed to save nudge:', error);
+      // Revert on failure
+      setNudges(prev => prev.map(n => n._id === nudgeId ? { ...n, status: 'active' as const } : n));
+    }
+  }, []);
+
+  // Dismiss a nudge
+  const handleDismissNudge = useCallback(async (nudgeId: string) => {
+    // Optimistic update
+    setNudges(prev => prev.map(n => n._id === nudgeId ? { ...n, status: 'dismissed' as const } : n));
+
+    try {
+      await fetch(`${CONVEX_SITE_URL}/updateNudgeStatus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nudgeId, status: 'dismissed' }),
+      });
+    } catch (error) {
+      console.error('[Panel] Failed to dismiss nudge:', error);
+      // Revert on failure
+      setNudges(prev => prev.map(n => n._id === nudgeId ? { ...n, status: 'active' as const } : n));
     }
   }, []);
 
@@ -574,10 +951,12 @@ export function AmmoTrackerApp() {
         fetchAmmo(initialCallId);
         fetchTranscript(initialCallId);
         fetchNotes(initialCallId);
+        fetchNudges(initialCallId);
         fetchCallInfo(initialCallId);
         pollInterval = setInterval(() => {
           fetchAmmo(initialCallId);
           fetchTranscript(initialCallId);
+          fetchNudges(initialCallId);
           fetchCallInfo(initialCallId);
         }, POLL_INTERVAL);
       }
@@ -589,12 +968,15 @@ export function AmmoTrackerApp() {
         setCallId(newCallId);
         seenAmmoIds.current.clear();
         seenSegmentIds.current.clear();
+        seenNudgeIds.current.clear();
         setAmmoItems([]);
         setTranscriptSegments([]);
+        setNudges([]);
         // DON'T clear notes when call ends - keep them visible for user to review
         // Only clear notes when a NEW call starts
         if (newCallId) {
           setNotes('');
+          setIsAmmoRevealed(false); // Reset reveal state for new call
         }
         setLastSaved(null);
         setSpeakerMapping(null);
@@ -606,10 +988,12 @@ export function AmmoTrackerApp() {
           fetchAmmo(newCallId);
           fetchTranscript(newCallId);
           fetchNotes(newCallId);
+          fetchNudges(newCallId);
           fetchCallInfo(newCallId);
           pollInterval = setInterval(() => {
             fetchAmmo(newCallId);
             fetchTranscript(newCallId);
+            fetchNudges(newCallId);
             fetchCallInfo(newCallId);
           }, POLL_INTERVAL);
         }
@@ -647,7 +1031,7 @@ export function AmmoTrackerApp() {
       if (pollInterval) clearInterval(pollInterval);
       if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
     };
-  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchCallInfo]);
+  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchNudges, fetchCallInfo]);
 
   // Save notes before closing
   useEffect(() => {
@@ -682,7 +1066,18 @@ export function AmmoTrackerApp() {
             onClick={() => setActiveTab('ammo')}
             icon={<AmmoIcon active={activeTab === 'ammo'} />}
             label="Ammo"
-            badge={ammoItems.length > 0 ? ammoItems.length : undefined}
+            badge={
+              isAmmoRevealed
+                ? ammoItems.filter(i => i.isHeavyHitter).length || undefined
+                : ammoItems.length > 0 ? ammoItems.length : undefined
+            }
+          />
+          <TabButton
+            active={activeTab === 'nudges'}
+            onClick={() => setActiveTab('nudges')}
+            icon={<NudgesIcon active={activeTab === 'nudges'} />}
+            label="Nudges"
+            badge={nudges.filter(n => n.status === 'active').length || undefined}
           />
           <TabButton
             active={activeTab === 'transcript'}
@@ -726,7 +1121,23 @@ export function AmmoTrackerApp() {
       <div className="flex-1 overflow-hidden bg-gray-50/30">
         {activeTab === 'ammo' && (
           <div className="h-full overflow-y-auto scrollbar-thin">
-            <AmmoTab callId={callId} ammoItems={ammoItems} onCopy={handleCopy} />
+            <AmmoTab
+              callId={callId}
+              ammoItems={ammoItems}
+              onCopy={handleCopy}
+              isRevealed={isAmmoRevealed}
+              onReveal={() => setIsAmmoRevealed(true)}
+            />
+          </div>
+        )}
+        {activeTab === 'nudges' && (
+          <div className="h-full overflow-y-auto scrollbar-thin">
+            <NudgesTab
+              callId={callId}
+              nudges={nudges}
+              onSaveNudge={handleSaveNudge}
+              onDismissNudge={handleDismissNudge}
+            />
           </div>
         )}
         {activeTab === 'transcript' && (

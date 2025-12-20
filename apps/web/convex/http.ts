@@ -1183,4 +1183,133 @@ http.route({
   }),
 });
 
+// ============================================
+// SMART NUDGES ENDPOINTS (for desktop app)
+// ============================================
+
+// GET endpoint to fetch nudges for a call
+http.route({
+  path: "/getNudgesByCall",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+
+    if (!callId) {
+      return new Response(JSON.stringify({ error: "callId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const nudges = await ctx.runQuery(api.calls.getNudgesByCall, { callId });
+      return new Response(JSON.stringify(nudges || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Invalid callId" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getNudgesByCall
+http.route({
+  path: "/getNudgesByCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to update nudge status (save or dismiss)
+http.route({
+  path: "/updateNudgeStatus",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { nudgeId, status } = body;
+
+      if (!nudgeId || !status) {
+        return new Response(JSON.stringify({ error: "nudgeId and status are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      if (!["saved", "dismissed"].includes(status)) {
+        return new Response(JSON.stringify({ error: "status must be 'saved' or 'dismissed'" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      await ctx.runMutation(api.calls.updateNudgeStatus, {
+        nudgeId: nudgeId as any,
+        status,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error updating nudge status:", error);
+      return new Response(JSON.stringify({ error: "Failed to update nudge" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for updateNudgeStatus
+http.route({
+  path: "/updateNudgeStatus",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;
