@@ -5,26 +5,9 @@
  * It defines the stages of a sales call, expected behaviors, and key moments.
  */
 
-export interface ManifestoStage {
-  id: string;
-  name: string;
-  goal: string;
-  goodBehaviors: string[];
-  badBehaviors: string[];
-  keyMoments: string[];
-  order: number;
-}
-
-export interface ManifestoObjection {
-  id: string;
-  name: string;
-  rebuttals: string[];
-}
-
-export interface CallManifesto {
-  stages: ManifestoStage[];
-  objections: ManifestoObjection[];
-}
+// Re-export types from types.ts for consistency
+export type { ManifestoStage, ManifestoObjection, CallManifesto } from "./types.js";
+import type { CallManifesto } from "./types.js";
 
 export const DEFAULT_MANIFESTO: CallManifesto = {
   stages: [
