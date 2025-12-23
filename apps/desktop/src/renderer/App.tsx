@@ -516,7 +516,13 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     prospectName: string;
     outcome: CallOutcome;
     dealValue?: number;
+    cashCollected?: number;
+    contractValue?: number;
     notes?: string;
+    primaryObjection?: string;
+    primaryObjectionOther?: string;
+    leadQualityScore?: number;
+    prospectWasDecisionMaker?: string;
   }) => {
     if (!pendingCallId) {
       console.error('[App] No pending call ID for questionnaire submission');
@@ -551,7 +557,13 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         prospectName: data.prospectName,
         outcome: data.outcome,
         dealValue: data.dealValue,
+        cashCollected: data.cashCollected,
+        contractValue: data.contractValue,
         notes: finalNotes,
+        primaryObjection: data.primaryObjection,
+        primaryObjectionOther: data.primaryObjectionOther,
+        leadQualityScore: data.leadQualityScore,
+        prospectWasDecisionMaker: data.prospectWasDecisionMaker,
       });
 
       console.log('[App] Questionnaire submission result:', result);

@@ -191,6 +191,10 @@ export async function completeCallWithOutcome(data: {
   contractValue?: number;
   dealValue?: number; // Legacy - kept for backward compat
   notes?: string;
+  primaryObjection?: string;
+  primaryObjectionOther?: string;
+  leadQualityScore?: number;
+  prospectWasDecisionMaker?: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {
     console.log("[Convex] Completing call with outcome:", data);

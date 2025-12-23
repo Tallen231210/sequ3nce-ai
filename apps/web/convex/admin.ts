@@ -90,6 +90,23 @@ export const saveAmmoConfig = mutation({
     })),
     offerDescription: v.string(),
     problemSolved: v.string(),
+    // Call Framework (Manifesto) - defines sales stages, behaviors, and objection rebuttals
+    callManifesto: v.optional(v.object({
+      stages: v.array(v.object({
+        id: v.string(),
+        name: v.string(),
+        goal: v.optional(v.string()),
+        goodBehaviors: v.array(v.string()),
+        badBehaviors: v.array(v.string()),
+        keyMoments: v.array(v.string()),
+        order: v.number(),
+      })),
+      objections: v.array(v.object({
+        id: v.string(),
+        name: v.string(),
+        rebuttals: v.array(v.string()),
+      })),
+    })),
   },
   handler: async (ctx, args) => {
     const { teamId, ...configData } = args;

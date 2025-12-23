@@ -512,6 +512,11 @@ export const completeCallWithOutcome = mutation({
     cashCollected: v.optional(v.number()), // Amount paid on the call
     contractValue: v.optional(v.number()), // Total contract commitment
     notes: v.optional(v.string()),
+    // Enhanced questionnaire fields
+    primaryObjection: v.optional(v.string()), // Selected objection from dropdown
+    primaryObjectionOther: v.optional(v.string()), // Free text if "Other" was selected
+    leadQualityScore: v.optional(v.number()), // 1-10 rating
+    prospectWasDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
   },
   handler: async (ctx, args) => {
     // Get the call to access the transcript
@@ -524,6 +529,11 @@ export const completeCallWithOutcome = mutation({
       cashCollected: args.cashCollected,
       contractValue: args.contractValue,
       notes: args.notes,
+      // Enhanced questionnaire fields
+      primaryObjection: args.primaryObjection,
+      primaryObjectionOther: args.primaryObjectionOther,
+      leadQualityScore: args.leadQualityScore,
+      prospectWasDecisionMaker: args.prospectWasDecisionMaker,
       status: "completed",
       completedAt: Date.now(),
     });

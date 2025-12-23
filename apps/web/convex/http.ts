@@ -520,7 +520,20 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { callId, prospectName, outcome, dealValue, cashCollected, contractValue, notes } = body;
+      const {
+        callId,
+        prospectName,
+        outcome,
+        dealValue,
+        cashCollected,
+        contractValue,
+        notes,
+        // Enhanced questionnaire fields
+        primaryObjection,
+        primaryObjectionOther,
+        leadQualityScore,
+        prospectWasDecisionMaker,
+      } = body;
 
       if (!callId) {
         return new Response(JSON.stringify({ error: "callId is required" }), {
@@ -550,6 +563,11 @@ http.route({
         cashCollected: cashCollected || undefined,
         contractValue: contractValue || undefined,
         notes: notes || undefined,
+        // Enhanced questionnaire fields
+        primaryObjection: primaryObjection || undefined,
+        primaryObjectionOther: primaryObjectionOther || undefined,
+        leadQualityScore: leadQualityScore || undefined,
+        prospectWasDecisionMaker: prospectWasDecisionMaker || undefined,
       });
 
       return new Response(JSON.stringify({ success: true }), {

@@ -106,6 +106,42 @@ export default defineSchema({
     completedAt: v.optional(v.number()), // Timestamp when closer submitted questionnaire
     // AI-generated summary
     summary: v.optional(v.string()), // AI summary of the call for quick manager review
+
+    // Post-call questionnaire fields (enhanced)
+    primaryObjection: v.optional(v.string()), // Selected objection from dropdown
+    primaryObjectionOther: v.optional(v.string()), // Free text if "Other" was selected
+    leadQualityScore: v.optional(v.number()), // 1-10 rating
+    prospectWasDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
+
+    // AI detection fields (populated by audio processor during call)
+    budgetDiscussion: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+    })),
+    timelineUrgency: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+      isUrgent: v.optional(v.string()), // "yes" | "no" | "unclear"
+    })),
+    decisionMakerDetection: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+      isSoleDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
+    })),
+    spousePartnerMentions: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+    })),
+    objectionsDetected: v.optional(v.array(v.object({
+      type: v.string(),
+      quotes: v.array(v.string()),
+      timestamp: v.optional(v.number()),
+    }))),
+
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])
@@ -247,6 +283,24 @@ export default defineSchema({
     // Offer Details
     offerDescription: v.string(), // What do they sell?
     problemSolved: v.string(), // What problem does it solve?
+
+    // Call Framework (Manifesto) - defines sales stages, behaviors, and objection rebuttals
+    callManifesto: v.optional(v.object({
+      stages: v.array(v.object({
+        id: v.string(),
+        name: v.string(),
+        goal: v.optional(v.string()),
+        goodBehaviors: v.array(v.string()),
+        badBehaviors: v.array(v.string()),
+        keyMoments: v.array(v.string()),
+        order: v.number(),
+      })),
+      objections: v.array(v.object({
+        id: v.string(),
+        name: v.string(),
+        rebuttals: v.array(v.string()),
+      })),
+    })),
 
     createdAt: v.number(),
     updatedAt: v.number(),
