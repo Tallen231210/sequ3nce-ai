@@ -12,7 +12,30 @@ export const createCall = mutation({
     speakerCount: v.number(),
   },
   handler: async (ctx, args) => {
-    // We receive string IDs from the audio processor, need to validate they exist
+    // SAFETY: Auto-complete any existing active calls for this closer
+    // This prevents duplicate calls if connection was lost without proper cleanup
+    const activeCallStatuses = ["waiting", "on_call"];
+    const existingCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId as any))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "waiting"),
+          q.eq(q.field("status"), "on_call")
+        )
+      )
+      .collect();
+
+    for (const existingCall of existingCalls) {
+      console.log(`[createCall] Auto-completing stale call ${existingCall._id} for closer ${args.closerId}`);
+      await ctx.db.patch(existingCall._id, {
+        status: "completed",
+        endedAt: Date.now(),
+        notes: (existingCall.notes || "") + "\n[Auto-completed: new call started]",
+      });
+    }
+
+    // Now create the new call
     const callId = await ctx.db.insert("calls", {
       teamId: args.teamId as any, // Audio processor passes string ID
       closerId: args.closerId as any,
@@ -24,6 +47,40 @@ export const createCall = mutation({
     });
 
     return callId;
+  },
+});
+
+// End a call when connection is lost (called from desktop app)
+export const endCallOnConnectionLost = mutation({
+  args: {
+    callId: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Query the call by ID
+    const call = await ctx.db
+      .query("calls")
+      .filter((q) => q.eq(q.field("_id"), args.callId as any))
+      .first();
+
+    if (!call) {
+      console.log(`[endCallOnConnectionLost] Call not found: ${args.callId}`);
+      return { success: false, error: "Call not found" };
+    }
+
+    // Only update if call is still active
+    if (call.status === "waiting" || call.status === "on_call") {
+      console.log(`[endCallOnConnectionLost] Ending call ${args.callId} due to: ${args.reason}`);
+      await ctx.db.patch(call._id, {
+        status: "completed",
+        endedAt: Date.now(),
+        notes: (call.notes || "") + `\n[Connection lost: ${args.reason || "unknown"}]`,
+      });
+      return { success: true };
+    }
+
+    console.log(`[endCallOnConnectionLost] Call ${args.callId} already completed, status: ${call.status}`);
+    return { success: true, alreadyCompleted: true };
   },
 });
 

@@ -320,6 +320,25 @@ const updateStatus = (status: AudioCaptureStatus) => {
   console.log(`[Main] Audio status: ${status}`);
 };
 
+// End a call in the backend (used when connection drops unexpectedly)
+const endCallInBackend = async (callId: string) => {
+  try {
+    console.log('[Main] Ending call in backend:', callId);
+    const response = await fetch('https://ideal-ram-982.convex.site/endCall', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, reason: 'connection_lost' }),
+    });
+    if (!response.ok) {
+      console.error('[Main] Failed to end call in backend:', await response.text());
+    } else {
+      console.log('[Main] Call ended in backend successfully');
+    }
+  } catch (err) {
+    console.error('[Main] Error ending call in backend:', err);
+  }
+};
+
 // Connect to WebSocket server
 const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -394,6 +413,12 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Prom
         if (audioStatus === 'capturing') {
           updateStatus('error');
           mainWindow?.webContents.send('audio:error', 'Connection lost');
+
+          // End the call in the backend when connection drops unexpectedly
+          if (currentCallId) {
+            endCallInBackend(currentCallId);
+            currentCallId = null;
+          }
         }
         wsConnection = null;
       });
@@ -600,6 +625,14 @@ const setupIpcHandlers = (): void => {
   // Start audio capture - returns callId, actual capture happens in renderer
   ipcMain.handle('audio:start', async (_event, config: AudioCaptureConfig) => {
     console.log('[Main] Starting audio capture with config:', config);
+
+    // SAFETY: Close any existing connection before starting a new one
+    // This prevents duplicate calls if user clicks start multiple times
+    if (wsConnection || currentCallId) {
+      console.warn('[Main] Existing connection found, closing before starting new call');
+      await closeWebSocket();
+      currentCallId = null;
+    }
 
     // Check screen recording permission first (macOS only)
     if (process.platform === 'darwin') {

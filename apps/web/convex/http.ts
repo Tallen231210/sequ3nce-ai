@@ -607,6 +607,73 @@ http.route({
 });
 
 // ============================================
+// END CALL (for connection lost scenarios)
+// ============================================
+
+// POST endpoint to end a call when connection is lost
+http.route({
+  path: "/endCall",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, reason } = body;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.calls.endCallOnConnectionLost, {
+        callId,
+        reason: reason || "connection_lost",
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error ending call:", error);
+      return new Response(
+        JSON.stringify({ error: "Failed to end call" }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+  }),
+});
+
+// Handle CORS preflight for endCall
+http.route({
+  path: "/endCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
 // NOTES ENDPOINTS (for desktop app)
 // ============================================
 

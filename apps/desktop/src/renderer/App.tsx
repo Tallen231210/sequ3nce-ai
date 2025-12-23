@@ -402,6 +402,12 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   }, [status]);
 
   const handleStart = async () => {
+    // GUARD: Prevent duplicate calls - don't start if already capturing
+    if (status === 'capturing' || status === 'connecting') {
+      console.warn('[App] Attempted to start call while already active. Status:', status);
+      return;
+    }
+
     setError(null);
 
     // Reset prospect name state for new call
