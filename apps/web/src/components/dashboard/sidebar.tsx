@@ -12,6 +12,7 @@ import {
   Settings,
   BarChart3,
   BookMarked,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
@@ -22,6 +23,7 @@ const navigation = [
   { name: "Live Calls", href: "/dashboard/live", icon: Radio },
   { name: "Scheduled", href: "/dashboard/scheduled", icon: Calendar },
   { name: "Completed", href: "/dashboard/calls", icon: Phone },
+  { name: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
   { name: "Playbook", href: "/dashboard/playbook", icon: BookMarked },
   { name: "Team", href: "/dashboard/team", icon: Users },

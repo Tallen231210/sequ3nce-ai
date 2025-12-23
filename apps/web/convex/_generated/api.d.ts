@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as ai from "../ai.js";
+import type * as analytics from "../analytics.js";
 import type * as billing from "../billing.js";
 import type * as calendly from "../calendly.js";
 import type * as calls from "../calls.js";
@@ -28,6 +29,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   ai: typeof ai;
+  analytics: typeof analytics;
   billing: typeof billing;
   calendly: typeof calendly;
   calls: typeof calls;
