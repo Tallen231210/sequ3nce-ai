@@ -14,7 +14,10 @@ import {
   setSpeakerMapping,
   getAmmoConfig,
   addNudge,
+  updateCallDetection,
 } from "./convex.js";
+import { analyzeTranscriptForDetection } from "./detection.js";
+import { getManifestoForCall } from "./manifesto.js";
 import { logger } from "./logger.js";
 import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem, AmmoConfig } from "./types.js";
 import {
@@ -246,6 +249,32 @@ export class CallHandler {
     }
   }
 
+  // Run AI detection analysis on the full transcript
+  private async runDetectionAnalysis(): Promise<void> {
+    if (!this.convexCallId) return;
+
+    try {
+      logger.info(`Running detection analysis for call ${this.session.metadata.callId}`);
+
+      // Get manifesto for context (use team's custom if available, otherwise defaults)
+      const manifesto = getManifestoForCall(this.ammoConfig?.callManifesto);
+
+      // Analyze transcript for key indicators
+      const detection = await analyzeTranscriptForDetection(
+        this.session.fullTranscript,
+        this.ammoConfig,
+        manifesto
+      );
+
+      // Save detection results to Convex
+      await updateCallDetection(this.convexCallId, detection);
+
+      logger.info(`Detection analysis complete for call ${this.session.metadata.callId}`);
+    } catch (error) {
+      logger.error("Failed to run detection analysis", error);
+    }
+  }
+
   async end(): Promise<void> {
     if (this.isEnded) return;
     this.isEnded = true;
@@ -265,6 +294,13 @@ export class CallHandler {
 
     // Calculate duration
     const duration = Math.floor((Date.now() - this.session.startedAt) / 1000);
+
+    // Run AI detection analysis on full transcript (non-blocking for call completion)
+    if (this.convexCallId && this.session.fullTranscript.length >= 200) {
+      this.runDetectionAnalysis().catch(err =>
+        logger.error("Failed to run detection analysis", err)
+      );
+    }
 
     // Upload recording to S3
     let recordingUrl = "";

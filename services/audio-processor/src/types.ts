@@ -20,6 +20,28 @@ export interface AmmoItem {
   suggestedUse?: string; // AI-generated suggestion for how to use this ammo
 }
 
+// Call Manifesto types for structured sales frameworks
+export interface ManifestoStage {
+  id: string;
+  name: string;
+  goal?: string;
+  goodBehaviors: string[];
+  badBehaviors: string[];
+  keyMoments: string[];
+  order: number;
+}
+
+export interface ManifestoObjection {
+  id: string;
+  name: string;
+  rebuttals: string[];
+}
+
+export interface CallManifesto {
+  stages: ManifestoStage[];
+  objections: ManifestoObjection[];
+}
+
 // Ammo config from the team's settings
 export interface AmmoConfig {
   teamId: string;
@@ -47,6 +69,8 @@ export interface AmmoConfig {
   }>;
   offerDescription: string;
   problemSolved: string;
+  // Call Framework (Manifesto) - optional, uses defaults if not set
+  callManifesto?: CallManifesto;
 }
 
 // Track repetition of key phrases across the call

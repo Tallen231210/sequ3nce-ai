@@ -4,6 +4,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { logger } from "./logger.js";
 import type { AmmoItem, AmmoConfig, CallMetadata } from "./types.js";
 import type { Nudge } from "./nudges.js";
+import type { DetectionResults } from "./detection.js";
 
 const convexUrl = process.env.CONVEX_URL!;
 const convex = new ConvexHttpClient(convexUrl);
@@ -188,5 +189,25 @@ export async function addNudge(
     logger.info(`Nudge added: [${nudge.type}] ${nudge.message}`);
   } catch (error) {
     logger.error("Failed to add nudge", error);
+  }
+}
+
+// Update AI detection results on the call
+export async function updateCallDetection(
+  callId: string,
+  detection: DetectionResults
+): Promise<void> {
+  try {
+    await convex.mutation("calls:updateCallDetection" as any, {
+      callId,
+      budgetDiscussion: detection.budgetDiscussion,
+      timelineUrgency: detection.timelineUrgency,
+      decisionMakerDetection: detection.decisionMakerDetection,
+      spousePartnerMentions: detection.spousePartnerMentions,
+      objectionsDetected: detection.objectionsDetected,
+    });
+    logger.info(`Detection results saved for call ${callId}`);
+  } catch (error) {
+    logger.error("Failed to update call detection", error);
   }
 }

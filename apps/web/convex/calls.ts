@@ -112,6 +112,65 @@ export const updateTranscript = mutation({
   },
 });
 
+// Update AI detection fields (budget, timeline, decision-maker, spouse, objections)
+export const updateCallDetection = mutation({
+  args: {
+    callId: v.string(),
+    budgetDiscussion: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+    })),
+    timelineUrgency: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+      isUrgent: v.optional(v.string()),
+    })),
+    decisionMakerDetection: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+      isSoleDecisionMaker: v.optional(v.string()),
+    })),
+    spousePartnerMentions: v.optional(v.object({
+      detected: v.boolean(),
+      mentionCount: v.number(),
+      quotes: v.array(v.string()),
+    })),
+    objectionsDetected: v.optional(v.array(v.object({
+      type: v.string(),
+      quotes: v.array(v.string()),
+      timestamp: v.optional(v.number()),
+    }))),
+  },
+  handler: async (ctx, args) => {
+    const { callId, ...detectionData } = args;
+
+    // Only include fields that were provided
+    const updateData: Record<string, unknown> = {};
+    if (detectionData.budgetDiscussion) {
+      updateData.budgetDiscussion = detectionData.budgetDiscussion;
+    }
+    if (detectionData.timelineUrgency) {
+      updateData.timelineUrgency = detectionData.timelineUrgency;
+    }
+    if (detectionData.decisionMakerDetection) {
+      updateData.decisionMakerDetection = detectionData.decisionMakerDetection;
+    }
+    if (detectionData.spousePartnerMentions) {
+      updateData.spousePartnerMentions = detectionData.spousePartnerMentions;
+    }
+    if (detectionData.objectionsDetected) {
+      updateData.objectionsDetected = detectionData.objectionsDetected;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await ctx.db.patch(callId as any, updateData);
+    }
+  },
+});
+
 // Add ammo item with scoring
 export const addAmmo = mutation({
   args: {
