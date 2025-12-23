@@ -21,21 +21,13 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_DIR"
 
-# Check if keychain profile exists
-if ! xcrun notarytool store-credentials --list 2>/dev/null | grep -q "sequ3nce-notarize"; then
-    echo -e "${RED}❌ Notarization credentials not found in keychain.${NC}"
-    echo ""
-    echo "Please run this command first to store your credentials:"
-    echo ""
-    echo "  xcrun notarytool store-credentials \"sequ3nce-notarize\" \\"
-    echo "    --apple-id \"your-apple-id@email.com\" \\"
-    echo "    --password \"your-app-specific-password\" \\"
-    echo "    --team-id \"P3LCDZYPU5\""
-    echo ""
-    exit 1
+# Check if keychain profile exists by trying to validate
+echo "🔐 Checking notarization credentials..."
+if ! security find-generic-password -s "com.apple.gke.notary.tool.saved-creds.sequ3nce-notarize" &>/dev/null; then
+    echo -e "${YELLOW}⚠️  Could not verify credentials via security command, will attempt notarization anyway...${NC}"
+else
+    echo -e "${GREEN}✅ Notarization credentials found${NC}"
 fi
-
-echo -e "${GREEN}✅ Notarization credentials found${NC}"
 echo ""
 
 # Step 1: Clean previous builds
@@ -94,4 +86,5 @@ echo "Next steps:"
 echo "  1. Upload this DMG to GitHub Releases"
 echo "  2. Users can download and install without security warnings"
 echo ""
+
 
