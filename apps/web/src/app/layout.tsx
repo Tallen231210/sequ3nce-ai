@@ -15,7 +15,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      appearance={{
+        elements: {
+          // Hide the "Don't have an account? Sign up" footer on sign-in
+          footerAction: { display: "none" },
+          footerActionLink: { display: "none" },
+        },
+      }}
+    >
       <html lang="en" className={GeistSans.className}>
         <body className="antialiased">
           <ConvexClientProvider>{children}</ConvexClientProvider>

@@ -2,12 +2,12 @@
 
 import {
   SignInButton,
-  SignUpButton,
   SignedIn,
   SignedOut,
 } from "@clerk/nextjs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { BookDemoButton } from "@/components/ui/calendly-modal";
 import { Logo } from "@/components/ui/logo";
 import {
   ArrowRight,
@@ -230,12 +230,12 @@ export default function Home() {
               <SignedOut>
                 <SignInButton mode="modal">
                   <Button variant="ghost" size="sm">
-                    Sign In
+                    Log in
                   </Button>
                 </SignInButton>
-                <SignUpButton mode="modal">
-                  <Button size="sm">Get Started</Button>
-                </SignUpButton>
+                <BookDemoButton>
+                  Book a Demo
+                </BookDemoButton>
               </SignedOut>
               <SignedIn>
                 <Link href="/dashboard">
@@ -274,12 +274,10 @@ export default function Home() {
               <AnimatedSection delay={200}>
                 <div className="mt-10 flex flex-wrap items-center gap-4">
                   <SignedOut>
-                    <SignUpButton mode="modal">
-                      <Button size="lg">
-                        Get Started
-                        <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                      </Button>
-                    </SignUpButton>
+                    <BookDemoButton size="lg">
+                      Book a Demo
+                      <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                    </BookDemoButton>
                   </SignedOut>
                   <SignedIn>
                     <Link href="/dashboard">
@@ -550,12 +548,10 @@ export default function Home() {
                 </div>
 
                 <SignedOut>
-                  <SignUpButton mode="modal">
-                    <Button size="lg" className="w-full">
-                      Get Started
-                      <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                    </Button>
-                  </SignUpButton>
+                  <BookDemoButton size="lg" className="w-full">
+                    Book a Demo
+                    <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                  </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard" className="block">
@@ -622,12 +618,10 @@ export default function Home() {
               </p>
               <div className="mt-10">
                 <SignedOut>
-                  <SignUpButton mode="modal">
-                    <Button size="lg">
-                      Get Started
-                      <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                    </Button>
-                  </SignUpButton>
+                  <BookDemoButton size="lg">
+                    Book a Demo
+                    <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                  </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
@@ -695,7 +689,7 @@ export default function Home() {
                   <SignedOut>
                     <SignInButton mode="modal">
                       <button className="hover:text-foreground transition-colors">
-                        Sign In
+                        Log in
                       </button>
                     </SignInButton>
                   </SignedOut>
@@ -707,15 +701,6 @@ export default function Home() {
                       Dashboard
                     </Link>
                   </SignedIn>
-                </li>
-                <li>
-                  <SignedOut>
-                    <SignUpButton mode="modal">
-                      <button className="hover:text-foreground transition-colors">
-                        Get Started
-                      </button>
-                    </SignUpButton>
-                  </SignedOut>
                 </li>
               </ul>
             </div>

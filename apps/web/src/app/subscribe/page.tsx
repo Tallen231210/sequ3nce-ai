@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser, SignUpButton } from "@clerk/nextjs";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -10,7 +10,7 @@ import { Logo } from "@/components/ui/logo";
 import { useTeam } from "@/hooks/useTeam";
 
 function SubscribeContent() {
-  const { user } = useUser();
+  const { user, isLoaded: isUserLoaded } = useUser();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
@@ -19,6 +19,9 @@ function SubscribeContent() {
 
   // This hook ensures the user and team exist in Convex
   const { isReady: isTeamReady } = useTeam();
+
+  // Check if user is logged out
+  const isLoggedOut = isUserLoaded && !user;
 
   // Query billing status to check if subscription is active
   const billing = useQuery(
@@ -166,25 +169,33 @@ function SubscribeContent() {
                 </ul>
               </div>
 
-              <button
-                onClick={handleSubscribe}
-                disabled={isLoading || !isTeamReady}
-                className="w-full bg-zinc-900 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {!isTeamReady ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Setting up account...
-                  </>
-                ) : isLoading ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Redirecting to checkout...
-                  </>
-                ) : (
-                  "Subscribe Now"
-                )}
-              </button>
+              {isLoggedOut ? (
+                <SignUpButton mode="modal">
+                  <button className="w-full bg-zinc-900 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2">
+                    Create Account to Subscribe
+                  </button>
+                </SignUpButton>
+              ) : (
+                <button
+                  onClick={handleSubscribe}
+                  disabled={isLoading || !isTeamReady}
+                  className="w-full bg-zinc-900 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {!isTeamReady ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Setting up account...
+                    </>
+                  ) : isLoading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Redirecting to checkout...
+                    </>
+                  ) : (
+                    "Subscribe Now"
+                  )}
+                </button>
+              )}
 
               <p className="text-center text-sm text-zinc-500 mt-4">
                 Cancel anytime. No long-term contracts.

@@ -947,30 +947,37 @@ export const seedLiveCallsTest = mutation({
       throw new Error("No team found. Please create a team first.");
     }
 
-    // Get closers for this team, or create them if none exist
+    // Get closers for this team, or create them if we need more
     let closers = await ctx.db
       .query("closers")
       .withIndex("by_team", (q) => q.eq("teamId", team._id))
       .collect();
 
-    if (closers.length === 0) {
+    // Need at least 3 closers for this test
+    if (closers.length < 3) {
       // Create test closers
       const closerData = [
         { name: "Mike Johnson", email: "mike@example.com" },
         { name: "Sarah Chen", email: "sarah@example.com" },
         { name: "David Park", email: "david@example.com" },
+        { name: "Emily Davis", email: "emily@example.com" },
+        { name: "James Wilson", email: "james@example.com" },
       ];
 
       for (const closer of closerData) {
-        await ctx.db.insert("closers", {
-          email: closer.email,
-          name: closer.name,
-          teamId: team._id,
-          status: "active",
-          calendarConnected: false,
-          invitedAt: Date.now(),
-          activatedAt: Date.now(),
-        });
+        // Check if closer already exists by email
+        const existing = await ctx.db.query("closers").withIndex("by_email", (q) => q.eq("email", closer.email)).first();
+        if (!existing) {
+          await ctx.db.insert("closers", {
+            email: closer.email,
+            name: closer.name,
+            teamId: team._id,
+            status: "active",
+            calendarConnected: false,
+            invitedAt: Date.now(),
+            activatedAt: Date.now(),
+          });
+        }
       }
 
       closers = await ctx.db
@@ -1559,5 +1566,347 @@ export const updateNudgeStatus = mutation({
     await ctx.db.patch(args.nudgeId, {
       status: args.status,
     });
+  },
+});
+
+// ============================================
+// COMPREHENSIVE TEST DATA SEEDING
+// ============================================
+
+const SEED_CLOSER_NAMES = [
+  { name: "Marcus Johnson", email: "marcus@example.com" },
+  { name: "Sarah Chen", email: "sarah@example.com" },
+  { name: "David Rodriguez", email: "david@example.com" },
+  { name: "Emily Thompson", email: "emily@example.com" },
+  { name: "James Wilson", email: "james@example.com" },
+];
+
+const SEED_PROSPECT_NAMES = [
+  "John Smith", "Maria Garcia", "Robert Brown", "Lisa Davis", "Michael Miller",
+  "Jennifer Taylor", "William Anderson", "Patricia Thomas", "Richard Jackson", "Linda White",
+  "Charles Harris", "Barbara Martin", "Joseph Thompson", "Susan Robinson", "Daniel Clark",
+];
+
+const SEED_OBJECTIONS = ["spouse_partner", "price_money", "timing", "need_to_think", "not_qualified", "logistics", "competitor"];
+
+const SEED_SUMMARIES = [
+  "Strong discovery call. Prospect identified clear pain points around scaling challenges. Budget confirmed at $8,000. Decision maker present. Main hesitation was timing due to upcoming product launch.",
+  "Good call with qualified lead. Objection around price handled well. Prospect needs to discuss with spouse. Follow-up scheduled.",
+  "Challenging call - prospect came in skeptical from previous bad experience. Built trust through case studies. Close pending partner approval.",
+  "Excellent call resulting in close. Prospect was highly motivated after hearing ROI case studies. Quick decision maker.",
+  "No-show on initial call. Rescheduled for next week.",
+  "Prospect interested but not decision maker. Need to get business partner on next call.",
+];
+
+// Comprehensive seed function - creates all test data for a user's team
+export const seedComprehensiveTestData = mutation({
+  args: {
+    userEmail: v.string(),
+    clearExisting: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    // Find user and team
+    const user = await ctx.db.query("users").filter((q) => q.eq(q.field("email"), args.userEmail.toLowerCase())).first();
+    if (!user) throw new Error(`User not found: ${args.userEmail}`);
+
+    const team = await ctx.db.get(user.teamId);
+    if (!team) throw new Error("Team not found");
+
+    const teamId = team._id;
+
+    // Clear existing data if requested
+    if (args.clearExisting) {
+      // Delete calls and related data
+      const calls = await ctx.db.query("calls").withIndex("by_team", (q) => q.eq("teamId", teamId)).collect();
+      for (const call of calls) {
+        const ammo = await ctx.db.query("ammo").withIndex("by_call", (q) => q.eq("callId", call._id)).collect();
+        for (const a of ammo) await ctx.db.delete(a._id);
+        const segs = await ctx.db.query("transcriptSegments").withIndex("by_call", (q) => q.eq("callId", call._id)).collect();
+        for (const s of segs) await ctx.db.delete(s._id);
+        const objs = await ctx.db.query("objections").withIndex("by_call", (q) => q.eq("callId", call._id)).collect();
+        for (const o of objs) await ctx.db.delete(o._id);
+        await ctx.db.delete(call._id);
+      }
+
+      // Delete scheduled calls
+      const scheduled = await ctx.db.query("scheduledCalls").withIndex("by_team_and_date", (q) => q.eq("teamId", teamId)).collect();
+      for (const s of scheduled) await ctx.db.delete(s._id);
+
+      // Delete closers
+      const closers = await ctx.db.query("closers").withIndex("by_team", (q) => q.eq("teamId", teamId)).collect();
+      for (const c of closers) await ctx.db.delete(c._id);
+
+      // Delete highlights and playlists
+      const highlights = await ctx.db.query("highlights").withIndex("by_team", (q) => q.eq("teamId", teamId)).collect();
+      for (const h of highlights) await ctx.db.delete(h._id);
+
+      const playlists = await ctx.db.query("trainingPlaylists").withIndex("by_team", (q) => q.eq("teamId", teamId)).collect();
+      for (const p of playlists) {
+        const items = await ctx.db.query("trainingPlaylistItems").withIndex("by_playlist", (q) => q.eq("playlistId", p._id)).collect();
+        for (const i of items) await ctx.db.delete(i._id);
+        await ctx.db.delete(p._id);
+      }
+
+      // Delete ammo config
+      const config = await ctx.db.query("ammoConfigs").withIndex("by_team", (q) => q.eq("teamId", teamId)).first();
+      if (config) await ctx.db.delete(config._id);
+    }
+
+    const now = Date.now();
+    const randomItem = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+    const randomInRange = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
+
+    // 1. Create closers
+    const closerIds: any[] = [];
+    for (const closer of SEED_CLOSER_NAMES) {
+      const id = await ctx.db.insert("closers", {
+        email: closer.email,
+        name: closer.name,
+        teamId,
+        status: "active",
+        calendarConnected: false,
+        invitedAt: now - 30 * 24 * 60 * 60 * 1000,
+        activatedAt: now - 29 * 24 * 60 * 60 * 1000,
+        lastLoginAt: now - randomInRange(1, 7) * 24 * 60 * 60 * 1000,
+      });
+      closerIds.push(id);
+    }
+
+    // 2. Create scheduled calls (future)
+    for (let i = 0; i < 10; i++) {
+      await ctx.db.insert("scheduledCalls", {
+        closerId: randomItem(closerIds),
+        teamId,
+        calendarEventId: `test-event-${now}-${i}`,
+        prospectName: randomItem(SEED_PROSPECT_NAMES),
+        prospectEmail: `prospect${i}@example.com`,
+        scheduledAt: now + randomInRange(1, 14) * 24 * 60 * 60 * 1000,
+        meetingLink: "https://zoom.us/j/123456789",
+        syncedAt: now,
+        source: "calendly",
+        status: "scheduled",
+      });
+    }
+
+    // 3. Create completed calls with various outcomes
+    const callIds: any[] = [];
+    for (let i = 0; i < 30; i++) {
+      const callDate = now - randomInRange(1, 60) * 24 * 60 * 60 * 1000;
+      const duration = randomInRange(15 * 60, 50 * 60);
+
+      const outcomeRoll = Math.random();
+      let outcome: string, dealValue: number | undefined, cashCollected: number | undefined, primaryObjection: string | undefined;
+
+      // Use realistic round numbers for deal values
+      const roundDealValues = [3000, 5000, 6000, 7500, 8000, 10000, 12000, 15000];
+      const roundCashCollectedOptions: Record<number, number[]> = {
+        3000: [1500, 2000, 3000],
+        5000: [2000, 2500, 3000, 5000],
+        6000: [2000, 3000, 4000, 6000],
+        7500: [2500, 3000, 5000, 7500],
+        8000: [2500, 4000, 5000, 8000],
+        10000: [3000, 5000, 7500, 10000],
+        12000: [4000, 6000, 8000, 12000],
+        15000: [5000, 7500, 10000, 15000],
+      };
+
+      if (outcomeRoll < 0.25) {
+        outcome = "closed";
+        dealValue = randomItem(roundDealValues);
+        const cashOptions = roundCashCollectedOptions[dealValue] || [dealValue];
+        cashCollected = randomItem(cashOptions);
+      } else if (outcomeRoll < 0.35) {
+        outcome = "no_show";
+        primaryObjection = "no_show_ghosted";
+      } else if (outcomeRoll < 0.45) {
+        outcome = "rescheduled";
+      } else {
+        outcome = "not_closed";
+        primaryObjection = randomItem(SEED_OBJECTIONS);
+        dealValue = randomItem(roundDealValues.slice(0, 5)); // Lower values for lost deals
+      }
+
+      const closerId = closerIds[i % closerIds.length];
+      const budgetDetected = Math.random() > 0.3;
+      const timelineDetected = Math.random() > 0.4;
+      const dmDetected = Math.random() > 0.35;
+      const spouseDetected = Math.random() > 0.7;
+
+      const callId = await ctx.db.insert("calls", {
+        closerId,
+        teamId,
+        prospectName: SEED_PROSPECT_NAMES[i % SEED_PROSPECT_NAMES.length],
+        status: "completed",
+        outcome,
+        dealValue,
+        cashCollected,
+        contractValue: dealValue,
+        startedAt: callDate,
+        endedAt: callDate + duration * 1000,
+        duration,
+        speakerCount: 2,
+        transcriptText: `Sample transcript for call ${i}...`,
+        closerTalkTime: Math.round(duration * 0.45),
+        prospectTalkTime: Math.round(duration * 0.55),
+        summary: randomItem(SEED_SUMMARIES),
+        primaryObjection,
+        leadQualityScore: randomInRange(3, 10),
+        prospectWasDecisionMaker: randomItem(["yes", "no", "unclear"]),
+        budgetDiscussion: { detected: budgetDetected, mentionCount: budgetDetected ? randomInRange(1, 3) : 0, quotes: budgetDetected ? ["We have about $5k set aside"] : [] },
+        timelineUrgency: { detected: timelineDetected, mentionCount: timelineDetected ? randomInRange(1, 2) : 0, quotes: timelineDetected ? ["We need to start by next month"] : [], isUrgent: randomItem(["yes", "no", "unclear"]) },
+        decisionMakerDetection: { detected: dmDetected, mentionCount: dmDetected ? randomInRange(1, 2) : 0, quotes: dmDetected ? ["I make all the decisions here"] : [], isSoleDecisionMaker: randomItem(["yes", "no", "unclear"]) },
+        spousePartnerMentions: { detected: spouseDetected, mentionCount: spouseDetected ? randomInRange(1, 2) : 0, quotes: spouseDetected ? ["Let me discuss with my spouse"] : [] },
+        objectionsDetected: primaryObjection ? [{ type: primaryObjection, quotes: ["I need to think about it"] }] : [],
+        createdAt: callDate,
+      });
+      callIds.push(callId);
+
+      // Add ammo
+      const ammoCount = randomInRange(2, 4);
+      const ammoTypes = ["pain_point", "emotional", "commitment", "urgency", "budget"];
+      for (let j = 0; j < ammoCount; j++) {
+        await ctx.db.insert("ammo", {
+          callId,
+          teamId,
+          text: `Sample ammo quote ${j + 1} for this call`,
+          type: randomItem(ammoTypes),
+          timestamp: randomInRange(60, duration - 60),
+          createdAt: callDate,
+          score: randomInRange(50, 95),
+          isHeavyHitter: true,
+        });
+      }
+
+      // Add objection record if applicable
+      if (primaryObjection) {
+        await ctx.db.insert("objections", {
+          callId,
+          teamId,
+          objectionText: "Sample objection text",
+          category: primaryObjection,
+          handled: outcome === "closed",
+          timestamp: randomInRange(duration / 2, duration - 60),
+          createdAt: callDate,
+        });
+      }
+    }
+
+    // 4. Create playbook highlights
+    const highlightIds: any[] = [];
+    const categories = ["objection_handling", "pitch", "close", "pain_discovery"];
+    for (let i = 0; i < 6 && i < callIds.length; i++) {
+      // Use the closerId from the index since we know the pattern
+      const closerIdForHighlight = closerIds[i % closerIds.length];
+
+      const hId = await ctx.db.insert("highlights", {
+        callId: callIds[i],
+        closerId: closerIdForHighlight,
+        teamId,
+        title: `Highlight ${i + 1}: ${randomItem(["Handling price objection", "Strong close", "Great discovery", "Building rapport"])}`,
+        notes: "Great example of effective technique.",
+        category: categories[i % categories.length],
+        transcriptText: "Sample transcript segment...",
+        startTimestamp: randomInRange(60, 300),
+        endTimestamp: randomInRange(320, 600),
+        createdAt: now - randomInRange(1, 14) * 24 * 60 * 60 * 1000,
+        createdBy: user._id,
+      });
+      highlightIds.push(hId);
+    }
+
+    // 5. Create training playlists
+    const playlist1 = await ctx.db.insert("trainingPlaylists", {
+      teamId,
+      name: "New Closer Onboarding",
+      description: "Essential clips for new team members",
+      createdBy: user._id,
+      createdAt: now - 7 * 24 * 60 * 60 * 1000,
+      updatedAt: now - 2 * 24 * 60 * 60 * 1000,
+    });
+
+    const playlist2 = await ctx.db.insert("trainingPlaylists", {
+      teamId,
+      name: "Objection Handling",
+      description: "Best examples of overcoming objections",
+      createdBy: user._id,
+      createdAt: now - 5 * 24 * 60 * 60 * 1000,
+      updatedAt: now - 1 * 24 * 60 * 60 * 1000,
+    });
+
+    // Add highlights to playlists
+    for (let i = 0; i < Math.min(3, highlightIds.length); i++) {
+      await ctx.db.insert("trainingPlaylistItems", {
+        playlistId: playlist1,
+        highlightId: highlightIds[i],
+        order: i,
+        addedAt: now - randomInRange(1, 5) * 24 * 60 * 60 * 1000,
+      });
+    }
+
+    // Assign playlists to closers
+    for (const closerId of closerIds.slice(0, 2)) {
+      await ctx.db.insert("trainingPlaylistAssignments", {
+        playlistId: playlist1,
+        closerId,
+        assignedBy: user._id,
+        assignedAt: now - randomInRange(1, 5) * 24 * 60 * 60 * 1000,
+      });
+    }
+
+    // 6. Create ammo config (playbook)
+    await ctx.db.insert("ammoConfigs", {
+      teamId,
+      requiredInfo: [
+        { id: "budget", label: "Budget", description: "What's their budget?" },
+        { id: "timeline", label: "Timeline", description: "When do they need to decide?" },
+        { id: "decision_maker", label: "Decision Maker", description: "Are they the sole decision maker?" },
+        { id: "pain_points", label: "Pain Points", description: "What problems are they trying to solve?" },
+      ],
+      scriptFramework: [
+        { id: "rapport", name: "Rapport Building", order: 0 },
+        { id: "discovery", name: "Discovery", order: 1 },
+        { id: "presentation", name: "Presentation", order: 2 },
+        { id: "close", name: "Close", order: 3 },
+      ],
+      commonObjections: [
+        { id: "price", label: "Price/Money", keywords: ["expensive", "afford", "budget", "cost"] },
+        { id: "spouse", label: "Spouse/Partner", keywords: ["wife", "husband", "partner", "spouse"] },
+        { id: "timing", label: "Timing", keywords: ["not right now", "busy", "later"] },
+        { id: "think", label: "Need to Think", keywords: ["think about it", "sleep on it"] },
+      ],
+      ammoCategories: [
+        { id: "pain", name: "Pain Points", color: "red", keywords: ["struggling", "frustrated", "problem"] },
+        { id: "emotional", name: "Emotional", color: "purple", keywords: ["excited", "love", "hate", "feel"] },
+        { id: "urgency", name: "Urgency", color: "orange", keywords: ["need to", "have to", "deadline"] },
+      ],
+      offerDescription: "High-ticket coaching program",
+      problemSolved: "Helping businesses scale revenue",
+      callManifesto: {
+        stages: [
+          { id: "opening", name: "Opening", goal: "Set frame and build rapport", goodBehaviors: ["Smile", "Set agenda"], badBehaviors: ["Jump to pitch"], keyMoments: ["Agenda set"], order: 0 },
+          { id: "discovery", name: "Discovery", goal: "Understand their situation", goodBehaviors: ["Ask open questions", "Listen"], badBehaviors: ["Talk too much"], keyMoments: ["Pain identified"], order: 1 },
+          { id: "close", name: "Close", goal: "Secure commitment", goodBehaviors: ["Ask for sale", "Handle objections"], badBehaviors: ["Be pushy"], keyMoments: ["Final close"], order: 2 },
+        ],
+        objections: [
+          { id: "price", name: "Price/Money", rebuttals: ["If money wasn't a factor, is this what you'd want?"] },
+          { id: "spouse", name: "Spouse/Partner", rebuttals: ["What do you think their main concern would be?"] },
+          { id: "think", name: "Need to Think", rebuttals: ["What specifically do you need to think about?"] },
+        ],
+      },
+      createdAt: now - 30 * 24 * 60 * 60 * 1000,
+      updatedAt: now - 2 * 24 * 60 * 60 * 1000,
+    });
+
+    return {
+      success: true,
+      created: {
+        closers: closerIds.length,
+        scheduledCalls: 10,
+        completedCalls: callIds.length,
+        highlights: highlightIds.length,
+        playlists: 2,
+        ammoConfig: 1,
+      },
+    };
   },
 });

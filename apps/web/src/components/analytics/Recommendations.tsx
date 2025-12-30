@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, CheckCircle2 } from "lucide-react";
+import { Target, CheckCircle2 } from "lucide-react";
 import { getRecommendationCategoryColor } from "@/lib/analytics-utils";
 
 interface Recommendation {
@@ -42,7 +42,7 @@ export function Recommendations({ data, isLoading }: RecommendationsProps) {
       <Card className="border-2 border-green-200 bg-green-50/30">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-green-600" />
+            <Target className="h-5 w-5 text-green-600" />
             <CardTitle className="text-lg">Actionable Recommendations</CardTitle>
           </div>
         </CardHeader>
@@ -67,7 +67,7 @@ export function Recommendations({ data, isLoading }: RecommendationsProps) {
     <Card className="border-2 border-zinc-300">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-zinc-600" />
+          <Target className="h-5 w-5 text-zinc-600" />
           <CardTitle className="text-lg">This Period's Focus Areas</CardTitle>
         </div>
       </CardHeader>
@@ -80,7 +80,7 @@ export function Recommendations({ data, isLoading }: RecommendationsProps) {
             >
               <Badge
                 variant="outline"
-                className={`${getRecommendationCategoryColor(rec.category)} text-xs font-medium shrink-0`}
+                className={`${getRecommendationCategoryColor(rec.category)} text-xs font-bold shrink-0`}
               >
                 {rec.category}
               </Badge>
