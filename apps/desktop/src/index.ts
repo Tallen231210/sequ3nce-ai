@@ -759,6 +759,12 @@ const setupIpcHandlers = (): void => {
     return currentTeamId;
   });
 
+  // Set team ID (called when closer logs in)
+  ipcMain.handle('ammo:set-team-id', (_event, teamId: string) => {
+    console.log('[Main] Setting teamId:', teamId);
+    currentTeamId = teamId;
+  });
+
   // Open URL in external browser (for resources)
   ipcMain.handle('ammo:open-external', (_event, url: string) => {
     shell.openExternal(url);

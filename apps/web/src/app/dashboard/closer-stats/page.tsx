@@ -28,6 +28,9 @@ import {
   Users,
   CheckCircle2,
   Calendar,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
 } from "lucide-react";
 
 type DateRange = "today" | "this_week" | "this_month" | "last_30_days" | "all_time";
@@ -147,10 +150,80 @@ interface CloserCardProps {
     rank: number;
   };
   liveStatus?: "on_call" | "waiting";
+  dateRange: DateRange;
 }
 
-function CloserCard({ closer, liveStatus }: CloserCardProps) {
+// Generate individual closer insights based on their stats
+function generateCloserInsights(closer: CloserCardProps["closer"], dateRange: DateRange): string[] {
+  const insights: string[] = [];
+  const periodLabel = DATE_RANGE_LABELS[dateRange].toLowerCase();
+  const firstName = closer.name.split(" ")[0];
+
+  // Performance level
+  if (closer.closeRate >= 35) {
+    insights.push(`${firstName} is performing exceptionally with a ${formatPercent(closer.closeRate)} close rate.`);
+  } else if (closer.closeRate >= 25) {
+    insights.push(`${firstName} is showing solid performance with a ${formatPercent(closer.closeRate)} close rate.`);
+  } else if (closer.closeRate >= 15) {
+    insights.push(`${firstName}'s close rate of ${formatPercent(closer.closeRate)} has room for improvement.`);
+  } else if (closer.callsTaken > 0) {
+    insights.push(`${firstName}'s close rate of ${formatPercent(closer.closeRate)} needs attention.`);
+  }
+
+  // Revenue contribution
+  if (closer.cashCollected > 0) {
+    insights.push(`Collected ${formatCurrency(closer.cashCollected)} from ${closer.callsTaken} calls ${periodLabel}.`);
+  }
+
+  // Trend analysis
+  if (closer.closeRateTrend !== null) {
+    if (closer.closeRateTrend > 5) {
+      insights.push(`Close rate is up ${closer.closeRateTrend.toFixed(0)} points vs previous period — great momentum!`);
+    } else if (closer.closeRateTrend < -5) {
+      insights.push(`Close rate dropped ${Math.abs(closer.closeRateTrend).toFixed(0)} points — may need coaching.`);
+    }
+  }
+
+  // Average deal value insight
+  if (closer.avgDealValue > 0) {
+    if (closer.avgDealValue >= 5000) {
+      insights.push(`Strong average deal value of ${formatCurrency(closer.avgDealValue)}.`);
+    } else if (closer.avgDealValue < 2000 && closer.callsTaken >= 3) {
+      insights.push(`Average deal value (${formatCurrency(closer.avgDealValue)}) is on the lower side.`);
+    }
+  }
+
+  // Show rate concern
+  if (closer.showRate < 70 && closer.callsTaken >= 5) {
+    insights.push(`Show rate of ${formatPercent(closer.showRate)} suggests prospect qualification could improve.`);
+  } else if (closer.showRate >= 90 && closer.callsTaken >= 5) {
+    insights.push(`Excellent show rate of ${formatPercent(closer.showRate)}.`);
+  }
+
+  // Call length observation
+  if (closer.avgCallLength > 0) {
+    const avgMins = Math.floor(closer.avgCallLength / 60);
+    if (avgMins > 45) {
+      insights.push(`Calls averaging ${avgMins} minutes — may need to work on efficiency.`);
+    } else if (avgMins < 15 && closer.closeRate < 20) {
+      insights.push(`Short calls (avg ${avgMins} min) combined with low close rate — may be rushing.`);
+    }
+  }
+
+  // Ranking context
+  if (closer.rank === 1 && closer.callsTaken > 0) {
+    insights.push(`Currently the top performer on the team!`);
+  } else if (closer.rank <= 3 && closer.callsTaken > 0) {
+    insights.push(`Ranked #${closer.rank} on the team.`);
+  }
+
+  return insights.slice(0, 4); // Limit to 4 insights
+}
+
+function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
   const hasNoData = closer.callsTaken === 0;
+  const [showInsights, setShowInsights] = useState(false);
+  const insights = generateCloserInsights(closer, dateRange);
 
   return (
     <Card className="overflow-hidden">
@@ -298,6 +371,41 @@ function CloserCard({ closer, liveStatus }: CloserCardProps) {
                 </div>
               </div>
             </div>
+
+            {/* Individual Summary Dropdown */}
+            {insights.length > 0 && (
+              <div className="border-t border-zinc-100 pt-4 mt-4">
+                <button
+                  onClick={() => setShowInsights(!showInsights)}
+                  className="w-full flex items-center justify-between text-left group"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-zinc-400 group-hover:text-zinc-600" />
+                    <span className="text-sm font-medium text-zinc-600 group-hover:text-zinc-800">
+                      {DATE_RANGE_LABELS[dateRange]} Summary
+                    </span>
+                  </div>
+                  {showInsights ? (
+                    <ChevronUp className="h-4 w-4 text-zinc-400" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-zinc-400" />
+                  )}
+                </button>
+
+                {showInsights && (
+                  <div className="mt-3 p-3 bg-zinc-50 rounded-lg">
+                    <ul className="space-y-2">
+                      {insights.map((insight, index) => (
+                        <li key={index} className="flex items-start gap-2 text-sm text-zinc-600">
+                          <span className="text-zinc-400 mt-1">•</span>
+                          <span>{insight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </CardContent>
@@ -634,6 +742,7 @@ export default function CloserStatsPage() {
               key={closer.closerId}
               closer={closer}
               liveStatus={liveStatus?.[closer.closerId]}
+              dateRange={dateRange}
             />
           ))}
         </div>

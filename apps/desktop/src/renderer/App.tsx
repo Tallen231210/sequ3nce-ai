@@ -55,6 +55,8 @@ export function App() {
 
         // Set closer ID for the training window
         window.electron.training?.setCloserId(info.closerId);
+        // Set team ID for resources in ammo tracker
+        window.electron.ammo?.setTeamId(info.teamId);
       } catch (err) {
         console.error('[App] Error parsing saved closer info:', err);
         clearSession();
@@ -88,6 +90,8 @@ export function App() {
 
         // Set closer ID for the training window
         window.electron.training?.setCloserId(result.closer.closerId);
+        // Set team ID for resources in ammo tracker
+        window.electron.ammo?.setTeamId(result.closer.teamId);
       } else {
         setAuthError({
           message: result.error || 'Login failed. Please try again.',

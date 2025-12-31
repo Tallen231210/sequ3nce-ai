@@ -33,6 +33,7 @@ export interface AppAPI {
 export interface AmmoAPI {
   toggle: () => Promise<boolean>;
   isVisible: () => Promise<boolean>;
+  setTeamId: (teamId: string) => Promise<void>;
 }
 
 export interface AuthAPI {
@@ -97,6 +98,7 @@ contextBridge.exposeInMainWorld('electron', {
   ammo: {
     toggle: () => ipcRenderer.invoke('ammo:toggle'),
     isVisible: () => ipcRenderer.invoke('ammo:is-visible'),
+    setTeamId: (teamId: string) => ipcRenderer.invoke('ammo:set-team-id', teamId),
   },
   auth: {
     sendMagicLink: (email: string) => ipcRenderer.invoke('auth:send-magic-link', email),
