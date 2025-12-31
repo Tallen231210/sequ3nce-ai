@@ -830,11 +830,16 @@ function TranscriptView({
       !isSelecting
     ) {
       const segmentEl = segmentRefs.current.get(activeSegmentIndex);
-      if (segmentEl) {
+      const container = containerRef.current?.parentElement; // The scrollable CardContent
+      if (segmentEl && container) {
         isAutoScrollingRef.current = true;
-        segmentEl.scrollIntoView({
+        // Calculate scroll position to center the segment in the container
+        const containerRect = container.getBoundingClientRect();
+        const segmentRect = segmentEl.getBoundingClientRect();
+        const scrollTop = container.scrollTop + (segmentRect.top - containerRect.top) - (containerRect.height / 2) + (segmentRect.height / 2);
+        container.scrollTo({
+          top: scrollTop,
           behavior: "smooth",
-          block: "center",
         });
         // Reset auto-scrolling flag after animation
         setTimeout(() => {
@@ -847,6 +852,9 @@ function TranscriptView({
 
   // Detect manual scroll to pause auto-scroll
   useEffect(() => {
+    const container = containerRef.current?.parentElement; // The scrollable CardContent
+    if (!container) return;
+
     const handleScroll = () => {
       // Ignore scrolls triggered by auto-scroll
       if (isAutoScrollingRef.current) return;
@@ -865,9 +873,9 @@ function TranscriptView({
       }, 5000);
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
+    container.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
-      window.removeEventListener("scroll", handleScroll);
+      container.removeEventListener("scroll", handleScroll);
       if (userScrollTimeoutRef.current) {
         clearTimeout(userScrollTimeoutRef.current);
       }
@@ -1584,7 +1592,7 @@ export default function CallDetailPage() {
               <CardHeader>
                 <CardTitle className="text-lg">Transcript</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="max-h-[600px] overflow-y-auto">
                 <TranscriptView
                   transcript={call.transcriptText || ""}
                   ammoItems={call.ammo}
@@ -1609,7 +1617,7 @@ export default function CallDetailPage() {
                   <Badge variant="secondary">{call.ammo.length}</Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="max-h-[600px] overflow-y-auto">
                 <AmmoSidebar ammoItems={call.ammo} onAmmoClick={handleAmmoClick} />
               </CardContent>
             </Card>
