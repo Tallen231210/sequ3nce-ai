@@ -382,14 +382,37 @@ interface AudioPlayerProps {
   seekTo?: number;
 }
 
+// Generate consistent waveform bars based on position (pseudo-random but deterministic)
+function generateWaveformBars(count: number): number[] {
+  const bars: number[] = [];
+  for (let i = 0; i < count; i++) {
+    // Use sine waves with different frequencies for natural-looking variation
+    const base = 0.3;
+    const wave1 = Math.sin(i * 0.3) * 0.25;
+    const wave2 = Math.sin(i * 0.7 + 1) * 0.15;
+    const wave3 = Math.sin(i * 1.1 + 2) * 0.1;
+    const noise = Math.sin(i * 3.7) * 0.1;
+    bars.push(Math.max(0.15, Math.min(1, base + wave1 + wave2 + wave3 + noise)));
+  }
+  return bars;
+}
+
 function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const waveformRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [volume, setVolume] = useState(1);
+  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [isDiscoveringDuration, setIsDiscoveringDuration] = useState(true);
-  
+  const [isHovering, setIsHovering] = useState(false);
+  const [hoverTime, setHoverTime] = useState(0);
+
+  // Generate waveform bars (80 bars for visual density)
+  const waveformBars = useMemo(() => generateWaveformBars(80), []);
+
   // For WebM files, we need to discover the true duration by seeking to the end
   const hasDiscoveredDuration = useRef(false);
 
@@ -400,7 +423,7 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
     }
   }, [seekTo, isDiscoveringDuration]);
 
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
@@ -409,7 +432,51 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
       }
       setIsPlaying(!isPlaying);
     }
-  };
+  }, [isPlaying]);
+
+  const skipForward = useCallback(() => {
+    if (audioRef.current && duration > 0) {
+      const newTime = Math.min(currentTime + 15, duration);
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  }, [currentTime, duration]);
+
+  const skipBackward = useCallback(() => {
+    if (audioRef.current) {
+      const newTime = Math.max(currentTime - 15, 0);
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  }, [currentTime]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if not typing in an input/textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          skipBackward();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          skipForward();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePlay, skipBackward, skipForward]);
 
   const handleTimeUpdate = () => {
     if (audioRef.current && !isDiscoveringDuration) {
@@ -421,10 +488,10 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
 
   const handleLoadedMetadata = () => {
     if (!audioRef.current || hasDiscoveredDuration.current) return;
-    
+
     const audio = audioRef.current;
     const reportedDuration = audio.duration;
-    
+
     // If duration seems valid and finite, use it
     if (isFinite(reportedDuration) && reportedDuration > 0) {
       setDuration(reportedDuration);
@@ -432,11 +499,11 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
       hasDiscoveredDuration.current = true;
       return;
     }
-    
+
     // WebM files often report Infinity initially - we need to discover true duration
     // Technique: seek to a very large time, browser will clamp to actual end
     setIsDiscoveringDuration(true);
-    
+
     const handleSeeked = () => {
       if (audioRef.current) {
         // After seeking to "end", currentTime is now the true duration
@@ -452,7 +519,7 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
         audioRef.current.removeEventListener('seeked', handleSeeked);
       }
     };
-    
+
     audio.addEventListener('seeked', handleSeeked);
     // Seek to a very large time - browser will clamp to actual end
     audio.currentTime = 1e10;
@@ -469,20 +536,34 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
   };
 
   // Calculate progress percentage
-  const progressPercent = duration > 0 
-    ? Math.min((currentTime / duration) * 100, 100) 
+  const progressPercent = duration > 0
+    ? Math.min((currentTime / duration) * 100, 100)
     : 0;
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
-    }
+  const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!waveformRef.current || !audioRef.current || duration <= 0) return;
+
+    const rect = waveformRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const percent = clickX / rect.width;
+    const newTime = percent * duration;
+
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleWaveformHover = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!waveformRef.current || duration <= 0) return;
+
+    const rect = waveformRef.current.getBoundingClientRect();
+    const hoverX = e.clientX - rect.left;
+    const percent = hoverX / rect.width;
+    setHoverTime(percent * duration);
+    setIsHovering(true);
   };
 
   const changePlaybackRate = () => {
-    const rates = [1, 1.5, 2];
+    const rates = [1, 1.25, 1.5, 2];
     const currentIndex = rates.indexOf(playbackRate);
     const nextRate = rates[(currentIndex + 1) % rates.length];
     setPlaybackRate(nextRate);
@@ -491,13 +572,27 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
     }
   };
 
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (audioRef.current) {
+      audioRef.current.volume = newVolume;
+    }
+  };
+
   const handleEnded = () => {
     setIsPlaying(false);
-    setCurrentTime(duration); // Ensure we show 100% at the end
+    setCurrentTime(duration);
+  };
+
+  const getVolumeIcon = () => {
+    if (volume === 0) return <Volume2 className="h-4 w-4 opacity-50" />;
+    if (volume < 0.5) return <Volume2 className="h-4 w-4" />;
+    return <Volume2 className="h-4 w-4" />;
   };
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+    <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-5 shadow-xl">
       <audio
         ref={audioRef}
         src={src}
@@ -507,51 +602,145 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
         onEnded={handleEnded}
       />
 
-      <div className="flex items-center gap-4">
-        {/* Play/Pause button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={togglePlay}
-          className="h-12 w-12 rounded-full bg-white text-black hover:bg-zinc-200"
-        >
-          {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 ml-0.5" />}
-        </Button>
+      {/* Waveform Visualization */}
+      <div
+        ref={waveformRef}
+        onClick={handleWaveformClick}
+        onMouseMove={handleWaveformHover}
+        onMouseLeave={() => setIsHovering(false)}
+        className="relative h-16 mb-4 cursor-pointer group"
+      >
+        {/* Waveform Bars */}
+        <div className="absolute inset-0 flex items-center justify-between gap-[2px]">
+          {waveformBars.map((height, i) => {
+            const barPercent = (i / waveformBars.length) * 100;
+            const isPlayed = barPercent <= progressPercent;
 
-        {/* Time display */}
-        <div className="flex items-center gap-2 text-sm font-mono text-zinc-400 min-w-[100px]">
-          <span>{formatTimestamp(currentTime)}</span>
+            return (
+              <div
+                key={i}
+                className="flex-1 flex items-center justify-center"
+                style={{ height: '100%' }}
+              >
+                <div
+                  className={`w-full rounded-full transition-all duration-150 ${
+                    isPlayed
+                      ? 'bg-gradient-to-t from-blue-500 to-blue-400'
+                      : 'bg-zinc-700 group-hover:bg-zinc-600'
+                  }`}
+                  style={{
+                    height: `${height * 100}%`,
+                    minHeight: '4px',
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Hover Time Indicator */}
+        {isHovering && duration > 0 && (
+          <div
+            className="absolute top-0 h-full w-[2px] bg-white/50 pointer-events-none"
+            style={{ left: `${(hoverTime / duration) * 100}%` }}
+          >
+            <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap">
+              {formatTimestamp(hoverTime)}
+            </div>
+          </div>
+        )}
+
+        {/* Progress Line */}
+        <div
+          className="absolute top-0 h-full w-[2px] bg-blue-400 pointer-events-none shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+          style={{ left: `${progressPercent}%` }}
+        />
+      </div>
+
+      {/* Controls Row */}
+      <div className="flex items-center gap-3">
+        {/* Skip Back */}
+        <button
+          onClick={skipBackward}
+          className="p-2 text-zinc-400 hover:text-white transition-colors"
+          title="Skip back 15 seconds"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5V1L7 6l5 5V7a6 6 0 11-6 6" />
+            <text x="9" y="16" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">15</text>
+          </svg>
+        </button>
+
+        {/* Play/Pause Button */}
+        <button
+          onClick={togglePlay}
+          className="h-12 w-12 rounded-full bg-white text-zinc-900 hover:bg-zinc-100 hover:scale-105 transition-all duration-200 flex items-center justify-center shadow-lg"
+        >
+          {isPlaying ? (
+            <Pause className="h-5 w-5" />
+          ) : (
+            <Play className="h-5 w-5 ml-0.5" />
+          )}
+        </button>
+
+        {/* Skip Forward */}
+        <button
+          onClick={skipForward}
+          className="p-2 text-zinc-400 hover:text-white transition-colors"
+          title="Skip forward 15 seconds"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5V1l5 5-5 5V7a6 6 0 106 6" />
+            <text x="9" y="16" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">15</text>
+          </svg>
+        </button>
+
+        {/* Time Display */}
+        <div className="flex items-center gap-1.5 text-sm font-mono text-zinc-400 ml-2">
+          <span className="text-white">{formatTimestamp(currentTime)}</span>
           <span>/</span>
           <span>{duration > 0 && isFinite(duration) ? formatTimestamp(duration) : "--:--"}</span>
         </div>
 
-        {/* Scrubber */}
-        <div className="flex-1">
-          <input
-            type="range"
-            min={0}
-            max={duration > 0 && isFinite(duration) ? duration : 100}
-            value={currentTime}
-            onChange={handleSeek}
-            className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer slider"
-            style={{
-              background: `linear-gradient(to right, white ${progressPercent}%, #3f3f46 ${progressPercent}%)`,
-            }}
-          />
-        </div>
+        {/* Spacer */}
+        <div className="flex-1" />
 
-        {/* Playback speed */}
-        <Button
-          variant="ghost"
-          size="sm"
+        {/* Playback Speed */}
+        <button
           onClick={changePlaybackRate}
-          className="text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 font-mono text-sm min-w-[48px]"
+          className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors font-mono text-sm min-w-[50px]"
         >
           {playbackRate}x
-        </Button>
+        </button>
 
-        {/* Volume icon */}
-        <Volume2 className="h-4 w-4 text-zinc-500" />
+        {/* Volume Control */}
+        <div
+          className="relative"
+          onMouseEnter={() => setShowVolumeSlider(true)}
+          onMouseLeave={() => setShowVolumeSlider(false)}
+        >
+          <button className="p-2 text-zinc-400 hover:text-white transition-colors">
+            {getVolumeIcon()}
+          </button>
+
+          {/* Volume Slider Popup */}
+          {showVolumeSlider && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-zinc-800 rounded-lg shadow-xl">
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={handleVolumeChange}
+                className="w-24 h-1.5 bg-zinc-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
+                style={{
+                  background: `linear-gradient(to right, #3b82f6 ${volume * 100}%, #52525b ${volume * 100}%)`,
+                }}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
