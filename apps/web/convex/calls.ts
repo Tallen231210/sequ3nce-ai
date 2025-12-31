@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { api } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 // Create a new call record (called by audio processor when call starts)
 export const createCall = mutation({
@@ -1263,7 +1264,7 @@ export const getSpeakerMappingForCall = query({
     callId: v.string(),
   },
   handler: async (ctx, args) => {
-    const call = await ctx.db.get(args.callId as any);
+    const call = await ctx.db.get(args.callId as Id<"calls">);
     if (!call || !call.speakerMapping) return null;
     return call.speakerMapping;
   },
