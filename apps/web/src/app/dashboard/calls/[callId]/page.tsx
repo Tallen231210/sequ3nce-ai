@@ -1610,14 +1610,14 @@ export default function CallDetailPage() {
 
           {/* Ammo Sidebar */}
           <div className="lg:col-span-1">
-            <Card className="lg:sticky lg:top-24">
-              <CardHeader>
+            <Card className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] flex flex-col">
+              <CardHeader className="flex-shrink-0">
                 <CardTitle className="text-lg flex items-center justify-between">
                   <span>Ammo</span>
                   <Badge variant="secondary">{call.ammo.length}</Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="max-h-[600px] overflow-y-auto">
+              <CardContent className="flex-1 overflow-y-auto min-h-0">
                 <AmmoSidebar ammoItems={call.ammo} onAmmoClick={handleAmmoClick} />
               </CardContent>
             </Card>
