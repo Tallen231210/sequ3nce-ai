@@ -95,7 +95,9 @@ export interface Nudge {
 // Ammo tracker window API (exposed via ammo-tracker-preload.ts)
 export interface AmmoTrackerAPI {
   getCallId: () => Promise<string | null>;
+  getTeamId: () => Promise<string | null>;
   copyToClipboard: (text: string) => Promise<void>;
+  openExternal: (url: string) => Promise<void>;
   close: () => Promise<void>;
   saveNotes: (callId: string, notes: string) => Promise<{ success: boolean }>;
   getNotes: (callId: string) => Promise<string | null>;

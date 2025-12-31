@@ -45,6 +45,9 @@ let ammoTrackerVisible = false;
 // Current logged-in closer ID (for training window)
 let currentCloserId: string | null = null;
 
+// Current team ID (for resources in ammo tracker)
+let currentTeamId: string | null = null;
+
 // Audio service URL - Production Railway deployment
 const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL || 'wss://amusing-charm-production.up.railway.app';
 
@@ -667,6 +670,7 @@ const setupIpcHandlers = (): void => {
     const { v4: uuidv4 } = await import('uuid');
     const callId = config.callId || uuidv4();
     currentCallId = callId;
+    currentTeamId = config.teamId;
 
     // Update status to connecting
     updateStatus('connecting');
@@ -748,6 +752,16 @@ const setupIpcHandlers = (): void => {
   // Get current call ID (for ammo tracker window)
   ipcMain.handle('ammo:get-call-id', () => {
     return currentCallId;
+  });
+
+  // Get current team ID (for resources in ammo tracker)
+  ipcMain.handle('ammo:get-team-id', () => {
+    return currentTeamId;
+  });
+
+  // Open URL in external browser (for resources)
+  ipcMain.handle('ammo:open-external', (_event, url: string) => {
+    shell.openExternal(url);
   });
 
   // Copy text to clipboard (from ammo tracker)

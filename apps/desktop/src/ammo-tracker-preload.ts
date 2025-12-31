@@ -6,8 +6,14 @@ contextBridge.exposeInMainWorld('ammoTracker', {
   // Get the current call ID
   getCallId: () => ipcRenderer.invoke('ammo:get-call-id'),
 
+  // Get the team ID for resources
+  getTeamId: () => ipcRenderer.invoke('ammo:get-team-id'),
+
   // Copy text to clipboard
   copyToClipboard: (text: string) => ipcRenderer.invoke('ammo:copy-to-clipboard', text),
+
+  // Open URL in external browser
+  openExternal: (url: string) => ipcRenderer.invoke('ammo:open-external', url),
 
   // Close the ammo window
   close: () => ipcRenderer.invoke('ammo:close'),
