@@ -31,6 +31,7 @@ export interface AppAPI {
 export interface AmmoAPI {
   toggle: () => Promise<boolean>;
   isVisible: () => Promise<boolean>;
+  setTeamId: (teamId: string) => Promise<void>;
 }
 
 export interface AuthAPI {
