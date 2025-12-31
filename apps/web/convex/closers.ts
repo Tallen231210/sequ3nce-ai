@@ -395,6 +395,7 @@ export const getCloserStats = query({
   args: {
     clerkId: v.string(),
     dateRange: v.union(
+      v.literal("today"),
       v.literal("this_week"),
       v.literal("this_month"),
       v.literal("last_30_days"),
@@ -468,6 +469,13 @@ export const getCloserStats = query({
         previousPeriodStart = 0;
         previousPeriodEnd = 0;
         break;
+    }
+
+    // Handle "today" case for filterDate
+    if (args.dateRange === "today") {
+      filterDate = startOfToday.getTime();
+      previousPeriodStart = filterDate - 24 * 60 * 60 * 1000;
+      previousPeriodEnd = filterDate;
     }
 
     // Get all ammo for the team
@@ -705,6 +713,7 @@ export const getTeamStats = query({
   args: {
     clerkId: v.string(),
     dateRange: v.union(
+      v.literal("today"),
       v.literal("this_week"),
       v.literal("this_month"),
       v.literal("last_30_days"),
@@ -764,6 +773,13 @@ export const getTeamStats = query({
         previousPeriodStart = 0;
         previousPeriodEnd = 0;
         break;
+    }
+
+    // Handle "today" case for filterDate
+    if (args.dateRange === "today") {
+      filterDate = startOfToday.getTime();
+      previousPeriodStart = filterDate - 24 * 60 * 60 * 1000;
+      previousPeriodEnd = filterDate;
     }
 
     // Get all calls for the team

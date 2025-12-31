@@ -94,4 +94,8 @@ export interface CallSession {
   audioBuffer: Buffer[];
   lastAmmoExtractionTime: number;
   fullTranscript: string;
+  // Talk-to-listen ratio tracking
+  closerTalkTimeMs: number;
+  prospectTalkTimeMs: number;
+  lastTalkTimeUpdateTime: number;
 }

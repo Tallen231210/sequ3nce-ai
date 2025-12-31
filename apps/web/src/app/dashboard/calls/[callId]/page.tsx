@@ -221,6 +221,43 @@ interface CallSummaryProps {
   isLoading?: boolean;
 }
 
+// Parse bullet points from summary text
+function parseBulletPoints(text: string): { label: string; value: string }[] {
+  const lines = text.split('\n').filter(line => line.trim());
+  const bullets: { label: string; value: string }[] = [];
+
+  for (const line of lines) {
+    // Match lines starting with • or - or *
+    const bulletMatch = line.match(/^[•\-\*]\s*(.+)$/);
+    if (bulletMatch) {
+      const content = bulletMatch[1].trim();
+      // Try to split into label: value
+      const colonIndex = content.indexOf(':');
+      if (colonIndex > 0 && colonIndex < 30) {
+        bullets.push({
+          label: content.substring(0, colonIndex).trim(),
+          value: content.substring(colonIndex + 1).trim(),
+        });
+      } else {
+        bullets.push({ label: '', value: content });
+      }
+    }
+  }
+
+  return bullets;
+}
+
+// Get first bullet preview for collapsed view
+function getFirstBulletPreview(summary: string): string {
+  const bullets = parseBulletPoints(summary);
+  if (bullets.length > 0 && bullets[0].value) {
+    return bullets[0].value.substring(0, 60) + (bullets[0].value.length > 60 ? '...' : '');
+  }
+  // Fallback to first sentence for old format summaries
+  const firstSentence = summary.split(/[.!?]/).filter(s => s.trim())[0]?.trim();
+  return firstSentence ? firstSentence + '.' : '';
+}
+
 function CallSummary({ summary, isLoading }: CallSummaryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -229,10 +266,9 @@ function CallSummary({ summary, isLoading }: CallSummaryProps) {
     return null;
   }
 
-  // Get first sentence for collapsed view
-  const firstSentence = summary
-    ? summary.split(/[.!?]/).filter(s => s.trim())[0]?.trim() + "."
-    : "";
+  const bullets = summary ? parseBulletPoints(summary) : [];
+  const hasBullets = bullets.length > 0;
+  const previewText = summary ? getFirstBulletPreview(summary) : '';
 
   return (
     <div
@@ -263,7 +299,7 @@ function CallSummary({ summary, isLoading }: CallSummaryProps) {
               </div>
             ) : !isExpanded && summary ? (
               <span className="text-sm text-zinc-500 truncate">
-                — {firstSentence}
+                — {previewText}
               </span>
             ) : null}
           </div>
@@ -283,9 +319,25 @@ function CallSummary({ summary, isLoading }: CallSummaryProps) {
           <div
             className="mt-3 pt-3 border-t border-zinc-200 animate-in slide-in-from-top-2 duration-200"
           >
-            <p className="text-sm text-zinc-600 leading-relaxed">
-              {summary}
-            </p>
+            {hasBullets ? (
+              <ul className="space-y-2">
+                {bullets.map((bullet, index) => (
+                  <li key={index} className="flex gap-2 text-sm">
+                    <span className="text-zinc-400 shrink-0">•</span>
+                    <span className="text-zinc-600">
+                      {bullet.label && (
+                        <span className="font-medium text-zinc-800">{bullet.label}:</span>
+                      )}{' '}
+                      {bullet.value}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-zinc-600 leading-relaxed">
+                {summary}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -675,9 +727,6 @@ function TranscriptView({
   // Fall back to parsing transcriptText only if no database segments
   const segments = useMemo(() => {
     if (dbSegments && dbSegments.length > 0) {
-      console.log('[TranscriptView] Using database segments:', dbSegments.length, 'segments');
-      console.log('[TranscriptView] First 3 segments:', dbSegments.slice(0, 3).map(s => ({ text: s.text.slice(0, 30), timestamp: s.timestamp })));
-      
       // Convert database segments to TranscriptSegment format
       return dbSegments.map((dbSeg) => {
         // Check if this segment contains any ammo
@@ -686,7 +735,7 @@ function TranscriptView({
             dbSeg.text.toLowerCase().includes(ammo.text.toLowerCase().slice(0, 30)) ||
             ammo.text.toLowerCase().includes(dbSeg.text.toLowerCase().slice(0, 30))
         );
-        
+
         return {
           speaker: dbSeg.speaker === "closer" ? "Closer" : dbSeg.speaker === "prospect" ? "Prospect" : dbSeg.speaker,
           text: dbSeg.text,
@@ -697,14 +746,20 @@ function TranscriptView({
       });
     }
     // Fallback: parse transcript text (less accurate timestamps)
-    console.log('[TranscriptView] FALLBACK: No database segments, parsing transcript text');
     return parseTranscript(transcript, ammoItems, speakerMapping);
   }, [dbSegments, transcript, ammoItems, speakerMapping]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-scroll state
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const lastActiveIndexRef = useRef<number>(-1);
+  const userScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isAutoScrollingRef = useRef(false);
 
   // Auto-scroll during drag selection when cursor is near viewport edges
   useEffect(() => {
@@ -764,6 +819,68 @@ function TranscriptView({
     (seg, i) =>
       seg.timestamp <= currentTime &&
       (i === segments.length - 1 || segments[i + 1].timestamp > currentTime)
+  );
+
+  // Auto-scroll to active segment when it changes
+  useEffect(() => {
+    if (
+      activeSegmentIndex >= 0 &&
+      activeSegmentIndex !== lastActiveIndexRef.current &&
+      autoScrollEnabled &&
+      !isSelecting
+    ) {
+      const segmentEl = segmentRefs.current.get(activeSegmentIndex);
+      if (segmentEl) {
+        isAutoScrollingRef.current = true;
+        segmentEl.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        // Reset auto-scrolling flag after animation
+        setTimeout(() => {
+          isAutoScrollingRef.current = false;
+        }, 500);
+      }
+      lastActiveIndexRef.current = activeSegmentIndex;
+    }
+  }, [activeSegmentIndex, autoScrollEnabled, isSelecting]);
+
+  // Detect manual scroll to pause auto-scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      // Ignore scrolls triggered by auto-scroll
+      if (isAutoScrollingRef.current) return;
+
+      // User manually scrolled - pause auto-scroll temporarily
+      setAutoScrollEnabled(false);
+
+      // Clear existing timeout
+      if (userScrollTimeoutRef.current) {
+        clearTimeout(userScrollTimeoutRef.current);
+      }
+
+      // Resume auto-scroll after 5 seconds of no manual scrolling
+      userScrollTimeoutRef.current = setTimeout(() => {
+        setAutoScrollEnabled(true);
+      }, 5000);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (userScrollTimeoutRef.current) {
+        clearTimeout(userScrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Resume auto-scroll when user clicks on a segment or seeks audio
+  const handleSegmentSeek = useCallback(
+    (timestamp: number) => {
+      setAutoScrollEnabled(true);
+      onSegmentClick(timestamp);
+    },
+    [onSegmentClick]
   );
 
   // Handle mouse down to start drag selection
@@ -924,6 +1041,10 @@ function TranscriptView({
         return (
           <div
             key={index}
+            ref={(el) => {
+              if (el) segmentRefs.current.set(index, el);
+              else segmentRefs.current.delete(index);
+            }}
             onMouseDown={(e) => handleMouseDown(index, e)}
             onMouseEnter={() => handleMouseEnter(index)}
             onMouseUp={() => handleMouseUp(index, segment.timestamp)}
@@ -1118,6 +1239,7 @@ const HIGHLIGHT_CATEGORIES = [
   { value: "pitch", label: "Pitch" },
   { value: "close", label: "Close" },
   { value: "pain_discovery", label: "Pain Discovery" },
+  { value: "feedback", label: "Feedback" },
 ];
 
 // Snippet Audio Player Component (plays a specific range)

@@ -1257,6 +1257,18 @@ export const swapSpeakerMapping = mutation({
   },
 });
 
+// Get speaker mapping for a call (used by audio processor to sync after swap)
+export const getSpeakerMappingForCall = query({
+  args: {
+    callId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId as any);
+    if (!call || !call.speakerMapping) return null;
+    return call.speakerMapping;
+  },
+});
+
 // Update prospect name on an existing call (from desktop app inline prompt)
 export const updateProspectName = mutation({
   args: {

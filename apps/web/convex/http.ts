@@ -1397,4 +1397,66 @@ http.route({
   }),
 });
 
+// ============================================
+// CLOSER RESOURCES ENDPOINTS (for desktop app)
+// ============================================
+
+// GET endpoint to fetch active resources for a team
+http.route({
+  path: "/getActiveResources",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const teamId = url.searchParams.get("teamId");
+
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "teamId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const resources = await ctx.runQuery(api.resources.getActiveResources, {
+        teamId: teamId as any,
+      });
+      return new Response(JSON.stringify(resources || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching active resources:", error);
+      return new Response(JSON.stringify({ error: "Failed to fetch resources" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getActiveResources
+http.route({
+  path: "/getActiveResources",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

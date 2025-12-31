@@ -320,4 +320,20 @@ export default defineSchema({
   })
     .index("by_call", ["callId"])
     .index("by_call_and_status", ["callId", "status"]),
+
+  // Closer Resources (sales scripts, payment links, and other resources for closers)
+  closerResources: defineTable({
+    teamId: v.id("teams"),
+    type: v.string(), // "script" | "payment_link" | "document" | "link"
+    title: v.string(), // Display name
+    description: v.optional(v.string()), // Optional description
+    content: v.optional(v.string()), // For scripts: the actual script text
+    url: v.optional(v.string()), // For payment links and external documents
+    order: v.number(), // Display order
+    isActive: v.boolean(), // Whether to show to closers
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_order", ["teamId", "order"]),
 });

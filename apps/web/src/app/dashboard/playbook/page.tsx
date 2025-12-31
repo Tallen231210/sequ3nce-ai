@@ -49,6 +49,7 @@ const HIGHLIGHT_CATEGORIES = [
   { value: "pitch", label: "Pitch" },
   { value: "close", label: "Close" },
   { value: "pain_discovery", label: "Pain Discovery" },
+  { value: "feedback", label: "Feedback" },
 ];
 
 function getCategoryLabel(value: string): string {
@@ -66,6 +67,8 @@ function getCategoryColor(value: string): string {
       return "bg-green-500/10 text-green-600 border-green-500/30";
     case "pain_discovery":
       return "bg-purple-500/10 text-purple-600 border-purple-500/30";
+    case "feedback":
+      return "bg-amber-500/10 text-amber-600 border-amber-500/30";
     default:
       return "bg-zinc-500/10 text-zinc-600 border-zinc-500/30";
   }

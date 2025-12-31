@@ -10,32 +10,27 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-const SUMMARY_PROMPT = `You are analyzing a completed sales call transcript to create a brief summary for a sales manager.
+const SUMMARY_PROMPT = `You are analyzing a completed sales call transcript to create a bullet-point summary for a sales manager.
 
-Write a 3-5 sentence summary that includes:
-1. What product/service was discussed (if clear from context)
-2. The prospect's main pain points or needs mentioned
-3. Key objections raised (if any)
-4. The outcome and any next steps
-5. Overall prospect sentiment (interested, hesitant, not interested, ready to buy)
+Generate exactly these bullet points (use • character):
 
-After the summary, add a blank line and then these three bullet points:
+• Topic: [One sentence - what product/service was discussed]
+• Pain Points: [One sentence - prospect's main needs or frustrations]
+• Objections: [One sentence - key objections raised, or "None raised"]
+• Outcome: [One sentence - result and any next steps]
+• Sentiment: [One word + brief explanation - e.g. "Interested - asked follow-up questions about pricing"]
 
-• Buyer Language: [Yes/No] - [Brief explanation of buying signals or lack thereof. Examples of buyer language: "I'm ready", "let's do it", "how do I sign up", "I want this". Examples of non-buyer language: "I need to think about it", "not sure", "maybe later".]
-
-• Why Purchased/Didn't Purchase: [One sentence explaining the key factor that led to the outcome. If closed, what convinced them. If not closed, what was the main objection or hesitation.]
-
-• Price Pitched: [The dollar amount mentioned for the offer/program, e.g. "$5,000" or "$10K". If no clear price was stated during the call, write "Not mentioned".]
+• Buyer Language: [Yes/No] - [Brief explanation. Yes examples: "I'm ready", "let's do it", "how do I sign up". No examples: "I need to think about it", "not sure", "maybe later"]
+• Why Purchased/Didn't Purchase: [One sentence - the key factor that led to the outcome]
+• Price Pitched: [Dollar amount mentioned, e.g. "$5,000" or "Not mentioned"]
 
 RULES:
-- Keep the summary concise - the manager should read it in 10 seconds
-- Use plain language, avoid sales jargon
-- If the call was very short or the transcript is sparse, just summarize what you can
-- Focus on actionable insights the manager would care about
-- Don't include timestamps or speaker labels in the summary
-- Always include the three bullet points at the end, even if you have to write "Unclear from transcript"
-
-Return the summary text followed by the bullet points. No markdown headers or extra formatting.`;
+- Each bullet point should be ONE concise sentence
+- Use plain language, no sales jargon
+- If info isn't clear from transcript, write "Unclear from transcript"
+- Don't include timestamps or speaker labels
+- Return ONLY the bullet points, nothing else
+- Use the exact format shown above with • character`;
 
 // Generate a summary for a completed call
 export const generateCallSummary = action({

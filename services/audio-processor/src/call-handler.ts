@@ -1,7 +1,7 @@
 // Call session handler - manages a single call's lifecycle
 
 import { createDeepgramConnection, type DeepgramConnection } from "./deepgram.js";
-import { extractAmmo, type ExtractionContext } from "./claude.js";
+import { extractAmmo } from "./claude.js";
 import { uploadRecording } from "./s3.js";
 import {
   createCall,
@@ -13,33 +13,31 @@ import {
   getTeamCustomPrompt,
   setSpeakerMapping,
   getAmmoConfig,
-  addNudge,
   updateCallDetection,
+  updateTalkTime,
+  getSpeakerMapping,
 } from "./convex.js";
 import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
 import { logger } from "./logger.js";
 import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem, AmmoConfig } from "./types.js";
-import {
-  generateNudge,
-  createNudgeState,
-  checkUncoveredInfo,
-  type NudgeContext,
-} from "./nudges.js";
 
 const AMMO_EXTRACTION_INTERVAL_MS = 30000; // Extract ammo every 30 seconds
 const MIN_TRANSCRIPT_LENGTH_FOR_AMMO = 100; // Minimum characters before attempting extraction
+const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
+const SPEAKER_MAPPING_SYNC_INTERVAL_MS = 5000; // Check for speaker mapping changes every 5 seconds
 
 export class CallHandler {
   private session: CallSession;
   private deepgram: DeepgramConnection | null = null;
   private customPrompt?: string;
   private ammoConfig?: AmmoConfig | null;
-  private repetitionTracker: Map<string, number> = new Map();
-  private nudgeState = createNudgeState();
-  private uncoveredInfo: Set<string> = new Set();
   private convexCallId: string | null = null;
   private isEnded = false;
+
+  // Speaker identification - mutable, can be swapped by user
+  private closerSpeakerId: number = 0; // Deepgram speaker ID (0 or 1) that corresponds to the closer
+  private speakerMappingSyncInterval: NodeJS.Timeout | null = null;
 
   constructor(metadata: CallMetadata) {
     this.session = {
@@ -50,9 +48,51 @@ export class CallHandler {
       audioBuffer: [],
       lastAmmoExtractionTime: Date.now(),
       fullTranscript: "",
+      // Talk time tracking
+      closerTalkTimeMs: 0,
+      prospectTalkTimeMs: 0,
+      lastTalkTimeUpdateTime: Date.now(),
     };
 
     logger.info(`Call handler created for call ${metadata.callId}`, metadata);
+  }
+
+  // Update speaker mapping (called when user confirms/swaps in desktop or web)
+  setSpeakerMapping(closerSpeaker: string): void {
+    const newId = closerSpeaker === "speaker_0" ? 0 : 1;
+    if (newId !== this.closerSpeakerId) {
+      logger.info(`Speaker mapping updated: closer is now speaker_${newId} (was speaker_${this.closerSpeakerId})`);
+      this.closerSpeakerId = newId;
+
+      // Also swap the accumulated talk times
+      const tempCloser = this.session.closerTalkTimeMs;
+      this.session.closerTalkTimeMs = this.session.prospectTalkTimeMs;
+      this.session.prospectTalkTimeMs = tempCloser;
+      logger.info(`Talk times swapped: closer=${Math.round(this.session.closerTalkTimeMs / 1000)}s, prospect=${Math.round(this.session.prospectTalkTimeMs / 1000)}s`);
+    }
+  }
+
+  // Periodically sync speaker mapping from Convex (in case user swaps via web dashboard)
+  private startSpeakerMappingSync(): void {
+    this.speakerMappingSyncInterval = setInterval(async () => {
+      if (!this.convexCallId || this.isEnded) return;
+
+      try {
+        const mapping = await getSpeakerMapping(this.convexCallId);
+        if (mapping && mapping.confirmed) {
+          this.setSpeakerMapping(mapping.closerSpeaker);
+        }
+      } catch (err) {
+        logger.error("Failed to sync speaker mapping", err);
+      }
+    }, SPEAKER_MAPPING_SYNC_INTERVAL_MS);
+  }
+
+  private stopSpeakerMappingSync(): void {
+    if (this.speakerMappingSyncInterval) {
+      clearInterval(this.speakerMappingSyncInterval);
+      this.speakerMappingSyncInterval = null;
+    }
   }
 
   async start(): Promise<string | null> {
@@ -74,6 +114,9 @@ export class CallHandler {
       );
 
       logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}`);
+
+      // Start periodic speaker mapping sync (for when user confirms/swaps via web dashboard)
+      this.startSpeakerMappingSync();
 
       // Return the Convex-generated call ID so desktop can use it
       return this.convexCallId;
@@ -100,14 +143,26 @@ export class CallHandler {
 
     // Add to transcript buffer
     if (chunk.isFinal && chunk.text.trim()) {
-      const speakerLabel = chunk.speaker === 0 ? "[Closer]" : "[Prospect]";
+      // Use mutable closerSpeakerId for speaker identification
+      const isCloser = chunk.speaker === this.closerSpeakerId;
+      const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
       const line = `${speakerLabel}: ${chunk.text}`;
       this.session.fullTranscript += line + "\n";
       this.session.transcriptBuffer += chunk.text + " ";
 
+      // Track talk time based on audio duration
+      // Estimate duration from text length (average speaking rate: ~150 words/min = 2.5 words/sec)
+      // Each word averages ~5 chars, so ~12.5 chars/sec
+      const estimatedDurationMs = (chunk.text.length / 12.5) * 1000;
+      if (isCloser) {
+        this.session.closerTalkTimeMs += estimatedDurationMs;
+      } else {
+        this.session.prospectTalkTimeMs += estimatedDurationMs;
+      }
+
       // CRITICAL: Add transcript segment to Convex for real-time display in dashboard
       if (this.convexCallId) {
-        const speaker = chunk.speaker === 0 ? "closer" : "prospect";
+        const speaker = isCloser ? "closer" : "prospect";
         // Use Deepgram's audio-aligned timestamp (accurate to the actual recording)
         // This ensures playbook snippets play at the correct position
         const timestampSeconds = Math.floor(chunk.audioTimestamp);
@@ -128,6 +183,16 @@ export class CallHandler {
         addTranscript(this.convexCallId, this.session.fullTranscript)
           .catch(err => logger.error("Failed to update transcript", err));
       }
+
+      // Update talk time periodically
+      const timeSinceLastTalkTimeUpdate = Date.now() - this.session.lastTalkTimeUpdateTime;
+      if (timeSinceLastTalkTimeUpdate >= TALK_TIME_UPDATE_INTERVAL_MS && this.convexCallId) {
+        const closerSecs = Math.round(this.session.closerTalkTimeMs / 1000);
+        const prospectSecs = Math.round(this.session.prospectTalkTimeMs / 1000);
+        updateTalkTime(this.convexCallId, closerSecs, prospectSecs)
+          .catch(err => logger.error("Failed to update talk time", err));
+        this.session.lastTalkTimeUpdateTime = Date.now();
+      }
     }
 
     // Check if we should extract ammo
@@ -136,38 +201,6 @@ export class CallHandler {
 
     if (timeSinceLastExtraction >= AMMO_EXTRACTION_INTERVAL_MS && hasEnoughContent) {
       await this.extractAndSaveAmmo();
-    }
-
-    // Check for nudges (non-blocking)
-    this.checkAndSendNudge().catch(err => logger.error("Failed to check nudges", err));
-  }
-
-  private async checkAndSendNudge(): Promise<void> {
-    if (!this.convexCallId || this.session.fullTranscript.length < 100) {
-      return;
-    }
-
-    // Update uncovered info tracking
-    if (this.ammoConfig?.requiredInfo) {
-      this.uncoveredInfo = checkUncoveredInfo(
-        this.session.fullTranscript,
-        this.ammoConfig.requiredInfo
-      );
-    }
-
-    // Build nudge context
-    const callDurationSeconds = Math.floor((Date.now() - this.session.startedAt) / 1000);
-    const context: NudgeContext = {
-      ammoConfig: this.ammoConfig || null,
-      transcript: this.session.fullTranscript,
-      callDurationSeconds,
-      uncoveredInfo: this.uncoveredInfo,
-    };
-
-    // Generate nudge if applicable
-    const nudge = generateNudge(context, this.nudgeState);
-    if (nudge) {
-      await addNudge(this.convexCallId, this.session.metadata.teamId, nudge);
     }
   }
 
@@ -192,7 +225,9 @@ export class CallHandler {
 
   // Get a sample of what a specific speaker said from the transcript
   private getSpeakerSampleText(speakerId: number): string {
-    const speakerLabel = speakerId === 0 ? "[Closer]" : "[Prospect]";
+    // Use mutable closerSpeakerId to determine the label
+    const isCloser = speakerId === this.closerSpeakerId;
+    const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
     const lines = this.session.fullTranscript.split('\n').filter(l => l.trim());
 
     // Find lines from this speaker
@@ -223,20 +258,10 @@ export class CallHandler {
     this.session.lastAmmoExtractionTime = Date.now();
 
     try {
-      // Build extraction context with ammo config and repetition tracking
-      const context: ExtractionContext = {
-        ammoConfig: this.ammoConfig,
-        customPrompt: this.customPrompt,
-        repetitionTracker: this.repetitionTracker,
-      };
+      // Extract ammo (simple version - just quotes and categories)
+      const ammoItems = await extractAmmo(textToProcess);
 
-      // Extract ammo with scoring
-      const { items: ammoItems, updatedRepetitions } = await extractAmmo(textToProcess, context);
-
-      // Update repetition tracker for next extraction
-      this.repetitionTracker = updatedRepetitions;
-
-      // Save each ammo item with scoring fields
+      // Save each ammo item
       for (const ammo of ammoItems) {
         const ammoWithTimestamp: AmmoItem = {
           ...ammo,
@@ -281,6 +306,9 @@ export class CallHandler {
 
     logger.info(`Ending call: ${this.session.metadata.callId}`);
 
+    // Stop speaker mapping sync
+    this.stopSpeakerMappingSync();
+
     // Close Deepgram connection
     if (this.deepgram) {
       this.deepgram.close();
@@ -290,6 +318,14 @@ export class CallHandler {
     // Extract any remaining ammo
     if (this.session.transcriptBuffer.length >= MIN_TRANSCRIPT_LENGTH_FOR_AMMO) {
       await this.extractAndSaveAmmo();
+    }
+
+    // Save final talk time
+    if (this.convexCallId && (this.session.closerTalkTimeMs > 0 || this.session.prospectTalkTimeMs > 0)) {
+      const closerSecs = Math.round(this.session.closerTalkTimeMs / 1000);
+      const prospectSecs = Math.round(this.session.prospectTalkTimeMs / 1000);
+      await updateTalkTime(this.convexCallId, closerSecs, prospectSecs);
+      logger.info(`Final talk time: closer=${closerSecs}s, prospect=${prospectSecs}s`);
     }
 
     // Calculate duration

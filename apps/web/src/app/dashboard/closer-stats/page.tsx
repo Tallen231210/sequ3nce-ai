@@ -30,9 +30,10 @@ import {
   Calendar,
 } from "lucide-react";
 
-type DateRange = "this_week" | "this_month" | "last_30_days" | "all_time";
+type DateRange = "today" | "this_week" | "this_month" | "last_30_days" | "all_time";
 
 const DATE_RANGE_LABELS: Record<DateRange, string> = {
+  today: "Today",
   this_week: "This Week",
   this_month: "This Month",
   last_30_days: "Last 30 Days",
@@ -359,6 +360,76 @@ function TeamStatCard({ icon, label, value, trend, trendSuffix = "%" }: TeamStat
   );
 }
 
+// Dynamic Summary Component
+interface DynamicSummaryProps {
+  teamStats: TeamStatsSectionProps["teamStats"];
+  closerStats: CloserCardProps["closer"][];
+  dateRange: DateRange;
+}
+
+function DynamicSummary({ teamStats, closerStats, dateRange }: DynamicSummaryProps) {
+  if (!teamStats || closerStats.length === 0) {
+    return null;
+  }
+
+  // Generate insights based on the data
+  const insights: string[] = [];
+  const periodLabel = DATE_RANGE_LABELS[dateRange].toLowerCase();
+
+  // Total revenue insight
+  if (teamStats.totalCashCollected > 0) {
+    insights.push(`Team collected ${formatCurrency(teamStats.totalCashCollected)} from ${teamStats.totalClosedDeals} deal${teamStats.totalClosedDeals !== 1 ? "s" : ""} ${periodLabel}.`);
+  } else {
+    insights.push(`No closed deals ${periodLabel} yet.`);
+  }
+
+  // Close rate insight
+  if (teamStats.totalCallsTaken > 0) {
+    const closeRateStatus = teamStats.teamCloseRate >= 30 ? "strong" : teamStats.teamCloseRate >= 20 ? "solid" : "needs work";
+    insights.push(`Team close rate is ${formatPercent(teamStats.teamCloseRate)} (${closeRateStatus}) from ${teamStats.totalCallsTaken} calls.`);
+  }
+
+  // Top performer insight
+  const topPerformer = closerStats.find(c => c.rank === 1 && c.callsTaken > 0);
+  if (topPerformer) {
+    insights.push(`${topPerformer.name.split(" ")[0]} is leading with a ${formatPercent(topPerformer.closeRate)} close rate.`);
+  }
+
+  // Trend insight
+  if (teamStats.cashCollectedTrend !== null && teamStats.cashCollectedTrend !== 0) {
+    const trendDirection = teamStats.cashCollectedTrend > 0 ? "up" : "down";
+    const trendAmount = Math.abs(teamStats.cashCollectedTrend).toFixed(0);
+    insights.push(`Revenue is ${trendDirection} ${trendAmount}% compared to the previous period.`);
+  }
+
+  // Show rate concern
+  if (teamStats.showRate < 80 && teamStats.totalCallsTaken >= 5) {
+    insights.push(`Show rate (${formatPercent(teamStats.showRate)}) could use improvement.`);
+  }
+
+  if (insights.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mb-6 p-4 bg-zinc-50 border border-zinc-200 rounded-lg">
+      <div className="flex items-start gap-3">
+        <div className="p-2 bg-zinc-900 text-white rounded-lg shrink-0">
+          <BarChart3 className="h-4 w-4" />
+        </div>
+        <div>
+          <h3 className="font-medium text-foreground mb-1">
+            {DATE_RANGE_LABELS[dateRange]} Summary
+          </h3>
+          <p className="text-sm text-zinc-600 leading-relaxed">
+            {insights.join(" ")}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Team Overview Section Component
 interface TeamStatsSectionProps {
   teamStats: {
@@ -531,6 +602,7 @@ export default function CloserStatsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
               <SelectItem value="this_week">This Week</SelectItem>
               <SelectItem value="this_month">This Month</SelectItem>
               <SelectItem value="last_30_days">Last 30 Days</SelectItem>
@@ -538,6 +610,13 @@ export default function CloserStatsPage() {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Dynamic Summary */}
+        <DynamicSummary
+          teamStats={teamStats ?? null}
+          closerStats={stats}
+          dateRange={dateRange}
+        />
 
         {/* Team Overview Section */}
         <TeamStatsSection teamStats={teamStats ?? null} dateRange={dateRange} />

@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -16,6 +17,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,9 +42,31 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter } from "next/navigation";
-import { Phone, Trash2, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { Phone, Trash2, Loader2, Search, X, ChevronDown, Filter } from "lucide-react";
+import { useState, useMemo } from "react";
 import { Id } from "../../../../convex/_generated/dataModel";
+
+// Filter types
+type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days";
+type OutcomeFilter = "all" | "closed" | "not_closed" | "follow_up" | "lost" | "no_show" | "rescheduled";
+
+const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
+  { value: "all", label: "All Time" },
+  { value: "today", label: "Today" },
+  { value: "this_week", label: "This Week" },
+  { value: "this_month", label: "This Month" },
+  { value: "last_30_days", label: "Last 30 Days" },
+];
+
+const OUTCOME_FILTER_OPTIONS: { value: OutcomeFilter; label: string }[] = [
+  { value: "all", label: "All Outcomes" },
+  { value: "closed", label: "Closed" },
+  { value: "not_closed", label: "Not Closed" },
+  { value: "follow_up", label: "Follow Up" },
+  { value: "lost", label: "Lost" },
+  { value: "no_show", label: "No-Show" },
+  { value: "rescheduled", label: "Rescheduled" },
+];
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -240,14 +276,124 @@ function DeleteCallButton({
   );
 }
 
+// Helper function to check if a date falls within a filter range
+function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
+  if (filter === "all") return true;
+
+  const date = new Date(timestamp);
+  const now = new Date();
+
+  // Get start of today
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+
+  switch (filter) {
+    case "today":
+      return date >= startOfToday;
+    case "this_week": {
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+      return date >= startOfWeek;
+    }
+    case "this_month": {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      return date >= startOfMonth;
+    }
+    case "last_30_days": {
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      thirtyDaysAgo.setHours(0, 0, 0, 0);
+      return date >= thirtyDaysAgo;
+    }
+    default:
+      return true;
+  }
+}
+
 export default function CompletedCallsPage() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const router = useRouter();
+
+  // Filter state
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
+  const [selectedClosers, setSelectedClosers] = useState<Set<string>>(new Set());
+  const [prospectSearch, setProspectSearch] = useState("");
 
   const calls = useQuery(
     api.calls.getCompletedCallsWithCloser,
     team?._id ? { teamId: team._id } : "skip"
   );
+
+  // Get unique closers from calls for the filter dropdown
+  const uniqueClosers = useMemo(() => {
+    if (!calls) return [];
+    const closerMap = new Map<string, { id: string; name: string; initials: string }>();
+    for (const call of calls) {
+      if (call.closerId && !closerMap.has(call.closerId)) {
+        closerMap.set(call.closerId, {
+          id: call.closerId,
+          name: call.closerName || "Unknown",
+          initials: call.closerInitials || "?",
+        });
+      }
+    }
+    return Array.from(closerMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [calls]);
+
+  // Filter calls based on all filters
+  const filteredCalls = useMemo(() => {
+    if (!calls) return [];
+
+    return calls.filter((call) => {
+      // Date filter
+      const callDate = call.startedAt || call.createdAt;
+      if (!isWithinDateFilter(callDate, dateFilter)) return false;
+
+      // Outcome filter
+      if (outcomeFilter !== "all") {
+        const callOutcome = call.outcome || "pending";
+        if (callOutcome !== outcomeFilter) return false;
+      }
+
+      // Closer filter (if any closers are selected)
+      if (selectedClosers.size > 0 && call.closerId) {
+        if (!selectedClosers.has(call.closerId)) return false;
+      }
+
+      // Prospect search
+      if (prospectSearch.trim()) {
+        const searchLower = prospectSearch.toLowerCase();
+        const prospectName = (call.prospectName || "").toLowerCase();
+        if (!prospectName.includes(searchLower)) return false;
+      }
+
+      return true;
+    });
+  }, [calls, dateFilter, outcomeFilter, selectedClosers, prospectSearch]);
+
+  // Check if any filters are active
+  const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || selectedClosers.size > 0 || prospectSearch.trim() !== "";
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setDateFilter("all");
+    setOutcomeFilter("all");
+    setSelectedClosers(new Set());
+    setProspectSearch("");
+  };
+
+  // Toggle closer selection
+  const toggleCloser = (closerId: string) => {
+    const newSet = new Set(selectedClosers);
+    if (newSet.has(closerId)) {
+      newSet.delete(closerId);
+    } else {
+      newSet.add(closerId);
+    }
+    setSelectedClosers(newSet);
+  };
 
   if (isTeamLoading || calls === undefined) {
     return (
@@ -280,75 +426,191 @@ export default function CompletedCallsPage() {
         description="Review past calls, recordings, and outcomes"
       />
       <div className="p-6">
+        {/* Filter Bar */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {/* Date Filter */}
+          <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilter)}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Date" />
+            </SelectTrigger>
+            <SelectContent>
+              {DATE_FILTER_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Outcome Filter */}
+          <Select value={outcomeFilter} onValueChange={(v) => setOutcomeFilter(v as OutcomeFilter)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Outcome" />
+            </SelectTrigger>
+            <SelectContent>
+              {OUTCOME_FILTER_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Closer Filter (Multi-select) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-[160px] justify-between">
+                <span className="truncate">
+                  {selectedClosers.size === 0
+                    ? "All Closers"
+                    : selectedClosers.size === 1
+                      ? uniqueClosers.find((c) => selectedClosers.has(c.id))?.name || "1 Selected"
+                      : `${selectedClosers.size} Selected`}
+                </span>
+                <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-[200px] max-h-[300px] overflow-y-auto">
+              {uniqueClosers.map((closer) => (
+                <DropdownMenuCheckboxItem
+                  key={closer.id}
+                  checked={selectedClosers.has(closer.id)}
+                  onCheckedChange={() => toggleCloser(closer.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Avatar className="h-5 w-5">
+                      <AvatarFallback className="text-[10px]">
+                        {closer.initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>{closer.name}</span>
+                  </div>
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Prospect Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search prospect..."
+              value={prospectSearch}
+              onChange={(e) => setProspectSearch(e.target.value)}
+              className="w-[180px] pl-9 pr-8"
+            />
+            {prospectSearch && (
+              <button
+                onClick={() => setProspectSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-zinc-100 rounded"
+              >
+                <X className="h-3 w-3 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearAllFilters}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4 mr-1" />
+              Clear Filters
+            </Button>
+          )}
+
+          {/* Results Count */}
+          <span className="text-sm text-muted-foreground ml-auto">
+            {filteredCalls.length} of {calls.length} calls
+          </span>
+        </div>
+
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[180px]">Date</TableHead>
-                  <TableHead>Closer</TableHead>
-                  <TableHead>Prospect</TableHead>
-                  <TableHead className="w-[100px]">Duration</TableHead>
-                  <TableHead className="w-[120px]">Talk Ratio</TableHead>
-                  <TableHead className="w-[120px]">Outcome</TableHead>
-                  <TableHead className="w-[140px] text-right">Cash / Contract</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {calls.map((call) => (
-                  <TableRow
-                    key={call._id}
-                    className="cursor-pointer hover:bg-zinc-50"
-                    onClick={() => router.push(`/dashboard/calls/${call._id}`)}
-                  >
-                    <TableCell className="text-sm text-muted-foreground">
-                      {call.startedAt ? formatDate(call.startedAt) : formatDate(call.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-7 w-7">
-                          <AvatarFallback className="text-xs">
-                            {call.closerInitials}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm">{call.closerName}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {call.prospectName || "Unknown Prospect"}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {call.duration && call.duration > 0 ? formatDuration(call.duration) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <TalkRatioBar
-                        closerTalkTime={call.closerTalkTime}
-                        prospectTalkTime={call.prospectTalkTime}
-                      />
-                    </TableCell>
-                    <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
-                    <TableCell className="text-right font-medium">
-                      {call.contractValue ? (
-                        <span className="flex flex-col items-end">
-                          <span>{formatCurrency(call.cashCollected || 0)} / {formatCurrency(call.contractValue)}</span>
-                        </span>
-                      ) : call.dealValue ? (
-                        formatCurrency(call.dealValue)
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <DeleteCallButton
-                        callId={call._id}
-                        prospectName={call.prospectName || "Unknown Prospect"}
-                      />
-                    </TableCell>
+            {filteredCalls.length === 0 ? (
+              <div className="py-16 text-center">
+                <Filter className="h-10 w-10 text-zinc-300 mx-auto mb-3" />
+                <p className="text-muted-foreground">No calls match your filters</p>
+                <Button
+                  variant="link"
+                  onClick={clearAllFilters}
+                  className="mt-2"
+                >
+                  Clear all filters
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[180px]">Date</TableHead>
+                    <TableHead>Closer</TableHead>
+                    <TableHead>Prospect</TableHead>
+                    <TableHead className="w-[100px]">Duration</TableHead>
+                    <TableHead className="w-[120px]">Talk Ratio</TableHead>
+                    <TableHead className="w-[120px]">Outcome</TableHead>
+                    <TableHead className="w-[140px] text-right">Cash / Contract</TableHead>
+                    <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredCalls.map((call) => (
+                    <TableRow
+                      key={call._id}
+                      className="cursor-pointer hover:bg-zinc-50"
+                      onClick={() => router.push(`/dashboard/calls/${call._id}`)}
+                    >
+                      <TableCell className="text-sm text-muted-foreground">
+                        {call.startedAt ? formatDate(call.startedAt) : formatDate(call.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-7 w-7">
+                            <AvatarFallback className="text-xs">
+                              {call.closerInitials}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm">{call.closerName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {call.prospectName || "Unknown Prospect"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {call.duration && call.duration > 0 ? formatDuration(call.duration) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <TalkRatioBar
+                          closerTalkTime={call.closerTalkTime}
+                          prospectTalkTime={call.prospectTalkTime}
+                        />
+                      </TableCell>
+                      <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {call.contractValue ? (
+                          <span className="flex flex-col items-end">
+                            <span>{formatCurrency(call.cashCollected || 0)} / {formatCurrency(call.contractValue)}</span>
+                          </span>
+                        ) : call.dealValue ? (
+                          formatCurrency(call.dealValue)
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <DeleteCallButton
+                          callId={call._id}
+                          prospectName={call.prospectName || "Unknown Prospect"}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

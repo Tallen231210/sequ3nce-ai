@@ -3,7 +3,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { logger } from "./logger.js";
 import type { AmmoItem, AmmoConfig, CallMetadata } from "./types.js";
-import type { Nudge } from "./nudges.js";
 import type { DetectionResults } from "./detection.js";
 
 const convexUrl = process.env.CONVEX_URL!;
@@ -93,15 +92,8 @@ export async function addAmmoItem(
       text: ammo.text,
       type: ammo.type,
       timestamp: ammo.timestamp,
-      // Scoring fields
-      score: ammo.score,
-      repetitionCount: ammo.repetitionCount,
-      isHeavyHitter: ammo.isHeavyHitter,
-      categoryId: ammo.categoryId,
-      suggestedUse: ammo.suggestedUse,
     });
-    const heavyHitterLabel = ammo.isHeavyHitter ? " [HEAVY HITTER]" : "";
-    logger.info(`Ammo added: "${ammo.text.substring(0, 50)}..." (${ammo.type}, score: ${ammo.score || 0})${heavyHitterLabel}`);
+    logger.info(`Ammo added: "${ammo.text.substring(0, 50)}..." (${ammo.type})`);
   } catch (error) {
     logger.error("Failed to add ammo item", error);
   }
@@ -171,27 +163,6 @@ export async function setSpeakerMapping(
   }
 }
 
-// Add a smart nudge for real-time coaching
-export async function addNudge(
-  callId: string,
-  teamId: string,
-  nudge: Nudge
-): Promise<void> {
-  try {
-    await convex.mutation("calls:addNudge" as any, {
-      callId,
-      teamId,
-      type: nudge.type,
-      message: nudge.message,
-      detail: nudge.detail,
-      triggeredBy: nudge.triggeredBy,
-    });
-    logger.info(`Nudge added: [${nudge.type}] ${nudge.message}`);
-  } catch (error) {
-    logger.error("Failed to add nudge", error);
-  }
-}
-
 // Update AI detection results on the call
 export async function updateCallDetection(
   callId: string,
@@ -209,5 +180,34 @@ export async function updateCallDetection(
     logger.info(`Detection results saved for call ${callId}`);
   } catch (error) {
     logger.error("Failed to update call detection", error);
+  }
+}
+
+// Update talk-to-listen ratio
+export async function updateTalkTime(
+  callId: string,
+  closerTalkTime: number,
+  prospectTalkTime: number
+): Promise<void> {
+  try {
+    await convex.mutation("calls:updateTalkTime" as any, {
+      callId,
+      closerTalkTime,
+      prospectTalkTime,
+    });
+    logger.info(`Talk time updated: closer=${closerTalkTime}s, prospect=${prospectTalkTime}s`);
+  } catch (error) {
+    logger.error("Failed to update talk time", error);
+  }
+}
+
+// Get current speaker mapping from Convex (for syncing after swap)
+export async function getSpeakerMapping(callId: string): Promise<{ closerSpeaker: string; confirmed: boolean } | null> {
+  try {
+    const result = await convex.query("calls:getSpeakerMappingForCall" as any, { callId });
+    return result || null;
+  } catch (error) {
+    logger.error("Failed to get speaker mapping", error);
+    return null;
   }
 }
