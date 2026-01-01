@@ -40,8 +40,12 @@ export function createDeepgramConnection(
     vad_events: true,
   });
 
+  let transcriptCount = 0;
+  let channel0Count = 0;
+  let channel1Count = 0;
+
   connection.on(LiveTranscriptionEvents.Open, () => {
-    logger.info("Deepgram connection opened with MULTICHANNEL mode (2 channels)");
+    logger.info("Deepgram connection opened with MULTICHANNEL mode (linear16, 48kHz, 2 channels)");
   });
 
   connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
@@ -54,6 +58,20 @@ export function createDeepgramConnection(
     // Get channel index from multichannel response
     // channel_index is [channelNumber, totalChannels], e.g., [0, 2] or [1, 2]
     const channelIndex = data.channel_index?.[0] ?? 0;
+
+    // Debug logging
+    transcriptCount++;
+    if (channelIndex === 0) channel0Count++;
+    if (channelIndex === 1) channel1Count++;
+
+    if (transcriptCount % 10 === 0) {
+      logger.info(`[Deepgram Stats] Total: ${transcriptCount}, Channel 0 (Closer): ${channel0Count}, Channel 1 (Prospect): ${channel1Count}`);
+    }
+
+    // Log raw channel_index for debugging
+    if (transcriptCount <= 5) {
+      logger.info(`[Deepgram Debug] Raw channel_index: ${JSON.stringify(data.channel_index)}, is_final: ${data.is_final}`);
+    }
 
     // Get audio-aligned timestamp from words if available
     const words = transcript.words || [];

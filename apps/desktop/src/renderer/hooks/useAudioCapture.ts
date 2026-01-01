@@ -34,22 +34,43 @@ class PCMProcessor extends AudioWorkletProcessor {
     this.leftBuffer = new Float32Array(this.bufferSize);
     this.rightBuffer = new Float32Array(this.bufferSize);
     this.bufferIndex = 0;
+    this.messageCount = 0;
+    this.loggedChannelInfo = false;
+    this.leftHasAudio = false;
+    this.rightHasAudio = false;
   }
 
   process(inputs, outputs, parameters) {
     const input = inputs[0];
-    if (!input || input.length < 2) {
-      // No input or not stereo
+
+    // Debug: Log channel info once
+    if (!this.loggedChannelInfo) {
+      this.loggedChannelInfo = true;
+      console.log('[PCMProcessor] First process call - inputs:', inputs.length, 'input[0] channels:', input ? input.length : 0);
+      if (input) {
+        for (let i = 0; i < input.length; i++) {
+          console.log('[PCMProcessor] Channel', i, 'length:', input[i] ? input[i].length : 0);
+        }
+      }
+    }
+
+    if (!input || input.length === 0) {
       return true;
     }
 
+    // Handle mono input by duplicating to stereo
     const leftChannel = input[0];
-    const rightChannel = input[1];
+    const rightChannel = input.length > 1 ? input[1] : input[0]; // Fallback to left if no right channel
 
     // AudioWorklet processes in 128-sample blocks
     for (let i = 0; i < leftChannel.length; i++) {
       this.leftBuffer[this.bufferIndex] = leftChannel[i];
       this.rightBuffer[this.bufferIndex] = rightChannel[i];
+
+      // Track if channels have actual audio (not silence)
+      if (Math.abs(leftChannel[i]) > 0.001) this.leftHasAudio = true;
+      if (Math.abs(rightChannel[i]) > 0.001) this.rightHasAudio = true;
+
       this.bufferIndex++;
 
       if (this.bufferIndex >= this.bufferSize) {
@@ -70,7 +91,15 @@ class PCMProcessor extends AudioWorkletProcessor {
             : rightSample * 0x7FFF;
         }
 
-        // Send to main thread
+        // Send to main thread with debug info periodically
+        this.messageCount++;
+        if (this.messageCount % 100 === 0) {
+          console.log('[PCMProcessor] Sent', this.messageCount, 'buffers. Left has audio:', this.leftHasAudio, 'Right has audio:', this.rightHasAudio);
+          // Reset audio detection for next batch
+          this.leftHasAudio = false;
+          this.rightHasAudio = false;
+        }
+
         this.port.postMessage(int16Buffer.buffer, [int16Buffer.buffer]);
 
         // Reset buffers
@@ -161,6 +190,18 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       // 3. Create AudioContext at 48kHz (standard for Deepgram)
       audioContextRef.current = new AudioContext({ sampleRate: 48000 });
       console.log('[AudioCapture] AudioContext created at', audioContextRef.current.sampleRate, 'Hz');
+      console.log('[AudioCapture] AudioContext state:', audioContextRef.current.state);
+
+      // Log detailed stream info
+      if (micStream) {
+        const micTrack = micStream.getAudioTracks()[0];
+        const micSettings = micTrack?.getSettings();
+        console.log('[AudioCapture] Mic track settings:', JSON.stringify(micSettings));
+      }
+      if (systemAudioTracks.length > 0) {
+        const sysSettings = systemAudioTracks[0]?.getSettings();
+        console.log('[AudioCapture] System audio track settings:', JSON.stringify(sysSettings));
+      }
 
       // 4. Create AudioWorklet for raw PCM capture
       const workletBlob = new Blob([workletProcessorCode], { type: 'application/javascript' });
