@@ -18,12 +18,6 @@ interface Resource {
   url?: string;
 }
 
-// Speaker mapping type
-interface SpeakerMapping {
-  closerSpeaker: string;
-  confirmed: boolean;
-}
-
 // Tab Icon Components
 function AmmoIcon({ active }: { active: boolean }) {
   return (
@@ -82,56 +76,6 @@ function formatTimestamp(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-// ============================================
-// SPEAKER IDENTIFICATION BANNER
-// ============================================
-function SpeakerIdentificationBanner({
-  speakerMapping,
-  closerSnippet,
-  onSwap,
-  onConfirm,
-  isSwapping,
-}: {
-  speakerMapping: SpeakerMapping;
-  closerSnippet?: string;
-  onSwap: () => void;
-  onConfirm: () => void;
-  isSwapping: boolean;
-}) {
-  if (speakerMapping.confirmed) return null;
-
-  const truncatedSnippet = closerSnippet && closerSnippet.length > 60
-    ? closerSnippet.slice(0, 60) + '...'
-    : closerSnippet;
-
-  return (
-    <div className="mx-2 mb-2 p-3 rounded-lg bg-blue-50 border border-blue-200 animate-fade-in">
-      <p className="text-[11px] font-medium text-blue-600 mb-2">Did you say this?</p>
-      {truncatedSnippet ? (
-        <p className="text-[12px] text-gray-700 mb-2.5 leading-snug italic">"{truncatedSnippet}"</p>
-      ) : (
-        <p className="text-[11px] text-gray-400 mb-2.5 italic">Waiting for speech...</p>
-      )}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onConfirm}
-          disabled={isSwapping || !closerSnippet}
-          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md bg-black text-white hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Yes, that's me
-        </button>
-        <button
-          onClick={onSwap}
-          disabled={isSwapping || !closerSnippet}
-          className="flex-1 px-3 py-1.5 text-[11px] font-medium rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isSwapping ? '...' : "No, that's the prospect"}
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // ============================================
@@ -702,9 +646,6 @@ export function AmmoTrackerApp() {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [speakerMapping, setSpeakerMapping] = useState<SpeakerMapping | null>(null);
-  const [closerSnippet, setCloserSnippet] = useState<string | undefined>(undefined);
-  const [isSwapping, setIsSwapping] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [teamId, setTeamId] = useState<string | null>(null);
@@ -712,20 +653,6 @@ export function AmmoTrackerApp() {
   const seenAmmoIds = useRef<Set<string>>(new Set());
   const seenSegmentIds = useRef<Set<string>>(new Set());
   const notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Fetch call info including speaker mapping
-  const fetchCallInfo = useCallback(async (currentCallId: string) => {
-    try {
-      const response = await fetch(`${CONVEX_SITE_URL}/getCallInfo?callId=${encodeURIComponent(currentCallId)}`);
-      if (!response.ok) return;
-
-      const data = await response.json();
-      if (data.speakerMapping) setSpeakerMapping(data.speakerMapping);
-      if (data.closerSnippet) setCloserSnippet(data.closerSnippet);
-    } catch (error) {
-      console.error('[Panel] Failed to fetch call info:', error);
-    }
-  }, []);
 
   // Fetch ammo from Convex
   const fetchAmmo = useCallback(async (currentCallId: string) => {
@@ -807,44 +734,6 @@ export function AmmoTrackerApp() {
     }
   }, [callId, saveNotes]);
 
-  // Speaker mapping handlers
-  const handleSwapSpeaker = useCallback(async () => {
-    if (!callId) return;
-    setIsSwapping(true);
-    try {
-      const response = await fetch(`${CONVEX_SITE_URL}/swapSpeakerMapping`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callId }),
-      });
-      if (response.ok) {
-        setSpeakerMapping(prev => prev ? {
-          closerSpeaker: prev.closerSpeaker === 'speaker_0' ? 'speaker_1' : 'speaker_0',
-          confirmed: true,
-        } : null);
-      }
-    } catch (error) {
-      console.error('[Panel] Failed to swap speaker mapping:', error);
-    }
-    setIsSwapping(false);
-  }, [callId]);
-
-  const handleConfirmSpeaker = useCallback(async () => {
-    if (!callId) return;
-    setIsSwapping(true);
-    try {
-      const response = await fetch(`${CONVEX_SITE_URL}/confirmSpeakerMapping`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callId }),
-      });
-      if (response.ok) setSpeakerMapping(prev => prev ? { ...prev, confirmed: true } : null);
-    } catch (error) {
-      console.error('[Panel] Failed to confirm speaker mapping:', error);
-    }
-    setIsSwapping(false);
-  }, [callId]);
-
   // Copy to clipboard
   const handleCopy = useCallback(async (text: string) => {
     if (window.ammoTracker) {
@@ -891,11 +780,9 @@ export function AmmoTrackerApp() {
         fetchAmmo(initialCallId);
         fetchTranscript(initialCallId);
         fetchNotes(initialCallId);
-        fetchCallInfo(initialCallId);
         pollInterval = setInterval(() => {
           fetchAmmo(initialCallId);
           fetchTranscript(initialCallId);
-          fetchCallInfo(initialCallId);
         }, POLL_INTERVAL);
       }
 
@@ -914,8 +801,6 @@ export function AmmoTrackerApp() {
           setNotes('');
         }
         setLastSaved(null);
-        setSpeakerMapping(null);
-        setCloserSnippet(undefined);
 
         if (pollInterval) clearInterval(pollInterval);
 
@@ -923,11 +808,9 @@ export function AmmoTrackerApp() {
           fetchAmmo(newCallId);
           fetchTranscript(newCallId);
           fetchNotes(newCallId);
-          fetchCallInfo(newCallId);
           pollInterval = setInterval(() => {
             fetchAmmo(newCallId);
             fetchTranscript(newCallId);
-            fetchCallInfo(newCallId);
           }, POLL_INTERVAL);
         }
       });
@@ -964,7 +847,7 @@ export function AmmoTrackerApp() {
       if (pollInterval) clearInterval(pollInterval);
       if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
     };
-  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchCallInfo, fetchResources]);
+  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchResources]);
 
   // Save notes before closing
   useEffect(() => {
@@ -1033,17 +916,6 @@ export function AmmoTrackerApp() {
           </button>
         </div>
       </div>
-
-      {/* Speaker identification banner (only show on Ammo tab) */}
-      {activeTab === 'ammo' && callId && speakerMapping && !speakerMapping.confirmed && (
-        <SpeakerIdentificationBanner
-          speakerMapping={speakerMapping}
-          closerSnippet={closerSnippet}
-          onSwap={handleSwapSpeaker}
-          onConfirm={handleConfirmSpeaker}
-          isSwapping={isSwapping}
-        />
-      )}
 
       {/* Content area */}
       <div className="flex-1 overflow-hidden bg-gray-50/30">

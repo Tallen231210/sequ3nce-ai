@@ -11,11 +11,9 @@ import {
   addTranscript,
   addTranscriptSegment,
   getTeamCustomPrompt,
-  setSpeakerMapping,
   getAmmoConfig,
   updateCallDetection,
   updateTalkTime,
-  getSpeakerMapping,
 } from "./convex.js";
 import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
@@ -25,7 +23,6 @@ import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem, AmmoConfig }
 const AMMO_EXTRACTION_INTERVAL_MS = 30000; // Extract ammo every 30 seconds
 const MIN_TRANSCRIPT_LENGTH_FOR_AMMO = 100; // Minimum characters before attempting extraction
 const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
-const SPEAKER_MAPPING_SYNC_INTERVAL_MS = 5000; // Check for speaker mapping changes every 5 seconds
 
 export class CallHandler {
   private session: CallSession;
@@ -34,10 +31,7 @@ export class CallHandler {
   private ammoConfig?: AmmoConfig | null;
   private convexCallId: string | null = null;
   private isEnded = false;
-
-  // Speaker identification - mutable, can be swapped by user
-  private closerSpeakerId: number = 0; // Deepgram speaker ID (0 or 1) that corresponds to the closer
-  private speakerMappingSyncInterval: NodeJS.Timeout | null = null;
+  private hasStartedCall = false; // Track if we've updated status to on_call
 
   constructor(metadata: CallMetadata) {
     this.session = {
@@ -57,44 +51,6 @@ export class CallHandler {
     logger.info(`Call handler created for call ${metadata.callId}`, metadata);
   }
 
-  // Update speaker mapping (called when user confirms/swaps in desktop or web)
-  setSpeakerMapping(closerSpeaker: string): void {
-    const newId = closerSpeaker === "speaker_0" ? 0 : 1;
-    if (newId !== this.closerSpeakerId) {
-      logger.info(`Speaker mapping updated: closer is now speaker_${newId} (was speaker_${this.closerSpeakerId})`);
-      this.closerSpeakerId = newId;
-
-      // Also swap the accumulated talk times
-      const tempCloser = this.session.closerTalkTimeMs;
-      this.session.closerTalkTimeMs = this.session.prospectTalkTimeMs;
-      this.session.prospectTalkTimeMs = tempCloser;
-      logger.info(`Talk times swapped: closer=${Math.round(this.session.closerTalkTimeMs / 1000)}s, prospect=${Math.round(this.session.prospectTalkTimeMs / 1000)}s`);
-    }
-  }
-
-  // Periodically sync speaker mapping from Convex (in case user swaps via web dashboard)
-  private startSpeakerMappingSync(): void {
-    this.speakerMappingSyncInterval = setInterval(async () => {
-      if (!this.convexCallId || this.isEnded) return;
-
-      try {
-        const mapping = await getSpeakerMapping(this.convexCallId);
-        if (mapping && mapping.confirmed) {
-          this.setSpeakerMapping(mapping.closerSpeaker);
-        }
-      } catch (err) {
-        logger.error("Failed to sync speaker mapping", err);
-      }
-    }, SPEAKER_MAPPING_SYNC_INTERVAL_MS);
-  }
-
-  private stopSpeakerMappingSync(): void {
-    if (this.speakerMappingSyncInterval) {
-      clearInterval(this.speakerMappingSyncInterval);
-      this.speakerMappingSyncInterval = null;
-    }
-  }
-
   async start(): Promise<string | null> {
     try {
       // Create call record in Convex - this returns the Convex _id
@@ -106,17 +62,14 @@ export class CallHandler {
       // Get team's custom AI prompt if any (legacy, still used as fallback)
       this.customPrompt = await getTeamCustomPrompt(this.session.metadata.teamId);
 
-      // Initialize Deepgram connection
+      // Initialize Deepgram connection with MULTICHANNEL mode
+      // Channel 0 = Closer (mic), Channel 1 = Prospect (system audio)
       this.deepgram = createDeepgramConnection(
         this.handleTranscript.bind(this),
-        this.handleSpeakerDetected.bind(this),
         this.handleDeepgramError.bind(this)
       );
 
-      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}`);
-
-      // Start periodic speaker mapping sync (for when user confirms/swaps via web dashboard)
-      this.startSpeakerMappingSync();
+      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}, mode: MULTICHANNEL`);
 
       // Return the Convex-generated call ID so desktop can use it
       return this.convexCallId;
@@ -141,10 +94,17 @@ export class CallHandler {
   private async handleTranscript(chunk: TranscriptChunk): Promise<void> {
     if (this.isEnded) return;
 
+    // Mark call as active on first transcript (replaces old 2-speaker detection)
+    if (!this.hasStartedCall && this.convexCallId) {
+      this.hasStartedCall = true;
+      logger.info(`First transcript received - call is now active: ${this.session.metadata.callId}`);
+      await updateCallStatus(this.convexCallId, "on_call", 2);
+    }
+
     // Add to transcript buffer
     if (chunk.isFinal && chunk.text.trim()) {
-      // Use mutable closerSpeakerId for speaker identification
-      const isCloser = chunk.speaker === this.closerSpeakerId;
+      // Multichannel: Channel 0 = Closer (mic), Channel 1 = Prospect (system audio)
+      const isCloser = chunk.channel === 0;
       const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
       const line = `${speakerLabel}: ${chunk.text}`;
       this.session.fullTranscript += line + "\n";
@@ -202,45 +162,6 @@ export class CallHandler {
     if (timeSinceLastExtraction >= AMMO_EXTRACTION_INTERVAL_MS && hasEnoughContent) {
       await this.extractAndSaveAmmo();
     }
-  }
-
-  private async handleSpeakerDetected(speakerId: number): Promise<void> {
-    if (this.isEnded) return;
-
-    const previousCount = this.session.speakersDetected.size;
-    this.session.speakersDetected.add(speakerId);
-    const currentCount = this.session.speakersDetected.size;
-
-    // Status change: WAITING -> ON_CALL when 2+ speakers detected
-    if (previousCount < 2 && currentCount >= 2 && this.convexCallId) {
-      logger.info(`Two speakers detected - call is now active: ${this.session.metadata.callId}`);
-      await updateCallStatus(this.convexCallId, "on_call", currentCount);
-
-      // Trigger speaker identification popup in desktop app
-      // Get a sample of what speaker_0 said from the transcript
-      const sampleText = this.getSpeakerSampleText(0);
-      await setSpeakerMapping(this.convexCallId, "speaker_0", sampleText);
-    }
-  }
-
-  // Get a sample of what a specific speaker said from the transcript
-  private getSpeakerSampleText(speakerId: number): string {
-    // Use mutable closerSpeakerId to determine the label
-    const isCloser = speakerId === this.closerSpeakerId;
-    const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
-    const lines = this.session.fullTranscript.split('\n').filter(l => l.trim());
-
-    // Find lines from this speaker
-    const speakerLines = lines.filter(line => line.startsWith(speakerLabel));
-
-    if (speakerLines.length > 0) {
-      // Return the first non-empty line from this speaker (without the label)
-      const firstLine = speakerLines[0].replace(speakerLabel + ': ', '');
-      // Limit to reasonable length for popup
-      return firstLine.substring(0, 150);
-    }
-
-    return "";
   }
 
   private handleDeepgramError(error: Error): void {
@@ -305,9 +226,6 @@ export class CallHandler {
     this.isEnded = true;
 
     logger.info(`Ending call: ${this.session.metadata.callId}`);
-
-    // Stop speaker mapping sync
-    this.stopSpeakerMappingSync();
 
     // Close Deepgram connection
     if (this.deepgram) {

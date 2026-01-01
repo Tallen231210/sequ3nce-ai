@@ -1,13 +1,18 @@
 /**
- * Custom hook for capturing system audio + microphone
+ * Custom hook for capturing system audio + microphone as STEREO channels
  *
  * This hook handles:
  * - Requesting display media with audio (loopback on macOS) for system audio
  * - Requesting microphone access for the closer's voice
- * - Mixing both audio streams together
- * - Recording audio chunks with MediaRecorder
+ * - Combining into STEREO stream (NOT mixed):
+ *   - Channel 0 (Left) = Microphone = Closer's voice
+ *   - Channel 1 (Right) = System audio = Prospect's voice
+ * - Recording stereo audio chunks with MediaRecorder
  * - Calculating real-time audio levels
  * - Sending audio data to main process via IPC
+ *
+ * The stereo separation allows Deepgram's multichannel feature to transcribe
+ * each speaker independently with 100% accuracy (no AI diarization needed).
  */
 
 import { useRef, useCallback } from 'react';
@@ -94,23 +99,52 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         // Continue without mic - system audio might still have the user's voice via Zoom
       }
 
-      // 3. Create AudioContext and mix the streams
+      // 3. Create AudioContext and merge streams into STEREO (not mixed mono)
+      // Channel 0 (Left) = Microphone = Closer
+      // Channel 1 (Right) = System audio = Prospect
       audioContextRef.current = new AudioContext();
+
+      // Create a channel merger for 2-channel stereo output
+      const merger = audioContextRef.current.createChannelMerger(2);
       const destination = audioContextRef.current.createMediaStreamDestination();
 
-      // Connect system audio to the mix
-      if (systemAudioTracks.length > 0) {
-        const systemSource = audioContextRef.current.createMediaStreamSource(systemStream);
-        systemSource.connect(destination);
-      }
-
-      // Connect microphone to the mix (if available)
+      // Connect microphone to Channel 0 (Left) = Closer
       if (micStream) {
         const micSource = audioContextRef.current.createMediaStreamSource(micStream);
-        micSource.connect(destination);
+        micSource.connect(merger, 0, 0); // Input 0 → Output channel 0 (Left)
+        console.log('[AudioCapture] Microphone connected to Channel 0 (Left/Closer)');
+      } else {
+        // If no mic, create silence for Channel 0 to maintain stereo format
+        const silentOsc = audioContextRef.current.createOscillator();
+        const silentGain = audioContextRef.current.createGain();
+        silentGain.gain.value = 0;
+        silentOsc.connect(silentGain);
+        silentGain.connect(merger, 0, 0);
+        silentOsc.start();
+        console.log('[AudioCapture] No microphone - using silence for Channel 0');
       }
 
-      // The mixed stream is what we'll record
+      // Connect system audio to Channel 1 (Right) = Prospect
+      if (systemAudioTracks.length > 0) {
+        const systemSource = audioContextRef.current.createMediaStreamSource(systemStream);
+        systemSource.connect(merger, 0, 1); // Input 0 → Output channel 1 (Right)
+        console.log('[AudioCapture] System audio connected to Channel 1 (Right/Prospect)');
+      } else {
+        // If no system audio, create silence for Channel 1 to maintain stereo format
+        const silentOsc = audioContextRef.current.createOscillator();
+        const silentGain = audioContextRef.current.createGain();
+        silentGain.gain.value = 0;
+        silentOsc.connect(silentGain);
+        silentGain.connect(merger, 0, 1);
+        silentOsc.start();
+        console.log('[AudioCapture] No system audio - using silence for Channel 1');
+      }
+
+      // Connect merger to destination
+      merger.connect(destination);
+      console.log('[AudioCapture] Created stereo stream: Left=Closer, Right=Prospect');
+
+      // The stereo stream is what we'll record
       mixedStreamRef.current = destination.stream;
 
       // 4. Set up audio level analysis on the mixed stream
@@ -136,7 +170,7 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         }
       }, 50); // Update every 50ms
 
-      // 5. Set up MediaRecorder on the mixed stream
+      // 5. Set up MediaRecorder on the stereo stream
       const mimeType = 'audio/webm;codecs=opus';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
         console.warn('[AudioCapture] opus not supported, trying default');
@@ -144,7 +178,7 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
 
       mediaRecorderRef.current = new MediaRecorder(destination.stream, {
         mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : 'audio/webm',
-        audioBitsPerSecond: 128000,
+        audioBitsPerSecond: 256000, // Higher bitrate for stereo (2 channels)
       });
 
       mediaRecorderRef.current.ondataavailable = async (event) => {
@@ -162,7 +196,7 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
 
       // Start recording - request data every 100ms for low latency
       mediaRecorderRef.current.start(100);
-      console.log('[AudioCapture] MediaRecorder started with mixed audio');
+      console.log('[AudioCapture] MediaRecorder started with STEREO audio (Left=Closer, Right=Prospect)');
 
       return true;
     } catch (error) {

@@ -144,25 +144,6 @@ export async function getTeamCustomPrompt(teamId: string): Promise<string | unde
   }
 }
 
-// Set initial speaker mapping when 2 speakers are detected
-// Desktop app will prompt closer to confirm or swap
-export async function setSpeakerMapping(
-  callId: string,
-  closerSpeaker: string,
-  sampleText?: string
-): Promise<void> {
-  try {
-    await convex.mutation("calls:setSpeakerMapping" as any, {
-      callId,
-      closerSpeaker,
-      sampleText,
-    });
-    logger.info(`Speaker mapping set: ${callId} -> closer is ${closerSpeaker}`);
-  } catch (error) {
-    logger.error("Failed to set speaker mapping", error);
-  }
-}
-
 // Update AI detection results on the call
 export async function updateCallDetection(
   callId: string,
@@ -198,16 +179,5 @@ export async function updateTalkTime(
     logger.info(`Talk time updated: closer=${closerTalkTime}s, prospect=${prospectTalkTime}s`);
   } catch (error) {
     logger.error("Failed to update talk time", error);
-  }
-}
-
-// Get current speaker mapping from Convex (for syncing after swap)
-export async function getSpeakerMapping(callId: string): Promise<{ closerSpeaker: string; confirmed: boolean } | null> {
-  try {
-    const result = await convex.query("calls:getSpeakerMappingForCall" as any, { callId });
-    return result || null;
-  } catch (error) {
-    logger.error("Failed to get speaker mapping", error);
-    return null;
   }
 }

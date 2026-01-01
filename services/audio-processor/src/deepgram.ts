@@ -1,4 +1,10 @@
-// Deepgram real-time transcription integration
+// Deepgram real-time transcription integration with MULTICHANNEL support
+//
+// Uses stereo audio where:
+// - Channel 0 (Left) = Closer's microphone
+// - Channel 1 (Right) = System audio (Prospect from Zoom/Meet/Teams)
+//
+// This eliminates AI-based diarization and provides 100% accurate speaker identification.
 
 import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 import type { LiveClient } from "@deepgram/sdk";
@@ -16,7 +22,6 @@ export interface DeepgramConnection {
 
 export function createDeepgramConnection(
   onTranscript: (chunk: TranscriptChunk) => void,
-  onSpeakerDetected: (speakerId: number) => void,
   onError: (error: Error) => void
 ): DeepgramConnection {
   const connection = deepgram.listen.live({
@@ -24,47 +29,45 @@ export function createDeepgramConnection(
     language: "en",
     smart_format: true,
     punctuate: true,
-    diarize: true, // Enable speaker diarization
+    multichannel: true, // Enable multichannel transcription (stereo)
+    channels: 2,        // 2 channels: 0=Closer, 1=Prospect
     interim_results: true,
     utterance_end_ms: 1000,
     vad_events: true,
   });
 
   connection.on(LiveTranscriptionEvents.Open, () => {
-    logger.info("Deepgram connection opened");
+    logger.info("Deepgram connection opened with MULTICHANNEL mode (2 channels)");
   });
 
-  connection.on(LiveTranscriptionEvents.Transcript, (data) => {
+  connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
     const transcript = data.channel?.alternatives?.[0];
     if (!transcript) return;
 
     const text = transcript.transcript;
     if (!text || text.trim() === "") return;
 
-    // Get speaker and audio-aligned timestamp from words if available
+    // Get channel index from multichannel response
+    // channel_index is [channelNumber, totalChannels], e.g., [0, 2] or [1, 2]
+    const channelIndex = data.channel_index?.[0] ?? 0;
+
+    // Get audio-aligned timestamp from words if available
     const words = transcript.words || [];
-    let speaker = 0;
     let audioTimestamp = 0; // Seconds from start of audio stream
 
-    if (words.length > 0) {
-      // Use Deepgram's audio-aligned timestamp (start time of first word)
-      if (words[0].start !== undefined) {
-        audioTimestamp = words[0].start;
-      }
-      if (words[0].speaker !== undefined) {
-        speaker = words[0].speaker;
-        onSpeakerDetected(speaker);
-      }
+    if (words.length > 0 && words[0].start !== undefined) {
+      audioTimestamp = words[0].start;
     }
 
     const chunk: TranscriptChunk = {
       text,
-      speaker,
+      channel: channelIndex, // 0 = Closer (mic), 1 = Prospect (system audio)
       timestamp: Date.now(),
-      audioTimestamp, // NEW: Actual position in audio stream (seconds)
+      audioTimestamp,
       isFinal: data.is_final || false,
     };
 
+    logger.debug(`Transcript from Channel ${channelIndex} (${channelIndex === 0 ? 'Closer' : 'Prospect'}): "${text.substring(0, 50)}..."`);
     onTranscript(chunk);
   });
 
