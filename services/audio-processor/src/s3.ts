@@ -1,7 +1,53 @@
 // AWS S3 integration for recording storage
+// Converts raw PCM audio to WAV format before uploading
 
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "./logger.js";
+
+// Audio format constants (must match desktop app's AudioWorklet output)
+const SAMPLE_RATE = 48000;  // 48kHz
+const NUM_CHANNELS = 2;      // Stereo
+const BITS_PER_SAMPLE = 16;  // 16-bit PCM
+
+/**
+ * Creates a WAV file header for raw PCM data
+ * WAV format: 44-byte header + raw PCM samples
+ */
+function createWavHeader(pcmDataLength: number): Buffer {
+  const header = Buffer.alloc(44);
+
+  const byteRate = SAMPLE_RATE * NUM_CHANNELS * (BITS_PER_SAMPLE / 8);
+  const blockAlign = NUM_CHANNELS * (BITS_PER_SAMPLE / 8);
+
+  // RIFF chunk descriptor
+  header.write('RIFF', 0);                           // ChunkID
+  header.writeUInt32LE(36 + pcmDataLength, 4);       // ChunkSize
+  header.write('WAVE', 8);                           // Format
+
+  // fmt sub-chunk
+  header.write('fmt ', 12);                          // Subchunk1ID
+  header.writeUInt32LE(16, 16);                      // Subchunk1Size (16 for PCM)
+  header.writeUInt16LE(1, 20);                       // AudioFormat (1 = PCM)
+  header.writeUInt16LE(NUM_CHANNELS, 22);            // NumChannels
+  header.writeUInt32LE(SAMPLE_RATE, 24);             // SampleRate
+  header.writeUInt32LE(byteRate, 28);                // ByteRate
+  header.writeUInt16LE(blockAlign, 32);              // BlockAlign
+  header.writeUInt16LE(BITS_PER_SAMPLE, 34);         // BitsPerSample
+
+  // data sub-chunk
+  header.write('data', 36);                          // Subchunk2ID
+  header.writeUInt32LE(pcmDataLength, 40);           // Subchunk2Size
+
+  return header;
+}
+
+/**
+ * Converts raw PCM audio buffer to WAV format
+ */
+function pcmToWav(pcmBuffer: Buffer): Buffer {
+  const wavHeader = createWavHeader(pcmBuffer.length);
+  return Buffer.concat([wavHeader, pcmBuffer]);
+}
 
 // Check if S3 is configured
 const isS3Configured = !!(
@@ -40,29 +86,34 @@ export async function uploadRecording(
     return ""; // Return empty string, caller should handle gracefully
   }
 
-  const key = `recordings/${teamId}/${callId}/recording.webm`;
-  const bufferSize = audioBuffer.length;
-
-  logger.info(`Attempting to upload recording: bucket=${bucketName}, key=${key}, size=${bufferSize} bytes`);
+  const pcmBufferSize = audioBuffer.length;
 
   // Don't upload empty or tiny buffers
-  if (bufferSize < 1000) {
-    logger.warn(`Recording buffer too small (${bufferSize} bytes) - skipping upload for call ${callId}`);
+  if (pcmBufferSize < 1000) {
+    logger.warn(`Recording buffer too small (${pcmBufferSize} bytes) - skipping upload for call ${callId}`);
     return "";
   }
+
+  // Convert raw PCM to WAV format for browser playback
+  logger.info(`Converting PCM to WAV: ${pcmBufferSize} bytes raw PCM`);
+  const wavBuffer = pcmToWav(audioBuffer);
+  const wavBufferSize = wavBuffer.length;
+
+  const key = `recordings/${teamId}/${callId}/recording.wav`;
+  logger.info(`Uploading WAV recording: bucket=${bucketName}, key=${key}, size=${wavBufferSize} bytes`);
 
   try {
     await s3Client.send(
       new PutObjectCommand({
         Bucket: bucketName,
         Key: key,
-        Body: audioBuffer,
-        ContentType: "audio/webm",
+        Body: wavBuffer,
+        ContentType: "audio/wav",
       })
     );
 
     const url = `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
-    logger.info(`Recording uploaded successfully to S3: ${url} (${bufferSize} bytes)`);
+    logger.info(`Recording uploaded successfully to S3: ${url} (${wavBufferSize} bytes)`);
 
     return url;
   } catch (error) {

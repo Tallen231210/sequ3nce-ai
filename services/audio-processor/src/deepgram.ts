@@ -29,8 +29,12 @@ export function createDeepgramConnection(
     language: "en",
     smart_format: true,
     punctuate: true,
-    multichannel: true, // Enable multichannel transcription (stereo)
-    channels: 2,        // 2 channels: 0=Closer, 1=Prospect
+    // Raw PCM audio format - no container, just interleaved samples
+    encoding: "linear16",  // 16-bit signed PCM
+    sample_rate: 48000,    // 48kHz (standard AudioContext sample rate)
+    // Multichannel configuration for speaker separation
+    multichannel: true,    // Enable multichannel transcription
+    channels: 2,           // 2 channels: 0=Closer (mic), 1=Prospect (system audio)
     interim_results: true,
     utterance_end_ms: 1000,
     vad_events: true,
