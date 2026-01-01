@@ -1,7 +1,7 @@
 {
   "name": "sequ3nce-desktop",
   "productName": "Sequ3nce",
-  "version": "1.2.13",
+  "version": "1.2.14",
   "description": "Sequ3nce desktop app for sales closers - real-time ammo tracking",
   "main": ".webpack/main",
   "scripts": {
