@@ -235,6 +235,23 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         const systemSource = audioContextRef.current.createMediaStreamSource(systemStream);
         systemSource.connect(merger, 0, 1);
         console.log('[AudioCapture] System audio connected to Channel 1 (Right/Prospect)');
+
+        // DEBUG: Add analyser directly on system audio to check if it has any content
+        const systemAnalyser = audioContextRef.current.createAnalyser();
+        systemAnalyser.fftSize = 256;
+        systemSource.connect(systemAnalyser);
+        const systemDataArray = new Uint8Array(systemAnalyser.frequencyBinCount);
+
+        // Check system audio level every second
+        const systemCheckInterval = setInterval(() => {
+          systemAnalyser.getByteFrequencyData(systemDataArray);
+          const avg = systemDataArray.reduce((a, b) => a + b, 0) / systemDataArray.length;
+          const hasAudio = avg > 1;
+          console.log(`[AudioCapture] System audio source level: ${avg.toFixed(2)} (has audio: ${hasAudio})`);
+        }, 1000);
+
+        // Store interval for cleanup (attach to window for now)
+        (window as any).__systemAudioCheckInterval = systemCheckInterval;
       } else {
         const silentOsc = audioContextRef.current.createOscillator();
         const silentGain = audioContextRef.current.createGain();
@@ -311,6 +328,12 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
     if (levelIntervalRef.current) {
       clearInterval(levelIntervalRef.current);
       levelIntervalRef.current = null;
+    }
+
+    // Stop system audio debug interval
+    if ((window as any).__systemAudioCheckInterval) {
+      clearInterval((window as any).__systemAudioCheckInterval);
+      (window as any).__systemAudioCheckInterval = null;
     }
 
     // Disconnect worklet
