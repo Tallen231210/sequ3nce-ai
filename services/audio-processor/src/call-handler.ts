@@ -141,12 +141,13 @@ export class CallHandler {
       // Check bounds
       if (inputIndex + 3 >= buffer.length) break;
 
-      // Mix left + right channels to mono
+      // Use LEFT channel only (mic) - don't mix with right (system audio)
+      // This avoids volume reduction when system audio is silent
       const left = buffer.readInt16LE(inputIndex);
-      const right = buffer.readInt16LE(inputIndex + 2);
-      const mono = Math.round((left + right) / 2);
+      // Also read right for future use, but don't mix for now
+      // const right = buffer.readInt16LE(inputIndex + 2);
 
-      output.writeInt16LE(mono, i * 2);
+      output.writeInt16LE(left, i * 2);
     }
 
     return output;
