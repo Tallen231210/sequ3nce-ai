@@ -82,15 +82,19 @@ export function createDeepgramConnection(
       audioTimestamp = words[0].start;
     }
 
+    // Convert channel index to speaker label for compatibility with Speechmatics format
+    // Channel 0 = "S1" (Closer), Channel 1 = "S2" (Prospect)
+    const speaker = channelIndex === 0 ? "S1" : "S2";
+
     const chunk: TranscriptChunk = {
       text,
-      channel: channelIndex, // 0 = Closer (mic), 1 = Prospect (system audio)
+      speaker, // "S1" = Closer (mic/channel 0), "S2" = Prospect (system audio/channel 1)
       timestamp: Date.now(),
       audioTimestamp,
       isFinal: data.is_final || false,
     };
 
-    logger.debug(`Transcript from Channel ${channelIndex} (${channelIndex === 0 ? 'Closer' : 'Prospect'}): "${text.substring(0, 50)}..."`);
+    logger.debug(`Transcript from Channel ${channelIndex} (${speaker}): "${text.substring(0, 50)}..."`);
     onTranscript(chunk);
   });
 

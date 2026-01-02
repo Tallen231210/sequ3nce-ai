@@ -80,16 +80,16 @@ export interface RepetitionTracker {
 
 export interface TranscriptChunk {
   text: string;
-  channel: number; // 0 = Closer (mic/left), 1 = Prospect (system audio/right) - from Deepgram multichannel
+  speaker: string; // "S1", "S2", etc. from Speechmatics speaker diarization (first speaker = Closer)
   timestamp: number;
-  audioTimestamp: number; // Deepgram's audio-aligned timestamp (seconds from audio start)
+  audioTimestamp: number; // Audio-aligned timestamp (seconds from audio start)
   isFinal: boolean;
 }
 
 export interface CallSession {
   metadata: CallMetadata;
   startedAt: number;
-  speakersDetected: Set<number>;
+  speakersDetected: Set<string>; // Speaker labels from Speechmatics ("S1", "S2", etc.)
   transcriptBuffer: string;
   audioBuffer: Buffer[];
   lastAmmoExtractionTime: number;

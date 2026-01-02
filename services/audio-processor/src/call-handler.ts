@@ -1,6 +1,6 @@
 // Call session handler - manages a single call's lifecycle
 
-import { createDeepgramConnection, type DeepgramConnection } from "./deepgram.js";
+import { createSpeechmaticsConnection, type SpeechmaticsConnection } from "./speechmatics.js";
 import { extractAmmo } from "./claude.js";
 import { uploadRecording } from "./s3.js";
 import {
@@ -26,12 +26,13 @@ const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
 
 export class CallHandler {
   private session: CallSession;
-  private deepgram: DeepgramConnection | null = null;
+  private speechmatics: SpeechmaticsConnection | null = null;
   private customPrompt?: string;
   private ammoConfig?: AmmoConfig | null;
   private convexCallId: string | null = null;
   private isEnded = false;
   private hasStartedCall = false; // Track if we've updated status to on_call
+  private firstSpeaker: string | null = null; // First speaker detected = Closer
 
   constructor(metadata: CallMetadata) {
     this.session = {
@@ -62,14 +63,14 @@ export class CallHandler {
       // Get team's custom AI prompt if any (legacy, still used as fallback)
       this.customPrompt = await getTeamCustomPrompt(this.session.metadata.teamId);
 
-      // Initialize Deepgram connection with MULTICHANNEL mode
-      // Channel 0 = Closer (mic), Channel 1 = Prospect (system audio)
-      this.deepgram = createDeepgramConnection(
+      // Initialize Speechmatics connection with speaker diarization
+      // First speaker detected will be assumed to be the Closer
+      this.speechmatics = await createSpeechmaticsConnection(
         this.handleTranscript.bind(this),
-        this.handleDeepgramError.bind(this)
+        this.handleSpeechmaticsError.bind(this)
       );
 
-      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}, mode: MULTICHANNEL`);
+      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
 
       // Return the Convex-generated call ID so desktop can use it
       return this.convexCallId;
@@ -82,13 +83,42 @@ export class CallHandler {
   processAudio(audioData: Buffer): void {
     if (this.isEnded) return;
 
-    // Buffer audio for recording
+    // Buffer audio for recording (keep original format for S3)
     this.session.audioBuffer.push(audioData);
 
-    // Send to Deepgram for transcription
-    if (this.deepgram) {
-      this.deepgram.sendAudio(audioData);
+    // Resample and send to Speechmatics for transcription
+    if (this.speechmatics) {
+      const resampled = this.resampleAudio(audioData);
+      this.speechmatics.sendAudio(resampled);
     }
+  }
+
+  /**
+   * Resample audio from 48kHz stereo to 16kHz mono for Speechmatics.
+   * Input: 48kHz, 16-bit stereo interleaved (4 bytes per sample pair)
+   * Output: 16kHz, 16-bit mono (2 bytes per sample)
+   */
+  private resampleAudio(buffer: Buffer): Buffer {
+    const inputSamplePairs = buffer.length / 4; // 4 bytes per stereo sample pair
+    const outputSamples = Math.floor(inputSamplePairs / 3); // 48k -> 16k = /3 decimation
+    const output = Buffer.alloc(outputSamples * 2); // 2 bytes per mono sample
+
+    for (let i = 0; i < outputSamples; i++) {
+      // Take every 3rd sample pair (decimation)
+      const inputIndex = i * 3 * 4; // 3x decimation, 4 bytes per stereo pair
+
+      // Check bounds
+      if (inputIndex + 3 >= buffer.length) break;
+
+      // Mix left + right channels to mono
+      const left = buffer.readInt16LE(inputIndex);
+      const right = buffer.readInt16LE(inputIndex + 2);
+      const mono = Math.round((left + right) / 2);
+
+      output.writeInt16LE(mono, i * 2);
+    }
+
+    return output;
   }
 
   private async handleTranscript(chunk: TranscriptChunk): Promise<void> {
@@ -103,8 +133,8 @@ export class CallHandler {
 
     // Add to transcript buffer
     if (chunk.isFinal && chunk.text.trim()) {
-      // Multichannel: Channel 0 = Closer (mic), Channel 1 = Prospect (system audio)
-      const isCloser = chunk.channel === 0;
+      // Speaker diarization: first speaker detected is assumed to be Closer
+      const isCloser = this.getIsCloser(chunk.speaker);
       const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
       const line = `${speakerLabel}: ${chunk.text}`;
       this.session.fullTranscript += line + "\n";
@@ -123,7 +153,7 @@ export class CallHandler {
       // CRITICAL: Add transcript segment to Convex for real-time display in dashboard
       if (this.convexCallId) {
         const speaker = isCloser ? "closer" : "prospect";
-        // Use Deepgram's audio-aligned timestamp (accurate to the actual recording)
+        // Use Speechmatics' audio-aligned timestamp (accurate to the actual recording)
         // This ensures playbook snippets play at the correct position
         const timestampSeconds = Math.floor(chunk.audioTimestamp);
 
@@ -164,9 +194,22 @@ export class CallHandler {
     }
   }
 
-  private handleDeepgramError(error: Error): void {
-    logger.error(`Deepgram error for call ${this.session.metadata.callId}`, error);
+  private handleSpeechmaticsError(error: Error): void {
+    logger.error(`Speechmatics error for call ${this.session.metadata.callId}`, error);
     // Don't crash - try to continue
+  }
+
+  /**
+   * Determine if a speaker is the Closer based on first-speaker heuristic.
+   * The first speaker detected in the call is assumed to be the Closer
+   * (they typically start with a greeting).
+   */
+  private getIsCloser(speaker: string): boolean {
+    if (!this.firstSpeaker) {
+      this.firstSpeaker = speaker;
+      logger.info(`First speaker detected: ${speaker} (will be treated as Closer)`);
+    }
+    return speaker === this.firstSpeaker;
   }
 
   private async extractAndSaveAmmo(): Promise<void> {
@@ -227,10 +270,10 @@ export class CallHandler {
 
     logger.info(`Ending call: ${this.session.metadata.callId}`);
 
-    // Close Deepgram connection
-    if (this.deepgram) {
-      this.deepgram.close();
-      this.deepgram = null;
+    // Close Speechmatics connection
+    if (this.speechmatics) {
+      await this.speechmatics.close();
+      this.speechmatics = null;
     }
 
     // Extract any remaining ammo
