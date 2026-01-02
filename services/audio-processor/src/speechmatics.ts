@@ -160,7 +160,7 @@ export function createSpeechmaticsConnection(
 
 /**
  * Handle final transcript messages from Speechmatics.
- * Groups consecutive words by speaker and emits TranscriptChunks.
+ * Collects all words and emits as a single chunk per message.
  */
 function handleFinalTranscript(
   message: any,
@@ -169,36 +169,53 @@ function handleFinalTranscript(
   const results = message.results || [];
   if (results.length === 0) return;
 
-  // Group words by speaker for cleaner output
-  let currentSpeaker = "";
-  let currentText = "";
-  let startTime = 0;
+  // Log raw message for debugging
+  const wordCount = results.filter((r: any) => r.type === "word").length;
+  const allWords = results
+    .filter((r: any) => r.type === "word")
+    .map((r: any) => r.alternatives?.[0]?.content || "")
+    .join(" ");
+  logger.info(`[Speechmatics] AddTranscript: ${wordCount} words: "${allWords}"`);
+
+  // Collect all words from this message
+  const words: Array<{ text: string; speaker: string; startTime: number }> = [];
 
   for (const result of results) {
     if (result.type === "word") {
       const speaker = result.alternatives?.[0]?.speaker || "UNK";
       const word = result.alternatives?.[0]?.content || "";
+      const startTime = result.start_time || 0;
 
-      // If speaker changed and we have accumulated text, emit it
-      if (speaker !== currentSpeaker && currentText.trim()) {
-        onTranscript({
-          text: currentText.trim(),
-          speaker: currentSpeaker,
-          timestamp: Date.now(),
-          audioTimestamp: startTime,
-          isFinal: true,
-        });
-        currentText = "";
+      if (word.trim()) {
+        words.push({ text: word, speaker, startTime });
       }
-
-      // Start new segment if needed
-      if (!currentText.trim()) {
-        startTime = result.start_time || 0;
-        currentSpeaker = speaker;
-      }
-
-      currentText += word + " ";
     }
+  }
+
+  if (words.length === 0) return;
+
+  // Group consecutive words by speaker
+  let currentSpeaker = words[0].speaker;
+  let currentText = "";
+  let startTime = words[0].startTime;
+
+  for (const word of words) {
+    // If speaker changed and we have accumulated text, emit it
+    if (word.speaker !== currentSpeaker && currentText.trim()) {
+      logger.info(`[Speechmatics] Emitting transcript: speaker=${currentSpeaker}, text="${currentText.trim().substring(0, 50)}..."`);
+      onTranscript({
+        text: currentText.trim(),
+        speaker: currentSpeaker,
+        timestamp: Date.now(),
+        audioTimestamp: startTime,
+        isFinal: true,
+      });
+      currentText = "";
+      startTime = word.startTime;
+      currentSpeaker = word.speaker;
+    }
+
+    currentText += word.text + " ";
   }
 
   // Emit remaining text

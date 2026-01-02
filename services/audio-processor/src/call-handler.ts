@@ -80,11 +80,30 @@ export class CallHandler {
     }
   }
 
+  private audioChunkCount = 0;
+  private lastAudioLogTime = 0;
+
   processAudio(audioData: Buffer): void {
     if (this.isEnded) return;
 
     // Buffer audio for recording (keep original format for S3)
     this.session.audioBuffer.push(audioData);
+    this.audioChunkCount++;
+
+    // Log audio stats periodically (every 5 seconds)
+    const now = Date.now();
+    if (now - this.lastAudioLogTime > 5000) {
+      this.lastAudioLogTime = now;
+
+      // Check audio levels in the incoming buffer
+      let maxLevel = 0;
+      for (let i = 0; i < Math.min(audioData.length, 1000); i += 2) {
+        const sample = Math.abs(audioData.readInt16LE(i));
+        if (sample > maxLevel) maxLevel = sample;
+      }
+
+      logger.info(`[Audio] Received chunk #${this.audioChunkCount}, size: ${audioData.length} bytes, maxLevel: ${maxLevel}/32767`);
+    }
 
     // Resample and send to Speechmatics for transcription
     if (this.speechmatics) {
