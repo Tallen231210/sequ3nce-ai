@@ -90,34 +90,30 @@ export class CallHandler {
     this.session.audioBuffer.push(audioData);
     this.audioChunkCount++;
 
-    // Log audio stats periodically (every 5 seconds)
-    const now = Date.now();
-    if (now - this.lastAudioLogTime > 5000) {
-      this.lastAudioLogTime = now;
-
-      // Check audio levels in the incoming buffer
-      let maxLevel = 0;
-      for (let i = 0; i < Math.min(audioData.length, 1000); i += 2) {
-        const sample = Math.abs(audioData.readInt16LE(i));
-        if (sample > maxLevel) maxLevel = sample;
-      }
-
-      logger.info(`[Audio] Received chunk #${this.audioChunkCount}, size: ${audioData.length} bytes, maxLevel: ${maxLevel}/32767`);
-    }
-
     // Resample and send to Speechmatics for transcription
     if (this.speechmatics) {
       const resampled = this.resampleAudio(audioData);
 
-      // Log resampled audio stats periodically
-      if (this.audioChunkCount % 100 === 1) {
+      // Log BOTH input and resampled stats for the SAME chunk (every 50 chunks)
+      if (this.audioChunkCount % 50 === 1) {
+        // Input stats - check ALL samples, not just first 1000 bytes
+        let inputMaxLeft = 0;
+        let inputMaxRight = 0;
+        for (let i = 0; i < audioData.length - 3; i += 4) {
+          const left = Math.abs(audioData.readInt16LE(i));
+          const right = Math.abs(audioData.readInt16LE(i + 2));
+          if (left > inputMaxLeft) inputMaxLeft = left;
+          if (right > inputMaxRight) inputMaxRight = right;
+        }
+
+        // Resampled stats - check ALL samples
         let resampledMax = 0;
-        for (let i = 0; i < Math.min(resampled.length, 500); i += 2) {
+        for (let i = 0; i < resampled.length - 1; i += 2) {
           const sample = Math.abs(resampled.readInt16LE(i));
           if (sample > resampledMax) resampledMax = sample;
         }
-        const expectedSize = Math.floor((audioData.length / 4) / 3) * 2;
-        logger.info(`[Audio] Resampled: input=${audioData.length}bytes -> output=${resampled.length}bytes (expected=${expectedSize}), resampledMaxLevel=${resampledMax}/32767`);
+
+        logger.info(`[Audio] Chunk #${this.audioChunkCount}: inputSize=${audioData.length}, inputMaxLeft=${inputMaxLeft}, inputMaxRight=${inputMaxRight}, resampledSize=${resampled.length}, resampledMax=${resampledMax}`);
       }
 
       this.speechmatics.sendAudio(resampled);
