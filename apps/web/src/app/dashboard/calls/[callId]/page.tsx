@@ -376,10 +376,16 @@ function TalkRatioBar({ closerTalkTime, prospectTalkTime }: { closerTalkTime?: n
 }
 
 // Audio Player Component
+interface SpeakerSegment {
+  speaker: string; // "closer" or "prospect"
+  timestamp: number; // Start time in seconds
+}
+
 interface AudioPlayerProps {
   src: string;
   onTimeUpdate?: (time: number) => void;
   seekTo?: number;
+  speakerSegments?: SpeakerSegment[]; // For speaker-colored waveform
 }
 
 // Generate consistent waveform bars based on position (pseudo-random but deterministic)
@@ -397,7 +403,7 @@ function generateWaveformBars(count: number): number[] {
   return bars;
 }
 
-function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
+function AudioPlayer({ src, onTimeUpdate, seekTo, speakerSegments }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -410,8 +416,45 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
   const [isHovering, setIsHovering] = useState(false);
   const [hoverTime, setHoverTime] = useState(0);
 
-  // Generate waveform bars (80 bars for visual density)
-  const waveformBars = useMemo(() => generateWaveformBars(80), []);
+  // Generate waveform bars (100 bars for visual density)
+  const waveformBars = useMemo(() => generateWaveformBars(100), []);
+
+  // Get speaker at a specific time
+  const getSpeakerAtTime = useCallback((time: number): 'closer' | 'prospect' | null => {
+    if (!speakerSegments || speakerSegments.length === 0) return null;
+
+    // Find the segment that contains this time
+    for (let i = speakerSegments.length - 1; i >= 0; i--) {
+      if (time >= speakerSegments[i].timestamp) {
+        return speakerSegments[i].speaker === 'closer' ? 'closer' : 'prospect';
+      }
+    }
+    return null;
+  }, [speakerSegments]);
+
+  // Current speaker based on playback position
+  const currentSpeaker = getSpeakerAtTime(currentTime);
+
+  // Speaker colors
+  const speakerColors = {
+    closer: {
+      gradient: 'linear-gradient(180deg, #0891b2 0%, #0e7490 50%, #155e75 100%)',
+      glow: 'rgba(8, 145, 178, 0.15)',
+      solid: '#0891b2',
+    },
+    prospect: {
+      gradient: 'linear-gradient(180deg, #ea580c 0%, #c2410c 50%, #9a3412 100%)',
+      glow: 'rgba(234, 88, 12, 0.15)',
+      solid: '#ea580c',
+    },
+    default: {
+      gradient: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)',
+      glow: 'rgba(59, 130, 246, 0.15)',
+      solid: '#3b82f6',
+    },
+  };
+
+  const currentColors = currentSpeaker ? speakerColors[currentSpeaker] : speakerColors.default;
 
   // For WebM files, we need to discover the true duration by seeking to the end
   const hasDiscoveredDuration = useRef(false);
@@ -591,8 +634,20 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
     return <Volume2 className="h-4 w-4" />;
   };
 
+  // Get speaker for a specific bar index
+  const getSpeakerAtBarIndex = (barIndex: number): 'closer' | 'prospect' | null => {
+    if (duration <= 0) return null;
+    const time = (barIndex / waveformBars.length) * duration;
+    return getSpeakerAtTime(time);
+  };
+
   return (
-    <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-5 shadow-xl">
+    <div
+      className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-lg relative overflow-hidden"
+      style={{
+        boxShadow: '0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04)',
+      }}
+    >
       <audio
         ref={audioRef}
         src={src}
@@ -602,35 +657,82 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
         onEnded={handleEnded}
       />
 
+      {/* Ambient glow that follows playhead */}
+      <div
+        className="absolute top-1/2 pointer-events-none transition-all duration-75"
+        style={{
+          left: `${progressPercent}%`,
+          width: '280px',
+          height: '140px',
+          background: `radial-gradient(ellipse, ${currentColors.glow} 0%, transparent 70%)`,
+          transform: 'translate(-50%, -50%)',
+        }}
+      />
+
+      {/* Speaker Legend */}
+      {speakerSegments && speakerSegments.length > 0 && (
+        <div className="flex gap-5 mb-4 relative z-10">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-sm"
+              style={{
+                background: 'linear-gradient(135deg, #0891b2, #0e7490)',
+                boxShadow: '0 2px 4px rgba(8, 145, 178, 0.3)',
+              }}
+            />
+            <span className="text-xs font-medium text-zinc-500">Closer</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-sm"
+              style={{
+                background: 'linear-gradient(135deg, #ea580c, #c2410c)',
+                boxShadow: '0 2px 4px rgba(234, 88, 12, 0.3)',
+              }}
+            />
+            <span className="text-xs font-medium text-zinc-500">Prospect</span>
+          </div>
+        </div>
+      )}
+
       {/* Waveform Visualization */}
       <div
         ref={waveformRef}
         onClick={handleWaveformClick}
         onMouseMove={handleWaveformHover}
         onMouseLeave={() => setIsHovering(false)}
-        className="relative h-16 mb-4 cursor-pointer group"
+        className="relative h-18 mb-4 cursor-pointer group"
+        style={{ height: '72px' }}
       >
         {/* Waveform Bars */}
-        <div className="absolute inset-0 flex items-center justify-between gap-[2px]">
+        <div className="absolute inset-0 flex items-center gap-[2px]">
           {waveformBars.map((height, i) => {
             const barPercent = (i / waveformBars.length) * 100;
             const isPlayed = barPercent <= progressPercent;
+            const barSpeaker = getSpeakerAtBarIndex(i);
+            const isNearPlayhead = Math.abs(barPercent - progressPercent) < 3;
+
+            // Get colors for this bar
+            const barColors = barSpeaker ? speakerColors[barSpeaker] : speakerColors.default;
 
             return (
               <div
                 key={i}
                 className="flex-1 flex items-center justify-center"
-                style={{ height: '100%' }}
+                style={{
+                  height: '100%',
+                  maxWidth: '4px',
+                }}
               >
                 <div
-                  className={`w-full rounded-full transition-all duration-150 ${
-                    isPlayed
-                      ? 'bg-gradient-to-t from-blue-500 to-blue-400'
-                      : 'bg-zinc-700 group-hover:bg-zinc-600'
-                  }`}
+                  className="w-full rounded-sm transition-all duration-100"
                   style={{
                     height: `${height * 100}%`,
                     minHeight: '4px',
+                    background: isPlayed ? barColors.gradient : '#e2e8f0',
+                    boxShadow: isPlayed && isNearPlayhead
+                      ? `0 2px 8px ${barSpeaker ? (barSpeaker === 'closer' ? 'rgba(8, 145, 178, 0.4)' : 'rgba(234, 88, 12, 0.4)') : 'rgba(59, 130, 246, 0.4)'}`
+                      : 'none',
                   }}
                 />
               </div>
@@ -641,28 +743,71 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
         {/* Hover Time Indicator */}
         {isHovering && duration > 0 && (
           <div
-            className="absolute top-0 h-full w-[2px] bg-white/50 pointer-events-none"
+            className="absolute top-0 h-full w-[2px] bg-zinc-400/50 pointer-events-none"
             style={{ left: `${(hoverTime / duration) * 100}%` }}
           >
-            <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap">
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-1 bg-zinc-800 rounded text-xs text-white whitespace-nowrap">
               {formatTimestamp(hoverTime)}
             </div>
           </div>
         )}
 
-        {/* Progress Line */}
+        {/* Playhead */}
         <div
-          className="absolute top-0 h-full w-[2px] bg-blue-400 pointer-events-none shadow-[0_0_8px_rgba(59,130,246,0.5)]"
-          style={{ left: `${progressPercent}%` }}
+          className="absolute h-full w-[2px] pointer-events-none rounded-full transition-colors duration-300"
+          style={{
+            left: `${progressPercent}%`,
+            top: '-8px',
+            bottom: '-8px',
+            height: 'calc(100% + 16px)',
+            background: currentColors.solid,
+            boxShadow: `0 0 8px ${currentColors.solid}80`,
+          }}
         />
       </div>
 
       {/* Controls Row */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4 relative z-10">
+        {/* Play/Pause Button */}
+        <button
+          onClick={togglePlay}
+          className="h-10 w-10 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105"
+          style={{
+            background: 'linear-gradient(135deg, #0891b2 0%, #0e7490 100%)',
+            boxShadow: '0 4px 12px rgba(8, 145, 178, 0.3)',
+          }}
+        >
+          {isPlaying ? (
+            <div className="flex gap-[3px]">
+              <div className="w-[3px] h-3 bg-white rounded-sm" />
+              <div className="w-[3px] h-3 bg-white rounded-sm" />
+            </div>
+          ) : (
+            <div
+              className="ml-0.5"
+              style={{
+                width: 0,
+                height: 0,
+                borderLeft: '10px solid white',
+                borderTop: '6px solid transparent',
+                borderBottom: '6px solid transparent',
+              }}
+            />
+          )}
+        </button>
+
+        {/* Time Display */}
+        <span className="text-sm font-mono font-medium text-zinc-500">
+          {formatTimestamp(currentTime)} / {duration > 0 && isFinite(duration) ? formatTimestamp(duration) : "--:--"}
+        </span>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
         {/* Skip Back */}
         <button
           onClick={skipBackward}
-          className="p-2 text-zinc-400 hover:text-white transition-colors"
+          className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors"
           title="Skip back 15 seconds"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -671,22 +816,10 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
           </svg>
         </button>
 
-        {/* Play/Pause Button */}
-        <button
-          onClick={togglePlay}
-          className="h-12 w-12 rounded-full bg-white text-zinc-900 hover:bg-zinc-100 hover:scale-105 transition-all duration-200 flex items-center justify-center shadow-lg"
-        >
-          {isPlaying ? (
-            <Pause className="h-5 w-5" />
-          ) : (
-            <Play className="h-5 w-5 ml-0.5" />
-          )}
-        </button>
-
         {/* Skip Forward */}
         <button
           onClick={skipForward}
-          className="p-2 text-zinc-400 hover:text-white transition-colors"
+          className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors"
           title="Skip forward 15 seconds"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -695,20 +828,10 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
           </svg>
         </button>
 
-        {/* Time Display */}
-        <div className="flex items-center gap-1.5 text-sm font-mono text-zinc-400 ml-2">
-          <span className="text-white">{formatTimestamp(currentTime)}</span>
-          <span>/</span>
-          <span>{duration > 0 && isFinite(duration) ? formatTimestamp(duration) : "--:--"}</span>
-        </div>
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
         {/* Playback Speed */}
         <button
           onClick={changePlaybackRate}
-          className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors font-mono text-sm min-w-[50px]"
+          className="px-3 py-1.5 rounded-md border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 transition-colors font-mono text-xs font-medium min-w-[45px]"
         >
           {playbackRate}x
         </button>
@@ -719,13 +842,13 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
           onMouseEnter={() => setShowVolumeSlider(true)}
           onMouseLeave={() => setShowVolumeSlider(false)}
         >
-          <button className="p-2 text-zinc-400 hover:text-white transition-colors">
+          <button className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors">
             {getVolumeIcon()}
           </button>
 
           {/* Volume Slider Popup */}
           {showVolumeSlider && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-zinc-800 rounded-lg shadow-xl">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-white border border-zinc-200 rounded-lg shadow-xl">
               <input
                 type="range"
                 min={0}
@@ -733,9 +856,9 @@ function AudioPlayer({ src, onTimeUpdate, seekTo }: AudioPlayerProps) {
                 step={0.05}
                 value={volume}
                 onChange={handleVolumeChange}
-                className="w-24 h-1.5 bg-zinc-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
+                className="w-24 h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-600 [&::-webkit-slider-thumb]:shadow-md"
                 style={{
-                  background: `linear-gradient(to right, #3b82f6 ${volume * 100}%, #52525b ${volume * 100}%)`,
+                  background: `linear-gradient(to right, #0891b2 ${volume * 100}%, #e2e8f0 ${volume * 100}%)`,
                 }}
               />
             </div>
@@ -1760,6 +1883,10 @@ export default function CallDetailPage() {
               src={call.recordingUrl}
               onTimeUpdate={handleTimeUpdate}
               seekTo={audioSeekTime}
+              speakerSegments={call.transcriptSegments?.map(seg => ({
+                speaker: seg.speaker,
+                timestamp: seg.timestamp,
+              }))}
             />
           </div>
         ) : (
