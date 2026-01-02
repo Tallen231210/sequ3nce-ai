@@ -113,7 +113,8 @@ export class CallHandler {
           if (sample > resampledMax) resampledMax = sample;
         }
 
-        logger.info(`[Audio] Chunk #${this.audioChunkCount}: inputSize=${audioData.length}, inputMaxLeft=${inputMaxLeft}, inputMaxRight=${inputMaxRight}, resampledSize=${resampled.length}, resampledMax=${resampledMax}`);
+        const expectedSize = (audioData.length / 4) * 2; // stereo to mono, no decimation
+        logger.info(`[Audio] Chunk #${this.audioChunkCount}: input=${audioData.length}b L=${inputMaxLeft} R=${inputMaxRight} -> mono=${resampled.length}b (exp=${expectedSize}) max=${resampledMax}`);
       }
 
       this.speechmatics.sendAudio(resampled);
@@ -121,29 +122,29 @@ export class CallHandler {
   }
 
   /**
-   * Resample audio from 48kHz stereo to 16kHz mono for Speechmatics.
+   * Convert stereo to mono at 48kHz (NO resampling - send at native rate).
    * Input: 48kHz, 16-bit stereo interleaved (4 bytes per sample pair)
-   * Output: 16kHz, 16-bit mono (2 bytes per sample)
+   * Output: 48kHz, 16-bit mono (2 bytes per sample)
+   *
+   * Previous 16kHz decimation was causing aliasing artifacts that made
+   * speech sound like gibberish ("puff puff"). Sending at 48kHz avoids this.
    */
   private resampleAudio(buffer: Buffer): Buffer {
     const inputSamplePairs = buffer.length / 4; // 4 bytes per stereo sample pair
-    const outputSamples = Math.floor(inputSamplePairs / 3); // 48k -> 16k = /3 decimation
-    const output = Buffer.alloc(outputSamples * 2); // 2 bytes per mono sample
+    const output = Buffer.alloc(inputSamplePairs * 2); // 2 bytes per mono sample (no decimation)
 
-    for (let i = 0; i < outputSamples; i++) {
-      // Take every 3rd sample pair (decimation)
-      const inputIndex = i * 3 * 4; // 3x decimation, 4 bytes per stereo pair
+    for (let i = 0; i < inputSamplePairs; i++) {
+      const inputIndex = i * 4; // 4 bytes per stereo pair
 
       // Check bounds
       if (inputIndex + 3 >= buffer.length) break;
 
-      // Use LEFT channel only (mic) - don't mix with right (system audio)
-      // This avoids volume reduction when system audio is silent
+      // Mix left + right channels to mono (both may have audio now)
       const left = buffer.readInt16LE(inputIndex);
-      // Also read right for future use, but don't mix for now
-      // const right = buffer.readInt16LE(inputIndex + 2);
+      const right = buffer.readInt16LE(inputIndex + 2);
+      const mono = Math.round((left + right) / 2);
 
-      output.writeInt16LE(left, i * 2);
+      output.writeInt16LE(mono, i * 2);
     }
 
     return output;

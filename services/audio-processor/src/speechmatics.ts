@@ -55,7 +55,7 @@ export function createSpeechmaticsConnection(
         audio_format: {
           type: "raw",
           encoding: "pcm_s16le",
-          sample_rate: 16000,
+          sample_rate: 48000,
         },
       };
 
