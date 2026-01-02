@@ -108,6 +108,18 @@ export class CallHandler {
     // Resample and send to Speechmatics for transcription
     if (this.speechmatics) {
       const resampled = this.resampleAudio(audioData);
+
+      // Log resampled audio stats periodically
+      if (this.audioChunkCount % 100 === 1) {
+        let resampledMax = 0;
+        for (let i = 0; i < Math.min(resampled.length, 500); i += 2) {
+          const sample = Math.abs(resampled.readInt16LE(i));
+          if (sample > resampledMax) resampledMax = sample;
+        }
+        const expectedSize = Math.floor((audioData.length / 4) / 3) * 2;
+        logger.info(`[Audio] Resampled: input=${audioData.length}bytes -> output=${resampled.length}bytes (expected=${expectedSize}), resampledMaxLevel=${resampledMax}/32767`);
+      }
+
       this.speechmatics.sendAudio(resampled);
     }
   }

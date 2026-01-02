@@ -83,11 +83,8 @@ export function createSpeechmaticsConnection(
                 },
                 close: async () => {
                   logger.info("Closing Speechmatics connection...");
-                  if (ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ message: "EndOfStream" }));
-                    // Wait for final transcripts
-                    await new Promise((r) => setTimeout(r, 2000));
-                  }
+                  // Just close the WebSocket - EndOfStream message was causing validation errors
+                  // Speechmatics will handle the disconnection gracefully
                   ws.close();
                 },
               });

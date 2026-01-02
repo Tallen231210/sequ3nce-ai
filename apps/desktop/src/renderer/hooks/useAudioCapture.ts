@@ -36,6 +36,9 @@ class PCMProcessor extends AudioWorkletProcessor {
     this.loggedChannelInfo = false;
     this.leftHasAudio = false;
     this.rightHasAudio = false;
+    this.channelWarningLogged = false;
+    this.leftPeakLevel = 0;
+    this.rightPeakLevel = 0;
   }
 
   process(inputs, outputs, parameters) {
@@ -44,21 +47,33 @@ class PCMProcessor extends AudioWorkletProcessor {
     // Debug: Log channel info once
     if (!this.loggedChannelInfo) {
       this.loggedChannelInfo = true;
-      console.log('[PCMProcessor] First process call - inputs:', inputs.length, 'input[0] channels:', input ? input.length : 0);
+      console.log('[PCMProcessor] ========== CHANNEL DEBUG ==========');
+      console.log('[PCMProcessor] inputs.length:', inputs.length);
+      console.log('[PCMProcessor] input[0] exists:', !!input);
+      console.log('[PCMProcessor] input[0].length (CHANNEL COUNT):', input ? input.length : 0);
       if (input) {
         for (let i = 0; i < input.length; i++) {
-          console.log('[PCMProcessor] Channel', i, 'length:', input[i] ? input[i].length : 0);
+          console.log('[PCMProcessor] Channel', i, 'sample length:', input[i] ? input[i].length : 0);
         }
       }
+      console.log('[PCMProcessor] ===================================');
     }
 
     if (!input || input.length === 0) {
       return true;
     }
 
+    // CRITICAL: Check if we actually have 2 channels
+    if (input.length < 2 && !this.channelWarningLogged) {
+      this.channelWarningLogged = true;
+      console.error('[PCMProcessor] WARNING: Only receiving', input.length, 'channel(s)! Expected 2 channels for stereo.');
+      console.error('[PCMProcessor] This means the audio graph is NOT outputting stereo to the worklet.');
+    }
+
     // Get stereo channels (left = mic/closer, right = system/prospect)
     const leftChannel = input[0] || new Float32Array(128);
-    const rightChannel = input[1] || input[0] || new Float32Array(128); // Fallback to left if mono
+    // DO NOT fallback to left channel - use silence if right channel missing
+    const rightChannel = input.length >= 2 ? input[1] : new Float32Array(leftChannel.length);
     const frameLength = leftChannel.length;
 
     // AudioWorklet processes in 128-sample blocks
@@ -66,9 +81,13 @@ class PCMProcessor extends AudioWorkletProcessor {
       this.leftBuffer[this.bufferIndex] = leftChannel[i];
       this.rightBuffer[this.bufferIndex] = rightChannel[i];
 
-      // Track if channels have actual audio
-      if (Math.abs(leftChannel[i]) > 0.001) this.leftHasAudio = true;
-      if (Math.abs(rightChannel[i]) > 0.001) this.rightHasAudio = true;
+      // Track if channels have actual audio and their peak levels
+      const leftAbs = Math.abs(leftChannel[i]);
+      const rightAbs = Math.abs(rightChannel[i]);
+      if (leftAbs > 0.001) this.leftHasAudio = true;
+      if (rightAbs > 0.001) this.rightHasAudio = true;
+      if (leftAbs > this.leftPeakLevel) this.leftPeakLevel = leftAbs;
+      if (rightAbs > this.rightPeakLevel) this.rightPeakLevel = rightAbs;
 
       this.bufferIndex++;
 
@@ -93,9 +112,18 @@ class PCMProcessor extends AudioWorkletProcessor {
         // Send to main thread with debug info periodically
         this.messageCount++;
         if (this.messageCount % 100 === 0) {
-          console.log('[PCMProcessor] Sent', this.messageCount, 'stereo buffers. Left(Closer):', this.leftHasAudio, 'Right(Prospect):', this.rightHasAudio);
+          // Calculate and log peak levels to verify channel separation
+          console.log('[PCMProcessor] Buffer #' + this.messageCount + ' | Left(Closer) has audio:', this.leftHasAudio, 'peak:', this.leftPeakLevel.toFixed(4), '| Right(Prospect) has audio:', this.rightHasAudio, 'peak:', this.rightPeakLevel.toFixed(4));
+
+          // CRITICAL CHECK: If both channels always have the same peak levels, separation is not working
+          if (this.leftHasAudio && this.rightHasAudio && Math.abs(this.leftPeakLevel - this.rightPeakLevel) < 0.01) {
+            console.warn('[PCMProcessor] ⚠️ Both channels have nearly identical levels - possible channel separation issue!');
+          }
+
           this.leftHasAudio = false;
           this.rightHasAudio = false;
+          this.leftPeakLevel = 0;
+          this.rightPeakLevel = 0;
         }
 
         this.port.postMessage(int16Buffer.buffer, [int16Buffer.buffer]);
@@ -219,6 +247,20 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         const micSource = audioContextRef.current.createMediaStreamSource(micStream);
         micSource.connect(merger, 0, 0); // Connect to input 0 of merger (left channel)
         console.log('[AudioCapture] Microphone connected to Channel 0 (Left/Closer)');
+
+        // DEBUG: Monitor mic audio level separately
+        const micAnalyser = audioContextRef.current.createAnalyser();
+        micAnalyser.fftSize = 256;
+        micSource.connect(micAnalyser);
+        const micDataArray = new Uint8Array(micAnalyser.frequencyBinCount);
+
+        const micCheckInterval = setInterval(() => {
+          micAnalyser.getByteFrequencyData(micDataArray);
+          const avg = micDataArray.reduce((a, b) => a + b, 0) / micDataArray.length;
+          console.log(`[AudioCapture] 🎤 MIC (Closer) level: ${avg.toFixed(2)}`);
+        }, 2000);
+
+        (window as any).__micAudioCheckInterval = micCheckInterval;
       } else {
         // If no mic, create silent source for Channel 0
         const silentOsc = audioContextRef.current.createOscillator();
@@ -261,7 +303,18 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         console.log('[AudioCapture] No system audio - using silence for Channel 1');
       }
 
-      // 6. Create PCM worklet node for STEREO capture
+      // 6. Create a GainNode to explicitly maintain stereo signal path
+      // This ensures the stereo from the merger is preserved before reaching the worklet
+      const stereoGain = audioContextRef.current.createGain();
+      stereoGain.channelCount = 2;
+      stereoGain.channelCountMode = 'explicit';
+      stereoGain.channelInterpretation = 'discrete'; // Keep channels separate!
+      stereoGain.gain.value = 1.0;
+
+      merger.connect(stereoGain);
+      console.log('[AudioCapture] Stereo GainNode created with channelCount: 2, mode: explicit, interpretation: discrete');
+
+      // 7. Create PCM worklet node for STEREO capture
       workletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'pcm-processor', {
         numberOfInputs: 1,
         numberOfOutputs: 0, // No audio output needed
@@ -277,10 +330,10 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         window.electron.audio.sendAudioData(pcmBuffer);
       };
 
-      merger.connect(workletNodeRef.current);
-      console.log('[AudioCapture] PCM worklet connected - capturing raw STEREO PCM for multichannel');
+      stereoGain.connect(workletNodeRef.current);
+      console.log('[AudioCapture] PCM worklet connected via stereoGain - capturing raw STEREO PCM for multichannel');
 
-      // 7. Set up audio level analysis
+      // 8. Set up audio level analysis
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
       merger.connect(analyserRef.current);
@@ -329,10 +382,14 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       levelIntervalRef.current = null;
     }
 
-    // Stop system audio debug interval
+    // Stop audio debug intervals
     if ((window as any).__systemAudioCheckInterval) {
       clearInterval((window as any).__systemAudioCheckInterval);
       (window as any).__systemAudioCheckInterval = null;
+    }
+    if ((window as any).__micAudioCheckInterval) {
+      clearInterval((window as any).__micAudioCheckInterval);
+      (window as any).__micAudioCheckInterval = null;
     }
 
     // Disconnect worklet
