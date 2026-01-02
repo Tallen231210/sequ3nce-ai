@@ -19,6 +19,7 @@ export interface AudioAPI {
   sendAudioData: (data: ArrayBuffer) => void;
   sendAudioLevel: (level: number) => void;
   getServiceUrl: () => Promise<string>;
+  testLoopback: () => Promise<{ success: boolean; hasAudio: boolean; error?: string }>;
   onStatusChange: (callback: (status: AudioStatus) => void) => () => void;
   onError: (callback: (error: string) => void) => () => void;
   onAudioLevel: (callback: (level: number) => void) => () => void;
@@ -70,6 +71,7 @@ contextBridge.exposeInMainWorld('electron', {
     sendAudioData: (data: ArrayBuffer) => ipcRenderer.send('audio:data', data),
     sendAudioLevel: (level: number) => ipcRenderer.send('audio:level', level),
     getServiceUrl: () => ipcRenderer.invoke('audio:get-service-url'),
+    testLoopback: () => ipcRenderer.invoke('audio:test-loopback'),
     onStatusChange: (callback: (status: AudioStatus) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, status: AudioStatus) => callback(status);
       ipcRenderer.on('audio:status-change', handler);

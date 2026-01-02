@@ -80,7 +80,7 @@ export interface RepetitionTracker {
 
 export interface TranscriptChunk {
   text: string;
-  channel: number; // 0 = Closer (first speaker), 1 = Prospect (other speakers) - from Deepgram diarization
+  channel: number; // 0 = Closer (mic/left), 1 = Prospect (system audio/right) - from Deepgram multichannel
   timestamp: number;
   audioTimestamp: number; // Deepgram's audio-aligned timestamp (seconds from audio start)
   isFinal: boolean;

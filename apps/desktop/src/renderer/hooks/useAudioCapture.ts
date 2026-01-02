@@ -1,17 +1,18 @@
 /**
- * Custom hook for capturing system audio + microphone as RAW PCM mono
+ * Custom hook for capturing system audio + microphone as RAW PCM STEREO
  *
  * This hook handles:
- * - Requesting display media with audio (loopback on macOS) for system audio
+ * - Requesting display media with audio (loopback via electron-audio-loopback)
  * - Requesting microphone access for the closer's voice
- * - Mixing both sources into MONO stream for Deepgram diarization
- * - Using AudioWorklet to capture RAW PCM (linear16)
+ * - Creating STEREO stream with TRUE channel separation:
+ *   - Channel 0 (Left) = Microphone = Closer's voice
+ *   - Channel 1 (Right) = System audio = Prospect's voice
+ * - Using AudioWorklet to capture RAW PCM (linear16) stereo interleaved
  * - Calculating real-time audio levels
  * - Sending raw PCM data to main process via IPC
  *
- * Note: We use diarization (AI-based speaker detection) instead of multichannel
- * because macOS loopback audio via Electron doesn't work reliably.
- * The first speaker detected is assigned as Closer, second as Prospect.
+ * Deepgram multichannel mode transcribes each channel separately,
+ * providing 100% deterministic speaker identification.
  */
 
 import { useRef, useCallback } from 'react';
@@ -22,17 +23,19 @@ interface AudioCaptureOptions {
 }
 
 // AudioWorklet processor code - runs in audio rendering thread
-// Captures raw Float32 samples and converts to mono Int16 (linear16)
+// Captures raw Float32 stereo samples and converts to interleaved Int16 (linear16)
 const workletProcessorCode = `
 class PCMProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.bufferSize = 4096; // Samples before sending
-    this.buffer = new Float32Array(this.bufferSize);
+    this.bufferSize = 4096; // Samples per channel before sending
+    this.leftBuffer = new Float32Array(this.bufferSize);  // Channel 0 = Mic = Closer
+    this.rightBuffer = new Float32Array(this.bufferSize); // Channel 1 = System = Prospect
     this.bufferIndex = 0;
     this.messageCount = 0;
     this.loggedChannelInfo = false;
-    this.hasAudio = false;
+    this.leftHasAudio = false;
+    this.rightHasAudio = false;
   }
 
   process(inputs, outputs, parameters) {
@@ -42,55 +45,64 @@ class PCMProcessor extends AudioWorkletProcessor {
     if (!this.loggedChannelInfo) {
       this.loggedChannelInfo = true;
       console.log('[PCMProcessor] First process call - inputs:', inputs.length, 'input[0] channels:', input ? input.length : 0);
+      if (input) {
+        for (let i = 0; i < input.length; i++) {
+          console.log('[PCMProcessor] Channel', i, 'length:', input[i] ? input[i].length : 0);
+        }
+      }
     }
 
     if (!input || input.length === 0) {
       return true;
     }
 
-    // Mix all channels to mono
-    const numChannels = input.length;
-    const frameLength = input[0].length;
+    // Get stereo channels (left = mic/closer, right = system/prospect)
+    const leftChannel = input[0] || new Float32Array(128);
+    const rightChannel = input[1] || input[0] || new Float32Array(128); // Fallback to left if mono
+    const frameLength = leftChannel.length;
 
     // AudioWorklet processes in 128-sample blocks
     for (let i = 0; i < frameLength; i++) {
-      // Sum all channels and average for mono
-      let sum = 0;
-      for (let ch = 0; ch < numChannels; ch++) {
-        sum += input[ch][i];
-      }
-      const monoSample = sum / numChannels;
+      this.leftBuffer[this.bufferIndex] = leftChannel[i];
+      this.rightBuffer[this.bufferIndex] = rightChannel[i];
 
-      this.buffer[this.bufferIndex] = monoSample;
-
-      // Track if audio is present
-      if (Math.abs(monoSample) > 0.001) this.hasAudio = true;
+      // Track if channels have actual audio
+      if (Math.abs(leftChannel[i]) > 0.001) this.leftHasAudio = true;
+      if (Math.abs(rightChannel[i]) > 0.001) this.rightHasAudio = true;
 
       this.bufferIndex++;
 
       if (this.bufferIndex >= this.bufferSize) {
-        // Buffer is full, convert to Int16 and send
-        const int16Buffer = new Int16Array(this.bufferSize);
+        // Buffer is full, convert to interleaved Int16 stereo and send
+        // Format: [L0, R0, L1, R1, L2, R2, ...]
+        const int16Buffer = new Int16Array(this.bufferSize * 2);
 
         for (let j = 0; j < this.bufferSize; j++) {
           // Convert Float32 (-1 to 1) to Int16 (-32768 to 32767)
-          const sample = Math.max(-1, Math.min(1, this.buffer[j]));
-          int16Buffer[j] = sample < 0
-            ? sample * 0x8000
-            : sample * 0x7FFF;
+          const leftSample = Math.max(-1, Math.min(1, this.leftBuffer[j]));
+          const rightSample = Math.max(-1, Math.min(1, this.rightBuffer[j]));
+
+          int16Buffer[j * 2] = leftSample < 0
+            ? leftSample * 0x8000
+            : leftSample * 0x7FFF;
+          int16Buffer[j * 2 + 1] = rightSample < 0
+            ? rightSample * 0x8000
+            : rightSample * 0x7FFF;
         }
 
         // Send to main thread with debug info periodically
         this.messageCount++;
         if (this.messageCount % 100 === 0) {
-          console.log('[PCMProcessor] Sent', this.messageCount, 'buffers. Has audio:', this.hasAudio);
-          this.hasAudio = false;
+          console.log('[PCMProcessor] Sent', this.messageCount, 'stereo buffers. Left(Closer):', this.leftHasAudio, 'Right(Prospect):', this.rightHasAudio);
+          this.leftHasAudio = false;
+          this.rightHasAudio = false;
         }
 
         this.port.postMessage(int16Buffer.buffer, [int16Buffer.buffer]);
 
-        // Reset buffer
-        this.buffer = new Float32Array(this.bufferSize);
+        // Reset buffers
+        this.leftBuffer = new Float32Array(this.bufferSize);
+        this.rightBuffer = new Float32Array(this.bufferSize);
         this.bufferIndex = 0;
       }
     }
@@ -112,7 +124,7 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
 
   const startCapture = useCallback(async (): Promise<boolean> => {
     try {
-      console.log('[AudioCapture] Starting capture with RAW PCM stereo...');
+      console.log('[AudioCapture] Starting capture with RAW PCM STEREO (multichannel)...');
 
       // 1. Get system audio via display media (loopback)
       console.log('[AudioCapture] Requesting display media with audio...');
@@ -197,47 +209,81 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       URL.revokeObjectURL(workletUrl);
       console.log('[AudioCapture] AudioWorklet module loaded');
 
-      // 5. Create gain node to mix all sources to mono
-      const mixerGain = audioContextRef.current.createGain();
-      mixerGain.gain.value = 1.0;
+      // 5. Create ChannelMergerNode for TRUE stereo separation
+      // Channel 0 (Left) = Microphone = Closer
+      // Channel 1 (Right) = System Audio = Prospect
+      const merger = audioContextRef.current.createChannelMerger(2);
 
-      // Connect microphone to mixer
+      // Connect microphone to Channel 0 (Left) = Closer
       if (micStream) {
         const micSource = audioContextRef.current.createMediaStreamSource(micStream);
-        micSource.connect(mixerGain);
-        console.log('[AudioCapture] Microphone connected to mixer');
+        micSource.connect(merger, 0, 0); // Connect to input 0 of merger (left channel)
+        console.log('[AudioCapture] Microphone connected to Channel 0 (Left/Closer)');
+      } else {
+        // If no mic, create silent source for Channel 0
+        const silentOsc = audioContextRef.current.createOscillator();
+        const silentGain = audioContextRef.current.createGain();
+        silentGain.gain.value = 0;
+        silentOsc.connect(silentGain);
+        silentGain.connect(merger, 0, 0);
+        silentOsc.start();
+        console.log('[AudioCapture] No microphone - using silence for Channel 0');
       }
 
-      // Connect system audio to mixer (even if silent, for completeness)
+      // Connect system audio to Channel 1 (Right) = Prospect
       if (systemAudioTracks.length > 0) {
         const systemSource = audioContextRef.current.createMediaStreamSource(systemStream);
-        systemSource.connect(mixerGain);
-        console.log('[AudioCapture] System audio connected to mixer');
+        systemSource.connect(merger, 0, 1); // Connect to input 1 of merger (right channel)
+        console.log('[AudioCapture] System audio connected to Channel 1 (Right/Prospect)');
+
+        // DEBUG: Monitor system audio level
+        const systemAnalyser = audioContextRef.current.createAnalyser();
+        systemAnalyser.fftSize = 256;
+        systemSource.connect(systemAnalyser);
+        const systemDataArray = new Uint8Array(systemAnalyser.frequencyBinCount);
+
+        const systemCheckInterval = setInterval(() => {
+          systemAnalyser.getByteFrequencyData(systemDataArray);
+          const avg = systemDataArray.reduce((a, b) => a + b, 0) / systemDataArray.length;
+          const hasAudio = avg > 1;
+          console.log(`[AudioCapture] 🔊 SYSTEM AUDIO (Prospect) level: ${avg.toFixed(2)} (has audio: ${hasAudio})`);
+        }, 2000);
+
+        (window as any).__systemAudioCheckInterval = systemCheckInterval;
+      } else {
+        // If no system audio, create silent source for Channel 1
+        const silentOsc = audioContextRef.current.createOscillator();
+        const silentGain = audioContextRef.current.createGain();
+        silentGain.gain.value = 0;
+        silentOsc.connect(silentGain);
+        silentGain.connect(merger, 0, 1);
+        silentOsc.start();
+        console.log('[AudioCapture] No system audio - using silence for Channel 1');
       }
 
-      // 6. Create PCM worklet node and connect mixer to it
+      // 6. Create PCM worklet node for STEREO capture
       workletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'pcm-processor', {
         numberOfInputs: 1,
         numberOfOutputs: 0, // No audio output needed
-        channelCount: 1,    // Mono output
+        channelCount: 2,    // Stereo!
         channelCountMode: 'explicit',
-        channelInterpretation: 'speakers', // Mix to mono
+        channelInterpretation: 'discrete', // Keep channels separate!
       });
 
       // Handle raw PCM data from worklet
       workletNodeRef.current.port.onmessage = (event) => {
         const pcmBuffer = event.data as ArrayBuffer;
-        // Send raw PCM to main process (which forwards to audio processor)
+        // Send raw stereo PCM to main process (which forwards to audio processor)
         window.electron.audio.sendAudioData(pcmBuffer);
       };
 
-      mixerGain.connect(workletNodeRef.current);
-      console.log('[AudioCapture] PCM worklet connected - capturing raw mono PCM for diarization');
+      merger.connect(workletNodeRef.current);
+      console.log('[AudioCapture] PCM worklet connected - capturing raw STEREO PCM for multichannel');
 
       // 7. Set up audio level analysis
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
-      mixerGain.connect(analyserRef.current);
+      merger.connect(analyserRef.current);
 
       const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
       levelIntervalRef.current = window.setInterval(() => {
@@ -250,8 +296,8 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         }
       }, 50);
 
-      console.log('[AudioCapture] ✅ Capture started with RAW PCM mono for diarization');
-      console.log('[AudioCapture] Deepgram will use AI diarization to identify speakers');
+      console.log('[AudioCapture] ✅ Capture started with RAW PCM STEREO for multichannel');
+      console.log('[AudioCapture] Channel 0 (Left) = Closer, Channel 1 (Right) = Prospect');
 
       return true;
     } catch (error) {
@@ -281,6 +327,12 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
     if (levelIntervalRef.current) {
       clearInterval(levelIntervalRef.current);
       levelIntervalRef.current = null;
+    }
+
+    // Stop system audio debug interval
+    if ((window as any).__systemAudioCheckInterval) {
+      clearInterval((window as any).__systemAudioCheckInterval);
+      (window as any).__systemAudioCheckInterval = null;
     }
 
     // Disconnect worklet
