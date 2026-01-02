@@ -701,27 +701,43 @@ function AudioPlayer({ src, onTimeUpdate, seekTo, speakerSegments }: AudioPlayer
         onClick={handleWaveformClick}
         onMouseMove={handleWaveformHover}
         onMouseLeave={() => setIsHovering(false)}
-        className="relative h-18 mb-4 cursor-pointer group"
+        className="relative mb-4 cursor-pointer group"
         style={{ height: '72px' }}
       >
         {/* Waveform Bars */}
-        <div className="absolute inset-0 flex items-center gap-[2px]">
+        <div className="absolute inset-0 flex items-center justify-between" style={{ gap: '2px' }}>
           {waveformBars.map((height, i) => {
+            // Calculate bar position as percentage of total bars
             const barPercent = (i / waveformBars.length) * 100;
-            const isPlayed = barPercent <= progressPercent;
+            const isPlayed = barPercent < progressPercent;
             const barSpeaker = getSpeakerAtBarIndex(i);
             const isNearPlayhead = Math.abs(barPercent - progressPercent) < 3;
 
-            // Get colors for this bar
-            const barColors = barSpeaker ? speakerColors[barSpeaker] : speakerColors.default;
+            // Determine bar color: only speaker colors for played bars, gray for unplayed
+            let barBackground: string;
+            if (isPlayed) {
+              // Use speaker color if available, otherwise default cyan
+              if (barSpeaker === 'closer') {
+                barBackground = 'linear-gradient(180deg, #0891b2 0%, #0e7490 50%, #155e75 100%)';
+              } else if (barSpeaker === 'prospect') {
+                barBackground = 'linear-gradient(180deg, #ea580c 0%, #c2410c 50%, #9a3412 100%)';
+              } else {
+                // No speaker data - use cyan as default for played bars
+                barBackground = 'linear-gradient(180deg, #0891b2 0%, #0e7490 50%, #155e75 100%)';
+              }
+            } else {
+              // All unplayed bars are gray
+              barBackground = '#e2e8f0';
+            }
 
             return (
               <div
                 key={i}
-                className="flex-1 flex items-center justify-center"
+                className="flex items-center justify-center"
                 style={{
+                  flex: '1 1 0%',
                   height: '100%',
-                  maxWidth: '4px',
+                  minWidth: '2px',
                 }}
               >
                 <div
@@ -729,9 +745,9 @@ function AudioPlayer({ src, onTimeUpdate, seekTo, speakerSegments }: AudioPlayer
                   style={{
                     height: `${height * 100}%`,
                     minHeight: '4px',
-                    background: isPlayed ? barColors.gradient : '#e2e8f0',
+                    background: barBackground,
                     boxShadow: isPlayed && isNearPlayhead
-                      ? `0 2px 8px ${barSpeaker ? (barSpeaker === 'closer' ? 'rgba(8, 145, 178, 0.4)' : 'rgba(234, 88, 12, 0.4)') : 'rgba(59, 130, 246, 0.4)'}`
+                      ? `0 2px 8px ${barSpeaker === 'closer' ? 'rgba(8, 145, 178, 0.4)' : barSpeaker === 'prospect' ? 'rgba(234, 88, 12, 0.4)' : 'rgba(8, 145, 178, 0.4)'}`
                       : 'none',
                   }}
                 />
@@ -807,10 +823,10 @@ function AudioPlayer({ src, onTimeUpdate, seekTo, speakerSegments }: AudioPlayer
         {/* Skip Back */}
         <button
           onClick={skipBackward}
-          className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors"
+          className="w-9 h-9 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
           title="Skip back 15 seconds"
         >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5V1L7 6l5 5V7a6 6 0 11-6 6" />
             <text x="9" y="16" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">15</text>
           </svg>
@@ -819,10 +835,10 @@ function AudioPlayer({ src, onTimeUpdate, seekTo, speakerSegments }: AudioPlayer
         {/* Skip Forward */}
         <button
           onClick={skipForward}
-          className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors"
+          className="w-9 h-9 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
           title="Skip forward 15 seconds"
         >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 5V1l5 5-5 5V7a6 6 0 106 6" />
             <text x="9" y="16" fontSize="6" fill="currentColor" stroke="none" fontWeight="bold">15</text>
           </svg>
@@ -842,13 +858,13 @@ function AudioPlayer({ src, onTimeUpdate, seekTo, speakerSegments }: AudioPlayer
           onMouseEnter={() => setShowVolumeSlider(true)}
           onMouseLeave={() => setShowVolumeSlider(false)}
         >
-          <button className="p-2 text-zinc-400 hover:text-zinc-700 transition-colors">
+          <button className="w-9 h-9 flex items-center justify-center rounded-lg text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 transition-colors">
             {getVolumeIcon()}
           </button>
 
-          {/* Volume Slider Popup */}
+          {/* Volume Slider Popup - positioned to the right to avoid cutoff */}
           {showVolumeSlider && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-white border border-zinc-200 rounded-lg shadow-xl">
+            <div className="absolute bottom-full right-0 mb-2 p-3 bg-white border border-zinc-200 rounded-lg shadow-xl">
               <input
                 type="range"
                 min={0}
