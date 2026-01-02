@@ -9,6 +9,10 @@ import WebSocket from "ws";
 import { logger } from "./logger.js";
 import type { TranscriptChunk } from "./types.js";
 
+// Buffer settings for grouping words into sentences
+const FLUSH_DELAY_MS = 1500; // Emit after 1.5 seconds of silence
+const MAX_BUFFER_WORDS = 20; // Emit if buffer reaches 20 words
+
 const SPEECHMATICS_URL = "wss://eu2.rt.speechmatics.com/v2/en";
 
 export interface SpeechmaticsConnection {
@@ -36,6 +40,9 @@ export function createSpeechmaticsConnection(
     });
 
     let isResolved = false;
+
+    // Create transcript buffer to group words into sentences
+    const transcriptBuffer = new TranscriptBuffer(onTranscript);
 
     ws.on("open", () => {
       logger.info("Speechmatics WebSocket connected");
@@ -83,6 +90,8 @@ export function createSpeechmaticsConnection(
                 },
                 close: async () => {
                   logger.info("Closing Speechmatics connection...");
+                  // Flush any remaining buffered words before closing
+                  transcriptBuffer.destroy();
                   // Just close the WebSocket - EndOfStream message was causing validation errors
                   // Speechmatics will handle the disconnection gracefully
                   ws.close();
@@ -92,7 +101,7 @@ export function createSpeechmaticsConnection(
             break;
 
           case "AddTranscript":
-            handleFinalTranscript(message, onTranscript);
+            transcriptBuffer.addWords(message);
             break;
 
           case "AddPartialTranscript":
@@ -156,73 +165,107 @@ export function createSpeechmaticsConnection(
 }
 
 /**
- * Handle final transcript messages from Speechmatics.
- * Collects all words and emits as a single chunk per message.
+ * TranscriptBuffer accumulates words across multiple Speechmatics messages
+ * and emits them as grouped sentences/phrases instead of one word at a time.
  */
-function handleFinalTranscript(
-  message: any,
-  onTranscript: (chunk: TranscriptChunk) => void
-): void {
-  const results = message.results || [];
-  if (results.length === 0) return;
+class TranscriptBuffer {
+  private buffer: Array<{ text: string; speaker: string; startTime: number }> = [];
+  private currentSpeaker: string | null = null;
+  private startTime: number = 0;
+  private flushTimer: NodeJS.Timeout | null = null;
+  private onTranscript: (chunk: TranscriptChunk) => void;
 
-  // Log raw message for debugging
-  const wordCount = results.filter((r: any) => r.type === "word").length;
-  const allWords = results
-    .filter((r: any) => r.type === "word")
-    .map((r: any) => r.alternatives?.[0]?.content || "")
-    .join(" ");
-  logger.info(`[Speechmatics] AddTranscript: ${wordCount} words: "${allWords}"`);
+  constructor(onTranscript: (chunk: TranscriptChunk) => void) {
+    this.onTranscript = onTranscript;
+  }
 
-  // Collect all words from this message
-  const words: Array<{ text: string; speaker: string; startTime: number }> = [];
+  addWords(message: any): void {
+    const results = message.results || [];
+    if (results.length === 0) return;
 
-  for (const result of results) {
-    if (result.type === "word") {
-      const speaker = result.alternatives?.[0]?.speaker || "UNK";
-      const word = result.alternatives?.[0]?.content || "";
-      const startTime = result.start_time || 0;
+    // Log incoming words
+    const wordCount = results.filter((r: any) => r.type === "word").length;
+    const allWords = results
+      .filter((r: any) => r.type === "word")
+      .map((r: any) => r.alternatives?.[0]?.content || "")
+      .join(" ");
 
-      if (word.trim()) {
-        words.push({ text: word, speaker, startTime });
+    if (wordCount > 0) {
+      logger.debug(`[Speechmatics] Received ${wordCount} words: "${allWords}"`);
+    }
+
+    for (const result of results) {
+      if (result.type === "word") {
+        const speaker = result.alternatives?.[0]?.speaker || "UNK";
+        const word = result.alternatives?.[0]?.content || "";
+        const startTime = result.start_time || 0;
+
+        if (!word.trim()) continue;
+
+        // If speaker changed, flush current buffer first
+        if (this.currentSpeaker && speaker !== this.currentSpeaker) {
+          this.flush();
+        }
+
+        // Set speaker if not set
+        if (!this.currentSpeaker) {
+          this.currentSpeaker = speaker;
+          this.startTime = startTime;
+        }
+
+        this.buffer.push({ text: word, speaker, startTime });
+
+        // Flush if buffer is getting large
+        if (this.buffer.length >= MAX_BUFFER_WORDS) {
+          this.flush();
+        }
       }
     }
+
+    // Reset the flush timer - will flush after silence
+    this.resetFlushTimer();
   }
 
-  if (words.length === 0) return;
+  private resetFlushTimer(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+    }
+    this.flushTimer = setTimeout(() => {
+      this.flush();
+    }, FLUSH_DELAY_MS);
+  }
 
-  // Group consecutive words by speaker
-  let currentSpeaker = words[0].speaker;
-  let currentText = "";
-  let startTime = words[0].startTime;
-
-  for (const word of words) {
-    // If speaker changed and we have accumulated text, emit it
-    if (word.speaker !== currentSpeaker && currentText.trim()) {
-      logger.info(`[Speechmatics] Emitting transcript: speaker=${currentSpeaker}, text="${currentText.trim().substring(0, 50)}..."`);
-      onTranscript({
-        text: currentText.trim(),
-        speaker: currentSpeaker,
-        timestamp: Date.now(),
-        audioTimestamp: startTime,
-        isFinal: true,
-      });
-      currentText = "";
-      startTime = word.startTime;
-      currentSpeaker = word.speaker;
+  flush(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
 
-    currentText += word.text + " ";
-  }
+    if (this.buffer.length === 0 || !this.currentSpeaker) return;
 
-  // Emit remaining text
-  if (currentText.trim()) {
-    onTranscript({
-      text: currentText.trim(),
-      speaker: currentSpeaker,
+    const text = this.buffer.map(w => w.text).join(" ");
+
+    logger.info(`[Speechmatics] Emitting: speaker=${this.currentSpeaker}, words=${this.buffer.length}, text="${text.substring(0, 60)}${text.length > 60 ? '...' : ''}"`);
+
+    this.onTranscript({
+      text: text,
+      speaker: this.currentSpeaker,
       timestamp: Date.now(),
-      audioTimestamp: startTime,
+      audioTimestamp: this.startTime,
       isFinal: true,
     });
+
+    // Reset buffer
+    this.buffer = [];
+    this.currentSpeaker = null;
+    this.startTime = 0;
+  }
+
+  destroy(): void {
+    this.flush(); // Emit any remaining words
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
   }
 }
