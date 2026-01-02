@@ -6,7 +6,7 @@ import { logger } from "./logger.js";
 
 // Audio format constants (must match desktop app's AudioWorklet output)
 const SAMPLE_RATE = 48000;  // 48kHz
-const NUM_CHANNELS = 2;      // Stereo
+const NUM_CHANNELS = 1;      // Mono (for diarization)
 const BITS_PER_SAMPLE = 16;  // 16-bit PCM
 
 /**

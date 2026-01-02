@@ -1,10 +1,8 @@
-// Deepgram real-time transcription integration with MULTICHANNEL support
+// Deepgram real-time transcription integration with DIARIZATION
 //
-// Uses stereo audio where:
-// - Channel 0 (Left) = Closer's microphone
-// - Channel 1 (Right) = System audio (Prospect from Zoom/Meet/Teams)
-//
-// This eliminates AI-based diarization and provides 100% accurate speaker identification.
+// Uses AI-based speaker diarization to identify speakers.
+// Speaker assignment: First speaker detected = Closer, Second speaker = Prospect
+// This is a fallback approach since macOS loopback audio doesn't work reliably.
 
 import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 import type { LiveClient } from "@deepgram/sdk";
@@ -29,23 +27,25 @@ export function createDeepgramConnection(
     language: "en",
     smart_format: true,
     punctuate: true,
-    // Raw PCM audio format - no container, just interleaved samples
+    // Raw PCM audio format - mono for diarization
     encoding: "linear16",  // 16-bit signed PCM
     sample_rate: 48000,    // 48kHz (standard AudioContext sample rate)
-    // Multichannel configuration for speaker separation
-    multichannel: true,    // Enable multichannel transcription
-    channels: 2,           // 2 channels: 0=Closer (mic), 1=Prospect (system audio)
+    channels: 1,           // Mono audio for diarization
+    // Diarization for speaker separation (AI-based)
+    diarize: true,         // Enable speaker diarization
     interim_results: true,
     utterance_end_ms: 1000,
     vad_events: true,
   });
 
   let transcriptCount = 0;
-  let channel0Count = 0;
-  let channel1Count = 0;
+  let speaker0Count = 0;
+  let speaker1Count = 0;
+  // Track first speaker detected - they will be assigned as Closer
+  let firstSpeaker: number | null = null;
 
   connection.on(LiveTranscriptionEvents.Open, () => {
-    logger.info("Deepgram connection opened with MULTICHANNEL mode (linear16, 48kHz, 2 channels)");
+    logger.info("Deepgram connection opened with DIARIZATION mode (linear16, 48kHz, mono)");
   });
 
   connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
@@ -55,26 +55,52 @@ export function createDeepgramConnection(
     const text = transcript.transcript;
     if (!text || text.trim() === "") return;
 
-    // Get channel index from multichannel response
-    // channel_index is [channelNumber, totalChannels], e.g., [0, 2] or [1, 2]
-    const channelIndex = data.channel_index?.[0] ?? 0;
+    // Get speaker from diarization - speaker ID is in the words array
+    const words = transcript.words || [];
+    let speakerId = 0;
+
+    // Get the dominant speaker from words (most words win)
+    if (words.length > 0) {
+      const speakerCounts: Record<number, number> = {};
+      for (const word of words) {
+        const speaker = word.speaker ?? 0;
+        speakerCounts[speaker] = (speakerCounts[speaker] || 0) + 1;
+      }
+      // Find speaker with most words
+      let maxCount = 0;
+      for (const [speaker, count] of Object.entries(speakerCounts)) {
+        if (count > maxCount) {
+          maxCount = count;
+          speakerId = parseInt(speaker);
+        }
+      }
+    }
+
+    // Track first speaker - they become the Closer
+    if (firstSpeaker === null && data.is_final) {
+      firstSpeaker = speakerId;
+      logger.info(`[Diarization] First speaker detected: Speaker ${speakerId} -> assigned as CLOSER`);
+    }
+
+    // Map speaker to channel: firstSpeaker = 0 (Closer), other = 1 (Prospect)
+    // This maintains compatibility with the rest of the codebase
+    const channel = (speakerId === firstSpeaker) ? 0 : 1;
 
     // Debug logging
     transcriptCount++;
-    if (channelIndex === 0) channel0Count++;
-    if (channelIndex === 1) channel1Count++;
+    if (channel === 0) speaker0Count++;
+    if (channel === 1) speaker1Count++;
 
     if (transcriptCount % 10 === 0) {
-      logger.info(`[Deepgram Stats] Total: ${transcriptCount}, Channel 0 (Closer): ${channel0Count}, Channel 1 (Prospect): ${channel1Count}`);
+      logger.info(`[Diarization Stats] Total: ${transcriptCount}, Closer: ${speaker0Count}, Prospect: ${speaker1Count}, FirstSpeaker: ${firstSpeaker}`);
     }
 
-    // Log raw channel_index for debugging
+    // Log first few transcripts for debugging
     if (transcriptCount <= 5) {
-      logger.info(`[Deepgram Debug] Raw channel_index: ${JSON.stringify(data.channel_index)}, is_final: ${data.is_final}`);
+      logger.info(`[Diarization Debug] Speaker ${speakerId} -> Channel ${channel}, is_final: ${data.is_final}, text: "${text.substring(0, 30)}..."`);
     }
 
     // Get audio-aligned timestamp from words if available
-    const words = transcript.words || [];
     let audioTimestamp = 0; // Seconds from start of audio stream
 
     if (words.length > 0 && words[0].start !== undefined) {
@@ -83,13 +109,13 @@ export function createDeepgramConnection(
 
     const chunk: TranscriptChunk = {
       text,
-      channel: channelIndex, // 0 = Closer (mic), 1 = Prospect (system audio)
+      channel, // 0 = Closer (first speaker), 1 = Prospect (other speakers)
       timestamp: Date.now(),
       audioTimestamp,
       isFinal: data.is_final || false,
     };
 
-    logger.debug(`Transcript from Channel ${channelIndex} (${channelIndex === 0 ? 'Closer' : 'Prospect'}): "${text.substring(0, 50)}..."`);
+    logger.debug(`Transcript from Speaker ${speakerId} (${channel === 0 ? 'Closer' : 'Prospect'}): "${text.substring(0, 50)}..."`);
     onTranscript(chunk);
   });
 
