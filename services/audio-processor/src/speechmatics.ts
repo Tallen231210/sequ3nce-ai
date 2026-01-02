@@ -49,8 +49,8 @@ export function createSpeechmaticsConnection(
           speaker_diarization_config: {
             speaker_sensitivity: 0.5,
           },
-          enable_partials: true,
-          max_delay: 2.0, // Maximum delay before outputting results
+          enable_partials: false, // Disable partials - only get final transcripts
+          max_delay: 4.0, // Wait up to 4 seconds to group more words together
         },
         audio_format: {
           type: "raw",
