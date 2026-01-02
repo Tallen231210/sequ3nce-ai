@@ -5,7 +5,8 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "./logger.js";
 
 // Audio format constants (must match desktop app's AudioWorklet output)
-const SAMPLE_RATE = 48000;  // 48kHz
+// NOTE: Browser may not honor 48kHz request - actual rate appears to be ~24kHz based on chunk timing
+const SAMPLE_RATE = 24000;  // Adjusted to match actual observed rate
 const NUM_CHANNELS = 2;      // Stereo (Channel 0 = Closer, Channel 1 = Prospect)
 const BITS_PER_SAMPLE = 16;  // 16-bit PCM
 
