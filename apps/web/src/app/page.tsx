@@ -517,13 +517,13 @@ export default function Home() {
                   <div className="text-sm text-muted-foreground mb-4">
                     One-time setup
                   </div>
-                  <div className="text-4xl font-semibold">$1,000</div>
+                  <div className="text-4xl font-semibold">TBD</div>
                 </div>
 
                 <div className="border-t border-border pt-8 mb-8">
                   <div className="flex justify-between items-baseline mb-4">
                     <span className="text-muted-foreground">Platform fee</span>
-                    <span className="text-xl font-semibold">$199/mo</span>
+                    <span className="text-xl font-semibold">$200.49/mo</span>
                   </div>
                   <div className="flex justify-between items-baseline">
                     <span className="text-muted-foreground">Per closer seat</span>
@@ -537,8 +537,8 @@ export default function Home() {
                     "Real-time transcription",
                     "AI-powered ammo extraction",
                     "Playbook builder",
-                    "Closer stats",
-                    "Calendly integration",
+                    "Closer stats & analytics",
+                    "Call recordings & playback",
                   ].map((feature, index) => (
                     <div key={index} className="flex items-center gap-3">
                       <Check className="h-5 w-5 text-foreground" strokeWidth={1.5} />
