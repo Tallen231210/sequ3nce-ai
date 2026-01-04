@@ -1,6 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
+// Founder team IDs that always have free access (comma-separated in env var)
+// Set FOUNDER_TEAM_IDS in Convex dashboard to grant free access
+function isFounderTeam(teamId: string): boolean {
+  const founderTeamIds = process.env.FOUNDER_TEAM_IDS?.split(",").map(id => id.trim()) || [];
+  return founderTeamIds.includes(teamId);
+}
+
 // Get billing info for the current team
 export const getTeamBilling = query({
   args: { clerkId: v.string() },
@@ -19,6 +26,19 @@ export const getTeamBilling = query({
     const team = await ctx.db.get(user.teamId);
     if (!team) {
       return null;
+    }
+
+    // Check if this is a founder team - always return active subscription
+    if (isFounderTeam(user.teamId)) {
+      return {
+        stripeCustomerId: team.stripeCustomerId,
+        stripeSubscriptionId: team.stripeSubscriptionId,
+        subscriptionStatus: "active", // Always active for founders
+        currentPeriodEnd: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year from now
+        seatCount: 999, // Unlimited seats for founders
+        activeCloserCount: 0,
+        plan: "founder",
+      };
     }
 
     // Count active closers

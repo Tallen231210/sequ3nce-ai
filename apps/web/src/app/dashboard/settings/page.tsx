@@ -868,6 +868,7 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* ARCHIVED: Calendly integration - Re-enable when properly tested
             <CalendlyIntegration
               connected={settings?.team?.calendlyConnected || false}
               connectedEmail={settings?.team?.calendlyConnectedEmail}
@@ -879,10 +880,18 @@ export default function SettingsPage() {
               isSyncing={isSyncingCalendly}
               connectError={calendlyConnectError}
             />
+            */}
 
             <IntegrationCard
               name="Google Calendar"
               description="Sync scheduled calls from Google Calendar"
+              icon={<Calendar className="h-5 w-5 text-zinc-600" />}
+              comingSoon
+            />
+
+            <IntegrationCard
+              name="Calendly"
+              description="Sync scheduled calls from Calendly"
               icon={<Calendar className="h-5 w-5 text-zinc-600" />}
               comingSoon
             />

@@ -22,7 +22,7 @@ import { Logo } from "@/components/ui/logo";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Live Calls", href: "/dashboard/live", icon: Radio },
-  { name: "Scheduled", href: "/dashboard/scheduled", icon: Calendar },
+  // { name: "Scheduled", href: "/dashboard/scheduled", icon: Calendar }, // ARCHIVED: Re-enable when Google Calendar integration is ready
   { name: "Completed", href: "/dashboard/calls", icon: Phone },
   { name: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
