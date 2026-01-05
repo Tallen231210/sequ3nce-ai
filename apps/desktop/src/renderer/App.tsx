@@ -308,6 +308,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [isSubmittingQuestionnaire, setIsSubmittingQuestionnaire] = useState(false);
   const [savedNotes, setSavedNotes] = useState<string | null>(null);
   const isCapturingRef = useRef(false);
+  const [showSpeakFirstReminder, setShowSpeakFirstReminder] = useState(false);
 
   // Prospect name prompt state
   const [showProspectPrompt, setShowProspectPrompt] = useState(false);
@@ -443,6 +444,10 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       }
       isCapturingRef.current = true;
       setHasPermission(true);
+
+      // Show "speak first" reminder for 4 seconds
+      setShowSpeakFirstReminder(true);
+      setTimeout(() => setShowSpeakFirstReminder(false), 4000);
 
       // Show prospect name prompt immediately after recording starts
       setShowProspectPrompt(true);
@@ -835,6 +840,18 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         {/* Status indicator */}
         <StatusIndicator status={status} />
+
+        {/* Speak First Reminder */}
+        {showSpeakFirstReminder && (
+          <div className="mt-4 w-full max-w-xs animate-fade-in">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm text-blue-800 font-medium">Speak first to be identified correctly</span>
+            </div>
+          </div>
+        )}
 
         {/* Duration */}
         {isRecording && (
