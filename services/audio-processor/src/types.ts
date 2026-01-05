@@ -98,4 +98,6 @@ export interface CallSession {
   closerTalkTimeMs: number;
   prospectTalkTimeMs: number;
   lastTalkTimeUpdateTime: number;
+  // Audio timestamp tracking for ammo (seconds from audio start)
+  lastAudioTimestamp: number;
 }

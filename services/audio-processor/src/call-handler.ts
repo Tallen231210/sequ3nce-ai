@@ -47,6 +47,8 @@ export class CallHandler {
       closerTalkTimeMs: 0,
       prospectTalkTimeMs: 0,
       lastTalkTimeUpdateTime: Date.now(),
+      // Audio timestamp for ammo (seconds from audio start)
+      lastAudioTimestamp: 0,
     };
 
     logger.info(`Call handler created for call ${metadata.callId}`, metadata);
@@ -186,6 +188,9 @@ export class CallHandler {
         // This ensures playbook snippets play at the correct position
         const timestampSeconds = Math.floor(chunk.audioTimestamp);
 
+        // Track latest audio timestamp for ammo extraction
+        this.session.lastAudioTimestamp = timestampSeconds;
+
         // Add segment for real-time viewing (non-blocking)
         addTranscriptSegment(
           this.convexCallId,
@@ -254,11 +259,11 @@ export class CallHandler {
       // Extract ammo (simple version - just quotes and categories)
       const ammoItems = await extractAmmo(textToProcess);
 
-      // Save each ammo item
+      // Save each ammo item with audio-aligned timestamp (seconds from start)
       for (const ammo of ammoItems) {
         const ammoWithTimestamp: AmmoItem = {
           ...ammo,
-          timestamp: Date.now(),
+          timestamp: this.session.lastAudioTimestamp,
         };
         await addAmmoItem(this.convexCallId, this.session.metadata.teamId, ammoWithTimestamp);
       }
