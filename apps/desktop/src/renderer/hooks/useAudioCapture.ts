@@ -213,10 +213,17 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         console.warn('[AudioCapture] Could not get microphone, continuing with system audio only:', micError);
       }
 
-      // 3. Create AudioContext at 48kHz (standard for Deepgram)
+      // 3. Create AudioContext at 48kHz
       audioContextRef.current = new AudioContext({ sampleRate: 48000 });
-      console.log('[AudioCapture] AudioContext created at', audioContextRef.current.sampleRate, 'Hz');
+      const actualSampleRate = audioContextRef.current.sampleRate;
+      console.log('[AudioCapture] AudioContext created at', actualSampleRate, 'Hz');
       console.log('[AudioCapture] AudioContext state:', audioContextRef.current.state);
+
+      // IMPORTANT: Log warning if actual rate differs from requested
+      if (actualSampleRate !== 48000) {
+        console.warn(`[AudioCapture] ⚠️ SAMPLE RATE MISMATCH: Requested 48000Hz, got ${actualSampleRate}Hz`);
+        console.warn('[AudioCapture] This may cause playback speed issues!');
+      }
 
       // Log detailed stream info
       if (micStream) {

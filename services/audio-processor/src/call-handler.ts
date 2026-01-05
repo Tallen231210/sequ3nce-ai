@@ -33,8 +33,10 @@ export class CallHandler {
   private isEnded = false;
   private hasStartedCall = false; // Track if we've updated status to on_call
   private firstSpeaker: string | null = null; // First speaker detected = Closer
+  private sampleRate: number; // Audio sample rate from desktop
 
   constructor(metadata: CallMetadata) {
+    this.sampleRate = metadata.sampleRate || 48000;
     this.session = {
       metadata,
       startedAt: Date.now(),
@@ -51,7 +53,7 @@ export class CallHandler {
       lastAudioTimestamp: 0,
     };
 
-    logger.info(`Call handler created for call ${metadata.callId}`, metadata);
+    logger.info(`Call handler created for call ${metadata.callId} (sampleRate: ${this.sampleRate}Hz)`, metadata);
   }
 
   async start(): Promise<string | null> {
@@ -346,7 +348,8 @@ export class CallHandler {
         recordingUrl = await uploadRecording(
           this.session.metadata.teamId,
           this.session.metadata.callId,
-          combinedBuffer
+          combinedBuffer,
+          this.sampleRate
         );
 
         if (recordingUrl) {

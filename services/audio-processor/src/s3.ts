@@ -4,9 +4,8 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { logger } from "./logger.js";
 
-// Audio format constants (must match desktop app's AudioWorklet output)
-// Desktop app requests 48kHz AudioContext and outputs at that rate
-const SAMPLE_RATE = 48000;
+// Audio format constants
+const DEFAULT_SAMPLE_RATE = 48000; // Default if not provided by desktop
 const NUM_CHANNELS = 2;      // Stereo (Channel 0 = Closer, Channel 1 = Prospect)
 const BITS_PER_SAMPLE = 16;  // 16-bit PCM
 
@@ -14,10 +13,10 @@ const BITS_PER_SAMPLE = 16;  // 16-bit PCM
  * Creates a WAV file header for raw PCM data
  * WAV format: 44-byte header + raw PCM samples
  */
-function createWavHeader(pcmDataLength: number): Buffer {
+function createWavHeader(pcmDataLength: number, sampleRate: number): Buffer {
   const header = Buffer.alloc(44);
 
-  const byteRate = SAMPLE_RATE * NUM_CHANNELS * (BITS_PER_SAMPLE / 8);
+  const byteRate = sampleRate * NUM_CHANNELS * (BITS_PER_SAMPLE / 8);
   const blockAlign = NUM_CHANNELS * (BITS_PER_SAMPLE / 8);
 
   // RIFF chunk descriptor
@@ -30,7 +29,7 @@ function createWavHeader(pcmDataLength: number): Buffer {
   header.writeUInt32LE(16, 16);                      // Subchunk1Size (16 for PCM)
   header.writeUInt16LE(1, 20);                       // AudioFormat (1 = PCM)
   header.writeUInt16LE(NUM_CHANNELS, 22);            // NumChannels
-  header.writeUInt32LE(SAMPLE_RATE, 24);             // SampleRate
+  header.writeUInt32LE(sampleRate, 24);              // SampleRate
   header.writeUInt32LE(byteRate, 28);                // ByteRate
   header.writeUInt16LE(blockAlign, 32);              // BlockAlign
   header.writeUInt16LE(BITS_PER_SAMPLE, 34);         // BitsPerSample
@@ -45,8 +44,8 @@ function createWavHeader(pcmDataLength: number): Buffer {
 /**
  * Converts raw PCM audio buffer to WAV format
  */
-function pcmToWav(pcmBuffer: Buffer): Buffer {
-  const wavHeader = createWavHeader(pcmBuffer.length);
+function pcmToWav(pcmBuffer: Buffer, sampleRate: number): Buffer {
+  const wavHeader = createWavHeader(pcmBuffer.length, sampleRate);
   return Buffer.concat([wavHeader, pcmBuffer]);
 }
 
@@ -78,7 +77,8 @@ const bucketName = process.env.AWS_S3_BUCKET || "";
 export async function uploadRecording(
   teamId: string,
   callId: string,
-  audioBuffer: Buffer
+  audioBuffer: Buffer,
+  sampleRate: number = DEFAULT_SAMPLE_RATE
 ): Promise<string> {
   // Skip upload if S3 not configured
   if (!isS3Configured || !s3Client) {
@@ -96,8 +96,8 @@ export async function uploadRecording(
   }
 
   // Convert raw PCM to WAV format for browser playback
-  logger.info(`Converting PCM to WAV: ${pcmBufferSize} bytes raw PCM`);
-  const wavBuffer = pcmToWav(audioBuffer);
+  logger.info(`Converting PCM to WAV: ${pcmBufferSize} bytes raw PCM at ${sampleRate}Hz`);
+  const wavBuffer = pcmToWav(audioBuffer, sampleRate);
   const wavBufferSize = wavBuffer.length;
 
   const key = `recordings/${teamId}/${callId}/recording.wav`;

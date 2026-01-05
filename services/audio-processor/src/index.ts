@@ -39,6 +39,17 @@ wss.on("connection", async (ws, req) => {
             return;
           }
 
+          // Log sample rate for debugging audio issues
+          const sampleRate = metadata.sampleRate || 48000;
+          if (metadata.sampleRate) {
+            logger.info(`[Audio] Desktop reported sample rate: ${sampleRate}Hz`);
+          } else {
+            logger.warn(`[Audio] No sample rate in metadata, assuming ${sampleRate}Hz`);
+          }
+          if (sampleRate !== 48000) {
+            logger.warn(`[Audio] ⚠️ Unexpected sample rate: ${sampleRate}Hz (expected 48000Hz)`);
+          }
+
           // Create and start call handler
           callHandler = new CallHandler(metadata);
           const convexCallId = await callHandler.start();

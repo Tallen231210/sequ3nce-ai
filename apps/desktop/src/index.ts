@@ -31,6 +31,7 @@ interface AudioCaptureConfig {
   teamId: string;
   closerId: string;
   prospectName?: string;
+  sampleRate?: number; // Audio sample rate from AudioContext
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -365,12 +366,13 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Prom
         clearTimeout(timeout);
         console.log('[Main] WebSocket connected');
 
-        // Send metadata
+        // Send metadata including sample rate for audio format verification
         const metadata = {
           callId: config.callId,
           teamId: config.teamId,
           closerId: config.closerId,
           prospectName: config.prospectName,
+          sampleRate: config.sampleRate || 48000, // Include sample rate for WAV header
         };
 
         wsConnection!.send(JSON.stringify(metadata));

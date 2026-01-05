@@ -6,6 +6,7 @@ export interface CallMetadata {
   teamId: string;
   closerId: string;
   prospectName?: string;
+  sampleRate?: number; // Audio sample rate from desktop (e.g., 48000)
 }
 
 export interface AmmoItem {
