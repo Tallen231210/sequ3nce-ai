@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       ],
       success_url: `${req.headers.get("origin")}/subscribe?success=true`,
       cancel_url: `${req.headers.get("origin")}/subscribe?canceled=true`,
+      allow_promotion_codes: true, // Allow customers to enter coupon codes
       subscription_data: {
         metadata: {
           clerkId: userId,
