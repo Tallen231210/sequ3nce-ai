@@ -336,4 +336,28 @@ export default defineSchema({
   })
     .index("by_team", ["teamId"])
     .index("by_team_and_order", ["teamId", "order"]),
+
+  // Client Error Logs (for debugging desktop app issues remotely)
+  clientErrors: defineTable({
+    closerId: v.optional(v.id("closers")),
+    teamId: v.optional(v.id("teams")),
+    closerEmail: v.optional(v.string()), // Fallback if closerId lookup fails
+    errorType: v.string(), // "permission_denied", "capture_failed", "connection_error", etc.
+    errorMessage: v.string(),
+    errorStack: v.optional(v.string()),
+    // Diagnostic info
+    appVersion: v.optional(v.string()),
+    platform: v.optional(v.string()), // "darwin", "win32", "linux"
+    osVersion: v.optional(v.string()), // e.g., "14.2.1"
+    architecture: v.optional(v.string()), // "arm64", "x64"
+    // Permission states at time of error
+    screenPermission: v.optional(v.string()), // "granted", "denied", "not-determined"
+    microphonePermission: v.optional(v.string()),
+    // Additional context
+    context: v.optional(v.string()), // JSON string with any extra diagnostic info
+    createdAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_closer", ["closerId"])
+    .index("by_type", ["errorType"]),
 });

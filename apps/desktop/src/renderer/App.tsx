@@ -12,6 +12,7 @@ import {
   findMatchingScheduledCall,
   updateProspectName,
   changePassword,
+  logClientError,
   type CloserInfo,
   type ScheduledCallMatch,
 } from './convex';
@@ -441,7 +442,30 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       const captureStarted = await startCapture();
       if (!captureStarted) {
         await window.electron.audio.stop();
-        setError('Could not capture audio. Please grant Screen Recording permission in System Preferences and restart the app.');
+        const errorMsg = 'Could not capture audio. Please grant Screen Recording permission in System Preferences and restart the app.';
+        setError(errorMsg);
+
+        // Log error remotely for debugging
+        const platformInfo = await window.electron.app.getPlatform();
+        const appVersion = await window.electron.app.getVersion();
+        const screenPermission = await window.electron.audio.checkPermissions();
+        const micPermission = await window.electron.audio.checkMicrophonePermission();
+
+        logClientError({
+          closerEmail: closerInfo.email,
+          errorType: 'capture_failed',
+          errorMessage: errorMsg,
+          appVersion,
+          platform: platformInfo.platform,
+          architecture: platformInfo.arch,
+          screenPermission: screenPermission ? 'true' : 'false',
+          microphonePermission: micPermission,
+          context: JSON.stringify({
+            closerName: closerInfo.name,
+            teamId: closerInfo.teamId,
+          }),
+        });
+
         return;
       }
       isCapturingRef.current = true;

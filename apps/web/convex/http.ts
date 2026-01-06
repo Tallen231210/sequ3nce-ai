@@ -1253,4 +1253,67 @@ http.route({
   }),
 });
 
+// ============================================
+// Client Error Logging (for remote debugging)
+// ============================================
+
+// POST endpoint to log client errors from desktop app
+http.route({
+  path: "/logClientError",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+
+      await ctx.runMutation(api.clientErrors.logError, {
+        closerEmail: body.closerEmail,
+        errorType: body.errorType || "unknown",
+        errorMessage: body.errorMessage || "No message provided",
+        errorStack: body.errorStack,
+        appVersion: body.appVersion,
+        platform: body.platform,
+        osVersion: body.osVersion,
+        architecture: body.architecture,
+        screenPermission: body.screenPermission,
+        microphonePermission: body.microphonePermission,
+        context: body.context,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("Error logging client error:", error);
+      // Still return success - we don't want to cause more errors
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for logClientError
+http.route({
+  path: "/logClientError",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

@@ -258,3 +258,39 @@ export async function changePassword(
     return { success: false, error: "Network error. Please check your connection." };
   }
 }
+
+// Log client error for remote debugging
+export interface ClientErrorData {
+  closerEmail?: string;
+  errorType: string;
+  errorMessage: string;
+  errorStack?: string;
+  appVersion?: string;
+  platform?: string;
+  osVersion?: string;
+  architecture?: string;
+  screenPermission?: string;
+  microphonePermission?: string;
+  context?: string;
+}
+
+export async function logClientError(data: ClientErrorData): Promise<void> {
+  try {
+    console.log("[Convex] Logging client error:", data.errorType, data.errorMessage);
+
+    // Fire and forget - don't wait for response
+    fetch(`${CONVEX_SITE_URL}/logClientError`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }).catch((err) => {
+      // Silently fail - we don't want error logging to cause more errors
+      console.error("[Convex] Failed to send error log:", err);
+    });
+  } catch (error) {
+    // Silently fail
+    console.error("[Convex] Failed to log client error:", error);
+  }
+}

@@ -16,6 +16,7 @@
  */
 
 import { useRef, useCallback } from 'react';
+import { logClientError } from '../convex';
 
 interface AudioCaptureOptions {
   onAudioLevel?: (level: number) => void;
@@ -364,16 +365,47 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       console.error('[AudioCapture] Failed to start capture:', error);
       stopCapture();
 
+      let errorType = 'capture_exception';
+      let errorMessage = 'Failed to start audio capture';
+
       if (error instanceof DOMException) {
+        errorType = `dom_exception_${error.name}`;
         if (error.name === 'NotAllowedError') {
-          options.onError?.('Screen recording permission denied');
+          errorMessage = 'Screen recording permission denied';
         } else if (error.name === 'NotFoundError') {
-          options.onError?.('No audio device found');
+          errorMessage = 'No audio device found';
         } else {
-          options.onError?.(error.message);
+          errorMessage = error.message;
         }
+        options.onError?.(errorMessage);
       } else {
         options.onError?.('Failed to start audio capture');
+      }
+
+      // Log error remotely for debugging
+      try {
+        const platformInfo = await window.electron.app.getPlatform();
+        const appVersion = await window.electron.app.getVersion();
+        const screenPermission = await window.electron.audio.checkPermissions();
+        const micPermission = await window.electron.audio.checkMicrophonePermission();
+
+        // Get saved closer email from localStorage
+        const savedCloserInfo = localStorage.getItem('sequ3nce_closer_info');
+        const closerEmail = savedCloserInfo ? JSON.parse(savedCloserInfo).email : undefined;
+
+        logClientError({
+          closerEmail,
+          errorType,
+          errorMessage,
+          errorStack: error instanceof Error ? error.stack : String(error),
+          appVersion,
+          platform: platformInfo.platform,
+          architecture: platformInfo.arch,
+          screenPermission: screenPermission ? 'true' : 'false',
+          microphonePermission: micPermission,
+        });
+      } catch (logErr) {
+        console.error('[AudioCapture] Failed to log error remotely:', logErr);
       }
 
       return false;

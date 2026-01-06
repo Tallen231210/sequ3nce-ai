@@ -14,6 +14,7 @@ import type * as analytics from "../analytics.js";
 import type * as billing from "../billing.js";
 import type * as calendly from "../calendly.js";
 import type * as calls from "../calls.js";
+import type * as clientErrors from "../clientErrors.js";
 import type * as closers from "../closers.js";
 import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   billing: typeof billing;
   calendly: typeof calendly;
   calls: typeof calls;
+  clientErrors: typeof clientErrors;
   closers: typeof closers;
   highlights: typeof highlights;
   http: typeof http;
