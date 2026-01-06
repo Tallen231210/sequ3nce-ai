@@ -305,6 +305,7 @@ export default function Home() {
                   loop
                   muted
                   playsInline
+                  controls
                   className="w-full h-auto"
                 >
                   <source src="/videos/hero.mp4" type="video/mp4" />
