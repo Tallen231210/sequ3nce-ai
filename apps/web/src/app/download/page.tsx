@@ -67,7 +67,9 @@ export default function DownloadPage() {
       }
     });
 
-    return asset?.browser_download_url || null;
+    // Use our proxy endpoint instead of direct GitHub URL
+    // This ensures downloads work even for private repos without GitHub auth
+    return asset ? `/api/releases/download?asset=${encodeURIComponent(asset.name)}` : null;
   };
 
   const formatSize = (bytes: number): string => {

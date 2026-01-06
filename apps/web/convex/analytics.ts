@@ -578,10 +578,12 @@ export const getObjectionOvercomeRate = query({
     const results = objectionTypes.map((objType) => {
       // Count calls where this objection was detected during the call
       const detectedCount = calls.filter((c) =>
-        c.objectionsDetected?.some((obj) =>
-          obj.type.toLowerCase().includes(objType.replace("_", " ")) ||
-          obj.type.toLowerCase().includes(objType.replace("_", "/"))
-        )
+        c.objectionsDetected?.some((obj) => {
+          const t = obj.type.toLowerCase();
+          return t === objType ||
+                 t.includes(objType.replace("_", " ")) ||
+                 t.includes(objType.replace("_", "/"));
+        })
       ).length;
 
       // Count calls where this was the primary loss reason

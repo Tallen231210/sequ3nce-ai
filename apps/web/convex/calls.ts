@@ -1844,3 +1844,545 @@ export const seedComprehensiveTestData = mutation({
     };
   },
 });
+
+// ============================================
+// DEMO DATA SEEDING (300 calls + 15 live)
+// ============================================
+
+const DEMO_PROSPECT_NAMES = [
+  "John Smith", "Maria Garcia", "Robert Brown", "Lisa Davis", "Michael Miller",
+  "Jennifer Taylor", "William Anderson", "Patricia Thomas", "Richard Jackson", "Linda White",
+  "Charles Harris", "Barbara Martin", "Joseph Thompson", "Susan Robinson", "Daniel Clark",
+  "Jessica Moore", "Christopher Lee", "Amanda Wilson", "Matthew Martinez", "Ashley Anderson",
+  "Joshua Thomas", "Brittany Jackson", "Andrew White", "Samantha Harris", "James Martin",
+  "Nicole Thompson", "Ryan Garcia", "Stephanie Robinson", "Brandon Clark", "Michelle Lewis",
+  "Kevin Walker", "Kimberly Hall", "Justin Allen", "Laura Young", "Tyler King",
+  "Rachel Wright", "Aaron Scott", "Megan Green", "Nathan Adams", "Danielle Baker",
+  "Zachary Nelson", "Christina Hill", "Sean Carter", "Angela Mitchell", "Patrick Perez",
+  "Katherine Roberts", "Gregory Turner", "Heather Phillips", "Jesse Campbell", "Diana Parker",
+];
+
+const DEMO_SUMMARIES = [
+  "Strong discovery call. Prospect identified clear pain points around scaling challenges. Budget confirmed. Decision maker present.",
+  "Good call with qualified lead. Objection around price handled well. Prospect needs to discuss with spouse. Follow-up scheduled.",
+  "Challenging call - prospect came in skeptical from previous bad experience. Built trust through case studies. Close pending partner approval.",
+  "Excellent call resulting in close. Prospect was highly motivated after hearing ROI case studies. Quick decision maker.",
+  "No-show on initial call. Rescheduled for next week.",
+  "Prospect interested but not decision maker. Need to get business partner on next call.",
+  "Great rapport built quickly. Prospect opened up about struggles with current provider. Strong buying signals throughout.",
+  "Handled multiple objections effectively. Prospect appreciated transparency about timeline and expectations.",
+  "Strong emotional connection made. Prospect shared personal struggles that align perfectly with our solution.",
+  "Budget was tight but found creative payment arrangement. Prospect committed to moving forward.",
+  "Prospect was well-researched and asked tough questions. Demonstrated expertise and built credibility.",
+  "Quick call - prospect knew what they wanted and was ready to commit. Minimal objection handling needed.",
+];
+
+const DEMO_OBJECTIONS = ["spouse_partner", "price_money", "timing", "need_to_think", "not_qualified", "logistics", "competitor"];
+
+// Seed demo data with 300 completed calls and 15 live calls
+export const seedDemoData = mutation({
+  args: {
+    userEmail: v.string(),
+    clearExisting: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    // Find user and team
+    const user = await ctx.db.query("users").filter((q) => q.eq(q.field("email"), args.userEmail.toLowerCase())).first();
+    if (!user) throw new Error(`User not found: ${args.userEmail}`);
+
+    const team = await ctx.db.get(user.teamId);
+    if (!team) throw new Error("Team not found");
+
+    const teamId = team._id;
+
+    // Clear existing call data if requested
+    if (args.clearExisting) {
+      const calls = await ctx.db.query("calls").withIndex("by_team", (q) => q.eq("teamId", teamId)).collect();
+      for (const call of calls) {
+        const ammo = await ctx.db.query("ammo").withIndex("by_call", (q) => q.eq("callId", call._id)).collect();
+        for (const a of ammo) await ctx.db.delete(a._id);
+        const segs = await ctx.db.query("transcriptSegments").withIndex("by_call", (q) => q.eq("callId", call._id)).collect();
+        for (const s of segs) await ctx.db.delete(s._id);
+        const objs = await ctx.db.query("objections").withIndex("by_call", (q) => q.eq("callId", call._id)).collect();
+        for (const o of objs) await ctx.db.delete(o._id);
+        await ctx.db.delete(call._id);
+      }
+    }
+
+    const now = Date.now();
+    const randomItem = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+    const randomInRange = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
+
+    // Get existing closers
+    const closers = await ctx.db.query("closers").withIndex("by_team", (q) => q.eq("teamId", teamId)).collect();
+    if (closers.length === 0) throw new Error("No closers found. Run seedComprehensiveTestData first.");
+
+    // Assign close rates to closers (top performer ~60%, others 17-45%)
+    const closerStats = closers.map((closer, index) => ({
+      closerId: closer._id,
+      name: closer.name,
+      // First closer is top performer with ~60% close rate
+      closeRate: index === 0 ? 0.58 + Math.random() * 0.06 : 0.17 + Math.random() * 0.28,
+    }));
+
+    // Sort by close rate so we know who the top performer is
+    closerStats.sort((a, b) => b.closeRate - a.closeRate);
+
+    // Realistic cash/contract values
+    const dealProfiles = [
+      { cash: 2000, contract: 3000 },
+      { cash: 2500, contract: 4000 },
+      { cash: 3000, contract: 5000 },
+      { cash: 3500, contract: 5500 },
+      { cash: 4000, contract: 6000 },
+      { cash: 4500, contract: 6500 },
+      { cash: 5000, contract: 6800 },
+      { cash: 5000, contract: 7500 },
+      { cash: 5500, contract: 8000 },
+      { cash: 6000, contract: 8500 },
+      { cash: 7500, contract: 10000 },
+      { cash: 8000, contract: 12000 },
+      { cash: 10000, contract: 15000 },
+    ];
+
+    const callIds: string[] = [];
+
+    // Objection quotes for variety
+    const objectionQuotes: Record<string, string[]> = {
+      spouse_partner: ["I need to talk to my wife about this", "Let me discuss with my husband first", "My partner handles the finances"],
+      price_money: ["That's more than I expected", "I'm not sure I can afford that", "Can you do a discount?"],
+      timing: ["Now isn't a good time", "Maybe next quarter", "I'm too busy right now"],
+      need_to_think: ["I need to think about it", "Let me sleep on it", "I'll get back to you"],
+      not_qualified: ["I don't think this is for me", "I'm not ready for this level", "We're too small for this"],
+      logistics: ["I'm not sure how this would work", "We don't have the bandwidth", "The timing is complicated"],
+      competitor: ["I'm also looking at other options", "How do you compare to X?", "I've heard good things about your competitor"],
+    };
+
+    // Create 300 completed calls spread over 90 days
+    for (let i = 0; i < 300; i++) {
+      // Spread calls over 90 days, with more recent calls
+      const daysAgo = Math.floor(Math.pow(Math.random(), 1.5) * 90); // Weighted toward recent
+      const callDate = now - daysAgo * 24 * 60 * 60 * 1000 - randomInRange(0, 12) * 60 * 60 * 1000;
+      const duration = randomInRange(15 * 60, 55 * 60); // 15-55 minute calls
+
+      // Pick a closer based on distribution (top performers take more calls)
+      const closerIndex = Math.floor(Math.pow(Math.random(), 0.7) * closerStats.length);
+      const closerStat = closerStats[closerIndex];
+
+      // Detection flags - these CORRELATE with close rates (realistic)
+      // Higher detection = better discovery = higher close rate
+      const budgetDetected = Math.random() > 0.30; // ~70% detection rate
+      const timelineDetected = Math.random() > 0.40; // ~60% detection rate
+      const dmDetected = Math.random() > 0.35; // ~65% detection rate
+      const spouseDetected = Math.random() > 0.70; // ~30% have spouse mentions
+
+      // Determine outcome - CORRELATED with detection (more detection = higher close)
+      // This creates realistic analytics insights
+      const detectionBonus = (budgetDetected ? 0.12 : 0) + (timelineDetected ? 0.08 : 0) + (dmDetected ? 0.10 : 0);
+      const effectiveCloseRate = Math.min(closerStat.closeRate + detectionBonus, 0.85);
+
+      const roll = Math.random();
+      let outcome: string;
+      let dealValue: number | undefined;
+      let cashCollected: number | undefined;
+      let contractValue: number | undefined;
+      let primaryObjection: string | undefined;
+      let objectionsDetected: Array<{ type: string; quotes: string[] }> = [];
+
+      // Randomly add 1-3 objections that came up during the call (even for closed deals)
+      const numObjections = randomInRange(0, 3);
+      const possibleObjections = [...DEMO_OBJECTIONS];
+      for (let j = 0; j < numObjections; j++) {
+        if (possibleObjections.length === 0) break;
+        const objIndex = randomInRange(0, possibleObjections.length - 1);
+        const obj = possibleObjections.splice(objIndex, 1)[0];
+        const quotes = objectionQuotes[obj] || ["I'm not sure about this"];
+        objectionsDetected.push({
+          type: obj,
+          quotes: [randomItem(quotes)],
+        });
+      }
+
+      // Always assign a potential deal value (what was pitched)
+      const deal = randomItem(dealProfiles);
+      contractValue = deal.contract;
+      dealValue = deal.contract;
+
+      if (roll < effectiveCloseRate) {
+        // Closed deal - overcame any objections that came up
+        outcome = "closed";
+        cashCollected = deal.cash;
+      } else if (roll < effectiveCloseRate + 0.06) {
+        // No show (~6%)
+        outcome = "no_show";
+        primaryObjection = "no_show_ghosted";
+      } else if (roll < effectiveCloseRate + 0.10) {
+        // Rescheduled (~4%)
+        outcome = "rescheduled";
+      } else {
+        // Not closed - pick the primary objection from what was detected, or add one
+        outcome = "not_closed";
+        if (objectionsDetected.length > 0) {
+          // Primary objection is one of the detected ones (they couldn't overcome it)
+          primaryObjection = objectionsDetected[objectionsDetected.length - 1].type;
+        } else {
+          // Add an objection that killed the deal
+          primaryObjection = randomItem(DEMO_OBJECTIONS);
+          const quotes = objectionQuotes[primaryObjection] || ["I'm not sure about this"];
+          objectionsDetected.push({
+            type: primaryObjection,
+            quotes: [randomItem(quotes)],
+          });
+        }
+      }
+
+      // Decision maker correlates with outcome
+      const prospectWasDecisionMaker = outcome === "closed"
+        ? (Math.random() > 0.25 ? "yes" : randomItem(["no", "unclear"]))
+        : randomItem(["yes", "no", "unclear"]);
+
+      // Lead quality score correlates with outcome
+      const leadQualityScore = outcome === "closed"
+        ? randomInRange(6, 10)
+        : outcome === "not_closed"
+          ? randomInRange(3, 7)
+          : randomInRange(2, 5);
+
+      const callId = await ctx.db.insert("calls", {
+        closerId: closerStat.closerId,
+        teamId,
+        prospectName: DEMO_PROSPECT_NAMES[i % DEMO_PROSPECT_NAMES.length],
+        status: "completed",
+        outcome,
+        dealValue,
+        cashCollected,
+        contractValue,
+        startedAt: callDate,
+        endedAt: callDate + duration * 1000,
+        duration,
+        speakerCount: 2,
+        transcriptText: `Sample transcript for demo call ${i + 1}...`,
+        closerTalkTime: Math.round(duration * (0.35 + Math.random() * 0.20)),
+        prospectTalkTime: Math.round(duration * (0.45 + Math.random() * 0.20)),
+        summary: randomItem(DEMO_SUMMARIES),
+        primaryObjection,
+        leadQualityScore,
+        prospectWasDecisionMaker,
+        budgetDiscussion: {
+          detected: budgetDetected,
+          mentionCount: budgetDetected ? randomInRange(1, 4) : 0,
+          quotes: budgetDetected ? [randomItem([
+            "We have about $5-10k set aside for this",
+            "Budget isn't an issue if it works",
+            "I've already allocated funds for this quarter",
+            "We budgeted for this last month",
+          ])] : [],
+        },
+        timelineUrgency: {
+          detected: timelineDetected,
+          mentionCount: timelineDetected ? randomInRange(1, 3) : 0,
+          quotes: timelineDetected ? [randomItem([
+            "We need to start by next month",
+            "This is urgent for us",
+            "We've been putting this off too long",
+            "I want to get this sorted this quarter",
+          ])] : [],
+          isUrgent: timelineDetected ? (Math.random() > 0.4 ? "yes" : "no") : "unclear",
+        },
+        decisionMakerDetection: {
+          detected: dmDetected,
+          mentionCount: dmDetected ? randomInRange(1, 2) : 0,
+          quotes: dmDetected ? [randomItem([
+            "I make all the decisions here",
+            "This is my call to make",
+            "I don't need to check with anyone",
+            "I'm the one who handles these decisions",
+          ])] : [],
+          isSoleDecisionMaker: dmDetected ? (prospectWasDecisionMaker === "yes" ? "yes" : "no") : "unclear",
+        },
+        spousePartnerMentions: {
+          detected: spouseDetected,
+          mentionCount: spouseDetected ? randomInRange(1, 2) : 0,
+          quotes: spouseDetected ? [randomItem([
+            "Let me discuss this with my spouse",
+            "I should run this by my partner",
+            "My husband/wife handles the finances",
+            "We make these decisions together",
+          ])] : [],
+        },
+        objectionsDetected,
+        createdAt: callDate,
+      });
+      callIds.push(callId);
+
+      // Add 2-4 ammo items per call
+      const ammoCount = randomInRange(2, 4);
+      const ammoTypes = ["pain_point", "emotional", "commitment", "urgency", "budget"];
+      const ammoQuotes = [
+        "I've been struggling with this for months",
+        "This is exactly what I've been looking for",
+        "I'm ready to make a change",
+        "We need to fix this now",
+        "Budget isn't the issue",
+        "I'm tired of the current situation",
+        "This could be a game-changer for us",
+        "My team is counting on me to solve this",
+      ];
+      for (let j = 0; j < ammoCount; j++) {
+        await ctx.db.insert("ammo", {
+          callId: callId as any,
+          teamId,
+          text: randomItem(ammoQuotes),
+          type: randomItem(ammoTypes),
+          timestamp: randomInRange(60, duration - 60),
+          createdAt: callDate,
+          score: randomInRange(55, 95),
+          isHeavyHitter: Math.random() > 0.7,
+        });
+      }
+    }
+
+    // Create 15 live calls with varied transcripts
+    const liveCallProspects = [
+      "Sarah Mitchell", "Alex Thompson", "Jordan Lee", "Casey Williams", "Morgan Davis",
+      "Taylor Brown", "Riley Johnson", "Quinn Martinez", "Avery Anderson", "Blake Wilson",
+      "Cameron Taylor", "Drew Robinson", "Emery Clark", "Finley Lewis", "Harper Walker",
+    ];
+
+    // Multiple conversation variations for variety
+    const conversationVariations = [
+      {
+        segments: [
+          { speaker: "closer", text: "Thanks for hopping on today. How are you doing?", offset: 5 },
+          { speaker: "prospect", text: "I'm doing well, thanks for asking. Been looking forward to this.", offset: 15 },
+          { speaker: "closer", text: "Great! So tell me a bit about what's going on.", offset: 25 },
+          { speaker: "prospect", text: "Well, I've been struggling with scaling my business for the past year.", offset: 40 },
+          { speaker: "prospect", text: "No matter what I try, I can't seem to break through to the next level.", offset: 60 },
+          { speaker: "closer", text: "I hear that a lot. What have you tried so far?", offset: 80 },
+          { speaker: "prospect", text: "I've hired VAs, run ads, even tried coaching before. Nothing stuck.", offset: 95 },
+          { speaker: "closer", text: "What made you decide to look into this now?", offset: 115 },
+          { speaker: "prospect", text: "Honestly, I'm exhausted. Working 60 hour weeks and barely breaking even.", offset: 130 },
+        ],
+        ammo: [
+          { text: "I've been struggling with scaling my business for the past year", type: "pain_point", offset: 40 },
+          { text: "Working 60 hour weeks and barely breaking even", type: "emotional", offset: 130 },
+        ],
+      },
+      {
+        segments: [
+          { speaker: "closer", text: "Hey! Good to connect with you. How's your day going?", offset: 5 },
+          { speaker: "prospect", text: "Pretty hectic honestly, but I made time for this because I really need help.", offset: 12 },
+          { speaker: "closer", text: "I appreciate that. What's driving the urgency for you right now?", offset: 22 },
+          { speaker: "prospect", text: "My revenue has been stuck at 30k a month for almost two years now.", offset: 35 },
+          { speaker: "closer", text: "That's frustrating. Where do you think the bottleneck is?", offset: 50 },
+          { speaker: "prospect", text: "I think it's me. I'm doing everything myself and I can't let go.", offset: 65 },
+          { speaker: "prospect", text: "My wife keeps telling me I need to hire, but I don't trust anyone to do it right.", offset: 85 },
+          { speaker: "closer", text: "That's actually really common. What would it mean for you if you could finally break through?", offset: 105 },
+          { speaker: "prospect", text: "Everything. I could finally take a vacation. My kids barely see me.", offset: 120 },
+        ],
+        ammo: [
+          { text: "My revenue has been stuck at 30k a month for almost two years", type: "pain_point", offset: 35 },
+          { text: "My wife keeps telling me I need to hire", type: "emotional", offset: 85 },
+          { text: "My kids barely see me", type: "emotional", offset: 120 },
+        ],
+      },
+      {
+        segments: [
+          { speaker: "closer", text: "Hi there! Thanks for booking this call. What prompted you to reach out?", offset: 5 },
+          { speaker: "prospect", text: "I saw your ad about helping coaches scale. That's exactly what I need.", offset: 15 },
+          { speaker: "closer", text: "Awesome. Tell me about your coaching business.", offset: 28 },
+          { speaker: "prospect", text: "I've been coaching for 3 years. Making about 15k a month but I want to hit 50k.", offset: 40 },
+          { speaker: "closer", text: "Nice. What's been holding you back from getting there?", offset: 55 },
+          { speaker: "prospect", text: "Lead generation mostly. I get clients through referrals but it's inconsistent.", offset: 70 },
+          { speaker: "prospect", text: "Some months I'm fully booked, others I'm scrambling.", offset: 88 },
+          { speaker: "closer", text: "That feast or famine cycle is tough. Have you tried running paid ads?", offset: 100 },
+          { speaker: "prospect", text: "I tried once and burned through 5 grand with nothing to show for it.", offset: 115 },
+        ],
+        ammo: [
+          { text: "Making about 15k a month but I want to hit 50k", type: "commitment", offset: 40 },
+          { text: "Some months I'm fully booked, others I'm scrambling", type: "pain_point", offset: 88 },
+          { text: "Burned through 5 grand with nothing to show for it", type: "budget", offset: 115 },
+        ],
+      },
+      {
+        segments: [
+          { speaker: "closer", text: "Great to meet you! I've been looking forward to this.", offset: 5 },
+          { speaker: "prospect", text: "Same here. I've heard good things about you guys.", offset: 12 },
+          { speaker: "closer", text: "Appreciate that. So what's the biggest challenge you're facing right now?", offset: 22 },
+          { speaker: "prospect", text: "Honestly? I'm burnt out. I built this business but now it runs me.", offset: 35 },
+          { speaker: "closer", text: "I hear you. How long have you been feeling this way?", offset: 48 },
+          { speaker: "prospect", text: "Probably the last 8 months. I used to love what I do.", offset: 60 },
+          { speaker: "prospect", text: "Now I dread waking up and checking my phone.", offset: 75 },
+          { speaker: "closer", text: "That's a hard place to be. What would your ideal day look like?", offset: 90 },
+          { speaker: "prospect", text: "I'd work maybe 4-5 hours on the things I actually enjoy. Not putting out fires all day.", offset: 105 },
+        ],
+        ammo: [
+          { text: "I built this business but now it runs me", type: "pain_point", offset: 35 },
+          { text: "I dread waking up and checking my phone", type: "emotional", offset: 75 },
+          { text: "Work maybe 4-5 hours on the things I actually enjoy", type: "commitment", offset: 105 },
+        ],
+      },
+      {
+        segments: [
+          { speaker: "closer", text: "Hey! How are things going today?", offset: 5 },
+          { speaker: "prospect", text: "Good! A little nervous honestly. I've never done a sales call like this before.", offset: 12 },
+          { speaker: "closer", text: "No worries at all. This is just a conversation. Tell me about your situation.", offset: 25 },
+          { speaker: "prospect", text: "I run an e-commerce brand. We did about 800k last year but growth has stalled.", offset: 40 },
+          { speaker: "closer", text: "800k is solid. What do you think is causing the plateau?", offset: 55 },
+          { speaker: "prospect", text: "I think we've maxed out our current customer base. Need to expand but don't know how.", offset: 70 },
+          { speaker: "prospect", text: "We've tried influencer marketing but the ROI wasn't there.", offset: 90 },
+          { speaker: "closer", text: "What's your goal for this year?", offset: 105 },
+          { speaker: "prospect", text: "I want to hit 2 million. I know it's ambitious but I think it's doable.", offset: 118 },
+        ],
+        ammo: [
+          { text: "We did about 800k last year but growth has stalled", type: "pain_point", offset: 40 },
+          { text: "We've maxed out our current customer base", type: "urgency", offset: 70 },
+          { text: "I want to hit 2 million this year", type: "commitment", offset: 118 },
+        ],
+      },
+      {
+        segments: [
+          { speaker: "closer", text: "Thanks for taking the time. I know you're busy.", offset: 5 },
+          { speaker: "prospect", text: "Of course. This has been on my mind for a while now.", offset: 15 },
+          { speaker: "closer", text: "What specifically has been on your mind?", offset: 25 },
+          { speaker: "prospect", text: "I feel like I'm leaving money on the table. I know I could be doing more.", offset: 38 },
+          { speaker: "closer", text: "What makes you say that?", offset: 50 },
+          { speaker: "prospect", text: "I see competitors half my skill level making twice what I make. It's frustrating.", offset: 62 },
+          { speaker: "prospect", text: "I'm great at what I do but terrible at the business side.", offset: 80 },
+          { speaker: "closer", text: "That's actually super common for experts. What have you tried so far?", offset: 95 },
+          { speaker: "prospect", text: "I took some courses but never implemented. I need accountability.", offset: 110 },
+        ],
+        ammo: [
+          { text: "I'm leaving money on the table", type: "pain_point", offset: 38 },
+          { text: "Competitors half my skill level making twice what I make", type: "emotional", offset: 62 },
+          { text: "I need accountability", type: "commitment", offset: 110 },
+        ],
+      },
+      {
+        segments: [
+          { speaker: "closer", text: "Hi! So glad we could connect. How are you?", offset: 5 },
+          { speaker: "prospect", text: "I'm okay. Had a rough week with a difficult client.", offset: 15 },
+          { speaker: "closer", text: "Sorry to hear that. Is that something that happens often?", offset: 28 },
+          { speaker: "prospect", text: "More than I'd like. I think I attract the wrong type of clients.", offset: 42 },
+          { speaker: "closer", text: "Why do you think that is?", offset: 55 },
+          { speaker: "prospect", text: "Probably because I undercharge. I'm scared to raise my prices.", offset: 68 },
+          { speaker: "prospect", text: "Every time I think about it, I talk myself out of it.", offset: 85 },
+          { speaker: "closer", text: "What's the fear there?", offset: 98 },
+          { speaker: "prospect", text: "That no one will pay. That I'll lose what I have.", offset: 110 },
+        ],
+        ammo: [
+          { text: "I attract the wrong type of clients", type: "pain_point", offset: 42 },
+          { text: "I'm scared to raise my prices", type: "emotional", offset: 68 },
+          { text: "I'll lose what I have", type: "emotional", offset: 110 },
+        ],
+      },
+    ];
+
+    const liveCallIds: string[] = [];
+    for (let i = 0; i < 15; i++) {
+      const closerStat = closerStats[i % closerStats.length];
+      const minutesInCall = randomInRange(3, 35);
+      const startTime = now - minutesInCall * 60 * 1000;
+      const isWaiting = i < 3; // First 3 are waiting for prospect
+
+      const callId = await ctx.db.insert("calls", {
+        closerId: closerStat.closerId,
+        teamId,
+        prospectName: liveCallProspects[i],
+        status: isWaiting ? "waiting" : "on_call",
+        speakerCount: isWaiting ? 1 : 2,
+        startedAt: startTime,
+        closerTalkTime: isWaiting ? 0 : Math.round(minutesInCall * 60 * 0.40),
+        prospectTalkTime: isWaiting ? 0 : Math.round(minutesInCall * 60 * 0.55),
+        speakerMapping: isWaiting ? undefined : {
+          closerSpeaker: "speaker_0",
+          confirmed: Math.random() > 0.3,
+        },
+        createdAt: startTime,
+      });
+      liveCallIds.push(callId);
+
+      // Add varied transcript segments for on_call
+      if (!isWaiting) {
+        // Pick a random conversation variation
+        const conversation = conversationVariations[i % conversationVariations.length];
+
+        for (const seg of conversation.segments) {
+          if (seg.offset < minutesInCall * 60) {
+            await ctx.db.insert("transcriptSegments", {
+              callId: callId as any,
+              teamId,
+              speaker: seg.speaker,
+              text: seg.text,
+              timestamp: seg.offset,
+              createdAt: startTime + seg.offset * 1000,
+            });
+          }
+        }
+
+        // Add varied ammo for live calls
+        for (const ammoItem of conversation.ammo) {
+          if (ammoItem.offset < minutesInCall * 60) {
+            await ctx.db.insert("ammo", {
+              callId: callId as any,
+              teamId,
+              text: ammoItem.text,
+              type: ammoItem.type,
+              timestamp: ammoItem.offset,
+              createdAt: now,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      success: true,
+      created: {
+        completedCalls: callIds.length,
+        liveCalls: liveCallIds.length,
+        closerStats: closerStats.map(c => ({
+          name: c.name,
+          targetCloseRate: Math.round(c.closeRate * 100) + "%",
+        })),
+      },
+    };
+  },
+});
+
+// ADMIN: Find and stop all stuck live calls
+export const stopAllLiveCalls = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // Find all calls with status "waiting" or "on_call"
+    const waitingCalls = await ctx.db
+      .query("calls")
+      .filter((q) => q.eq(q.field("status"), "waiting"))
+      .collect();
+
+    const onCallCalls = await ctx.db
+      .query("calls")
+      .filter((q) => q.eq(q.field("status"), "on_call"))
+      .collect();
+
+    const allLiveCalls = [...waitingCalls, ...onCallCalls];
+    const stoppedCalls: string[] = [];
+
+    for (const call of allLiveCalls) {
+      const duration = call.startedAt ? Math.floor((Date.now() - call.startedAt) / 1000) : 0;
+      await ctx.db.patch(call._id, {
+        status: "completed",
+        endedAt: Date.now(),
+        duration,
+        notes: (call.notes || "") + "\n[Admin: Force-stopped stuck call]",
+      });
+      stoppedCalls.push(call._id);
+      console.log(`[stopAllLiveCalls] Stopped call ${call._id} (was running for ${Math.floor(duration / 60)} minutes)`);
+    }
+
+    return {
+      stopped: stoppedCalls.length,
+      callIds: stoppedCalls,
+    };
+  },
+});

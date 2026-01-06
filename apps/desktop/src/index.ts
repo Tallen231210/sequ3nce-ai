@@ -645,27 +645,18 @@ const setupIpcHandlers = (): void => {
     }
 
     // Check screen recording permission first (macOS only)
+    // NOTE: getMediaAccessStatus('screen') is UNRELIABLE on macOS - it often returns 'denied'
+    // even when permission IS granted. We log it for debugging but don't block on it.
+    // Instead, we'll try to capture and handle any actual errors gracefully.
     if (process.platform === 'darwin') {
       const screenStatus = systemPreferences.getMediaAccessStatus('screen');
-      console.log('[Main] Screen recording permission status:', screenStatus);
+      console.log('[Main] Screen recording permission status (may be unreliable):', screenStatus);
 
-      if (screenStatus !== 'granted') {
-        // Show dialog to guide user
-        const result = await dialog.showMessageBox(mainWindow!, {
-          type: 'warning',
-          title: 'Screen Recording Permission Required',
-          message: 'Sequ3nce needs Screen Recording permission to capture audio from your sales calls.',
-          detail: 'Click "Open Settings" and enable Sequ3nce in the Screen Recording list. You may need to click the "+" button to add it first.',
-          buttons: ['Open Settings', 'Cancel'],
-          defaultId: 0,
-        });
-
-        if (result.response === 0) {
-          // Open System Settings to Screen Recording
-          shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
-        }
-
-        return { success: false, error: 'Screen recording permission required' };
+      // Only block if explicitly 'denied' AND we want to be strict
+      // For now, we'll try to capture anyway since the API is unreliable
+      if (screenStatus === 'denied') {
+        console.log('[Main] Screen status shows denied, but attempting capture anyway (API is unreliable)');
+        // Don't return early - let the actual capture attempt determine if we have permission
       }
     }
 
