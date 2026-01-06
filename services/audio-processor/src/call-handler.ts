@@ -23,6 +23,7 @@ import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem, AmmoConfig }
 const AMMO_EXTRACTION_INTERVAL_MS = 30000; // Extract ammo every 30 seconds
 const MIN_TRANSCRIPT_LENGTH_FOR_AMMO = 100; // Minimum characters before attempting extraction
 const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
+const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours max call duration
 
 export class CallHandler {
   private session: CallSession;
@@ -34,6 +35,7 @@ export class CallHandler {
   private hasStartedCall = false; // Track if we've updated status to on_call
   private firstSpeaker: string | null = null; // First speaker detected = Closer
   private sampleRate: number; // Audio sample rate from desktop
+  private maxDurationTimeout: NodeJS.Timeout | null = null; // Auto-end after 2 hours
 
   constructor(metadata: CallMetadata) {
     this.sampleRate = metadata.sampleRate || 48000;
@@ -75,6 +77,12 @@ export class CallHandler {
       );
 
       logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
+
+      // Set up max duration timeout (2 hours) to prevent runaway calls
+      this.maxDurationTimeout = setTimeout(async () => {
+        logger.warn(`Call ${this.session.metadata.callId} reached max duration (2 hours) - auto-ending`);
+        await this.end();
+      }, MAX_CALL_DURATION_MS);
 
       // Return the Convex-generated call ID so desktop can use it
       return this.convexCallId;
@@ -305,6 +313,12 @@ export class CallHandler {
     this.isEnded = true;
 
     logger.info(`Ending call: ${this.session.metadata.callId}`);
+
+    // Clear max duration timeout if set
+    if (this.maxDurationTimeout) {
+      clearTimeout(this.maxDurationTimeout);
+      this.maxDurationTimeout = null;
+    }
 
     // Close Speechmatics connection
     if (this.speechmatics) {

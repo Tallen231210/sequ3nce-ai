@@ -308,7 +308,9 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [isSubmittingQuestionnaire, setIsSubmittingQuestionnaire] = useState(false);
   const [savedNotes, setSavedNotes] = useState<string | null>(null);
   const isCapturingRef = useRef(false);
+  const maxCallDurationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showSpeakFirstReminder, setShowSpeakFirstReminder] = useState(false);
+  const [autoStoppedMessage, setAutoStoppedMessage] = useState<string | null>(null);
 
   // Prospect name prompt state
   const [showProspectPrompt, setShowProspectPrompt] = useState(false);
@@ -449,6 +451,21 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
       setShowSpeakFirstReminder(true);
       setTimeout(() => setShowSpeakFirstReminder(false), 4000);
 
+      // Set 2-hour max call duration auto-stop
+      const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours
+      maxCallDurationTimeoutRef.current = setTimeout(async () => {
+        console.log('[App] Max call duration reached (2 hours) - auto-stopping');
+        setAutoStoppedMessage('Recording auto-stopped after 2 hours');
+        // Trigger stop
+        if (isCapturingRef.current) {
+          stopCapture();
+          isCapturingRef.current = false;
+        }
+        await window.electron.audio.stop();
+        // Clear the message after 10 seconds
+        setTimeout(() => setAutoStoppedMessage(null), 10000);
+      }, MAX_CALL_DURATION_MS);
+
       // Show prospect name prompt immediately after recording starts
       setShowProspectPrompt(true);
 
@@ -474,6 +491,12 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   };
 
   const handleStop = async () => {
+    // Clear the max duration timeout if user stops manually
+    if (maxCallDurationTimeoutRef.current) {
+      clearTimeout(maxCallDurationTimeoutRef.current);
+      maxCallDurationTimeoutRef.current = null;
+    }
+
     // Store the current callId before stopping
     if (callId) {
       setPendingCallId(callId);
@@ -932,6 +955,12 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         {error && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg max-w-xs">
             <p className="text-red-600 text-sm text-center">{error}</p>
+          </div>
+        )}
+
+        {autoStoppedMessage && (
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg max-w-xs">
+            <p className="text-amber-700 text-sm text-center font-medium">{autoStoppedMessage}</p>
           </div>
         )}
       </div>
