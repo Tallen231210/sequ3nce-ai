@@ -24,8 +24,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Validate asset name to prevent path traversal
-  if (asset.includes("/") || asset.includes("..")) {
+  // Validate asset name to prevent path traversal and ensure it's a valid release file
+  if (
+    asset.includes("/") ||
+    asset.includes("..") ||
+    asset.includes("\\") ||
+    asset.length > 100 ||
+    !/^[\w\-\.]+\.(dmg|zip|exe|deb|rpm|yml)$/.test(asset)
+  ) {
     return NextResponse.json(
       { error: "Invalid asset name" },
       { status: 400 }
@@ -77,11 +83,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Stream the response back to the user
+    // Use RFC 5987 encoding for filename to handle special characters safely
+    const safeFilename = encodeURIComponent(matchingAsset.name).replace(/'/g, "%27");
     const headers = new Headers();
     headers.set("Content-Type", "application/octet-stream");
     headers.set(
       "Content-Disposition",
-      `attachment; filename="${matchingAsset.name}"`
+      `attachment; filename*=UTF-8''${safeFilename}`
     );
     headers.set("Content-Length", matchingAsset.size.toString());
 
