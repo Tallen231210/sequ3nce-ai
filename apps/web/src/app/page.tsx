@@ -297,25 +297,18 @@ export default function Home() {
               </AnimatedSection>
             </div>
 
-            {/* Right - Product Mockup */}
+            {/* Right - Demo Video */}
             <AnimatedSection delay={300} className="lg:pl-8">
-              <div className="bg-zinc-100 rounded-xl p-3 shadow-2xl shadow-zinc-300/30">
-                <div className="bg-zinc-200 rounded-t-lg px-3 py-2 flex items-center gap-2">
-                  <div className="flex gap-1">
-                    <div className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-b-lg aspect-[4/3] flex items-center justify-center border border-zinc-200">
-                  <div className="text-center p-6">
-                    <div className="text-5xl mb-3">📡</div>
-                    <p className="font-medium">Live Calls Dashboard</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      [Hero screenshot will go here]
-                    </p>
-                  </div>
-                </div>
+              <div className="rounded-xl overflow-hidden shadow-2xl shadow-zinc-300/30 border border-zinc-200">
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="w-full h-auto"
+                >
+                  <source src="/videos/hero.mp4" type="video/mp4" />
+                </video>
               </div>
             </AnimatedSection>
           </div>
