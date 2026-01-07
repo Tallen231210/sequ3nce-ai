@@ -244,7 +244,7 @@ export function AmmoV2Panel({
       <div className="p-3 bg-white rounded-lg border border-gray-200">
         <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Pain Points</h3>
         {displayAnalysis.painPoints.length > 0 ? (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {displayAnalysis.painPoints.map((quote, idx) => (
               <PainPointQuote key={idx} quote={quote} onCopy={onCopy} />
             ))}

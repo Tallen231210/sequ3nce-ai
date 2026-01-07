@@ -12,83 +12,62 @@ const anthropic = new Anthropic({
 const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL || process.env.CONVEX_URL?.replace('.convex.cloud', '.convex.site');
 
 // System prompt for Ammo V2 analysis
-const AMMO_V2_SYSTEM_PROMPT = `You are an expert sales call analyst. Analyze the transcript and return a JSON analysis.
+const AMMO_V2_SYSTEM_PROMPT = `You are an expert sales call analyst. Your job is to COUNT EVIDENCE of buying beliefs from the prospect's words.
 
 ## CONTEXT
 This is a sales call between a Closer (sales rep) and a Prospect (potential customer).
 [Closer] = Sales representative
 [Prospect] = Potential customer
 
-## CRITICAL SCORING RULES
+## YOUR TASK: COUNT EVIDENCE
 
-**BE EXTREMELY CONSERVATIVE WITH SCORES.** This is not about potential - it's about what the prospect has EXPLICITLY demonstrated.
+For each buying belief, count how many times the prospect has PROVIDED EVIDENCE for that belief. Each piece of evidence adds to the score.
 
-- A score of 0 means: No evidence whatsoever (DEFAULT STATE)
-- A score of 10-20 means: Very slight hint, mentioned in passing
-- A score of 30-40 means: Clearly acknowledged once
-- A score of 50-60 means: Discussed in some detail, prospect engaged on topic
-- A score of 70-80 means: Strong statements, emotional investment shown
-- A score of 90-100 means: Extremely clear, repeated, emphatic statements
+**EVIDENCE-BASED SCORING:**
+- 0%: No evidence found (DEFAULT - start here)
+- 10-20%: 1 brief mention or hint
+- 25-40%: 1-2 clear statements about this topic
+- 45-60%: Multiple mentions OR one detailed discussion
+- 65-80%: Several clear statements with emotional weight
+- 85-100%: Repeated emphasis, strong emotion, explicit statements
 
-**EARLY CALL BEHAVIOR:** In the first few minutes of a call (intro, small talk, initial questions), almost ALL scores should be 0-20. The closer hasn't even started discovery yet. Don't assume beliefs exist just because the prospect showed up to the call.
+**KEY PRINCIPLE:** Scores should ACCUMULATE as the prospect provides more evidence throughout the call. More mentions = higher score. More detail = higher score.
 
 ## WHAT TO ANALYZE
 
 ### 1. ENGAGEMENT LEVEL
-Assess how engaged the prospect is in the conversation:
-- "high" - Prospect is asking questions, sharing details, actively participating, giving long answers
-- "medium" - Prospect is responding adequately but not volunteering extra info
-- "low" - Short answers, distracted, not opening up, seems disinterested
+How engaged is the prospect RIGHT NOW in this conversation?
 
-### 2. BUYING BELIEFS (Cole Gordon's 7 Beliefs Framework)
-Rate each belief from 0-100 based on EXPLICIT EVIDENCE ONLY:
+- "high" - Giving substantive answers, expanding on topics, sharing details voluntarily, emotionally invested, seems interested
+- "medium" - Responding adequately, neutral tone, answering questions but not elaborating much
+- "low" - Very short answers, seems distracted or disinterested, resistant, wants to get off the call
 
-1. **problem** - Does the prospect believe they have a real problem?
-   - 0: No problem mentioned yet (DEFAULT)
-   - 10-30: Vaguely mentioned an issue
-   - 40-60: Clearly described a specific problem
-   - 70-100: Expressed pain, frustration, or urgency about the problem
+### 2. BUYING BELIEFS (Count Evidence)
+For each belief, count the evidence the prospect has given:
 
-2. **solution** - Does the prospect believe a solution exists?
-   - 0: Not discussed yet (DEFAULT)
-   - 10-30: Seems open to idea of solutions
-   - 40-60: Has tried things before, believes something could work
-   - 70-100: Actively looking, knows solutions exist
+1. **problem** - Evidence they believe they have a real problem
+   - Count: mentions of struggles, frustrations, challenges, things not working
 
-3. **vehicle** - Does the prospect believe THIS solution is the right one?
-   - 0: Haven't discussed the offer yet (DEFAULT)
-   - 10-30: Hearing about it, no opinion yet
-   - 40-60: Interested, asking questions about it
-   - 70-100: Expressed this seems like the right fit
+2. **solution** - Evidence they believe a solution exists
+   - Count: mentions of wanting to fix it, belief that things can change, openness to help
 
-4. **self** - Does the prospect believe THEY can succeed with it?
-   - 0: Not discussed yet (DEFAULT)
-   - 10-30: Some doubt expressed
-   - 40-60: Cautiously optimistic
-   - 70-100: Confident they can implement/succeed
+3. **vehicle** - Evidence they believe THIS solution could work for them
+   - Count: positive reactions to the offer, questions showing interest, statements like "that makes sense"
 
-5. **time** - Does the prospect believe NOW is the right time?
-   - 0: Timing not discussed (DEFAULT)
-   - 10-30: Mentioned bad timing or wanting to wait
-   - 40-60: Timing is okay but not urgent
-   - 70-100: Expressed urgency, needs to act now
+4. **self** - Evidence they believe THEY can succeed with it
+   - Count: confidence statements, past successes mentioned, willingness to put in work
 
-6. **money** - Does the prospect believe it's worth the investment?
-   - 0: Price not discussed yet (DEFAULT)
-   - 10-30: Expressed budget concerns
-   - 40-60: Weighing value, price is a factor
-   - 70-100: Value is clear, price isn't main concern
+5. **time** - Evidence they believe NOW is the right time
+   - Count: urgency statements, deadlines mentioned, "can't keep going like this"
 
-7. **urgency** - Is there urgency to make a decision?
-   - 0: No urgency discussed (DEFAULT)
-   - 10-30: No real time pressure
-   - 40-60: Would like to solve eventually
-   - 70-100: Needs to solve this ASAP, deadline mentioned
+6. **money** - Evidence they see the value / aren't blocked by price
+   - Count: value statements, budget flexibility mentioned, "it's not about the money"
 
-**REMEMBER: When in doubt, score LOWER. A prospect on a sales call does NOT automatically have high belief scores. They must EARN each point through their words.**
+7. **urgency** - Evidence there's pressure to decide soon
+   - Count: timeline mentions, consequences of waiting, external deadlines
 
 ### 3. OBJECTION PREDICTION
-Based on the conversation, predict which objections the prospect is likely to raise:
+Based on what you've heard, predict likely objections:
 - "think_about_it" - Need time to think/decide
 - "spouse" - Need to talk to spouse/partner
 - "money" - Price/budget concerns
@@ -96,11 +75,9 @@ Based on the conversation, predict which objections the prospect is likely to ra
 - "trust" - Skeptical it will work
 - "comparison" - Wants to look at other options
 
-Rate probability 0-100 for top 2-3 most likely objections.
-
 ### 4. PAIN POINTS
-Extract 0-5 exact quotes where the prospect expresses pain, frustration, or problems.
-These should be verbatim quotes from the [Prospect] only.
+Extract exact quotes where the prospect expresses pain, frustration, or problems.
+Verbatim quotes from [Prospect] only.
 
 ## OUTPUT FORMAT
 
@@ -175,6 +152,10 @@ export class AmmoAnalyzer {
   private callId: string;
   private teamId: string;
   private onAnalysisCallback: ((analysis: AmmoV2Analysis) => void) | null = null;
+  // High water mark: track previous scores so they only go up, never down
+  private previousScores: AmmoV2Analysis['beliefs'] | null = null;
+  // Accumulate all pain points across the call
+  private allPainPoints: Set<string> = new Set();
 
   constructor(callId: string, teamId: string) {
     this.callId = callId;
@@ -261,6 +242,27 @@ export class AmmoAnalyzer {
           .slice(0, 5), // Max 5 pain points
       };
 
+      // Apply high water mark: scores can only go UP, never down
+      if (this.previousScores) {
+        analysis.beliefs = {
+          problem: Math.max(this.previousScores.problem, analysis.beliefs.problem),
+          solution: Math.max(this.previousScores.solution, analysis.beliefs.solution),
+          vehicle: Math.max(this.previousScores.vehicle, analysis.beliefs.vehicle),
+          self: Math.max(this.previousScores.self, analysis.beliefs.self),
+          time: Math.max(this.previousScores.time, analysis.beliefs.time),
+          money: Math.max(this.previousScores.money, analysis.beliefs.money),
+          urgency: Math.max(this.previousScores.urgency, analysis.beliefs.urgency),
+        };
+      }
+      // Save current scores as the new high water mark
+      this.previousScores = { ...analysis.beliefs };
+
+      // Accumulate pain points across the call (never lose them)
+      for (const point of analysis.painPoints) {
+        this.allPainPoints.add(point);
+      }
+      analysis.painPoints = Array.from(this.allPainPoints).slice(0, 10); // Keep up to 10 pain points
+
       logger.info(`[AmmoAnalyzer] Analysis complete: engagement=${analysis.engagement.level}, beliefs=${JSON.stringify(analysis.beliefs)}`);
 
       return analysis;
@@ -313,6 +315,9 @@ export class AmmoAnalyzer {
     }
     this.lastTranscriptLength = 0;
     this.onAnalysisCallback = null;
+    // Reset high water mark for next call
+    this.previousScores = null;
+    this.allPainPoints.clear();
   }
 
   /**
