@@ -28,6 +28,11 @@ wss.on("connection", async (ws, req) => {
       if (!isInitialized) {
         const message = data.toString();
 
+        // Debug logging to diagnose Swift client issues
+        logger.info(`[DEBUG] First message received - isBinary: ${isBinary}, length: ${message.length}`);
+        logger.info(`[DEBUG] Raw message: "${message}"`);
+        logger.info(`[DEBUG] First 20 char codes: ${[...message.slice(0, 20)].map(c => c.charCodeAt(0)).join(', ')}`);
+
         try {
           const metadata: CallMetadata = JSON.parse(message);
 
