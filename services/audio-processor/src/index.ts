@@ -58,6 +58,11 @@ wss.on("connection", async (ws, req) => {
           // Create and start call handler
           callHandler = new CallHandler(metadata);
 
+          // IMPORTANT: Set isInitialized IMMEDIATELY after metadata is validated
+          // This prevents race condition where audio arrives before callHandler.start() completes
+          isInitialized = true;
+          activeCalls.set(ws, callHandler);
+
           // Set up Ammo V2 callback to send analysis to desktop via WebSocket
           callHandler.setAmmoV2Callback((analysis) => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -70,9 +75,6 @@ wss.on("connection", async (ws, req) => {
           });
 
           const convexCallId = await callHandler.start();
-
-          activeCalls.set(ws, callHandler);
-          isInitialized = true;
 
           // Send back BOTH the original callId AND the Convex-generated callId
           // Desktop MUST use convexCallId for all subsequent operations
