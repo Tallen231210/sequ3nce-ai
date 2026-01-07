@@ -1012,30 +1012,48 @@ app.whenReady().then(() => {
   setupIpcHandlers();
   setupAutoUpdater(); // Initialize auto-updater
 
-  // Request permissions on startup (macOS only)
+  // AUTO-PERMISSION HANDLING (macOS only)
+  // Proactively check and request permissions BEFORE user tries to record
   if (process.platform === 'darwin') {
-    // Request microphone permission - this shows a prompt
-    systemPreferences.askForMediaAccess('microphone').then((granted) => {
-      console.log(`[Main] Microphone permission on startup: ${granted ? 'granted' : 'denied'}`);
-    }).catch((err) => {
-      console.error('[Main] Failed to request microphone permission:', err);
-    });
+    console.log('[Main] === AUTO-PERMISSION CHECK ===');
+
+    // Check and log current permission states
+    const micStatus = systemPreferences.getMediaAccessStatus('microphone');
+    const screenStatus = systemPreferences.getMediaAccessStatus('screen');
+    console.log(`[Main] Initial permission states - Microphone: ${micStatus}, Screen: ${screenStatus}`);
+
+    // Request microphone permission if not determined or denied
+    // This shows a native macOS prompt if permission hasn't been asked yet
+    if (micStatus === 'not-determined') {
+      console.log('[Main] Requesting microphone permission (not-determined)...');
+      systemPreferences.askForMediaAccess('microphone').then((granted) => {
+        console.log(`[Main] Microphone permission result: ${granted ? 'GRANTED' : 'DENIED'}`);
+      }).catch((err) => {
+        console.error('[Main] Failed to request microphone permission:', err);
+      });
+    } else {
+      console.log(`[Main] Microphone permission already ${micStatus}`);
+    }
 
     // Trigger screen recording registration by attempting to get sources
-    // This makes the app appear in System Settings > Screen Recording
-    // Note: This will fail if permission isn't granted, but it registers the app
-    const screenStatus = systemPreferences.getMediaAccessStatus('screen');
-    console.log(`[Main] Screen recording permission status: ${screenStatus}`);
-
+    // This makes the app appear in System Settings > Privacy > Screen Recording
+    // Even if it fails, it registers the app with TCC so user can enable it
     if (screenStatus !== 'granted') {
-      // Attempt to get sources to register the app with TCC
+      console.log('[Main] Registering app with Screen Recording (will show in System Settings)...');
       desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-        console.log(`[Main] Screen sources available: ${sources.length}`);
+        console.log(`[Main] Screen recording check - ${sources.length} sources available`);
+        if (sources.length === 0) {
+          console.warn('[Main] No screen sources - user may need to grant Screen Recording permission');
+        }
       }).catch((err) => {
         // This is expected to fail if permission is denied, but it registers the app
-        console.log('[Main] Screen capture registration attempted (permission may be required):', err.message);
+        console.log('[Main] Screen capture registration attempted (user may need to grant permission):', err.message);
       });
+    } else {
+      console.log('[Main] Screen recording permission already granted');
     }
+
+    console.log('[Main] === END PERMISSION CHECK ===');
   }
 
   // Register global keyboard shortcut for ammo tracker

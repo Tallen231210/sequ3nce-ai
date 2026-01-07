@@ -18,6 +18,96 @@
 import { useRef, useCallback } from 'react';
 import { logClientError } from '../convex';
 
+// Helper to get closer email from localStorage (sync, no async)
+function getCloserEmailFromStorage(): string | undefined {
+  try {
+    const savedCloserInfo = localStorage.getItem('sequ3nce_closer_info');
+    if (savedCloserInfo) {
+      return JSON.parse(savedCloserInfo).email;
+    }
+  } catch (e) {
+    // Ignore - we'll continue without email
+  }
+  return undefined;
+}
+
+// Helper to check if a MediaStream has a valid audio track
+function hasValidAudioTrack(stream: MediaStream | null): boolean {
+  if (!stream) return false;
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length === 0) return false;
+  // Check if any audio track is in "live" state (not "ended")
+  return audioTracks.some(track => track.readyState === 'live');
+}
+
+// Get detailed audio track info for debugging
+function getAudioTrackInfo(stream: MediaStream | null): string {
+  if (!stream) return 'No stream';
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length === 0) return 'No audio tracks';
+  return audioTracks.map((track, i) =>
+    `Track${i}: ${track.label} (${track.readyState}, enabled=${track.enabled}, muted=${track.muted})`
+  ).join(', ');
+}
+
+// BULLETPROOF ERROR LOGGING - guaranteed to capture errors even if context gathering fails
+async function handleAudioError(error: unknown, captureStep: string): Promise<void> {
+  const errorId = Date.now();
+  const closerEmail = getCloserEmailFromStorage();
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const errorStack = error instanceof Error ? error.stack : undefined;
+
+  // STEP 1: Log raw error IMMEDIATELY (no async dependencies)
+  const rawError = {
+    errorType: `capture_error_${captureStep}`,
+    errorMessage,
+    errorStack,
+    captureStep,
+    closerEmail,
+  };
+
+  // Sync backup to localStorage (won't fail silently)
+  try {
+    localStorage.setItem(`audio_error_${errorId}`, JSON.stringify(rawError));
+  } catch (e) { /* localStorage full or unavailable, continue anyway */ }
+
+  // Console always works
+  console.error('[AUDIO_CAPTURE_ERROR]', rawError);
+
+  // Fire to backend immediately (don't await - fire and forget)
+  logClientError(rawError);
+
+  // STEP 2: Gather context in ISOLATED try/catches (each fails independently)
+  const context: Record<string, string> = {};
+
+  try {
+    const p = await window.electron.app.getPlatform();
+    context.platform = p.platform;
+    context.osVersion = p.osRelease;
+    context.arch = p.arch;
+  } catch (e) { context.platformError = String(e); }
+
+  try {
+    context.appVersion = await window.electron.app.getVersion();
+  } catch (e) { context.appVersionError = String(e); }
+
+  try {
+    const screenPerm = await window.electron.audio.checkPermissions();
+    context.screenPerm = String(screenPerm);
+  } catch (e) { context.screenPermError = String(e); }
+
+  try {
+    context.micPerm = await window.electron.audio.checkMicrophonePermission();
+  } catch (e) { context.micPermError = String(e); }
+
+  // STEP 3: Send enriched error with context (fire and forget)
+  logClientError({
+    ...rawError,
+    errorType: `capture_error_${captureStep}_enriched`,
+    context: JSON.stringify(context),
+  });
+}
+
 interface AudioCaptureOptions {
   onAudioLevel?: (level: number) => void;
   onError?: (error: string) => void;
@@ -183,17 +273,38 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       });
 
       const systemAudioTracks = systemStream.getAudioTracks();
+      console.log('[AudioCapture] System stream audio track info:', getAudioTrackInfo(systemStream));
+
       if (systemAudioTracks.length === 0) {
         console.warn('[AudioCapture] No system audio track available');
+        // Log this as a specific error type for telemetry
+        await handleAudioError(
+          new Error('getDisplayMedia returned no audio tracks. Screen Recording permission may be denied or misconfigured.'),
+          'getDisplayMedia_no_audio_tracks'
+        );
       } else {
         const audioTrack = systemAudioTracks[0];
-        console.log('[AudioCapture] Got system audio track:', audioTrack.label, 'state:', audioTrack.readyState);
+        console.log('[AudioCapture] Got system audio track:', audioTrack.label, 'state:', audioTrack.readyState, 'enabled:', audioTrack.enabled);
 
         // Check for known macOS 15 bug where track arrives in "ended" state
         if (audioTrack.readyState === 'ended') {
           console.error('[AudioCapture] Audio track arrived in ended state - macOS permission issue');
-          throw new Error('Audio track arrived in ended state. This is a known macOS bug. Try removing the app from Privacy settings, restart your Mac, and re-grant permission.');
+          throw new Error('Audio track arrived in "ended" state. This is a known macOS 15 (Sequoia) bug. Please: 1) Open System Settings > Privacy > Screen Recording, 2) Remove Sequ3nce from the list, 3) Restart your Mac, 4) Re-grant Screen Recording permission when prompted.');
         }
+
+        // Additional validation: check if track is enabled
+        if (!audioTrack.enabled) {
+          console.warn('[AudioCapture] Audio track is disabled');
+        }
+      }
+
+      // Final validation using helper
+      if (!hasValidAudioTrack(systemStream)) {
+        console.error('[AudioCapture] System stream has no valid audio tracks');
+        await handleAudioError(
+          new Error(`System audio stream invalid. Track info: ${getAudioTrackInfo(systemStream)}`),
+          'getDisplayMedia_invalid_tracks'
+        );
       }
       captureStep = 'getDisplayMedia_done';
 
@@ -395,55 +506,31 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       console.error('[AudioCapture] Failed to start capture:', error);
       stopCapture();
 
-      let errorType = 'capture_exception';
-      let errorMessage = 'Failed to start audio capture';
-
+      // Determine user-friendly error message
+      let userErrorMessage = 'Failed to start audio capture';
       if (error instanceof DOMException) {
-        errorType = `dom_exception_${error.name}`;
         if (error.name === 'NotAllowedError') {
-          errorMessage = 'Screen recording permission denied';
+          userErrorMessage = 'Screen recording permission denied. Please grant access in System Settings > Privacy > Screen Recording.';
         } else if (error.name === 'NotFoundError') {
-          errorMessage = 'No audio device found';
+          userErrorMessage = 'No audio device found';
         } else {
-          errorMessage = error.message;
+          userErrorMessage = error.message;
         }
-        options.onError?.(errorMessage);
-      } else {
-        options.onError?.('Failed to start audio capture');
       }
 
-      // Log error remotely for debugging
-      try {
-        const platformInfo = await window.electron.app.getPlatform();
-        const appVersion = await window.electron.app.getVersion();
-        const screenPermission = await window.electron.audio.checkPermissions();
-        const micPermission = await window.electron.audio.checkMicrophonePermission();
+      // Notify UI
+      options.onError?.(userErrorMessage);
 
-        // Get saved closer email from localStorage
-        const savedCloserInfo = localStorage.getItem('sequ3nce_closer_info');
-        const closerEmail = savedCloserInfo ? JSON.parse(savedCloserInfo).email : undefined;
-
-        logClientError({
-          closerEmail,
-          errorType,
-          errorMessage,
-          errorStack: error instanceof Error ? error.stack : String(error),
-          appVersion,
-          platform: platformInfo.platform,
-          osVersion: platformInfo.osRelease, // Darwin version for macOS debugging
-          architecture: platformInfo.arch,
-          screenPermission: screenPermission ? 'true' : 'false',
-          microphonePermission: micPermission,
-          captureStep, // Which step failed for debugging
-          context: JSON.stringify({
-            systemAudioTrackCount,
-            micAudioTrackCount,
-            videoTrackCount,
-          }),
-        });
-      } catch (logErr) {
-        console.error('[AudioCapture] Failed to log error remotely:', logErr);
+      // BULLETPROOF ERROR LOGGING - guaranteed to capture even if context fails
+      // Include track counts in the error for debugging
+      const errorWithContext = error instanceof Error
+        ? new Error(`${error.message} | tracks: sys=${systemAudioTrackCount}, mic=${micAudioTrackCount}, vid=${videoTrackCount}`)
+        : new Error(`${String(error)} | tracks: sys=${systemAudioTrackCount}, mic=${micAudioTrackCount}, vid=${videoTrackCount}`);
+      if (error instanceof Error && error.stack) {
+        errorWithContext.stack = error.stack;
       }
+
+      await handleAudioError(errorWithContext, captureStep);
 
       return false;
     }

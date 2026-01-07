@@ -21,6 +21,113 @@ import logoImage from '../assets/logo.png';
 // Storage keys
 const STORAGE_KEY = 'sequ3nce_closer_info';
 
+// Hook to watch for permission changes (self-healing - no restart needed)
+function usePermissionWatcher(onPermissionGranted: () => void) {
+  const lastScreenPermRef = React.useRef<boolean>(false);
+  const lastMicPermRef = React.useRef<string>('');
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    // Check permissions every 2 seconds
+    const interval = setInterval(async () => {
+      if (!isMounted) return;
+
+      try {
+        const currentScreen = await window.electron.audio.checkPermissions();
+        const currentMic = await window.electron.audio.checkMicrophonePermission();
+
+        // Check if screen permission was just granted
+        if (!lastScreenPermRef.current && currentScreen) {
+          console.log('[App] Screen recording permission just granted!');
+          lastScreenPermRef.current = currentScreen;
+          onPermissionGranted();
+        }
+
+        // Check if mic permission was just granted
+        if (lastMicPermRef.current !== 'granted' && currentMic === 'granted') {
+          console.log('[App] Microphone permission just granted!');
+          lastMicPermRef.current = currentMic;
+          onPermissionGranted();
+        }
+
+        lastScreenPermRef.current = currentScreen;
+        lastMicPermRef.current = currentMic;
+      } catch (e) {
+        // Ignore errors - polling should be silent
+      }
+    }, 2000);
+
+    // Also check immediately on mount
+    (async () => {
+      try {
+        lastScreenPermRef.current = await window.electron.audio.checkPermissions();
+        lastMicPermRef.current = await window.electron.audio.checkMicrophonePermission();
+      } catch (e) {
+        // Ignore
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [onPermissionGranted]);
+}
+
+// Send startup diagnostic to help debug issues remotely
+async function sendStartupDiagnostic(closerEmail: string): Promise<void> {
+  try {
+    // Start with required fields for ClientErrorData type
+    const diagnostic = {
+      closerEmail,
+      errorType: 'diagnostic_startup',
+      errorMessage: 'App started successfully',
+      platform: undefined as string | undefined,
+      osVersion: undefined as string | undefined,
+      architecture: undefined as string | undefined,
+      appVersion: undefined as string | undefined,
+      screenPermission: undefined as string | undefined,
+      microphonePermission: undefined as string | undefined,
+      context: undefined as string | undefined,
+    };
+
+    // Gather additional context in isolated try/catches
+    const contextErrors: Record<string, string> = {};
+
+    try {
+      const p = await window.electron.app.getPlatform();
+      diagnostic.platform = p.platform;
+      diagnostic.osVersion = p.osRelease;
+      diagnostic.architecture = p.arch;
+    } catch (e) { contextErrors.platformError = String(e); }
+
+    try {
+      diagnostic.appVersion = await window.electron.app.getVersion();
+    } catch (e) { contextErrors.appVersionError = String(e); }
+
+    try {
+      const screenPerm = await window.electron.audio.checkPermissions();
+      diagnostic.screenPermission = String(screenPerm);
+    } catch (e) { contextErrors.screenPermError = String(e); }
+
+    try {
+      diagnostic.microphonePermission = await window.electron.audio.checkMicrophonePermission();
+    } catch (e) { contextErrors.micPermError = String(e); }
+
+    // Include any errors in gathering context
+    if (Object.keys(contextErrors).length > 0) {
+      diagnostic.context = JSON.stringify(contextErrors);
+    }
+
+    // Send diagnostic (fire and forget)
+    logClientError(diagnostic);
+    console.log('[App] Startup diagnostic sent:', diagnostic);
+  } catch (e) {
+    console.error('[App] Failed to send startup diagnostic:', e);
+  }
+}
+
 // Auth states
 type AuthState =
   | 'initial_loading'    // Checking if user is already logged in
@@ -58,6 +165,9 @@ export function App() {
         window.electron.training?.setCloserId(info.closerId);
         // Set team ID for resources in ammo tracker
         window.electron.ammo?.setTeamId(info.teamId);
+
+        // Send startup diagnostic (helps debug remote issues)
+        sendStartupDiagnostic(info.email);
       } catch (err) {
         console.error('[App] Error parsing saved closer info:', err);
         clearSession();
@@ -93,6 +203,9 @@ export function App() {
         window.electron.training?.setCloserId(result.closer.closerId);
         // Set team ID for resources in ammo tracker
         window.electron.ammo?.setTeamId(result.closer.teamId);
+
+        // Send startup diagnostic (helps debug remote issues)
+        sendStartupDiagnostic(result.closer.email);
       } else {
         setAuthError({
           message: result.error || 'Login failed. Please try again.',
@@ -337,6 +450,17 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     },
   });
 
+  // Self-healing permission watcher - updates when user grants permission
+  // No app restart required after granting permissions in System Settings
+  const handlePermissionGranted = React.useCallback(() => {
+    console.log('[App] Permission granted - updating state');
+    setHasPermission(true);
+    // Clear any permission-related errors
+    setError(null);
+  }, []);
+
+  usePermissionWatcher(handlePermissionGranted);
+
   // Check permissions and ammo tracker state on mount
   useEffect(() => {
     const checkPermissions = async () => {
@@ -511,6 +635,17 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         });
     } else if (result.error) {
       setError(result.error);
+
+      // Log audio.start error remotely for debugging
+      logClientError({
+        closerEmail: closerInfo.email,
+        errorType: 'audio_start_failed',
+        errorMessage: result.error,
+        context: JSON.stringify({
+          closerName: closerInfo.name,
+          teamId: closerInfo.teamId,
+        }),
+      });
     }
   };
 
