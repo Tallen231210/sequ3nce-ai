@@ -271,6 +271,7 @@ export interface ClientErrorData {
   architecture?: string;
   screenPermission?: string;
   microphonePermission?: string;
+  captureStep?: string; // Which step failed (e.g., "getDisplayMedia", "getUserMedia", "audioContext")
   context?: string;
 }
 

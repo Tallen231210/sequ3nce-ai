@@ -651,6 +651,7 @@ export function AmmoTrackerApp() {
   const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [ammoV2Analysis, setAmmoV2Analysis] = useState<AmmoV2Analysis | null>(null);
+  const [isAmmoV2Enabled, setIsAmmoV2Enabled] = useState(false);
 
   const seenAmmoIds = useRef<Set<string>>(new Set());
   const seenSegmentIds = useRef<Set<string>>(new Set());
@@ -730,6 +731,20 @@ export function AmmoTrackerApp() {
     }
   }, []);
 
+  // Check if Ammo V2 is enabled for the team
+  const checkAmmoV2Enabled = useCallback(async (currentTeamId: string) => {
+    if (!currentTeamId) return;
+    try {
+      const response = await fetch(`${CONVEX_SITE_URL}/isAmmoV2Enabled?teamId=${encodeURIComponent(currentTeamId)}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      console.log('[Panel] Ammo V2 enabled:', data.enabled);
+      setIsAmmoV2Enabled(data.enabled === true);
+    } catch (error) {
+      console.error('[Panel] Failed to check Ammo V2 status:', error);
+    }
+  }, []);
+
   // Save notes to Convex
   const saveNotes = useCallback(async (currentCallId: string, currentNotes: string) => {
     if (!currentCallId) return;
@@ -792,6 +807,7 @@ export function AmmoTrackerApp() {
         console.log('[Panel] TeamId:', currentTeamId);
         setTeamId(currentTeamId);
         fetchResources(currentTeamId);
+        checkAmmoV2Enabled(currentTeamId);
       }
 
       if (initialCallId) {
@@ -870,7 +886,7 @@ export function AmmoTrackerApp() {
       if (pollInterval) clearInterval(pollInterval);
       if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
     };
-  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchResources, fetchAmmoV2Analysis]);
+  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchResources, fetchAmmoV2Analysis, checkAmmoV2Enabled]);
 
   // Save notes before closing
   useEffect(() => {
@@ -944,8 +960,8 @@ export function AmmoTrackerApp() {
       <div className="flex-1 overflow-hidden bg-gray-50/30">
         {activeTab === 'ammo' && (
           <div className="h-full overflow-y-auto scrollbar-thin">
-            {/* Show Ammo V2 panel if analysis exists (team has V2 enabled), otherwise show classic ammo */}
-            {ammoV2Analysis ? (
+            {/* Show Ammo V2 panel if team has V2 enabled, otherwise show classic ammo */}
+            {isAmmoV2Enabled ? (
               <AmmoV2Panel
                 callId={callId}
                 analysis={ammoV2Analysis}

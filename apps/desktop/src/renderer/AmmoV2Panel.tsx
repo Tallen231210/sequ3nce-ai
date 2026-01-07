@@ -142,20 +142,14 @@ function PainPointQuote({ quote, onCopy }: { quote: string; onCopy: (text: strin
   );
 }
 
-// Waiting State Component
-function WaitingState() {
+// Objection Loading State Component
+function ObjectionLoadingState() {
   return (
-    <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-      <div className="relative mb-4">
-        <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
-          <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-        </div>
-        <div className="absolute inset-0 rounded-full border-2 border-gray-300 animate-ping opacity-30" />
+    <div className="flex items-center justify-center py-4 text-gray-400">
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+        <p className="text-xs">Analyzing for potential objections...</p>
       </div>
-      <p className="text-sm text-gray-500 mb-1">Analyzing call...</p>
-      <p className="text-xs text-gray-400 text-center px-6">AI insights will appear after ~45 seconds of conversation</p>
     </div>
   );
 }
@@ -172,6 +166,22 @@ function NoCallState() {
   );
 }
 
+// Default initial state - all beliefs at 0%
+const DEFAULT_ANALYSIS: AmmoV2Analysis = {
+  engagement: { level: 'medium', reason: 'Waiting for conversation data...' },
+  beliefs: {
+    problem: 0,
+    solution: 0,
+    vehicle: 0,
+    self: 0,
+    time: 0,
+    money: 0,
+    urgency: 0,
+  },
+  objectionPrediction: [],
+  painPoints: [],
+};
+
 // Main Ammo V2 Panel Component
 export function AmmoV2Panel({
   callId,
@@ -186,11 +196,10 @@ export function AmmoV2Panel({
     return <NoCallState />;
   }
 
-  if (!analysis) {
-    return <WaitingState />;
-  }
-
-  const engagementColor = ENGAGEMENT_COLORS[analysis.engagement.level];
+  // Use actual analysis if available, otherwise show default state with 0% values
+  const displayAnalysis = analysis || DEFAULT_ANALYSIS;
+  const hasRealData = analysis !== null;
+  const engagementColor = ENGAGEMENT_COLORS[displayAnalysis.engagement.level];
 
   return (
     <div className="flex flex-col h-full p-2 space-y-3 overflow-y-auto">
@@ -199,10 +208,10 @@ export function AmmoV2Panel({
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Engagement</h3>
           <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${engagementColor.bg} ${engagementColor.text} ${engagementColor.border}`}>
-            {analysis.engagement.level.toUpperCase()}
+            {displayAnalysis.engagement.level.toUpperCase()}
           </span>
         </div>
-        <p className="text-[11px] text-gray-600 leading-relaxed">{analysis.engagement.reason}</p>
+        <p className="text-[11px] text-gray-600 leading-relaxed">{displayAnalysis.engagement.reason}</p>
       </div>
 
       {/* Buying Beliefs Section */}
@@ -210,39 +219,47 @@ export function AmmoV2Panel({
         <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Buying Beliefs</h3>
         <div className="space-y-2.5">
           {(Object.keys(BELIEF_LABELS) as Array<keyof AmmoV2Analysis['beliefs']>).map((key) => (
-            <BeliefBar key={key} beliefKey={key} value={analysis.beliefs[key]} />
+            <BeliefBar key={key} beliefKey={key} value={displayAnalysis.beliefs[key]} />
           ))}
         </div>
       </div>
 
       {/* Objection Prediction Section */}
-      {analysis.objectionPrediction.length > 0 && (
-        <div className="p-3 bg-white rounded-lg border border-gray-200">
-          <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Likely Objections</h3>
+      <div className="p-3 bg-white rounded-lg border border-gray-200">
+        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Likely Objections</h3>
+        {!hasRealData ? (
+          <ObjectionLoadingState />
+        ) : displayAnalysis.objectionPrediction.length > 0 ? (
           <div className="space-y-1.5">
-            {analysis.objectionPrediction.map((obj, idx) => (
+            {displayAnalysis.objectionPrediction.map((obj, idx) => (
               <ObjectionCard key={idx} type={obj.type} probability={obj.probability} />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-[11px] text-gray-400 text-center py-2">No objections predicted yet</p>
+        )}
+      </div>
 
       {/* Pain Points Section */}
-      {analysis.painPoints.length > 0 && (
-        <div className="p-3 bg-white rounded-lg border border-gray-200">
-          <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Pain Points</h3>
+      <div className="p-3 bg-white rounded-lg border border-gray-200">
+        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Pain Points</h3>
+        {displayAnalysis.painPoints.length > 0 ? (
           <div className="space-y-1.5">
-            {analysis.painPoints.map((quote, idx) => (
+            {displayAnalysis.painPoints.map((quote, idx) => (
               <PainPointQuote key={idx} quote={quote} onCopy={onCopy} />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className="text-[11px] text-gray-400 text-center py-2">
+            {hasRealData ? 'No pain points captured yet' : 'Listening for pain points...'}
+          </p>
+        )}
+      </div>
 
       {/* Last Updated */}
-      {analysis.analyzedAt && (
+      {displayAnalysis.analyzedAt && (
         <p className="text-[10px] text-gray-400 text-center">
-          Last updated: {new Date(analysis.analyzedAt).toLocaleTimeString()}
+          Last updated: {new Date(displayAnalysis.analyzedAt).toLocaleTimeString()}
         </p>
       )}
     </div>

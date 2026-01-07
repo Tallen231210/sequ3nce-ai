@@ -28,7 +28,7 @@ export interface AudioAPI {
 
 export interface AppAPI {
   getVersion: () => Promise<string>;
-  getPlatform: () => Promise<{ platform: string; arch: string }>;
+  getPlatform: () => Promise<{ platform: string; arch: string; osRelease: string }>;
 }
 
 export interface AmmoAPI {

@@ -152,17 +152,29 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
   const levelIntervalRef = useRef<number | null>(null);
 
   const startCapture = useCallback(async (): Promise<boolean> => {
+    // Track which step we're on for detailed error reporting
+    let captureStep = 'init';
+    let systemAudioTrackCount = 0;
+    let micAudioTrackCount = 0;
+    let videoTrackCount = 0;
+
     try {
       console.log('[AudioCapture] Starting capture with RAW PCM STEREO (multichannel)...');
 
-      // 1. Get system audio via display media (loopback)
-      console.log('[AudioCapture] Requesting display media with audio...');
+      // Step 1: Get system audio via display media (loopback)
+      captureStep = 'getDisplayMedia';
+      console.log('[AudioCapture] Step 1: Requesting display media with audio...');
       const systemStream = await navigator.mediaDevices.getDisplayMedia({
         audio: true,
         video: true, // Required by getDisplayMedia, but we only use audio
       });
 
       systemStreamRef.current = systemStream;
+
+      // Log track counts for debugging
+      videoTrackCount = systemStream.getVideoTracks().length;
+      systemAudioTrackCount = systemStream.getAudioTracks().length;
+      console.log(`[AudioCapture] Got stream: ${videoTrackCount} video tracks, ${systemAudioTrackCount} audio tracks`);
 
       // Stop video tracks immediately - we only need audio
       systemStream.getVideoTracks().forEach(track => {
@@ -174,13 +186,22 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       if (systemAudioTracks.length === 0) {
         console.warn('[AudioCapture] No system audio track available');
       } else {
-        console.log('[AudioCapture] Got system audio track:', systemAudioTracks[0].label);
-      }
+        const audioTrack = systemAudioTracks[0];
+        console.log('[AudioCapture] Got system audio track:', audioTrack.label, 'state:', audioTrack.readyState);
 
-      // 2. Get microphone audio (with proper macOS permission request)
+        // Check for known macOS 15 bug where track arrives in "ended" state
+        if (audioTrack.readyState === 'ended') {
+          console.error('[AudioCapture] Audio track arrived in ended state - macOS permission issue');
+          throw new Error('Audio track arrived in ended state. This is a known macOS bug. Try removing the app from Privacy settings, restart your Mac, and re-grant permission.');
+        }
+      }
+      captureStep = 'getDisplayMedia_done';
+
+      // Step 2: Get microphone audio (with proper macOS permission request)
+      captureStep = 'getUserMedia';
       let micStream: MediaStream | null = null;
       try {
-        console.log('[AudioCapture] Checking microphone permission...');
+        console.log('[AudioCapture] Step 2: Checking microphone permission...');
         const micPermission = await window.electron.audio.checkMicrophonePermission();
         console.log('[AudioCapture] Microphone permission status:', micPermission);
 
@@ -209,12 +230,16 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
           video: false,
         });
         micStreamRef.current = micStream;
+        micAudioTrackCount = micStream.getAudioTracks().length;
         console.log('[AudioCapture] Got microphone track:', micStream.getAudioTracks()[0]?.label);
       } catch (micError) {
         console.warn('[AudioCapture] Could not get microphone, continuing with system audio only:', micError);
       }
+      captureStep = 'getUserMedia_done';
 
-      // 3. Create AudioContext at 48kHz
+      // Step 3: Create AudioContext at 48kHz
+      captureStep = 'audioContext';
+      console.log('[AudioCapture] Step 3: Creating AudioContext...');
       audioContextRef.current = new AudioContext({ sampleRate: 48000 });
       const actualSampleRate = audioContextRef.current.sampleRate;
       console.log('[AudioCapture] AudioContext created at', actualSampleRate, 'Hz');
@@ -237,15 +262,19 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         console.log('[AudioCapture] System audio track settings:', JSON.stringify(sysSettings));
       }
 
-      // 4. Create AudioWorklet for raw PCM capture
+      // Step 4: Create AudioWorklet for raw PCM capture
+      captureStep = 'audioWorklet';
+      console.log('[AudioCapture] Step 4: Loading AudioWorklet...');
       const workletBlob = new Blob([workletProcessorCode], { type: 'application/javascript' });
       const workletUrl = URL.createObjectURL(workletBlob);
 
       await audioContextRef.current.audioWorklet.addModule(workletUrl);
       URL.revokeObjectURL(workletUrl);
       console.log('[AudioCapture] AudioWorklet module loaded');
+      captureStep = 'audioWorklet_done';
 
-      // 5. Create ChannelMergerNode for TRUE stereo separation
+      // Step 5: Create ChannelMergerNode for TRUE stereo separation
+      captureStep = 'channelMerger';
       // Channel 0 (Left) = Microphone = Closer
       // Channel 1 (Right) = System Audio = Prospect
       const merger = audioContextRef.current.createChannelMerger(2);
@@ -311,7 +340,8 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
         console.log('[AudioCapture] No system audio - using silence for Channel 1');
       }
 
-      // 6. Create a GainNode to explicitly maintain stereo signal path
+      // Step 6: Create a GainNode to explicitly maintain stereo signal path
+      captureStep = 'stereoGain';
       // This ensures the stereo from the merger is preserved before reaching the worklet
       const stereoGain = audioContextRef.current.createGain();
       stereoGain.channelCount = 2;
@@ -400,9 +430,16 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
           errorStack: error instanceof Error ? error.stack : String(error),
           appVersion,
           platform: platformInfo.platform,
+          osVersion: platformInfo.osRelease, // Darwin version for macOS debugging
           architecture: platformInfo.arch,
           screenPermission: screenPermission ? 'true' : 'false',
           microphonePermission: micPermission,
+          captureStep, // Which step failed for debugging
+          context: JSON.stringify({
+            systemAudioTrackCount,
+            micAudioTrackCount,
+            videoTrackCount,
+          }),
         });
       } catch (logErr) {
         console.error('[AudioCapture] Failed to log error remotely:', logErr);

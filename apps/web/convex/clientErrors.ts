@@ -22,6 +22,7 @@ export const logError = mutation({
     architecture: v.optional(v.string()),
     screenPermission: v.optional(v.string()),
     microphonePermission: v.optional(v.string()),
+    captureStep: v.optional(v.string()), // Which step failed (getDisplayMedia, getUserMedia, etc.)
     context: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -71,6 +72,7 @@ export const logError = mutation({
       architecture: truncate(args.architecture, 20),
       screenPermission: truncate(args.screenPermission, 20),
       microphonePermission: truncate(args.microphonePermission, 20),
+      captureStep: truncate(args.captureStep, 50),
       context: truncate(args.context, 500),
       createdAt: Date.now(),
     });

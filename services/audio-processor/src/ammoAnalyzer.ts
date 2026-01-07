@@ -19,53 +19,73 @@ This is a sales call between a Closer (sales rep) and a Prospect (potential cust
 [Closer] = Sales representative
 [Prospect] = Potential customer
 
+## CRITICAL SCORING RULES
+
+**BE EXTREMELY CONSERVATIVE WITH SCORES.** This is not about potential - it's about what the prospect has EXPLICITLY demonstrated.
+
+- A score of 0 means: No evidence whatsoever (DEFAULT STATE)
+- A score of 10-20 means: Very slight hint, mentioned in passing
+- A score of 30-40 means: Clearly acknowledged once
+- A score of 50-60 means: Discussed in some detail, prospect engaged on topic
+- A score of 70-80 means: Strong statements, emotional investment shown
+- A score of 90-100 means: Extremely clear, repeated, emphatic statements
+
+**EARLY CALL BEHAVIOR:** In the first few minutes of a call (intro, small talk, initial questions), almost ALL scores should be 0-20. The closer hasn't even started discovery yet. Don't assume beliefs exist just because the prospect showed up to the call.
+
 ## WHAT TO ANALYZE
 
 ### 1. ENGAGEMENT LEVEL
 Assess how engaged the prospect is in the conversation:
-- "high" - Prospect is asking questions, sharing details, actively participating
-- "medium" - Prospect is responding but not highly invested
-- "low" - Short answers, distracted, not opening up
+- "high" - Prospect is asking questions, sharing details, actively participating, giving long answers
+- "medium" - Prospect is responding adequately but not volunteering extra info
+- "low" - Short answers, distracted, not opening up, seems disinterested
 
 ### 2. BUYING BELIEFS (Cole Gordon's 7 Beliefs Framework)
-Rate each belief from 0-100 based on evidence in the transcript:
+Rate each belief from 0-100 based on EXPLICIT EVIDENCE ONLY:
 
 1. **problem** - Does the prospect believe they have a real problem?
-   - 0-30: Doesn't think they have a problem
-   - 40-60: Acknowledges issues but not urgent
-   - 70-100: Clearly recognizes they have a significant problem
+   - 0: No problem mentioned yet (DEFAULT)
+   - 10-30: Vaguely mentioned an issue
+   - 40-60: Clearly described a specific problem
+   - 70-100: Expressed pain, frustration, or urgency about the problem
 
 2. **solution** - Does the prospect believe a solution exists?
-   - 0-30: Skeptical that anything can help
-   - 40-60: Open to the idea but not convinced
-   - 70-100: Believes solutions exist
+   - 0: Not discussed yet (DEFAULT)
+   - 10-30: Seems open to idea of solutions
+   - 40-60: Has tried things before, believes something could work
+   - 70-100: Actively looking, knows solutions exist
 
 3. **vehicle** - Does the prospect believe THIS solution is the right one?
-   - 0-30: Doubts this specific offering
-   - 40-60: Interested but comparing options
-   - 70-100: Sees this as the right vehicle
+   - 0: Haven't discussed the offer yet (DEFAULT)
+   - 10-30: Hearing about it, no opinion yet
+   - 40-60: Interested, asking questions about it
+   - 70-100: Expressed this seems like the right fit
 
 4. **self** - Does the prospect believe THEY can succeed with it?
-   - 0-30: Doubts their ability to implement/use it
-   - 40-60: Some confidence concerns
-   - 70-100: Believes they can do it
+   - 0: Not discussed yet (DEFAULT)
+   - 10-30: Some doubt expressed
+   - 40-60: Cautiously optimistic
+   - 70-100: Confident they can implement/succeed
 
 5. **time** - Does the prospect believe NOW is the right time?
-   - 0-30: Wants to wait, bad timing mentioned
-   - 40-60: Timing not ideal but open
-   - 70-100: Ready to act now
+   - 0: Timing not discussed (DEFAULT)
+   - 10-30: Mentioned bad timing or wanting to wait
+   - 40-60: Timing is okay but not urgent
+   - 70-100: Expressed urgency, needs to act now
 
 6. **money** - Does the prospect believe it's worth the investment?
-   - 0-30: Price is a major concern
-   - 40-60: Weighing value vs cost
-   - 70-100: Sees value, money not primary concern
+   - 0: Price not discussed yet (DEFAULT)
+   - 10-30: Expressed budget concerns
+   - 40-60: Weighing value, price is a factor
+   - 70-100: Value is clear, price isn't main concern
 
 7. **urgency** - Is there urgency to make a decision?
-   - 0-30: No time pressure
-   - 40-60: Some motivation but not urgent
-   - 70-100: Strong urgency to solve this
+   - 0: No urgency discussed (DEFAULT)
+   - 10-30: No real time pressure
+   - 40-60: Would like to solve eventually
+   - 70-100: Needs to solve this ASAP, deadline mentioned
 
-IMPORTANT: Start all beliefs at 0 if not mentioned. Only increase based on EVIDENCE in the transcript.
+**REMEMBER: When in doubt, score LOWER. A prospect on a sales call does NOT automatically have high belief scores. They must EARN each point through their words.**
 
 ### 3. OBJECTION PREDICTION
 Based on the conversation, predict which objections the prospect is likely to raise:
