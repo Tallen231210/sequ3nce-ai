@@ -25,6 +25,8 @@ export default defineSchema({
     calendlyWebhookId: v.optional(v.string()), // Webhook subscription ID for cleanup
     calendlyConnectedEmail: v.optional(v.string()), // Email of connected Calendly account
     calendlyLastSyncAt: v.optional(v.number()), // Last sync timestamp
+    // Ammo V2 feature flag
+    ammoV2Enabled: v.optional(v.boolean()), // Enable AI-powered real-time ammo analysis
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -106,6 +108,29 @@ export default defineSchema({
     completedAt: v.optional(v.number()), // Timestamp when closer submitted questionnaire
     // AI-generated summary
     summary: v.optional(v.string()), // AI summary of the call for quick manager review
+
+    // Ammo V2: Real-time AI analysis (replaces traditional ammo extraction)
+    ammoAnalysis: v.optional(v.object({
+      engagement: v.object({
+        level: v.string(), // "high" | "medium" | "low"
+        reason: v.string(), // Why this level was determined
+      }),
+      beliefs: v.object({
+        problem: v.number(),    // 0-100 - Do they believe they have the problem?
+        solution: v.number(),   // 0-100 - Do they believe a solution exists?
+        vehicle: v.number(),    // 0-100 - Do they believe YOUR solution is the vehicle?
+        self: v.number(),       // 0-100 - Do they believe they can do it?
+        time: v.number(),       // 0-100 - Do they believe now is the right time?
+        money: v.number(),      // 0-100 - Do they believe it's worth the investment?
+        urgency: v.number(),    // 0-100 - Is there urgency to act?
+      }),
+      objectionPrediction: v.array(v.object({
+        type: v.string(),       // "think_about_it", "spouse", "money", "time", etc.
+        probability: v.number(), // 0-100
+      })),
+      painPoints: v.array(v.string()), // Exact quotes from prospect about their pain
+      analyzedAt: v.number(),   // Timestamp of last analysis
+    })),
 
     // Post-call questionnaire fields (enhanced)
     primaryObjection: v.optional(v.string()), // Selected objection from dropdown
@@ -353,8 +378,10 @@ export default defineSchema({
     // Permission states at time of error
     screenPermission: v.optional(v.string()), // "granted", "denied", "not-determined"
     microphonePermission: v.optional(v.string()),
+    // Capture step tracking - which step in audio capture failed
+    captureStep: v.optional(v.string()), // "getDisplayMedia", "getUserMedia", "audioContext", etc.
     // Additional context
-    context: v.optional(v.string()), // JSON string with any extra diagnostic info
+    context: v.optional(v.string()), // JSON string with any extra diagnostic info (includes track counts)
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])

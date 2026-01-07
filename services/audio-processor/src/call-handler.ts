@@ -17,6 +17,7 @@ import {
 } from "./convex.js";
 import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
+import { AmmoAnalyzer, type AmmoV2Analysis } from "./ammoAnalyzer.js";
 import { logger } from "./logger.js";
 import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem, AmmoConfig } from "./types.js";
 
@@ -24,6 +25,9 @@ const AMMO_EXTRACTION_INTERVAL_MS = 30000; // Extract ammo every 30 seconds
 const MIN_TRANSCRIPT_LENGTH_FOR_AMMO = 100; // Minimum characters before attempting extraction
 const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
 const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours max call duration
+
+// Callback type for sending Ammo V2 analysis to desktop
+export type OnAmmoV2AnalysisCallback = (analysis: AmmoV2Analysis) => void;
 
 export class CallHandler {
   private session: CallSession;
@@ -36,6 +40,11 @@ export class CallHandler {
   private firstSpeaker: string | null = null; // First speaker detected = Closer
   private sampleRate: number; // Audio sample rate from desktop
   private maxDurationTimeout: NodeJS.Timeout | null = null; // Auto-end after 2 hours
+
+  // Ammo V2: Real-time AI analysis
+  private ammoAnalyzer: AmmoAnalyzer | null = null;
+  private ammoV2Enabled = false;
+  private onAmmoV2Analysis: OnAmmoV2AnalysisCallback | null = null;
 
   constructor(metadata: CallMetadata) {
     this.sampleRate = metadata.sampleRate || 48000;
@@ -56,6 +65,13 @@ export class CallHandler {
     };
 
     logger.info(`Call handler created for call ${metadata.callId} (sampleRate: ${this.sampleRate}Hz)`, metadata);
+  }
+
+  /**
+   * Set callback for Ammo V2 analysis results (sends to desktop WebSocket)
+   */
+  setAmmoV2Callback(callback: OnAmmoV2AnalysisCallback): void {
+    this.onAmmoV2Analysis = callback;
   }
 
   async start(): Promise<string | null> {
@@ -83,6 +99,29 @@ export class CallHandler {
         logger.warn(`Call ${this.session.metadata.callId} reached max duration (2 hours) - auto-ending`);
         await this.end();
       }, MAX_CALL_DURATION_MS);
+
+      // Check if team has Ammo V2 enabled (beta feature)
+      this.ammoV2Enabled = await AmmoAnalyzer.isAmmoV2Enabled(this.session.metadata.teamId);
+      logger.info(`Ammo V2 enabled for team ${this.session.metadata.teamId}: ${this.ammoV2Enabled}`);
+
+      // Initialize Ammo V2 analyzer if enabled
+      if (this.ammoV2Enabled && this.convexCallId) {
+        this.ammoAnalyzer = new AmmoAnalyzer(this.convexCallId, this.session.metadata.teamId);
+
+        // Start periodic analysis (every 45 seconds)
+        this.ammoAnalyzer.startPeriodicAnalysis(
+          () => this.session.fullTranscript,
+          (analysis) => {
+            // Send to desktop via callback if set
+            if (this.onAmmoV2Analysis) {
+              this.onAmmoV2Analysis(analysis);
+            }
+          },
+          45000 // 45 seconds
+        );
+
+        logger.info(`Ammo V2 analyzer started for call ${this.session.metadata.callId}`);
+      }
 
       // Return the Convex-generated call ID so desktop can use it
       return this.convexCallId;
@@ -318,6 +357,13 @@ export class CallHandler {
     if (this.maxDurationTimeout) {
       clearTimeout(this.maxDurationTimeout);
       this.maxDurationTimeout = null;
+    }
+
+    // Stop Ammo V2 analyzer if running
+    if (this.ammoAnalyzer) {
+      this.ammoAnalyzer.stop();
+      this.ammoAnalyzer = null;
+      logger.info(`Ammo V2 analyzer stopped for call ${this.session.metadata.callId}`);
     }
 
     // Close Speechmatics connection

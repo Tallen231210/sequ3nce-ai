@@ -1276,6 +1276,7 @@ http.route({
         architecture: body.architecture,
         screenPermission: body.screenPermission,
         microphonePermission: body.microphonePermission,
+        captureStep: body.captureStep,
         context: body.context,
       });
 
@@ -1310,6 +1311,182 @@ http.route({
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
+// AMMO V2: Real-time AI Analysis (for audio processor and desktop app)
+// ============================================
+
+// POST endpoint to update ammo analysis for a call (called by audio processor)
+http.route({
+  path: "/updateAmmoAnalysis",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, analysis } = body;
+
+      if (!callId || !analysis) {
+        return new Response(JSON.stringify({ error: "callId and analysis are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.calls.updateAmmoAnalysis, {
+        callId,
+        analysis,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error updating ammo analysis:", error);
+      return new Response(JSON.stringify({ error: "Failed to update analysis" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for updateAmmoAnalysis
+http.route({
+  path: "/updateAmmoAnalysis",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to check if Ammo V2 is enabled for a team (called by audio processor)
+http.route({
+  path: "/isAmmoV2Enabled",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const teamId = url.searchParams.get("teamId");
+
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "teamId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const enabled = await ctx.runQuery(api.calls.isAmmoV2Enabled, { teamId });
+      return new Response(JSON.stringify({ enabled }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error checking Ammo V2 status:", error);
+      return new Response(JSON.stringify({ error: "Failed to check status" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for isAmmoV2Enabled
+http.route({
+  path: "/isAmmoV2Enabled",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to fetch current ammo analysis for a call (for desktop app)
+http.route({
+  path: "/getAmmoAnalysis",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+
+    if (!callId) {
+      return new Response(JSON.stringify({ error: "callId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const analysis = await ctx.runQuery(api.calls.getAmmoAnalysis, { callId });
+      return new Response(JSON.stringify(analysis), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error fetching ammo analysis:", error);
+      return new Response(JSON.stringify({ error: "Failed to fetch analysis" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getAmmoAnalysis
+http.route({
+  path: "/getAmmoAnalysis",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
       },
     });

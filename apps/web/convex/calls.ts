@@ -2386,3 +2386,142 @@ export const stopAllLiveCalls = mutation({
     };
   },
 });
+
+// ============================================
+// AMMO V2: Real-time AI Analysis
+// ============================================
+
+// Update ammo analysis for a call (called by audio processor)
+export const updateAmmoAnalysis = mutation({
+  args: {
+    callId: v.string(),
+    analysis: v.object({
+      engagement: v.object({
+        level: v.string(),
+        reason: v.string(),
+      }),
+      beliefs: v.object({
+        problem: v.number(),
+        solution: v.number(),
+        vehicle: v.number(),
+        self: v.number(),
+        time: v.number(),
+        money: v.number(),
+        urgency: v.number(),
+      }),
+      objectionPrediction: v.array(v.object({
+        type: v.string(),
+        probability: v.number(),
+      })),
+      painPoints: v.array(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const callIdTyped = args.callId as Id<"calls">;
+
+    // Verify call exists
+    const call = await ctx.db.get(callIdTyped);
+    if (!call) {
+      console.error(`[updateAmmoAnalysis] Call not found: ${args.callId}`);
+      return { success: false, error: "Call not found" };
+    }
+
+    // Update the call with new analysis
+    await ctx.db.patch(callIdTyped, {
+      ammoAnalysis: {
+        ...args.analysis,
+        analyzedAt: Date.now(),
+      },
+    });
+
+    console.log(`[updateAmmoAnalysis] Updated analysis for call ${args.callId}`);
+    return { success: true };
+  },
+});
+
+// Check if a team has Ammo V2 enabled
+export const isAmmoV2Enabled = query({
+  args: {
+    teamId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const teamIdTyped = args.teamId as Id<"teams">;
+    const team = await ctx.db.get(teamIdTyped);
+    return team?.ammoV2Enabled ?? false;
+  },
+});
+
+// Get the current ammo analysis for a call (for desktop app real-time updates)
+export const getAmmoAnalysis = query({
+  args: {
+    callId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const callIdTyped = args.callId as Id<"calls">;
+    const call = await ctx.db.get(callIdTyped);
+    return call?.ammoAnalysis ?? null;
+  },
+});
+
+// ADMIN: Enable Ammo V2 for a team by team ID
+export const enableAmmoV2ForTeam = mutation({
+  args: {
+    teamId: v.string(),
+    enabled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const teamIdTyped = args.teamId as Id<"teams">;
+    const team = await ctx.db.get(teamIdTyped);
+
+    if (!team) {
+      return { success: false, error: "Team not found" };
+    }
+
+    const enabledValue = args.enabled ?? true;
+    await ctx.db.patch(teamIdTyped, {
+      ammoV2Enabled: enabledValue,
+    });
+
+    console.log(`[enableAmmoV2ForTeam] Set ammoV2Enabled=${enabledValue} for team ${args.teamId} (${team.name})`);
+    return { success: true, teamName: team.name, enabled: enabledValue };
+  },
+});
+
+// ADMIN: Enable Ammo V2 for a closer by email (looks up their team)
+export const enableAmmoV2ByCloserEmail = mutation({
+  args: {
+    email: v.string(),
+    enabled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    // Find the closer by email
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_email", (q) => q.eq("email", args.email.toLowerCase()))
+      .first();
+
+    if (!closer) {
+      return { success: false, error: `Closer not found with email: ${args.email}` };
+    }
+
+    // Get their team
+    const team = await ctx.db.get(closer.teamId);
+    if (!team) {
+      return { success: false, error: "Closer's team not found" };
+    }
+
+    const enabledValue = args.enabled ?? true;
+    await ctx.db.patch(closer.teamId, {
+      ammoV2Enabled: enabledValue,
+    });
+
+    console.log(`[enableAmmoV2ByCloserEmail] Set ammoV2Enabled=${enabledValue} for team ${team.name} (via closer ${args.email})`);
+    return {
+      success: true,
+      closerName: closer.name,
+      teamName: team.name,
+      teamId: closer.teamId,
+      enabled: enabledValue
+    };
+  },
+});

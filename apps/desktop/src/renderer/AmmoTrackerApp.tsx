@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AmmoItem, TranscriptSegment } from './types/electron';
+import { AmmoV2Panel, type AmmoV2Analysis } from './AmmoV2Panel';
 
 const CONVEX_SITE_URL = 'https://ideal-ram-982.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds
@@ -649,6 +650,7 @@ export function AmmoTrackerApp() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [ammoV2Analysis, setAmmoV2Analysis] = useState<AmmoV2Analysis | null>(null);
 
   const seenAmmoIds = useRef<Set<string>>(new Set());
   const seenSegmentIds = useRef<Set<string>>(new Set());
@@ -680,6 +682,22 @@ export function AmmoTrackerApp() {
       setTranscriptSegments(data);
     } catch (error) {
       console.error('[Panel] Failed to fetch transcript:', error);
+    }
+  }, []);
+
+  // Fetch Ammo V2 analysis from Convex (real-time AI analysis)
+  const fetchAmmoV2Analysis = useCallback(async (currentCallId: string) => {
+    try {
+      const response = await fetch(`${CONVEX_SITE_URL}/getAmmoAnalysis?callId=${encodeURIComponent(currentCallId)}`);
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data && data.engagement) {
+        console.log('[Panel] Ammo V2 analysis received:', data);
+        setAmmoV2Analysis(data);
+      }
+    } catch (error) {
+      console.error('[Panel] Failed to fetch Ammo V2 analysis:', error);
     }
   }, []);
 
@@ -780,9 +798,11 @@ export function AmmoTrackerApp() {
         fetchAmmo(initialCallId);
         fetchTranscript(initialCallId);
         fetchNotes(initialCallId);
+        fetchAmmoV2Analysis(initialCallId);
         pollInterval = setInterval(() => {
           fetchAmmo(initialCallId);
           fetchTranscript(initialCallId);
+          fetchAmmoV2Analysis(initialCallId);
         }, POLL_INTERVAL);
       }
 
@@ -795,6 +815,7 @@ export function AmmoTrackerApp() {
         seenSegmentIds.current.clear();
         setAmmoItems([]);
         setTranscriptSegments([]);
+        setAmmoV2Analysis(null);
         // DON'T clear notes when call ends - keep them visible for user to review
         // Only clear notes when a NEW call starts
         if (newCallId) {
@@ -808,9 +829,11 @@ export function AmmoTrackerApp() {
           fetchAmmo(newCallId);
           fetchTranscript(newCallId);
           fetchNotes(newCallId);
+          fetchAmmoV2Analysis(newCallId);
           pollInterval = setInterval(() => {
             fetchAmmo(newCallId);
             fetchTranscript(newCallId);
+            fetchAmmoV2Analysis(newCallId);
           }, POLL_INTERVAL);
         }
       });
@@ -847,7 +870,7 @@ export function AmmoTrackerApp() {
       if (pollInterval) clearInterval(pollInterval);
       if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
     };
-  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchResources]);
+  }, [fetchAmmo, fetchTranscript, fetchNotes, fetchResources, fetchAmmoV2Analysis]);
 
   // Save notes before closing
   useEffect(() => {
@@ -921,11 +944,20 @@ export function AmmoTrackerApp() {
       <div className="flex-1 overflow-hidden bg-gray-50/30">
         {activeTab === 'ammo' && (
           <div className="h-full overflow-y-auto scrollbar-thin">
-            <AmmoTab
-              callId={callId}
-              ammoItems={ammoItems}
-              onCopy={handleCopy}
-            />
+            {/* Show Ammo V2 panel if analysis exists (team has V2 enabled), otherwise show classic ammo */}
+            {ammoV2Analysis ? (
+              <AmmoV2Panel
+                callId={callId}
+                analysis={ammoV2Analysis}
+                onCopy={handleCopy}
+              />
+            ) : (
+              <AmmoTab
+                callId={callId}
+                ammoItems={ammoItems}
+                onCopy={handleCopy}
+              />
+            )}
           </div>
         )}
         {activeTab === 'transcript' && (

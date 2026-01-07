@@ -52,6 +52,18 @@ wss.on("connection", async (ws, req) => {
 
           // Create and start call handler
           callHandler = new CallHandler(metadata);
+
+          // Set up Ammo V2 callback to send analysis to desktop via WebSocket
+          callHandler.setAmmoV2Callback((analysis) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: "ammo_analysis",
+                data: analysis,
+              }));
+              logger.info(`Sent Ammo V2 analysis to desktop: engagement=${analysis.engagement.level}`);
+            }
+          });
+
           const convexCallId = await callHandler.start();
 
           activeCalls.set(ws, callHandler);
