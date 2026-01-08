@@ -158,43 +158,16 @@ function PainPointQuote({ quote, onCopy }: { quote: string; onCopy?: (text: stri
   );
 }
 
-// Loading state for objections
-function ObjectionLoadingState() {
-  return (
-    <div className="flex items-center justify-center py-4 text-zinc-400">
-      <div className="flex items-center gap-2">
-        <div className="w-4 h-4 border-2 border-zinc-300 border-t-zinc-500 rounded-full animate-spin" />
-        <p className="text-sm">Analyzing for potential objections...</p>
-      </div>
-    </div>
-  );
-}
-
-// No Analysis State
+// No Analysis State (for old calls without Ammo V2)
 function NoAnalysisState() {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-zinc-400">
       <Zap className="w-8 h-8 mb-2 opacity-50" />
-      <p className="text-sm text-center">AI analysis will appear here</p>
+      <p className="text-sm text-center">No AI analysis available</p>
+      <p className="text-xs text-center mt-1">AI analysis is available for new calls</p>
     </div>
   );
 }
-
-// Default initial state - all beliefs at 0%
-const DEFAULT_ANALYSIS: AmmoV2Analysis = {
-  engagement: { level: 'medium', reason: 'Waiting for conversation data...' },
-  beliefs: {
-    problem: 0,
-    solution: 0,
-    vehicle: 0,
-    self: 0,
-    time: 0,
-    money: 0,
-    urgency: 0,
-  },
-  objectionPrediction: [],
-  painPoints: [],
-};
 
 // Main Ammo V2 Panel Component
 interface AmmoV2PanelProps {
@@ -210,14 +183,12 @@ export function AmmoV2Panel({
   compact = false,
   showTitle = true,
 }: AmmoV2PanelProps) {
-  // Use actual analysis if available, otherwise show default state with 0% values
-  const displayAnalysis = analysis || DEFAULT_ANALYSIS;
-  const hasRealData = analysis !== null;
-  const engagementStyle = ENGAGEMENT_STYLES[displayAnalysis.engagement.level];
-
-  if (!hasRealData && compact) {
+  // If no analysis data, show the "not available" state
+  if (!analysis) {
     return <NoAnalysisState />;
   }
+
+  const engagementStyle = ENGAGEMENT_STYLES[analysis.engagement.level];
 
   return (
     <div className={cn("flex flex-col space-y-4", compact ? "p-2" : "p-0")}>
@@ -236,10 +207,10 @@ export function AmmoV2Panel({
               engagementStyle.border
             )}
           >
-            {displayAnalysis.engagement.level.toUpperCase()}
+            {analysis.engagement.level.toUpperCase()}
           </Badge>
         </div>
-        <p className="text-sm text-zinc-600 leading-relaxed">{displayAnalysis.engagement.reason}</p>
+        <p className="text-sm text-zinc-600 leading-relaxed">{analysis.engagement.reason}</p>
       </div>
 
       {/* Buying Beliefs Section */}
@@ -247,7 +218,7 @@ export function AmmoV2Panel({
         <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">Buying Beliefs</h3>
         <div className="space-y-3">
           {(Object.keys(BELIEF_LABELS) as Array<keyof AmmoV2Analysis['beliefs']>).map((key) => (
-            <BeliefBar key={key} beliefKey={key} value={displayAnalysis.beliefs[key]} />
+            <BeliefBar key={key} beliefKey={key} value={analysis.beliefs[key]} />
           ))}
         </div>
       </div>
@@ -258,16 +229,14 @@ export function AmmoV2Panel({
           <AlertTriangle className="w-4 h-4 text-zinc-500" />
           <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Likely Objections</h3>
         </div>
-        {!hasRealData ? (
-          <ObjectionLoadingState />
-        ) : displayAnalysis.objectionPrediction.length > 0 ? (
+        {analysis.objectionPrediction.length > 0 ? (
           <div className="space-y-2">
-            {displayAnalysis.objectionPrediction.map((obj, idx) => (
+            {analysis.objectionPrediction.map((obj, idx) => (
               <ObjectionCard key={idx} type={obj.type} probability={obj.probability} />
             ))}
           </div>
         ) : (
-          <p className="text-sm text-zinc-400 text-center py-2">No objections predicted yet</p>
+          <p className="text-sm text-zinc-400 text-center py-2">No objections predicted</p>
         )}
       </div>
 
@@ -276,27 +245,25 @@ export function AmmoV2Panel({
         <div className="flex items-center gap-2 mb-3">
           <MessageSquareQuote className="w-4 h-4 text-zinc-500" />
           <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Pain Points</h3>
-          {displayAnalysis.painPoints.length > 0 && (
-            <Badge variant="secondary" className="text-xs">{displayAnalysis.painPoints.length}</Badge>
+          {analysis.painPoints.length > 0 && (
+            <Badge variant="secondary" className="text-xs">{analysis.painPoints.length}</Badge>
           )}
         </div>
-        {displayAnalysis.painPoints.length > 0 ? (
+        {analysis.painPoints.length > 0 ? (
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {displayAnalysis.painPoints.map((quote, idx) => (
+            {analysis.painPoints.map((quote, idx) => (
               <PainPointQuote key={idx} quote={quote} onCopy={onCopy} />
             ))}
           </div>
         ) : (
-          <p className="text-sm text-zinc-400 text-center py-2">
-            {hasRealData ? 'No pain points captured yet' : 'Listening for pain points...'}
-          </p>
+          <p className="text-sm text-zinc-400 text-center py-2">No pain points captured</p>
         )}
       </div>
 
       {/* Last Updated */}
-      {displayAnalysis.analyzedAt && (
+      {analysis.analyzedAt && (
         <p className="text-xs text-zinc-400 text-center">
-          Last updated: {new Date(displayAnalysis.analyzedAt).toLocaleTimeString()}
+          Last updated: {new Date(analysis.analyzedAt).toLocaleTimeString()}
         </p>
       )}
     </div>
