@@ -23,6 +23,11 @@ struct Sequ3nceApp: App {
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
+
+        // Check for updates shortly after launch (gives UI time to load)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [updaterController] in
+            updaterController.updater.checkForUpdatesInBackground()
+        }
     }
 
     var body: some Scene {
@@ -103,8 +108,26 @@ class AppState: ObservableObject {
     }
 
     private func loadSavedSession() {
-        // TODO: Load from Keychain
-        // For now, always start logged out
+        // Load saved closer info from UserDefaults
+        if let data = UserDefaults.standard.data(forKey: "closerInfo"),
+           let savedCloser = try? JSONDecoder().decode(CloserInfo.self, from: data) {
+            self.closerInfo = savedCloser
+            self.isAuthenticated = true
+            print("[AppState] Restored session for \(savedCloser.name)")
+        }
+    }
+
+    private func saveSession() {
+        guard let closerInfo = closerInfo else { return }
+        if let data = try? JSONEncoder().encode(closerInfo) {
+            UserDefaults.standard.set(data, forKey: "closerInfo")
+            print("[AppState] Saved session for \(closerInfo.name)")
+        }
+    }
+
+    private func clearSession() {
+        UserDefaults.standard.removeObject(forKey: "closerInfo")
+        print("[AppState] Cleared saved session")
     }
 
     // Debug counter for audio callback
@@ -128,14 +151,14 @@ class AppState: ObservableObject {
         let closerInfo = try await convexService.login(email: email, password: password)
         self.closerInfo = closerInfo
         self.isAuthenticated = true
-        // TODO: Save to Keychain
+        saveSession()
     }
 
     func logout() {
         isAuthenticated = false
         closerInfo = nil
         stopRecording()
-        // TODO: Clear Keychain
+        clearSession()
     }
 
     // MARK: - Recording
