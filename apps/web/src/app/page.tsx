@@ -124,14 +124,22 @@ function ScreenshotTabs() {
     {
       label: "Live Calls",
       description: "Monitor every active call in real-time",
+      gif: "/screenshots/Live-calls.gif",
     },
     {
       label: "Call Details",
       description: "Review transcripts with AI-extracted ammo",
+      gif: "/screenshots/call-details.gif",
     },
     {
-      label: "Closer Stats",
-      description: "Track performance across your entire team",
+      label: "Analytics",
+      description: "Deep insights into team performance and trends",
+      gif: "/screenshots/analytics.gif",
+    },
+    {
+      label: "Playbook",
+      description: "Build a training library from winning call moments",
+      gif: "/screenshots/playbook.gif",
     },
   ];
 
@@ -156,8 +164,8 @@ function ScreenshotTabs() {
       </div>
 
       {/* Screenshot display */}
-      <div className="relative">
-        <div className="bg-zinc-100 rounded-xl p-4 shadow-2xl shadow-zinc-200/50">
+      <div className="relative max-w-4xl mx-auto">
+        <div className="bg-zinc-100 rounded-xl p-3 shadow-2xl shadow-zinc-200/50">
           {/* Browser frame */}
           <div className="bg-zinc-200 rounded-t-lg px-4 py-3 flex items-center gap-2">
             <div className="flex gap-1.5">
@@ -170,22 +178,13 @@ function ScreenshotTabs() {
             </div>
           </div>
 
-          {/* Screenshot placeholder - in production, replace with actual screenshots */}
-          <div className="bg-white rounded-b-lg aspect-[16/10] flex items-center justify-center border border-zinc-200">
-            <div className="text-center p-8">
-              <div className="text-6xl mb-4">
-                {activeTab === 0 && "📡"}
-                {activeTab === 1 && "📝"}
-                {activeTab === 2 && "📊"}
-              </div>
-              <p className="text-lg font-medium">{tabs[activeTab].label}</p>
-              <p className="text-muted-foreground mt-2">
-                {tabs[activeTab].description}
-              </p>
-              <p className="text-sm text-zinc-400 mt-4">
-                [Product screenshot will go here]
-              </p>
-            </div>
+          {/* GIF display */}
+          <div className="bg-white rounded-b-lg overflow-hidden border border-zinc-200">
+            <img
+              src={tabs[activeTab].gif}
+              alt={tabs[activeTab].label}
+              className="w-full h-auto"
+            />
           </div>
         </div>
       </div>
@@ -419,7 +418,7 @@ export default function Home() {
                 icon: Calendar,
                 title: "Never miss a scheduled call",
                 description:
-                  "Calendly syncs automatically. Know exactly when calls should happen and if they actually did.",
+                  "Track scheduled calls and follow-ups. Know exactly when calls should happen and if they actually did.",
               },
             ].map((feature, index) => (
               <AnimatedSection key={index} delay={index * 100}>
@@ -457,7 +456,7 @@ export default function Home() {
                 step: "1",
                 title: "Create your team",
                 description:
-                  "Set up your account, connect Calendly, and add your closers.",
+                  "Set up your account and add your closers in minutes.",
               },
               {
                 icon: Monitor,
@@ -592,7 +591,7 @@ export default function Home() {
               />
               <FAQItem
                 question="Do you integrate with my CRM?"
-                answer="Calendly integration is live today. CRM integrations (GoHighLevel, Close) are coming soon. Let us know what you need."
+                answer="CRM integrations (GoHighLevel, Close) are coming soon. Let us know what you need and we'll prioritize accordingly."
               />
             </div>
           </AnimatedSection>
