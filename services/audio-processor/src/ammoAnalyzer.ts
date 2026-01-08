@@ -23,9 +23,16 @@ This is a sales call between a Closer (sales rep) and a Prospect (potential cust
 
 For each buying belief, count how many times the prospect has PROVIDED EVIDENCE for that belief. Each piece of evidence adds to the score.
 
+**CRITICAL: INTRODUCTIONS ARE NOT EVIDENCE**
+- Greetings like "Hi", "Thanks for calling", "Nice to meet you" = 0% (NO evidence)
+- Small talk about weather, weekend, how they're doing = 0% (NO evidence)
+- Polite acknowledgments like "Sure", "Okay", "Sounds good" = 0% (NO evidence)
+- ONLY count SUBSTANTIVE statements about their actual situation, problems, desires, or concerns
+- The first 1-2 minutes of a call is typically introductions - expect 0% for everything during this time
+
 **EVIDENCE-BASED SCORING:**
-- 0%: No evidence found (DEFAULT - start here)
-- 10-20%: 1 brief mention or hint
+- 0%: No evidence found (DEFAULT - start here, stay here during introductions)
+- 10-20%: 1 brief mention or hint about a real issue/desire
 - 25-40%: 1-2 clear statements about this topic
 - 45-60%: Multiple mentions OR one detailed discussion
 - 65-80%: Several clear statements with emotional weight
@@ -261,7 +268,8 @@ export class AmmoAnalyzer {
       for (const point of analysis.painPoints) {
         this.allPainPoints.add(point);
       }
-      analysis.painPoints = Array.from(this.allPainPoints).slice(0, 10); // Keep up to 10 pain points
+      // No limit - capture all pain points, let UI handle scrolling
+      analysis.painPoints = Array.from(this.allPainPoints);
 
       logger.info(`[AmmoAnalyzer] Analysis complete: engagement=${analysis.engagement.level}, beliefs=${JSON.stringify(analysis.beliefs)}`);
 

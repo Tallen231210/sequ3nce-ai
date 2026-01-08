@@ -89,24 +89,28 @@ function BeliefBar({ beliefKey, value }: { beliefKey: keyof AmmoV2Analysis['beli
   );
 }
 
+// Get likelihood label based on probability
+function getLikelihoodLabel(probability: number): { text: string; bgColor: string; textColor: string } {
+  if (probability >= 60) {
+    return { text: 'Very Likely', bgColor: 'bg-red-100', textColor: 'text-red-700' };
+  }
+  if (probability >= 30) {
+    return { text: 'Likely', bgColor: 'bg-yellow-100', textColor: 'text-yellow-700' };
+  }
+  return { text: 'Less Likely', bgColor: 'bg-gray-100', textColor: 'text-gray-600' };
+}
+
 // Objection Prediction Card
 function ObjectionCard({ type, probability }: { type: string; probability: number }) {
   const label = OBJECTION_LABELS[type] || type;
+  const likelihood = getLikelihoodLabel(probability);
 
   return (
     <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-200">
       <span className="text-[12px] font-medium text-gray-700">{label}</span>
-      <div className="flex items-center gap-2">
-        <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className={`h-full ${probability >= 60 ? 'bg-red-500' : probability >= 30 ? 'bg-yellow-500' : 'bg-gray-400'} rounded-full`}
-            style={{ width: `${probability}%` }}
-          />
-        </div>
-        <span className={`text-[11px] font-semibold ${probability >= 60 ? 'text-red-600' : probability >= 30 ? 'text-yellow-600' : 'text-gray-500'}`}>
-          {probability}%
-        </span>
-      </div>
+      <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${likelihood.bgColor} ${likelihood.textColor}`}>
+        {likelihood.text}
+      </span>
     </div>
   );
 }

@@ -2440,6 +2440,7 @@ export const updateAmmoAnalysis = mutation({
 });
 
 // Check if a team has Ammo V2 enabled
+// NOTE: Ammo V2 is now enabled by default for all teams
 export const isAmmoV2Enabled = query({
   args: {
     teamId: v.string(),
@@ -2447,7 +2448,8 @@ export const isAmmoV2Enabled = query({
   handler: async (ctx, args) => {
     const teamIdTyped = args.teamId as Id<"teams">;
     const team = await ctx.db.get(teamIdTyped);
-    return team?.ammoV2Enabled ?? false;
+    // Default to true - Ammo V2 is now enabled for everyone
+    return team?.ammoV2Enabled ?? true;
   },
 });
 
