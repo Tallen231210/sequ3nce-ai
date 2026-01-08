@@ -46,10 +46,12 @@ import {
   FileText,
   ChevronDown,
   ChevronUp,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTeam } from "@/hooks/useTeam";
+import { AmmoV2Panel, type AmmoV2Analysis } from "@/components/AmmoV2Panel";
 
 // Types
 interface AmmoItem {
@@ -102,6 +104,7 @@ interface CallDetails {
   teamName: string | null;
   ammo: AmmoItem[];
   transcriptSegments?: DbTranscriptSegment[]; // Segments with accurate timestamps
+  ammoAnalysis?: AmmoV2Analysis;
 }
 
 // Utility functions
@@ -176,44 +179,6 @@ const OUTCOME_OPTIONS = [
 
 // Quick-select deal value presets
 const DEAL_VALUE_PRESETS = [1000, 3000, 5000, 10000, 15000];
-
-function getAmmoTypeColor(type: string): string {
-  switch (type) {
-    case "emotional":
-      return "bg-purple-500/10 text-purple-400 border-purple-500/30";
-    case "budget":
-      return "bg-green-500/10 text-green-400 border-green-500/30";
-    case "pain_point":
-      return "bg-red-500/10 text-red-400 border-red-500/30";
-    case "urgency":
-      return "bg-orange-500/10 text-orange-400 border-orange-500/30";
-    case "commitment":
-      return "bg-blue-500/10 text-blue-400 border-blue-500/30";
-    case "objection_preview":
-      return "bg-yellow-500/10 text-yellow-400 border-yellow-500/30";
-    default:
-      return "bg-zinc-500/10 text-zinc-400 border-zinc-500/30";
-  }
-}
-
-function getAmmoTypeLabel(type: string): string {
-  switch (type) {
-    case "emotional":
-      return "Emotional";
-    case "budget":
-      return "Budget";
-    case "pain_point":
-      return "Pain Point";
-    case "urgency":
-      return "Urgency";
-    case "commitment":
-      return "Commitment";
-    case "objection_preview":
-      return "Objection";
-    default:
-      return type;
-  }
-}
 
 // Call Summary Component (expandable/collapsible)
 interface CallSummaryProps {
@@ -1438,100 +1403,6 @@ function TranscriptView({
   );
 }
 
-// Ammo Sidebar Component
-interface AmmoSidebarProps {
-  ammoItems: AmmoItem[];
-  onAmmoClick: (ammo: AmmoItem) => void;
-}
-
-function AmmoSidebar({ ammoItems, onAmmoClick }: AmmoSidebarProps) {
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const handleCopy = async (e: React.MouseEvent, text: string, id: string) => {
-    e.stopPropagation();
-    await navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  // Group ammo by type
-  const groupedAmmo = useMemo(() => {
-    const groups: Record<string, AmmoItem[]> = {};
-    for (const item of ammoItems) {
-      if (!groups[item.type]) {
-        groups[item.type] = [];
-      }
-      groups[item.type].push(item);
-    }
-    return groups;
-  }, [ammoItems]);
-
-  const typeOrder = ["emotional", "pain_point", "budget", "urgency", "commitment", "objection_preview"];
-  const sortedTypes = Object.keys(groupedAmmo).sort(
-    (a, b) => typeOrder.indexOf(a) - typeOrder.indexOf(b)
-  );
-
-  if (ammoItems.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <Mic className="h-10 w-10 text-zinc-600 mb-3" />
-        <p className="text-zinc-400">No ammo extracted</p>
-        <p className="text-zinc-600 text-sm mt-1">
-          Key moments will appear here
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {sortedTypes.map((type) => (
-        <div key={type}>
-          <div className="flex items-center gap-2 mb-3">
-            <Badge variant="outline" className={`text-xs ${getAmmoTypeColor(type)}`}>
-              {getAmmoTypeLabel(type)}
-            </Badge>
-            <span className="text-xs text-zinc-500">{groupedAmmo[type].length}</span>
-          </div>
-
-          <div className="space-y-2">
-            {groupedAmmo[type].map((item) => (
-              <div
-                key={item._id}
-                onClick={() => onAmmoClick(item)}
-                className="group p-3 rounded-lg bg-zinc-100 border border-zinc-200 hover:border-zinc-300 cursor-pointer transition-all"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm text-foreground leading-relaxed line-clamp-3">
-                    &ldquo;{item.text}&rdquo;
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => handleCopy(e, item.text, item._id)}
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    {copiedId === item._id ? (
-                      <Check className="h-3 w-3 text-green-400" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </Button>
-                </div>
-                {item.timestamp !== undefined && (
-                  <span className="text-xs text-zinc-500 mt-2 block">
-                    {formatTimestamp(item.timestamp)}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // Loading State Component
 function LoadingState() {
   return (
@@ -1689,13 +1560,6 @@ export default function CallDetailPage() {
     setAudioSeekTime(timestamp);
   }, []);
 
-  const handleAmmoClick = useCallback((ammo: AmmoItem) => {
-    if (ammo.timestamp !== undefined) {
-      setAudioSeekTime(ammo.timestamp);
-    }
-    setHighlightedAmmo(ammo.text);
-    setTimeout(() => setHighlightedAmmo(undefined), 3000);
-  }, []);
 
   const handleTimeUpdate = useCallback((time: number) => {
     setCurrentPlaybackTime(time);
@@ -1940,17 +1804,20 @@ export default function CallDetailPage() {
             </Card>
           </div>
 
-          {/* Ammo Sidebar */}
+          {/* AI Analysis Sidebar (Ammo V2) */}
           <div className="lg:col-span-1">
             <Card className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] flex flex-col">
               <CardHeader className="flex-shrink-0">
-                <CardTitle className="text-lg flex items-center justify-between">
-                  <span>Ammo</span>
-                  <Badge variant="secondary">{call.ammo.length}</Badge>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  <span>AI Analysis</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex-1 overflow-y-auto min-h-0">
-                <AmmoSidebar ammoItems={call.ammo} onAmmoClick={handleAmmoClick} />
+                <AmmoV2Panel
+                  analysis={call.ammoAnalysis || null}
+                  showTitle={false}
+                />
               </CardContent>
             </Card>
           </div>

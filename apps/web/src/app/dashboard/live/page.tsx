@@ -11,15 +11,16 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Clock,
-  MessageSquareQuote,
   ChevronDown,
   ChevronUp,
   Radio,
   Mic,
   MicOff,
+  Zap,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { AmmoV2Panel, AmmoV2Compact, type AmmoV2Analysis } from "@/components/AmmoV2Panel";
 
 // Types
 interface TranscriptSegment {
@@ -56,6 +57,7 @@ interface LiveCall {
   closerInitials: string;
   ammo: AmmoItem[];
   transcriptSegments: TranscriptSegment[];
+  ammoAnalysis?: AmmoV2Analysis;
 }
 
 // Utility functions
@@ -69,44 +71,6 @@ function formatTimestamp(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-
-function getAmmoTypeLabel(type: string): string {
-  switch (type) {
-    case "emotional":
-      return "Emotional";
-    case "budget":
-      return "Budget";
-    case "pain_point":
-      return "Pain Point";
-    case "urgency":
-      return "Urgency";
-    case "commitment":
-      return "Commitment";
-    case "objection_preview":
-      return "Objection";
-    default:
-      return type;
-  }
-}
-
-function getAmmoTypeBadgeClass(type: string): string {
-  switch (type) {
-    case "emotional":
-      return "bg-purple-100 text-purple-700 border-purple-200";
-    case "budget":
-      return "bg-green-100 text-green-700 border-green-200";
-    case "pain_point":
-      return "bg-red-100 text-red-700 border-red-200";
-    case "urgency":
-      return "bg-orange-100 text-orange-700 border-orange-200";
-    case "commitment":
-      return "bg-blue-100 text-blue-700 border-blue-200";
-    case "objection_preview":
-      return "bg-yellow-100 text-yellow-700 border-yellow-200";
-    default:
-      return "bg-zinc-100 text-zinc-700 border-zinc-200";
-  }
 }
 
 // Talk-to-Listen Ratio Bar Component
@@ -223,58 +187,6 @@ function LiveTranscriptFeed({ segments }: LiveTranscriptFeedProps) {
   );
 }
 
-// Ammo Feed Component
-interface AmmoFeedProps {
-  ammo: AmmoItem[];
-}
-
-function AmmoFeed({ ammo }: AmmoFeedProps) {
-  if (ammo.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8 text-center">
-        <MessageSquareQuote className="h-8 w-8 text-zinc-400 mb-2" />
-        <p className="text-sm text-muted-foreground">No ammo extracted yet</p>
-        <p className="text-xs text-zinc-400">Key moments will appear here</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2 max-h-48 overflow-y-auto">
-      {ammo.map((item, index) => {
-        const isNew = index === 0;
-
-        return (
-          <div
-            key={item._id}
-            className={cn(
-              "p-3 rounded-lg border bg-white transition-all duration-300",
-              isNew && "ring-2 ring-zinc-300 animate-fade-in"
-            )}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm text-zinc-700 italic line-clamp-2">
-                &ldquo;{item.text}&rdquo;
-              </p>
-              <Badge
-                variant="outline"
-                className={cn("text-[10px] shrink-0", getAmmoTypeBadgeClass(item.type))}
-              >
-                {getAmmoTypeLabel(item.type)}
-              </Badge>
-            </div>
-            {item.timestamp !== undefined && (
-              <span className="text-[10px] text-zinc-400 mt-1 block">
-                {formatTimestamp(item.timestamp)}
-              </span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // Live Call Card Component
 interface LiveCallCardProps {
   call: LiveCall;
@@ -299,8 +211,6 @@ function LiveCallCard({ call, isExpanded, onToggleExpand }: LiveCallCardProps) {
   }, [call.startedAt]);
 
   const isOnCall = call.status === "on_call";
-  const latestAmmo = call.ammo[0];
-  const ammoCount = call.ammo.length;
 
   return (
     <Card
@@ -370,41 +280,31 @@ function LiveCallCard({ call, isExpanded, onToggleExpand }: LiveCallCardProps) {
             />
           )}
 
-          {/* Collapsed View - Latest Ammo */}
+          {/* Collapsed View - Ammo V2 Compact */}
           {!isExpanded && (
             <>
-              {latestAmmo ? (
-                <div className="rounded-md bg-zinc-50 p-3">
-                  <div className="flex items-start gap-2">
-                    <MessageSquareQuote
-                      className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0"
-                      strokeWidth={1.5}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm italic text-muted-foreground line-clamp-2">
-                        &ldquo;{latestAmmo.text}&rdquo;
-                      </p>
-                      {ammoCount > 1 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleExpand();
-                          }}
-                          className="text-xs text-zinc-500 hover:text-zinc-700 mt-1 flex items-center gap-1"
-                        >
-                          View {ammoCount - 1} more ammo items →
-                        </button>
-                      )}
-                    </div>
+              <div className="rounded-md bg-zinc-50 p-3">
+                <div className="flex items-start gap-2">
+                  <Zap
+                    className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0"
+                    strokeWidth={1.5}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <AmmoV2Compact analysis={call.ammoAnalysis || null} />
+                    {call.ammoAnalysis && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleExpand();
+                        }}
+                        className="text-xs text-zinc-500 hover:text-zinc-700 mt-2 flex items-center gap-1"
+                      >
+                        View full analysis →
+                      </button>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div className="rounded-md bg-zinc-50 p-3 text-center">
-                  <p className="text-xs text-muted-foreground">
-                    No ammo extracted yet
-                  </p>
-                </div>
-              )}
+              </div>
 
               {/* Status badge */}
               {!isOnCall && (
@@ -431,14 +331,14 @@ function LiveCallCard({ call, isExpanded, onToggleExpand }: LiveCallCardProps) {
                 </div>
               </div>
 
-              {/* Ammo Feed */}
+              {/* Ammo V2 Panel */}
               <div className="space-y-2">
                 <h4 className="text-sm font-medium flex items-center gap-2">
-                  <MessageSquareQuote className="h-4 w-4" />
-                  Ammo ({ammoCount})
+                  <Zap className="h-4 w-4" />
+                  AI Analysis
                 </h4>
-                <div className="border rounded-lg p-3 bg-zinc-50">
-                  <AmmoFeed ammo={call.ammo} />
+                <div className="border rounded-lg p-3 bg-zinc-50 max-h-[400px] overflow-y-auto">
+                  <AmmoV2Panel analysis={call.ammoAnalysis || null} showTitle={false} />
                 </div>
               </div>
             </div>
