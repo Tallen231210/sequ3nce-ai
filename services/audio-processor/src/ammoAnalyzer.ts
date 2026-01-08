@@ -362,6 +362,7 @@ export class AmmoAnalyzer {
             beliefs: analysis.beliefs,
             objectionPrediction: analysis.objectionPrediction,
             painPoints: analysis.painPoints,
+            liveSummary: analysis.liveSummary,
           },
         }),
       });

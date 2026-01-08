@@ -39,19 +39,29 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // First, get the latest release to find the asset ID
-    const releaseResponse = await fetch(
-      "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases/latest",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-        cache: "no-store",
-      }
-    );
+    // Get optional release tag from query params (e.g., "macos-v1.0.0" or "desktop-v1.2.27")
+    const releaseTag = searchParams.get("release");
+
+    // Fetch specific release by tag, or latest if not specified
+    const releaseUrl = releaseTag
+      ? `https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases/tags/${releaseTag}`
+      : "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases/latest";
+
+    const releaseResponse = await fetch(releaseUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+      cache: "no-store",
+    });
 
     if (!releaseResponse.ok) {
+      if (releaseResponse.status === 404) {
+        return NextResponse.json(
+          { error: releaseTag ? `Release ${releaseTag} not found` : "No releases found" },
+          { status: 404 }
+        );
+      }
       throw new Error(`GitHub API error: ${releaseResponse.status}`);
     }
 

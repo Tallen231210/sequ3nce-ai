@@ -14,11 +14,25 @@ interface Release {
   }>;
 }
 
+interface ReleasesResponse {
+  swift: Release | null;
+  electron: Release | null;
+  // Backwards compatible fields from electron release
+  tag_name?: string;
+  name?: string;
+  published_at?: string;
+  assets?: Array<{
+    name: string;
+    browser_download_url: string;
+    size: number;
+  }>;
+}
+
 type Platform = "mac" | "windows" | "linux" | null;
 
 export default function DownloadPage() {
   const [platform, setPlatform] = useState<Platform>(null);
-  const [release, setRelease] = useState<Release | null>(null);
+  const [releases, setReleases] = useState<ReleasesResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,32 +46,53 @@ export default function DownloadPage() {
       setPlatform("linux");
     }
 
-    // Fetch latest release from our API (proxies to GitHub with auth)
-    const fetchRelease = async () => {
+    // Fetch releases from our API (proxies to GitHub with auth)
+    const fetchReleases = async () => {
       try {
         const response = await fetch("/api/releases");
         if (response.ok) {
-          const data = await response.json();
-          setRelease(data);
+          const data: ReleasesResponse = await response.json();
+          setReleases(data);
         }
       } catch (error) {
-        console.error("Failed to fetch release:", error);
+        console.error("Failed to fetch releases:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRelease();
+    fetchReleases();
   }, []);
 
   const getDownloadUrl = (platformType: Platform): string | null => {
-    if (!release?.assets) return null;
+    if (!releases) return null;
 
-    const asset = release.assets.find((a) => {
+    // For macOS, use Swift release; for others, use Electron
+    if (platformType === "mac") {
+      // Prefer Swift release for macOS
+      const swiftAsset = releases.swift?.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".dmg")
+      );
+      if (swiftAsset && releases.swift) {
+        return `/api/releases/download?asset=${encodeURIComponent(swiftAsset.name)}&release=${releases.swift.tag_name}`;
+      }
+      // Fall back to Electron if no Swift release
+      const electronAsset = releases.electron?.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".dmg")
+      );
+      if (electronAsset && releases.electron) {
+        return `/api/releases/download?asset=${encodeURIComponent(electronAsset.name)}&release=${releases.electron.tag_name}`;
+      }
+      return null;
+    }
+
+    // Windows and Linux use Electron release
+    const electronRelease = releases.electron;
+    if (!electronRelease?.assets) return null;
+
+    const asset = electronRelease.assets.find((a) => {
       const name = a.name.toLowerCase();
       switch (platformType) {
-        case "mac":
-          return name.endsWith(".dmg");
         case "windows":
           return name.endsWith(".exe") && !name.includes("nupkg");
         case "linux":
@@ -67,9 +102,9 @@ export default function DownloadPage() {
       }
     });
 
-    // Use our proxy endpoint instead of direct GitHub URL
-    // This ensures downloads work even for private repos without GitHub auth
-    return asset ? `/api/releases/download?asset=${encodeURIComponent(asset.name)}` : null;
+    return asset
+      ? `/api/releases/download?asset=${encodeURIComponent(asset.name)}&release=${electronRelease.tag_name}`
+      : null;
   };
 
   const formatSize = (bytes: number): string => {
@@ -78,13 +113,28 @@ export default function DownloadPage() {
   };
 
   const getAssetSize = (platformType: Platform): string => {
-    if (!release?.assets) return "";
+    if (!releases) return "";
 
-    const asset = release.assets.find((a) => {
+    // For macOS, check Swift release first
+    if (platformType === "mac") {
+      const swiftAsset = releases.swift?.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".dmg")
+      );
+      if (swiftAsset) return formatSize(swiftAsset.size);
+
+      const electronAsset = releases.electron?.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".dmg")
+      );
+      return electronAsset ? formatSize(electronAsset.size) : "";
+    }
+
+    // Windows and Linux use Electron
+    const electronRelease = releases.electron;
+    if (!electronRelease?.assets) return "";
+
+    const asset = electronRelease.assets.find((a) => {
       const name = a.name.toLowerCase();
       switch (platformType) {
-        case "mac":
-          return name.endsWith(".dmg");
         case "windows":
           return name.endsWith(".exe") && !name.includes("nupkg");
         case "linux":
@@ -97,6 +147,21 @@ export default function DownloadPage() {
     return asset ? formatSize(asset.size) : "";
   };
 
+  // Get version string for a platform
+  const getVersion = (platformType: Platform): string => {
+    if (!releases) return "";
+
+    if (platformType === "mac" && releases.swift) {
+      return releases.swift.tag_name.replace("macos-v", "");
+    }
+
+    if (releases.electron) {
+      return releases.electron.tag_name.replace("desktop-v", "");
+    }
+
+    return "";
+  };
+
   const platformInfo = {
     mac: {
       name: "macOS",
@@ -106,7 +171,7 @@ export default function DownloadPage() {
         </svg>
       ),
       extension: ".dmg",
-      instructions: "Open the DMG, drag Sequ3nce to Applications, and launch.",
+      instructions: "Open the DMG, drag Sequ3nce to Applications, and launch. Requires macOS 14.4+",
     },
     windows: {
       name: "Windows",
@@ -160,9 +225,9 @@ export default function DownloadPage() {
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
               Sequ3nce for {platformInfo[platform].name}
             </h2>
-            {release && (
+            {releases && (
               <p className="text-gray-500 mb-6">
-                Version {release.tag_name.replace("desktop-v", "")}
+                Version {getVersion(platform)}
                 {getAssetSize(platform) && ` • ${getAssetSize(platform)}`}
               </p>
             )}
@@ -244,7 +309,7 @@ export default function DownloadPage() {
             <div>
               <h4 className="font-medium text-gray-900 mb-2">macOS</h4>
               <p className="text-sm text-gray-600">
-                macOS 10.15 (Catalina) or later
+                macOS 14.4 (Sonoma) or later
                 <br />
                 Apple Silicon or Intel
               </p>
@@ -293,7 +358,7 @@ export default function DownloadPage() {
                 3
               </span>
               <span>
-                Grant microphone/screen recording permission when prompted
+                Grant microphone permission when prompted
               </span>
             </li>
             <li className="flex items-start">

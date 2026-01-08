@@ -2414,6 +2414,7 @@ export const updateAmmoAnalysis = mutation({
         probability: v.number(),
       })),
       painPoints: v.array(v.string()),
+      liveSummary: v.optional(v.string()),
     }),
   },
   handler: async (ctx, args) => {
@@ -2525,5 +2526,75 @@ export const enableAmmoV2ByCloserEmail = mutation({
       teamId: closer.teamId,
       enabled: enabledValue
     };
+  },
+});
+
+// TEMP: End all live calls
+export const endAllLiveCalls = mutation({
+  args: {
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const waitingCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "waiting")
+      )
+      .collect();
+
+    const onCallCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "on_call")
+      )
+      .collect();
+
+    const allLiveCalls = [...waitingCalls, ...onCallCalls];
+
+    for (const call of allLiveCalls) {
+      await ctx.db.patch(call._id, {
+        status: "completed",
+        endedAt: Date.now(),
+      });
+    }
+
+    return { ended: allLiveCalls.length };
+  },
+});
+
+// TEMP: Fix live call durations for demo screenshots
+export const fixLiveCallDurations = mutation({
+  args: {
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const waitingCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "waiting")
+      )
+      .collect();
+
+    const onCallCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "on_call")
+      )
+      .collect();
+
+    const allLiveCalls = [...waitingCalls, ...onCallCalls];
+    const now = Date.now();
+
+    for (const call of allLiveCalls) {
+      // Random duration between 15-45 minutes
+      const randomMinutes = Math.floor(Math.random() * 31) + 15;
+      const newStartedAt = now - (randomMinutes * 60 * 1000);
+
+      await ctx.db.patch(call._id, {
+        startedAt: newStartedAt,
+      });
+    }
+
+    return { updated: allLiveCalls.length };
   },
 });
