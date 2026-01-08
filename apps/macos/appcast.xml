@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>Sequ3nce for macOS</title>
+        <link>https://sequ3nce.ai/download</link>
+        <description>Native macOS app for sales call recording</description>
+        <language>en</language>
+
+        <!-- Latest Release -->
+        <item>
+            <title>Version 1.0.0</title>
+            <pubDate>Tue, 07 Jan 2026 18:00:00 +0000</pubDate>
+            <sparkle:version>4</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.0.0</h2>
+                <ul>
+                    <li>Initial release of native macOS app</li>
+                    <li>Core Audio Taps for system audio capture (no screen recording required)</li>
+                    <li>Real-time ammo tracking panel</li>
+                    <li>Live transcript view</li>
+                    <li>Buying beliefs analysis</li>
+                    <li>Objection prediction</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.0.0/Sequ3nce.zip"
+                length="1485384"
+                type="application/octet-stream"
+                sparkle:edSignature="MdlbzCGs5DuVkQpyU9/UTqIvITmNcmFwed4XGGBAMvsK4h5hYnJppWM5H82NlVuvHNu81NcvS9CojaDcsf06Cw=="
+            />
+        </item>
+
+        <!--
+        To add a new release:
+        1. Run: ./scripts/release.sh X.Y.Z
+        2. The script will output the edSignature
+        3. Copy the <item> block above and update:
+           - title, pubDate
+           - sparkle:version (build number)
+           - sparkle:shortVersionString (X.Y.Z)
+           - description
+           - url (macos-vX.Y.Z)
+           - length (file size in bytes)
+           - sparkle:edSignature
+
+        Example new release:
+        <item>
+            <title>Version 1.1.0</title>
+            <pubDate>Mon, 13 Jan 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.1.0</h2>
+                <ul>
+                    <li>Bug fixes and improvements</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.1.0/Sequ3nce.zip"
+                length="12345678"
+                type="application/octet-stream"
+                sparkle:edSignature="YOUR_SIGNATURE_HERE"
+            />
+        </item>
+        -->
+    </channel>
+</rss>
