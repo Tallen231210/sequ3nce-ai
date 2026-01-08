@@ -83,8 +83,12 @@ Based on what you've heard, predict likely objections:
 - "comparison" - Wants to look at other options
 
 ### 4. PAIN POINTS
-Extract exact quotes where the prospect expresses pain, frustration, or problems.
-Verbatim quotes from [Prospect] only.
+Extract exact quotes where the PROSPECT expresses pain, frustration, or problems.
+
+**CRITICAL: ONLY include quotes from [Prospect] lines. NEVER include quotes from [Closer] lines.**
+- Look for lines starting with "[Prospect]:" and extract pain/frustration quotes from those ONLY
+- If you see a quote from [Closer], do NOT include it even if it sounds like a pain point
+- Pain points = prospect describing THEIR struggles, problems, frustrations, fears, or desires
 
 ## OUTPUT FORMAT
 
