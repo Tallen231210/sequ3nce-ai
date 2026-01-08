@@ -24,9 +24,14 @@ struct Sequ3nceApp: App {
             userDriverDelegate: nil
         )
 
-        // Check for updates shortly after launch (gives UI time to load)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [updaterController] in
-            updaterController.updater.checkForUpdatesInBackground()
+        // Check for updates after launch and show dialog if available
+        // Using checkForUpdates() instead of checkForUpdatesInBackground()
+        // to ensure the update dialog is shown prominently
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [updaterController] in
+            // Only check if we can (prevents multiple dialogs)
+            if updaterController.updater.canCheckForUpdates {
+                updaterController.updater.checkForUpdates()
+            }
         }
     }
 

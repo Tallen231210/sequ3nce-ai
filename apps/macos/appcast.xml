@@ -8,6 +8,27 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.3.1</title>
+            <pubDate>Wed, 08 Jan 2026 03:00:00 +0000</pubDate>
+            <sparkle:version>9</sparkle:version>
+            <sparkle:shortVersionString>1.3.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.3.1</h2>
+                <ul>
+                    <li>Fixed auto-update prompt to show on app launch</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.3.1/Sequ3nce.zip"
+                length="1548148"
+                type="application/octet-stream"
+                sparkle:edSignature="ZW7XLQzRhmOUTK+90K2DX3ygTjJAkI3XOzuM6JtqQE5CZFXIwmygtJr+yfpmgYsOpHNnOmujM6wE3JCaJRsnDg=="
+            />
+        </item>
+
+        <!-- v1.3.0 -->
+        <item>
             <title>Version 1.3.0</title>
             <pubDate>Wed, 08 Jan 2026 02:00:00 +0000</pubDate>
             <sparkle:version>8</sparkle:version>
