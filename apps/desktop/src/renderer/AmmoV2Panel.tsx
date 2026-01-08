@@ -23,6 +23,7 @@ export interface AmmoV2Analysis {
     probability: number;
   }>;
   painPoints: string[];
+  liveSummary?: string;
   analyzedAt?: number;
 }
 
@@ -216,6 +217,14 @@ export function AmmoV2Panel({
           </span>
         </div>
         <p className="text-[11px] text-gray-600 leading-relaxed">{displayAnalysis.engagement.reason}</p>
+      </div>
+
+      {/* Live Summary Section */}
+      <div className="p-3 bg-white rounded-lg border border-gray-200">
+        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Call Summary</h3>
+        <p className="text-[12px] text-gray-700 leading-relaxed">
+          {displayAnalysis.liveSummary || (hasRealData ? 'Building summary...' : 'Waiting for conversation data...')}
+        </p>
       </div>
 
       {/* Buying Beliefs Section */}

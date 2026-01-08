@@ -129,6 +129,7 @@ export default defineSchema({
         probability: v.number(), // 0-100
       })),
       painPoints: v.array(v.string()), // Exact quotes from prospect about their pain
+      liveSummary: v.optional(v.string()), // Brief 2-3 sentence live summary of the call
       analyzedAt: v.number(),   // Timestamp of last analysis
     })),
 

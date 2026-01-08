@@ -90,6 +90,12 @@ Extract exact quotes where the PROSPECT expresses pain, frustration, or problems
 - If you see a quote from [Closer], do NOT include it even if it sounds like a pain point
 - Pain points = prospect describing THEIR struggles, problems, frustrations, fears, or desires
 
+### 5. LIVE SUMMARY
+Write a brief 2-3 sentence summary of what's happening in the call RIGHT NOW.
+- What topic is currently being discussed?
+- How is the conversation progressing?
+- Keep it concise and useful for the closer to glance at during the call
+
 ## OUTPUT FORMAT
 
 Return ONLY valid JSON (no markdown, no explanation):
@@ -110,7 +116,8 @@ Return ONLY valid JSON (no markdown, no explanation):
   "objection_prediction": [
     {"type": "string", "probability": 0-100}
   ],
-  "pain_points": ["exact quote 1", "exact quote 2"]
+  "pain_points": ["exact quote 1", "exact quote 2"],
+  "live_summary": "2-3 sentence summary of what's happening in the call"
 }`;
 
 // Types for Ammo V2 analysis
@@ -133,6 +140,7 @@ export interface AmmoV2Analysis {
     probability: number;
   }>;
   painPoints: string[];
+  liveSummary?: string;
 }
 
 // Raw response from Claude (snake_case)
@@ -155,6 +163,7 @@ interface RawAmmoV2Response {
     probability: number;
   }>;
   pain_points: string[];
+  live_summary?: string;
 }
 
 export class AmmoAnalyzer {
@@ -251,6 +260,7 @@ export class AmmoAnalyzer {
         painPoints: (rawAnalysis.pain_points || [])
           .filter(p => typeof p === "string" && p.length > 0)
           .slice(0, 5), // Max 5 pain points
+        liveSummary: rawAnalysis.live_summary || undefined,
       };
 
       // Apply high water mark: scores can only go UP, never down

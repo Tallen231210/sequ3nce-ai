@@ -26,6 +26,7 @@ export interface AmmoV2Analysis {
     probability: number;
   }>;
   painPoints: string[];
+  liveSummary?: string;
   analyzedAt?: number;
 }
 
