@@ -16,48 +16,52 @@ struct AmmoPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Tab bar - matches Electron: h-10 (40px), gray-50/50 bg, border-b
-            HStack(spacing: 4) {
-                TabButton(
-                    icon: "bolt.fill",
-                    label: "Ammo",
-                    badge: panelState.ammoItems.isEmpty ? nil : panelState.ammoItems.count,
-                    isSelected: selectedTab == 0
-                ) {
-                    selectedTab = 0
-                }
+            HStack(spacing: 0) {
+                // Tab buttons in a non-wrapping row
+                HStack(spacing: 2) {
+                    TabButton(
+                        icon: "bolt.fill",
+                        label: "Ammo",
+                        badge: panelState.ammoItems.isEmpty ? nil : panelState.ammoItems.count,
+                        isSelected: selectedTab == 0
+                    ) {
+                        selectedTab = 0
+                    }
 
-                TabButton(
-                    icon: "doc.text",
-                    label: "Transcript",
-                    isSelected: selectedTab == 1
-                ) {
-                    selectedTab = 1
-                }
+                    TabButton(
+                        icon: "doc.text",
+                        label: "Transcript",
+                        isSelected: selectedTab == 1
+                    ) {
+                        selectedTab = 1
+                    }
 
-                TabButton(
-                    icon: "pencil",
-                    label: "Notes",
-                    isSelected: selectedTab == 2
-                ) {
-                    selectedTab = 2
-                }
+                    TabButton(
+                        icon: "pencil",
+                        label: "Notes",
+                        isSelected: selectedTab == 2
+                    ) {
+                        selectedTab = 2
+                    }
 
-                TabButton(
-                    icon: "book",
-                    label: "Resources",
-                    isSelected: selectedTab == 3
-                ) {
-                    selectedTab = 3
+                    TabButton(
+                        icon: "book",
+                        label: "Resources",
+                        isSelected: selectedTab == 3
+                    ) {
+                        selectedTab = 3
+                    }
                 }
+                .fixedSize(horizontal: true, vertical: false)
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 // Status indicator (green when recording)
                 Circle()
                     .fill(panelState.callId != nil ? Color.green : Color(white: 0.8))
                     .frame(width: 8, height: 8)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 6)
             .frame(height: 40)
             .background(Color(white: 0.98))
 
@@ -86,19 +90,24 @@ struct AmmoPanelView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(white: 0.99))
         }
-        .frame(minWidth: 280, minHeight: 400)
+        .frame(minWidth: 320, idealWidth: 320, minHeight: 400, idealHeight: 500)
         .background(Color.white)
         .preferredColorScheme(.light)
         .onAppear {
-            // Sync with app state
-            if let callId = appState.currentCallId, let closerInfo = appState.closerInfo {
+            // Sync with app state - use convexCallId for API calls
+            print("[AmmoPanelView] onAppear - convexCallId: \(appState.convexCallId ?? "nil"), currentCallId: \(appState.currentCallId ?? "nil")")
+            if let callId = appState.convexCallId, let closerInfo = appState.closerInfo {
+                print("[AmmoPanelView] onAppear - calling startTracking with convexCallId: \(callId)")
                 panelState.startTracking(callId: callId, teamId: closerInfo.teamId)
             }
         }
-        .onChange(of: appState.currentCallId) { _, newCallId in
+        .onChange(of: appState.convexCallId) { _, newCallId in
+            print("[AmmoPanelView] onChange - convexCallId changed to: \(newCallId ?? "nil")")
             if let callId = newCallId, let closerInfo = appState.closerInfo {
+                print("[AmmoPanelView] onChange - calling startTracking with convexCallId: \(callId)")
                 panelState.startTracking(callId: callId, teamId: closerInfo.teamId)
             } else {
+                print("[AmmoPanelView] onChange - calling stopTracking")
                 panelState.stopTracking()
             }
         }
@@ -122,10 +131,12 @@ struct TabButton: View {
                         .font(.system(size: 12))
                     Text(label)
                         .font(.system(size: 11, weight: isSelected ? .medium : .regular))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 .foregroundColor(isSelected ? .black : Color(white: 0.45))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
                         .fill(isSelected ? Color.white : Color.clear)
@@ -635,8 +646,37 @@ struct ResourceCard: View {
 
 // MARK: - Ammo V2 Tab
 
+// Default initial state - all beliefs at 0% (matches Electron app)
+private let defaultAnalysis = AmmoV2Analysis(
+    engagement: AmmoV2Analysis.EngagementData(
+        level: .medium,
+        reason: "Waiting for conversation data..."
+    ),
+    beliefs: AmmoV2Analysis.BuyingBeliefs(
+        problem: 0,
+        solution: 0,
+        vehicle: 0,
+        selfBelief: 0,
+        time: 0,
+        money: 0,
+        urgency: 0
+    ),
+    objectionPrediction: [],
+    painPoints: [],
+    analyzedAt: nil
+)
+
 struct AmmoV2TabView: View {
     @ObservedObject var panelState: AmmoPanelState
+
+    // Use actual analysis if available, otherwise show default state with 0% values
+    private var displayAnalysis: AmmoV2Analysis {
+        panelState.ammoV2Analysis ?? defaultAnalysis
+    }
+
+    private var hasRealData: Bool {
+        panelState.ammoV2Analysis != nil
+    }
 
     var body: some View {
         if panelState.callId == nil {
@@ -648,31 +688,25 @@ struct AmmoV2TabView: View {
         } else {
             ScrollView {
                 VStack(spacing: 12) {
-                    // Engagement Section
-                    if let analysis = panelState.ammoV2Analysis {
-                        EngagementCard(engagement: analysis.engagement)
-                        BuyingBeliefsCard(beliefs: analysis.beliefs)
-                        ObjectionsCard(predictions: analysis.objectionPrediction)
-                        PainPointsCard(painPoints: analysis.painPoints) {
-                            panelState.copyToClipboard($0)
-                        }
+                    // Engagement Section - always show
+                    EngagementCard(engagement: displayAnalysis.engagement)
 
-                        if let analyzedAt = analysis.analyzedAt {
-                            Text("Last updated: \(Date(timeIntervalSince1970: analyzedAt / 1000).formatted(date: .omitted, time: .shortened))")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color(white: 0.6))
-                        }
-                    } else {
-                        // Waiting for analysis
-                        VStack(spacing: 16) {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Analyzing conversation...")
-                                .font(.system(size: 13))
-                                .foregroundColor(Color(white: 0.5))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 40)
+                    // Buying Beliefs - always show (starts at 0%)
+                    BuyingBeliefsCard(beliefs: displayAnalysis.beliefs)
+
+                    // Objections - show loading state or predictions
+                    ObjectionsCard(predictions: displayAnalysis.objectionPrediction, hasRealData: hasRealData)
+
+                    // Pain Points - show listening state or quotes
+                    PainPointsCard(painPoints: displayAnalysis.painPoints, hasRealData: hasRealData) {
+                        panelState.copyToClipboard($0)
+                    }
+
+                    // Last Updated timestamp
+                    if let analyzedAt = displayAnalysis.analyzedAt {
+                        Text("Last updated: \(Date(timeIntervalSince1970: analyzedAt / 1000).formatted(date: .omitted, time: .shortened))")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(white: 0.6))
                     }
                 }
                 .padding(8)
@@ -731,7 +765,7 @@ struct BuyingBeliefsCard: View {
 
             VStack(spacing: 10) {
                 ForEach(beliefs.allBeliefs, id: \.key) { belief in
-                    BeliefBar(label: belief.label, value: belief.value)
+                    BeliefBar(label: belief.label, value: belief.value, tooltip: belief.tooltip)
                 }
             }
         }
@@ -748,6 +782,7 @@ struct BuyingBeliefsCard: View {
 struct BeliefBar: View {
     let label: String
     let value: Int
+    var tooltip: String = ""
 
     private var barColor: Color {
         if value <= 30 { return .red }
@@ -786,11 +821,13 @@ struct BeliefBar: View {
             }
             .frame(height: 6)
         }
+        .help(tooltip)  // Shows tooltip on hover
     }
 }
 
 struct ObjectionsCard: View {
     let predictions: [AmmoV2Analysis.ObjectionPrediction]
+    var hasRealData: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -798,7 +835,18 @@ struct ObjectionsCard: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(Color(white: 0.5))
 
-            if predictions.isEmpty {
+            if !hasRealData {
+                // Show loading state when waiting for analysis
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                    Text("Analyzing for potential objections...")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.5))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            } else if predictions.isEmpty {
                 Text("No objections predicted yet")
                     .font(.system(size: 11))
                     .foregroundColor(Color(white: 0.5))
@@ -825,10 +873,23 @@ struct ObjectionsCard: View {
 struct ObjectionRow: View {
     let prediction: AmmoV2Analysis.ObjectionPrediction
 
-    private var barColor: Color {
-        if prediction.probability >= 60 { return .red }
-        if prediction.probability >= 30 { return .yellow }
-        return Color(white: 0.6)
+    // Get likelihood label and colors based on probability
+    private var likelihoodLabel: String {
+        if prediction.probability >= 60 { return "Very Likely" }
+        if prediction.probability >= 30 { return "Likely" }
+        return "Less Likely"
+    }
+
+    private var likelihoodBgColor: Color {
+        if prediction.probability >= 60 { return Color(red: 1.0, green: 0.90, blue: 0.90) }  // red-100
+        if prediction.probability >= 30 { return Color(red: 1.0, green: 0.98, blue: 0.90) }  // yellow-100
+        return Color(white: 0.95)  // gray-100
+    }
+
+    private var likelihoodTextColor: Color {
+        if prediction.probability >= 60 { return Color(red: 0.72, green: 0.18, blue: 0.18) }  // red-700
+        if prediction.probability >= 30 { return Color(red: 0.65, green: 0.50, blue: 0.08) }  // yellow-700
+        return Color(white: 0.45)  // gray-600
     }
 
     var body: some View {
@@ -839,24 +900,14 @@ struct ObjectionRow: View {
 
             Spacer()
 
-            HStack(spacing: 8) {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color(white: 0.9))
-                            .frame(height: 4)
-
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(barColor)
-                            .frame(width: geometry.size.width * CGFloat(prediction.probability) / 100, height: 4)
-                    }
-                }
-                .frame(width: 50, height: 4)
-
-                Text("\(prediction.probability)%")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(barColor == .red ? .red : (barColor == .yellow ? Color(red: 0.65, green: 0.50, blue: 0.08) : Color(white: 0.5)))
-            }
+            // Likelihood badge instead of progress bar
+            Text(likelihoodLabel)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(likelihoodTextColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(likelihoodBgColor)
+                .cornerRadius(10)
         }
         .padding(8)
         .background(Color(white: 0.97))
@@ -866,6 +917,7 @@ struct ObjectionRow: View {
 
 struct PainPointsCard: View {
     let painPoints: [String]
+    var hasRealData: Bool = true
     let onCopy: (String) -> Void
 
     var body: some View {
@@ -875,7 +927,7 @@ struct PainPointsCard: View {
                 .foregroundColor(Color(white: 0.5))
 
             if painPoints.isEmpty {
-                Text("No pain points captured yet")
+                Text(hasRealData ? "No pain points captured yet" : "Listening for pain points...")
                     .font(.system(size: 11))
                     .foregroundColor(Color(white: 0.5))
                     .frame(maxWidth: .infinity)

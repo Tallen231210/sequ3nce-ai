@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Required for Core Audio Taps (system audio capture) -->
+    <!-- This allows capturing audio from other processes without screen recording permission -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!-- Hardened runtime exceptions for audio -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Network access for WebSocket streaming -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- App sandbox (required for App Store, optional for direct distribution) -->
+    <!-- Disabled for now to simplify Core Audio Taps development -->
+    <!-- <key>com.apple.security.app-sandbox</key>
+    <true/> -->
+</dict>
+</plist>

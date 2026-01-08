@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.1.0</title>
+            <pubDate>Tue, 07 Jan 2026 21:00:00 +0000</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.1.0</h2>
+                <ul>
+                    <li>Training feature - view and listen to training playlists assigned by your manager</li>
+                    <li>Audio player with transcript syncing</li>
+                    <li>Navigate between clips in a playlist</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.1.0/Sequ3nce.zip"
+                length="1540465"
+                type="application/octet-stream"
+                sparkle:edSignature="HgrFVx+wHbeZKklrEE4nHKv74cMC+jHG1pUpHfT+s/ChfPmDlVE2+/3JDRegxXQUQu/Qy1fIHO+tLgkblB7wBA=="
+            />
+        </item>
+
+        <!-- Previous Release -->
+        <item>
             <title>Version 1.0.0</title>
             <pubDate>Tue, 07 Jan 2026 18:00:00 +0000</pubDate>
             <sparkle:version>4</sparkle:version>
