@@ -663,6 +663,7 @@ private let defaultAnalysis = AmmoV2Analysis(
     ),
     objectionPrediction: [],
     painPoints: [],
+    liveSummary: nil,
     analyzedAt: nil
 )
 
@@ -690,6 +691,12 @@ struct AmmoV2TabView: View {
                 VStack(spacing: 12) {
                     // Engagement Section - always show
                     EngagementCard(engagement: displayAnalysis.engagement)
+
+                    // Call Summary - always show
+                    CallSummaryCard(
+                        summary: displayAnalysis.liveSummary,
+                        hasRealData: hasRealData
+                    )
 
                     // Buying Beliefs - always show (starts at 0%)
                     BuyingBeliefsCard(beliefs: displayAnalysis.beliefs)
@@ -743,6 +750,31 @@ struct EngagementCard: View {
             Text(engagement.reason)
                 .font(.system(size: 11))
                 .foregroundColor(Color(white: 0.4))
+        }
+        .padding(12)
+        .background(Color.white)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(white: 0.88), lineWidth: 1)
+        )
+    }
+}
+
+struct CallSummaryCard: View {
+    let summary: String?
+    var hasRealData: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("CALL SUMMARY")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(white: 0.5))
+
+            Text(summary ?? (hasRealData ? "Building summary..." : "Waiting for conversation data..."))
+                .font(.system(size: 12))
+                .foregroundColor(Color(white: 0.35))
+                .lineSpacing(2)
         }
         .padding(12)
         .background(Color.white)

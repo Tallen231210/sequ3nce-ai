@@ -187,14 +187,16 @@ struct AmmoV2Analysis: Codable {
     let beliefs: BuyingBeliefs
     let objectionPrediction: [ObjectionPrediction]
     let painPoints: [String]
+    let liveSummary: String?
     let analyzedAt: Double?
 
     // Explicit initializer for creating default instances
-    init(engagement: EngagementData, beliefs: BuyingBeliefs, objectionPrediction: [ObjectionPrediction], painPoints: [String], analyzedAt: Double?) {
+    init(engagement: EngagementData, beliefs: BuyingBeliefs, objectionPrediction: [ObjectionPrediction], painPoints: [String], liveSummary: String? = nil, analyzedAt: Double?) {
         self.engagement = engagement
         self.beliefs = beliefs
         self.objectionPrediction = objectionPrediction
         self.painPoints = painPoints
+        self.liveSummary = liveSummary
         self.analyzedAt = analyzedAt
     }
 
