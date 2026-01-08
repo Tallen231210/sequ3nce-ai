@@ -748,6 +748,7 @@ struct PostCallQuestionnaireView: View {
     @State private var outcome: CallOutcome?
     @State private var cashCollected: String = ""
     @State private var contractValue: String = ""
+    @State private var pitchedValue: String = ""
     @State private var notes: String = ""
     @State private var primaryObjection: String?
     @State private var primaryObjectionOther: String = ""
@@ -758,6 +759,7 @@ struct PostCallQuestionnaireView: View {
 
     private let cashPresets = [1000, 3000, 5000, 10000, 15000]
     private let contractPresets = [3000, 5000, 10000, 15000, 25000]
+    private let pitchedPresets = [3000, 5000, 10000, 15000, 25000]
     private let objectionOptions = [
         ("spouse_partner", "Spouse/Partner"),
         ("price_money", "Price/Money"),
@@ -898,6 +900,40 @@ struct PostCallQuestionnaireView: View {
                                 Text("Cash collected is higher than contract value - is this correct?")
                                     .font(.system(size: 12))
                                     .foregroundColor(.orange)
+                            }
+                        }
+
+                        // Pitched Value (for lost or follow_up)
+                        if outcome == .lost || outcome == .followUp {
+                            FormField(label: "What was the deal worth?", required: true, description: "The value you pitched to the prospect") {
+                                VStack(spacing: 8) {
+                                    // Preset buttons
+                                    HStack(spacing: 6) {
+                                        ForEach(pitchedPresets, id: \.self) { preset in
+                                            PresetButton(
+                                                amount: preset,
+                                                isSelected: pitchedValue == String(preset),
+                                                onTap: { pitchedValue = String(preset) }
+                                            )
+                                        }
+                                    }
+
+                                    // Custom input
+                                    HStack {
+                                        Text("$")
+                                            .foregroundColor(.gray)
+                                        TextField("Custom amount", text: $pitchedValue)
+                                            .textFieldStyle(.plain)
+                                            .foregroundColor(.black)
+                                    }
+                                    .padding(12)
+                                    .background(Color(white: 0.97))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color(white: 0.9), lineWidth: 1)
+                                    )
+                                }
                             }
                         }
 
@@ -1072,19 +1108,39 @@ struct PostCallQuestionnaireView: View {
         let hasName = !prospectName.trimmingCharacters(in: .whitespaces).isEmpty
         let hasOutcome = outcome != nil
 
-        if outcome == .closed {
+        guard hasName && hasOutcome else { return false }
+
+        switch outcome {
+        case .closed:
             let hasCash = Int(cashCollected) ?? 0 > 0
             let hasContract = Int(contractValue) ?? 0 > 0
-            return hasName && hasOutcome && hasCash && hasContract
+            return hasCash && hasContract
+        case .lost, .followUp:
+            let hasPitched = Int(pitchedValue) ?? 0 > 0
+            return hasPitched
+        case .noShow, .none:
+            return true
         }
-
-        return hasName && hasOutcome
     }
 
     private func handleSubmit() {
         guard isValid else { return }
 
         isSubmitting = true
+
+        // Determine the contract value to send:
+        // - For closed deals: use contractValue (full contract commitment)
+        // - For lost/follow_up: use pitchedValue (what the deal was worth)
+        let finalContractValue: Int? = {
+            switch outcome {
+            case .closed:
+                return Int(contractValue)
+            case .lost, .followUp:
+                return Int(pitchedValue)
+            default:
+                return nil
+            }
+        }()
 
         Task {
             do {
@@ -1093,7 +1149,7 @@ struct PostCallQuestionnaireView: View {
                     prospectName: prospectName,
                     outcome: outcome!.rawValue,
                     cashCollected: outcome == .closed ? Int(cashCollected) : nil,
-                    contractValue: outcome == .closed ? Int(contractValue) : nil,
+                    contractValue: finalContractValue,
                     notes: notes.isEmpty ? nil : notes,
                     primaryObjection: primaryObjection,
                     primaryObjectionOther: primaryObjection == "other" ? primaryObjectionOther : nil,
