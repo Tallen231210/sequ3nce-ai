@@ -25,6 +25,7 @@ interface PostCallQuestionnaireProps {
 
 const CASH_COLLECTED_PRESETS = [1000, 3000, 5000, 10000, 15000];
 const CONTRACT_VALUE_PRESETS = [3000, 5000, 10000, 15000, 25000];
+const PITCHED_VALUE_PRESETS = [3000, 5000, 10000, 15000, 25000];
 
 // Objection options for lost/follow_up outcomes
 const OBJECTION_OPTIONS = [
@@ -51,6 +52,7 @@ export function PostCallQuestionnaire({
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [cashCollected, setCashCollected] = useState<number | ''>('');
   const [contractValue, setContractValue] = useState<number | ''>('');
+  const [pitchedValue, setPitchedValue] = useState<number | ''>('');
   const [notes, setNotes] = useState(initialNotes);
   const [showCloseWarning, setShowCloseWarning] = useState(false);
 
@@ -61,11 +63,15 @@ export function PostCallQuestionnaire({
   const [prospectWasDecisionMaker, setProspectWasDecisionMaker] = useState<string | null>(null);
 
   // Check if form is valid for submission
+  const isClosedValid = outcome === 'closed' &&
+    cashCollected !== '' && cashCollected > 0 &&
+    contractValue !== '' && contractValue > 0;
+  const isLostOrFollowUpValid = (outcome === 'lost' || outcome === 'follow_up') &&
+    pitchedValue !== '' && pitchedValue > 0;
+  const isNoShowValid = outcome === 'no_show';
+
   const isValid = prospectName.trim() !== '' && outcome !== null &&
-    (outcome !== 'closed' || (
-      cashCollected !== '' && cashCollected > 0 &&
-      contractValue !== '' && contractValue > 0
-    ));
+    (isClosedValid || isLostOrFollowUpValid || isNoShowValid);
 
   // Validation warning for cash > contract
   const cashExceedsContract = outcome === 'closed' &&
@@ -75,13 +81,22 @@ export function PostCallQuestionnaire({
   const handleSubmit = () => {
     if (!isValid || !outcome) return;
 
+    // Determine the contract value to send:
+    // - For closed deals: use contractValue (full contract commitment)
+    // - For lost/follow_up: use pitchedValue (what the deal was worth)
+    const finalContractValue = outcome === 'closed'
+      ? (contractValue ? Number(contractValue) : undefined)
+      : ((outcome === 'lost' || outcome === 'follow_up') && pitchedValue
+        ? Number(pitchedValue)
+        : undefined);
+
     onSubmit({
       prospectName: prospectName.trim(),
       outcome,
       cashCollected: outcome === 'closed' && cashCollected ? Number(cashCollected) : undefined,
-      contractValue: outcome === 'closed' && contractValue ? Number(contractValue) : undefined,
+      contractValue: finalContractValue,
       // Also set dealValue to contractValue for backward compat with old stats
-      dealValue: outcome === 'closed' && contractValue ? Number(contractValue) : undefined,
+      dealValue: finalContractValue,
       notes: notes.trim() || undefined,
       // Enhanced questionnaire fields
       primaryObjection: primaryObjection || undefined,
@@ -261,34 +276,74 @@ export function PostCallQuestionnaire({
 
           {/* Primary Objection (only shown for lost or follow_up) */}
           {(outcome === 'lost' || outcome === 'follow_up') && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Primary Objection
-              </label>
-              <select
-                value={primaryObjection || ''}
-                onChange={(e) => setPrimaryObjection(e.target.value || null)}
-                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
-              >
-                <option value="">Select objection...</option>
-                {OBJECTION_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+            <>
+              {/* Deal Value (what was pitched) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  What was the deal worth? <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-2">The value you pitched to the prospect</p>
 
-              {/* Other objection text input */}
-              {primaryObjection === 'other' && (
-                <input
-                  type="text"
-                  value={primaryObjectionOther}
-                  onChange={(e) => setPrimaryObjectionOther(e.target.value)}
-                  placeholder="Describe the objection..."
-                  className="w-full mt-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
-                />
-              )}
-            </div>
+                {/* Quick select buttons */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {PITCHED_VALUE_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setPitchedValue(preset)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                        pitchedValue === preset
+                          ? 'bg-black text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {formatCurrency(preset)}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom input */}
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input
+                    type="number"
+                    value={pitchedValue}
+                    onChange={(e) => setPitchedValue(e.target.value ? Number(e.target.value) : '')}
+                    placeholder="Custom amount"
+                    className="w-full pl-8 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+                  />
+                </div>
+              </div>
+
+              {/* Primary Objection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Primary Objection
+                </label>
+                <select
+                  value={primaryObjection || ''}
+                  onChange={(e) => setPrimaryObjection(e.target.value || null)}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+                >
+                  <option value="">Select objection...</option>
+                  {OBJECTION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Other objection text input */}
+                {primaryObjection === 'other' && (
+                  <input
+                    type="text"
+                    value={primaryObjectionOther}
+                    onChange={(e) => setPrimaryObjectionOther(e.target.value)}
+                    placeholder="Describe the objection..."
+                    className="w-full mt-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+                  />
+                )}
+              </div>
+            </>
           )}
 
           {/* Lead Quality Score */}

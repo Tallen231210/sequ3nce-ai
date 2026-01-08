@@ -354,7 +354,7 @@ interface CloserStats {
 
   // Primary stats
   closeRate: number; // percentage
-  cashCollected: number; // Legacy: uses dealValue for old calls
+  cashCollected: number; // Uses cashCollected field (upfront payments)
   callsTaken: number;
   avgCallLength: number; // in seconds
 
@@ -529,9 +529,9 @@ export const getCloserStats = query({
         ? (prevClosedCalls.length / prevCompletedCalls.length) * 100
         : null;
 
-      // Cash collected (legacy - uses dealValue for backward compat)
-      const cashCollected = closedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
-      const prevCashCollected = prevClosedCalls.reduce((sum, c) => sum + (c.dealValue || 0), 0);
+      // Cash collected - uses the cashCollected field (upfront payments)
+      const cashCollected = closedCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+      const prevCashCollected = prevClosedCalls.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
 
       // NEW: Split metrics (only from calls with the new fields)
       const callsWithNewFields = closedCalls.filter((c) => c.contractValue !== undefined);

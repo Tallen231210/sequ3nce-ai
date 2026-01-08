@@ -98,19 +98,28 @@ export const getAnalyticsSummary = query({
     // Calculate current period metrics
     const totalPitched = calls.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
     const closedCalls = calls.filter((c) => c.outcome === "closed");
-    const totalClosed = closedCalls.reduce((sum, c) => sum + (c.cashCollected || c.contractValue || c.dealValue || 0), 0);
-    const leftOnTable = totalPitched - totalClosed;
-    const closeRate = calls.length > 0 ? (closedCalls.length / calls.length) * 100 : 0;
+    // Total Closed: use contractValue only for consistency
+    const totalClosed = closedCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+    // Left on Table: sum of lost + follow_up deals (by objection)
+    const lostOrFollowUpCalls = calls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
+    const leftOnTable = lostOrFollowUpCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+    // Close Rate: exclude no-shows from denominator
+    const callsExcludingNoShows = calls.filter((c) => c.outcome !== "no_show");
+    const closeRate = callsExcludingNoShows.length > 0 ? (closedCalls.length / callsExcludingNoShows.length) * 100 : 0;
 
-    // Calculate previous period metrics
+    // Calculate previous period metrics (same logic as current)
     const prevTotalPitched = prevCalls.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
     const prevClosedCalls = prevCalls.filter((c) => c.outcome === "closed");
-    const prevTotalClosed = prevClosedCalls.reduce((sum, c) => sum + (c.cashCollected || c.contractValue || c.dealValue || 0), 0);
-    const prevCloseRate = prevCalls.length > 0 ? (prevClosedCalls.length / prevCalls.length) * 100 : 0;
+    const prevTotalClosed = prevClosedCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+    const prevLostOrFollowUpCalls = prevCalls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
+    const prevLeftOnTable = prevLostOrFollowUpCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+    const prevCallsExcludingNoShows = prevCalls.filter((c) => c.outcome !== "no_show");
+    const prevCloseRate = prevCallsExcludingNoShows.length > 0 ? (prevClosedCalls.length / prevCallsExcludingNoShows.length) * 100 : 0;
 
     // Calculate trends
     const pitchedTrend = prevTotalPitched > 0 ? ((totalPitched - prevTotalPitched) / prevTotalPitched) * 100 : 0;
     const closedTrend = prevTotalClosed > 0 ? ((totalClosed - prevTotalClosed) / prevTotalClosed) * 100 : 0;
+    const leftOnTableTrend = prevLeftOnTable > 0 ? ((leftOnTable - prevLeftOnTable) / prevLeftOnTable) * 100 : 0;
     const closeRateTrend = prevCloseRate > 0 ? closeRate - prevCloseRate : 0;
 
     return {
@@ -120,9 +129,11 @@ export const getAnalyticsSummary = query({
       closeRate: Math.round(closeRate * 10) / 10,
       totalCalls: calls.length,
       closedCalls: closedCalls.length,
+      lostOrFollowUpCalls: lostOrFollowUpCalls.length,
       trends: {
         pitched: Math.round(pitchedTrend * 10) / 10,
         closed: Math.round(closedTrend * 10) / 10,
+        leftOnTable: Math.round(leftOnTableTrend * 10) / 10,
         closeRate: Math.round(closeRateTrend * 10) / 10,
       },
     };
@@ -139,7 +150,7 @@ export const getLostDealsByObjection = query({
   handler: async (ctx, args) => {
     const { start, end, prevStart, prevEnd } = getDateRangeTimestamps(args.dateRange as DateRange);
 
-    // Get lost calls (not_closed outcome)
+    // Get lost calls (lost OR follow_up outcomes)
     let lostCalls = await ctx.db
       .query("calls")
       .withIndex("by_team_and_date", (q) =>
@@ -148,7 +159,10 @@ export const getLostDealsByObjection = query({
       .filter((q) =>
         q.and(
           q.eq(q.field("status"), "completed"),
-          q.eq(q.field("outcome"), "not_closed")
+          q.or(
+            q.eq(q.field("outcome"), "lost"),
+            q.eq(q.field("outcome"), "follow_up")
+          )
         )
       )
       .collect();
@@ -157,7 +171,7 @@ export const getLostDealsByObjection = query({
       lostCalls = lostCalls.filter((c) => c.closerId === args.closerId);
     }
 
-    // Get previous period for trends
+    // Get previous period for trends (lost OR follow_up)
     let prevLostCalls = await ctx.db
       .query("calls")
       .withIndex("by_team_and_date", (q) =>
@@ -166,7 +180,10 @@ export const getLostDealsByObjection = query({
       .filter((q) =>
         q.and(
           q.eq(q.field("status"), "completed"),
-          q.eq(q.field("outcome"), "not_closed")
+          q.or(
+            q.eq(q.field("outcome"), "lost"),
+            q.eq(q.field("outcome"), "follow_up")
+          )
         )
       )
       .collect();
@@ -181,7 +198,8 @@ export const getLostDealsByObjection = query({
 
     for (const call of lostCalls) {
       const objection = call.primaryObjection || "unknown";
-      const value = call.contractValue || call.dealValue || 0;
+      // Use contractValue only for consistency
+      const value = call.contractValue || 0;
 
       if (!objectionMap[objection]) {
         objectionMap[objection] = { lostAmount: 0, dealCount: 0 };
@@ -192,7 +210,7 @@ export const getLostDealsByObjection = query({
 
     for (const call of prevLostCalls) {
       const objection = call.primaryObjection || "unknown";
-      const value = call.contractValue || call.dealValue || 0;
+      const value = call.contractValue || 0;
 
       if (!prevObjectionMap[objection]) {
         prevObjectionMap[objection] = { lostAmount: 0, dealCount: 0 };
@@ -228,7 +246,7 @@ export const getLostDealsByObjection = query({
 
     return {
       objections,
-      totalLost: lostCalls.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0),
+      totalLost: lostCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0),
       totalDeals: lostCalls.length,
       problemAreas,
     };
@@ -264,12 +282,15 @@ export const getCloserPerformanceBreakdown = query({
     const breakdown = closers.map((closer) => {
       const closerCalls = calls.filter((c) => c.closerId === closer._id);
       const closedCalls = closerCalls.filter((c) => c.outcome === "closed");
-      const lostCalls = closerCalls.filter((c) => c.outcome === "not_closed");
+      const lostCalls = closerCalls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
 
       const pitched = closerCalls.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
-      const closed = closedCalls.reduce((sum, c) => sum + (c.cashCollected || c.contractValue || c.dealValue || 0), 0);
-      const lost = lostCalls.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
-      const closeRate = closerCalls.length > 0 ? (closedCalls.length / closerCalls.length) * 100 : 0;
+      // Use contractValue only for closed deals
+      const closed = closedCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+      const lost = lostCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+      // Close rate: exclude no-shows from denominator
+      const callsExcludingNoShows = closerCalls.filter((c) => c.outcome !== "no_show");
+      const closeRate = callsExcludingNoShows.length > 0 ? (closedCalls.length / callsExcludingNoShows.length) * 100 : 0;
 
       // Find top objection for lost deals
       const objectionCounts: Record<string, number> = {};
@@ -284,7 +305,7 @@ export const getCloserPerformanceBreakdown = query({
       const topObjectionLostCount = lostCalls.filter((c) => c.primaryObjection === topObjection?.[0]).length;
       const topObjectionLostAmount = lostCalls
         .filter((c) => c.primaryObjection === topObjection?.[0])
-        .reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
+        .reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
       return {
         closerId: closer._id,
@@ -374,13 +395,13 @@ export const getLeadQualityAnalysis = query({
     const mediumQuality = callsWithScore.filter((c) => (c.leadQualityScore || 0) >= 5 && (c.leadQualityScore || 0) <= 6);
     const highQuality = callsWithScore.filter((c) => (c.leadQualityScore || 0) >= 7);
 
-    // High-quality leads that were lost
-    const highQualityLost = highQuality.filter((c) => c.outcome === "not_closed");
-    const highQualityLostValue = highQualityLost.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
+    // High-quality leads that were lost (lost or follow_up outcomes)
+    const highQualityLost = highQuality.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
+    const highQualityLostValue = highQualityLost.reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
-    // Low-quality leads that were lost
-    const lowQualityLost = lowQuality.filter((c) => c.outcome === "not_closed");
-    const lowQualityLostValue = lowQualityLost.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
+    // Low-quality leads that were lost (lost or follow_up outcomes)
+    const lowQualityLost = lowQuality.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
+    const lowQualityLostValue = lowQualityLost.reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
     // Decision maker analysis
     const nonDecisionMakerCalls = calls.filter((c) => c.prospectWasDecisionMaker === "no");
@@ -586,9 +607,9 @@ export const getObjectionOvercomeRate = query({
         })
       ).length;
 
-      // Count calls where this was the primary loss reason
+      // Count calls where this was the primary loss reason (lost or follow_up)
       const lostToCount = calls.filter((c) =>
-        c.outcome === "not_closed" && c.primaryObjection === objType
+        (c.outcome === "lost" || c.outcome === "follow_up") && c.primaryObjection === objType
       ).length;
 
       // Calculate overcome rate
@@ -666,9 +687,9 @@ export const getRecommendations = query({
 
     const recommendations: Array<{ category: string; message: string; priority: number }> = [];
 
-    // SALES TEAM: Find objection trends
-    const lostCalls = calls.filter((c) => c.outcome === "not_closed");
-    const prevLostCalls = prevCalls.filter((c) => c.outcome === "not_closed");
+    // SALES TEAM: Find objection trends (lost or follow_up outcomes)
+    const lostCalls = calls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
+    const prevLostCalls = prevCalls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
 
     const objectionCounts: Record<string, { current: number; prev: number; value: number }> = {};
 
@@ -676,7 +697,7 @@ export const getRecommendations = query({
       const obj = call.primaryObjection || "unknown";
       if (!objectionCounts[obj]) objectionCounts[obj] = { current: 0, prev: 0, value: 0 };
       objectionCounts[obj].current += 1;
-      objectionCounts[obj].value += call.contractValue || call.dealValue || 0;
+      objectionCounts[obj].value += call.contractValue || 0;
     }
 
     for (const call of prevLostCalls) {
@@ -730,14 +751,14 @@ export const getRecommendations = query({
       for (const call of closerCalls) {
         const obj = call.primaryObjection || "unknown";
         objCounts[obj] = (objCounts[obj] || 0) + 1;
-        totalLost += call.contractValue || call.dealValue || 0;
+        totalLost += call.contractValue || 0;
       }
 
       const topObj = Object.entries(objCounts).sort(([, a], [, b]) => b - a)[0];
       if (topObj && topObj[1] >= 3 && totalLost > 30000) {
         const objLost = closerCalls
           .filter((c) => c.primaryObjection === topObj[0])
-          .reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
+          .reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
         recommendations.push({
           category: "CLOSER-SPECIFIC",

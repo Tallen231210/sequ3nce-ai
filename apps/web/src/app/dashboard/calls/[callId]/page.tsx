@@ -1552,6 +1552,8 @@ export default function CallDetailPage() {
   const [editProspectName, setEditProspectName] = useState("");
   const [editOutcome, setEditOutcome] = useState("");
   const [editDealValue, setEditDealValue] = useState<number | "">("");
+  const [editCashCollected, setEditCashCollected] = useState<number | "">("");
+  const [editContractValue, setEditContractValue] = useState<number | "">("");
   const [editNotes, setEditNotes] = useState("");
   const [isEditSaving, setIsEditSaving] = useState(false);
   const [editSaveSuccess, setEditSaveSuccess] = useState(false);
@@ -1615,6 +1617,8 @@ export default function CallDetailPage() {
     setEditProspectName(call.prospectName || "");
     setEditOutcome(call.outcome || "");
     setEditDealValue(call.dealValue || "");
+    setEditCashCollected(call.cashCollected || "");
+    setEditContractValue(call.contractValue || "");
     setEditNotes(call.notes || "");
     setEditSaveSuccess(false);
     setShowEditModal(true);
@@ -1630,6 +1634,8 @@ export default function CallDetailPage() {
         prospectName: editProspectName || undefined,
         outcome: editOutcome || undefined,
         dealValue: editDealValue ? Number(editDealValue) : undefined,
+        cashCollected: editCashCollected ? Number(editCashCollected) : undefined,
+        contractValue: editContractValue ? Number(editContractValue) : undefined,
         notes: editNotes || undefined,
       });
 
@@ -2042,21 +2048,99 @@ export default function CallDetailPage() {
                 </Select>
               </div>
 
-              {/* Deal Value (only show if outcome is closed) */}
+              {/* Cash Collected & Contract Value (only show if outcome is closed) */}
               {editOutcome === "closed" && (
+                <>
+                  {/* Cash Collected */}
+                  <div>
+                    <Label htmlFor="editCashCollected" className="text-sm font-medium">
+                      Cash Collected
+                    </Label>
+                    <p className="text-xs text-zinc-500 mt-0.5 mb-2">Amount paid on this call</p>
+                    {/* Quick select buttons */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {DEAL_VALUE_PRESETS.map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setEditCashCollected(preset)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            editCashCollected === preset
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                          }`}
+                        >
+                          {formatCurrency(preset)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                      <Input
+                        id="editCashCollected"
+                        type="number"
+                        value={editCashCollected}
+                        onChange={(e) => setEditCashCollected(e.target.value ? Number(e.target.value) : "")}
+                        placeholder="Custom amount"
+                        className="pl-8"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Contract Value */}
+                  <div>
+                    <Label htmlFor="editContractValue" className="text-sm font-medium">
+                      Contract Value
+                    </Label>
+                    <p className="text-xs text-zinc-500 mt-0.5 mb-2">Total contract commitment</p>
+                    {/* Quick select buttons */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {DEAL_VALUE_PRESETS.map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setEditContractValue(preset)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            editContractValue === preset
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                          }`}
+                        >
+                          {formatCurrency(preset)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
+                      <Input
+                        id="editContractValue"
+                        type="number"
+                        value={editContractValue}
+                        onChange={(e) => setEditContractValue(e.target.value ? Number(e.target.value) : "")}
+                        placeholder="Custom amount"
+                        className="pl-8"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Contract Value for lost/follow_up (what was pitched) */}
+              {(editOutcome === "lost" || editOutcome === "follow_up") && (
                 <div>
-                  <Label htmlFor="editDealValue" className="text-sm font-medium">
-                    Deal Value
+                  <Label htmlFor="editContractValueLost" className="text-sm font-medium">
+                    What was the deal worth?
                   </Label>
+                  <p className="text-xs text-zinc-500 mt-0.5 mb-2">The value that was pitched to the prospect</p>
                   {/* Quick select buttons */}
-                  <div className="flex flex-wrap gap-2 mt-2 mb-3">
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {DEAL_VALUE_PRESETS.map((preset) => (
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => setEditDealValue(preset)}
+                        onClick={() => setEditContractValue(preset)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          editDealValue === preset
+                          editContractValue === preset
                             ? "bg-primary text-primary-foreground"
                             : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
                         }`}
@@ -2068,10 +2152,10 @@ export default function CallDetailPage() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">$</span>
                     <Input
-                      id="editDealValue"
+                      id="editContractValueLost"
                       type="number"
-                      value={editDealValue}
-                      onChange={(e) => setEditDealValue(e.target.value ? Number(e.target.value) : "")}
+                      value={editContractValue}
+                      onChange={(e) => setEditContractValue(e.target.value ? Number(e.target.value) : "")}
                       placeholder="Custom amount"
                       className="pl-8"
                     />
