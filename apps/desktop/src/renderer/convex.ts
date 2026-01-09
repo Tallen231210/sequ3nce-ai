@@ -295,3 +295,126 @@ export async function logClientError(data: ClientErrorData): Promise<void> {
     console.error("[Convex] Failed to log client error:", error);
   }
 }
+
+// ==================== ROLE PLAY ROOM ====================
+
+export interface RolePlayRoomResponse {
+  roomUrl: string;
+  roomName: string;
+}
+
+export interface RolePlayRoomParticipant {
+  closerId: string;
+  userName: string;
+  joinedAt: number;
+}
+
+// Get or create the team's role play room
+export async function getOrCreateRolePlayRoom(teamId: string): Promise<RolePlayRoomResponse | null> {
+  try {
+    console.log("[Convex] Getting/creating role play room for team:", teamId);
+
+    const response = await fetch(`${CONVEX_SITE_URL}/getOrCreateRolePlayRoom`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ teamId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("[Convex] Failed to get role play room:", errorData);
+      return null;
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Role play room result:", result);
+    return result as RolePlayRoomResponse;
+  } catch (error) {
+    console.error("[Convex] Failed to get role play room:", error);
+    return null;
+  }
+}
+
+// Join the role play room
+export async function joinRolePlayRoom(
+  teamId: string,
+  closerId: string,
+  userName: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log("[Convex] Joining role play room:", { teamId, closerId, userName });
+
+    const response = await fetch(`${CONVEX_SITE_URL}/joinRolePlayRoom`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ teamId, closerId, userName }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("[Convex] Failed to join role play room:", errorData);
+      return { success: false, error: errorData.error || "Failed to join room" };
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Join role play room result:", result);
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to join role play room:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+// Leave the role play room
+export async function leaveRolePlayRoom(
+  teamId: string,
+  closerId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log("[Convex] Leaving role play room:", { teamId, closerId });
+
+    const response = await fetch(`${CONVEX_SITE_URL}/leaveRolePlayRoom`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ teamId, closerId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("[Convex] Failed to leave role play room:", errorData);
+      return { success: false, error: errorData.error || "Failed to leave room" };
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Leave role play room result:", result);
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to leave role play room:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+// Get current participants in the role play room
+export async function getRolePlayRoomParticipants(teamId: string): Promise<RolePlayRoomParticipant[]> {
+  try {
+    const url = `${CONVEX_SITE_URL}/getRolePlayRoomParticipants?teamId=${encodeURIComponent(teamId)}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.error("[Convex] Failed to get role play room participants:", response.status);
+      return [];
+    }
+
+    const result = await response.json();
+    return result as RolePlayRoomParticipant[];
+  } catch (error) {
+    console.error("[Convex] Failed to get role play room participants:", error);
+    return [];
+  }
+}

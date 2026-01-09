@@ -5,7 +5,9 @@ import { AudioLevelMeter } from './components/AudioLevelMeter';
 import { RecordButton } from './components/RecordButton';
 import { PostCallQuestionnaire, CallOutcome } from './components/PostCallQuestionnaire';
 import { ProspectNamePrompt } from './components/ProspectNamePrompt';
+import { RolePlayRoomButton, RolePlayRoomModal } from './components/RolePlayRoom';
 import { useAudioCapture } from './hooks/useAudioCapture';
+import { useRolePlayRoomParticipantCount } from './hooks/useRolePlayRoom';
 import {
   loginCloser,
   completeCallWithOutcome,
@@ -440,6 +442,10 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Role Play Room state
+  const [showRolePlayModal, setShowRolePlayModal] = useState(false);
+  const rolePlayParticipantCount = useRolePlayRoomParticipantCount(closerInfo.teamId);
 
   // Audio capture hook
   const { startCapture, stopCapture } = useAudioCapture({
@@ -1103,6 +1109,13 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
           Training
         </button>
 
+        {/* Role Play Room button */}
+        <RolePlayRoomButton
+          participantCount={rolePlayParticipantCount}
+          onClick={() => setShowRolePlayModal(true)}
+          disabled={status === 'capturing'}
+        />
+
         {/* Call ID */}
         {callId && (
           <p className="mt-4 text-xs text-gray-400 font-mono">
@@ -1142,6 +1155,16 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
           </span>
         </div>
       </div>
+
+      {/* Role Play Room Modal */}
+      {showRolePlayModal && (
+        <RolePlayRoomModal
+          teamId={closerInfo.teamId}
+          closerId={closerInfo.closerId}
+          userName={closerInfo.name}
+          onClose={() => setShowRolePlayModal(false)}
+        />
+      )}
     </div>
   );
 }
