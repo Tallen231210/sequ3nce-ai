@@ -15,9 +15,11 @@ class WindowManager: ObservableObject {
 
     private var ammoPanelWindow: NSWindow?
     private var trainingWindow: NSWindow?
+    private var rolePlayRoomWindow: NSWindow?
 
     @Published var isAmmoPanelVisible = false
     @Published var isTrainingVisible = false
+    @Published var isRolePlayRoomVisible = false
 
     private init() {}
 
@@ -137,5 +139,54 @@ class WindowManager: ObservableObject {
         trainingWindow?.close()
         trainingWindow = nil
         isTrainingVisible = false
+    }
+
+    // MARK: - Role Play Room Window
+
+    func openRolePlayRoomWindow(appState: AppState) {
+        guard rolePlayRoomWindow == nil else {
+            rolePlayRoomWindow?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = RolePlayRoomView()
+            .environmentObject(appState)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "Role Play Room"
+        window.contentView = NSHostingView(rootView: contentView)
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 700, height: 500)
+        window.appearance = NSAppearance(named: .aqua)  // Force light mode title bar
+
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+
+        // Watch for window close
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.rolePlayRoomWindow = nil
+                self?.isRolePlayRoomVisible = false
+            }
+        }
+
+        rolePlayRoomWindow = window
+        isRolePlayRoomVisible = true
+    }
+
+    func closeRolePlayRoomWindow() {
+        rolePlayRoomWindow?.close()
+        rolePlayRoomWindow = nil
+        isRolePlayRoomVisible = false
     }
 }

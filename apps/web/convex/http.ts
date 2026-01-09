@@ -1493,4 +1493,248 @@ http.route({
   }),
 });
 
+// ============================================
+// ROLE PLAY ROOM ENDPOINTS (for desktop app)
+// ============================================
+
+// POST endpoint to get or create a role play room for a team
+http.route({
+  path: "/getOrCreateRolePlayRoom",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { teamId } = body;
+
+      if (!teamId) {
+        return new Response(JSON.stringify({ error: "teamId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runAction(api.rolePlayRoom.getOrCreateRolePlayRoom, {
+        teamId,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting/creating role play room:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to get room";
+      return new Response(JSON.stringify({ error: errorMessage }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getOrCreateRolePlayRoom
+http.route({
+  path: "/getOrCreateRolePlayRoom",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to join a role play room
+http.route({
+  path: "/joinRolePlayRoom",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { teamId, closerId, userName } = body;
+
+      if (!teamId || !closerId || !userName) {
+        return new Response(JSON.stringify({ error: "teamId, closerId, and userName are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.rolePlayRoom.joinRolePlayRoom, {
+        teamId,
+        closerId,
+        userName,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error joining role play room:", error);
+      return new Response(JSON.stringify({ error: "Failed to join room" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for joinRolePlayRoom
+http.route({
+  path: "/joinRolePlayRoom",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to leave a role play room
+http.route({
+  path: "/leaveRolePlayRoom",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { teamId, closerId } = body;
+
+      if (!teamId || !closerId) {
+        return new Response(JSON.stringify({ error: "teamId and closerId are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.rolePlayRoom.leaveRolePlayRoom, {
+        teamId,
+        closerId,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error leaving role play room:", error);
+      return new Response(JSON.stringify({ error: "Failed to leave room" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for leaveRolePlayRoom
+http.route({
+  path: "/leaveRolePlayRoom",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to get role play room participants
+http.route({
+  path: "/getRolePlayRoomParticipants",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const teamId = url.searchParams.get("teamId");
+
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "teamId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const participants = await ctx.runQuery(api.rolePlayRoom.getRolePlayRoomParticipants, {
+        teamId,
+      });
+
+      return new Response(JSON.stringify(participants), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting role play room participants:", error);
+      return new Response(JSON.stringify({ error: "Failed to get participants" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getRolePlayRoomParticipants
+http.route({
+  path: "/getRolePlayRoomParticipants",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

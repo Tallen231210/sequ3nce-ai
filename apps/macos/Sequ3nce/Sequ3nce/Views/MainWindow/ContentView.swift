@@ -157,6 +157,8 @@ struct MainRecordingView: View {
     @State private var prospectName: String = ""
     @State private var prospectNameSaved = false
     @State private var showProspectPrompt = false
+    @State private var rolePlayParticipantCount = 0
+    @State private var rolePlayPollingTimer: Timer?
 
     // App version
     private var appVersion: String {
@@ -325,6 +327,27 @@ struct MainRecordingView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 8)
 
+                    // Role Play Room button
+                    Button(action: {
+                        windowManager.openRolePlayRoomWindow(appState: appState)
+                    }) {
+                        HStack(spacing: 6) {
+                            Text("Role Play Room")
+                            if rolePlayParticipantCount > 0 {
+                                Text("(\(rolePlayParticipantCount))")
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(white: 0.95))
+                        .foregroundColor(Color(white: 0.4))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+
                     // Call ID (when active)
                     if let callId = appState.currentCallId {
                         Text("Call: \(String(callId.prefix(8)))...")
@@ -407,6 +430,41 @@ struct MainRecordingView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showSpeakFirstReminder)
+        .onAppear {
+            startRolePlayParticipantPolling()
+        }
+        .onDisappear {
+            stopRolePlayParticipantPolling()
+        }
+    }
+
+    // Role Play Room participant polling
+    private func startRolePlayParticipantPolling() {
+        // Poll every 5 seconds
+        rolePlayPollingTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+            Task { @MainActor in
+                await fetchRolePlayParticipantCount()
+            }
+        }
+        // Also fetch immediately
+        Task {
+            await fetchRolePlayParticipantCount()
+        }
+    }
+
+    private func stopRolePlayParticipantPolling() {
+        rolePlayPollingTimer?.invalidate()
+        rolePlayPollingTimer = nil
+    }
+
+    private func fetchRolePlayParticipantCount() async {
+        do {
+            let participants = try await appState.convexService.getRolePlayRoomParticipants(teamId: closerInfo.teamId)
+            rolePlayParticipantCount = participants.count
+        } catch {
+            // Silently fail - participant count is optional info
+            print("[MainRecordingView] Failed to fetch role play participants: \(error)")
+        }
     }
 
     // Footer status color matching Electron

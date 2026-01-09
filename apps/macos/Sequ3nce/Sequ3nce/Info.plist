@@ -15,13 +15,15 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.3.1</string>
+	<string>1.4.0</string>
 	<key>CFBundleVersion</key>
-	<string>10</string>
+	<string>12</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Sequ3nce needs audio capture access to record system audio during sales calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Sequ3nce needs camera access for video calls in the Role Play Room.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2024 Sequ3nce. All rights reserved.</string>
 	<key>NSMainStoryboardFile</key>

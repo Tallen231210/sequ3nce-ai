@@ -111,6 +111,23 @@ struct TrainingPlaylistWithItems: Codable, Identifiable {
     var id: String { _id }
 }
 
+// MARK: - Role Play Room Models
+
+/// Role play room response from getOrCreateRolePlayRoom
+struct RolePlayRoomResponse: Codable {
+    let roomUrl: String
+    let roomName: String
+}
+
+/// Role play room participant
+struct RolePlayRoomParticipant: Codable, Identifiable {
+    let closerId: String
+    let userName: String
+    let joinedAt: Double
+
+    var id: String { closerId }
+}
+
 /// Service for Convex HTTP API calls
 class ConvexService {
     // MARK: - Configuration
@@ -523,6 +540,106 @@ class ConvexService {
             return try decoder.decode(TrainingPlaylistWithItems.self, from: data)
         } else {
             return nil
+        }
+    }
+
+    // MARK: - Role Play Room
+
+    /// Get or create a role play room for a team
+    func getOrCreateRolePlayRoom(teamId: String) async throws -> RolePlayRoomResponse {
+        let url = URL(string: "\(baseURL)/getOrCreateRolePlayRoom")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["teamId": teamId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let decoder = JSONDecoder()
+            return try decoder.decode(RolePlayRoomResponse.self, from: data)
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to get/create role play room")
+        }
+    }
+
+    /// Join the role play room
+    func joinRolePlayRoom(teamId: String, closerId: String, userName: String) async throws {
+        let url = URL(string: "\(baseURL)/joinRolePlayRoom")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = [
+            "teamId": teamId,
+            "closerId": closerId,
+            "userName": userName
+        ]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to join role play room")
+        }
+    }
+
+    /// Leave the role play room
+    func leaveRolePlayRoom(teamId: String, closerId: String) async throws {
+        let url = URL(string: "\(baseURL)/leaveRolePlayRoom")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = [
+            "teamId": teamId,
+            "closerId": closerId
+        ]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to leave role play room")
+        }
+    }
+
+    /// Get role play room participants
+    func getRolePlayRoomParticipants(teamId: String) async throws -> [RolePlayRoomParticipant] {
+        var components = URLComponents(string: "\(baseURL)/getRolePlayRoomParticipants")!
+        components.queryItems = [URLQueryItem(name: "teamId", value: teamId)]
+
+        let (data, response) = try await session.data(from: components.url!)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let decoder = JSONDecoder()
+            return try decoder.decode([RolePlayRoomParticipant].self, from: data)
+        } else {
+            throw ConvexError.serverError("Failed to get participants")
         }
     }
 }

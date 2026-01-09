@@ -27,6 +27,16 @@ export default defineSchema({
     calendlyLastSyncAt: v.optional(v.number()), // Last sync timestamp
     // Ammo V2 feature flag
     ammoV2Enabled: v.optional(v.boolean()), // Enable AI-powered real-time ammo analysis
+    // Role Play Room - persistent video chat for team practice
+    rolePlayRoom: v.optional(v.object({
+      dailyRoomUrl: v.optional(v.string()), // Full Daily.co room URL
+      dailyRoomName: v.optional(v.string()), // Room name (e.g., "team-abc123")
+      participants: v.array(v.object({
+        closerId: v.string(), // Closer ID as string (for serialization)
+        userName: v.string(), // Display name in the room
+        joinedAt: v.number(), // Unix timestamp when they joined
+      })),
+    })),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 

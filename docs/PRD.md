@@ -1177,6 +1177,39 @@ Option C: Hybrid (Recommended)
 - Prompts user to restart to apply update
 - Handled by electron-builder/electron-updater
 
+#### 7.2.10 Role Play Room
+
+**Purpose:** Persistent video chat room for team practice, collaboration, and camaraderie.
+
+**UI Components:**
+- **Button in Main View:** Below Training button, shows "Role Play Room" or "Role Play Room (N)" when N participants are present
+- **Separate Window:** 900x700 (min 700x500) containing:
+  - Header with title + session timer ("You've been here for Xh Xm")
+  - Daily.co video room (WKWebView embedding prebuilt UI)
+  - Leave button in footer
+
+**Behavior:**
+- One permanent room per team (created lazily on first use via Daily.co API)
+- Participants tracked in Convex database (join/leave mutations)
+- Button polls for participant count every 5 seconds
+- Daily.co prebuilt UI handles all video controls (mute, camera, screen share)
+
+**Auto-Leave Safeguards:**
+- 30 minutes of inactivity (camera AND microphone off)
+- App closes or window closes
+- App loses focus for extended period
+
+**Technical Stack:**
+- **Video:** Daily.co with prebuilt UI (no native SDK required)
+- **Swift Integration:** WKWebView loads Daily.co room URL with userName parameter
+- **Backend:** Convex mutations/queries for room management and participant tracking
+- **Room Creation:** Backend calls Daily.co REST API (API key stored server-side)
+
+**macOS Native (Swift):**
+- Room embedded via WKWebView for simplicity
+- WindowManager handles secondary window lifecycle
+- ConvexService provides API methods for room management
+
 ### 7.3 Audio Processing Pipeline
 
 #### 7.3.1 Audio Capture
