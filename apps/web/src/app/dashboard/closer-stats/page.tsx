@@ -27,7 +27,6 @@ import {
   Zap,
   Users,
   CheckCircle2,
-  Calendar,
   ChevronDown,
   ChevronUp,
   Sparkles,
@@ -193,13 +192,6 @@ function generateCloserInsights(closer: CloserCardProps["closer"], dateRange: Da
     }
   }
 
-  // Show rate concern
-  if (closer.showRate < 70 && closer.callsTaken >= 5) {
-    insights.push(`Show rate of ${formatPercent(closer.showRate)} suggests prospect qualification could improve.`);
-  } else if (closer.showRate >= 90 && closer.callsTaken >= 5) {
-    insights.push(`Excellent show rate of ${formatPercent(closer.showRate)}.`);
-  }
-
   // Call length observation
   if (closer.avgCallLength > 0) {
     const avgMins = Math.floor(closer.avgCallLength / 60);
@@ -321,10 +313,6 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
             {/* Secondary Stats */}
             <div className="border-t border-zinc-100 pt-4 mb-4">
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">Show Rate</span>
-                  <span className="font-medium">{formatPercent(closer.showRate)}</span>
-                </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Avg Deal Value</span>
                   <span className="font-medium">
@@ -510,11 +498,6 @@ function DynamicSummary({ teamStats, closerStats, dateRange }: DynamicSummaryPro
     insights.push(`Revenue is ${trendDirection} ${trendAmount}% compared to the previous period.`);
   }
 
-  // Show rate concern
-  if (teamStats.showRate < 80 && teamStats.totalCallsTaken >= 5) {
-    insights.push(`Show rate (${formatPercent(teamStats.showRate)}) could use improvement.`);
-  }
-
   if (insights.length === 0) {
     return null;
   }
@@ -568,8 +551,8 @@ function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
             <p className="text-sm text-zinc-500">{DATE_RANGE_LABELS[dateRange]}</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="p-4 bg-zinc-50 border border-zinc-200 rounded-lg animate-pulse">
               <div className="h-4 w-20 bg-zinc-200 rounded mb-2" />
               <div className="h-8 w-16 bg-zinc-200 rounded" />
@@ -589,7 +572,7 @@ function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {/* Total Cash Collected */}
         <TeamStatCard
           icon={<DollarSign className="h-4 w-4" />}
@@ -629,15 +612,6 @@ function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
           label="Avg Deal Value"
           value={teamStats.averageDealValue > 0 ? formatCurrency(teamStats.averageDealValue) : "—"}
           trend={teamStats.averageDealValueTrend}
-        />
-
-        {/* Show Rate */}
-        <TeamStatCard
-          icon={<Calendar className="h-4 w-4" />}
-          label="Show Rate"
-          value={formatPercent(teamStats.showRate)}
-          trend={teamStats.showRateTrend}
-          trendSuffix=" pts"
         />
       </div>
     </div>

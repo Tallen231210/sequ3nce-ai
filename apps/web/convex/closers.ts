@@ -657,14 +657,14 @@ export const getCloserStats = query({
       });
     }
 
-    // Convert to array and sort by close rate for ranking
+    // Convert to array and sort by cash collected for ranking
     const statsArray = Array.from(closerStatsMap.values());
-    statsArray.sort((a, b) => b.closeRate - a.closeRate);
+    statsArray.sort((a, b) => b.cashCollected - a.cashCollected);
 
     // Assign ranks (handle ties)
     let currentRank = 1;
     for (let i = 0; i < statsArray.length; i++) {
-      if (i > 0 && statsArray[i].closeRate < statsArray[i - 1].closeRate) {
+      if (i > 0 && statsArray[i].cashCollected < statsArray[i - 1].cashCollected) {
         currentRank = i + 1;
       }
       statsArray[i].rank = currentRank;
