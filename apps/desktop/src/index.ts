@@ -1146,7 +1146,9 @@ function setupAutoUpdater() {
   autoUpdater.on('update-available', (info) => {
     console.log('[AutoUpdate] Update available:', info.version);
     // Notify the renderer that an update is available
-    mainWindow?.webContents.send('update:available', info);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update:available', info);
+    }
   });
 
   autoUpdater.on('update-not-available', (info) => {
@@ -1155,26 +1157,33 @@ function setupAutoUpdater() {
 
   autoUpdater.on('download-progress', (progress) => {
     console.log(`[AutoUpdate] Download progress: ${progress.percent.toFixed(1)}%`);
-    mainWindow?.webContents.send('update:progress', progress);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update:progress', progress);
+    }
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[AutoUpdate] Update downloaded:', info.version);
-    
-    // Show a dialog to the user
-    dialog.showMessageBox(mainWindow!, {
-      type: 'info',
-      title: 'Update Ready',
-      message: `A new version (${info.version}) has been downloaded.`,
-      detail: 'Restart now to apply the update?',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-    }).then((result) => {
-      if (result.response === 0) {
-        isQuitting = true;
-        autoUpdater.quitAndInstall();
-      }
-    });
+
+    // Only show dialog if window is still valid
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Update Ready',
+        message: `A new version (${info.version}) has been downloaded.`,
+        detail: 'Restart now to apply the update?',
+        buttons: ['Restart Now', 'Later'],
+        defaultId: 0,
+      }).then((result) => {
+        if (result.response === 0) {
+          isQuitting = true;
+          autoUpdater.quitAndInstall();
+        }
+      });
+    } else {
+      // Window was closed, install on next launch
+      console.log('[AutoUpdate] Window destroyed, update will install on next launch');
+    }
   });
 
   autoUpdater.on('error', (error) => {
