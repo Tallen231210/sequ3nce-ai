@@ -961,32 +961,55 @@ export const loginCloser = mutation({
   },
   handler: async (ctx, args) => {
     const email = args.email.trim().toLowerCase();
+    const password = args.password.trim();
+    console.log("[loginCloser] Attempting login for email:", email);
 
-    // Find closer by email
-    const closer = await ctx.db
+    // Find ALL closers with this email (might be in multiple teams)
+    const closersWithEmail = await ctx.db
       .query("closers")
       .withIndex("by_email", (q) => q.eq("email", email))
-      .first();
+      .collect();
 
-    if (!closer) {
+    if (closersWithEmail.length === 0) {
+      console.log("[loginCloser] FAILED: No closer found with email:", email);
       return { success: false, error: "Invalid email or password" };
     }
 
-    // Check if closer is deactivated
-    if (closer.status === "deactivated") {
-      return { success: false, error: "Your account has been deactivated. Please contact your team admin." };
+    console.log("[loginCloser] Found", closersWithEmail.length, "closer(s) with this email");
+
+    // Try to find a closer whose password matches
+    let matchedCloser = null;
+    for (const closer of closersWithEmail) {
+      // Skip deactivated accounts
+      if (closer.status === "deactivated") {
+        console.log("[loginCloser] Skipping deactivated closer:", closer._id);
+        continue;
+      }
+
+      // Skip if no password hash
+      if (!closer.passwordHash) {
+        console.log("[loginCloser] Skipping closer without password:", closer._id);
+        continue;
+      }
+
+      // Try to verify password
+      const isValid = await verifyPassword(password, closer.passwordHash);
+      if (isValid) {
+        matchedCloser = closer;
+        console.log("[loginCloser] Password matched for closer:", closer._id);
+        break;
+      } else {
+        console.log("[loginCloser] Password did not match for closer:", closer._id);
+      }
     }
 
-    // Check if password is set
-    if (!closer.passwordHash) {
-      return { success: false, error: "No password set. Please contact your team admin to set up your account." };
-    }
-
-    // Verify password
-    const isValid = await verifyPassword(args.password, closer.passwordHash);
-    if (!isValid) {
+    if (!matchedCloser) {
+      console.log("[loginCloser] FAILED: No matching password found for any closer with this email");
       return { success: false, error: "Invalid email or password" };
     }
+
+    const closer = matchedCloser;
+    console.log("[loginCloser] SUCCESS: Login verified for closer:", closer._id);
 
     // Update last login and activate if pending
     const updates: { lastLoginAt: number; status?: string; activatedAt?: number } = {
