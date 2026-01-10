@@ -21,6 +21,10 @@
 	<true/>
 	<key>com.apple.security.device.microphone</key>
 	<true/>
+
+	<!-- Camera permission for Role Play Room video calls -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
 	
 	<!-- File access -->
 	<key>com.apple.security.files.user-selected.read-write</key>
