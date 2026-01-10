@@ -209,7 +209,7 @@ export default function TeamPage() {
         clerkId,
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        password: password,
+        password: password.trim(),
       });
 
       // Update Stripe seats (current active/pending count + 1 for the new closer)

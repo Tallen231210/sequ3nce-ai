@@ -235,10 +235,13 @@ export const addCloser = mutation({
       throw new Error("User not found");
     }
 
+    // Normalize email to lowercase
+    const email = args.email.trim().toLowerCase();
+
     // Check if closer with this email already exists in the team
     const existingCloser = await ctx.db
       .query("closers")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .withIndex("by_email", (q) => q.eq("email", email))
       .first();
 
     if (existingCloser && existingCloser.teamId === user.teamId) {
@@ -247,7 +250,7 @@ export const addCloser = mutation({
 
     // Create the closer
     const closerId = await ctx.db.insert("closers", {
-      email: args.email,
+      email,
       name: args.name,
       teamId: user.teamId,
       status: "pending",

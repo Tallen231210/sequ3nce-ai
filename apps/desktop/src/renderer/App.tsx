@@ -193,7 +193,7 @@ export function App() {
     setAuthError(null);
 
     try {
-      const result = await loginCloser(email.trim().toLowerCase(), password);
+      const result = await loginCloser(email.trim().toLowerCase(), password.trim());
 
       if (result.success && result.closer) {
         // Save closer info to localStorage
