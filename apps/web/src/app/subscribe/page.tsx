@@ -128,11 +128,11 @@ function SubscribeContent() {
                   Platform Access
                 </div>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-5xl font-bold text-zinc-900">$249</span>
+                  <span className="text-5xl font-bold text-zinc-900">$299</span>
                   <span className="text-zinc-500">/month</span>
                 </div>
                 <p className="text-sm text-zinc-500 mt-2">
-                  + $99/month per closer seat
+                  + $149/month per closer seat
                 </p>
               </div>
 
