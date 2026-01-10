@@ -88,6 +88,8 @@ declare const AMMO_TRACKER_WEBPACK_ENTRY: string;
 declare const AMMO_TRACKER_PRELOAD_WEBPACK_ENTRY: string;
 declare const TRAINING_WEBPACK_ENTRY: string;
 declare const TRAINING_PRELOAD_WEBPACK_ENTRY: string;
+declare const ROLEPLAY_WEBPACK_ENTRY: string;
+declare const ROLEPLAY_PRELOAD_WEBPACK_ENTRY: string;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -109,6 +111,7 @@ interface AudioCaptureConfig {
 let mainWindow: BrowserWindow | null = null;
 let ammoTrackerWindow: BrowserWindow | null = null;
 let trainingWindow: BrowserWindow | null = null;
+let roleplayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
@@ -122,6 +125,9 @@ let ammoTrackerVisible = false;
 
 // Current logged-in closer ID (for training window)
 let currentCloserId: string | null = null;
+
+// Current role play room user info
+let roleplayUserInfo: { teamId: string; closerId: string; userName: string } | null = null;
 
 // Current team ID (for resources in ammo tracker)
 let currentTeamId: string | null = null;
@@ -334,6 +340,53 @@ const createTrainingWindow = (): void => {
   // Open DevTools in development
   if (process.env.NODE_ENV === 'development' || process.defaultApp) {
     // trainingWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+};
+
+// Create the roleplay window
+const createRoleplayWindow = (): void => {
+  if (roleplayWindow) {
+    roleplayWindow.show();
+    roleplayWindow.focus();
+    return;
+  }
+
+  roleplayWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 700,
+    minHeight: 500,
+    title: 'Role Play Room',
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#ffffff',
+    show: false,
+    webPreferences: {
+      preload: ROLEPLAY_PRELOAD_WEBPACK_ENTRY,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  roleplayWindow.loadURL(ROLEPLAY_WEBPACK_ENTRY);
+
+  // Show window when ready
+  roleplayWindow.once('ready-to-show', () => {
+    roleplayWindow?.show();
+
+    // Send user info to the roleplay window
+    if (roleplayUserInfo) {
+      roleplayWindow?.webContents.send('roleplay:user-info-changed', roleplayUserInfo);
+    }
+  });
+
+  // Handle window close
+  roleplayWindow.on('closed', () => {
+    roleplayWindow = null;
+  });
+
+  // Open DevTools in development
+  if (process.env.NODE_ENV === 'development' || process.defaultApp) {
+    // roleplayWindow.webContents.openDevTools({ mode: 'detach' });
   }
 };
 
@@ -983,6 +1036,37 @@ const setupIpcHandlers = (): void => {
       console.error('[Main] Error getting playlist details:', error);
       return null;
     }
+  });
+
+  // ---- Role Play Room Window IPC Handlers ----
+
+  // Open roleplay window
+  ipcMain.handle('roleplay:open', (_event, userInfo: { teamId: string; closerId: string; userName: string }) => {
+    roleplayUserInfo = userInfo;
+    createRoleplayWindow();
+    return true;
+  });
+
+  // Close roleplay window
+  ipcMain.handle('roleplay:close', () => {
+    if (roleplayWindow) {
+      roleplayWindow.close();
+      roleplayWindow = null;
+    }
+    return true;
+  });
+
+  // Minimize roleplay window
+  ipcMain.handle('roleplay:minimize', () => {
+    if (roleplayWindow) {
+      roleplayWindow.minimize();
+    }
+    return true;
+  });
+
+  // Get user info for roleplay
+  ipcMain.handle('roleplay:get-user-info', () => {
+    return roleplayUserInfo;
   });
 
   console.log('[Main] IPC handlers set up');

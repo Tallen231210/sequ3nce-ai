@@ -140,6 +140,14 @@ const config: ForgeConfig = {
               js: './src/training-preload.ts',
             },
           },
+          {
+            html: './src/roleplay.html',
+            js: './src/roleplay-renderer.ts',
+            name: 'roleplay',
+            preload: {
+              js: './src/roleplay-preload.ts',
+            },
+          },
         ],
       },
     }),

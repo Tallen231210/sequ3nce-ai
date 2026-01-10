@@ -5,7 +5,7 @@ import { AudioLevelMeter } from './components/AudioLevelMeter';
 import { RecordButton } from './components/RecordButton';
 import { PostCallQuestionnaire, CallOutcome } from './components/PostCallQuestionnaire';
 import { ProspectNamePrompt } from './components/ProspectNamePrompt';
-import { RolePlayRoomButton, RolePlayRoomModal } from './components/RolePlayRoom';
+import { RolePlayRoomButton } from './components/RolePlayRoom';
 import { useAudioCapture } from './hooks/useAudioCapture';
 import { useRolePlayRoomParticipantCount } from './hooks/useRolePlayRoom';
 import {
@@ -443,8 +443,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // Role Play Room state
-  const [showRolePlayModal, setShowRolePlayModal] = useState(false);
+  // Role Play Room participant count (for button badge)
   const rolePlayParticipantCount = useRolePlayRoomParticipantCount(closerInfo.teamId);
 
   // Audio capture hook
@@ -1112,7 +1111,11 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         {/* Role Play Room button */}
         <RolePlayRoomButton
           participantCount={rolePlayParticipantCount}
-          onClick={() => setShowRolePlayModal(true)}
+          onClick={() => window.electron.roleplay.open({
+            teamId: closerInfo.teamId,
+            closerId: closerInfo.closerId,
+            userName: closerInfo.name,
+          })}
           disabled={status === 'capturing'}
         />
 
@@ -1156,15 +1159,6 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         </div>
       </div>
 
-      {/* Role Play Room Modal */}
-      {showRolePlayModal && (
-        <RolePlayRoomModal
-          teamId={closerInfo.teamId}
-          closerId={closerInfo.closerId}
-          userName={closerInfo.name}
-          onClose={() => setShowRolePlayModal(false)}
-        />
-      )}
     </div>
   );
 }

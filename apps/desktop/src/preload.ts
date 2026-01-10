@@ -48,12 +48,17 @@ export interface TrainingAPI {
   setCloserId: (closerId: string | null) => Promise<boolean>;
 }
 
+export interface RoleplayAPI {
+  open: (userInfo: { teamId: string; closerId: string; userName: string }) => Promise<boolean>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
   ammo: AmmoAPI;
   auth: AuthAPI;
   training: TrainingAPI;
+  roleplay: RoleplayAPI;
 }
 
 // Expose protected methods to renderer via contextBridge
@@ -110,6 +115,10 @@ contextBridge.exposeInMainWorld('electron', {
   training: {
     open: () => ipcRenderer.invoke('training:open'),
     setCloserId: (closerId: string | null) => ipcRenderer.invoke('training:set-closer-id', closerId),
+  },
+  roleplay: {
+    open: (userInfo: { teamId: string; closerId: string; userName: string }) =>
+      ipcRenderer.invoke('roleplay:open', userInfo),
   },
 } as ElectronAPI);
 

@@ -45,12 +45,17 @@ export interface TrainingAPI {
   setCloserId: (closerId: string | null) => Promise<boolean>;
 }
 
+export interface RoleplayAPI {
+  open: (userInfo: { teamId: string; closerId: string; userName: string }) => Promise<boolean>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
   ammo: AmmoAPI;
   auth: AuthAPI;
   training: TrainingAPI;
+  roleplay: RoleplayAPI;
 }
 
 // Ammo item type
