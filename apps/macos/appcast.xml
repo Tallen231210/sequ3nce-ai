@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.4.1</title>
+            <pubDate>Sat, 11 Jan 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>1.4.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.4.1</h2>
+                <ul>
+                    <li>Fixed intermittent audio capture failures causing blank transcripts</li>
+                    <li>Improved cleanup between consecutive recordings</li>
+                    <li>Better error handling for audio engine initialization</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.4.1/Sequ3nce.zip"
+                length="1589311"
+                type="application/octet-stream"
+                sparkle:edSignature="SQR1wLlXA1iKuTe+QhAWNm64k+2ZT1Ygh/e8gG3ju0FxSpxsf4+mublULg0o3YuvsGzJfELD5yOdeif4IHAGCQ=="
+            />
+        </item>
+
+        <!-- v1.4.0 -->
+        <item>
             <title>Version 1.4.0</title>
             <pubDate>Thu, 09 Jan 2026 13:00:00 +0000</pubDate>
             <sparkle:version>12</sparkle:version>

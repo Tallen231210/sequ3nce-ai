@@ -30,6 +30,7 @@ enum AudioCaptureError: Error, LocalizedError {
     case systemAudioSetupFailed(String)
     case noAudioDeviceFound
     case tapCreationFailed(String)
+    case notSetUp  // FIX: Added for proper error throwing
 
     var errorDescription: String? {
         switch self {
@@ -47,6 +48,8 @@ enum AudioCaptureError: Error, LocalizedError {
             return "No audio input device found."
         case .tapCreationFailed(let details):
             return "Failed to create audio tap: \(details)"
+        case .notSetUp:
+            return "Audio capture not set up. Call setup() before startCapture()."
         }
     }
 }
@@ -86,6 +89,9 @@ class AudioCaptureService: ObservableObject {
     // Timer for periodic buffer mixing/sending
     private var mixTimer: Timer?
 
+    // FIX: Store silence fallback timer to prevent orphaned timers
+    private var silenceFallbackTimer: Timer?
+
     // MARK: - Initialization
     init() {
         // Check macOS version
@@ -114,8 +120,17 @@ class AudioCaptureService: ObservableObject {
 
     /// Set up audio capture (call before startCapture)
     func setup() async throws {
+        print("[AudioCaptureService] setup() called - isSetUp=\(isSetUp), isCapturing=\(isCapturing)")
+
         guard #available(macOS 14.4, *) else {
             throw AudioCaptureError.macOSVersionTooOld
+        }
+
+        // FIX: Clean up any previous state first to prevent resource leaks
+        if isSetUp {
+            print("[AudioCaptureService] Already set up, cleaning up before re-setup")
+            stopCapture()
+            cleanup()
         }
 
         // Request microphone permission
@@ -136,17 +151,27 @@ class AudioCaptureService: ObservableObject {
 
     /// Start capturing audio
     func startCapture() throws {
+        print("[AudioCaptureService] startCapture() called - isSetUp=\(isSetUp), isCapturing=\(isCapturing)")
+
         guard isSetUp else {
             print("[AudioCaptureService] Error: Not set up yet")
-            return
+            throw AudioCaptureError.notSetUp
         }
 
-        // Start microphone engine
-        try micEngine?.start()
+        // FIX: Guard against nil engine instead of optional chaining
+        guard let engine = micEngine else {
+            print("[AudioCaptureService] Error: micEngine is nil")
+            throw AudioCaptureError.microphoneSetupFailed("Engine not initialized")
+        }
+        try engine.start()
+        print("[AudioCaptureService] Microphone engine started successfully")
 
         // Set atomic flag before starting timer
         _isCapturingAtomic = true
         isCapturing = true
+
+        // FIX: Invalidate existing timer before creating new one
+        mixTimer?.invalidate()
 
         // Start mix timer (sends combined audio every ~85ms for smooth streaming)
         mixTimer = Timer.scheduledTimer(withTimeInterval: 0.085, repeats: true) { [weak self] _ in
@@ -160,6 +185,8 @@ class AudioCaptureService: ObservableObject {
 
     /// Stop capturing audio
     func stopCapture() {
+        print("[AudioCaptureService] stopCapture() called - isSetUp=\(isSetUp), isCapturing=\(isCapturing)")
+
         // Set atomic flag first to stop timers
         _isCapturingAtomic = false
         isCapturing = false
@@ -167,6 +194,10 @@ class AudioCaptureService: ObservableObject {
         micEngine?.stop()
         mixTimer?.invalidate()
         mixTimer = nil
+
+        // FIX: Invalidate silence fallback timer
+        silenceFallbackTimer?.invalidate()
+        silenceFallbackTimer = nil
 
         // Stop system audio capture
         systemAudioCapture?.stop()
@@ -176,6 +207,9 @@ class AudioCaptureService: ObservableObject {
         micRingBuffer.removeAll()
         systemRingBuffer.removeAll()
         ringBufferLock.unlock()
+
+        // FIX: Reset isSetUp flag so next call requires fresh setup
+        isSetUp = false
 
         print("[AudioCaptureService] Capture stopped")
     }
@@ -196,6 +230,13 @@ class AudioCaptureService: ObservableObject {
     // MARK: - Private Methods
 
     private func setupMicrophone() throws {
+        // FIX: Clean up previous engine before creating new one
+        if let existingEngine = micEngine {
+            existingEngine.stop()
+            existingEngine.inputNode.removeTap(onBus: 0)
+            print("[AudioCaptureService] Cleaned up existing mic engine")
+        }
+
         let engine = AVAudioEngine()
         let inputNode = engine.inputNode
 
@@ -275,7 +316,8 @@ class AudioCaptureService: ObservableObject {
         // Fallback: Generate silence for system audio channel
         // This allows recording to work even if system audio capture fails
         let capturedBufferSize = Int(self.bufferSize)
-        Timer.scheduledTimer(withTimeInterval: 0.085, repeats: true) { [weak self] _ in
+        // FIX: Store timer reference so it can be invalidated later
+        silenceFallbackTimer = Timer.scheduledTimer(withTimeInterval: 0.085, repeats: true) { [weak self] _ in
             guard let self = self, self._isCapturingAtomic else { return }
 
             let silentSamples = Array(repeating: Float(0.0), count: capturedBufferSize)

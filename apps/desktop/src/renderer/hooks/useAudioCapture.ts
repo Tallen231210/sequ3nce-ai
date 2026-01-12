@@ -282,6 +282,8 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
           new Error('getDisplayMedia returned no audio tracks. Screen Recording permission may be denied or misconfigured.'),
           'getDisplayMedia_no_audio_tracks'
         );
+        // CRITICAL: Fail fast instead of continuing with silent capture
+        throw new Error('No system audio available. Please grant Screen Recording permission in System Settings and restart the app.');
       } else {
         const audioTrack = systemAudioTracks[0];
         console.log('[AudioCapture] Got system audio track:', audioTrack.label, 'state:', audioTrack.readyState, 'enabled:', audioTrack.enabled);
@@ -305,6 +307,8 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
           new Error(`System audio stream invalid. Track info: ${getAudioTrackInfo(systemStream)}`),
           'getDisplayMedia_invalid_tracks'
         );
+        // CRITICAL: Fail fast instead of continuing with silent capture
+        throw new Error('Audio capture failed. The audio track is not valid. Please restart the app and try again.');
       }
       captureStep = 'getDisplayMedia_done';
 
@@ -355,6 +359,14 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       const actualSampleRate = audioContextRef.current.sampleRate;
       console.log('[AudioCapture] AudioContext created at', actualSampleRate, 'Hz');
       console.log('[AudioCapture] AudioContext state:', audioContextRef.current.state);
+
+      // CRITICAL: Ensure AudioContext is running (it starts in "suspended" state in Chromium/Electron)
+      // Without this, the AudioWorklet won't process any audio → 0 chunks sent to server
+      if (audioContextRef.current.state === 'suspended') {
+        console.log('[AudioCapture] Resuming suspended AudioContext...');
+        await audioContextRef.current.resume();
+        console.log('[AudioCapture] AudioContext resumed, state:', audioContextRef.current.state);
+      }
 
       // IMPORTANT: Log warning if actual rate differs from requested
       if (actualSampleRate !== 48000) {
