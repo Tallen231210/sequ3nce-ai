@@ -41,22 +41,35 @@ This script:
 3. Creates a ZIP for distribution
 4. Submits to Apple for notarization (may take 2-5 minutes)
 5. Staples the notarization ticket
-6. Generates the EdDSA signature for Sparkle auto-update
-7. Outputs the signature and file size
 
-### Step 4: Update appcast.xml with Signature
+**User action:** Once the script finishes, paste the terminal output to Claude.
 
-After the script completes, update `apps/macos/appcast.xml`:
-- Replace `SIGNATURE_PLACEHOLDER` with the `sparkle:edSignature` from script output
-- Update `length` with the file size in bytes from script output
+### Step 4: Generate Sparkle Signature (Claude does this)
 
-### Step 5: Commit and Push
+Claude will run the Sparkle signing tool:
 
 ```bash
-git add -A && git commit -m "Release macOS v1.4.1" && git push
+/Users/tylerallen/Desktop/sequ3nce-ai/apps/macos/scripts/bin/sign_update /Users/tylerallen/Desktop/sequ3nce-ai/apps/macos/build/Sequ3nce.zip
 ```
 
-### Step 6: Create GitHub Release
+This outputs something like:
+```
+sparkle:edSignature="ABC123..." length="1589311"
+```
+
+### Step 5: Update appcast.xml (Claude does this)
+
+Claude updates `apps/macos/appcast.xml`:
+- Replace `SIGNATURE_PLACEHOLDER` with the `sparkle:edSignature` from sign_update output
+- Update `length` with the file size in bytes
+
+### Step 6: Commit and Push (Claude does this)
+
+```bash
+git add -A && git commit -m "Release macOS vX.Y.Z" && git push
+```
+
+### Step 7: Create GitHub Release (Claude does this)
 
 1. Go to: https://github.com/Tallen231210/sequ3nce-ai/releases/new
 2. Tag: `macos-vX.Y.Z` (e.g., `macos-v1.4.1`)
