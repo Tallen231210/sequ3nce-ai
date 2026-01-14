@@ -185,6 +185,9 @@ class AppState: ObservableObject {
             // Set up audio capture
             try await audioService.setup()
 
+            // Set call context for error reporting
+            audioService.setCallContext(callId: callId, teamId: closer.teamId, closerId: closer.closerId)
+
             // Connect WebSocket
             try await webSocketService.connect(
                 callId: callId,

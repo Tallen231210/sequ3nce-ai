@@ -92,6 +92,19 @@ class AudioCaptureService: ObservableObject {
     // FIX: Store silence fallback timer to prevent orphaned timers
     private var silenceFallbackTimer: Timer?
 
+    // MARK: - Diagnostic Properties
+    private var healthCheckTimer: Timer?
+    private nonisolated(unsafe) var lastMicCallbackTime: Date = Date()
+    private nonisolated(unsafe) var totalChunksSent: Int = 0
+    private nonisolated(unsafe) var captureStartTime: Date?
+    private var configurationChangeObserver: NSObjectProtocol?
+    private var hasReportedAudioDeath = false  // Only report once per session
+
+    // MARK: - Call Context (for error reporting)
+    private var currentCallId: String?
+    private var currentTeamId: String?
+    private var currentCloserId: String?
+
     // MARK: - Initialization
     init() {
         // Check macOS version
@@ -101,6 +114,14 @@ class AudioCaptureService: ObservableObject {
     }
 
     // MARK: - Public Methods
+
+    /// Set call context for error reporting (call before startCapture)
+    func setCallContext(callId: String, teamId: String, closerId: String) {
+        self.currentCallId = callId
+        self.currentTeamId = teamId
+        self.currentCloserId = closerId
+        print("[AudioCaptureService] Call context set: callId=\(callId), teamId=\(teamId), closerId=\(closerId)")
+    }
 
     /// Request microphone permission
     func requestMicrophonePermission() async -> Bool {
@@ -180,6 +201,23 @@ class AudioCaptureService: ObservableObject {
             }
         }
 
+        // DIAGNOSTIC: Reset tracking variables
+        captureStartTime = Date()
+        totalChunksSent = 0
+        lastMicCallbackTime = Date()
+        hasReportedAudioDeath = false
+
+        // DIAGNOSTIC: Start health check timer (every 5 seconds)
+        healthCheckTimer?.invalidate()
+        healthCheckTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.performHealthCheck()
+            }
+        }
+
+        // DIAGNOSTIC: Listen for audio configuration changes
+        setupAudioConfigurationChangeListener()
+
         print("[AudioCaptureService] Capture started")
     }
 
@@ -198,6 +236,19 @@ class AudioCaptureService: ObservableObject {
         // FIX: Invalidate silence fallback timer
         silenceFallbackTimer?.invalidate()
         silenceFallbackTimer = nil
+
+        // DIAGNOSTIC: Stop health check timer
+        healthCheckTimer?.invalidate()
+        healthCheckTimer = nil
+
+        // DIAGNOSTIC: Remove audio configuration change listener
+        removeAudioConfigurationChangeListener()
+
+        // DIAGNOSTIC: Log final stats
+        if let startTime = captureStartTime {
+            let duration = Date().timeIntervalSince(startTime)
+            print("[AudioCaptureService] DIAGNOSTIC: Session ended - duration=\(Int(duration))s, totalChunksSent=\(totalChunksSent)")
+        }
 
         // Stop system audio capture
         systemAudioCapture?.stop()
@@ -343,6 +394,9 @@ class AudioCaptureService: ObservableObject {
     private func processMicrophoneBuffer(_ buffer: AVAudioPCMBuffer) {
         guard let channelData = buffer.floatChannelData else { return }
 
+        // DIAGNOSTIC: Track when we last received mic data
+        lastMicCallbackTime = Date()
+
         micProcessCount += 1
 
         let frameCount = Int(buffer.frameLength)
@@ -426,8 +480,10 @@ class AudioCaptureService: ObservableObject {
 
         guard framesToProcess > 0 else {
             ringBufferLock.unlock()
-            if mixCallCount % 50 == 1 {
-                print("[AudioCaptureService] mixAndSendAudio: No frames to process!")
+            // DIAGNOSTIC: Log more frequently when buffers are empty (potential audio death)
+            let timeSinceLastMic = Date().timeIntervalSince(lastMicCallbackTime)
+            if mixCallCount % 10 == 1 || timeSinceLastMic > 2.0 {
+                print("[AudioCaptureService] DIAGNOSTIC: No frames to process! micFrames=\(micFrames), systemFrames=\(systemFrames), timeSinceLastMicCallback=\(String(format: "%.1f", timeSinceLastMic))s")
             }
             return
         }
@@ -468,9 +524,138 @@ class AudioCaptureService: ObservableObject {
         // Send to callback
         if let callback = onAudioData {
             callback(interleavedData)
+            totalChunksSent += 1
         } else if mixCallCount % 50 == 1 {
             print("[AudioCaptureService] WARNING: onAudioData callback is nil!")
         }
+    }
+
+    // MARK: - Diagnostic Methods
+
+    private func performHealthCheck() {
+        let timeSinceLastMic = Date().timeIntervalSince(lastMicCallbackTime)
+        let engineRunning = micEngine?.isRunning ?? false
+        let sessionDuration = captureStartTime.map { Date().timeIntervalSince($0) } ?? 0
+
+        ringBufferLock.lock()
+        let micBufferSize = micRingBuffer.count
+        let systemBufferSize = systemRingBuffer.count
+        ringBufferLock.unlock()
+
+        // Always log health check
+        print("[AudioCaptureService] HEALTH CHECK: duration=\(Int(sessionDuration))s, chunksSent=\(totalChunksSent), engineRunning=\(engineRunning), timeSinceLastMicCallback=\(String(format: "%.1f", timeSinceLastMic))s, micBuffer=\(micBufferSize), systemBuffer=\(systemBufferSize)")
+
+        // AUDIO DEATH DETECTION: If no mic callbacks for 10+ seconds but we're supposed to be capturing
+        if timeSinceLastMic > 10.0 && _isCapturingAtomic {
+            print("[AudioCaptureService] ⚠️ AUDIO DEATH DETECTED: No mic callbacks for \(String(format: "%.1f", timeSinceLastMic))s!")
+            print("[AudioCaptureService] ⚠️ State: engineRunning=\(engineRunning), isCapturing=\(isCapturing), totalChunksSent=\(totalChunksSent)")
+
+            // Check if engine stopped
+            if !engineRunning {
+                print("[AudioCaptureService] ⚠️ AVAudioEngine has stopped running!")
+            }
+
+            // Send to backend (only once per session)
+            if !hasReportedAudioDeath {
+                hasReportedAudioDeath = true
+                let context = "engineRunning=\(engineRunning), duration=\(Int(sessionDuration))s, micBuffer=\(micBufferSize), systemBuffer=\(systemBufferSize)"
+                sendErrorToBackend(
+                    errorType: "swift_audio_death_detected",
+                    errorMessage: "Audio stopped after \(totalChunksSent) chunks. Last mic callback \(String(format: "%.1f", timeSinceLastMic))s ago. Engine running: \(engineRunning)",
+                    context: context
+                )
+            }
+        }
+
+        // Warn if engine stopped but we think we're capturing
+        if !engineRunning && _isCapturingAtomic {
+            print("[AudioCaptureService] ⚠️ WARNING: Engine not running but isCapturing=true!")
+        }
+    }
+
+    private func setupAudioConfigurationChangeListener() {
+        // Listen for audio engine configuration changes (sample rate change, device change, etc.)
+        configurationChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: micEngine,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            let engineRunning = self.micEngine?.isRunning ?? false
+            let timeSinceLastMic = Date().timeIntervalSince(self.lastMicCallbackTime)
+            let sessionDuration = self.captureStartTime.map { Date().timeIntervalSince($0) } ?? 0
+
+            print("[AudioCaptureService] ⚠️ AUDIO CONFIG CHANGE: AVAudioEngine configuration changed!")
+            print("[AudioCaptureService] ⚠️ Engine running after change: \(engineRunning)")
+            print("[AudioCaptureService] ⚠️ This may have stopped the audio tap!")
+            print("[AudioCaptureService] ⚠️ Time since last mic callback: \(String(format: "%.1f", timeSinceLastMic))s")
+
+            // Send to backend
+            self.sendErrorToBackend(
+                errorType: "swift_audio_config_change",
+                errorMessage: "AVAudioEngine configuration changed. Engine running: \(engineRunning). Chunks sent so far: \(self.totalChunksSent)",
+                context: "duration=\(Int(sessionDuration))s, timeSinceLastMic=\(String(format: "%.1f", timeSinceLastMic))s"
+            )
+        }
+
+        print("[AudioCaptureService] DIAGNOSTIC: Audio configuration change listener registered")
+    }
+
+    private func removeAudioConfigurationChangeListener() {
+        if let observer = configurationChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configurationChangeObserver = nil
+            print("[AudioCaptureService] DIAGNOSTIC: Audio configuration change listener removed")
+        }
+    }
+
+    private func sendErrorToBackend(errorType: String, errorMessage: String, context: String) {
+        // Send error to Convex backend for remote monitoring
+        guard let url = URL(string: "https://ideal-ram-982.convex.site/logClientError") else {
+            print("[AudioCaptureService] ERROR: Invalid backend URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "errorType": errorType,
+            "errorMessage": errorMessage,
+            "context": context,
+            "callId": currentCallId ?? "unknown",
+            "teamId": currentTeamId ?? "unknown",
+            "closerId": currentCloserId ?? "unknown",
+            "platform": "swift_macos",
+            "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        } catch {
+            print("[AudioCaptureService] ERROR: Failed to serialize error payload: \(error)")
+            return
+        }
+
+        // Send asynchronously, don't block audio processing
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("[AudioCaptureService] ERROR: Failed to send error to backend: \(error)")
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    print("[AudioCaptureService] DIAGNOSTIC: Error reported to backend successfully")
+                } else {
+                    print("[AudioCaptureService] ERROR: Backend returned status \(httpResponse.statusCode)")
+                }
+            }
+        }.resume()
+
+        print("[AudioCaptureService] DIAGNOSTIC: Sending error to backend - type=\(errorType)")
     }
 
     // MARK: - Audio Processing Utilities
