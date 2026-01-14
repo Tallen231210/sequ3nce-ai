@@ -240,6 +240,9 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const levelIntervalRef = useRef<number | null>(null);
+  const audioHealthCheckRef = useRef<number | null>(null);
+  const lastAudioChunkTimeRef = useRef<number>(0);
+  const audioChunkCountRef = useRef<number>(0);
 
   const startCapture = useCallback(async (): Promise<boolean> => {
     // Track which step we're on for detailed error reporting
@@ -293,6 +296,16 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
           console.error('[AudioCapture] Audio track arrived in ended state - macOS permission issue');
           throw new Error('Audio track arrived in "ended" state. This is a known macOS 15 (Sequoia) bug. Please: 1) Open System Settings > Privacy > Screen Recording, 2) Remove Sequ3nce from the list, 3) Restart your Mac, 4) Re-grant Screen Recording permission when prompted.');
         }
+
+        // CRITICAL: Add ended listener to detect when track dies during capture
+        audioTrack.addEventListener('ended', () => {
+          console.error('[AudioCapture] ⚠️ System audio track ENDED during capture!');
+          handleAudioError(
+            new Error(`System audio track ended event fired. Chunks sent: ${audioChunkCountRef.current}`),
+            'system_track_ended_event'
+          );
+          options.onError?.('System audio stopped. Please restart the recording.');
+        });
 
         // Additional validation: check if track is enabled
         if (!audioTrack.enabled) {
@@ -487,6 +500,9 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
       // Handle raw PCM data from worklet
       workletNodeRef.current.port.onmessage = (event) => {
         const pcmBuffer = event.data as ArrayBuffer;
+        // Track audio flow for health monitoring
+        lastAudioChunkTimeRef.current = Date.now();
+        audioChunkCountRef.current++;
         // Send raw stereo PCM to main process (which forwards to audio processor)
         window.electron.audio.sendAudioData(pcmBuffer);
       };
@@ -512,6 +528,57 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
 
       console.log('[AudioCapture] ✅ Capture started with RAW PCM STEREO for multichannel');
       console.log('[AudioCapture] Channel 0 (Left) = Closer, Channel 1 (Right) = Prospect');
+
+      // Initialize audio health tracking
+      lastAudioChunkTimeRef.current = Date.now();
+      audioChunkCountRef.current = 0;
+
+      // Health check: Monitor for audio flow interruption every 5 seconds
+      audioHealthCheckRef.current = window.setInterval(() => {
+        const now = Date.now();
+        const timeSinceLastChunk = now - lastAudioChunkTimeRef.current;
+        const contextState = audioContextRef.current?.state || 'unknown';
+        const systemTrackState = systemStreamRef.current?.getAudioTracks()[0]?.readyState || 'unknown';
+        const micTrackState = micStreamRef.current?.getAudioTracks()[0]?.readyState || 'unknown';
+
+        // Log health status every check
+        console.log(`[AudioCapture Health] chunks=${audioChunkCountRef.current}, lastChunk=${Math.round(timeSinceLastChunk / 1000)}s ago, context=${contextState}, systemTrack=${systemTrackState}, micTrack=${micTrackState}`);
+
+        // CRITICAL: Detect audio death - no chunks for 10+ seconds
+        if (timeSinceLastChunk > 10000 && audioChunkCountRef.current > 0) {
+          console.error(`[AudioCapture] ⚠️ AUDIO DEATH DETECTED! No audio chunks for ${Math.round(timeSinceLastChunk / 1000)}s`);
+          console.error(`[AudioCapture] Context: ${contextState}, System track: ${systemTrackState}, Mic track: ${micTrackState}`);
+
+          // Log to backend for telemetry
+          handleAudioError(
+            new Error(`Audio flow stopped after ${audioChunkCountRef.current} chunks. Last chunk ${Math.round(timeSinceLastChunk / 1000)}s ago. Context=${contextState}, systemTrack=${systemTrackState}, micTrack=${micTrackState}`),
+            'audio_death_detected'
+          );
+
+          // Notify UI
+          options.onError?.('Audio capture stopped unexpectedly. Please restart the recording.');
+        }
+
+        // Detect suspended AudioContext
+        if (contextState === 'suspended' && audioChunkCountRef.current > 0) {
+          console.warn('[AudioCapture] AudioContext became suspended - attempting to resume...');
+          audioContextRef.current?.resume().then(() => {
+            console.log('[AudioCapture] AudioContext resumed');
+          }).catch(err => {
+            console.error('[AudioCapture] Failed to resume AudioContext:', err);
+          });
+        }
+
+        // Detect ended tracks
+        if (systemTrackState === 'ended' && audioChunkCountRef.current > 0) {
+          console.error('[AudioCapture] System audio track ended unexpectedly!');
+          handleAudioError(
+            new Error(`System audio track ended after ${audioChunkCountRef.current} chunks`),
+            'system_track_ended'
+          );
+          options.onError?.('System audio track ended. Please restart the recording.');
+        }
+      }, 5000);
 
       return true;
     } catch (error) {
@@ -555,6 +622,12 @@ export function useAudioCapture(options: AudioCaptureOptions = {}) {
     if (levelIntervalRef.current) {
       clearInterval(levelIntervalRef.current);
       levelIntervalRef.current = null;
+    }
+
+    // Stop audio health check
+    if (audioHealthCheckRef.current) {
+      clearInterval(audioHealthCheckRef.current);
+      audioHealthCheckRef.current = null;
     }
 
     // Stop audio debug intervals
