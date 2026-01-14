@@ -132,6 +132,9 @@ let currentCloserId: string | null = null;
 // Current logged-in closer email (for schedule window)
 let currentCloserEmail: string | null = null;
 
+// Current team ID for schedule window (same as currentTeamId but explicit for schedule)
+let currentScheduleTeamId: string | null = null;
+
 // Current role play room user info
 let roleplayUserInfo: { teamId: string; closerId: string; userName: string } | null = null;
 
@@ -1162,11 +1165,27 @@ const setupIpcHandlers = (): void => {
     return true;
   });
 
-  // Get calendar status for a closer
+  // Get team ID for schedule
+  ipcMain.handle('schedule:get-team-id', () => {
+    return currentScheduleTeamId;
+  });
+
+  // Set team ID for schedule (called from main window when user logs in)
+  ipcMain.handle('schedule:set-team-id', (_event, teamId: string | null) => {
+    currentScheduleTeamId = teamId;
+    return true;
+  });
+
+  // Get calendar status for a closer (requires teamId)
   ipcMain.handle('schedule:get-calendar-status', async (_event, email: string) => {
+    if (!currentScheduleTeamId) {
+      console.error('[Main] No teamId set for schedule');
+      return null;
+    }
+
     try {
       const response = await fetch(
-        `https://ideal-ram-982.convex.site/getCloserCalendarStatusByEmail?email=${encodeURIComponent(email)}`
+        `https://ideal-ram-982.convex.site/getCloserCalendarStatusByEmail?email=${encodeURIComponent(email)}&teamId=${encodeURIComponent(currentScheduleTeamId)}`
       );
 
       if (!response.ok) {
@@ -1181,13 +1200,17 @@ const setupIpcHandlers = (): void => {
     }
   });
 
-  // Connect calendar with ICS URL
+  // Connect calendar with ICS URL (requires teamId)
   ipcMain.handle('schedule:connect-calendar', async (_event, email: string, icsUrl: string) => {
+    if (!currentScheduleTeamId) {
+      throw new Error('No teamId set for schedule');
+    }
+
     try {
       const response = await fetch('https://ideal-ram-982.convex.site/connectCalendarByEmail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, icsUrl }),
+        body: JSON.stringify({ email, teamId: currentScheduleTeamId, icsUrl }),
       });
 
       if (!response.ok) {
@@ -1202,13 +1225,17 @@ const setupIpcHandlers = (): void => {
     }
   });
 
-  // Disconnect calendar
+  // Disconnect calendar (requires teamId)
   ipcMain.handle('schedule:disconnect-calendar', async (_event, email: string) => {
+    if (!currentScheduleTeamId) {
+      throw new Error('No teamId set for schedule');
+    }
+
     try {
       const response = await fetch('https://ideal-ram-982.convex.site/disconnectCalendarByEmail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, teamId: currentScheduleTeamId }),
       });
 
       if (!response.ok) {
@@ -1222,13 +1249,17 @@ const setupIpcHandlers = (): void => {
     }
   });
 
-  // Sync calendar
+  // Sync calendar (requires teamId)
   ipcMain.handle('schedule:sync-calendar', async (_event, email: string) => {
+    if (!currentScheduleTeamId) {
+      throw new Error('No teamId set for schedule');
+    }
+
     try {
       const response = await fetch('https://ideal-ram-982.convex.site/syncCalendarByEmail', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, teamId: currentScheduleTeamId }),
       });
 
       if (!response.ok) {
@@ -1242,11 +1273,16 @@ const setupIpcHandlers = (): void => {
     }
   });
 
-  // Get events for a date range
+  // Get events for a date range (requires teamId)
   ipcMain.handle('schedule:get-events', async (_event, email: string, startDate: number, endDate: number) => {
+    if (!currentScheduleTeamId) {
+      console.error('[Main] No teamId set for schedule');
+      return [];
+    }
+
     try {
       const response = await fetch(
-        `https://ideal-ram-982.convex.site/getCloserEventsByEmail?email=${encodeURIComponent(email)}&startDate=${startDate}&endDate=${endDate}`
+        `https://ideal-ram-982.convex.site/getCloserEventsByEmail?email=${encodeURIComponent(email)}&teamId=${encodeURIComponent(currentScheduleTeamId)}&startDate=${startDate}&endDate=${endDate}`
       );
 
       if (!response.ok) {

@@ -52,6 +52,7 @@ export interface RoleplayAPI {
 export interface ScheduleAPI {
   open: () => Promise<boolean>;
   setCloserEmail: (email: string | null) => Promise<boolean>;
+  setTeamId: (teamId: string | null) => Promise<boolean>;
 }
 
 export interface ElectronAPI {

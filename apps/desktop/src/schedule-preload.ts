@@ -6,6 +6,12 @@ contextBridge.exposeInMainWorld('schedule', {
   // Get closer email for fetching calendar data
   getCloserEmail: () => ipcRenderer.invoke('schedule:get-closer-email'),
 
+  // Get team ID for calendar API calls
+  getTeamId: () => ipcRenderer.invoke('schedule:get-team-id'),
+
+  // Set team ID for calendar API calls (called from main window on login)
+  setTeamId: (teamId: string | null) => ipcRenderer.invoke('schedule:set-team-id', teamId),
+
   // Get calendar status (is connected, last sync, etc.)
   getCalendarStatus: (email: string) => ipcRenderer.invoke('schedule:get-calendar-status', email),
 

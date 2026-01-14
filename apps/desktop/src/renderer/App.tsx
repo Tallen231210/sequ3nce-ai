@@ -167,8 +167,9 @@ export function App() {
         window.electron.training?.setCloserId(info.closerId);
         // Set team ID for resources in ammo tracker
         window.electron.ammo?.setTeamId(info.teamId);
-        // Set closer email for the schedule window
+        // Set closer email and team ID for the schedule window
         window.electron.schedule?.setCloserEmail(info.email);
+        window.electron.schedule?.setTeamId(info.teamId);
 
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(info.email);
@@ -207,8 +208,9 @@ export function App() {
         window.electron.training?.setCloserId(result.closer.closerId);
         // Set team ID for resources in ammo tracker
         window.electron.ammo?.setTeamId(result.closer.teamId);
-        // Set closer email for the schedule window
+        // Set closer email and team ID for the schedule window
         window.electron.schedule?.setCloserEmail(result.closer.email);
+        window.electron.schedule?.setTeamId(result.closer.teamId);
 
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(result.closer.email);
