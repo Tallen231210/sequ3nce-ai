@@ -377,19 +377,6 @@ export function ScheduleApp() {
         ) : (
           // Connected - show events
           <>
-            {/* Next up banner */}
-            {nextEvent && (
-              <div className="px-4 py-3 bg-black text-white">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">Next up in {getTimeUntilNext()}</p>
-                    <p className="font-medium">{nextEvent.title}</p>
-                  </div>
-                  <p className="text-sm text-gray-300">{formatTime(nextEvent.startTime)}</p>
-                </div>
-              </div>
-            )}
-
             {/* Sync status bar */}
             <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
               <span className="text-xs text-gray-500">
@@ -414,6 +401,19 @@ export function ScheduleApp() {
                 </button>
               </div>
             </div>
+
+            {/* Next up banner */}
+            {nextEvent && (
+              <div className="px-4 py-3 bg-gray-100 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Next up in {getTimeUntilNext()}</p>
+                    <p className="font-medium text-gray-900">{nextEvent.title}</p>
+                  </div>
+                  <p className="text-sm text-gray-600">{formatTime(nextEvent.startTime)}</p>
+                </div>
+              </div>
+            )}
 
             {/* Events list */}
             <div className="flex-1 overflow-y-auto">
