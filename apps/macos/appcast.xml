@@ -8,6 +8,28 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.4.3</title>
+            <pubDate>Tue, 14 Jan 2026 14:00:00 +0000</pubDate>
+            <sparkle:version>18</sparkle:version>
+            <sparkle:shortVersionString>1.4.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.4.3</h2>
+                <ul>
+                    <li>Auto-recovery: Audio engine automatically restarts if it stops unexpectedly</li>
+                    <li>Improved reliability for long calls</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.4.3/Sequ3nce.zip"
+                length="1597934"
+                type="application/octet-stream"
+                sparkle:edSignature="LB4y2xXIIZefYFYXm+xIZ9HjLnzpdhRAKSPExC7XiI+3lq1pzYJ80V1ktvbtcPdYt3B79J8WJrPGQBY903noCQ=="
+            />
+        </item>
+
+        <!-- v1.4.2 -->
+        <item>
             <title>Version 1.4.2</title>
             <pubDate>Tue, 14 Jan 2026 12:00:00 +0000</pubDate>
             <sparkle:version>16</sparkle:version>
