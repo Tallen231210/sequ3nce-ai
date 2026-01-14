@@ -169,9 +169,19 @@ struct MainRecordingView: View {
         ZStack {
             // Main content
             VStack(spacing: 0) {
-                // Title bar with settings and sign out
+                // Title bar with schedule, settings and sign out
                 HStack {
                     Spacer()
+
+                    Button(action: {
+                        windowManager.openScheduleWindow(appState: appState)
+                    }) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(white: 0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 8)
 
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape")

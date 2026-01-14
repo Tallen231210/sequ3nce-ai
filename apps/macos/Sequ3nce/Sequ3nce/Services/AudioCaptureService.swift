@@ -561,10 +561,13 @@ class AudioCaptureService: ObservableObject {
                 let context = "engineRunning=\(engineRunning), duration=\(Int(sessionDuration))s, micBuffer=\(micBufferSize), systemBuffer=\(systemBufferSize)"
                 sendErrorToBackend(
                     errorType: "swift_audio_death_detected",
-                    errorMessage: "Audio stopped after \(totalChunksSent) chunks. Last mic callback \(String(format: "%.1f", timeSinceLastMic))s ago. Engine running: \(engineRunning)",
+                    errorMessage: "Audio stopped after \(totalChunksSent) chunks. Last mic callback \(String(format: "%.1f", timeSinceLastMic))s ago. Engine running: \(engineRunning). Attempting recovery.",
                     context: context
                 )
             }
+
+            // AUTO-RECOVERY: Attempt to restart the audio engine
+            attemptAudioRecovery()
         }
 
         // Warn if engine stopped but we think we're capturing
@@ -593,9 +596,15 @@ class AudioCaptureService: ObservableObject {
             // Send to backend
             self.sendErrorToBackend(
                 errorType: "swift_audio_config_change",
-                errorMessage: "AVAudioEngine configuration changed. Engine running: \(engineRunning). Chunks sent so far: \(self.totalChunksSent)",
+                errorMessage: "AVAudioEngine configuration changed. Engine running: \(engineRunning). Chunks sent so far: \(self.totalChunksSent). Attempting recovery.",
                 context: "duration=\(Int(sessionDuration))s, timeSinceLastMic=\(String(format: "%.1f", timeSinceLastMic))s"
             )
+
+            // AUTO-RECOVERY: If engine stopped due to config change, restart it
+            if !engineRunning && self._isCapturingAtomic {
+                print("[AudioCaptureService] ⚠️ Attempting auto-recovery after config change...")
+                self.attemptAudioRecovery()
+            }
         }
 
         print("[AudioCaptureService] DIAGNOSTIC: Audio configuration change listener registered")
@@ -606,6 +615,49 @@ class AudioCaptureService: ObservableObject {
             NotificationCenter.default.removeObserver(observer)
             configurationChangeObserver = nil
             print("[AudioCaptureService] DIAGNOSTIC: Audio configuration change listener removed")
+        }
+    }
+
+    private func attemptAudioRecovery() {
+        print("[AudioCaptureService] 🔄 AUTO-RECOVERY: Attempting to restart audio engine...")
+
+        guard let engine = micEngine else {
+            print("[AudioCaptureService] ❌ AUTO-RECOVERY FAILED: No engine to restart")
+            sendErrorToBackend(
+                errorType: "swift_audio_recovery_failed",
+                errorMessage: "Recovery failed: No engine instance",
+                context: "totalChunksSent=\(totalChunksSent)"
+            )
+            return
+        }
+
+        // Stop the engine first (if it's in a bad state)
+        if engine.isRunning {
+            engine.stop()
+            print("[AudioCaptureService] 🔄 Stopped existing engine")
+        }
+
+        // Try to restart
+        do {
+            try engine.start()
+            lastMicCallbackTime = Date()  // Reset the timer so we don't immediately detect death again
+            print("[AudioCaptureService] ✅ AUTO-RECOVERY SUCCESS: Engine restarted!")
+
+            // Report success to backend
+            sendErrorToBackend(
+                errorType: "swift_audio_recovery_success",
+                errorMessage: "Audio engine successfully restarted after \(totalChunksSent) chunks",
+                context: "engineRunning=\(engine.isRunning)"
+            )
+        } catch {
+            print("[AudioCaptureService] ❌ AUTO-RECOVERY FAILED: \(error.localizedDescription)")
+
+            // Report failure to backend
+            sendErrorToBackend(
+                errorType: "swift_audio_recovery_failed",
+                errorMessage: "Recovery failed: \(error.localizedDescription)",
+                context: "totalChunksSent=\(totalChunksSent)"
+            )
         }
     }
 

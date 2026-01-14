@@ -16,10 +16,12 @@ class WindowManager: ObservableObject {
     private var ammoPanelWindow: NSWindow?
     private var trainingWindow: NSWindow?
     private var rolePlayRoomWindow: NSWindow?
+    private var scheduleWindow: NSWindow?
 
     @Published var isAmmoPanelVisible = false
     @Published var isTrainingVisible = false
     @Published var isRolePlayRoomVisible = false
+    @Published var isScheduleVisible = false
 
     private init() {}
 
@@ -188,5 +190,64 @@ class WindowManager: ObservableObject {
         rolePlayRoomWindow?.close()
         rolePlayRoomWindow = nil
         isRolePlayRoomVisible = false
+    }
+
+    // MARK: - Schedule Window
+
+    func openScheduleWindow(appState: AppState) {
+        guard scheduleWindow == nil else {
+            scheduleWindow?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = ScheduleView()
+            .environmentObject(appState)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 500),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "My Schedule"
+        window.contentView = NSHostingView(rootView: contentView)
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 320, height: 400)
+        window.appearance = NSAppearance(named: .aqua)  // Force light mode title bar
+
+        // Position to the left of the main window
+        if let mainWindow = NSApp.mainWindow {
+            let mainFrame = mainWindow.frame
+            window.setFrameOrigin(NSPoint(
+                x: mainFrame.minX - 380,
+                y: mainFrame.midY - 250
+            ))
+        } else {
+            window.center()
+        }
+
+        window.makeKeyAndOrderFront(nil)
+
+        // Watch for window close
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.scheduleWindow = nil
+                self?.isScheduleVisible = false
+            }
+        }
+
+        scheduleWindow = window
+        isScheduleVisible = true
+    }
+
+    func closeScheduleWindow() {
+        scheduleWindow?.close()
+        scheduleWindow = nil
+        isScheduleVisible = false
     }
 }

@@ -15,6 +15,7 @@
 		10D17FD52F0F5C65006686F2 /* release.sh in Resources */ = {isa = PBXBuildFile; fileRef = 10D17FD42F0F5C65006686F2 /* release.sh */; };
 		10D17FD82F0F5F3A006686F2 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 10D17FD72F0F5F3A006686F2 /* Sparkle */; };
 		10D17FDA2F11B8CE006686F2 /* RolePlayRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FD92F11B8CE006686F2 /* RolePlayRoomView.swift */; };
+		10D17FDC2F12A000006686F2 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FDB2F12A000006686F2 /* ScheduleView.swift */; };
 		10EB31152F0F03BA00665CB6 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 10EB31142F0F03BA00665CB6 /* Starscream */; };
 		10EB31172F0F051100665CB6 /* StarscreamWebSocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EB31162F0F051100665CB6 /* StarscreamWebSocketService.swift */; };
 		10EB31192F0F09D500665CB6 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EB31182F0F09D500665CB6 /* SystemAudioCapture.swift */; };
@@ -34,6 +35,7 @@
 		10D17FD22F0F33DB006686F2 /* TrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingView.swift; sourceTree = "<group>"; };
 		10D17FD42F0F5C65006686F2 /* release.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = release.sh; sourceTree = "<group>"; };
 		10D17FD92F11B8CE006686F2 /* RolePlayRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RolePlayRoomView.swift; sourceTree = "<group>"; };
+		10D17FDB2F12A000006686F2 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
 		10EB31162F0F051100665CB6 /* StarscreamWebSocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarscreamWebSocketService.swift; sourceTree = "<group>"; };
 		10EB31182F0F09D500665CB6 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
 		A1000001111111110000000A /* Sequ3nceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sequ3nceApp.swift; sourceTree = "<group>"; };
@@ -94,6 +96,7 @@
 		A100000B111111110000000A /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				10D17FDB2F12A000006686F2 /* ScheduleView.swift */,
 				10D17FD92F11B8CE006686F2 /* RolePlayRoomView.swift */,
 				10D17FD22F0F33DB006686F2 /* TrainingView.swift */,
 				10D17FD42F0F5C65006686F2 /* release.sh */,
@@ -235,6 +238,7 @@
 				10D17FCB2F0F2A21006686F2 /* AmmoPanelState.swift in Sources */,
 				10EB31192F0F09D500665CB6 /* SystemAudioCapture.swift in Sources */,
 				10D17FD32F0F33DB006686F2 /* TrainingView.swift in Sources */,
+				10D17FDC2F12A000006686F2 /* ScheduleView.swift in Sources */,
 				A1000002211111110000000A /* ContentView.swift in Sources */,
 				10D17FC92F0F2A08006686F2 /* AmmoModels.swift in Sources */,
 				A1000020211111110000000A /* AudioCaptureService.swift in Sources */,

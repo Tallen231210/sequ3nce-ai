@@ -111,6 +111,31 @@ struct TrainingPlaylistWithItems: Codable, Identifiable {
     var id: String { _id }
 }
 
+// MARK: - Calendar Models
+
+/// Calendar connection status
+struct CalendarStatus: Codable {
+    let closerId: String
+    let connected: Bool
+    let icsUrl: String?
+    let connectedAt: Double?
+    let lastSynced: Double?
+}
+
+/// Calendar event
+struct CalendarEvent: Codable, Identifiable {
+    let _id: String
+    let uid: String
+    let title: String
+    let description: String?
+    let startTime: Double
+    let endTime: Double
+    let location: String?
+    let isAllDay: Bool?
+
+    var id: String { _id }
+}
+
 // MARK: - Role Play Room Models
 
 /// Role play room response from getOrCreateRolePlayRoom
@@ -640,6 +665,127 @@ class ConvexService {
             return try decoder.decode([RolePlayRoomParticipant].self, from: data)
         } else {
             throw ConvexError.serverError("Failed to get participants")
+        }
+    }
+
+    // MARK: - Calendar
+
+    /// Get calendar status for a closer by email
+    func getCalendarStatus(email: String) async throws -> CalendarStatus? {
+        var components = URLComponents(string: "\(baseURL)/getCloserCalendarStatusByEmail")!
+        components.queryItems = [URLQueryItem(name: "email", value: email)]
+
+        let (data, response) = try await session.data(from: components.url!)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            // Check if response has data (not null/empty)
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               json["closerId"] != nil {
+                let decoder = JSONDecoder()
+                return try decoder.decode(CalendarStatus.self, from: data)
+            }
+            return nil
+        } else {
+            throw ConvexError.serverError("Failed to get calendar status")
+        }
+    }
+
+    /// Connect calendar with ICS URL
+    func connectCalendar(email: String, icsUrl: String) async throws {
+        let url = URL(string: "\(baseURL)/connectCalendarByEmail")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = [
+            "email": email,
+            "icsUrl": icsUrl
+        ]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to connect calendar")
+        }
+    }
+
+    /// Disconnect calendar
+    func disconnectCalendar(email: String) async throws {
+        let url = URL(string: "\(baseURL)/disconnectCalendarByEmail")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["email": email]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to disconnect calendar")
+        }
+    }
+
+    /// Sync calendar
+    func syncCalendar(email: String) async throws {
+        let url = URL(string: "\(baseURL)/syncCalendarByEmail")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["email": email]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to sync calendar")
+        }
+    }
+
+    /// Get calendar events for a closer
+    func getCalendarEvents(email: String, startDate: Int64, endDate: Int64) async throws -> [CalendarEvent] {
+        var components = URLComponents(string: "\(baseURL)/getCloserEventsByEmail")!
+        components.queryItems = [
+            URLQueryItem(name: "email", value: email),
+            URLQueryItem(name: "startDate", value: String(startDate)),
+            URLQueryItem(name: "endDate", value: String(endDate))
+        ]
+
+        let (data, response) = try await session.data(from: components.url!)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let decoder = JSONDecoder()
+            return try decoder.decode([CalendarEvent].self, from: data)
+        } else {
+            throw ConvexError.serverError("Failed to get calendar events")
         }
     }
 }

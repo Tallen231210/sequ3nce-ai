@@ -42,6 +42,8 @@ export const logError = mutation({
       // Swift app audio diagnostics
       "swift_audio_death_detected",
       "swift_audio_config_change",
+      "swift_audio_recovery_success",
+      "swift_audio_recovery_failed",
       "unknown",
     ];
     const errorType = validErrorTypes.includes(args.errorType)
