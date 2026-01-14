@@ -13,6 +13,9 @@ function truncate(str: string | undefined, maxLength: number): string | undefine
 export const logError = mutation({
   args: {
     closerEmail: v.optional(v.string()),
+    closerIdString: v.optional(v.string()), // For Swift app (sends closerId as string)
+    teamIdString: v.optional(v.string()),   // For Swift app (sends teamId as string)
+    callId: v.optional(v.string()),         // For Swift app audio diagnostics
     errorType: v.string(),
     errorMessage: v.string(),
     errorStack: v.optional(v.string()),
@@ -35,6 +38,10 @@ export const logError = mutation({
       "dom_exception_AbortError",
       "permission_denied",
       "connection_error",
+      "recording_start_failed",
+      // Swift app audio diagnostics
+      "swift_audio_death_detected",
+      "swift_audio_config_change",
       "unknown",
     ];
     const errorType = validErrorTypes.includes(args.errorType)
@@ -46,6 +53,16 @@ export const logError = mutation({
     let closerId = undefined;
     let teamId = undefined;
 
+    // First try direct IDs from Swift app
+    if (args.closerIdString && args.closerIdString !== "unknown") {
+      // Swift sends closerId as string - store it in context since we can't convert to Convex ID
+      // The closerId string from Swift is actually the Convex document ID string
+    }
+    if (args.teamIdString && args.teamIdString !== "unknown") {
+      // Same for teamId
+    }
+
+    // Try email lookup (Electron app)
     if (args.closerEmail && args.closerEmail.includes("@") && args.closerEmail.length < 100) {
       const closer = await ctx.db
         .query("closers")
@@ -58,6 +75,18 @@ export const logError = mutation({
       }
     }
 
+    // Build context string (include Swift-specific info if available)
+    let contextStr = args.context || "";
+    if (args.callId) {
+      contextStr = `callId=${args.callId}` + (contextStr ? `, ${contextStr}` : "");
+    }
+    if (args.closerIdString && args.closerIdString !== "unknown") {
+      contextStr = `closerId=${args.closerIdString}` + (contextStr ? `, ${contextStr}` : "");
+    }
+    if (args.teamIdString && args.teamIdString !== "unknown") {
+      contextStr = `teamId=${args.teamIdString}` + (contextStr ? `, ${contextStr}` : "");
+    }
+
     // Truncate all string fields to prevent database bloat from abuse
     await ctx.db.insert("clientErrors", {
       closerId,
@@ -67,13 +96,13 @@ export const logError = mutation({
       errorMessage: truncate(args.errorMessage, 500) || "No message",
       errorStack: truncate(args.errorStack, 2000),
       appVersion: truncate(args.appVersion, 20),
-      platform: truncate(args.platform, 20),
+      platform: truncate(args.platform, 30), // Increased for "swift_macos"
       osVersion: truncate(args.osVersion, 50),
       architecture: truncate(args.architecture, 20),
       screenPermission: truncate(args.screenPermission, 20),
       microphonePermission: truncate(args.microphonePermission, 20),
       captureStep: truncate(args.captureStep, 50),
-      context: truncate(args.context, 500),
+      context: truncate(contextStr, 1000), // Increased for Swift diagnostic context
       createdAt: Date.now(),
     });
 
