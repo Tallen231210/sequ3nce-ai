@@ -18,6 +18,7 @@ const SPEECHMATICS_URL = "wss://eu2.rt.speechmatics.com/v2/en";
 export interface SpeechmaticsConnection {
   sendAudio: (audioData: Buffer) => void;
   close: () => Promise<void>;
+  isConnected: () => boolean;
 }
 
 export function createSpeechmaticsConnection(
@@ -40,6 +41,13 @@ export function createSpeechmaticsConnection(
     });
 
     let isResolved = false;
+
+    // Diagnostic tracking
+    let lastMessageTime = Date.now();
+    let lastWordTime = 0;
+    let audioAddedCount = 0;
+    let totalWordsReceived = 0;
+    let healthCheckInterval: NodeJS.Timeout | null = null;
 
     // Create transcript buffer to group words into sentences
     const transcriptBuffer = new TranscriptBuffer(onTranscript);
@@ -73,6 +81,7 @@ export function createSpeechmaticsConnection(
     ws.on("message", (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
+        lastMessageTime = Date.now();
 
         switch (message.message) {
           case "RecognitionStarted":
@@ -80,27 +89,55 @@ export function createSpeechmaticsConnection(
               id: message.id,
             });
 
+            // Start health check - log every 30 seconds if no words received
+            healthCheckInterval = setInterval(() => {
+              const timeSinceLastWord = lastWordTime ? Date.now() - lastWordTime : Date.now() - lastMessageTime;
+              const timeSinceLastMessage = Date.now() - lastMessageTime;
+
+              if (timeSinceLastWord > 30000) {
+                logger.warn(`[Speechmatics Health] No words for ${Math.round(timeSinceLastWord / 1000)}s. ` +
+                  `Total words: ${totalWordsReceived}, AudioAdded msgs: ${audioAddedCount}, ` +
+                  `Last message: ${Math.round(timeSinceLastMessage / 1000)}s ago, ` +
+                  `WS state: ${ws.readyState === WebSocket.OPEN ? 'OPEN' : 'CLOSED'}`);
+              }
+            }, 30000);
+
             if (!isResolved) {
               isResolved = true;
               resolve({
                 sendAudio: (audioData: Buffer) => {
                   if (ws.readyState === WebSocket.OPEN) {
                     ws.send(audioData);
+                  } else {
+                    logger.warn(`[Speechmatics] Cannot send audio - WebSocket state: ${ws.readyState}`);
                   }
                 },
                 close: async () => {
                   logger.info("Closing Speechmatics connection...");
+                  if (healthCheckInterval) {
+                    clearInterval(healthCheckInterval);
+                    healthCheckInterval = null;
+                  }
                   // Flush any remaining buffered words before closing
                   transcriptBuffer.destroy();
+                  // Log final stats
+                  logger.info(`[Speechmatics] Final stats: totalWords=${totalWordsReceived}, audioAddedMsgs=${audioAddedCount}`);
                   // Just close the WebSocket - EndOfStream message was causing validation errors
                   // Speechmatics will handle the disconnection gracefully
                   ws.close();
                 },
+                isConnected: () => ws.readyState === WebSocket.OPEN,
               });
             }
             break;
 
           case "AddTranscript":
+            // Count words in this message
+            const wordCount = (message.results || []).filter((r: any) => r.type === "word").length;
+            if (wordCount > 0) {
+              lastWordTime = Date.now();
+              totalWordsReceived += wordCount;
+            }
             transcriptBuffer.addWords(message);
             break;
 
@@ -114,7 +151,12 @@ export function createSpeechmaticsConnection(
             break;
 
           case "AudioAdded":
-            // Audio chunk acknowledged - no action needed
+            // Audio chunk acknowledged - track for diagnostics
+            audioAddedCount++;
+            // Log every 500 AudioAdded messages to confirm audio is flowing
+            if (audioAddedCount % 500 === 0) {
+              logger.info(`[Speechmatics] AudioAdded count: ${audioAddedCount}, totalWords: ${totalWordsReceived}`);
+            }
             break;
 
           case "Info":
@@ -148,7 +190,11 @@ export function createSpeechmaticsConnection(
     });
 
     ws.on("close", (code, reason) => {
-      logger.info(`Speechmatics connection closed: ${code} - ${reason}`);
+      logger.info(`Speechmatics connection closed: ${code} - ${reason}. Final stats: totalWords=${totalWordsReceived}, audioAddedMsgs=${audioAddedCount}`);
+      if (healthCheckInterval) {
+        clearInterval(healthCheckInterval);
+        healthCheckInterval = null;
+      }
     });
 
     // Timeout if we don't get RecognitionStarted within 10 seconds
