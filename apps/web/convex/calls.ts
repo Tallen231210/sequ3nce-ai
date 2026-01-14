@@ -733,7 +733,6 @@ export const seedTestCallAuto = mutation({
         name: "Test Closer",
         teamId: team._id,
         status: "active",
-        calendarConnected: false,
         invitedAt: Date.now(),
         activatedAt: Date.now(),
       });
@@ -974,7 +973,6 @@ export const seedLiveCallsTest = mutation({
             name: closer.name,
             teamId: team._id,
             status: "active",
-            calendarConnected: false,
             invitedAt: Date.now(),
             activatedAt: Date.now(),
           });
@@ -1598,7 +1596,6 @@ export const seedComprehensiveTestData = mutation({
         name: closer.name,
         teamId,
         status: "active",
-        calendarConnected: false,
         invitedAt: now - 30 * 24 * 60 * 60 * 1000,
         activatedAt: now - 29 * 24 * 60 * 60 * 1000,
         lastLoginAt: now - randomInRange(1, 7) * 24 * 60 * 60 * 1000,

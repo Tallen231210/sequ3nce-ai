@@ -1267,6 +1267,9 @@ http.route({
 
       await ctx.runMutation(api.clientErrors.logError, {
         closerEmail: body.closerEmail,
+        closerIdString: body.closerId,  // Swift app sends closerId
+        teamIdString: body.teamId,      // Swift app sends teamId
+        callId: body.callId,            // Swift app sends callId
         errorType: body.errorType || "unknown",
         errorMessage: body.errorMessage || "No message provided",
         errorStack: body.errorStack,
@@ -1724,6 +1727,297 @@ http.route({
 // Handle CORS preflight for getRolePlayRoomParticipants
 http.route({
   path: "/getRolePlayRoomParticipants",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
+// CALENDAR ENDPOINTS (for desktop app schedule window)
+// ============================================
+
+// GET endpoint to get calendar status for a closer by email
+http.route({
+  path: "/getCloserCalendarStatusByEmail",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const email = url.searchParams.get("email");
+
+    if (!email) {
+      return new Response(JSON.stringify({ error: "email is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const status = await ctx.runQuery(api.calendar.getCloserCalendarStatusByEmail, { email });
+      return new Response(JSON.stringify(status), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting calendar status:", error);
+      return new Response(JSON.stringify({ error: "Failed to get calendar status" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getCloserCalendarStatusByEmail
+http.route({
+  path: "/getCloserCalendarStatusByEmail",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to connect calendar with ICS URL
+http.route({
+  path: "/connectCalendarByEmail",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, icsUrl } = body;
+
+      if (!email || !icsUrl) {
+        return new Response(JSON.stringify({ error: "email and icsUrl are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.calendar.connectCalendarByEmail, { email, icsUrl });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error connecting calendar:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to connect calendar";
+      return new Response(JSON.stringify({ error: errorMessage }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for connectCalendarByEmail
+http.route({
+  path: "/connectCalendarByEmail",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to disconnect calendar
+http.route({
+  path: "/disconnectCalendarByEmail",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email } = body;
+
+      if (!email) {
+        return new Response(JSON.stringify({ error: "email is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.calendar.disconnectCalendarByEmail, { email });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error disconnecting calendar:", error);
+      return new Response(JSON.stringify({ error: "Failed to disconnect calendar" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for disconnectCalendarByEmail
+http.route({
+  path: "/disconnectCalendarByEmail",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to sync calendar
+http.route({
+  path: "/syncCalendarByEmail",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email } = body;
+
+      if (!email) {
+        return new Response(JSON.stringify({ error: "email is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runAction(api.calendar.syncCalendarByEmail, { email });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error syncing calendar:", error);
+      return new Response(JSON.stringify({ error: "Failed to sync calendar" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for syncCalendarByEmail
+http.route({
+  path: "/syncCalendarByEmail",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to get events for a closer by email
+http.route({
+  path: "/getCloserEventsByEmail",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const email = url.searchParams.get("email");
+    const startDate = url.searchParams.get("startDate");
+    const endDate = url.searchParams.get("endDate");
+
+    if (!email || !startDate || !endDate) {
+      return new Response(JSON.stringify({ error: "email, startDate, and endDate are required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const events = await ctx.runQuery(api.calendar.getCloserEventsByEmail, {
+        email,
+        startDate: parseInt(startDate, 10),
+        endDate: parseInt(endDate, 10),
+      });
+      return new Response(JSON.stringify(events || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting events:", error);
+      return new Response(JSON.stringify({ error: "Failed to get events" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getCloserEventsByEmail
+http.route({
+  path: "/getCloserEventsByEmail",
   method: "OPTIONS",
   handler: httpAction(async () => {
     return new Response(null, {

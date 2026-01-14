@@ -813,3 +813,96 @@ function formatObjectionLabel(objection: string): string {
 
   return labels[objection] || objection;
 }
+
+// Debug query to check objection prediction accuracy
+export const getObjectionPredictionAccuracy = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get all completed calls that have both ammoAnalysis and primaryObjection
+    const calls = await ctx.db
+      .query("calls")
+      .filter((q) => q.eq(q.field("status"), "completed"))
+      .collect();
+
+    // Filter to calls with both prediction and actual
+    const callsWithBoth = calls.filter(
+      (c) => c.ammoAnalysis?.objectionPrediction?.length && c.primaryObjection
+    );
+
+    // Filter to lost/not_closed calls only (where objection matters)
+    const lostCalls = callsWithBoth.filter(
+      (c) => c.outcome === "not_closed" || c.outcome === "lost" || c.outcome === "follow_up"
+    );
+
+    let exactMatches = 0;
+    let top3Matches = 0;
+    const details: Array<{
+      callId: string;
+      predicted: string[];
+      actual: string;
+      matched: boolean;
+    }> = [];
+
+    for (const call of lostCalls) {
+      const predictions = call.ammoAnalysis?.objectionPrediction || [];
+      const actual = call.primaryObjection;
+
+      // Sort by probability (highest first)
+      const sortedPredictions = [...predictions].sort((a, b) => b.probability - a.probability);
+      const topPrediction = sortedPredictions[0]?.type;
+      const top3Predictions = sortedPredictions.slice(0, 3).map((p) => p.type);
+
+      // Normalize for comparison (handle naming differences)
+      const normalizeType = (t: string) => {
+        const mappings: Record<string, string[]> = {
+          spouse_partner: ["spouse", "spouse_partner"],
+          price_money: ["money", "price_money", "price"],
+          timing: ["time", "timing", "bad_timing"],
+          need_to_think: ["think_about_it", "need_to_think"],
+        };
+        for (const [canonical, variants] of Object.entries(mappings)) {
+          if (variants.includes(t)) return canonical;
+        }
+        return t;
+      };
+
+      const normalizedActual = normalizeType(actual || "");
+      const normalizedTop = normalizeType(topPrediction || "");
+      const normalizedTop3 = top3Predictions.map(normalizeType);
+
+      const isExactMatch = normalizedTop === normalizedActual;
+      const isTop3Match = normalizedTop3.includes(normalizedActual);
+
+      if (isExactMatch) exactMatches++;
+      if (isTop3Match) top3Matches++;
+
+      details.push({
+        callId: call._id,
+        predicted: sortedPredictions.map((p) => `${p.type}(${p.probability}%)`),
+        actual: actual || "none",
+        matched: isExactMatch,
+      });
+    }
+
+    const totalWithData = lostCalls.length;
+    const exactAccuracy = totalWithData > 0 ? Math.round((exactMatches / totalWithData) * 100) : 0;
+    const top3Accuracy = totalWithData > 0 ? Math.round((top3Matches / totalWithData) * 100) : 0;
+
+    return {
+      summary: {
+        totalCompletedCalls: calls.length,
+        callsWithAmmoAnalysis: calls.filter((c) => c.ammoAnalysis).length,
+        callsWithPrimaryObjection: calls.filter((c) => c.primaryObjection).length,
+        lostCallsWithBothFields: totalWithData,
+        exactMatchAccuracy: `${exactAccuracy}%`,
+        top3Accuracy: `${top3Accuracy}%`,
+      },
+      breakdown: {
+        exactMatches,
+        top3Matches,
+        totalAnalyzed: totalWithData,
+      },
+      sampleDetails: details.slice(0, 10), // First 10 for inspection
+    };
+  },
+});

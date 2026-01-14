@@ -60,8 +60,10 @@ export default defineSchema({
     status: v.string(), // "pending", "active", "deactivated"
     clerkId: v.optional(v.string()), // Set when they complete signup
     passwordHash: v.optional(v.string()), // Hashed password for desktop app login
-    calendarConnected: v.boolean(),
-    calendarRefreshToken: v.optional(v.string()), // Encrypted
+    // Calendar integration via ICS feed
+    icsUrl: v.optional(v.string()), // ICS feed URL from Google Calendar, Calendly, etc.
+    calendarConnectedAt: v.optional(v.number()), // When calendar was connected
+    calendarLastSyncAt: v.optional(v.number()), // Last successful sync timestamp
     invitedAt: v.number(),
     activatedAt: v.optional(v.number()),
     lastLoginAt: v.optional(v.number()), // Track last desktop app login
@@ -69,6 +71,23 @@ export default defineSchema({
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])
     .index("by_clerk_id", ["clerkId"]),
+
+  // Calendar events (synced from closer ICS feeds)
+  calendarEvents: defineTable({
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    uid: v.string(), // ICS UID for deduplication
+    title: v.string(),
+    description: v.optional(v.string()),
+    startTime: v.number(), // Unix timestamp
+    endTime: v.number(), // Unix timestamp
+    location: v.optional(v.string()),
+    isAllDay: v.optional(v.boolean()),
+    fetchedAt: v.number(), // When this event was last synced
+  })
+    .index("by_closer", ["closerId"])
+    .index("by_team_and_time", ["teamId", "startTime"])
+    .index("by_closer_and_uid", ["closerId", "uid"]),
 
   // Scheduled calls (synced from Calendly or other calendar integrations)
   scheduledCalls: defineTable({

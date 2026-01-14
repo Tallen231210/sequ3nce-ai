@@ -254,7 +254,6 @@ export const addCloser = mutation({
       name: args.name,
       teamId: user.teamId,
       status: "pending",
-      calendarConnected: false,
       invitedAt: Date.now(),
     });
 
@@ -1086,7 +1085,6 @@ export const addCloserWithPassword = mutation({
       teamId: user.teamId,
       status: "pending",
       passwordHash,
-      calendarConnected: false,
       invitedAt: Date.now(),
     });
 
