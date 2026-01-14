@@ -670,10 +670,13 @@ class ConvexService {
 
     // MARK: - Calendar
 
-    /// Get calendar status for a closer by email
-    func getCalendarStatus(email: String) async throws -> CalendarStatus? {
+    /// Get calendar status for a closer by email and teamId
+    func getCalendarStatus(email: String, teamId: String) async throws -> CalendarStatus? {
         var components = URLComponents(string: "\(baseURL)/getCloserCalendarStatusByEmail")!
-        components.queryItems = [URLQueryItem(name: "email", value: email)]
+        components.queryItems = [
+            URLQueryItem(name: "email", value: email),
+            URLQueryItem(name: "teamId", value: teamId)
+        ]
 
         let (data, response) = try await session.data(from: components.url!)
 
@@ -695,7 +698,7 @@ class ConvexService {
     }
 
     /// Connect calendar with ICS URL
-    func connectCalendar(email: String, icsUrl: String) async throws {
+    func connectCalendar(email: String, teamId: String, icsUrl: String) async throws {
         let url = URL(string: "\(baseURL)/connectCalendarByEmail")!
 
         var request = URLRequest(url: url)
@@ -704,6 +707,7 @@ class ConvexService {
 
         let body: [String: String] = [
             "email": email,
+            "teamId": teamId,
             "icsUrl": icsUrl
         ]
         request.httpBody = try JSONEncoder().encode(body)
@@ -721,14 +725,17 @@ class ConvexService {
     }
 
     /// Disconnect calendar
-    func disconnectCalendar(email: String) async throws {
+    func disconnectCalendar(email: String, teamId: String) async throws {
         let url = URL(string: "\(baseURL)/disconnectCalendarByEmail")!
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: String] = ["email": email]
+        let body: [String: String] = [
+            "email": email,
+            "teamId": teamId
+        ]
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await session.data(for: request)
@@ -744,14 +751,17 @@ class ConvexService {
     }
 
     /// Sync calendar
-    func syncCalendar(email: String) async throws {
+    func syncCalendar(email: String, teamId: String) async throws {
         let url = URL(string: "\(baseURL)/syncCalendarByEmail")!
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: String] = ["email": email]
+        let body: [String: String] = [
+            "email": email,
+            "teamId": teamId
+        ]
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await session.data(for: request)
@@ -767,10 +777,11 @@ class ConvexService {
     }
 
     /// Get calendar events for a closer
-    func getCalendarEvents(email: String, startDate: Int64, endDate: Int64) async throws -> [CalendarEvent] {
+    func getCalendarEvents(email: String, teamId: String, startDate: Int64, endDate: Int64) async throws -> [CalendarEvent] {
         var components = URLComponents(string: "\(baseURL)/getCloserEventsByEmail")!
         components.queryItems = [
             URLQueryItem(name: "email", value: email),
+            URLQueryItem(name: "teamId", value: teamId),
             URLQueryItem(name: "startDate", value: String(startDate)),
             URLQueryItem(name: "endDate", value: String(endDate))
         ]

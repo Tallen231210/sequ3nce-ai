@@ -30,6 +30,10 @@ struct ScheduleView: View {
         appState.closerInfo?.email
     }
 
+    private var closerTeamId: String? {
+        appState.closerInfo?.teamId
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if isLoading {
@@ -452,7 +456,7 @@ struct ScheduleView: View {
     // MARK: - Data Fetching
 
     private func fetchCalendarData() async {
-        guard let email = closerEmail else {
+        guard let email = closerEmail, let teamId = closerTeamId else {
             isLoading = false
             return
         }
@@ -462,7 +466,7 @@ struct ScheduleView: View {
 
         do {
             // Get calendar status
-            let status = try await appState.convexService.getCalendarStatus(email: email)
+            let status = try await appState.convexService.getCalendarStatus(email: email, teamId: teamId)
             await MainActor.run {
                 calendarStatus = status
             }
@@ -474,6 +478,7 @@ struct ScheduleView: View {
 
                 let fetchedEvents = try await appState.convexService.getCalendarEvents(
                     email: email,
+                    teamId: teamId,
                     startDate: Int64(startOfDay.timeIntervalSince1970 * 1000),
                     endDate: Int64(endDate.timeIntervalSince1970 * 1000)
                 )
@@ -494,15 +499,15 @@ struct ScheduleView: View {
     }
 
     private func handleConnect() {
-        guard let email = closerEmail, !icsUrl.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        guard let email = closerEmail, let teamId = closerTeamId, !icsUrl.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
         isConnecting = true
         error = nil
 
         Task {
             do {
-                try await appState.convexService.connectCalendar(email: email, icsUrl: icsUrl.trimmingCharacters(in: .whitespaces))
-                try await appState.convexService.syncCalendar(email: email)
+                try await appState.convexService.connectCalendar(email: email, teamId: teamId, icsUrl: icsUrl.trimmingCharacters(in: .whitespaces))
+                try await appState.convexService.syncCalendar(email: email, teamId: teamId)
                 await fetchCalendarData()
                 await MainActor.run {
                     icsUrl = ""
@@ -518,14 +523,14 @@ struct ScheduleView: View {
     }
 
     private func handleDisconnect() {
-        guard let email = closerEmail else { return }
+        guard let email = closerEmail, let teamId = closerTeamId else { return }
 
         isLoading = true
         error = nil
 
         Task {
             do {
-                try await appState.convexService.disconnectCalendar(email: email)
+                try await appState.convexService.disconnectCalendar(email: email, teamId: teamId)
                 await MainActor.run {
                     calendarStatus = nil
                     events = []
@@ -541,14 +546,14 @@ struct ScheduleView: View {
     }
 
     private func handleSync() {
-        guard let email = closerEmail else { return }
+        guard let email = closerEmail, let teamId = closerTeamId else { return }
 
         isSyncing = true
         error = nil
 
         Task {
             do {
-                try await appState.convexService.syncCalendar(email: email)
+                try await appState.convexService.syncCalendar(email: email, teamId: teamId)
                 await fetchCalendarData()
             } catch {
                 await MainActor.run {
