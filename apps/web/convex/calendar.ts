@@ -23,13 +23,17 @@ export const getCloserCalendarStatus = query({
   },
 });
 
-// Get calendar status for a closer by email (for desktop app)
+// Get calendar status for a closer by email and team (for desktop app)
 export const getCloserCalendarStatusByEmail = query({
-  args: { email: v.string() },
+  args: {
+    email: v.string(),
+    teamId: v.id("teams"),
+  },
   handler: async (ctx, args) => {
     const closer = await ctx.db
       .query("closers")
       .withIndex("by_email", (q) => q.eq("email", args.email))
+      .filter((q) => q.eq(q.field("teamId"), args.teamId))
       .first();
     if (!closer) return null;
 
@@ -63,10 +67,11 @@ export const getCloserEvents = query({
   },
 });
 
-// Get events for a closer by email (for desktop app)
+// Get events for a closer by email and team (for desktop app)
 export const getCloserEventsByEmail = query({
   args: {
     email: v.string(),
+    teamId: v.id("teams"),
     startDate: v.number(),
     endDate: v.number(),
   },
@@ -74,6 +79,7 @@ export const getCloserEventsByEmail = query({
     const closer = await ctx.db
       .query("closers")
       .withIndex("by_email", (q) => q.eq("email", args.email))
+      .filter((q) => q.eq(q.field("teamId"), args.teamId))
       .first();
     if (!closer) return [];
 
@@ -204,19 +210,21 @@ export const connectCalendar = mutation({
   },
 });
 
-// Connect calendar by closer email (for desktop app)
+// Connect calendar by closer email and team (for desktop app)
 export const connectCalendarByEmail = mutation({
   args: {
     email: v.string(),
+    teamId: v.id("teams"),
     icsUrl: v.string(),
   },
   handler: async (ctx, args) => {
     const closer = await ctx.db
       .query("closers")
       .withIndex("by_email", (q) => q.eq("email", args.email))
+      .filter((q) => q.eq(q.field("teamId"), args.teamId))
       .first();
     if (!closer) {
-      throw new Error("Closer not found");
+      throw new Error("Closer not found for this team");
     }
 
     const url = args.icsUrl.trim();
@@ -258,16 +266,20 @@ export const disconnectCalendar = mutation({
   },
 });
 
-// Disconnect calendar by email (for desktop app)
+// Disconnect calendar by email and team (for desktop app)
 export const disconnectCalendarByEmail = mutation({
-  args: { email: v.string() },
+  args: {
+    email: v.string(),
+    teamId: v.id("teams"),
+  },
   handler: async (ctx, args) => {
     const closer = await ctx.db
       .query("closers")
       .withIndex("by_email", (q) => q.eq("email", args.email))
+      .filter((q) => q.eq(q.field("teamId"), args.teamId))
       .first();
     if (!closer) {
-      throw new Error("Closer not found");
+      throw new Error("Closer not found for this team");
     }
 
     await ctx.db.patch(closer._id, {
@@ -565,16 +577,22 @@ export const syncCloserCalendar = action({
   },
 });
 
-// Sync calendar by email (for desktop app to trigger sync after connecting)
+// Sync calendar by email and team (for desktop app to trigger sync after connecting)
 export const syncCalendarByEmail = action({
-  args: { email: v.string() },
+  args: {
+    email: v.string(),
+    teamId: v.id("teams"),
+  },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string; syncedEvents?: number }> => {
-    // Get closer by email
+    // Get closer by email and team
     const closers = await ctx.runQuery(internal.calendar.getClosersWithIcsUrl, {});
-    const closer = closers.find((c: { email: string; _id: Id<"closers"> }) => c.email === args.email);
+    const closer = closers.find(
+      (c: { email: string; teamId: Id<"teams">; _id: Id<"closers"> }) =>
+        c.email === args.email && c.teamId === args.teamId
+    );
 
     if (!closer) {
-      return { success: false, error: "Closer not found or no ICS URL configured" };
+      return { success: false, error: "Closer not found for this team or no ICS URL configured" };
     }
 
     // Use the main sync action

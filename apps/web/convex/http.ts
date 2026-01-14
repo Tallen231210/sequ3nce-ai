@@ -1,6 +1,7 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 const http = httpRouter();
 
@@ -1744,16 +1745,17 @@ http.route({
 // CALENDAR ENDPOINTS (for desktop app schedule window)
 // ============================================
 
-// GET endpoint to get calendar status for a closer by email
+// GET endpoint to get calendar status for a closer by email and team
 http.route({
   path: "/getCloserCalendarStatusByEmail",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
     const email = url.searchParams.get("email");
+    const teamId = url.searchParams.get("teamId");
 
-    if (!email) {
-      return new Response(JSON.stringify({ error: "email is required" }), {
+    if (!email || !teamId) {
+      return new Response(JSON.stringify({ error: "email and teamId are required" }), {
         status: 400,
         headers: {
           "Content-Type": "application/json",
@@ -1763,7 +1765,10 @@ http.route({
     }
 
     try {
-      const status = await ctx.runQuery(api.calendar.getCloserCalendarStatusByEmail, { email });
+      const status = await ctx.runQuery(api.calendar.getCloserCalendarStatusByEmail, {
+        email,
+        teamId: teamId as Id<"teams">,
+      });
       return new Response(JSON.stringify(status), {
         status: 200,
         headers: {
@@ -1800,17 +1805,17 @@ http.route({
   }),
 });
 
-// POST endpoint to connect calendar with ICS URL
+// POST endpoint to connect calendar with ICS URL (requires teamId)
 http.route({
   path: "/connectCalendarByEmail",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { email, icsUrl } = body;
+      const { email, teamId, icsUrl } = body;
 
-      if (!email || !icsUrl) {
-        return new Response(JSON.stringify({ error: "email and icsUrl are required" }), {
+      if (!email || !teamId || !icsUrl) {
+        return new Response(JSON.stringify({ error: "email, teamId, and icsUrl are required" }), {
           status: 400,
           headers: {
             "Content-Type": "application/json",
@@ -1819,7 +1824,11 @@ http.route({
         });
       }
 
-      const result = await ctx.runMutation(api.calendar.connectCalendarByEmail, { email, icsUrl });
+      const result = await ctx.runMutation(api.calendar.connectCalendarByEmail, {
+        email,
+        teamId: teamId as Id<"teams">,
+        icsUrl,
+      });
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: {
@@ -1857,17 +1866,17 @@ http.route({
   }),
 });
 
-// POST endpoint to disconnect calendar
+// POST endpoint to disconnect calendar (requires teamId)
 http.route({
   path: "/disconnectCalendarByEmail",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { email } = body;
+      const { email, teamId } = body;
 
-      if (!email) {
-        return new Response(JSON.stringify({ error: "email is required" }), {
+      if (!email || !teamId) {
+        return new Response(JSON.stringify({ error: "email and teamId are required" }), {
           status: 400,
           headers: {
             "Content-Type": "application/json",
@@ -1876,7 +1885,10 @@ http.route({
         });
       }
 
-      const result = await ctx.runMutation(api.calendar.disconnectCalendarByEmail, { email });
+      const result = await ctx.runMutation(api.calendar.disconnectCalendarByEmail, {
+        email,
+        teamId: teamId as Id<"teams">,
+      });
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: {
@@ -1913,17 +1925,17 @@ http.route({
   }),
 });
 
-// POST endpoint to sync calendar
+// POST endpoint to sync calendar (requires teamId)
 http.route({
   path: "/syncCalendarByEmail",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { email } = body;
+      const { email, teamId } = body;
 
-      if (!email) {
-        return new Response(JSON.stringify({ error: "email is required" }), {
+      if (!email || !teamId) {
+        return new Response(JSON.stringify({ error: "email and teamId are required" }), {
           status: 400,
           headers: {
             "Content-Type": "application/json",
@@ -1932,7 +1944,10 @@ http.route({
         });
       }
 
-      const result = await ctx.runAction(api.calendar.syncCalendarByEmail, { email });
+      const result = await ctx.runAction(api.calendar.syncCalendarByEmail, {
+        email,
+        teamId: teamId as Id<"teams">,
+      });
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: {
@@ -1969,18 +1984,19 @@ http.route({
   }),
 });
 
-// GET endpoint to get events for a closer by email
+// GET endpoint to get events for a closer by email and team
 http.route({
   path: "/getCloserEventsByEmail",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
     const url = new URL(request.url);
     const email = url.searchParams.get("email");
+    const teamId = url.searchParams.get("teamId");
     const startDate = url.searchParams.get("startDate");
     const endDate = url.searchParams.get("endDate");
 
-    if (!email || !startDate || !endDate) {
-      return new Response(JSON.stringify({ error: "email, startDate, and endDate are required" }), {
+    if (!email || !teamId || !startDate || !endDate) {
+      return new Response(JSON.stringify({ error: "email, teamId, startDate, and endDate are required" }), {
         status: 400,
         headers: {
           "Content-Type": "application/json",
@@ -1992,6 +2008,7 @@ http.route({
     try {
       const events = await ctx.runQuery(api.calendar.getCloserEventsByEmail, {
         email,
+        teamId: teamId as Id<"teams">,
         startDate: parseInt(startDate, 10),
         endDate: parseInt(endDate, 10),
       });
