@@ -279,13 +279,13 @@ struct ScheduleView: View {
 
     private var connectedView: some View {
         VStack(spacing: 0) {
+            // Sync status bar
+            syncStatusBar
+
             // Next up banner
             if let nextEvent = nextUpcomingEvent {
                 nextUpBanner(event: nextEvent)
             }
-
-            // Sync status bar
-            syncStatusBar
 
             // Events list
             if events.isEmpty {
@@ -301,23 +301,23 @@ struct ScheduleView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("NEXT UP IN \(timeUntilEvent(event))")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color(white: 0.6))
+                    .foregroundColor(Color(white: 0.55))
                     .tracking(0.5)
 
                 Text(event.title)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
             }
 
             Spacer()
 
             Text(formatTime(event.startTime))
                 .font(.system(size: 14))
-                .foregroundColor(Color(white: 0.75))
+                .foregroundColor(Color(white: 0.45))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.black)
+        .background(Color(white: 0.95))
     }
 
     private var syncStatusBar: some View {
