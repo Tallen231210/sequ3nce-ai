@@ -167,6 +167,8 @@ export function App() {
         window.electron.training?.setCloserId(info.closerId);
         // Set team ID for resources in ammo tracker
         window.electron.ammo?.setTeamId(info.teamId);
+        // Set closer email for the schedule window
+        window.electron.schedule?.setCloserEmail(info.email);
 
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(info.email);
@@ -205,6 +207,8 @@ export function App() {
         window.electron.training?.setCloserId(result.closer.closerId);
         // Set team ID for resources in ammo tracker
         window.electron.ammo?.setTeamId(result.closer.teamId);
+        // Set closer email for the schedule window
+        window.electron.schedule?.setCloserEmail(result.closer.email);
 
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(result.closer.email);
@@ -1106,6 +1110,17 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
           className="mt-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800"
         >
           Training
+        </button>
+
+        {/* Schedule button */}
+        <button
+          onClick={() => window.electron.schedule?.open()}
+          className="mt-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800 flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Schedule
         </button>
 
         {/* Role Play Room button */}

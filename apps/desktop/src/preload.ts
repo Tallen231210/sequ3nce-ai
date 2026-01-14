@@ -120,6 +120,10 @@ contextBridge.exposeInMainWorld('electron', {
     open: (userInfo: { teamId: string; closerId: string; userName: string }) =>
       ipcRenderer.invoke('roleplay:open', userInfo),
   },
+  schedule: {
+    open: () => ipcRenderer.invoke('schedule:open'),
+    setCloserEmail: (email: string | null) => ipcRenderer.invoke('schedule:set-closer-email', email),
+  },
 } as ElectronAPI);
 
 // Also expose for tray menu actions

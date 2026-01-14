@@ -149,6 +149,14 @@ const config: ForgeConfig = {
               js: './src/roleplay-preload.ts',
             },
           },
+          {
+            html: './src/schedule.html',
+            js: './src/schedule-renderer.ts',
+            name: 'schedule',
+            preload: {
+              js: './src/schedule-preload.ts',
+            },
+          },
         ],
       },
     }),

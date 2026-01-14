@@ -90,6 +90,8 @@ declare const TRAINING_WEBPACK_ENTRY: string;
 declare const TRAINING_PRELOAD_WEBPACK_ENTRY: string;
 declare const ROLEPLAY_WEBPACK_ENTRY: string;
 declare const ROLEPLAY_PRELOAD_WEBPACK_ENTRY: string;
+declare const SCHEDULE_WEBPACK_ENTRY: string;
+declare const SCHEDULE_PRELOAD_WEBPACK_ENTRY: string;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -112,6 +114,7 @@ let mainWindow: BrowserWindow | null = null;
 let ammoTrackerWindow: BrowserWindow | null = null;
 let trainingWindow: BrowserWindow | null = null;
 let roleplayWindow: BrowserWindow | null = null;
+let scheduleWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
@@ -125,6 +128,9 @@ let ammoTrackerVisible = false;
 
 // Current logged-in closer ID (for training window)
 let currentCloserId: string | null = null;
+
+// Current logged-in closer email (for schedule window)
+let currentCloserEmail: string | null = null;
 
 // Current role play room user info
 let roleplayUserInfo: { teamId: string; closerId: string; userName: string } | null = null;
@@ -387,6 +393,53 @@ const createRoleplayWindow = (): void => {
   // Open DevTools in development
   if (process.env.NODE_ENV === 'development' || process.defaultApp) {
     // roleplayWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+};
+
+// Create the schedule window
+const createScheduleWindow = (): void => {
+  if (scheduleWindow) {
+    scheduleWindow.show();
+    scheduleWindow.focus();
+    return;
+  }
+
+  scheduleWindow = new BrowserWindow({
+    width: 500,
+    height: 600,
+    minWidth: 400,
+    minHeight: 500,
+    title: 'My Schedule',
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#ffffff',
+    show: false,
+    webPreferences: {
+      preload: SCHEDULE_PRELOAD_WEBPACK_ENTRY,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  scheduleWindow.loadURL(SCHEDULE_WEBPACK_ENTRY);
+
+  // Show window when ready
+  scheduleWindow.once('ready-to-show', () => {
+    scheduleWindow?.show();
+
+    // Send current closer email to the schedule window
+    if (currentCloserEmail) {
+      scheduleWindow?.webContents.send('schedule:closer-email-changed', currentCloserEmail);
+    }
+  });
+
+  // Handle window close
+  scheduleWindow.on('closed', () => {
+    scheduleWindow = null;
+  });
+
+  // Open DevTools in development
+  if (process.env.NODE_ENV === 'development' || process.defaultApp) {
+    // scheduleWindow.webContents.openDevTools({ mode: 'detach' });
   }
 };
 
@@ -1067,6 +1120,145 @@ const setupIpcHandlers = (): void => {
   // Get user info for roleplay
   ipcMain.handle('roleplay:get-user-info', () => {
     return roleplayUserInfo;
+  });
+
+  // ---- Schedule Window IPC Handlers ----
+
+  // Open schedule window
+  ipcMain.handle('schedule:open', () => {
+    createScheduleWindow();
+    return true;
+  });
+
+  // Close schedule window
+  ipcMain.handle('schedule:close', () => {
+    if (scheduleWindow) {
+      scheduleWindow.close();
+      scheduleWindow = null;
+    }
+    return true;
+  });
+
+  // Minimize schedule window
+  ipcMain.handle('schedule:minimize', () => {
+    if (scheduleWindow) {
+      scheduleWindow.minimize();
+    }
+    return true;
+  });
+
+  // Get current closer email
+  ipcMain.handle('schedule:get-closer-email', () => {
+    return currentCloserEmail;
+  });
+
+  // Set closer email (called from main window when user logs in)
+  ipcMain.handle('schedule:set-closer-email', (_event, email: string | null) => {
+    currentCloserEmail = email;
+    // Notify schedule window if it's open
+    if (scheduleWindow && email) {
+      scheduleWindow.webContents.send('schedule:closer-email-changed', email);
+    }
+    return true;
+  });
+
+  // Get calendar status for a closer
+  ipcMain.handle('schedule:get-calendar-status', async (_event, email: string) => {
+    try {
+      const response = await fetch(
+        `https://ideal-ram-982.convex.site/getCloserCalendarStatusByEmail?email=${encodeURIComponent(email)}`
+      );
+
+      if (!response.ok) {
+        console.error('[Main] Failed to get calendar status:', response.statusText);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error getting calendar status:', error);
+      return null;
+    }
+  });
+
+  // Connect calendar with ICS URL
+  ipcMain.handle('schedule:connect-calendar', async (_event, email: string, icsUrl: string) => {
+    try {
+      const response = await fetch('https://ideal-ram-982.convex.site/connectCalendarByEmail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, icsUrl }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to connect calendar');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error connecting calendar:', error);
+      throw error;
+    }
+  });
+
+  // Disconnect calendar
+  ipcMain.handle('schedule:disconnect-calendar', async (_event, email: string) => {
+    try {
+      const response = await fetch('https://ideal-ram-982.convex.site/disconnectCalendarByEmail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to disconnect calendar');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error disconnecting calendar:', error);
+      throw error;
+    }
+  });
+
+  // Sync calendar
+  ipcMain.handle('schedule:sync-calendar', async (_event, email: string) => {
+    try {
+      const response = await fetch('https://ideal-ram-982.convex.site/syncCalendarByEmail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to sync calendar');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error syncing calendar:', error);
+      throw error;
+    }
+  });
+
+  // Get events for a date range
+  ipcMain.handle('schedule:get-events', async (_event, email: string, startDate: number, endDate: number) => {
+    try {
+      const response = await fetch(
+        `https://ideal-ram-982.convex.site/getCloserEventsByEmail?email=${encodeURIComponent(email)}&startDate=${startDate}&endDate=${endDate}`
+      );
+
+      if (!response.ok) {
+        console.error('[Main] Failed to get events:', response.statusText);
+        return [];
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error getting events:', error);
+      return [];
+    }
   });
 
   console.log('[Main] IPC handlers set up');

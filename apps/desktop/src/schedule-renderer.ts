@@ -1,0 +1,12 @@
+// Schedule Window - Entry point
+import './index.css';
+
+import { createRoot } from 'react-dom/client';
+import { createElement } from 'react';
+import { ScheduleApp } from './renderer/ScheduleApp';
+
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(createElement(ScheduleApp));
+}

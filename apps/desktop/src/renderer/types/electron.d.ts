@@ -49,6 +49,11 @@ export interface RoleplayAPI {
   open: (userInfo: { teamId: string; closerId: string; userName: string }) => Promise<boolean>;
 }
 
+export interface ScheduleAPI {
+  open: () => Promise<boolean>;
+  setCloserEmail: (email: string | null) => Promise<boolean>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
@@ -56,6 +61,7 @@ export interface ElectronAPI {
   auth: AuthAPI;
   training: TrainingAPI;
   roleplay: RoleplayAPI;
+  schedule: ScheduleAPI;
 }
 
 // Ammo item type
@@ -155,11 +161,46 @@ export interface TrainingWindowAPI {
   onCloserIdChange: (callback: (closerId: string | null) => void) => () => void;
 }
 
+// Calendar event type
+export interface CalendarEvent {
+  _id: string;
+  uid: string;
+  title: string;
+  description?: string;
+  startTime: number;
+  endTime: number;
+  location?: string;
+  isAllDay?: boolean;
+}
+
+// Calendar status type
+export interface CalendarStatus {
+  closerId: string;
+  connected: boolean;
+  icsUrl?: string;
+  connectedAt?: number;
+  lastSynced?: number;
+}
+
+// Schedule window API (exposed via schedule-preload.ts)
+export interface ScheduleWindowAPI {
+  getCloserEmail: () => Promise<string | null>;
+  getCalendarStatus: (email: string) => Promise<CalendarStatus | null>;
+  connectCalendar: (email: string, icsUrl: string) => Promise<{ success: boolean }>;
+  disconnectCalendar: (email: string) => Promise<{ success: boolean }>;
+  syncCalendar: (email: string) => Promise<{ success: boolean; syncedEvents?: number }>;
+  getEvents: (email: string, startDate: number, endDate: number) => Promise<CalendarEvent[]>;
+  close: () => Promise<void>;
+  minimize: () => Promise<void>;
+  onCloserEmailChange: (callback: (email: string | null) => void) => () => void;
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI;
     ammoTracker?: AmmoTrackerAPI;
     training?: TrainingWindowAPI;
+    schedule?: ScheduleWindowAPI;
   }
 }
 
