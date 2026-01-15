@@ -8,6 +8,28 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.4.7</title>
+            <pubDate>Tue, 14 Jan 2026 22:00:00 +0000</pubDate>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>1.4.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.4.7</h2>
+                <ul>
+                    <li>Fixed Live Summary not loading during calls</li>
+                    <li>Ammo V2 analysis (engagement, beliefs, objections) now displays correctly</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.4.7/Sequ3nce.zip"
+                length="1659130"
+                type="application/octet-stream"
+                sparkle:edSignature="sjBk5cVhENbYM4/4E03zUZILN5trbFDJwZPAWfXVFyvUK2ilwbLCAeaNZaGC3sqzem03le46N2ZUWGhBhbKHBg=="
+            />
+        </item>
+
+        <!-- v1.4.6 -->
+        <item>
             <title>Version 1.4.6</title>
             <pubDate>Tue, 14 Jan 2026 21:00:00 +0000</pubDate>
             <sparkle:version>24</sparkle:version>

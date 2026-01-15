@@ -7,6 +7,43 @@ import { Id } from "./_generated/dataModel";
 // QUERIES
 // ============================================
 
+// Debug query to check closer calendar setup
+export const debugCalendarStatus = query({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    // Find all closers with this email (could be on multiple teams)
+    const allClosers = await ctx.db.query("closers").collect();
+    const closersWithEmail = allClosers.filter(c => c.email === args.email);
+
+    const results = [];
+    for (const closer of closersWithEmail) {
+      // Get events for this closer
+      const events = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
+        .collect();
+
+      results.push({
+        closerId: closer._id,
+        name: closer.name,
+        email: closer.email,
+        teamId: closer.teamId,
+        status: closer.status,
+        icsUrl: closer.icsUrl ? `${closer.icsUrl.substring(0, 50)}...` : null,
+        calendarConnectedAt: closer.calendarConnectedAt,
+        calendarLastSyncAt: closer.calendarLastSyncAt,
+        eventCount: events.length,
+        recentEvents: events.slice(0, 3).map(e => ({
+          title: e.title,
+          startTime: new Date(e.startTime).toISOString(),
+        })),
+      });
+    }
+
+    return results;
+  },
+});
+
 // Get calendar connection status for a closer
 export const getCloserCalendarStatus = query({
   args: { closerId: v.id("closers") },
@@ -400,6 +437,22 @@ export const getClosersWithIcsUrl = internalQuery({
   },
 });
 
+// Internal: Get closer by email and teamId (for sync action)
+export const getCloserByEmailAndTeam = internalQuery({
+  args: {
+    email: v.string(),
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .filter((q) => q.eq(q.field("teamId"), args.teamId))
+      .first();
+    return closer;
+  },
+});
+
 // ============================================
 // ACTIONS (for external fetching)
 // ============================================
@@ -584,15 +637,18 @@ export const syncCalendarByEmail = action({
     teamId: v.id("teams"),
   },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string; syncedEvents?: number }> => {
-    // Get closer by email and team
-    const closers = await ctx.runQuery(internal.calendar.getClosersWithIcsUrl, {});
-    const closer = closers.find(
-      (c: { email: string; teamId: Id<"teams">; _id: Id<"closers"> }) =>
-        c.email === args.email && c.teamId === args.teamId
-    );
+    // Get closer by email and team directly (not filtered by status)
+    const closer = await ctx.runQuery(internal.calendar.getCloserByEmailAndTeam, {
+      email: args.email,
+      teamId: args.teamId,
+    });
 
     if (!closer) {
-      return { success: false, error: "Closer not found for this team or no ICS URL configured" };
+      return { success: false, error: "Closer not found for this team" };
+    }
+
+    if (!closer.icsUrl) {
+      return { success: false, error: "No ICS URL configured for this closer" };
     }
 
     // Use the main sync action

@@ -2595,3 +2595,34 @@ export const fixLiveCallDurations = mutation({
     return { updated: allLiveCalls.length };
   },
 });
+
+// DEBUG: Check if any calls have ammoAnalysis data
+export const debugCheckAmmoAnalysis = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get the most recent calls with analysis, sorted by analyzedAt
+    const recentCalls = await ctx.db.query("calls").order("desc").take(20);
+
+    const withAnalysis = recentCalls.filter(c => c.ammoAnalysis);
+
+    // Show the most recent calls with their liveSummary status
+    const recentAnalyses = await Promise.all(
+      withAnalysis.slice(0, 10).map(async c => {
+        const closer = await ctx.db.get(c.closerId);
+        return {
+          id: c._id,
+          closerName: closer?.name,
+          status: c.status,
+          analyzedAt: c.ammoAnalysis?.analyzedAt ? new Date(c.ammoAnalysis.analyzedAt).toISOString() : null,
+          hasLiveSummary: !!c.ammoAnalysis?.liveSummary,
+          liveSummaryPreview: c.ammoAnalysis?.liveSummary?.substring(0, 80),
+          engagementLevel: c.ammoAnalysis?.engagement?.level,
+        };
+      })
+    );
+
+    return {
+      recentAnalyses,
+    };
+  },
+});

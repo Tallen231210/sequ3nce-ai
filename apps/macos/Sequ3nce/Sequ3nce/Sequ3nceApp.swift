@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Sparkle
+import Combine
 
 @main
 struct Sequ3nceApp: App {
@@ -106,10 +107,28 @@ class AppState: ObservableObject {
     private var durationTimer: Timer?
     private var audioLevelTimer: Timer?
 
+    // Combine cancellables for observing WebSocket state
+    private var cancellables = Set<AnyCancellable>()
+
     // Check for saved session on init
     init() {
         loadSavedSession()
         setupAudioCallback()
+        setupWebSocketObserver()
+    }
+
+    /// Observe WebSocket convexCallId changes and update AppState
+    private func setupWebSocketObserver() {
+        webSocketService.$convexCallId
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newCallId in
+                guard let self = self else { return }
+                if self.convexCallId != newCallId {
+                    print("[AppState] convexCallId updated: \(self.convexCallId ?? "nil") -> \(newCallId ?? "nil")")
+                    self.convexCallId = newCallId
+                }
+            }
+            .store(in: &cancellables)
     }
 
     private func loadSavedSession() {
@@ -213,7 +232,8 @@ class AppState: ObservableObject {
             }
 
             recordingState = .recording
-            convexCallId = webSocketService.convexCallId
+            // Note: convexCallId is now set automatically via the Combine observer
+            // when the server sends the "ready" response with the database call ID
 
             print("[AppState] Recording started - callId: \(callId)")
 

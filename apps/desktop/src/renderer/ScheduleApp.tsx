@@ -115,9 +115,16 @@ export function ScheduleApp() {
     setError(null);
 
     try {
-      await window.schedule?.connectCalendar(closerEmail, icsUrl.trim());
+      const connectResult = await window.schedule?.connectCalendar(closerEmail, icsUrl.trim());
+      if (connectResult && !connectResult.success) {
+        throw new Error('Failed to save calendar URL');
+      }
       // Sync immediately after connecting
-      await window.schedule?.syncCalendar(closerEmail);
+      const syncResult = await window.schedule?.syncCalendar(closerEmail);
+      if (syncResult && !syncResult.success) {
+        // Show the actual error from the sync
+        throw new Error((syncResult as { success: boolean; error?: string }).error || 'Failed to sync calendar');
+      }
       // Refresh data
       await fetchCalendarData();
       setIcsUrl('');
@@ -156,11 +163,14 @@ export function ScheduleApp() {
     setError(null);
 
     try {
-      await window.schedule?.syncCalendar(closerEmail);
+      const syncResult = await window.schedule?.syncCalendar(closerEmail);
+      if (syncResult && !syncResult.success) {
+        throw new Error((syncResult as { success: boolean; error?: string }).error || 'Failed to sync calendar');
+      }
       await fetchCalendarData();
     } catch (err) {
       console.error('Failed to sync calendar:', err);
-      setError('Failed to sync calendar');
+      setError(err instanceof Error ? err.message : 'Failed to sync calendar');
     } finally {
       setIsSyncing(false);
     }
