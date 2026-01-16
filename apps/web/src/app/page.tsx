@@ -516,7 +516,7 @@ export default function Home() {
                 <div className="border-t border-border pt-8 mb-8">
                   <div className="flex justify-between items-baseline mb-4">
                     <span className="text-muted-foreground">Platform fee</span>
-                    <span className="text-xl font-semibold">$299/mo</span>
+                    <span className="text-xl font-semibold">$499/mo</span>
                   </div>
                   <div className="flex justify-between items-baseline">
                     <span className="text-muted-foreground">Per closer seat</span>

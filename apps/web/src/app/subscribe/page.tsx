@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense, useEffect } from "react";
-import { useUser, SignUpButton } from "@clerk/nextjs";
+import { useUser, SignUpButton, UserButton } from "@clerk/nextjs";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -72,8 +72,11 @@ function SubscribeContent() {
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <Logo height={28} />
           {user && (
-            <div className="text-sm text-zinc-500">
-              {user.primaryEmailAddress?.emailAddress}
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-zinc-500">
+                {user.primaryEmailAddress?.emailAddress}
+              </span>
+              <UserButton afterSignOutUrl="/" />
             </div>
           )}
         </div>
@@ -128,7 +131,7 @@ function SubscribeContent() {
                   Platform Access
                 </div>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-5xl font-bold text-zinc-900">$299</span>
+                  <span className="text-5xl font-bold text-zinc-900">$499</span>
                   <span className="text-zinc-500">/month</span>
                 </div>
                 <p className="text-sm text-zinc-500 mt-2">

@@ -76,9 +76,9 @@ export async function GET() {
     // Find latest Swift macOS release (macos-v*)
     const swiftRelease = releases.find((r) => r.tag_name.startsWith("macos-v"));
 
-    // Find latest Electron desktop release (desktop-v*)
+    // Find latest Electron desktop release (v* but not macos-v*)
     const electronRelease = releases.find((r) =>
-      r.tag_name.startsWith("desktop-v")
+      r.tag_name.startsWith("v") && !r.tag_name.startsWith("macos-v")
     );
 
     // Return both releases with clear labels

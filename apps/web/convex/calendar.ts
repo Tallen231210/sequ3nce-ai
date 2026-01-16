@@ -7,43 +7,6 @@ import { Id } from "./_generated/dataModel";
 // QUERIES
 // ============================================
 
-// Debug query to check closer calendar setup
-export const debugCalendarStatus = query({
-  args: { email: v.string() },
-  handler: async (ctx, args) => {
-    // Find all closers with this email (could be on multiple teams)
-    const allClosers = await ctx.db.query("closers").collect();
-    const closersWithEmail = allClosers.filter(c => c.email === args.email);
-
-    const results = [];
-    for (const closer of closersWithEmail) {
-      // Get events for this closer
-      const events = await ctx.db
-        .query("calendarEvents")
-        .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
-        .collect();
-
-      results.push({
-        closerId: closer._id,
-        name: closer.name,
-        email: closer.email,
-        teamId: closer.teamId,
-        status: closer.status,
-        icsUrl: closer.icsUrl ? `${closer.icsUrl.substring(0, 50)}...` : null,
-        calendarConnectedAt: closer.calendarConnectedAt,
-        calendarLastSyncAt: closer.calendarLastSyncAt,
-        eventCount: events.length,
-        recentEvents: events.slice(0, 3).map(e => ({
-          title: e.title,
-          startTime: new Date(e.startTime).toISOString(),
-        })),
-      });
-    }
-
-    return results;
-  },
-});
-
 // Get calendar connection status for a closer
 export const getCloserCalendarStatus = query({
   args: { closerId: v.id("closers") },

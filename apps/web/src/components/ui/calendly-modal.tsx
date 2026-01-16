@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +54,8 @@ export function CalendlyModal({ isOpen, onClose }: CalendlyModalProps) {
 
   if (!isOpen) return null;
 
-  return (
+  // Use portal to render modal at document root, avoiding stacking context issues
+  const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
@@ -99,6 +101,13 @@ export function CalendlyModal({ isOpen, onClose }: CalendlyModalProps) {
       </div>
     </div>
   );
+
+  // Portal ensures modal renders at document root, above any stacking contexts
+  if (typeof document !== "undefined") {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 }
 
 // Button component that opens the modal
