@@ -91,9 +91,7 @@ export interface CallSession {
   metadata: CallMetadata;
   startedAt: number;
   speakersDetected: Set<string>; // Speaker labels from Speechmatics ("S1", "S2", etc.)
-  transcriptBuffer: string;
   audioBuffer: Buffer[];
-  lastAmmoExtractionTime: number;
   fullTranscript: string;
   // Talk-to-listen ratio tracking
   closerTalkTimeMs: number;

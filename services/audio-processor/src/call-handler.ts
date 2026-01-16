@@ -1,12 +1,10 @@
 // Call session handler - manages a single call's lifecycle
 
 import { createSpeechmaticsConnection, type SpeechmaticsConnection } from "./speechmatics.js";
-import { extractAmmo } from "./claude.js";
 import { uploadRecording } from "./s3.js";
 import {
   createCall,
   updateCallStatus,
-  addAmmoItem,
   completeCall,
   addTranscript,
   addTranscriptSegment,
@@ -19,10 +17,8 @@ import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
 import { AmmoAnalyzer, type AmmoV2Analysis } from "./ammoAnalyzer.js";
 import { logger } from "./logger.js";
-import type { CallMetadata, CallSession, TranscriptChunk, AmmoItem, AmmoConfig } from "./types.js";
+import type { CallMetadata, CallSession, TranscriptChunk, AmmoConfig } from "./types.js";
 
-const AMMO_EXTRACTION_INTERVAL_MS = 30000; // Extract ammo every 30 seconds
-const MIN_TRANSCRIPT_LENGTH_FOR_AMMO = 100; // Minimum characters before attempting extraction
 const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
 const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours max call duration
 
@@ -52,9 +48,7 @@ export class CallHandler {
       metadata,
       startedAt: Date.now(),
       speakersDetected: new Set(),
-      transcriptBuffer: "",
       audioBuffer: [],
-      lastAmmoExtractionTime: Date.now(),
       fullTranscript: "",
       // Talk time tracking
       closerTalkTimeMs: 0,
@@ -211,14 +205,13 @@ export class CallHandler {
       await updateCallStatus(this.convexCallId, "on_call", 2);
     }
 
-    // Add to transcript buffer
+    // Add to transcript
     if (chunk.isFinal && chunk.text.trim()) {
       // Speaker diarization: first speaker detected is assumed to be Closer
       const isCloser = this.getIsCloser(chunk.speaker);
       const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
       const line = `${speakerLabel}: ${chunk.text}`;
       this.session.fullTranscript += line + "\n";
-      this.session.transcriptBuffer += chunk.text + " ";
 
       // Track talk time based on audio duration
       // Estimate duration from text length (average speaking rate: ~150 words/min = 2.5 words/sec)
@@ -267,14 +260,6 @@ export class CallHandler {
         this.session.lastTalkTimeUpdateTime = Date.now();
       }
     }
-
-    // Check if we should extract ammo
-    const timeSinceLastExtraction = Date.now() - this.session.lastAmmoExtractionTime;
-    const hasEnoughContent = this.session.transcriptBuffer.length >= MIN_TRANSCRIPT_LENGTH_FOR_AMMO;
-
-    if (timeSinceLastExtraction >= AMMO_EXTRACTION_INTERVAL_MS && hasEnoughContent) {
-      await this.extractAndSaveAmmo();
-    }
   }
 
   private handleSpeechmaticsError(error: Error): void {
@@ -293,32 +278,6 @@ export class CallHandler {
       logger.info(`First speaker detected: ${speaker} (will be treated as Closer)`);
     }
     return speaker === this.firstSpeaker;
-  }
-
-  private async extractAndSaveAmmo(): Promise<void> {
-    if (!this.convexCallId || this.session.transcriptBuffer.length < MIN_TRANSCRIPT_LENGTH_FOR_AMMO) {
-      return;
-    }
-
-    const textToProcess = this.session.transcriptBuffer;
-    this.session.transcriptBuffer = ""; // Clear buffer
-    this.session.lastAmmoExtractionTime = Date.now();
-
-    try {
-      // Extract ammo (simple version - just quotes and categories)
-      const ammoItems = await extractAmmo(textToProcess);
-
-      // Save each ammo item with audio-aligned timestamp (seconds from start)
-      for (const ammo of ammoItems) {
-        const ammoWithTimestamp: AmmoItem = {
-          ...ammo,
-          timestamp: this.session.lastAudioTimestamp,
-        };
-        await addAmmoItem(this.convexCallId, this.session.metadata.teamId, ammoWithTimestamp);
-      }
-    } catch (error) {
-      logger.error("Failed to extract/save ammo", error);
-    }
   }
 
   // Run AI detection analysis on the full transcript
@@ -370,11 +329,6 @@ export class CallHandler {
     if (this.speechmatics) {
       await this.speechmatics.close();
       this.speechmatics = null;
-    }
-
-    // Extract any remaining ammo
-    if (this.session.transcriptBuffer.length >= MIN_TRANSCRIPT_LENGTH_FOR_AMMO) {
-      await this.extractAndSaveAmmo();
     }
 
     // Save final talk time

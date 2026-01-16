@@ -2,7 +2,7 @@
 
 import { ConvexHttpClient } from "convex/browser";
 import { logger } from "./logger.js";
-import type { AmmoItem, AmmoConfig, CallMetadata } from "./types.js";
+import type { AmmoConfig, CallMetadata } from "./types.js";
 import type { DetectionResults } from "./detection.js";
 
 const convexUrl = process.env.CONVEX_URL!;
@@ -77,25 +77,6 @@ export async function addTranscriptSegment(
     logger.info(`Transcript segment added: [${speaker}] "${text.substring(0, 50)}..."`);
   } catch (error) {
     logger.error("Failed to add transcript segment", error);
-  }
-}
-
-export async function addAmmoItem(
-  callId: string,
-  teamId: string,
-  ammo: AmmoItem
-): Promise<void> {
-  try {
-    await convex.mutation("calls:addAmmo" as any, {
-      callId,
-      teamId,
-      text: ammo.text,
-      type: ammo.type,
-      timestamp: ammo.timestamp,
-    });
-    logger.info(`Ammo added: "${ammo.text.substring(0, 50)}..." (${ammo.type})`);
-  } catch (error) {
-    logger.error("Failed to add ammo item", error);
   }
 }
 
