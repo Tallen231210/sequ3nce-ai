@@ -21,6 +21,7 @@ import {
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { AmmoV2Panel, AmmoV2Compact, type AmmoV2Analysis } from "@/components/AmmoV2Panel";
+import { ListenLiveButton } from "@/components/ListenLiveButton";
 
 // Types
 interface TranscriptSegment {
@@ -192,9 +193,11 @@ interface LiveCallCardProps {
   call: LiveCall;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  visitorCallId?: string;
+  hasLiveStreaming?: boolean;
 }
 
-function LiveCallCard({ call, isExpanded, onToggleExpand }: LiveCallCardProps) {
+function LiveCallCard({ call, isExpanded, onToggleExpand, visitorCallId, hasLiveStreaming }: LiveCallCardProps) {
   const [elapsed, setElapsed] = useState(0);
 
   // Update elapsed time every second
@@ -257,18 +260,28 @@ function LiveCallCard({ call, isExpanded, onToggleExpand }: LiveCallCardProps) {
         {/* Main content */}
         <div className="p-4 space-y-4">
           {/* Closer info */}
-          <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="bg-primary text-primary-foreground">
-                {call.closerInitials}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-medium">{call.closerName}</p>
-              <p className="text-sm text-muted-foreground">
-                with {call.prospectName || "Unknown Prospect"}
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="bg-primary text-primary-foreground">
+                  {call.closerInitials}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium">{call.closerName}</p>
+                <p className="text-sm text-muted-foreground">
+                  with {call.prospectName || "Unknown Prospect"}
+                </p>
+              </div>
             </div>
+
+            {/* Listen Live Button - only show if feature enabled and stream exists */}
+            {hasLiveStreaming && visitorCallId && (
+              <ListenLiveButton
+                visitorCallId={visitorCallId}
+                callStatus={call.status}
+              />
+            )}
           </div>
 
           {/* Talk-to-Listen Ratio (only when on call) */}
@@ -416,6 +429,23 @@ export default function LiveCallsPage() {
     team?._id ? { teamId: team._id } : "skip"
   ) as LiveCall[] | undefined;
 
+  // Check if team has live streaming feature enabled
+  const hasLiveStreaming = team?.betaFeatures?.includes("liveStreaming") ?? false;
+
+  // Query active live streams to get visitorCallIds (only if feature is enabled)
+  const activeLiveStreams = useQuery(
+    api.liveStreams.getActiveLiveStreams,
+    hasLiveStreaming && team?._id ? { teamId: team._id } : "skip"
+  );
+
+  // Create a map of callId -> visitorCallId for quick lookup
+  const visitorCallIdMap = new Map<string, string>();
+  if (activeLiveStreams) {
+    for (const stream of activeLiveStreams) {
+      visitorCallIdMap.set(stream.callId, stream.visitorCallId);
+    }
+  }
+
   const handleToggleExpand = useCallback((callId: string) => {
     setExpandedCallId((current) => (current === callId ? null : callId));
   }, []);
@@ -449,6 +479,8 @@ export default function LiveCallsPage() {
                 call={call}
                 isExpanded={expandedCallId === call._id}
                 onToggleExpand={() => handleToggleExpand(call._id)}
+                visitorCallId={visitorCallIdMap.get(call._id)}
+                hasLiveStreaming={hasLiveStreaming}
               />
             ))}
           </div>

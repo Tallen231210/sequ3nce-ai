@@ -2048,4 +2048,307 @@ http.route({
   }),
 });
 
+// ============================================
+// LIVE STREAMING ENDPOINTS (for audio processor and web dashboard)
+// ============================================
+
+// POST endpoint to create a live stream when a call starts
+http.route({
+  path: "/createLiveStream",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, visitorCallId, teamId, closerId } = body;
+
+      if (!callId || !visitorCallId || !teamId || !closerId) {
+        return new Response(JSON.stringify({ error: "callId, visitorCallId, teamId, and closerId are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const streamId = await ctx.runMutation(api.liveStreams.createLiveStream, {
+        callId,
+        visitorCallId,
+        teamId,
+        closerId,
+      });
+
+      return new Response(JSON.stringify({ success: true, streamId }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error creating live stream:", error);
+      return new Response(JSON.stringify({ error: "Failed to create live stream" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for createLiveStream
+http.route({
+  path: "/createLiveStream",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to end a live stream when a call ends
+http.route({
+  path: "/endLiveStream",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { visitorCallId } = body;
+
+      if (!visitorCallId) {
+        return new Response(JSON.stringify({ error: "visitorCallId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.liveStreams.endLiveStream, {
+        visitorCallId,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error ending live stream:", error);
+      return new Response(JSON.stringify({ error: "Failed to end live stream" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for endLiveStream
+http.route({
+  path: "/endLiveStream",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to update listener count
+http.route({
+  path: "/updateLiveStreamListenerCount",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { visitorCallId, delta } = body;
+
+      if (!visitorCallId || delta === undefined) {
+        return new Response(JSON.stringify({ error: "visitorCallId and delta are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.liveStreams.updateListenerCount, {
+        visitorCallId,
+        delta,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error updating listener count:", error);
+      return new Response(JSON.stringify({ error: "Failed to update listener count" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for updateLiveStreamListenerCount
+http.route({
+  path: "/updateLiveStreamListenerCount",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to check if live streaming is enabled for a team
+http.route({
+  path: "/isLiveStreamingEnabled",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const teamId = url.searchParams.get("teamId");
+
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "teamId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const enabled = await ctx.runQuery(api.liveStreams.isLiveStreamingEnabled, {
+        teamId,
+      });
+
+      return new Response(JSON.stringify({ enabled }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error checking live streaming status:", error);
+      return new Response(JSON.stringify({ error: "Failed to check live streaming status" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for isLiveStreamingEnabled
+http.route({
+  path: "/isLiveStreamingEnabled",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to get live stream by visitorCallId (for audio processor to verify manager connections)
+http.route({
+  path: "/getLiveStreamByVisitorCallId",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const visitorCallId = url.searchParams.get("visitorCallId");
+
+    if (!visitorCallId) {
+      return new Response(JSON.stringify({ error: "visitorCallId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const stream = await ctx.runQuery(api.liveStreams.getLiveStreamByVisitorCallId, {
+        visitorCallId,
+      });
+
+      return new Response(JSON.stringify(stream), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting live stream:", error);
+      return new Response(JSON.stringify({ error: "Failed to get live stream" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getLiveStreamByVisitorCallId
+http.route({
+  path: "/getLiveStreamByVisitorCallId",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

@@ -162,3 +162,97 @@ export async function updateTalkTime(
     logger.error("Failed to update talk time", error);
   }
 }
+
+// ============================================
+// LIVE STREAMING FUNCTIONS
+// ============================================
+
+/**
+ * Check if a team has live streaming enabled
+ */
+export async function isLiveStreamingEnabled(teamId: string): Promise<boolean> {
+  try {
+    const enabled = await convex.query("liveStreams:isLiveStreamingEnabled" as any, { teamId });
+    return enabled === true;
+  } catch (error) {
+    logger.error("Failed to check live streaming enabled", error);
+    return false;
+  }
+}
+
+/**
+ * Create a live stream record when a call starts
+ * Only creates if team has live streaming enabled
+ */
+export async function createLiveStream(
+  callId: string,
+  visitorCallId: string,
+  teamId: string,
+  closerId: string
+): Promise<string | null> {
+  try {
+    const streamId = await convex.mutation("liveStreams:createLiveStream" as any, {
+      callId,
+      visitorCallId,
+      teamId,
+      closerId,
+    });
+    if (streamId) {
+      logger.info(`[LiveStream] Created stream ${streamId} for call ${callId}`);
+    }
+    return streamId as string | null;
+  } catch (error) {
+    logger.error("Failed to create live stream", error);
+    return null;
+  }
+}
+
+/**
+ * End a live stream when a call ends
+ */
+export async function endLiveStream(visitorCallId: string): Promise<void> {
+  try {
+    await convex.mutation("liveStreams:endLiveStream" as any, { visitorCallId });
+    logger.info(`[LiveStream] Ended stream for visitorCallId ${visitorCallId}`);
+  } catch (error) {
+    logger.error("Failed to end live stream", error);
+  }
+}
+
+/**
+ * Update the listener count for a live stream
+ */
+export async function updateLiveStreamListenerCount(
+  visitorCallId: string,
+  delta: number
+): Promise<void> {
+  try {
+    await convex.mutation("liveStreams:updateListenerCount" as any, {
+      visitorCallId,
+      delta,
+    });
+    logger.info(`[LiveStream] Updated listener count for ${visitorCallId}: ${delta > 0 ? '+' : ''}${delta}`);
+  } catch (error) {
+    logger.error("Failed to update listener count", error);
+  }
+}
+
+/**
+ * Get live stream by visitorCallId (for manager connection validation)
+ */
+export async function getLiveStreamByVisitorCallId(
+  visitorCallId: string
+): Promise<{ teamId: string; status: string } | null> {
+  try {
+    const stream = await convex.query("liveStreams:getLiveStreamByVisitorCallId" as any, {
+      visitorCallId,
+    });
+    if (stream) {
+      return { teamId: stream.teamId, status: stream.status };
+    }
+    return null;
+  } catch (error) {
+    logger.error("Failed to get live stream by visitorCallId", error);
+    return null;
+  }
+}
