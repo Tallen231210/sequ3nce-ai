@@ -163,3 +163,23 @@ export const deleteAmmoConfig = mutation({
     return false;
   },
 });
+
+// Enable or disable beta features for a team
+export const setBetaFeatures = mutation({
+  args: {
+    teamId: v.id("teams"),
+    features: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.teamId);
+    if (!team) {
+      throw new Error("Team not found");
+    }
+
+    await ctx.db.patch(args.teamId, {
+      betaFeatures: args.features,
+    });
+
+    return { success: true, features: args.features };
+  },
+});
