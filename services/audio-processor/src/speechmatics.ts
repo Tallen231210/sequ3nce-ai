@@ -60,6 +60,7 @@ export function createSpeechmaticsConnection(
         message: "StartRecognition",
         transcription_config: {
           language: "en",
+          operating_point: "standard", // Standard accuracy (~1-2% less than enhanced, ~50% cheaper)
           diarization: "speaker",
           speaker_diarization_config: {
             speaker_sensitivity: 0.5,
