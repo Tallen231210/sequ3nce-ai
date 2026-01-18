@@ -9,7 +9,7 @@ type ConnectionState = "idle" | "connecting" | "listening" | "error" | "ended";
 
 // Audio Waveform Visualization Component - Option 4 style (bars from bottom)
 function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
-  const [bars, setBars] = useState<number[]>(Array(20).fill(0.08));
+  const [bars, setBars] = useState<number[]>(Array(20).fill(0.1));
   const animationRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -35,8 +35,12 @@ function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserN
           sum += dataArray[j];
         }
         const average = sum / segmentSize;
-        // Normalize to 0-1 range with minimum height
-        newBars.push(Math.max(0.08, average / 255));
+
+        // Amplify the signal significantly (3x boost) and use a curve for more dramatic movement
+        // This makes quiet sounds more visible and loud sounds hit the top
+        const amplified = Math.min(1, (average / 255) * 3);
+        const curved = Math.pow(amplified, 0.7); // Slight curve to boost lower values
+        newBars.push(Math.max(0.1, curved));
       }
 
       setBars(newBars);
@@ -52,14 +56,15 @@ function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserN
   }, [analyserRef]);
 
   return (
-    <div className="flex items-end justify-center gap-0.5 h-12 bg-zinc-100 rounded-lg px-2">
+    <div className="flex items-end justify-center gap-1 h-12 bg-zinc-100 rounded-lg px-3">
       {bars.map((v, i) => (
         <div
           key={i}
-          className="w-1.5 rounded-full transition-all duration-75"
+          className="w-1.5 rounded-full"
           style={{
-            height: `${Math.max(8, v * 100)}%`,
+            height: `${Math.max(10, v * 100)}%`,
             background: "linear-gradient(to top, #10b981, #34d399)",
+            transition: "height 50ms ease-out",
           }}
         />
       ))}
