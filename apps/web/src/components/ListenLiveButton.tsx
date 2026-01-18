@@ -79,7 +79,8 @@ export function ListenLiveButton({
   const playbackCountRef = useRef(0);
 
   /**
-   * Schedule stereo audio buffer for playback
+   * Schedule mono audio buffer for playback (mic channel only)
+   * Using mono to avoid any stereo interleaving issues
    */
   const scheduleAudioPlayback = useCallback((left: Float32Array, right: Float32Array) => {
     if (!audioContextRef.current || !gainNodeRef.current) return;
@@ -87,15 +88,13 @@ export function ListenLiveButton({
     const audioContext = audioContextRef.current;
     const currentTime = audioContext.currentTime;
 
-    // Create stereo audio buffer - specify SAMPLE_RATE (48kHz) as the buffer's sample rate
-    // Web Audio API will automatically resample to AudioContext's rate
-    const audioBuffer = audioContext.createBuffer(CHANNELS, left.length, SAMPLE_RATE);
+    // Create MONO audio buffer with just the mic (left) channel
+    // This avoids any potential stereo interleaving issues
+    const audioBuffer = audioContext.createBuffer(1, left.length, SAMPLE_RATE);
 
-    // Copy channel data
-    const leftChannelData = audioBuffer.getChannelData(0);
-    const rightChannelData = audioBuffer.getChannelData(1);
-    leftChannelData.set(left);
-    rightChannelData.set(right);
+    // Copy just the left (mic) channel
+    const channelData = audioBuffer.getChannelData(0);
+    channelData.set(left);
 
     // Create buffer source
     const source = audioContext.createBufferSource();
@@ -112,7 +111,7 @@ export function ListenLiveButton({
     // Log first few playbacks
     playbackCountRef.current++;
     if (playbackCountRef.current <= 5) {
-      console.log(`[ListenLive] Playback #${playbackCountRef.current}: ${left.length} frames, duration=${audioBuffer.duration.toFixed(3)}s, scheduled at ${startTime.toFixed(3)}s`);
+      console.log(`[ListenLive] Playback #${playbackCountRef.current}: ${left.length} frames (mono), duration=${audioBuffer.duration.toFixed(3)}s, scheduled at ${startTime.toFixed(3)}s`);
     }
   }, []);
 
