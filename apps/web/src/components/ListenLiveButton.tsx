@@ -8,11 +8,11 @@ import { cn } from "@/lib/utils";
 // Connection states
 type ConnectionState = "idle" | "connecting" | "listening" | "error" | "ended";
 
-// Audio Waveform Visualization Component
+// Audio Waveform Visualization Component - Large version below button
 function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
-  const barCount = 5;
+  const barCount = 24; // More bars for a fuller look
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -33,10 +33,10 @@ function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserN
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Calculate average levels for each bar
+      // Calculate bar dimensions
       const segmentSize = Math.floor(bufferLength / barCount);
-      const barWidth = 3;
-      const gap = 2;
+      const barWidth = 4;
+      const gap = 3;
       const totalWidth = barCount * barWidth + (barCount - 1) * gap;
       const startX = (canvas.width - totalWidth) / 2;
 
@@ -49,21 +49,21 @@ function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserN
         }
         const average = sum / segmentSize;
 
-        // Normalize to canvas height (with minimum height)
-        const normalizedHeight = Math.max(4, (average / 255) * canvas.height * 0.9);
+        // Normalize to canvas height (with minimum height for idle state)
+        const normalizedHeight = Math.max(6, (average / 255) * canvas.height * 0.85);
 
-        // Draw bar with rounded corners
+        // Draw bar centered vertically
         const x = startX + i * (barWidth + gap);
         const y = (canvas.height - normalizedHeight) / 2;
 
-        // Gradient color based on intensity
+        // Green gradient based on intensity
         const intensity = average / 255;
-        const green = Math.floor(150 + intensity * 105);
+        const green = Math.floor(140 + intensity * 115);
         ctx.fillStyle = `rgb(34, ${green}, 82)`;
 
         // Draw rounded rectangle
         ctx.beginPath();
-        ctx.roundRect(x, y, barWidth, normalizedHeight, 1.5);
+        ctx.roundRect(x, y, barWidth, normalizedHeight, 2);
         ctx.fill();
       }
     };
@@ -78,12 +78,14 @@ function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserN
   }, [analyserRef, barCount]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={32}
-      height={20}
-      className="inline-block"
-    />
+    <div className="mt-2 p-2 bg-zinc-900/90 rounded-lg">
+      <canvas
+        ref={canvasRef}
+        width={180}
+        height={36}
+        className="block"
+      />
+    </div>
   );
 }
 
@@ -395,8 +397,9 @@ export function ListenLiveButton({
   const isActive = state === "listening" || state === "connecting";
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <Button
+    <div className={cn("flex flex-col", className)}>
+      <div className="flex items-center gap-2">
+        <Button
         variant={isActive ? "default" : "outline"}
         size="sm"
         onClick={handleClick}
@@ -414,9 +417,8 @@ export function ListenLiveButton({
           </>
         ) : state === "listening" ? (
           <>
-            <Square className="h-3 w-3 shrink-0" />
-            <AudioWaveform analyserRef={analyserRef} />
-            <span>Stop</span>
+            <Square className="h-3 w-3" />
+            Stop Listening
           </>
         ) : state === "ended" ? (
           <>
@@ -436,25 +438,31 @@ export function ListenLiveButton({
         )}
       </Button>
 
-      {/* Volume/Mute toggle when listening */}
-      {state === "listening" && (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleMuteToggle}
-          className="h-8 w-8"
-        >
-          {isMuted ? (
-            <VolumeX className="h-4 w-4 text-red-500" />
-          ) : (
-            <Volume2 className="h-4 w-4" />
-          )}
-        </Button>
-      )}
+        {/* Volume/Mute toggle when listening */}
+        {state === "listening" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleMuteToggle}
+            className="h-8 w-8"
+          >
+            {isMuted ? (
+              <VolumeX className="h-4 w-4 text-red-500" />
+            ) : (
+              <Volume2 className="h-4 w-4" />
+            )}
+          </Button>
+        )}
 
-      {/* Error message */}
-      {error && state === "error" && (
-        <span className="text-xs text-red-500">{error}</span>
+        {/* Error message */}
+        {error && state === "error" && (
+          <span className="text-xs text-red-500">{error}</span>
+        )}
+      </div>
+
+      {/* Waveform visualization - shows below button when listening */}
+      {state === "listening" && (
+        <AudioWaveform analyserRef={analyserRef} />
       )}
     </div>
   );
