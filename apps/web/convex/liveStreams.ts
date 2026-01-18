@@ -3,20 +3,19 @@ import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 
 // ============================================
-// FEATURE FLAG HELPERS
+// FEATURE FLAG HELPERS (Live streaming now enabled for all teams)
 // ============================================
 
 /**
  * Check if a team has live streaming enabled
+ * Now always returns true - live streaming is available to everyone
  */
 export const isLiveStreamingEnabled = query({
   args: {
     teamId: v.string(),
   },
-  handler: async (ctx, args) => {
-    const teamIdTyped = args.teamId as Id<"teams">;
-    const team = await ctx.db.get(teamIdTyped);
-    return team?.betaFeatures?.includes("liveStreaming") ?? false;
+  handler: async () => {
+    return true; // Live streaming enabled for all teams
   },
 });
 
@@ -26,7 +25,7 @@ export const isLiveStreamingEnabled = query({
 
 /**
  * Create a new live stream record when a call starts
- * Called by audio processor when closer connects AND team has live streaming enabled
+ * Called by audio processor when closer connects
  */
 export const createLiveStream = mutation({
   args: {
@@ -36,14 +35,7 @@ export const createLiveStream = mutation({
     closerId: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check if team has live streaming enabled
     const teamIdTyped = args.teamId as Id<"teams">;
-    const team = await ctx.db.get(teamIdTyped);
-
-    if (!team?.betaFeatures?.includes("liveStreaming")) {
-      console.log(`[liveStreams] Team ${args.teamId} does not have liveStreaming enabled`);
-      return null;
-    }
 
     // Check if a stream already exists for this visitorCallId
     const existing = await ctx.db

@@ -194,10 +194,9 @@ interface LiveCallCardProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
   visitorCallId?: string;
-  hasLiveStreaming?: boolean;
 }
 
-function LiveCallCard({ call, isExpanded, onToggleExpand, visitorCallId, hasLiveStreaming }: LiveCallCardProps) {
+function LiveCallCard({ call, isExpanded, onToggleExpand, visitorCallId }: LiveCallCardProps) {
   const [elapsed, setElapsed] = useState(0);
 
   // Update elapsed time every second
@@ -275,8 +274,8 @@ function LiveCallCard({ call, isExpanded, onToggleExpand, visitorCallId, hasLive
               </div>
             </div>
 
-            {/* Listen Live Button - only show if feature enabled and stream exists */}
-            {hasLiveStreaming && visitorCallId && (
+            {/* Listen Live Button - show if stream exists */}
+            {visitorCallId && (
               <ListenLiveButton
                 visitorCallId={visitorCallId}
                 callStatus={call.status}
@@ -429,13 +428,10 @@ export default function LiveCallsPage() {
     team?._id ? { teamId: team._id } : "skip"
   ) as LiveCall[] | undefined;
 
-  // Check if team has live streaming feature enabled
-  const hasLiveStreaming = team?.betaFeatures?.includes("liveStreaming") ?? false;
-
-  // Query active live streams to get visitorCallIds (only if feature is enabled)
+  // Query active live streams to get visitorCallIds
   const activeLiveStreams = useQuery(
     api.liveStreams.getActiveLiveStreams,
-    hasLiveStreaming && team?._id ? { teamId: team._id } : "skip"
+    team?._id ? { teamId: team._id } : "skip"
   );
 
   // Create a map of callId -> visitorCallId for quick lookup
@@ -480,7 +476,6 @@ export default function LiveCallsPage() {
                 isExpanded={expandedCallId === call._id}
                 onToggleExpand={() => handleToggleExpand(call._id)}
                 visitorCallId={visitorCallIdMap.get(call._id)}
-                hasLiveStreaming={hasLiveStreaming}
               />
             ))}
           </div>
