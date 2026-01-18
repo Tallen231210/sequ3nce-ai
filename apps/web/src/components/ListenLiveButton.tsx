@@ -135,9 +135,14 @@ export function ListenLiveButton({
 
     try {
       // Initialize Audio Context
+      // Note: Browser may not honor the requested sample rate and use system default instead
       audioContextRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)({
         sampleRate: SAMPLE_RATE,
       });
+
+      // Log actual sample rate for debugging
+      const actualSampleRate = audioContextRef.current.sampleRate;
+      console.log(`[ListenLive] AudioContext created - requested: ${SAMPLE_RATE}Hz, actual: ${actualSampleRate}Hz`);
 
       // Create gain node for volume control
       gainNodeRef.current = audioContextRef.current.createGain();
@@ -179,11 +184,24 @@ export function ListenLiveButton({
         }
       };
 
+      // Debug counter for logging
+      let audioChunkCount = 0;
+
       ws.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
           // Binary audio data - stereo interleaved Int16
           const stereoData = int16StereoToFloat32(event.data);
           audioQueueRef.current.push(stereoData);
+
+          // Log first few chunks for debugging
+          audioChunkCount++;
+          if (audioChunkCount <= 5) {
+            const bytesReceived = event.data.byteLength;
+            const framesDecoded = stereoData.left.length;
+            const durationMs = (framesDecoded / SAMPLE_RATE) * 1000;
+            console.log(`[ListenLive] Chunk #${audioChunkCount}: ${bytesReceived} bytes → ${framesDecoded} frames (${durationMs.toFixed(1)}ms at ${SAMPLE_RATE}Hz)`);
+          }
+
           processAudioQueue();
         } else {
           // JSON message
