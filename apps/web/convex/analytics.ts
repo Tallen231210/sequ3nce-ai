@@ -103,9 +103,9 @@ export const getAnalyticsSummary = query({
     // Left on Table: sum of lost + follow_up deals (by objection)
     const lostOrFollowUpCalls = calls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
     const leftOnTable = lostOrFollowUpCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
-    // Close Rate: exclude no-shows from denominator
-    const callsExcludingNoShows = calls.filter((c) => c.outcome !== "no_show");
-    const closeRate = callsExcludingNoShows.length > 0 ? (closedCalls.length / callsExcludingNoShows.length) * 100 : 0;
+    // Close Rate: only count calls with an outcome set (exclude null outcomes and no-shows)
+    const callsWithOutcome = calls.filter((c) => c.outcome != null && c.outcome !== "no_show");
+    const closeRate = callsWithOutcome.length > 0 ? (closedCalls.length / callsWithOutcome.length) * 100 : 0;
 
     // Calculate previous period metrics (same logic as current)
     const prevTotalPitched = prevCalls.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
@@ -113,8 +113,8 @@ export const getAnalyticsSummary = query({
     const prevTotalClosed = prevClosedCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
     const prevLostOrFollowUpCalls = prevCalls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
     const prevLeftOnTable = prevLostOrFollowUpCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0);
-    const prevCallsExcludingNoShows = prevCalls.filter((c) => c.outcome !== "no_show");
-    const prevCloseRate = prevCallsExcludingNoShows.length > 0 ? (prevClosedCalls.length / prevCallsExcludingNoShows.length) * 100 : 0;
+    const prevCallsWithOutcome = prevCalls.filter((c) => c.outcome != null && c.outcome !== "no_show");
+    const prevCloseRate = prevCallsWithOutcome.length > 0 ? (prevClosedCalls.length / prevCallsWithOutcome.length) * 100 : 0;
 
     // Calculate trends
     const pitchedTrend = prevTotalPitched > 0 ? ((totalPitched - prevTotalPitched) / prevTotalPitched) * 100 : 0;
