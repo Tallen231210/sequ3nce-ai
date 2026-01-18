@@ -16,8 +16,9 @@ interface ListenLiveButtonProps {
 }
 
 // Audio playback configuration
-const SAMPLE_RATE = 48000; // Match the audio processor's sample rate
-const BUFFER_SIZE = 4096; // Size of audio buffer for playback
+// Must match Swift AudioFormat: 48kHz, 16-bit Int16, stereo interleaved (L=Mic, R=System)
+const SAMPLE_RATE = 48000;
+const CHANNELS = 2; // Stereo: Left=Mic, Right=System
 
 export function ListenLiveButton({
   visitorCallId,
@@ -34,7 +35,7 @@ export function ListenLiveButton({
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const audioQueueRef = useRef<Float32Array[]>([]);
+  const audioQueueRef = useRef<{ left: Float32Array; right: Float32Array }[]>([]);
   const isPlayingRef = useRef(false);
   const nextPlayTimeRef = useRef(0);
 
@@ -53,34 +54,44 @@ export function ListenLiveButton({
   }, [volume, isMuted]);
 
   /**
-   * Convert Int16 PCM buffer to Float32 for Web Audio API
+   * Convert Int16 stereo interleaved PCM buffer to separate Float32 channels
+   * Input format: [L0, R0, L1, R1, ...] as Int16
+   * Returns: { left: Float32Array, right: Float32Array }
    */
-  const int16ToFloat32 = useCallback((buffer: ArrayBuffer): Float32Array => {
+  const int16StereoToFloat32 = useCallback((buffer: ArrayBuffer): { left: Float32Array; right: Float32Array } => {
     const int16Array = new Int16Array(buffer);
-    const float32Array = new Float32Array(int16Array.length);
+    const frameCount = int16Array.length / CHANNELS;
 
-    for (let i = 0; i < int16Array.length; i++) {
-      // Convert Int16 (-32768 to 32767) to Float32 (-1 to 1)
-      float32Array[i] = int16Array[i] / 32768;
+    const leftChannel = new Float32Array(frameCount);
+    const rightChannel = new Float32Array(frameCount);
+
+    for (let i = 0; i < frameCount; i++) {
+      // Interleaved: [L, R, L, R, ...]
+      // Left channel (Mic) is at even indices, Right channel (System) is at odd indices
+      leftChannel[i] = int16Array[i * 2] / 32768;
+      rightChannel[i] = int16Array[i * 2 + 1] / 32768;
     }
 
-    return float32Array;
+    return { left: leftChannel, right: rightChannel };
   }, []);
 
   /**
-   * Schedule audio buffer for playback
+   * Schedule stereo audio buffer for playback
    */
-  const scheduleAudioPlayback = useCallback((audioData: Float32Array) => {
+  const scheduleAudioPlayback = useCallback((left: Float32Array, right: Float32Array) => {
     if (!audioContextRef.current || !gainNodeRef.current) return;
 
     const audioContext = audioContextRef.current;
     const currentTime = audioContext.currentTime;
 
-    // Create audio buffer
-    const audioBuffer = audioContext.createBuffer(1, audioData.length, SAMPLE_RATE);
-    // Use getChannelData to get a reference and copy manually
-    const channelData = audioBuffer.getChannelData(0);
-    channelData.set(audioData);
+    // Create stereo audio buffer
+    const audioBuffer = audioContext.createBuffer(CHANNELS, left.length, SAMPLE_RATE);
+
+    // Copy channel data
+    const leftChannelData = audioBuffer.getChannelData(0);
+    const rightChannelData = audioBuffer.getChannelData(1);
+    leftChannelData.set(left);
+    rightChannelData.set(right);
 
     // Create buffer source
     const source = audioContext.createBufferSource();
@@ -106,7 +117,7 @@ export function ListenLiveButton({
     while (audioQueueRef.current.length > 0) {
       const audioData = audioQueueRef.current.shift();
       if (audioData) {
-        scheduleAudioPlayback(audioData);
+        scheduleAudioPlayback(audioData.left, audioData.right);
       }
     }
 
@@ -170,9 +181,9 @@ export function ListenLiveButton({
 
       ws.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
-          // Binary audio data
-          const float32Data = int16ToFloat32(event.data);
-          audioQueueRef.current.push(float32Data);
+          // Binary audio data - stereo interleaved Int16
+          const stereoData = int16StereoToFloat32(event.data);
+          audioQueueRef.current.push(stereoData);
           processAudioQueue();
         } else {
           // JSON message
@@ -217,7 +228,7 @@ export function ListenLiveButton({
       setError(err instanceof Error ? err.message : "Failed to connect");
       setState("error");
     }
-  }, [state, visitorCallId, managerId, volume, isMuted, int16ToFloat32, processAudioQueue]);
+  }, [state, visitorCallId, managerId, volume, isMuted, int16StereoToFloat32, processAudioQueue]);
 
   /**
    * Disconnect from the audio stream
