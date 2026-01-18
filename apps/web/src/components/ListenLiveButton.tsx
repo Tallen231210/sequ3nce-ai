@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 // Connection states
 type ConnectionState = "idle" | "connecting" | "listening" | "error" | "ended";
 
-// Audio Waveform Visualization Component - Option 4 style (bars from bottom)
+// Audio Waveform Visualization Component - Mirrored/centered style
 function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
-  const [bars, setBars] = useState<number[]>(Array(20).fill(0.1));
+  const [bars, setBars] = useState<number[]>(Array(10).fill(0.1));
   const animationRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -18,28 +18,33 @@ function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserN
 
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
-    const barCount = 20;
+    const barCount = 10; // We'll mirror these to make 20 total
 
     const updateBars = () => {
       animationRef.current = requestAnimationFrame(updateBars);
 
       analyser.getByteFrequencyData(dataArray);
 
-      const segmentSize = Math.floor(bufferLength / barCount);
+      // Focus on the voice frequency range (skip very low bass frequencies)
+      // Use frequencies roughly in the 100Hz-4000Hz range where voice is
+      const startBin = Math.floor(bufferLength * 0.05); // Skip lowest 5%
+      const endBin = Math.floor(bufferLength * 0.5); // Use up to 50%
+      const usableRange = endBin - startBin;
+      const segmentSize = Math.floor(usableRange / barCount);
+
       const newBars: number[] = [];
 
       for (let i = 0; i < barCount; i++) {
         let sum = 0;
-        const start = i * segmentSize;
+        const start = startBin + i * segmentSize;
         for (let j = start; j < start + segmentSize; j++) {
           sum += dataArray[j];
         }
         const average = sum / segmentSize;
 
-        // Amplify the signal significantly (3x boost) and use a curve for more dramatic movement
-        // This makes quiet sounds more visible and loud sounds hit the top
+        // Amplify and curve for dramatic movement
         const amplified = Math.min(1, (average / 255) * 3);
-        const curved = Math.pow(amplified, 0.7); // Slight curve to boost lower values
+        const curved = Math.pow(amplified, 0.7);
         newBars.push(Math.max(0.1, curved));
       }
 
@@ -55,9 +60,12 @@ function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserN
     };
   }, [analyserRef]);
 
+  // Mirror the bars: [1,2,3,4,5] becomes [5,4,3,2,1,1,2,3,4,5]
+  const mirroredBars = [...bars].reverse().concat(bars);
+
   return (
     <div className="flex items-end justify-center gap-1 h-12 bg-zinc-100 rounded-lg px-3">
-      {bars.map((v, i) => (
+      {mirroredBars.map((v, i) => (
         <div
           key={i}
           className="w-1.5 rounded-full"
