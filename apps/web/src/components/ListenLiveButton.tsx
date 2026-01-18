@@ -8,6 +8,85 @@ import { cn } from "@/lib/utils";
 // Connection states
 type ConnectionState = "idle" | "connecting" | "listening" | "error" | "ended";
 
+// Audio Waveform Visualization Component
+function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number | null>(null);
+  const barCount = 5;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const analyser = analyserRef.current;
+    if (!canvas || !analyser) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const draw = () => {
+      animationRef.current = requestAnimationFrame(draw);
+
+      analyser.getByteFrequencyData(dataArray);
+
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Calculate average levels for each bar
+      const segmentSize = Math.floor(bufferLength / barCount);
+      const barWidth = 3;
+      const gap = 2;
+      const totalWidth = barCount * barWidth + (barCount - 1) * gap;
+      const startX = (canvas.width - totalWidth) / 2;
+
+      for (let i = 0; i < barCount; i++) {
+        // Get average for this frequency segment
+        let sum = 0;
+        const start = i * segmentSize;
+        for (let j = start; j < start + segmentSize; j++) {
+          sum += dataArray[j];
+        }
+        const average = sum / segmentSize;
+
+        // Normalize to canvas height (with minimum height)
+        const normalizedHeight = Math.max(4, (average / 255) * canvas.height * 0.9);
+
+        // Draw bar with rounded corners
+        const x = startX + i * (barWidth + gap);
+        const y = (canvas.height - normalizedHeight) / 2;
+
+        // Gradient color based on intensity
+        const intensity = average / 255;
+        const green = Math.floor(150 + intensity * 105);
+        ctx.fillStyle = `rgb(34, ${green}, 82)`;
+
+        // Draw rounded rectangle
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, normalizedHeight, 1.5);
+        ctx.fill();
+      }
+    };
+
+    draw();
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [analyserRef, barCount]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={32}
+      height={20}
+      className="inline-block"
+    />
+  );
+}
+
 interface ListenLiveButtonProps {
   visitorCallId: string;
   managerId?: string;
@@ -35,6 +114,7 @@ export function ListenLiveButton({
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const audioQueueRef = useRef<{ left: Float32Array; right: Float32Array }[]>([]);
   const isPlayingRef = useRef(false);
   const nextPlayTimeRef = useRef(0);
@@ -147,10 +227,18 @@ export function ListenLiveButton({
       // Log sample rate (useful for debugging if issues arise)
       console.log(`[ListenLive] AudioContext: ${audioContextRef.current.sampleRate}Hz`);
 
+      // Create analyser node for waveform visualization
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      analyserRef.current.smoothingTimeConstant = 0.8;
+
       // Create gain node for volume control
       gainNodeRef.current = audioContextRef.current.createGain();
       gainNodeRef.current.gain.value = isMuted ? 0 : volume;
-      gainNodeRef.current.connect(audioContextRef.current.destination);
+
+      // Connect: gain -> analyser -> destination
+      gainNodeRef.current.connect(analyserRef.current);
+      analyserRef.current.connect(audioContextRef.current.destination);
 
       // Reset playback timing
       nextPlayTimeRef.current = 0;
@@ -265,6 +353,7 @@ export function ListenLiveButton({
     }
 
     gainNodeRef.current = null;
+    analyserRef.current = null;
     audioQueueRef.current = [];
     isPlayingRef.current = false;
     nextPlayTimeRef.current = 0;
@@ -314,7 +403,7 @@ export function ListenLiveButton({
         disabled={state === "ended"}
         className={cn(
           "gap-2 transition-all",
-          state === "listening" && "bg-green-600 hover:bg-green-700",
+          state === "listening" && "bg-green-600 hover:bg-green-700 shadow-[0_0_15px_rgba(34,197,94,0.4)]",
           state === "error" && "border-red-500 text-red-500"
         )}
       >
@@ -325,8 +414,9 @@ export function ListenLiveButton({
           </>
         ) : state === "listening" ? (
           <>
-            <Square className="h-3 w-3" />
-            Stop Listening
+            <Square className="h-3 w-3 shrink-0" />
+            <AudioWaveform analyserRef={analyserRef} />
+            <span>Stop</span>
           </>
         ) : state === "ended" ? (
           <>
