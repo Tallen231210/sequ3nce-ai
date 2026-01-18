@@ -108,11 +108,8 @@ export function ListenLiveButton({
     // Update next play time
     nextPlayTimeRef.current = startTime + audioBuffer.duration;
 
-    // Log first few playbacks
+    // Track playback count (for potential future debugging)
     playbackCountRef.current++;
-    if (playbackCountRef.current <= 5) {
-      console.log(`[ListenLive] Playback #${playbackCountRef.current}: ${left.length} frames (mono), duration=${audioBuffer.duration.toFixed(3)}s, scheduled at ${startTime.toFixed(3)}s`);
-    }
   }, []);
 
   /**
@@ -147,9 +144,8 @@ export function ListenLiveButton({
       // Don't force sample rate - let browser use system default, Web Audio will resample
       audioContextRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 
-      // Log actual sample rate for debugging
-      const actualSampleRate = audioContextRef.current.sampleRate;
-      console.log(`[ListenLive] AudioContext created at ${actualSampleRate}Hz (audio data is ${SAMPLE_RATE}Hz, will be resampled)`);
+      // Log sample rate (useful for debugging if issues arise)
+      console.log(`[ListenLive] AudioContext: ${audioContextRef.current.sampleRate}Hz`);
 
       // Create gain node for volume control
       gainNodeRef.current = audioContextRef.current.createGain();
@@ -200,13 +196,10 @@ export function ListenLiveButton({
           const stereoData = int16StereoToFloat32(event.data);
           audioQueueRef.current.push(stereoData);
 
-          // Log first 10 chunks for debugging
+          // Log periodically for debugging
           audioChunkCount++;
-          if (audioChunkCount <= 10 || audioChunkCount % 100 === 0) {
-            const bytesReceived = event.data.byteLength;
-            const framesDecoded = stereoData.left.length;
-            const durationMs = (framesDecoded / SAMPLE_RATE) * 1000;
-            console.log(`[ListenLive] Audio chunk #${audioChunkCount}: ${bytesReceived} bytes → ${framesDecoded} stereo frames (${durationMs.toFixed(1)}ms of audio at ${SAMPLE_RATE}Hz)`);
+          if (audioChunkCount === 1) {
+            console.log(`[ListenLive] Receiving audio chunks (${event.data.byteLength} bytes each)`);
           }
 
           processAudioQueue();
