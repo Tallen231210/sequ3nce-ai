@@ -1,90 +1,68 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Headphones, Loader2, Volume2, VolumeX, Square } from "lucide-react";
+import { Mic, Loader2, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Connection states
 type ConnectionState = "idle" | "connecting" | "listening" | "error" | "ended";
 
-// Audio Waveform Visualization Component - Large version below button
+// Audio Waveform Visualization Component - Option 4 style (bars from bottom)
 function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [bars, setBars] = useState<number[]>(Array(20).fill(0.08));
   const animationRef = useRef<number | null>(null);
-  const barCount = 24; // More bars for a fuller look
 
   useEffect(() => {
-    const canvas = canvasRef.current;
     const analyser = analyserRef.current;
-    if (!canvas || !analyser) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!analyser) return;
 
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
+    const barCount = 20;
 
-    const draw = () => {
-      animationRef.current = requestAnimationFrame(draw);
+    const updateBars = () => {
+      animationRef.current = requestAnimationFrame(updateBars);
 
       analyser.getByteFrequencyData(dataArray);
 
-      // Clear canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Calculate bar dimensions
       const segmentSize = Math.floor(bufferLength / barCount);
-      const barWidth = 4;
-      const gap = 3;
-      const totalWidth = barCount * barWidth + (barCount - 1) * gap;
-      const startX = (canvas.width - totalWidth) / 2;
+      const newBars: number[] = [];
 
       for (let i = 0; i < barCount; i++) {
-        // Get average for this frequency segment
         let sum = 0;
         const start = i * segmentSize;
         for (let j = start; j < start + segmentSize; j++) {
           sum += dataArray[j];
         }
         const average = sum / segmentSize;
-
-        // Normalize to canvas height (with minimum height for idle state)
-        const normalizedHeight = Math.max(6, (average / 255) * canvas.height * 0.85);
-
-        // Draw bar centered vertically
-        const x = startX + i * (barWidth + gap);
-        const y = (canvas.height - normalizedHeight) / 2;
-
-        // Green gradient based on intensity
-        const intensity = average / 255;
-        const green = Math.floor(140 + intensity * 115);
-        ctx.fillStyle = `rgb(34, ${green}, 82)`;
-
-        // Draw rounded rectangle
-        ctx.beginPath();
-        ctx.roundRect(x, y, barWidth, normalizedHeight, 2);
-        ctx.fill();
+        // Normalize to 0-1 range with minimum height
+        newBars.push(Math.max(0.08, average / 255));
       }
+
+      setBars(newBars);
     };
 
-    draw();
+    updateBars();
 
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [analyserRef, barCount]);
+  }, [analyserRef]);
 
   return (
-    <div className="mt-2 p-2 bg-zinc-900/90 rounded-lg">
-      <canvas
-        ref={canvasRef}
-        width={180}
-        height={36}
-        className="block"
-      />
+    <div className="flex items-end justify-center gap-0.5 h-12 bg-zinc-100 rounded-lg px-2">
+      {bars.map((v, i) => (
+        <div
+          key={i}
+          className="w-1.5 rounded-full transition-all duration-75"
+          style={{
+            height: `${Math.max(8, v * 100)}%`,
+            background: "linear-gradient(to top, #10b981, #34d399)",
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -393,76 +371,115 @@ export function ListenLiveButton({
     return null;
   }
 
-  // Render based on state
-  const isActive = state === "listening" || state === "connecting";
-
-  return (
-    <div className={cn("flex flex-col", className)}>
-      <div className="flex items-center gap-2">
-        <Button
-        variant={isActive ? "default" : "outline"}
-        size="sm"
+  // Idle state - just show the Listen button
+  if (state === "idle") {
+    return (
+      <button
         onClick={handleClick}
-        disabled={state === "ended"}
         className={cn(
-          "gap-2 transition-all",
-          state === "listening" && "bg-green-600 hover:bg-green-700 shadow-[0_0_15px_rgba(34,197,94,0.4)]",
-          state === "error" && "border-red-500 text-red-500"
+          "px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+          "bg-emerald-500 hover:bg-emerald-600 text-white",
+          className
         )}
       >
-        {state === "connecting" ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Connecting...
-          </>
-        ) : state === "listening" ? (
-          <>
-            <Square className="h-3 w-3" />
-            Stop Listening
-          </>
-        ) : state === "ended" ? (
-          <>
-            <Headphones className="h-4 w-4" />
-            Stream Ended
-          </>
-        ) : state === "error" ? (
-          <>
-            <Headphones className="h-4 w-4" />
-            Retry
-          </>
-        ) : (
-          <>
-            <Headphones className="h-4 w-4" />
-            Listen Live
-          </>
-        )}
-      </Button>
+        Listen Live
+      </button>
+    );
+  }
 
-        {/* Volume/Mute toggle when listening */}
-        {state === "listening" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleMuteToggle}
-            className="h-8 w-8"
+  // Error state
+  if (state === "error") {
+    return (
+      <div className={cn("flex items-center gap-2", className)}>
+        <button
+          onClick={handleClick}
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-red-100 hover:bg-red-200 text-red-700 transition-all"
+        >
+          Retry
+        </button>
+        {error && <span className="text-xs text-red-500">{error}</span>}
+      </div>
+    );
+  }
+
+  // Ended state
+  if (state === "ended") {
+    return (
+      <div className={cn("px-4 py-2 rounded-lg text-sm font-medium bg-zinc-100 text-zinc-500", className)}>
+        Stream Ended
+      </div>
+    );
+  }
+
+  // Connecting or Listening state - show the floating card
+  return (
+    <div className={cn("bg-white rounded-2xl shadow-lg border border-zinc-200 p-4 w-72", className)}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {state === "listening" && (
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+            </span>
+          )}
+          {state === "connecting" && (
+            <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
+          )}
+          <span className={cn(
+            "text-sm font-semibold",
+            state === "listening" ? "text-zinc-900" : "text-zinc-500"
+          )}>
+            {state === "connecting" ? "Connecting..." : "Listening to Call"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {/* Mute toggle */}
+          {state === "listening" && (
+            <button
+              onClick={handleMuteToggle}
+              className="p-1.5 rounded-md hover:bg-zinc-100 transition-colors"
+            >
+              {isMuted ? (
+                <VolumeX className="h-4 w-4 text-red-500" />
+              ) : (
+                <Volume2 className="h-4 w-4 text-zinc-500" />
+              )}
+            </button>
+          )}
+
+          {/* Stop button */}
+          <button
+            onClick={handleClick}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-all duration-200"
           >
-            {isMuted ? (
-              <VolumeX className="h-4 w-4 text-red-500" />
-            ) : (
-              <Volume2 className="h-4 w-4" />
-            )}
-          </Button>
-        )}
-
-        {/* Error message */}
-        {error && state === "error" && (
-          <span className="text-xs text-red-500">{error}</span>
-        )}
+            Stop
+          </button>
+        </div>
       </div>
 
-      {/* Waveform visualization - shows below button when listening */}
-      {state === "listening" && (
+      {/* Waveform */}
+      {state === "listening" ? (
         <AudioWaveform analyserRef={analyserRef} />
+      ) : (
+        <div className="flex items-end justify-center gap-0.5 h-12 bg-zinc-100 rounded-lg px-2">
+          {Array(20).fill(0).map((_, i) => (
+            <div
+              key={i}
+              className="w-1.5 rounded-full bg-zinc-300"
+              style={{ height: "8%" }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Footer */}
+      {state === "listening" && (
+        <div className="flex items-center justify-center gap-2 mt-3 text-xs text-zinc-500">
+          <Mic className="w-3.5 h-3.5" />
+          Real-time audio streaming
+        </div>
       )}
     </div>
   );
