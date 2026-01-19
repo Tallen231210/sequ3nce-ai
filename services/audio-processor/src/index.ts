@@ -126,20 +126,16 @@ wss.on("connection", async (ws, req) => {
           const isReconnect = metadata.isReconnect && metadata.convexCallId;
 
           // Create live stream record if team has live streaming enabled
-          // Skip if this is a reconnection (stream already exists)
-          if (!isReconnect) {
-            createLiveStream(convexCallId!, visitorCallId, metadata.teamId, metadata.closerId)
-              .then((streamId) => {
-                if (streamId) {
-                  logger.info(`[LiveStream] Stream created for call ${visitorCallId}`);
-                }
-              })
-              .catch((err) => {
-                logger.error(`[LiveStream] Failed to create stream: ${err}`);
-              });
-          } else {
-            logger.info(`[LiveStream] Skipping stream creation for reconnect (stream should already exist)`);
-          }
+          // For reconnections, we need to re-create the stream since it was ended when the old connection closed
+          createLiveStream(convexCallId!, visitorCallId, metadata.teamId, metadata.closerId)
+            .then((streamId) => {
+              if (streamId) {
+                logger.info(`[LiveStream] Stream ${isReconnect ? 're-created' : 'created'} for call ${visitorCallId}`);
+              }
+            })
+            .catch((err) => {
+              logger.error(`[LiveStream] Failed to create stream: ${err}`);
+            });
 
           // Send back BOTH the original callId AND the Convex-generated callId
           // Desktop MUST use convexCallId for all subsequent operations
