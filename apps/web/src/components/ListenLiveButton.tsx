@@ -204,7 +204,7 @@ export function ListenLiveButton({
   }, [scheduleAudioPlayback]);
 
   // Ref to always get latest connect function (avoids closure issues in setTimeout)
-  const connectRef = useRef<() => Promise<void>>();
+  const connectRef = useRef<(() => Promise<void>) | null>(null);
 
   /**
    * Attempt to reconnect with exponential backoff
