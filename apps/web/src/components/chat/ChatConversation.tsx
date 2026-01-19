@@ -146,7 +146,7 @@ export function ChatConversation({ closer, onBack }: ChatConversationProps) {
               )}
             />
             <span className="text-xs text-muted-foreground">
-              {closer.isOnCall ? "On call" : "Offline"}
+              {closer.isOnCall ? "On call" : "Not on call"}
             </span>
           </div>
         </div>
