@@ -558,8 +558,24 @@ struct MainRecordingView: View {
         prospectNameSaved = true
         showProspectPrompt = false
 
-        // TODO: Save prospect name to backend
-        // updateProspectName(callId: appState.currentCallId, prospectName: prospectName)
+        // Save prospect name to backend
+        Task {
+            guard let callId = appState.convexCallId else {
+                print("[ContentView] No convexCallId available yet, skipping prospect name update")
+                return
+            }
+
+            do {
+                try await appState.convexService.updateProspectName(
+                    callId: callId,
+                    prospectName: prospectName.trimmingCharacters(in: .whitespaces)
+                )
+                print("[ContentView] Prospect name updated successfully: \(prospectName)")
+            } catch {
+                print("[ContentView] Failed to update prospect name: \(error)")
+                // Don't show error to user - the name will still be saved in post-call questionnaire
+            }
+        }
     }
 
     private func handleLogout() {
