@@ -8,6 +8,28 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.4.9</title>
+            <pubDate>Sat, 18 Jan 2026 14:00:00 +0000</pubDate>
+            <sparkle:version>30</sparkle:version>
+            <sparkle:shortVersionString>1.4.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.4.9</h2>
+                <ul>
+                    <li>Fixed prospect name not showing in Live Calls dashboard</li>
+                    <li>Fixed chat "On call" status indicator</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.4.9/Sequ3nce.zip"
+                length="1707126"
+                type="application/octet-stream"
+                sparkle:edSignature="a3K68A2HodSLnwHHa8so4X8Kc2cjuHlmRvUIN4N1Kj/+Ao/V12u/Gfz42DxnfGe3Y+w1xnuTc5tLTXAZbar9BA=="
+            />
+        </item>
+
+        <!-- v1.4.8 -->
+        <item>
             <title>Version 1.4.8</title>
             <pubDate>Sat, 18 Jan 2026 12:00:00 +0000</pubDate>
             <sparkle:version>28</sparkle:version>
