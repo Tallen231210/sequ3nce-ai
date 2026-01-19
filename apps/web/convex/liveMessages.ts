@@ -272,11 +272,23 @@ export const getClosersWithMessageStatus = query({
   handler: async (ctx, args) => {
     const teamIdTyped = args.teamId as Id<"teams">;
 
-    // Get all closers for the team
+    // Get all closers for the team (only active ones)
     const closers = await ctx.db
       .query("closers")
       .withIndex("by_team", (q) => q.eq("teamId", teamIdTyped))
+      .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
+
+    // Get all active calls for this team to determine who is on a call
+    const activeCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", teamIdTyped).eq("status", "on_call")
+      )
+      .collect();
+
+    // Create a set of closer IDs who are currently on a call
+    const closersOnCall = new Set(activeCalls.map((call) => call.closerId.toString()));
 
     // For each closer, get message stats
     const closersWithStatus = await Promise.all(
@@ -321,7 +333,7 @@ export const getClosersWithMessageStatus = query({
           _id: closer._id,
           name: closer.name,
           email: closer.email,
-          isOnCall: closer.status === "on_call",
+          isOnCall: closersOnCall.has(closer._id.toString()),
           unreadCount: unreadFromCloser.length,
           lastMessage: lastMessage
             ? {
