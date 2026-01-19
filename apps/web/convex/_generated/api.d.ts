@@ -20,6 +20,7 @@ import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
 import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
+import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   highlights: typeof highlights;
   http: typeof http;
+  liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;

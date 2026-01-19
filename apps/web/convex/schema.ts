@@ -65,6 +65,7 @@ export default defineSchema({
     passwordHash: v.optional(v.string()), // Hashed password for desktop app login
     // Calendar integration via ICS feed
     icsUrl: v.optional(v.string()), // ICS feed URL from Google Calendar, Calendly, etc.
+    calendarConnected: v.optional(v.boolean()), // Legacy field - kept for backward compatibility
     calendarConnectedAt: v.optional(v.number()), // When calendar was connected
     calendarLastSyncAt: v.optional(v.number()), // Last successful sync timestamp
     invitedAt: v.number(),
@@ -439,4 +440,33 @@ export default defineSchema({
     .index("by_visitor_call_id", ["visitorCallId"])
     .index("by_team_status", ["teamId", "status"])
     .index("by_closer_status", ["closerId", "status"]),
+
+  // Live Messages (real-time chat between managers and closers)
+  liveMessages: defineTable({
+    teamId: v.id("teams"),
+
+    // Sender info (can be manager OR closer)
+    senderType: v.string(), // "manager" | "closer"
+    senderUserId: v.optional(v.id("users")), // Set if sender is a manager
+    senderCloserId: v.optional(v.id("closers")), // Set if sender is a closer
+    senderName: v.string(), // Denormalized for easy display
+
+    // Recipient info (can be manager OR closer)
+    recipientType: v.string(), // "manager" | "closer"
+    recipientUserId: v.optional(v.id("users")), // Set if recipient is a manager
+    recipientCloserId: v.optional(v.id("closers")), // Set if recipient is a closer
+
+    // Message content
+    message: v.string(),
+    isRead: v.boolean(),
+
+    // Timestamps
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_recipient_closer", ["recipientCloserId", "isRead"])
+    .index("by_recipient_user", ["recipientUserId", "isRead"])
+    .index("by_sender_closer", ["senderCloserId"])
+    .index("by_sender_user", ["senderUserId"]),
 });

@@ -16,6 +16,10 @@
 		10D17FD82F0F5F3A006686F2 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 10D17FD72F0F5F3A006686F2 /* Sparkle */; };
 		10D17FDA2F11B8CE006686F2 /* RolePlayRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FD92F11B8CE006686F2 /* RolePlayRoomView.swift */; };
 		10D17FDC2F12A000006686F2 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FDB2F12A000006686F2 /* ScheduleView.swift */; };
+		10D17FDC2F1DB286006686F2 /* MessagingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FDB2F1DB286006686F2 /* MessagingState.swift */; };
+		10D17FDE2F1DB299006686F2 /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FDD2F1DB299006686F2 /* ChatModels.swift */; };
+		10D17FE02F1DB2C7006686F2 /* ChatPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FDF2F1DB2C7006686F2 /* ChatPanelView.swift */; };
+		10D17FE22F1DB2D4006686F2 /* MessageNotificationBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FE12F1DB2D3006686F2 /* MessageNotificationBanner.swift */; };
 		10EB31152F0F03BA00665CB6 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 10EB31142F0F03BA00665CB6 /* Starscream */; };
 		10EB31172F0F051100665CB6 /* StarscreamWebSocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EB31162F0F051100665CB6 /* StarscreamWebSocketService.swift */; };
 		10EB31192F0F09D500665CB6 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EB31182F0F09D500665CB6 /* SystemAudioCapture.swift */; };
@@ -36,6 +40,10 @@
 		10D17FD42F0F5C65006686F2 /* release.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = release.sh; sourceTree = "<group>"; };
 		10D17FD92F11B8CE006686F2 /* RolePlayRoomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RolePlayRoomView.swift; sourceTree = "<group>"; };
 		10D17FDB2F12A000006686F2 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
+		10D17FDB2F1DB286006686F2 /* MessagingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingState.swift; sourceTree = "<group>"; };
+		10D17FDD2F1DB299006686F2 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
+		10D17FDF2F1DB2C7006686F2 /* ChatPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanelView.swift; sourceTree = "<group>"; };
+		10D17FE12F1DB2D3006686F2 /* MessageNotificationBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageNotificationBanner.swift; sourceTree = "<group>"; };
 		10EB31162F0F051100665CB6 /* StarscreamWebSocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarscreamWebSocketService.swift; sourceTree = "<group>"; };
 		10EB31182F0F09D500665CB6 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
 		A1000001111111110000000A /* Sequ3nceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sequ3nceApp.swift; sourceTree = "<group>"; };
@@ -96,6 +104,8 @@
 		A100000B111111110000000A /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				10D17FE12F1DB2D3006686F2 /* MessageNotificationBanner.swift */,
+				10D17FDF2F1DB2C7006686F2 /* ChatPanelView.swift */,
 				10D17FDB2F12A000006686F2 /* ScheduleView.swift */,
 				10D17FD92F11B8CE006686F2 /* RolePlayRoomView.swift */,
 				10D17FD22F0F33DB006686F2 /* TrainingView.swift */,
@@ -111,6 +121,7 @@
 		A100000C111111110000000A /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				10D17FDB2F1DB286006686F2 /* MessagingState.swift */,
 				10D17FCA2F0F2A21006686F2 /* AmmoPanelState.swift */,
 				10D17FC22F0F2270006686F2 /* WindowManager.swift */,
 				10EB31182F0F09D500665CB6 /* SystemAudioCapture.swift */,
@@ -125,6 +136,7 @@
 		A100000D111111110000000A /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				10D17FDD2F1DB299006686F2 /* ChatModels.swift */,
 				10D17FC82F0F2A08006686F2 /* AmmoModels.swift */,
 			);
 			path = Models;
@@ -243,10 +255,14 @@
 				10D17FC92F0F2A08006686F2 /* AmmoModels.swift in Sources */,
 				A1000020211111110000000A /* AudioCaptureService.swift in Sources */,
 				A1000021211111110000000A /* WebSocketService.swift in Sources */,
+				10D17FE22F1DB2D4006686F2 /* MessageNotificationBanner.swift in Sources */,
 				10D17FDA2F11B8CE006686F2 /* RolePlayRoomView.swift in Sources */,
 				10EB31172F0F051100665CB6 /* StarscreamWebSocketService.swift in Sources */,
 				A1000022211111110000000A /* ConvexService.swift in Sources */,
 				10D17FD12F0F33D2006686F2 /* AmmoPanelView.swift in Sources */,
+				10D17FDC2F1DB286006686F2 /* MessagingState.swift in Sources */,
+				10D17FDE2F1DB299006686F2 /* ChatModels.swift in Sources */,
+				10D17FE02F1DB2C7006686F2 /* ChatPanelView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

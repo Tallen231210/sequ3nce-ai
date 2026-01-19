@@ -189,6 +189,15 @@ struct MainRecordingView: View {
                             .foregroundColor(Color(white: 0.6))
                     }
                     .buttonStyle(.plain)
+                    .padding(.trailing, 8)
+
+                    // Chat messages button
+                    ChatIconButton(
+                        unreadCount: appState.messagingState.unreadCount,
+                        action: {
+                            windowManager.toggleChatPanel(messagingState: appState.messagingState)
+                        }
+                    )
                     .padding(.trailing, 12)
 
                     Button("Sign out") {
@@ -414,6 +423,26 @@ struct MainRecordingView: View {
                         .frame(height: 1),
                     alignment: .top
                 )
+            }
+
+            // Message notification banner overlay
+            if appState.messagingState.showNotificationBanner,
+               let message = appState.messagingState.latestUnreadMessage {
+                VStack {
+                    MessageNotificationBanner(
+                        message: message,
+                        onView: {
+                            appState.messagingState.dismissNotificationBanner()
+                            windowManager.openChatPanel(messagingState: appState.messagingState)
+                        },
+                        onDismiss: {
+                            appState.messagingState.dismissNotificationBanner()
+                        }
+                    )
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.3), value: appState.messagingState.showNotificationBanner)
             }
 
             // Settings Modal

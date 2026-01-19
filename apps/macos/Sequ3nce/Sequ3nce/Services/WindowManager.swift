@@ -17,11 +17,13 @@ class WindowManager: ObservableObject {
     private var trainingWindow: NSWindow?
     private var rolePlayRoomWindow: NSWindow?
     private var scheduleWindow: NSWindow?
+    private var chatPanelWindow: NSWindow?
 
     @Published var isAmmoPanelVisible = false
     @Published var isTrainingVisible = false
     @Published var isRolePlayRoomVisible = false
     @Published var isScheduleVisible = false
+    @Published var isChatPanelVisible = false
 
     private init() {}
 
@@ -249,5 +251,76 @@ class WindowManager: ObservableObject {
         scheduleWindow?.close()
         scheduleWindow = nil
         isScheduleVisible = false
+    }
+
+    // MARK: - Chat Panel Window
+
+    func toggleChatPanel(messagingState: MessagingState) {
+        if isChatPanelVisible {
+            closeChatPanel()
+        } else {
+            openChatPanel(messagingState: messagingState)
+        }
+    }
+
+    func openChatPanel(messagingState: MessagingState) {
+        guard chatPanelWindow == nil else {
+            chatPanelWindow?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // Mark as open in messaging state
+        messagingState.openChatPanel()
+
+        let contentView = ChatPanelView(messagingState: messagingState)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 450),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "Team Messages"
+        window.contentView = NSHostingView(rootView: contentView)
+        window.isReleasedWhenClosed = false
+        window.level = .floating // Always on top
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.appearance = NSAppearance(named: .aqua) // Force light mode title bar
+
+        // Position to the left of the main window
+        if let mainWindow = NSApp.mainWindow {
+            let mainFrame = mainWindow.frame
+            window.setFrameOrigin(NSPoint(
+                x: mainFrame.minX - 360,
+                y: mainFrame.midY - 225
+            ))
+        } else {
+            window.center()
+        }
+
+        window.makeKeyAndOrderFront(nil)
+
+        // Watch for window close
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.chatPanelWindow = nil
+                self?.isChatPanelVisible = false
+                messagingState.closeChatPanel()
+            }
+        }
+
+        chatPanelWindow = window
+        isChatPanelVisible = true
+    }
+
+    func closeChatPanel() {
+        chatPanelWindow?.close()
+        chatPanelWindow = nil
+        isChatPanelVisible = false
     }
 }

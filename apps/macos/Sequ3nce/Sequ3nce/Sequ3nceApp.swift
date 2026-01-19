@@ -103,6 +103,9 @@ class AppState: ObservableObject {
     let webSocketService = StarscreamWebSocketService()  // Using Starscream for RFC 6455 compliance
     let convexService = ConvexService()
 
+    // Messaging state
+    let messagingState = MessagingState()
+
     // Timer for duration tracking
     private var durationTimer: Timer?
     private var audioLevelTimer: Timer?
@@ -138,6 +141,13 @@ class AppState: ObservableObject {
             self.closerInfo = savedCloser
             self.isAuthenticated = true
             print("[AppState] Restored session for \(savedCloser.name)")
+
+            // Start messaging polling for restored session
+            messagingState.startPolling(
+                closerId: savedCloser.closerId,
+                teamId: savedCloser.teamId,
+                closerName: savedCloser.name
+            )
         }
     }
 
@@ -176,9 +186,19 @@ class AppState: ObservableObject {
         self.closerInfo = closerInfo
         self.isAuthenticated = true
         saveSession()
+
+        // Start messaging polling
+        messagingState.startPolling(
+            closerId: closerInfo.closerId,
+            teamId: closerInfo.teamId,
+            closerName: closerInfo.name
+        )
     }
 
     func logout() {
+        // Stop messaging polling
+        messagingState.stopPolling()
+
         isAuthenticated = false
         closerInfo = nil
         stopRecording()

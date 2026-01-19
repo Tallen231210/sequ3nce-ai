@@ -799,4 +799,126 @@ class ConvexService {
             throw ConvexError.serverError("Failed to get calendar events")
         }
     }
+
+    // MARK: - Live Messaging
+
+    /// Get all messages for a closer
+    func getMessagesForCloser(closerId: String, limit: Int? = nil) async throws -> [ChatMessage] {
+        var components = URLComponents(string: "\(baseURL)/getMessagesForCloser")!
+        var queryItems = [URLQueryItem(name: "closerId", value: closerId)]
+        if let limit = limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        }
+        components.queryItems = queryItems
+
+        let (data, response) = try await session.data(from: components.url!)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let decoder = JSONDecoder()
+            return try decoder.decode([ChatMessage].self, from: data)
+        } else {
+            throw ConvexError.serverError("Failed to get messages")
+        }
+    }
+
+    /// Get unread message count for a closer
+    func getUnreadCountForCloser(closerId: String) async throws -> Int {
+        var components = URLComponents(string: "\(baseURL)/getUnreadCountForCloser")!
+        components.queryItems = [URLQueryItem(name: "closerId", value: closerId)]
+
+        let (data, response) = try await session.data(from: components.url!)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let decoder = JSONDecoder()
+            let result = try decoder.decode(UnreadCountResponse.self, from: data)
+            return result.count
+        } else {
+            throw ConvexError.serverError("Failed to get unread count")
+        }
+    }
+
+    /// Get latest unread message for notification banner
+    func getLatestUnreadForCloser(closerId: String) async throws -> LatestUnreadMessage? {
+        var components = URLComponents(string: "\(baseURL)/getLatestUnreadForCloser")!
+        components.queryItems = [URLQueryItem(name: "closerId", value: closerId)]
+
+        let (data, response) = try await session.data(from: components.url!)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            // Check if response is null
+            if let jsonString = String(data: data, encoding: .utf8),
+               jsonString == "null" || jsonString.isEmpty {
+                return nil
+            }
+            let decoder = JSONDecoder()
+            return try decoder.decode(LatestUnreadMessage.self, from: data)
+        } else {
+            throw ConvexError.serverError("Failed to get latest unread")
+        }
+    }
+
+    /// Send a message from a closer to a manager (broadcast to all team managers)
+    func sendMessageFromCloser(teamId: String, closerId: String, closerName: String, message: String) async throws {
+        let url = URL(string: "\(baseURL)/sendMessage")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "teamId": teamId,
+            "senderType": "closer",
+            "senderCloserId": closerId,
+            "senderName": closerName,
+            "recipientType": "manager", // Managers will see messages from closers
+            "message": message
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(SendMessageResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to send message")
+        }
+    }
+
+    /// Mark all messages as read for a closer
+    func markAllAsReadForCloser(closerId: String) async throws {
+        let url = URL(string: "\(baseURL)/markAllAsReadForCloser")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to mark messages as read")
+        }
+    }
 }

@@ -2351,4 +2351,324 @@ http.route({
   }),
 });
 
+// ============================================
+// LIVE MESSAGING ENDPOINTS (for desktop app and web dashboard)
+// ============================================
+
+// GET endpoint to get messages for a closer (for desktop app polling)
+http.route({
+  path: "/getMessagesForCloser",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const closerId = url.searchParams.get("closerId");
+    const limitParam = url.searchParams.get("limit");
+
+    if (!closerId) {
+      return new Response(JSON.stringify({ error: "closerId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const messages = await ctx.runQuery(api.liveMessages.getMessagesForCloser, {
+        closerId,
+        limit: limitParam ? parseInt(limitParam, 10) : undefined,
+      });
+
+      return new Response(JSON.stringify(messages || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting messages for closer:", error);
+      return new Response(JSON.stringify({ error: "Failed to get messages" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getMessagesForCloser
+http.route({
+  path: "/getMessagesForCloser",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to get unread count for a closer (for badge on chat icon)
+http.route({
+  path: "/getUnreadCountForCloser",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const closerId = url.searchParams.get("closerId");
+
+    if (!closerId) {
+      return new Response(JSON.stringify({ error: "closerId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const result = await ctx.runQuery(api.liveMessages.getUnreadCountForCloser, {
+        closerId,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting unread count:", error);
+      return new Response(JSON.stringify({ error: "Failed to get unread count" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getUnreadCountForCloser
+http.route({
+  path: "/getUnreadCountForCloser",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to get latest unread message for notification banner
+http.route({
+  path: "/getLatestUnreadForCloser",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const closerId = url.searchParams.get("closerId");
+
+    if (!closerId) {
+      return new Response(JSON.stringify({ error: "closerId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const message = await ctx.runQuery(api.liveMessages.getLatestUnreadForCloser, {
+        closerId,
+      });
+
+      return new Response(JSON.stringify(message), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting latest unread:", error);
+      return new Response(JSON.stringify({ error: "Failed to get latest unread" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getLatestUnreadForCloser
+http.route({
+  path: "/getLatestUnreadForCloser",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to send a message (from closer or manager)
+http.route({
+  path: "/sendMessage",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const {
+        teamId,
+        senderType,
+        senderUserId,
+        senderCloserId,
+        senderName,
+        recipientType,
+        recipientUserId,
+        recipientCloserId,
+        message,
+      } = body;
+
+      if (!teamId || !senderType || !senderName || !recipientType || !message) {
+        return new Response(JSON.stringify({ error: "Missing required fields" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const messageId = await ctx.runMutation(api.liveMessages.sendMessage, {
+        teamId,
+        senderType,
+        senderUserId,
+        senderCloserId,
+        senderName,
+        recipientType,
+        recipientUserId,
+        recipientCloserId,
+        message,
+      });
+
+      return new Response(JSON.stringify({ success: true, messageId }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error sending message:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to send message";
+      return new Response(JSON.stringify({ error: errorMessage }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for sendMessage
+http.route({
+  path: "/sendMessage",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to mark all messages as read for a closer (when chat panel opens)
+http.route({
+  path: "/markAllAsReadForCloser",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId } = body;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.liveMessages.markAllAsReadForCloser, {
+        closerId,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error marking messages as read:", error);
+      return new Response(JSON.stringify({ error: "Failed to mark as read" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for markAllAsReadForCloser
+http.route({
+  path: "/markAllAsReadForCloser",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;
