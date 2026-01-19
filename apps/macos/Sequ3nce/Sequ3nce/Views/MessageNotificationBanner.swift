@@ -72,7 +72,7 @@ struct MessageNotificationBanner: View {
                 .stroke(Color.blue.opacity(0.3), lineWidth: 1)
         )
         .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .padding(.top, 44) // Below title bar (32px) + spacing
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
