@@ -869,8 +869,8 @@ class ConvexService {
         }
     }
 
-    /// Send a message from a closer to a specific manager
-    func sendMessageFromCloser(teamId: String, closerId: String, closerName: String, recipientUserId: String, message: String) async throws {
+    /// Send a message from a closer to the team (all managers can see it)
+    func sendMessageFromCloser(teamId: String, closerId: String, closerName: String, message: String) async throws {
         let url = URL(string: "\(baseURL)/sendMessage")!
 
         var request = URLRequest(url: url)
@@ -883,7 +883,6 @@ class ConvexService {
             "senderCloserId": closerId,
             "senderName": closerName,
             "recipientType": "manager",
-            "recipientUserId": recipientUserId,
             "message": message
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

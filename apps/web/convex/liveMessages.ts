@@ -114,25 +114,24 @@ export const markAllAsReadForCloser = mutation({
 });
 
 /**
- * Mark all unread messages for a manager from a specific closer as read
- * Used when manager opens conversation with a specific closer
+ * Mark all unread messages from a specific closer as read
+ * Simplified: Marks all messages from closer as read (team-wide)
  */
 export const markConversationAsRead = mutation({
   args: {
-    userId: v.string(), // Manager's user ID
+    userId: v.string(), // Manager's user ID (kept for API compatibility)
     closerId: v.string(), // The closer they're chatting with
   },
   handler: async (ctx, args) => {
-    const userIdTyped = args.userId as Id<"users">;
     const closerIdTyped = args.closerId as Id<"closers">;
 
-    // Get all unread messages FROM this closer TO this manager
+    // Get all unread messages FROM this closer
     const unreadMessages = await ctx.db
       .query("liveMessages")
-      .withIndex("by_recipient_user", (q) =>
-        q.eq("recipientUserId", userIdTyped).eq("isRead", false)
+      .withIndex("by_sender_closer", (q) =>
+        q.eq("senderCloserId", closerIdTyped)
       )
-      .filter((q) => q.eq(q.field("senderCloserId"), closerIdTyped))
+      .filter((q) => q.eq(q.field("isRead"), false))
       .collect();
 
     const now = Date.now();
@@ -146,7 +145,7 @@ export const markConversationAsRead = mutation({
       markedCount++;
     }
 
-    console.log(`[liveMessages] Marked ${markedCount} messages as read for manager ${args.userId} from closer ${args.closerId}`);
+    console.log(`[liveMessages] Marked ${markedCount} messages as read from closer ${args.closerId}`);
     return { success: true, markedCount };
   },
 });
@@ -193,7 +192,6 @@ export const getMessagesForCloser = query({
     return allMessages.map((msg) => ({
       _id: msg._id,
       senderType: msg.senderType,
-      senderUserId: msg.senderUserId, // Include manager's userId for replies
       senderName: msg.senderName,
       message: msg.message,
       isRead: msg.isRead,
@@ -264,15 +262,15 @@ export const getLatestUnreadForCloser = query({
 /**
  * Get all closers for a team with their message status
  * Shows unread count and last message preview for each closer
+ * Simplified: Closer messages go to the whole team, not specific managers
  */
 export const getClosersWithMessageStatus = query({
   args: {
     teamId: v.string(),
-    userId: v.string(), // Manager's user ID
+    userId: v.string(), // Manager's user ID (kept for API compatibility)
   },
   handler: async (ctx, args) => {
     const teamIdTyped = args.teamId as Id<"teams">;
-    const userIdTyped = args.userId as Id<"users">;
 
     // Get all closers for the team
     const closers = await ctx.db
@@ -283,22 +281,21 @@ export const getClosersWithMessageStatus = query({
     // For each closer, get message stats
     const closersWithStatus = await Promise.all(
       closers.map(async (closer) => {
-        // Get unread messages FROM this closer TO the manager
+        // Get unread messages FROM this closer (to the team)
         const unreadFromCloser = await ctx.db
           .query("liveMessages")
-          .withIndex("by_recipient_user", (q) =>
-            q.eq("recipientUserId", userIdTyped).eq("isRead", false)
+          .withIndex("by_sender_closer", (q) =>
+            q.eq("senderCloserId", closer._id)
           )
-          .filter((q) => q.eq(q.field("senderCloserId"), closer._id))
+          .filter((q) => q.eq(q.field("isRead"), false))
           .collect();
 
-        // Get the most recent message in the conversation (either direction)
+        // Get the most recent message involving this closer (either direction)
         const recentFromCloser = await ctx.db
           .query("liveMessages")
           .withIndex("by_sender_closer", (q) =>
             q.eq("senderCloserId", closer._id)
           )
-          .filter((q) => q.eq(q.field("recipientUserId"), userIdTyped))
           .order("desc")
           .first();
 
@@ -307,11 +304,10 @@ export const getClosersWithMessageStatus = query({
           .withIndex("by_recipient_closer", (q) =>
             q.eq("recipientCloserId", closer._id)
           )
-          .filter((q) => q.eq(q.field("senderUserId"), userIdTyped))
           .order("desc")
           .first();
 
-        // Get the most recent message between the two
+        // Get the most recent message
         let lastMessage = null;
         if (recentFromCloser && recentToCloser) {
           lastMessage = recentFromCloser.createdAt > recentToCloser.createdAt
@@ -350,11 +346,12 @@ export const getClosersWithMessageStatus = query({
 });
 
 /**
- * Get conversation messages between a manager and a specific closer
+ * Get conversation messages for a specific closer
+ * Simplified: Shows all messages to/from the closer (team-wide conversation)
  */
 export const getConversationMessages = query({
   args: {
-    userId: v.string(), // Manager's user ID
+    userId: v.string(), // Manager's user ID (for determining "isFromMe")
     closerId: v.string(),
     limit: v.optional(v.number()),
   },
@@ -363,28 +360,26 @@ export const getConversationMessages = query({
     const closerIdTyped = args.closerId as Id<"closers">;
     const limit = args.limit ?? 100;
 
-    // Messages FROM manager TO closer
-    const fromManager = await ctx.db
+    // Messages sent TO the closer (from any manager)
+    const toCloser = await ctx.db
       .query("liveMessages")
-      .withIndex("by_sender_user", (q) =>
-        q.eq("senderUserId", userIdTyped)
+      .withIndex("by_recipient_closer", (q) =>
+        q.eq("recipientCloserId", closerIdTyped)
       )
-      .filter((q) => q.eq(q.field("recipientCloserId"), closerIdTyped))
       .order("desc")
       .take(limit);
 
-    // Messages FROM closer TO manager
+    // Messages sent FROM the closer (to the team)
     const fromCloser = await ctx.db
       .query("liveMessages")
       .withIndex("by_sender_closer", (q) =>
         q.eq("senderCloserId", closerIdTyped)
       )
-      .filter((q) => q.eq(q.field("recipientUserId"), userIdTyped))
       .order("desc")
       .take(limit);
 
     // Combine and sort by createdAt (oldest first)
-    const allMessages = [...fromManager, ...fromCloser]
+    const allMessages = [...toCloser, ...fromCloser]
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(-limit);
 
@@ -395,14 +390,14 @@ export const getConversationMessages = query({
       message: msg.message,
       isRead: msg.isRead,
       createdAt: msg.createdAt,
-      isFromMe: msg.senderUserId === userIdTyped,
+      isFromMe: msg.senderType === "manager", // Manager viewing = manager messages are "from me"
     }));
   },
 });
 
 /**
- * Get total unread count for a manager across all closers
- * Used for the main chat button badge
+ * Get total unread count for a manager across all closers on their team
+ * Simplified: Counts unread messages from closers (team-wide)
  */
 export const getTotalUnreadForManager = query({
   args: {
@@ -411,13 +406,31 @@ export const getTotalUnreadForManager = query({
   handler: async (ctx, args) => {
     const userIdTyped = args.userId as Id<"users">;
 
-    const unreadMessages = await ctx.db
-      .query("liveMessages")
-      .withIndex("by_recipient_user", (q) =>
-        q.eq("recipientUserId", userIdTyped).eq("isRead", false)
-      )
+    // Get the user's team
+    const user = await ctx.db.get(userIdTyped);
+    if (!user) {
+      return { count: 0 };
+    }
+
+    // Get all closers on the team
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", user.teamId))
       .collect();
 
-    return { count: unreadMessages.length };
+    // Count unread messages from all closers
+    let totalUnread = 0;
+    for (const closer of closers) {
+      const unreadFromCloser = await ctx.db
+        .query("liveMessages")
+        .withIndex("by_sender_closer", (q) =>
+          q.eq("senderCloserId", closer._id)
+        )
+        .filter((q) => q.eq(q.field("isRead"), false))
+        .collect();
+      totalUnread += unreadFromCloser.length;
+    }
+
+    return { count: totalUnread };
   },
 });
