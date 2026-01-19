@@ -119,13 +119,6 @@ export function ListenLiveButton({
   const isUserDisconnectRef = useRef(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      disconnect(true); // User-initiated (component unmounting)
-    };
-  }, [disconnect]);
-
   // Update volume when changed
   useEffect(() => {
     if (gainNodeRef.current) {
@@ -422,6 +415,13 @@ export function ListenLiveButton({
       return current;
     });
   }, []);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      disconnect(true); // User-initiated (component unmounting)
+    };
+  }, [disconnect]);
 
   /**
    * Toggle connection
