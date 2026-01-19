@@ -84,18 +84,25 @@ export class CallHandler {
   async start(): Promise<string | null> {
     try {
       // Check if this is a reconnection (desktop sent existing convexCallId)
-      const isReconnect = this.session.metadata.isReconnect && this.session.metadata.convexCallId;
+      const metadataIsReconnect = this.session.metadata.isReconnect;
+      const metadataConvexCallId = this.session.metadata.convexCallId;
+      const isReconnect = metadataIsReconnect && metadataConvexCallId;
+
+      logger.info(`[RECONNECT CHECK] metadata.isReconnect=${metadataIsReconnect}, metadata.convexCallId=${metadataConvexCallId}, isReconnect=${isReconnect}`);
 
       if (isReconnect) {
         // RECONNECTION: Reuse existing Convex call ID instead of creating new
-        this.convexCallId = this.session.metadata.convexCallId!;
+        this.convexCallId = metadataConvexCallId!;
         logger.info(`[RECONNECT] Resuming call ${this.session.metadata.callId} with existing Convex ID: ${this.convexCallId}`);
 
         // Mark the call as active again (in case it was marked as ended)
         await updateCallStatus(this.convexCallId, "on_call", 2);
+        logger.info(`[RECONNECT] Call status updated to on_call`);
       } else {
         // NEW CALL: Create call record in Convex - this returns the Convex _id
+        logger.info(`[NEW CALL] Creating new call record for ${this.session.metadata.callId}`);
         this.convexCallId = await createCall(this.session.metadata);
+        logger.info(`[NEW CALL] Created with Convex ID: ${this.convexCallId}`);
       }
 
       // Get team's ammo config (custom categories, offer details, etc.)

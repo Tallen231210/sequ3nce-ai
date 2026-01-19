@@ -55,7 +55,14 @@ wss.on("connection", async (ws, req) => {
         // Debug logging to diagnose Swift client issues
         logger.info(`[DEBUG] First message received - isBinary: ${isBinary}, length: ${message.length}`);
         logger.info(`[DEBUG] Raw message: "${message}"`);
-        logger.info(`[DEBUG] First 20 char codes: ${[...message.slice(0, 20)].map(c => c.charCodeAt(0)).join(', ')}`);
+
+        // Log reconnection-specific fields
+        try {
+          const parsed = JSON.parse(message);
+          logger.info(`[RECONNECT DEBUG] isReconnect: ${parsed.isReconnect}, convexCallId: ${parsed.convexCallId || 'NOT_PROVIDED'}`);
+        } catch {
+          // ignore parse error for this debug log
+        }
 
         try {
           const metadata: CallMetadata = JSON.parse(message);
