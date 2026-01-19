@@ -87,7 +87,7 @@ struct ChatIconButton: View {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "message.fill")
                     .font(.system(size: 14))
-                    .foregroundColor(.primary.opacity(0.7))
+                    .foregroundColor(Color(white: 0.4))
                     .frame(width: 28, height: 28)
 
                 // Unread badge

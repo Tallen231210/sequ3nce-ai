@@ -26,6 +26,9 @@ class MessagingState: ObservableObject {
     // Track the last seen message ID for notification purposes
     private var lastSeenMessageId: String?
 
+    // Track the last manager who sent a message (for replies)
+    private var lastManagerUserId: String?
+
     // MARK: - Configuration
 
     private let pollInterval: TimeInterval = 2.5 // Poll every 2.5 seconds
@@ -105,6 +108,11 @@ class MessagingState: ObservableObject {
             return
         }
 
+        guard let recipientUserId = lastManagerUserId else {
+            sendError = "No manager to reply to"
+            return
+        }
+
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
 
@@ -116,6 +124,7 @@ class MessagingState: ObservableObject {
                 teamId: teamId,
                 closerId: closerId,
                 closerName: closerName,
+                recipientUserId: recipientUserId,
                 message: trimmedText
             )
 
@@ -151,6 +160,11 @@ class MessagingState: ObservableObject {
         do {
             let newMessages = try await convexService.getMessagesForCloser(closerId: closerId)
             messages = newMessages
+
+            // Track the last manager who sent a message (for replies)
+            if let lastManagerMessage = newMessages.last(where: { $0.senderType == "manager" && $0.senderUserId != nil }) {
+                lastManagerUserId = lastManagerMessage.senderUserId
+            }
         } catch {
             print("[MessagingState] Failed to fetch messages: \(error)")
         }

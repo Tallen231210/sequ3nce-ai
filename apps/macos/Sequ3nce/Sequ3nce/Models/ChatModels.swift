@@ -13,6 +13,7 @@ import Foundation
 struct ChatMessage: Identifiable, Codable, Equatable {
     let _id: String
     let senderType: String // "manager" or "closer"
+    let senderUserId: String? // Manager's user ID (if sender is manager)
     let senderName: String
     let message: String
     let isRead: Bool

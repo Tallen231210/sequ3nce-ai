@@ -193,6 +193,7 @@ export const getMessagesForCloser = query({
     return allMessages.map((msg) => ({
       _id: msg._id,
       senderType: msg.senderType,
+      senderUserId: msg.senderUserId, // Include manager's userId for replies
       senderName: msg.senderName,
       message: msg.message,
       isRead: msg.isRead,
