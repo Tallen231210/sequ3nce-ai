@@ -86,6 +86,26 @@ final class CheckForUpdatesViewModel: ObservableObject {
 }
 
 // MARK: - App State
+/// Connection state for UI display
+enum ConnectionState: Equatable {
+    case connected
+    case reconnecting(attempt: Int)
+    case disconnected
+
+    var displayText: String {
+        switch self {
+        case .connected: return "Connected"
+        case .reconnecting(let attempt): return "Reconnecting... (\(attempt))"
+        case .disconnected: return "Disconnected"
+        }
+    }
+
+    var isReconnecting: Bool {
+        if case .reconnecting = self { return true }
+        return false
+    }
+}
+
 /// Global app state shared across views
 @MainActor
 class AppState: ObservableObject {
@@ -97,6 +117,7 @@ class AppState: ObservableObject {
     @Published var currentCallId: String?
     @Published var convexCallId: String?
     @Published var error: String?
+    @Published var connectionState: ConnectionState = .disconnected
 
     // Services
     let audioService = AudioCaptureService()
@@ -132,6 +153,47 @@ class AppState: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // Observe WebSocket state for connection status
+        webSocketService.$state
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] newState in
+                guard let self = self else { return }
+                switch newState {
+                case .ready, .connected:
+                    self.connectionState = .connected
+                case .reconnecting(let attempt):
+                    self.connectionState = .reconnecting(attempt: attempt)
+                    print("[AppState] Connection state: reconnecting (attempt \(attempt))")
+                case .disconnected:
+                    if self.recordingState == .recording {
+                        // Only show disconnected if we were actively recording
+                        self.connectionState = .disconnected
+                    }
+                case .connecting:
+                    // Don't change connection state during initial connect
+                    break
+                case .error(let msg):
+                    self.connectionState = .disconnected
+                    print("[AppState] Connection error: \(msg)")
+                }
+            }
+            .store(in: &cancellables)
+
+        // Set up reconnection callbacks
+        webSocketService.onReconnecting = { [weak self] attempt in
+            Task { @MainActor in
+                self?.connectionState = .reconnecting(attempt: attempt)
+                print("[AppState] WebSocket reconnecting, attempt \(attempt)")
+            }
+        }
+
+        webSocketService.onReconnected = { [weak self] in
+            Task { @MainActor in
+                self?.connectionState = .connected
+                print("[AppState] WebSocket reconnected successfully")
+            }
+        }
     }
 
     private func loadSavedSession() {

@@ -15,6 +15,7 @@ enum WebSocketState: Equatable {
     case connecting
     case connected
     case ready  // After receiving ready response from server
+    case reconnecting(attempt: Int)  // Attempting to reconnect after connection loss
     case error(String)
 }
 

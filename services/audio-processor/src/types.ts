@@ -7,6 +7,9 @@ export interface CallMetadata {
   closerId: string;
   prospectName?: string;
   sampleRate?: number; // Audio sample rate from desktop (e.g., 48000)
+  // Reconnection fields - sent when desktop reconnects after network interruption
+  convexCallId?: string; // Existing Convex call ID to resume
+  isReconnect?: boolean; // True if this is a reconnection attempt
 }
 
 export interface AmmoItem {

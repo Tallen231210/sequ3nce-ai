@@ -103,28 +103,46 @@ wss.on("connection", async (ws, req) => {
             }
           });
 
+          // Set up silence warning callback - alerts desktop when no speech detected for 30s+
+          callHandler.setSilenceWarningCallback((silenceDurationSeconds) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: "silence_warning",
+                silenceDuration: silenceDurationSeconds,
+                message: `No speech detected for ${silenceDurationSeconds} seconds. Check your audio connection.`,
+              }));
+              logger.info(`Sent silence warning to desktop: ${silenceDurationSeconds}s of silence`);
+            }
+          });
+
           const convexCallId = await callHandler.start();
+          const isReconnect = metadata.isReconnect && metadata.convexCallId;
 
           // Create live stream record if team has live streaming enabled
-          // This is non-blocking - we don't wait for it
-          createLiveStream(convexCallId!, visitorCallId, metadata.teamId, metadata.closerId)
-            .then((streamId) => {
-              if (streamId) {
-                logger.info(`[LiveStream] Stream created for call ${visitorCallId}`);
-              }
-            })
-            .catch((err) => {
-              logger.error(`[LiveStream] Failed to create stream: ${err}`);
-            });
+          // Skip if this is a reconnection (stream already exists)
+          if (!isReconnect) {
+            createLiveStream(convexCallId!, visitorCallId, metadata.teamId, metadata.closerId)
+              .then((streamId) => {
+                if (streamId) {
+                  logger.info(`[LiveStream] Stream created for call ${visitorCallId}`);
+                }
+              })
+              .catch((err) => {
+                logger.error(`[LiveStream] Failed to create stream: ${err}`);
+              });
+          } else {
+            logger.info(`[LiveStream] Skipping stream creation for reconnect (stream should already exist)`);
+          }
 
           // Send back BOTH the original callId AND the Convex-generated callId
           // Desktop MUST use convexCallId for all subsequent operations
           ws.send(JSON.stringify({
             status: "ready",
             callId: metadata.callId,
-            convexCallId: convexCallId  // This is the actual Convex _id to use for queries/mutations
+            convexCallId: convexCallId,  // This is the actual Convex _id to use for queries/mutations
+            isReconnect: isReconnect || false
           }));
-          logger.info(`Call initialized: ${metadata.callId}, Convex ID: ${convexCallId}`);
+          logger.info(`Call ${isReconnect ? 'reconnected' : 'initialized'}: ${metadata.callId}, Convex ID: ${convexCallId}`);
         } catch (parseError) {
           logger.error("Failed to parse metadata JSON", parseError);
           ws.send(JSON.stringify({ error: "Invalid JSON metadata" }));

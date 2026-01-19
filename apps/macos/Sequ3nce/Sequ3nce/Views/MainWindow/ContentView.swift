@@ -238,8 +238,30 @@ struct MainRecordingView: View {
                     // Status indicator with mic icon
                     StatusIndicator(state: appState.recordingState)
 
+                    // Reconnection warning (shown during recording when connection is unstable)
+                    if appState.recordingState == .recording && appState.connectionState.isReconnecting {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color(red: 0.7, green: 0.5, blue: 0.0)))
+                            Text(appState.connectionState.displayText)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color(red: 0.6, green: 0.4, blue: 0.0))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color(red: 1.0, green: 0.97, blue: 0.88))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color(red: 0.95, green: 0.85, blue: 0.6), lineWidth: 1)
+                        )
+                        .padding(.top, 16)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
+
                     // Speak first reminder (shown briefly when recording starts)
-                    if showSpeakFirstReminder {
+                    if showSpeakFirstReminder && !appState.connectionState.isReconnecting {
                         HStack(spacing: 8) {
                             Image(systemName: "info.circle.fill")
                                 .foregroundColor(.blue)
@@ -469,6 +491,7 @@ struct MainRecordingView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showSpeakFirstReminder)
+        .animation(.easeInOut(duration: 0.3), value: appState.connectionState.isReconnecting)
         .onAppear {
             startRolePlayParticipantPolling()
         }
@@ -508,6 +531,11 @@ struct MainRecordingView: View {
 
     // Footer status color matching Electron
     private var footerStatusColor: Color {
+        // Show yellow when reconnecting
+        if appState.connectionState.isReconnecting {
+            return Color(red: 0.96, green: 0.62, blue: 0.04) // yellow-500
+        }
+
         switch appState.recordingState {
         case .idle: return Color(white: 0.6)
         case .connecting: return Color(red: 0.96, green: 0.62, blue: 0.04) // yellow-500
@@ -518,6 +546,11 @@ struct MainRecordingView: View {
 
     // Footer status text matching Electron
     private var footerStatusText: String {
+        // Show reconnecting status when applicable
+        if case .reconnecting(let attempt) = appState.connectionState {
+            return "Reconnecting... (\(attempt))"
+        }
+
         switch appState.recordingState {
         case .idle: return "Ready"
         case .connecting: return "Connecting..."

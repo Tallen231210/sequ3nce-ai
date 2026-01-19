@@ -25,6 +25,9 @@ const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours max call duration
 // Callback type for sending Ammo V2 analysis to desktop
 export type OnAmmoV2AnalysisCallback = (analysis: AmmoV2Analysis) => void;
 
+// Callback type for silence warning
+export type OnSilenceWarningCallback = (silenceDurationSeconds: number) => void;
+
 export class CallHandler {
   private session: CallSession;
   private speechmatics: SpeechmaticsConnection | null = null;
@@ -41,6 +44,9 @@ export class CallHandler {
   private ammoAnalyzer: AmmoAnalyzer | null = null;
   private ammoV2Enabled = false;
   private onAmmoV2Analysis: OnAmmoV2AnalysisCallback | null = null;
+
+  // Silence warning callback
+  private onSilenceWarning: OnSilenceWarningCallback | null = null;
 
   constructor(metadata: CallMetadata) {
     this.sampleRate = metadata.sampleRate || 48000;
@@ -68,10 +74,29 @@ export class CallHandler {
     this.onAmmoV2Analysis = callback;
   }
 
+  /**
+   * Set callback for silence warning (sends to desktop WebSocket when no speech for 30s+)
+   */
+  setSilenceWarningCallback(callback: OnSilenceWarningCallback): void {
+    this.onSilenceWarning = callback;
+  }
+
   async start(): Promise<string | null> {
     try {
-      // Create call record in Convex - this returns the Convex _id
-      this.convexCallId = await createCall(this.session.metadata);
+      // Check if this is a reconnection (desktop sent existing convexCallId)
+      const isReconnect = this.session.metadata.isReconnect && this.session.metadata.convexCallId;
+
+      if (isReconnect) {
+        // RECONNECTION: Reuse existing Convex call ID instead of creating new
+        this.convexCallId = this.session.metadata.convexCallId!;
+        logger.info(`[RECONNECT] Resuming call ${this.session.metadata.callId} with existing Convex ID: ${this.convexCallId}`);
+
+        // Mark the call as active again (in case it was marked as ended)
+        await updateCallStatus(this.convexCallId, "on_call", 2);
+      } else {
+        // NEW CALL: Create call record in Convex - this returns the Convex _id
+        this.convexCallId = await createCall(this.session.metadata);
+      }
 
       // Get team's ammo config (custom categories, offer details, etc.)
       this.ammoConfig = await getAmmoConfig(this.session.metadata.teamId);
@@ -83,10 +108,11 @@ export class CallHandler {
       // First speaker detected will be assumed to be the Closer
       this.speechmatics = await createSpeechmaticsConnection(
         this.handleTranscript.bind(this),
-        this.handleSpeechmaticsError.bind(this)
+        this.handleSpeechmaticsError.bind(this),
+        this.onSilenceWarning ? this.onSilenceWarning : undefined
       );
 
-      logger.info(`Call started: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
+      logger.info(`Call ${isReconnect ? 'resumed' : 'started'}: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
 
       // Set up max duration timeout (2 hours) to prevent runaway calls
       this.maxDurationTimeout = setTimeout(async () => {

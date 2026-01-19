@@ -21,26 +21,50 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
     private var pendingMetadata: String?
     private var pingTimer: Timer?
 
+    // MARK: - Reconnection Properties
+    private var connectionParams: (callId: String, teamId: String, closerId: String)?
+    private var lastPongReceived: Date = Date()
+    private var reconnectAttempt: Int = 0
+    private var isReconnecting: Bool = false
+    private var maxReconnectAttempts: Int = 10
+    private var heartbeatInterval: TimeInterval = 10  // Send ping every 10 seconds
+    private var staleConnectionThreshold: TimeInterval = 20  // Consider stale after 20 seconds without pong
+
     // MARK: - Callbacks
     var onStateChange: ((WebSocketState) -> Void)?
     var onError: ((String) -> Void)?
+    var onReconnecting: ((Int) -> Void)?  // Called with attempt number
+    var onReconnected: (() -> Void)?  // Called when successfully reconnected
 
     // MARK: - Public Methods
 
     /// Connect to the WebSocket server and start a new call
     func connect(callId: String, teamId: String, closerId: String) async throws {
-        guard state == .disconnected else {
+        guard state == .disconnected || isReconnecting else {
             print("[StarscreamWS] Already connected or connecting")
             return
         }
 
-        state = .connecting
-        print("[StarscreamWS] Connecting...")
+        // Store connection params for potential reconnection
+        connectionParams = (callId: callId, teamId: teamId, closerId: closerId)
+
+        if !isReconnecting {
+            state = .connecting
+        }
+        print("[StarscreamWS] Connecting\(isReconnecting ? " (reconnect)" : "")...")
 
         // Build the metadata JSON to send after connection
-        pendingMetadata = """
-        {"callId":"\(callId)","teamId":"\(teamId)","closerId":"\(closerId)","sampleRate":48000}
-        """
+        // Include convexCallId if reconnecting to resume existing call
+        if isReconnecting, let existingConvexCallId = convexCallId {
+            pendingMetadata = """
+            {"callId":"\(callId)","teamId":"\(teamId)","closerId":"\(closerId)","sampleRate":48000,"convexCallId":"\(existingConvexCallId)","isReconnect":true}
+            """
+            print("[StarscreamWS] Reconnecting with existing convexCallId: \(existingConvexCallId)")
+        } else {
+            pendingMetadata = """
+            {"callId":"\(callId)","teamId":"\(teamId)","closerId":"\(closerId)","sampleRate":48000}
+            """
+        }
 
         // Create WebSocket request
         var request = URLRequest(url: URL(string: "wss://amusing-charm-production.up.railway.app")!)
@@ -55,6 +79,14 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
 
         // Wait for connection with timeout
         try await waitForConnection()
+
+        // Reset reconnection state on successful connection
+        if isReconnecting {
+            print("[StarscreamWS] Reconnected successfully after \(reconnectAttempt) attempts")
+            isReconnecting = false
+            reconnectAttempt = 0
+            onReconnected?()
+        }
     }
 
     // Debug counter for audio sends
@@ -91,10 +123,16 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         disconnect()
     }
 
-    /// Disconnect
+    /// Disconnect (clean disconnect, clears reconnection state)
     func disconnect() {
+        // Stop all timers
         pingTimer?.invalidate()
         pingTimer = nil
+
+        // Clear reconnection state
+        isReconnecting = false
+        reconnectAttempt = 0
+        connectionParams = nil
 
         socket?.disconnect()
         socket = nil
@@ -103,7 +141,22 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         convexCallId = nil
         pendingMetadata = nil
 
-        print("[StarscreamWS] Disconnected")
+        print("[StarscreamWS] Disconnected (clean)")
+    }
+
+    /// Force disconnect without clearing connection params (for reconnection attempts)
+    private func disconnectForReconnect() {
+        pingTimer?.invalidate()
+        pingTimer = nil
+
+        socket?.disconnect()
+        socket = nil
+
+        // Don't clear connectionParams - we need them to reconnect
+        // Don't clear convexCallId - we'll reuse it
+        pendingMetadata = nil
+
+        print("[StarscreamWS] Disconnected for reconnect")
     }
 
     // MARK: - Private Methods
@@ -125,9 +178,85 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
 
     private func startPingTimer() {
         pingTimer?.invalidate()
-        pingTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+        lastPongReceived = Date()  // Reset on start
+
+        pingTimer = Timer.scheduledTimer(withTimeInterval: heartbeatInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.socket?.write(ping: Data())
+                self?.checkConnectionHealth()
+            }
+        }
+    }
+
+    /// Check connection health and send ping
+    private func checkConnectionHealth() {
+        guard state == .connected || state == .ready else { return }
+
+        let timeSinceLastPong = Date().timeIntervalSince(lastPongReceived)
+
+        if timeSinceLastPong > staleConnectionThreshold {
+            print("[StarscreamWS] Connection stale - no pong for \(Int(timeSinceLastPong))s, triggering reconnect")
+            handleConnectionStale()
+            return
+        }
+
+        // Send ping
+        socket?.write(ping: Data())
+    }
+
+    /// Handle stale/dead connection
+    private func handleConnectionStale() {
+        guard !isReconnecting else {
+            print("[StarscreamWS] Already reconnecting, skipping")
+            return
+        }
+
+        disconnectForReconnect()
+        attemptReconnect()
+    }
+
+    /// Attempt to reconnect with exponential backoff
+    private func attemptReconnect() {
+        guard let params = connectionParams else {
+            print("[StarscreamWS] No connection params stored, cannot reconnect")
+            state = .disconnected
+            return
+        }
+
+        guard reconnectAttempt < maxReconnectAttempts else {
+            print("[StarscreamWS] Max reconnect attempts (\(maxReconnectAttempts)) reached, giving up")
+            state = .error("Connection lost - max reconnect attempts reached")
+            isReconnecting = false
+            reconnectAttempt = 0
+            connectionParams = nil
+            onError?("Connection lost after \(maxReconnectAttempts) reconnect attempts")
+            return
+        }
+
+        reconnectAttempt += 1
+        isReconnecting = true
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+        let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
+        print("[StarscreamWS] Reconnect attempt \(reconnectAttempt)/\(maxReconnectAttempts) in \(delay)s")
+
+        state = .reconnecting(attempt: reconnectAttempt)
+        onReconnecting?(reconnectAttempt)
+
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+            // Check if we should still reconnect (user might have manually disconnected)
+            guard self.isReconnecting else {
+                print("[StarscreamWS] Reconnection cancelled")
+                return
+            }
+
+            do {
+                try await self.connect(callId: params.callId, teamId: params.teamId, closerId: params.closerId)
+            } catch {
+                print("[StarscreamWS] Reconnect attempt \(self.reconnectAttempt) failed: \(error)")
+                // Will try again on next attempt
+                self.attemptReconnect()
             }
         }
     }
@@ -157,8 +286,15 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
 
         case .disconnected(let reason, let code):
             print("[StarscreamWS] Disconnected: \(reason), code: \(code)")
-            state = .disconnected
             pingTimer?.invalidate()
+
+            // If we have connection params and weren't cleanly disconnected, attempt reconnect
+            if connectionParams != nil && !isReconnecting {
+                print("[StarscreamWS] Unexpected disconnect, attempting reconnect")
+                handleConnectionStale()
+            } else if !isReconnecting {
+                state = .disconnected
+            }
 
         case .text(let text):
             print("[StarscreamWS] Received text: \(text)")
@@ -172,27 +308,53 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
             break
 
         case .pong(_):
+            // Update last pong time - connection is healthy
+            lastPongReceived = Date()
             break
 
         case .viabilityChanged(let isViable):
             print("[StarscreamWS] Viability changed: \(isViable)")
+            if !isViable && (state == .connected || state == .ready) {
+                print("[StarscreamWS] Connection no longer viable, triggering reconnect")
+                handleConnectionStale()
+            }
 
         case .reconnectSuggested(let shouldReconnect):
             print("[StarscreamWS] Reconnect suggested: \(shouldReconnect)")
+            if shouldReconnect && (state == .connected || state == .ready) {
+                print("[StarscreamWS] Acting on reconnect suggestion")
+                handleConnectionStale()
+            }
 
         case .cancelled:
             print("[StarscreamWS] Cancelled")
-            state = .disconnected
+            // Only set disconnected if not reconnecting
+            if !isReconnecting {
+                state = .disconnected
+            }
 
         case .error(let error):
             let errorMsg = error?.localizedDescription ?? "Unknown error"
             print("[StarscreamWS] Error: \(errorMsg)")
-            state = .error(errorMsg)
-            onError?(errorMsg)
+
+            // If we have connection params, attempt reconnect instead of erroring out
+            if connectionParams != nil && !isReconnecting {
+                print("[StarscreamWS] Error occurred, attempting reconnect")
+                handleConnectionStale()
+            } else if !isReconnecting {
+                state = .error(errorMsg)
+                onError?(errorMsg)
+            }
 
         case .peerClosed:
             print("[StarscreamWS] Peer closed connection")
-            state = .disconnected
+            // If we have connection params, attempt reconnect
+            if connectionParams != nil && !isReconnecting {
+                print("[StarscreamWS] Peer closed, attempting reconnect")
+                handleConnectionStale()
+            } else if !isReconnecting {
+                state = .disconnected
+            }
         }
     }
 
@@ -202,12 +364,40 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
 
             if let status = json["status"] as? String, status == "ready" {
                 state = .ready
-                convexCallId = json["convexCallId"] as? String
-                print("[StarscreamWS] Server ready, convexCallId: \(convexCallId ?? "none")")
+                let serverConvexCallId = json["convexCallId"] as? String
+                let serverIsReconnect = json["isReconnect"] as? Bool ?? false
+
+                if serverIsReconnect {
+                    // Reconnection - verify server used same convexCallId
+                    print("[StarscreamWS] Server confirmed reconnection, convexCallId: \(serverConvexCallId ?? "none") (existing: \(convexCallId ?? "none"))")
+                } else {
+                    // New connection - use server's convexCallId
+                    convexCallId = serverConvexCallId
+                    print("[StarscreamWS] Server ready, convexCallId: \(convexCallId ?? "none")")
+                }
             } else if let error = json["error"] as? String {
                 state = .error(error)
                 onError?(error)
                 print("[StarscreamWS] Server error: \(error)")
+            } else if let messageType = json["type"] as? String {
+                switch messageType {
+                case "silence_warning":
+                    // Server detected no speech for 30+ seconds
+                    // This could indicate audio capture issues - trigger reconnection
+                    let silenceDuration = json["silenceDuration"] as? Int ?? 0
+                    print("[StarscreamWS] Silence warning received: \(silenceDuration)s of silence")
+
+                    // If silence is prolonged (60+ seconds), consider connection stale
+                    if silenceDuration >= 60 && !isReconnecting {
+                        print("[StarscreamWS] Prolonged silence (\(silenceDuration)s) - triggering reconnect")
+                        handleConnectionStale()
+                    }
+                case "ammo_analysis":
+                    // Ammo V2 analysis - handled elsewhere if needed
+                    break
+                default:
+                    break
+                }
             }
         }
     }

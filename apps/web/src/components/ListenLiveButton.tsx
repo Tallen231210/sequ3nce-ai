@@ -5,7 +5,7 @@ import { Mic, Loader2, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Connection states
-type ConnectionState = "idle" | "connecting" | "listening" | "error" | "ended";
+type ConnectionState = "idle" | "connecting" | "listening" | "reconnecting" | "error" | "ended";
 
 // Audio Waveform Visualization Component - Mirrored/centered style
 function AudioWaveform({ analyserRef }: { analyserRef: React.RefObject<AnalyserNode | null> }) {
@@ -112,12 +112,19 @@ export function ListenLiveButton({
   const isPlayingRef = useRef(false);
   const nextPlayTimeRef = useRef(0);
 
+  // Reconnection state
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const maxReconnectAttempts = 5;
+  const isUserDisconnectRef = useRef(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      disconnect();
+      disconnect(true); // User-initiated (component unmounting)
     };
-  }, []);
+  }, [disconnect]);
 
   // Update volume when changed
   useEffect(() => {
@@ -204,10 +211,44 @@ export function ListenLiveButton({
   }, [scheduleAudioPlayback]);
 
   /**
+   * Attempt to reconnect with exponential backoff
+   */
+  const attemptReconnect = useCallback(() => {
+    reconnectAttemptRef.current += 1;
+    setReconnectAttempt(reconnectAttemptRef.current);
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+    const delay = Math.min(Math.pow(2, reconnectAttemptRef.current - 1) * 1000, 16000);
+
+    console.log(`[ListenLive] Reconnect attempt ${reconnectAttemptRef.current}/${maxReconnectAttempts} in ${delay}ms`);
+    setState("reconnecting");
+    setError(null);
+
+    // Clear any existing timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      // Reset the state to allow connect to work
+      setState("idle");
+      // Then immediately connect
+      connect();
+    }, delay);
+  }, []);
+
+  /**
    * Connect to the audio stream
    */
   const connect = useCallback(async () => {
-    if (state === "connecting" || state === "listening") return;
+    if (state === "connecting" || state === "listening" || state === "reconnecting") return;
+
+    // Reset reconnection state on successful manual connect
+    if (reconnectAttemptRef.current > 0) {
+      console.log(`[ListenLive] Reconnected successfully after ${reconnectAttemptRef.current} attempts`);
+      reconnectAttemptRef.current = 0;
+      setReconnectAttempt(0);
+    }
 
     setState("connecting");
     setError(null);
@@ -317,9 +358,16 @@ export function ListenLiveButton({
       ws.onclose = (event) => {
         console.log("[ListenLive] WebSocket closed:", event.code, event.reason);
         // Check if this was an unexpected close (not user-initiated)
-        if (event.code !== 1000) {
-          setError("Connection lost");
-          setState("error");
+        if (event.code !== 1000 && !isUserDisconnectRef.current) {
+          // Attempt to reconnect
+          if (reconnectAttemptRef.current < maxReconnectAttempts) {
+            attemptReconnect();
+          } else {
+            setError("Connection lost - max reconnect attempts reached");
+            setState("error");
+            reconnectAttemptRef.current = 0;
+            setReconnectAttempt(0);
+          }
         }
       };
     } catch (err) {
@@ -332,7 +380,18 @@ export function ListenLiveButton({
   /**
    * Disconnect from the audio stream
    */
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback((isUserInitiated = false) => {
+    // Mark as user-initiated to prevent auto-reconnect
+    if (isUserInitiated) {
+      isUserDisconnectRef.current = true;
+    }
+
+    // Clear any pending reconnect
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
     // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close(1000, "User disconnected");
@@ -351,9 +410,13 @@ export function ListenLiveButton({
     isPlayingRef.current = false;
     nextPlayTimeRef.current = 0;
 
+    // Reset reconnection state
+    reconnectAttemptRef.current = 0;
+    setReconnectAttempt(0);
+
     // Only reset to idle if not already in ended/error state
     setState((current) => {
-      if (current === "listening" || current === "connecting") {
+      if (current === "listening" || current === "connecting" || current === "reconnecting") {
         return "idle";
       }
       return current;
@@ -364,10 +427,11 @@ export function ListenLiveButton({
    * Toggle connection
    */
   const handleClick = useCallback(() => {
-    if (state === "listening" || state === "connecting") {
-      disconnect();
+    if (state === "listening" || state === "connecting" || state === "reconnecting") {
+      disconnect(true); // User-initiated disconnect
       setState("idle");
     } else {
+      isUserDisconnectRef.current = false; // Reset flag for new connection
       connect();
     }
   }, [state, connect, disconnect]);
@@ -424,7 +488,7 @@ export function ListenLiveButton({
     );
   }
 
-  // Connecting or Listening state - show the floating card
+  // Connecting, Reconnecting, or Listening state - show the floating card
   return (
     <div className={cn("bg-white rounded-2xl shadow-lg border border-zinc-200 p-4 w-72", className)}>
       {/* Header */}
@@ -436,14 +500,23 @@ export function ListenLiveButton({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
             </span>
           )}
+          {state === "reconnecting" && (
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+            </span>
+          )}
           {state === "connecting" && (
             <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
           )}
           <span className={cn(
             "text-sm font-semibold",
-            state === "listening" ? "text-zinc-900" : "text-zinc-500"
+            state === "listening" ? "text-zinc-900" :
+            state === "reconnecting" ? "text-amber-700" : "text-zinc-500"
           )}>
-            {state === "connecting" ? "Connecting..." : "Listening to Call"}
+            {state === "connecting" ? "Connecting..." :
+             state === "reconnecting" ? `Reconnecting... (${reconnectAttempt}/${maxReconnectAttempts})` :
+             "Listening to Call"}
           </span>
         </div>
 

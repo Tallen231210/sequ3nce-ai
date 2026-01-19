@@ -23,7 +23,8 @@ export interface SpeechmaticsConnection {
 
 export function createSpeechmaticsConnection(
   onTranscript: (chunk: TranscriptChunk) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  onSilenceWarning?: (silenceDurationSeconds: number) => void
 ): Promise<SpeechmaticsConnection> {
   return new Promise((resolve, reject) => {
     const apiKey = process.env.SPEECHMATICS_API_KEY;
@@ -90,18 +91,30 @@ export function createSpeechmaticsConnection(
               id: message.id,
             });
 
-            // Start health check - log every 30 seconds if no words received
+            // Start health check - log every 15 seconds, warn desktop after 30s of silence
+            let silenceWarningSent = false;
             healthCheckInterval = setInterval(() => {
               const timeSinceLastWord = lastWordTime ? Date.now() - lastWordTime : Date.now() - lastMessageTime;
               const timeSinceLastMessage = Date.now() - lastMessageTime;
+              const silenceSeconds = Math.round(timeSinceLastWord / 1000);
 
               if (timeSinceLastWord > 30000) {
-                logger.warn(`[Speechmatics Health] No words for ${Math.round(timeSinceLastWord / 1000)}s. ` +
+                logger.warn(`[Speechmatics Health] No words for ${silenceSeconds}s. ` +
                   `Total words: ${totalWordsReceived}, AudioAdded msgs: ${audioAddedCount}, ` +
                   `Last message: ${Math.round(timeSinceLastMessage / 1000)}s ago, ` +
                   `WS state: ${ws.readyState === WebSocket.OPEN ? 'OPEN' : 'CLOSED'}`);
+
+                // Send silence warning to desktop (only once per silence period)
+                if (!silenceWarningSent && onSilenceWarning) {
+                  onSilenceWarning(silenceSeconds);
+                  silenceWarningSent = true;
+                  logger.info(`[Speechmatics] Sent silence warning to desktop after ${silenceSeconds}s`);
+                }
+              } else {
+                // Reset warning flag if speech resumes
+                silenceWarningSent = false;
               }
-            }, 30000);
+            }, 15000); // Check every 15 seconds
 
             if (!isResolved) {
               isResolved = true;
