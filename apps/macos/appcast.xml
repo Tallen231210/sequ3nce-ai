@@ -8,6 +8,30 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.4.8</title>
+            <pubDate>Sat, 18 Jan 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>1.4.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.4.8</h2>
+                <ul>
+                    <li>Live Chat - Receive messages from your manager during calls</li>
+                    <li>Reply to messages directly from the desktop app</li>
+                    <li>Dock badge shows unread message count</li>
+                    <li>Sound notification when new messages arrive</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.4.8/Sequ3nce.zip"
+                length="1705801"
+                type="application/octet-stream"
+                sparkle:edSignature="uDMBSKhCBH88fktwVMvATC42h5QO8AYNpIMDYSJI43m7GuAqQe7Xp3/IDpItNJKlIE7ZUG9FHcpiFVGTywrrCA=="
+            />
+        </item>
+
+        <!-- v1.4.7 -->
+        <item>
             <title>Version 1.4.7</title>
             <pubDate>Tue, 14 Jan 2026 22:00:00 +0000</pubDate>
             <sparkle:version>26</sparkle:version>
