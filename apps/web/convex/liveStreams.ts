@@ -44,7 +44,17 @@ export const createLiveStream = mutation({
       .first();
 
     if (existing) {
-      console.log(`[liveStreams] Stream already exists for visitorCallId: ${args.visitorCallId}`);
+      // If stream exists but is ended, reactivate it (reconnection scenario)
+      if (existing.status === "ended") {
+        await ctx.db.patch(existing._id, {
+          status: "active",
+          callId: args.callId as Id<"calls">,
+          endedAt: undefined,
+        });
+        console.log(`[liveStreams] Reactivated ended stream ${existing._id} for visitorCallId: ${args.visitorCallId}`);
+        return existing._id;
+      }
+      console.log(`[liveStreams] Stream already active for visitorCallId: ${args.visitorCallId}`);
       return existing._id;
     }
 
