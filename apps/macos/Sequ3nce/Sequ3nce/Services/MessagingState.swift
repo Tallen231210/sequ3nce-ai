@@ -133,14 +133,15 @@ class MessagingState: ObservableObject {
 
     /// Poll for updates (called by timer)
     private func poll() async {
-        await fetchUnreadCount()
-
-        // Only fetch full messages if chat panel is open
+        // Run fetches in parallel for faster updates
         if isChatPanelOpen {
-            await fetchMessages()
+            async let countTask: () = fetchUnreadCount()
+            async let messagesTask: () = fetchMessages()
+            _ = await (countTask, messagesTask)
         } else {
-            // Just check for latest unread for notification banner
-            await checkForNewMessages()
+            async let countTask: () = fetchUnreadCount()
+            async let bannerTask: () = checkForNewMessages()
+            _ = await (countTask, bannerTask)
         }
     }
 
@@ -163,6 +164,7 @@ class MessagingState: ObservableObject {
         do {
             let count = try await convexService.getUnreadCountForCloser(closerId: closerId)
             unreadCount = count
+            updateDockBadge(count: count)
         } catch {
             print("[MessagingState] Failed to fetch unread count: \(error)")
         }
@@ -198,6 +200,7 @@ class MessagingState: ObservableObject {
         do {
             try await convexService.markAllAsReadForCloser(closerId: closerId)
             unreadCount = 0
+            updateDockBadge(count: 0)
             showNotificationBanner = false
         } catch {
             print("[MessagingState] Failed to mark messages as read: \(error)")
@@ -218,6 +221,15 @@ class MessagingState: ObservableObject {
             sound.play()
         } else {
             NSSound.beep()
+        }
+    }
+
+    /// Update the Dock icon badge with unread count
+    private func updateDockBadge(count: Int) {
+        if count > 0 {
+            NSApplication.shared.dockTile.badgeLabel = "\(count)"
+        } else {
+            NSApplication.shared.dockTile.badgeLabel = nil
         }
     }
 }

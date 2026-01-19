@@ -193,7 +193,7 @@ struct MainRecordingView: View {
 
                     // Chat messages button
                     ChatIconButton(
-                        unreadCount: appState.messagingState.unreadCount,
+                        messagingState: appState.messagingState,
                         action: {
                             windowManager.toggleChatPanel(messagingState: appState.messagingState)
                         }

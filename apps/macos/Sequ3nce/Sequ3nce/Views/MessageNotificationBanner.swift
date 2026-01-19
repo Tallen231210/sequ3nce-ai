@@ -79,7 +79,7 @@ struct MessageNotificationBanner: View {
 
 /// Chat icon button for the title bar
 struct ChatIconButton: View {
-    let unreadCount: Int
+    @ObservedObject var messagingState: MessagingState
     let action: () -> Void
 
     var body: some View {
@@ -91,8 +91,8 @@ struct ChatIconButton: View {
                     .frame(width: 28, height: 28)
 
                 // Unread badge
-                if unreadCount > 0 {
-                    Text(unreadCount > 9 ? "9+" : "\(unreadCount)")
+                if messagingState.unreadCount > 0 {
+                    Text(messagingState.unreadCount > 9 ? "9+" : "\(messagingState.unreadCount)")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(.white)
                         .frame(minWidth: 16, minHeight: 16)
@@ -103,7 +103,7 @@ struct ChatIconButton: View {
             }
         }
         .buttonStyle(.plain)
-        .help("Messages" + (unreadCount > 0 ? " (\(unreadCount) unread)" : ""))
+        .help("Messages" + (messagingState.unreadCount > 0 ? " (\(messagingState.unreadCount) unread)" : ""))
     }
 }
 
@@ -124,11 +124,4 @@ struct ChatIconButton: View {
     .frame(width: 400, height: 200)
 }
 
-#Preview("Chat Icon") {
-    HStack(spacing: 20) {
-        ChatIconButton(unreadCount: 0, action: {})
-        ChatIconButton(unreadCount: 3, action: {})
-        ChatIconButton(unreadCount: 15, action: {})
-    }
-    .padding()
-}
+// Note: ChatIconButton preview removed - requires MessagingState which can't be easily mocked in previews

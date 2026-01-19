@@ -118,9 +118,9 @@ export function ChatConversation({ closer, onBack }: ChatConversationProps) {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-zinc-200">
+    <div className="flex flex-col h-full min-h-0">
+      {/* Header - Fixed at top */}
+      <div className="flex-shrink-0 flex items-center gap-3 p-4 border-b border-zinc-200 bg-white">
         <Button
           variant="ghost"
           size="icon"
@@ -152,8 +152,8 @@ export function ChatConversation({ closer, onBack }: ChatConversationProps) {
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Messages - Scrollable */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
         {messages === undefined ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
@@ -200,8 +200,8 @@ export function ChatConversation({ closer, onBack }: ChatConversationProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Compose */}
-      <div className="p-4 border-t border-zinc-200">
+      {/* Compose - Fixed at bottom */}
+      <div className="flex-shrink-0 p-4 border-t border-zinc-200 bg-white">
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}

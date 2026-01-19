@@ -144,9 +144,9 @@ export function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
   return (
     <div
       className={cn(
-        "fixed bottom-24 right-6 z-50 w-80 max-h-[calc(100vh-140px)]",
-        "bg-white rounded-xl shadow-xl border border-zinc-200 overflow-hidden",
-        "flex flex-col",
+        "fixed bottom-24 right-6 z-50 w-80 h-[500px] max-h-[calc(100vh-140px)]",
+        "bg-white rounded-xl shadow-xl border border-zinc-200",
+        "flex flex-col overflow-hidden",
         "animate-in slide-in-from-bottom-2 fade-in duration-200"
       )}
     >
