@@ -203,6 +203,9 @@ export function ListenLiveButton({
     isPlayingRef.current = false;
   }, [scheduleAudioPlayback]);
 
+  // Ref to always get latest connect function (avoids closure issues in setTimeout)
+  const connectRef = useRef<() => Promise<void>>();
+
   /**
    * Attempt to reconnect with exponential backoff
    */
@@ -223,10 +226,10 @@ export function ListenLiveButton({
     }
 
     reconnectTimeoutRef.current = setTimeout(() => {
-      // Reset the state to allow connect to work
-      setState("idle");
-      // Then immediately connect
-      connect();
+      // Use ref to get latest connect function (avoids stale closure)
+      if (connectRef.current) {
+        connectRef.current();
+      }
     }, delay);
   }, []);
 
@@ -234,7 +237,8 @@ export function ListenLiveButton({
    * Connect to the audio stream
    */
   const connect = useCallback(async () => {
-    if (state === "connecting" || state === "listening" || state === "reconnecting") return;
+    // Allow reconnecting state to proceed (it's trying to reconnect)
+    if (state === "connecting" || state === "listening") return;
 
     // Reset reconnection state on successful manual connect
     if (reconnectAttemptRef.current > 0) {
@@ -344,14 +348,20 @@ export function ListenLiveButton({
 
       ws.onerror = (event) => {
         console.error("[ListenLive] WebSocket error:", event);
-        setError("Connection error");
-        setState("error");
+        // Don't set error state here - let onclose handle reconnection
+        // The error event is usually followed by a close event
       };
 
       ws.onclose = (event) => {
         console.log("[ListenLive] WebSocket closed:", event.code, event.reason);
-        // Check if this was an unexpected close (not user-initiated)
-        if (event.code !== 1000 && !isUserDisconnectRef.current) {
+
+        // Check if this was an unexpected close (not user-initiated and not clean close)
+        // Code 1000 = normal close, 1001 = going away (page navigation),
+        // 1006 = abnormal (network drop), 1011 = server error
+        const isUnexpectedClose = event.code !== 1000 && event.code !== 1001;
+
+        if (isUnexpectedClose && !isUserDisconnectRef.current) {
+          console.log(`[ListenLive] Unexpected close (code ${event.code}), attempting reconnect`);
           // Attempt to reconnect
           if (reconnectAttemptRef.current < maxReconnectAttempts) {
             attemptReconnect();
@@ -361,6 +371,11 @@ export function ListenLiveButton({
             reconnectAttemptRef.current = 0;
             setReconnectAttempt(0);
           }
+        } else if (!isUserDisconnectRef.current && event.code === 1000) {
+          // Clean close but not user-initiated - could be stream ended from server
+          // Don't reconnect, but also don't show error
+          console.log("[ListenLive] Clean close from server");
+          setState("idle");
         }
       };
     } catch (err) {
@@ -369,6 +384,11 @@ export function ListenLiveButton({
       setState("error");
     }
   }, [state, visitorCallId, managerId, volume, isMuted, int16StereoToFloat32, processAudioQueue]);
+
+  // Keep connectRef updated with latest connect function
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   /**
    * Disconnect from the audio stream
