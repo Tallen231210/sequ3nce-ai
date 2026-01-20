@@ -82,13 +82,17 @@ struct ChatIconButton: View {
     @ObservedObject var messagingState: MessagingState
     let action: () -> Void
 
+    @State private var isHovered = false
+
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "message.fill")
                     .font(.system(size: 14))
-                    .foregroundColor(Color(white: 0.4))
-                    .frame(width: 28, height: 28)
+                    .foregroundColor(isHovered ? Color(white: 0.2) : Color(white: 0.45))
+                    .frame(width: 32, height: 28)
+                    .background(isHovered ? Color(white: 0.88) : Color.clear)
+                    .cornerRadius(4)
 
                 // Unread badge
                 if messagingState.unreadCount > 0 {
@@ -98,11 +102,14 @@ struct ChatIconButton: View {
                         .frame(minWidth: 16, minHeight: 16)
                         .background(Color.red)
                         .clipShape(Circle())
-                        .offset(x: 4, y: -4)
+                        .offset(x: 6, y: -2)
                 }
             }
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
         .help("Messages" + (messagingState.unreadCount > 0 ? " (\(messagingState.unreadCount) unread)" : ""))
     }
 }

@@ -20,6 +20,10 @@ class MenuBarController {
     private var currentIsAuthenticated: Bool = false
     private var currentRecordingDuration: TimeInterval = 0
 
+    // Upcoming calendar events with meeting URLs (for submenu)
+    private var upcomingMeetings: [CalendarEvent] = []
+    private var calendarPollingTimer: Timer?
+
     var isRecording: Bool {
         currentRecordingState == .recording
     }
@@ -33,6 +37,11 @@ class MenuBarController {
 
         setupStatusItem()
         observeAppState(appState)
+        startCalendarPolling()
+    }
+
+    deinit {
+        calendarPollingTimer?.invalidate()
     }
 
     private func setupStatusItem() {
@@ -79,6 +88,13 @@ class MenuBarController {
                 self?.currentIsAuthenticated = isAuth
                 self?.updateIcon(for: self?.currentRecordingState ?? .idle)
                 self?.rebuildMenu()
+
+                // Refresh calendar events when auth changes
+                if isAuth {
+                    self?.fetchUpcomingMeetings()
+                } else {
+                    self?.upcomingMeetings = []
+                }
             }
             .store(in: &cancellables)
     }
@@ -167,7 +183,34 @@ class MenuBarController {
             connectingItem.isEnabled = false
             menu.addItem(connectingItem)
         } else if currentIsAuthenticated {
-            // Start Recording
+            // Join Meeting submenu (if there are meetings with URLs)
+            if !upcomingMeetings.isEmpty {
+                let joinSubmenu = NSMenu()
+
+                for (index, meeting) in upcomingMeetings.prefix(5).enumerated() {
+                    let timeLabel = formatTimeUntilMeeting(meeting)
+                    let truncatedTitle = meeting.title.count > 30
+                        ? String(meeting.title.prefix(30)) + "..."
+                        : meeting.title
+
+                    let meetingItem = NSMenuItem(
+                        title: "\(truncatedTitle) (\(timeLabel))",
+                        action: #selector(joinMeetingAtIndex(_:)),
+                        keyEquivalent: ""
+                    )
+                    meetingItem.target = self
+                    meetingItem.tag = index
+                    joinSubmenu.addItem(meetingItem)
+                }
+
+                let joinItem = NSMenuItem(title: "Join Meeting", action: nil, keyEquivalent: "")
+                joinItem.submenu = joinSubmenu
+                menu.addItem(joinItem)
+
+                menu.addItem(NSMenuItem.separator())
+            }
+
+            // Start Recording (for ad-hoc recordings)
             let startItem = NSMenuItem(title: "Start Recording", action: #selector(startRecording), keyEquivalent: "")
             startItem.target = self
             menu.addItem(startItem)
@@ -258,11 +301,139 @@ class MenuBarController {
         NSApp.terminate(nil)
     }
 
+    // MARK: - Calendar Polling
+
+    private func startCalendarPolling() {
+        // Poll every 5 minutes
+        calendarPollingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            self?.fetchUpcomingMeetings()
+        }
+        // Also fetch immediately
+        fetchUpcomingMeetings()
+    }
+
+    private func fetchUpcomingMeetings() {
+        Task { @MainActor in
+            guard let appState = appState,
+                  let closerInfo = appState.closerInfo,
+                  currentIsAuthenticated else {
+                print("[MenuBarController] Skipping fetch - not authenticated or missing closerInfo")
+                self.upcomingMeetings = []
+                self.rebuildMenu()
+                return
+            }
+
+            do {
+                // Use same date range as ScheduleView for consistency
+                // Start from beginning of today, end 7 days from now
+                let startOfDay = Calendar.current.startOfDay(for: Date())
+                let endDate = Calendar.current.date(byAdding: .day, value: 7, to: startOfDay)!
+
+                let startMs = Int64(startOfDay.timeIntervalSince1970 * 1000)
+                let endMs = Int64(endDate.timeIntervalSince1970 * 1000)
+
+                print("[MenuBarController] Fetching calendar events for \(closerInfo.email), teamId: \(closerInfo.teamId)")
+                print("[MenuBarController] Date range: \(startMs) to \(endMs)")
+
+                let events = try await appState.convexService.getCalendarEvents(
+                    email: closerInfo.email,
+                    teamId: closerInfo.teamId,
+                    startDate: startMs,
+                    endDate: endMs
+                )
+
+                print("[MenuBarController] Found \(events.count) calendar events")
+
+                // Filter to events with meeting URLs that started within last 30 min or are upcoming
+                // This allows joining meetings that already started (e.g., running late)
+                let now = Date()
+                let thirtyMinAgoMs = (now.timeIntervalSince1970 - 1800) * 1000  // 30 min ago
+
+                let meetingsWithUrl = events
+                    .filter { $0.meetingUrl != nil && $0.startTime >= thirtyMinAgoMs }
+                    .sorted { $0.startTime < $1.startTime }
+
+                print("[MenuBarController] Events with meeting URLs: \(meetingsWithUrl.count)")
+                for event in meetingsWithUrl.prefix(5) {
+                    print("[MenuBarController]   - \(event.title): \(event.meetingUrl ?? "no url")")
+                }
+
+                self.upcomingMeetings = meetingsWithUrl
+
+                if self.upcomingMeetings.isEmpty {
+                    print("[MenuBarController] No meetings with URLs found")
+                } else {
+                    print("[MenuBarController] \(self.upcomingMeetings.count) meetings available to join")
+                }
+
+                self.rebuildMenu()
+            } catch {
+                print("[MenuBarController] Failed to fetch calendar events: \(error)")
+            }
+        }
+    }
+
+    @objc func joinMeetingAtIndex(_ sender: NSMenuItem) {
+        let index = sender.tag
+        guard index < upcomingMeetings.count else { return }
+
+        let event = upcomingMeetings[index]
+        guard let meetingUrlString = event.meetingUrl,
+              let meetingUrl = URL(string: meetingUrlString) else {
+            return
+        }
+
+        // Open the meeting URL in browser
+        NSWorkspace.shared.open(meetingUrl)
+
+        // Start recording after a short delay (give browser time to open)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+
+            // Start recording and set prospect name from event title
+            await appState?.startRecording()
+
+            // Post notification to set prospect name (same as calendar Join & Record)
+            NotificationCenter.default.post(
+                name: Notification.Name("StartRecordingFromCalendar"),
+                object: nil,
+                userInfo: ["prospectName": event.title]
+            )
+        }
+    }
+
     // MARK: - Helpers
 
     private func formatDuration(_ duration: TimeInterval) -> String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func formatTimeUntilMeeting(_ event: CalendarEvent) -> String {
+        let nowMs = Date().timeIntervalSince1970 * 1000
+        let diff = event.startTime - nowMs
+        let minutes = Int(diff / 60000)
+
+        if minutes < -1 {
+            // Meeting started in the past
+            let agoMinutes = abs(minutes)
+            if agoMinutes < 60 {
+                return "\(agoMinutes)m ago"
+            }
+            let agoHours = agoMinutes / 60
+            return "\(agoHours)h ago"
+        } else if minutes < 1 {
+            return "now"
+        } else if minutes < 60 {
+            return "in \(minutes)m"
+        }
+
+        let hours = minutes / 60
+        if hours < 24 {
+            return "in \(hours)h"
+        }
+
+        return "tomorrow"
     }
 }

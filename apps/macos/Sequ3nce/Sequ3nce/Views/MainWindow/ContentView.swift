@@ -171,69 +171,99 @@ struct MainRecordingView: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
     }
 
+    // User initials for profile avatar (e.g., "JD" for "John Doe")
+    private var userInitials: String {
+        let parts = closerInfo.name.split(separator: " ")
+        if parts.count >= 2 {
+            let first = parts[0].prefix(1).uppercased()
+            let last = parts[1].prefix(1).uppercased()
+            return "\(first)\(last)"
+        } else if let first = parts.first {
+            return String(first.prefix(2)).uppercased()
+        }
+        return "?"
+    }
+
     var body: some View {
         ZStack {
             // Main content
             VStack(spacing: 0) {
-                // Title bar with schedule, settings and sign out
+                // Title bar with grouped action icons
                 HStack {
                     Spacer()
 
-                    // Calendar button with next meeting preview
-                    Button(action: {
-                        windowManager.openScheduleWindow(appState: appState)
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(white: 0.6))
+                    // Calendar button with next meeting preview (separate, before the group)
+                    if nextCalendarEvent != nil {
+                        Button(action: {
+                            windowManager.openScheduleWindow(appState: appState)
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(white: 0.45))
 
-                            if let event = nextCalendarEvent {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(event.title)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundColor(.black)
-                                        .lineLimit(1)
-                                    Text(timeUntilEvent(event))
-                                        .font(.system(size: 10))
-                                        .foregroundColor(Color(white: 0.55))
+                                if let event = nextCalendarEvent {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(event.title)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(.black)
+                                            .lineLimit(1)
+                                        Text(timeUntilEvent(event))
+                                            .font(.system(size: 9))
+                                            .foregroundColor(Color(white: 0.5))
+                                    }
+                                    .frame(maxWidth: 90, alignment: .leading)
                                 }
-                                .frame(maxWidth: 100, alignment: .leading)
                             }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color(white: 0.94))
+                            .cornerRadius(6)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(nextCalendarEvent != nil ? Color(white: 0.95) : Color.clear)
-                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 8)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 8)
 
-                    Button(action: { showingSettings = true }) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color(white: 0.6))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 8)
-
-                    // Chat messages button
-                    ChatIconButton(
-                        messagingState: appState.messagingState,
-                        action: {
-                            windowManager.toggleChatPanel(messagingState: appState.messagingState)
+                    // Grouped icon container
+                    HStack(spacing: 0) {
+                        // Calendar (when no upcoming meeting)
+                        if nextCalendarEvent == nil {
+                            IconBarButton(
+                                icon: "calendar",
+                                action: { windowManager.openScheduleWindow(appState: appState) },
+                                tooltip: "My Schedule"
+                            )
                         }
-                    )
-                    .padding(.trailing, 12)
 
-                    Button("Sign out") {
-                        handleLogout()
+                        // Messages
+                        ChatIconButton(
+                            messagingState: appState.messagingState,
+                            action: {
+                                windowManager.toggleChatPanel(messagingState: appState.messagingState)
+                            }
+                        )
+                        .frame(width: 32, height: 28)
+
+                        // Settings
+                        IconBarButton(
+                            icon: "gearshape",
+                            action: { showingSettings = true },
+                            tooltip: "Settings"
+                        )
+
+                        // Sign out
+                        IconBarButton(
+                            icon: "rectangle.portrait.and.arrow.right",
+                            action: { handleLogout() },
+                            tooltip: "Sign Out"
+                        )
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(white: 0.6))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 3)
+                    .background(Color(white: 0.94))
+                    .cornerRadius(8)
                 }
-                .frame(height: 32)
+                .frame(height: 36)
                 .padding(.horizontal, 16)
 
                 // Logo
@@ -1543,6 +1573,33 @@ struct PresetButton: View {
                 .cornerRadius(6)
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Icon Bar Button
+
+/// A standardized button for the icon bar with hover state
+struct IconBarButton: View {
+    let icon: String
+    let action: () -> Void
+    var tooltip: String? = nil
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(isHovered ? Color(white: 0.2) : Color(white: 0.45))
+                .frame(width: 32, height: 28)
+                .background(isHovered ? Color(white: 0.88) : Color.clear)
+                .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .help(tooltip ?? "")
     }
 }
 
