@@ -1,5 +1,5 @@
 // Main process entry point
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, desktopCapturer, session, systemPreferences, shell, globalShortcut, clipboard, dialog } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, desktopCapturer, session, systemPreferences, shell, globalShortcut, clipboard, dialog, Notification } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import WebSocket from 'ws';
 import * as os from 'os';
@@ -100,7 +100,7 @@ if (require('electron-squirrel-startup')) {
 }
 
 // Type definitions
-type AudioCaptureStatus = 'idle' | 'connecting' | 'capturing' | 'error';
+type AudioCaptureStatus = 'idle' | 'connecting' | 'capturing' | 'reconnecting' | 'error';
 
 interface AudioCaptureConfig {
   callId?: string;
@@ -122,6 +122,24 @@ let isQuitting = false;
 let audioStatus: AudioCaptureStatus = 'idle';
 let wsConnection: WebSocket | null = null;
 let currentCallId: string | null = null;
+
+// WebSocket reconnection state
+let wsConnectionParams: (AudioCaptureConfig & { callId: string }) | null = null;
+let wsConvexCallId: string | null = null;  // Store Convex ID for reconnection
+let reconnectAttempt = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+let reconnectTimeoutId: NodeJS.Timeout | null = null;
+let heartbeatIntervalId: NodeJS.Timeout | null = null;
+let lastPongTime: number = Date.now();
+const HEARTBEAT_INTERVAL_MS = 10000;  // 10 seconds
+const HEARTBEAT_STALE_MS = 20000;     // 20 seconds
+let isReconnecting = false;
+
+// Live Chat state
+let chatPollingInterval: NodeJS.Timeout | null = null;
+let chatCloserId: string | null = null;
+let chatTeamId: string | null = null;
+let chatCloserName: string | null = null;
 
 // Ammo tracker window state
 let ammoTrackerVisible = false;
@@ -529,10 +547,15 @@ const endCallInBackend = async (callId: string) => {
   }
 };
 
-// Connect to WebSocket server
-const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Promise<boolean> => {
+// Connect to WebSocket server (with reconnection support)
+const connectWebSocket = (config: AudioCaptureConfig & { callId: string; convexCallId?: string; isReconnect?: boolean }): Promise<boolean> => {
   return new Promise((resolve) => {
-    console.log(`[Main] Connecting to WebSocket: ${AUDIO_SERVICE_URL}`);
+    // Store params for potential reconnection (only on initial connection)
+    if (!config.isReconnect) {
+      wsConnectionParams = config;
+    }
+
+    console.log(`[Main] Connecting to WebSocket: ${AUDIO_SERVICE_URL} (isReconnect: ${config.isReconnect || false})`);
 
     try {
       wsConnection = new WebSocket(AUDIO_SERVICE_URL);
@@ -547,17 +570,22 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Prom
         clearTimeout(timeout);
         console.log('[Main] WebSocket connected');
 
-        // Send metadata including sample rate for audio format verification
+        // Send metadata including sample rate and reconnection fields
         const metadata = {
           callId: config.callId,
           teamId: config.teamId,
           closerId: config.closerId,
           prospectName: config.prospectName,
           sampleRate: config.sampleRate || 48000, // Include sample rate for WAV header
+          convexCallId: config.convexCallId,  // Include for reconnection
+          isReconnect: config.isReconnect || false,
         };
 
         wsConnection!.send(JSON.stringify(metadata));
         console.log('[Main] Sent metadata:', metadata);
+
+        // Start heartbeat for connection health monitoring
+        startHeartbeat();
       });
 
       wsConnection.on('message', (data) => {
@@ -572,6 +600,7 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Prom
             // The server returns convexCallId which is the actual database ID
             if (message.convexCallId) {
               console.log('[Main] Updating callId from:', currentCallId, 'to Convex ID:', message.convexCallId);
+              wsConvexCallId = message.convexCallId;  // Store for reconnection
               currentCallId = message.convexCallId;
 
               // Notify renderer and ammo tracker of the correct call ID
@@ -582,6 +611,21 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Prom
             }
 
             resolve(true);
+          } else if (message.type === 'pong') {
+            // Update last pong time for heartbeat health check
+            lastPongTime = Date.now();
+          } else if (message.type === 'silence_warning') {
+            // Handle silence warning from server
+            console.log('[Main] Silence warning:', message.silenceDuration, 'seconds');
+            mainWindow?.webContents.send('audio:silence-warning', {
+              silenceDuration: message.silenceDuration,
+              message: message.message,
+            });
+            // Trigger reconnect if silence exceeds 60 seconds
+            if (message.silenceDuration >= 60 && !isReconnecting) {
+              console.log('[Main] Extended silence detected, attempting reconnect');
+              handleStaleConnection();
+            }
           } else if (message.error) {
             console.error('[Main] Server error:', message.error);
             mainWindow?.webContents.send('audio:error', message.error);
@@ -601,17 +645,16 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string }): Prom
 
       wsConnection.on('close', () => {
         console.log('[Main] WebSocket closed');
-        if (audioStatus === 'capturing') {
-          updateStatus('error');
-          mainWindow?.webContents.send('audio:error', 'Connection lost');
+        stopHeartbeat();
 
-          // End the call in the backend when connection drops unexpectedly
-          if (currentCallId) {
-            endCallInBackend(currentCallId);
-            currentCallId = null;
-          }
+        // If we were capturing and not already reconnecting, attempt reconnect
+        if (audioStatus === 'capturing' && !isReconnecting) {
+          console.log('[Main] Connection dropped during capture, attempting reconnect');
+          attemptReconnect();
+        } else if (!isReconnecting) {
+          // Normal close (not during capture or already reconnecting)
+          wsConnection = null;
         }
-        wsConnection = null;
       });
     } catch (err) {
       console.error('[Main] Failed to create WebSocket:', err);
@@ -639,6 +682,107 @@ const closeWebSocket = async () => {
     wsConnection.close();
     wsConnection = null;
   }
+};
+
+// ==================== WebSocket Reconnection Functions ====================
+
+// Start heartbeat ping/pong to detect stale connections
+const startHeartbeat = () => {
+  stopHeartbeat();
+  lastPongTime = Date.now();
+
+  heartbeatIntervalId = setInterval(() => {
+    if (wsConnection?.readyState === WebSocket.OPEN) {
+      // Check for stale connection
+      if (Date.now() - lastPongTime > HEARTBEAT_STALE_MS) {
+        console.log('[Main] Connection stale - no pong for 20s, triggering reconnect');
+        handleStaleConnection();
+        return;
+      }
+      // Send ping
+      wsConnection.send(JSON.stringify({ type: 'ping' }));
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+};
+
+// Stop heartbeat timer
+const stopHeartbeat = () => {
+  if (heartbeatIntervalId) {
+    clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  }
+};
+
+// Handle stale connection - close and attempt reconnect
+const handleStaleConnection = () => {
+  if (isReconnecting) return;
+
+  stopHeartbeat();
+  if (wsConnection) {
+    wsConnection.close();
+    wsConnection = null;
+  }
+  attemptReconnect();
+};
+
+// Attempt to reconnect with exponential backoff
+const attemptReconnect = async () => {
+  if (!wsConnectionParams || reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+    console.log('[Main] Max reconnect attempts reached or no params');
+    updateStatus('error');
+    mainWindow?.webContents.send('audio:error', 'Connection lost - max reconnect attempts reached');
+    if (currentCallId) {
+      endCallInBackend(currentCallId);
+    }
+    cleanupReconnectState();
+    return;
+  }
+
+  isReconnecting = true;
+  reconnectAttempt++;
+
+  // Exponential backoff: 1s, 2s, 4s, 8s... max 30s
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempt - 1), 30000);
+
+  console.log(`[Main] Reconnect attempt ${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`);
+  updateStatus('reconnecting');
+  mainWindow?.webContents.send('audio:reconnecting', { attempt: reconnectAttempt, maxAttempts: MAX_RECONNECT_ATTEMPTS });
+
+  reconnectTimeoutId = setTimeout(async () => {
+    try {
+      const success = await connectWebSocket({
+        ...wsConnectionParams!,
+        convexCallId: wsConvexCallId || undefined,
+        isReconnect: true,
+      });
+
+      if (success) {
+        console.log('[Main] Reconnected successfully');
+        reconnectAttempt = 0;
+        isReconnecting = false;
+        updateStatus('capturing');
+        mainWindow?.webContents.send('audio:reconnected');
+      } else {
+        attemptReconnect();
+      }
+    } catch (err) {
+      console.error('[Main] Reconnect failed:', err);
+      attemptReconnect();
+    }
+  }, delay);
+};
+
+// Clean up all reconnection state
+const cleanupReconnectState = () => {
+  isReconnecting = false;
+  reconnectAttempt = 0;
+  wsConnectionParams = null;
+  wsConvexCallId = null;
+  if (reconnectTimeoutId) {
+    clearTimeout(reconnectTimeoutId);
+    reconnectTimeoutId = null;
+  }
+  stopHeartbeat();
 };
 
 // ==================== Auth Functions ====================
@@ -817,6 +961,9 @@ const setupIpcHandlers = (): void => {
   ipcMain.handle('audio:start', async (_event, config: AudioCaptureConfig) => {
     console.log('[Main] Starting audio capture with config:', config);
 
+    // Reset reconnect state for new call
+    cleanupReconnectState();
+
     // SAFETY: Close any existing connection before starting a new one
     // This prevents duplicate calls if user clicks start multiple times
     if (wsConnection || currentCallId) {
@@ -893,6 +1040,9 @@ const setupIpcHandlers = (): void => {
   // Stop audio capture
   ipcMain.handle('audio:stop', async () => {
     console.log('[Main] Stopping audio capture...');
+
+    // Cancel any pending reconnect attempts
+    cleanupReconnectState();
 
     await closeWebSocket();
     currentCallId = null;
@@ -1295,6 +1445,219 @@ const setupIpcHandlers = (): void => {
       console.error('[Main] Error getting events:', error);
       return [];
     }
+  });
+
+  // ---- Live Chat IPC Handlers ----
+
+  // Get messages for closer
+  ipcMain.handle('chat:get-messages', async (_event, closerId: string, limit?: number) => {
+    try {
+      const response = await fetch(
+        `https://ideal-ram-982.convex.site/getMessagesForCloser?closerId=${encodeURIComponent(closerId)}&limit=${limit || 100}`
+      );
+      if (!response.ok) return [];
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error getting chat messages:', error);
+      return [];
+    }
+  });
+
+  // Send message from closer
+  ipcMain.handle('chat:send-message', async (_event, teamId: string, closerId: string, closerName: string, message: string) => {
+    try {
+      const response = await fetch('https://ideal-ram-982.convex.site/sendMessage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamId,
+          senderType: 'closer',
+          senderCloserId: closerId,
+          senderName: closerName,
+          recipientType: 'manager',
+          message,
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to send message');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error sending chat message:', error);
+      throw error;
+    }
+  });
+
+  // Mark all messages as read
+  ipcMain.handle('chat:mark-all-read', async (_event, closerId: string) => {
+    try {
+      const response = await fetch('https://ideal-ram-982.convex.site/markAllAsReadForCloser', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ closerId }),
+      });
+      if (!response.ok) throw new Error('Failed to mark messages as read');
+
+      // Note: Don't clear dock badge here - let the polling loop handle it
+      // based on the actual unread count from the API
+
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error marking messages as read:', error);
+      throw error;
+    }
+  });
+
+  // Get unread count
+  ipcMain.handle('chat:get-unread-count', async (_event, closerId: string) => {
+    try {
+      const response = await fetch(
+        `https://ideal-ram-982.convex.site/getUnreadCountForCloser?closerId=${encodeURIComponent(closerId)}`
+      );
+      if (!response.ok) return 0;
+      const data = await response.json();
+      const count = data.count || 0;
+
+      // Update dock badge
+      if (process.platform === 'darwin') {
+        app.dock.setBadge(count > 0 ? String(count) : '');
+      }
+
+      return count;
+    } catch (error) {
+      console.error('[Main] Error getting unread count:', error);
+      return 0;
+    }
+  });
+
+  // Get latest unread message (for notification)
+  ipcMain.handle('chat:get-latest-unread', async (_event, closerId: string) => {
+    try {
+      const response = await fetch(
+        `https://ideal-ram-982.convex.site/getLatestUnreadForCloser?closerId=${encodeURIComponent(closerId)}`
+      );
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (error) {
+      console.error('[Main] Error getting latest unread:', error);
+      return null;
+    }
+  });
+
+  // Start polling for messages
+  ipcMain.handle('chat:start-polling', (_event, closerId: string, teamId: string, closerName: string, intervalMs?: number) => {
+    console.log('[Main] Starting chat polling for closer:', closerId);
+
+    // Stop existing polling
+    if (chatPollingInterval) {
+      clearInterval(chatPollingInterval);
+    }
+
+    chatCloserId = closerId;
+    chatTeamId = teamId;
+    chatCloserName = closerName;
+
+    const pollInterval = intervalMs || 2500;  // Default 2.5 seconds
+    let lastSeenMessageId: string | null = null;
+
+    chatPollingInterval = setInterval(async () => {
+      try {
+        // Get unread count
+        const countResponse = await fetch(
+          `https://ideal-ram-982.convex.site/getUnreadCountForCloser?closerId=${encodeURIComponent(closerId)}`
+        );
+        if (countResponse.ok) {
+          const data = await countResponse.json();
+          const count = data.count || 0;
+
+          // Update dock badge
+          if (process.platform === 'darwin') {
+            app.dock.setBadge(count > 0 ? String(count) : '');
+          }
+
+          // Notify renderer windows
+          mainWindow?.webContents.send('chat:unread-count-changed', count);
+          ammoTrackerWindow?.webContents.send('chat:unread-count-changed', count);
+        }
+
+        // Get latest unread for notification
+        const latestResponse = await fetch(
+          `https://ideal-ram-982.convex.site/getLatestUnreadForCloser?closerId=${encodeURIComponent(closerId)}`
+        );
+        if (latestResponse.ok) {
+          const latest = await latestResponse.json();
+          if (latest && latest._id !== lastSeenMessageId) {
+            lastSeenMessageId = latest._id;
+            // Notify renderer windows of new message
+            mainWindow?.webContents.send('chat:new-message', latest);
+            ammoTrackerWindow?.webContents.send('chat:new-message', latest);
+
+            // Show notification for new messages from manager
+            if (latest.senderType === 'manager') {
+              console.log('[Main] Showing notification for new chat message from:', latest.senderName);
+
+              // Play system beep sound (reliable fallback)
+              shell.beep();
+
+              // Show native notification
+              const notification = new Notification({
+                title: 'New Message',
+                body: `${latest.senderName}: ${latest.message?.substring(0, 100) || 'Sent you a message'}`,
+                silent: true, // Don't play notification sound since we're using shell.beep()
+              });
+
+              // When notification is clicked, show the ammo tracker window
+              notification.on('click', () => {
+                if (ammoTrackerWindow) {
+                  ammoTrackerWindow.show();
+                  ammoTrackerWindow.focus();
+                  // Tell the ammo tracker to switch to chat tab
+                  ammoTrackerWindow.webContents.send('chat:switch-to-tab');
+                } else if (mainWindow) {
+                  mainWindow.show();
+                  mainWindow.focus();
+                }
+              });
+
+              notification.show();
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[Main] Chat polling error:', error);
+      }
+    }, pollInterval);
+
+    return { success: true };
+  });
+
+  // Stop polling
+  ipcMain.handle('chat:stop-polling', () => {
+    console.log('[Main] Stopping chat polling');
+    if (chatPollingInterval) {
+      clearInterval(chatPollingInterval);
+      chatPollingInterval = null;
+    }
+    chatCloserId = null;
+    chatTeamId = null;
+    chatCloserName = null;
+
+    // Clear dock badge
+    if (process.platform === 'darwin') {
+      app.dock.setBadge('');
+    }
+
+    return { success: true };
+  });
+
+  // Get closer info for chat (used by ammo tracker)
+  ipcMain.handle('chat:get-closer-info', () => {
+    return {
+      closerId: chatCloserId,
+      teamId: chatTeamId,
+      closerName: chatCloserName,
+    };
   });
 
   console.log('[Main] IPC handlers set up');

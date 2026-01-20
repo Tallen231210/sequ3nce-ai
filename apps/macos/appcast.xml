@@ -8,6 +8,31 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.0</title>
+            <pubDate>Mon, 20 Jan 2026 14:00:00 +0000</pubDate>
+            <sparkle:version>36</sparkle:version>
+            <sparkle:shortVersionString>1.7.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.0</h2>
+                <ul>
+                    <li>Menu Bar Integration - Sequ3nce icon now lives in your menu bar</li>
+                    <li>Quick access to Start/Stop Recording from menu bar</li>
+                    <li>Red indicator dot shows when recording is active</li>
+                    <li>Open Ammo Panel and Schedule directly from menu bar</li>
+                    <li>Recording duration visible in menu bar dropdown</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.7.0/Sequ3nce.zip"
+                length="1750119"
+                type="application/octet-stream"
+                sparkle:edSignature="OWWMtpxwHEFGxBIT/P48klmvSZM0V/WHywLbgmgGA3dJVvLJYzkYRZ4emQWVkIEeADM/ixxHEU28rKKXnGMFDA=="
+            />
+        </item>
+
+        <!-- v1.6.0 -->
+        <item>
             <title>Version 1.6.0</title>
             <pubDate>Mon, 20 Jan 2026 12:00:00 +0000</pubDate>
             <sparkle:version>34</sparkle:version>

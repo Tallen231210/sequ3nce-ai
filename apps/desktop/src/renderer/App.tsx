@@ -170,6 +170,8 @@ export function App() {
         // Set closer email and team ID for the schedule window
         window.electron.schedule?.setCloserEmail(info.email);
         window.electron.schedule?.setTeamId(info.teamId);
+        // Start chat polling for live messages
+        window.electron.chat?.startPolling(info.closerId, info.teamId, info.name);
 
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(info.email);
@@ -211,6 +213,8 @@ export function App() {
         // Set closer email and team ID for the schedule window
         window.electron.schedule?.setCloserEmail(result.closer.email);
         window.electron.schedule?.setTeamId(result.closer.teamId);
+        // Start chat polling for live messages
+        window.electron.chat?.startPolling(result.closer.closerId, result.closer.teamId, result.closer.name);
 
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(result.closer.email);
@@ -237,6 +241,8 @@ export function App() {
 
     // Clear closer ID for the training window
     window.electron.training?.setCloserId(null);
+    // Stop chat polling
+    window.electron.chat?.stopPolling();
   };
 
   const handleRetry = () => {

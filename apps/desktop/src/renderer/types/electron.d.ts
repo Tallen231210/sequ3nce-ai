@@ -1,5 +1,5 @@
 // Type declarations for electron API exposed via preload
-export type AudioStatus = 'idle' | 'connecting' | 'capturing' | 'error';
+export type AudioStatus = 'idle' | 'connecting' | 'capturing' | 'reconnecting' | 'error';
 
 export interface AudioAPI {
   getStatus: () => Promise<AudioStatus>;
@@ -21,6 +21,9 @@ export interface AudioAPI {
   onError: (callback: (error: string) => void) => () => void;
   onAudioLevel: (callback: (level: number) => void) => () => void;
   onCallIdUpdated: (callback: (callId: string) => void) => () => void;
+  onReconnecting: (callback: (info: { attempt: number; maxAttempts: number }) => void) => () => void;
+  onReconnected: (callback: () => void) => () => void;
+  onSilenceWarning: (callback: (info: { silenceDuration: number; message: string }) => void) => () => void;
 }
 
 export interface AppAPI {
@@ -55,6 +58,28 @@ export interface ScheduleAPI {
   setTeamId: (teamId: string | null) => Promise<boolean>;
 }
 
+// Chat message type for Live Chat feature
+export interface ChatMessage {
+  _id: string;
+  senderType: 'manager' | 'closer';
+  senderName: string;
+  message: string;
+  isRead: boolean;
+  createdAt: number;
+}
+
+export interface ChatAPI {
+  getMessages: (closerId: string, limit?: number) => Promise<ChatMessage[]>;
+  sendMessage: (teamId: string, closerId: string, closerName: string, message: string) => Promise<unknown>;
+  markAllRead: (closerId: string) => Promise<unknown>;
+  getUnreadCount: (closerId: string) => Promise<number>;
+  getLatestUnread: (closerId: string) => Promise<ChatMessage | null>;
+  startPolling: (closerId: string, teamId: string, closerName: string, intervalMs?: number) => Promise<{ success: boolean }>;
+  stopPolling: () => Promise<{ success: boolean }>;
+  onUnreadCountChanged: (callback: (count: number) => void) => () => void;
+  onNewMessage: (callback: (message: ChatMessage) => void) => () => void;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
@@ -63,6 +88,7 @@ export interface ElectronAPI {
   training: TrainingAPI;
   roleplay: RoleplayAPI;
   schedule: ScheduleAPI;
+  chat: ChatAPI;
 }
 
 // Ammo item type
@@ -117,6 +143,18 @@ export interface AmmoTrackerAPI {
   onCallIdChange: (callback: (callId: string | null) => void) => () => void;
   onNewAmmo: (callback: (ammo: AmmoItem) => void) => () => void;
   onNewTranscript: (callback: (segment: TranscriptSegment) => void) => () => void;
+  // Live Chat methods
+  chatGetMessages: (closerId: string, limit?: number) => Promise<ChatMessage[]>;
+  chatSendMessage: (teamId: string, closerId: string, closerName: string, message: string) => Promise<unknown>;
+  chatMarkAllRead: (closerId: string) => Promise<unknown>;
+  chatGetUnreadCount: (closerId: string) => Promise<number>;
+  chatGetLatestUnread: (closerId: string) => Promise<ChatMessage | null>;
+  chatStartPolling: (closerId: string, teamId: string, closerName: string, intervalMs?: number) => Promise<{ success: boolean }>;
+  chatStopPolling: () => Promise<{ success: boolean }>;
+  onUnreadCountChanged: (callback: (count: number) => void) => () => void;
+  onNewMessage: (callback: (message: ChatMessage) => void) => () => void;
+  chatGetCloserInfo: () => Promise<{ closerId: string | null; teamId: string | null; closerName: string | null }>;
+  onSwitchToChatTab: (callback: () => void) => () => void;
 }
 
 // Training playlist types

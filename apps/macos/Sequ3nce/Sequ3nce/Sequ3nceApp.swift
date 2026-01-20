@@ -12,6 +12,7 @@ import Combine
 
 @main
 struct Sequ3nceApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppState()
 
     // Sparkle auto-updater
@@ -42,6 +43,16 @@ struct Sequ3nceApp: App {
             ContentView()
                 .environmentObject(appState)
                 .frame(width: 400, height: 600)
+                .onAppear {
+                    // Initialize menu bar after AppState is ready
+                    appDelegate.setupMenuBar(with: appState)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CheckForUpdates"))) { _ in
+                    // Handle "Check for Updates" from menu bar
+                    if updaterController.updater.canCheckForUpdates {
+                        updaterController.updater.checkForUpdates()
+                    }
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)

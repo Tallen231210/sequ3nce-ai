@@ -20,6 +20,8 @@
 		10D17FDE2F1DB299006686F2 /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FDD2F1DB299006686F2 /* ChatModels.swift */; };
 		10D17FE02F1DB2C7006686F2 /* ChatPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FDF2F1DB2C7006686F2 /* ChatPanelView.swift */; };
 		10D17FE22F1DB2D4006686F2 /* MessageNotificationBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FE12F1DB2D3006686F2 /* MessageNotificationBanner.swift */; };
+		10D17FE42F201663006686F2 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FE32F201663006686F2 /* AppDelegate.swift */; };
+		10D17FE82F201877006686F2 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FE72F201877006686F2 /* MenuBarController.swift */; };
 		10EB31152F0F03BA00665CB6 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 10EB31142F0F03BA00665CB6 /* Starscream */; };
 		10EB31172F0F051100665CB6 /* StarscreamWebSocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EB31162F0F051100665CB6 /* StarscreamWebSocketService.swift */; };
 		10EB31192F0F09D500665CB6 /* SystemAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EB31182F0F09D500665CB6 /* SystemAudioCapture.swift */; };
@@ -44,6 +46,8 @@
 		10D17FDD2F1DB299006686F2 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
 		10D17FDF2F1DB2C7006686F2 /* ChatPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanelView.swift; sourceTree = "<group>"; };
 		10D17FE12F1DB2D3006686F2 /* MessageNotificationBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageNotificationBanner.swift; sourceTree = "<group>"; };
+		10D17FE32F201663006686F2 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		10D17FE72F201877006686F2 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		10EB31162F0F051100665CB6 /* StarscreamWebSocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarscreamWebSocketService.swift; sourceTree = "<group>"; };
 		10EB31182F0F09D500665CB6 /* SystemAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemAudioCapture.swift; sourceTree = "<group>"; };
 		A1000001111111110000000A /* Sequ3nceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sequ3nceApp.swift; sourceTree = "<group>"; };
@@ -81,6 +85,7 @@
 		A1000009111111110000000A /* Sequ3nce */ = {
 			isa = PBXGroup;
 			children = (
+				10D17FE32F201663006686F2 /* AppDelegate.swift */,
 				A1000001111111110000000A /* Sequ3nceApp.swift */,
 				A100000B111111110000000A /* Views */,
 				A100000C111111110000000A /* Services */,
@@ -121,6 +126,7 @@
 		A100000C111111110000000A /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				10D17FE72F201877006686F2 /* MenuBarController.swift */,
 				10D17FDB2F1DB286006686F2 /* MessagingState.swift */,
 				10D17FCA2F0F2A21006686F2 /* AmmoPanelState.swift */,
 				10D17FC22F0F2270006686F2 /* WindowManager.swift */,
@@ -247,7 +253,9 @@
 			files = (
 				A1000001211111110000000A /* Sequ3nceApp.swift in Sources */,
 				10D17FC32F0F2270006686F2 /* WindowManager.swift in Sources */,
+				10D17FE42F201663006686F2 /* AppDelegate.swift in Sources */,
 				10D17FCB2F0F2A21006686F2 /* AmmoPanelState.swift in Sources */,
+				10D17FE82F201877006686F2 /* MenuBarController.swift in Sources */,
 				10EB31192F0F09D500665CB6 /* SystemAudioCapture.swift in Sources */,
 				10D17FD32F0F33DB006686F2 /* TrainingView.swift in Sources */,
 				10D17FDC2F12A000006686F2 /* ScheduleView.swift in Sources */,

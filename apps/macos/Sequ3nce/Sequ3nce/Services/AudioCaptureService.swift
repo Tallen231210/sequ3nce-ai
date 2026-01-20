@@ -584,26 +584,30 @@ class AudioCaptureService: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let self = self else { return }
-            let engineRunning = self.micEngine?.isRunning ?? false
-            let timeSinceLastMic = Date().timeIntervalSince(self.lastMicCallbackTime)
-            let sessionDuration = self.captureStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
-            print("[AudioCaptureService] ⚠️ AUDIO CONFIG CHANGE: AVAudioEngine configuration changed!")
-            print("[AudioCaptureService] ⚠️ Engine running after change: \(engineRunning)")
-            print("[AudioCaptureService] ⚠️ This may have stopped the audio tap!")
-            print("[AudioCaptureService] ⚠️ Time since last mic callback: \(String(format: "%.1f", timeSinceLastMic))s")
+            // Dispatch to MainActor for Swift 6 compatibility
+            Task { @MainActor in
+                let engineRunning = self.micEngine?.isRunning ?? false
+                let timeSinceLastMic = Date().timeIntervalSince(self.lastMicCallbackTime)
+                let sessionDuration = self.captureStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
-            // Send to backend
-            self.sendErrorToBackend(
-                errorType: "swift_audio_config_change",
-                errorMessage: "AVAudioEngine configuration changed. Engine running: \(engineRunning). Chunks sent so far: \(self.totalChunksSent). Attempting recovery.",
-                context: "duration=\(Int(sessionDuration))s, timeSinceLastMic=\(String(format: "%.1f", timeSinceLastMic))s"
-            )
+                print("[AudioCaptureService] ⚠️ AUDIO CONFIG CHANGE: AVAudioEngine configuration changed!")
+                print("[AudioCaptureService] ⚠️ Engine running after change: \(engineRunning)")
+                print("[AudioCaptureService] ⚠️ This may have stopped the audio tap!")
+                print("[AudioCaptureService] ⚠️ Time since last mic callback: \(String(format: "%.1f", timeSinceLastMic))s")
 
-            // AUTO-RECOVERY: If engine stopped due to config change, restart it
-            if !engineRunning && self._isCapturingAtomic {
-                print("[AudioCaptureService] ⚠️ Attempting auto-recovery after config change...")
-                self.attemptAudioRecovery()
+                // Send to backend
+                self.sendErrorToBackend(
+                    errorType: "swift_audio_config_change",
+                    errorMessage: "AVAudioEngine configuration changed. Engine running: \(engineRunning). Chunks sent so far: \(self.totalChunksSent). Attempting recovery.",
+                    context: "duration=\(Int(sessionDuration))s, timeSinceLastMic=\(String(format: "%.1f", timeSinceLastMic))s"
+                )
+
+                // AUTO-RECOVERY: If engine stopped due to config change, restart it
+                if !engineRunning && self._isCapturingAtomic {
+                    print("[AudioCaptureService] ⚠️ Attempting auto-recovery after config change...")
+                    self.attemptAudioRecovery()
+                }
             }
         }
 

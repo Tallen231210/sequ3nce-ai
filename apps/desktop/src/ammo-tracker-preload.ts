@@ -44,4 +44,59 @@ contextBridge.exposeInMainWorld('ammoTracker', {
     ipcRenderer.on('ammo:new-transcript', handler);
     return () => ipcRenderer.removeListener('ammo:new-transcript', handler);
   },
+
+  // ---- Live Chat API ----
+
+  // Get messages for closer
+  chatGetMessages: (closerId: string, limit?: number) =>
+    ipcRenderer.invoke('chat:get-messages', closerId, limit),
+
+  // Send message from closer
+  chatSendMessage: (teamId: string, closerId: string, closerName: string, message: string) =>
+    ipcRenderer.invoke('chat:send-message', teamId, closerId, closerName, message),
+
+  // Mark all messages as read
+  chatMarkAllRead: (closerId: string) =>
+    ipcRenderer.invoke('chat:mark-all-read', closerId),
+
+  // Get unread count
+  chatGetUnreadCount: (closerId: string) =>
+    ipcRenderer.invoke('chat:get-unread-count', closerId),
+
+  // Get latest unread message
+  chatGetLatestUnread: (closerId: string) =>
+    ipcRenderer.invoke('chat:get-latest-unread', closerId),
+
+  // Start polling for messages
+  chatStartPolling: (closerId: string, teamId: string, closerName: string, intervalMs?: number) =>
+    ipcRenderer.invoke('chat:start-polling', closerId, teamId, closerName, intervalMs),
+
+  // Stop polling
+  chatStopPolling: () =>
+    ipcRenderer.invoke('chat:stop-polling'),
+
+  // Listen for unread count changes
+  onUnreadCountChanged: (callback: (count: number) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, count: number) => callback(count);
+    ipcRenderer.on('chat:unread-count-changed', handler);
+    return () => ipcRenderer.removeListener('chat:unread-count-changed', handler);
+  },
+
+  // Listen for new messages
+  onNewMessage: (callback: (message: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: any) => callback(message);
+    ipcRenderer.on('chat:new-message', handler);
+    return () => ipcRenderer.removeListener('chat:new-message', handler);
+  },
+
+  // Get closer info for chat
+  chatGetCloserInfo: () =>
+    ipcRenderer.invoke('chat:get-closer-info'),
+
+  // Listen for switch to chat tab (from notification click)
+  onSwitchToChatTab: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('chat:switch-to-tab', handler);
+    return () => ipcRenderer.removeListener('chat:switch-to-tab', handler);
+  },
 });
