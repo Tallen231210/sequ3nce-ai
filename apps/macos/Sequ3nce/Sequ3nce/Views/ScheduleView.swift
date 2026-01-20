@@ -505,24 +505,37 @@ struct ScheduleView: View {
     // MARK: - Urgency System
 
     private enum EventUrgency {
-        case now        // Starting within 5 minutes or in progress
+        case now        // Starting within 5 minutes or currently in progress
         case soon       // Starting within 1 hour
         case later      // Starting later today
         case future     // Tomorrow or later
+        case past       // Already ended
     }
 
     private func eventUrgency(_ event: CalendarEvent) -> EventUrgency {
         let nowMs = now.timeIntervalSince1970 * 1000
-        let diffMinutes = (event.startTime - nowMs) / 60000
+        let startDiffMinutes = (event.startTime - nowMs) / 60000
+        let endDiffMinutes = (event.endTime - nowMs) / 60000
 
-        if diffMinutes <= 5 {
+        // Check if event has already ended
+        if endDiffMinutes < 0 {
+            return .past
+        }
+
+        // Event is currently in progress (started but not ended)
+        if startDiffMinutes < 0 && endDiffMinutes >= 0 {
             return .now
-        } else if diffMinutes <= 60 {
-            return .soon
-        } else if diffMinutes <= 24 * 60 {
-            return .later
+        }
+
+        // Event starts in the future
+        if startDiffMinutes <= 5 {
+            return .now     // Starting very soon (within 5 minutes)
+        } else if startDiffMinutes <= 60 {
+            return .soon    // Starting within an hour
+        } else if startDiffMinutes <= 24 * 60 {
+            return .later   // Starting later today
         } else {
-            return .future
+            return .future  // Tomorrow or later
         }
     }
 
@@ -538,6 +551,8 @@ struct ScheduleView: View {
                 return ("TODAY", Color(red: 0.9, green: 0.95, blue: 0.9), Color(red: 0.2, green: 0.55, blue: 0.3))
             case .future:
                 return ("UPCOMING", Color(white: 0.93), Color(white: 0.45))
+            case .past:
+                return ("ENDED", Color(white: 0.93), Color(white: 0.55))
             }
         }()
 

@@ -332,15 +332,46 @@ export const upsertCalendarEvents = internalMutation({
       .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
       .collect();
 
+    // Primary lookup by UID
     const existingByUid = new Map(existingEvents.map((e) => [e.uid, e]));
-    const incomingUids = new Set(args.events.map((e) => e.uid));
+
+    // Secondary lookup by title + startTime (within 2 hour tolerance for timezone edge cases)
+    // This helps catch duplicates where UID might differ
+    const TIME_TOLERANCE_MS = 2 * 60 * 60 * 1000; // 2 hours
+    function findByTitleAndTime(title: string, startTime: number) {
+      return existingEvents.find(
+        (e) =>
+          e.title === title &&
+          Math.abs(e.startTime - startTime) < TIME_TOLERANCE_MS
+      );
+    }
+
+    // Track which existing events we've matched (to avoid deleting them)
+    const matchedExistingIds = new Set<string>();
+    // Track which incoming events we've processed (to avoid duplicates in same sync)
+    const processedKeys = new Set<string>();
 
     // Upsert incoming events
     for (const event of args.events) {
-      const existing = existingByUid.get(event.uid);
+      // Create a key for dedup within this sync batch
+      const eventKey = `${event.title}|${Math.floor(event.startTime / TIME_TOLERANCE_MS)}`;
+      if (processedKeys.has(eventKey)) {
+        // Skip duplicate within the same ICS feed
+        continue;
+      }
+      processedKeys.add(eventKey);
+
+      // Try to find existing event by UID first, then by title+time
+      let existing = existingByUid.get(event.uid);
+      if (!existing) {
+        existing = findByTitleAndTime(event.title, event.startTime);
+      }
+
       if (existing) {
-        // Update existing event
+        // Update existing event (also update UID in case it changed)
+        matchedExistingIds.add(existing._id);
         await ctx.db.patch(existing._id, {
+          uid: event.uid, // Update UID to latest
           title: event.title,
           description: event.description,
           startTime: event.startTime,
@@ -369,10 +400,10 @@ export const upsertCalendarEvents = internalMutation({
     }
 
     // Delete events that are no longer in the feed (and are in the future)
-    // We keep past events to preserve history
+    // Only delete if not matched by the new dedup logic
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
     for (const existing of existingEvents) {
-      if (!incomingUids.has(existing.uid) && existing.startTime > oneDayAgo) {
+      if (!matchedExistingIds.has(existing._id) && existing.startTime > oneDayAgo) {
         await ctx.db.delete(existing._id);
       }
     }
@@ -391,6 +422,52 @@ export const getCloserById = internalQuery({
   args: { closerId: v.id("closers") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.closerId);
+  },
+});
+
+// One-time cleanup: Remove duplicate events (same title + similar time)
+// Call this after deploying the timezone fix to clean up existing bad data
+export const cleanupDuplicateEvents = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const allEvents = await ctx.db.query("calendarEvents").collect();
+
+    // Group events by closer
+    const eventsByCloser = new Map<string, typeof allEvents>();
+    for (const event of allEvents) {
+      const closerId = event.closerId;
+      if (!eventsByCloser.has(closerId)) {
+        eventsByCloser.set(closerId, []);
+      }
+      eventsByCloser.get(closerId)!.push(event);
+    }
+
+    let deletedCount = 0;
+    const TIME_TOLERANCE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+    // For each closer, find and remove duplicates
+    for (const [, closerEvents] of eventsByCloser) {
+      // Sort by fetchedAt (keep the most recently fetched)
+      closerEvents.sort((a, b) => (b.fetchedAt || 0) - (a.fetchedAt || 0));
+
+      const seen = new Map<string, typeof closerEvents[0]>();
+
+      for (const event of closerEvents) {
+        // Create a key based on title + approximate time bucket
+        const timeBucket = Math.floor(event.startTime / TIME_TOLERANCE_MS);
+        const key = `${event.title}|${timeBucket}`;
+
+        if (seen.has(key)) {
+          // This is a duplicate - delete it (keep the more recently fetched one)
+          await ctx.db.delete(event._id);
+          deletedCount++;
+        } else {
+          seen.set(key, event);
+        }
+      }
+    }
+
+    return { success: true, deletedCount };
   },
 });
 
@@ -558,32 +635,82 @@ function extractTzid(block: string, fieldName: string): string | null {
   return match ? match[1] : null;
 }
 
-// Common timezone offset mappings (hours from UTC)
-const TIMEZONE_OFFSETS: Record<string, number> = {
-  // US timezones
-  "America/New_York": -5,
-  "America/Chicago": -6,
-  "America/Denver": -7,
-  "America/Los_Angeles": -8,
-  "America/Phoenix": -7,
-  "America/Anchorage": -9,
-  "Pacific/Honolulu": -10,
-  "US/Eastern": -5,
-  "US/Central": -6,
-  "US/Mountain": -7,
-  "US/Pacific": -8,
-  "US/Hawaii": -10,
-  "EST": -5,
-  "CST": -6,
-  "MST": -7,
-  "PST": -8,
-  // European
-  "Europe/London": 0,
-  "Europe/Paris": 1,
-  "Europe/Berlin": 1,
-  "UTC": 0,
-  "GMT": 0,
+// Map legacy/alias timezone names to IANA timezone names
+const TIMEZONE_ALIASES: Record<string, string> = {
+  "US/Eastern": "America/New_York",
+  "US/Central": "America/Chicago",
+  "US/Mountain": "America/Denver",
+  "US/Pacific": "America/Los_Angeles",
+  "US/Hawaii": "Pacific/Honolulu",
+  "US/Alaska": "America/Anchorage",
+  "EST": "America/New_York",
+  "EDT": "America/New_York",
+  "CST": "America/Chicago",
+  "CDT": "America/Chicago",
+  "MST": "America/Denver",
+  "MDT": "America/Denver",
+  "PST": "America/Los_Angeles",
+  "PDT": "America/Los_Angeles",
+  "GMT": "UTC",
 };
+
+/**
+ * Get timezone offset in hours for a specific date, handling DST correctly.
+ * Uses JavaScript's Intl API which has built-in timezone database.
+ *
+ * @param tzid - IANA timezone name (e.g., "America/New_York")
+ * @param year - Full year (e.g., 2024)
+ * @param month - Month (0-11, JavaScript style)
+ * @param day - Day of month (1-31)
+ * @param hour - Hour (0-23)
+ * @returns Offset in hours (negative for west of UTC), or null if timezone unknown
+ */
+function getTimezoneOffset(
+  tzid: string,
+  year: number,
+  month: number,
+  day: number,
+  hour: number
+): number | null {
+  // Normalize timezone name
+  const normalizedTzid = TIMEZONE_ALIASES[tzid] || tzid;
+
+  try {
+    // Create a formatter that will give us the offset
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: normalizedTzid,
+      timeZoneName: "longOffset", // e.g., "GMT-05:00" or "GMT-04:00"
+    });
+
+    // Create a date at the specified time (as if it were UTC)
+    const testDate = new Date(Date.UTC(year, month, day, hour, 0, 0));
+
+    // Format and extract the offset
+    const parts = formatter.formatToParts(testDate);
+    const tzPart = parts.find(p => p.type === "timeZoneName");
+
+    if (tzPart) {
+      // Parse "GMT-05:00" or "GMT+01:00" format
+      const match = tzPart.value.match(/GMT([+-])(\d{2}):(\d{2})/);
+      if (match) {
+        const sign = match[1] === "+" ? 1 : -1;
+        const hours = parseInt(match[2]);
+        const minutes = parseInt(match[3]);
+        return sign * (hours + minutes / 60);
+      }
+      // Handle "GMT" (no offset = UTC)
+      if (tzPart.value === "GMT") {
+        return 0;
+      }
+    }
+
+    return null;
+  } catch {
+    // Invalid timezone name - Intl will throw
+    console.warn(`Unknown timezone: ${tzid}`);
+    return null;
+  }
+}
 
 // Parse ICS date format to Unix timestamp
 // tzid: optional timezone ID from TZID parameter (e.g., "America/New_York")
@@ -615,13 +742,18 @@ function parseIcsDate(dateStr: string, tzid?: string | null): number | null {
       // Already UTC
       return Date.UTC(year, month, day, hour, minute, second);
     } else if (tzid) {
-      // Has timezone info - convert to UTC using offset
-      const offset = TIMEZONE_OFFSETS[tzid];
-      if (offset !== undefined) {
-        // Create UTC time and adjust by timezone offset
-        // offset is negative for west of UTC (e.g., -5 for EST)
-        // So we subtract the offset to convert local to UTC
-        return Date.UTC(year, month, day, hour - offset, minute, second);
+      // Has timezone info - use dynamic offset calculation (handles DST!)
+      const offsetHours = getTimezoneOffset(tzid, year, month, day, hour);
+      if (offsetHours !== null) {
+        // Convert local time to UTC
+        // If offset is -5 (EST), local 2pm = 7pm UTC, so we subtract the offset
+        // Date.UTC(2024, 0, 15, 14, 0, 0) with offset -5 should give us
+        // Date.UTC(2024, 0, 15, 14 - (-5), 0, 0) = Date.UTC(2024, 0, 15, 19, 0, 0)
+        const offsetMinutes = offsetHours * 60;
+        const utcMs = Date.UTC(year, month, day, hour, minute, second);
+        // Subtract offset: local time + offset = UTC time inverted
+        // If local is 2pm EST (offset -5), UTC is 2pm - (-5h) = 7pm UTC
+        return utcMs - offsetMinutes * 60 * 1000;
       }
     }
 
@@ -746,6 +878,33 @@ export const syncAllCalendars = action({
       synced: results.filter((r) => r.success).length,
       failed: results.filter((r) => !r.success).length,
       results,
+    };
+  },
+});
+
+// One-time action to clean up duplicates and re-sync all calendars
+// Run this after deploying the timezone fix
+export const cleanupAndResyncAll = action({
+  args: {},
+  handler: async (ctx): Promise<{
+    duplicatesRemoved: number;
+    calendarsResynced: number;
+    syncFailures: number;
+  }> => {
+    // Step 1: Clean up existing duplicates
+    const cleanupResult: { success: boolean; deletedCount: number } =
+      await ctx.runMutation(internal.calendar.cleanupDuplicateEvents, {});
+    console.log(`Cleaned up ${cleanupResult.deletedCount} duplicate events`);
+
+    // Step 2: Re-sync all calendars with fixed timezone handling
+    const syncResult: { synced: number; failed: number; results: SyncResult[] } =
+      await ctx.runAction(api.calendar.syncAllCalendars, {});
+    console.log(`Re-synced ${syncResult.synced} calendars`);
+
+    return {
+      duplicatesRemoved: cleanupResult.deletedCount,
+      calendarsResynced: syncResult.synced,
+      syncFailures: syncResult.failed,
     };
   },
 });
