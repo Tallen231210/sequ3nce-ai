@@ -563,12 +563,20 @@ struct ScheduleView: View {
     }
 
     private func joinAndRecord(event: CalendarEvent, meetingUrl: String) {
-        // 1. Open meeting URL in default browser/app
+        // 1. Open Ammo Panel snapped to right side of screen FIRST
+        WindowManager.shared.openAmmoPanelSnapped(appState: appState)
+
+        // 2. Open meeting URL in default browser/app (will appear on left)
         if let url = URL(string: meetingUrl) {
             NSWorkspace.shared.open(url)
         }
 
-        // 2. Start recording with event title as prospect name
+        // 3. After browser opens, resize it to fit the left side (alongside Ammo Panel)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            WindowManager.shared.resizeFrontmostWindowToLeft()
+        }
+
+        // 4. Start recording with event title as prospect name (after delay)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             NotificationCenter.default.post(
                 name: Notification.Name("StartRecordingFromCalendar"),

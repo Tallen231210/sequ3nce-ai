@@ -383,17 +383,24 @@ class MenuBarController {
             return
         }
 
-        // Open the meeting URL in browser
+        // 1. Open Ammo Panel snapped to right side of screen FIRST
+        Task { @MainActor in
+            if let state = appState {
+                WindowManager.shared.openAmmoPanelSnapped(appState: state)
+            }
+        }
+
+        // 2. Open the meeting URL in browser (will appear on left)
         NSWorkspace.shared.open(meetingUrl)
 
-        // Start recording after a short delay (give browser time to open)
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        // 3. After browser opens, resize it to fit the left side (alongside Ammo Panel)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            WindowManager.shared.resizeFrontmostWindowToLeft()
+        }
 
-            // Start recording and set prospect name from event title
-            await appState?.startRecording()
-
-            // Post notification to set prospect name (same as calendar Join & Record)
+        // 4. Post notification to set prospect name BEFORE starting recording
+        //    (ContentView handler checks for idle state, so must be before startRecording)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             NotificationCenter.default.post(
                 name: Notification.Name("StartRecordingFromCalendar"),
                 object: nil,

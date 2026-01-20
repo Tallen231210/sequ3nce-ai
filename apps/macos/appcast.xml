@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.2</title>
+            <pubDate>Mon, 20 Jan 2026 20:00:00 +0000</pubDate>
+            <sparkle:version>40</sparkle:version>
+            <sparkle:shortVersionString>1.7.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.2</h2>
+                <ul>
+                    <li>Side-by-Side Layout - Ammo Panel auto-opens on the right when joining meetings</li>
+                    <li>Fixed prospect name not being set when joining from menu bar</li>
+                    <li>Streamlined Join & Record flow from both Schedule and Menu Bar</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.7.2/Sequ3nce.zip"
+                length="1762800"
+                type="application/octet-stream"
+                sparkle:edSignature="cmW5aCZTbDZJTynRfGScbG1MPDWP95tsd6SgfrrYG77FiTp45DjRsU5D2Pa+mPCysLnwtVMApTdJ/OYIzredCA=="
+            />
+        </item>
+
+        <!-- v1.7.1 -->
+        <item>
             <title>Version 1.7.1</title>
             <pubDate>Mon, 20 Jan 2026 18:00:00 +0000</pubDate>
             <sparkle:version>38</sparkle:version>

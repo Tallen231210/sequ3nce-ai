@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import ApplicationServices
 
 /// Singleton to manage app windows
 @MainActor
@@ -94,6 +95,106 @@ class WindowManager: ObservableObject {
         ammoPanelWindow?.close()
         ammoPanelWindow = nil
         isAmmoPanelVisible = false
+    }
+
+    /// Opens Ammo Panel snapped to the right side of the screen (for Join & Record flow)
+    /// This creates a side-by-side layout with the meeting browser on the left
+    func openAmmoPanelSnapped(appState: AppState) {
+        // Close existing panel if open (will reposition)
+        if ammoPanelWindow != nil {
+            ammoPanelWindow?.close()
+            ammoPanelWindow = nil
+            isAmmoPanelVisible = false
+        }
+
+        let contentView = AmmoPanelView()
+            .environmentObject(appState)
+
+        // Get screen dimensions
+        guard let screen = NSScreen.main else {
+            // Fallback to regular open
+            openAmmoPanel(appState: appState)
+            return
+        }
+
+        let screenFrame = screen.visibleFrame
+
+        // Ammo Panel takes right ~35% of screen (max 400px width)
+        let panelWidth: CGFloat = min(400, screenFrame.width * 0.35)
+        let panelHeight: CGFloat = screenFrame.height
+        let panelX: CGFloat = screenFrame.maxX - panelWidth
+        let panelY: CGFloat = screenFrame.minY
+
+        let window = NSWindow(
+            contentRect: NSRect(x: panelX, y: panelY, width: panelWidth, height: panelHeight),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.title = "Ammo Tracker"
+        window.contentView = NSHostingView(rootView: contentView)
+        window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 320, height: 400)
+        window.level = .floating  // Always on top
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.appearance = NSAppearance(named: .aqua)  // Force light mode title bar
+
+        window.makeKeyAndOrderFront(nil)
+
+        // Watch for window close
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.ammoPanelWindow = nil
+                self?.isAmmoPanelVisible = false
+            }
+        }
+
+        ammoPanelWindow = window
+        isAmmoPanelVisible = true
+    }
+
+    /// Attempts to resize the frontmost app's window to fit the left portion of the screen
+    /// Uses AppleScript with System Events for more reliable window management
+    func resizeFrontmostWindowToLeft() {
+        guard let screen = NSScreen.main else { return }
+        let screenFrame = screen.visibleFrame
+
+        // Calculate left side dimensions (leave room for Ammo Panel on right)
+        let panelWidth: CGFloat = min(400, screenFrame.width * 0.35)
+        let leftWidth = Int(screenFrame.width - panelWidth - 10)  // 10px gap
+        let leftHeight = Int(screenFrame.height)
+        let leftX = Int(screenFrame.minX)
+        let leftY = Int(screen.frame.height - screenFrame.maxY)  // Menu bar offset
+
+        // Use AppleScript to resize the frontmost window
+        let script = """
+        tell application "System Events"
+            set frontProcess to first process whose frontmost is true
+            if name of frontProcess is not "Sequ3nce" then
+                tell frontProcess
+                    try
+                        set position of window 1 to {\(leftX), \(leftY)}
+                        set size of window 1 to {\(leftWidth), \(leftHeight)}
+                    end try
+                end tell
+            end if
+        end tell
+        """
+
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script) {
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                print("[WindowManager] AppleScript error: \(error)")
+            } else {
+                print("[WindowManager] Resized frontmost window to left side via AppleScript")
+            }
+        }
     }
 
     // MARK: - Training Window
