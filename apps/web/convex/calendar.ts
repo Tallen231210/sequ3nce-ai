@@ -492,10 +492,14 @@ function parseIcsContent(icsContent: string): Array<{
 
     if (!uid || !summary || !dtstart) continue;
 
-    const startTime = parseIcsDate(dtstart);
+    // Extract timezone info from DTSTART/DTEND fields
+    const startTzid = extractTzid(block, "DTSTART");
+    const endTzid = extractTzid(block, "DTEND");
+
+    const startTime = parseIcsDate(dtstart, startTzid);
     if (!startTime) continue;
 
-    const endTime = dtend ? parseIcsDate(dtend) || startTime + 60 * 60 * 1000 : startTime + 60 * 60 * 1000; // Default 1 hour
+    const endTime = dtend ? parseIcsDate(dtend, endTzid) || startTime + 60 * 60 * 1000 : startTime + 60 * 60 * 1000; // Default 1 hour
     const isAllDay = dtstart.length === 8; // DATE format without time
 
     // Extract meeting URL from location first (most reliable), then description
@@ -516,7 +520,7 @@ function parseIcsContent(icsContent: string): Array<{
   return events;
 }
 
-// Extract a field from ICS content
+// Extract a field from ICS content, including any TZID parameter
 function extractIcsField(block: string, fieldName: string): string | null {
   // Handle both simple and parameterized fields (e.g., DTSTART;VALUE=DATE:20240115)
   const regex = new RegExp(`^${fieldName}(?:;[^:]*)?:(.*)$`, "m");
@@ -546,8 +550,44 @@ function extractIcsField(block: string, fieldName: string): string | null {
     .trim();
 }
 
+// Extract TZID parameter from an ICS field line
+function extractTzid(block: string, fieldName: string): string | null {
+  // Match DTSTART;TZID=America/New_York:20240115T093000
+  const regex = new RegExp(`^${fieldName};[^:]*TZID=([^;:]+)`, "m");
+  const match = block.match(regex);
+  return match ? match[1] : null;
+}
+
+// Common timezone offset mappings (hours from UTC)
+const TIMEZONE_OFFSETS: Record<string, number> = {
+  // US timezones
+  "America/New_York": -5,
+  "America/Chicago": -6,
+  "America/Denver": -7,
+  "America/Los_Angeles": -8,
+  "America/Phoenix": -7,
+  "America/Anchorage": -9,
+  "Pacific/Honolulu": -10,
+  "US/Eastern": -5,
+  "US/Central": -6,
+  "US/Mountain": -7,
+  "US/Pacific": -8,
+  "US/Hawaii": -10,
+  "EST": -5,
+  "CST": -6,
+  "MST": -7,
+  "PST": -8,
+  // European
+  "Europe/London": 0,
+  "Europe/Paris": 1,
+  "Europe/Berlin": 1,
+  "UTC": 0,
+  "GMT": 0,
+};
+
 // Parse ICS date format to Unix timestamp
-function parseIcsDate(dateStr: string): number | null {
+// tzid: optional timezone ID from TZID parameter (e.g., "America/New_York")
+function parseIcsDate(dateStr: string, tzid?: string | null): number | null {
   // Remove any VALUE parameter prefix
   const cleanDate = dateStr.replace(/^.*:/, "");
 
@@ -557,11 +597,11 @@ function parseIcsDate(dateStr: string): number | null {
   // DATETIME with Z: 20240115T093000Z
 
   if (cleanDate.length === 8) {
-    // DATE format (all day event)
+    // DATE format (all day event) - treat as midnight UTC
     const year = parseInt(cleanDate.substring(0, 4));
     const month = parseInt(cleanDate.substring(4, 6)) - 1;
     const day = parseInt(cleanDate.substring(6, 8));
-    return new Date(year, month, day).getTime();
+    return Date.UTC(year, month, day, 0, 0, 0);
   } else if (cleanDate.length >= 15) {
     // DATETIME format
     const year = parseInt(cleanDate.substring(0, 4));
@@ -572,12 +612,22 @@ function parseIcsDate(dateStr: string): number | null {
     const second = parseInt(cleanDate.substring(13, 15));
 
     if (cleanDate.endsWith("Z")) {
-      // UTC time
+      // Already UTC
       return Date.UTC(year, month, day, hour, minute, second);
-    } else {
-      // Local time (assume local timezone)
-      return new Date(year, month, day, hour, minute, second).getTime();
+    } else if (tzid) {
+      // Has timezone info - convert to UTC using offset
+      const offset = TIMEZONE_OFFSETS[tzid];
+      if (offset !== undefined) {
+        // Create UTC time and adjust by timezone offset
+        // offset is negative for west of UTC (e.g., -5 for EST)
+        // So we subtract the offset to convert local to UTC
+        return Date.UTC(year, month, day, hour - offset, minute, second);
+      }
     }
+
+    // No timezone info and no Z suffix - treat as UTC to be safe
+    // This is better than assuming server timezone which caused the Hawaii bug
+    return Date.UTC(year, month, day, hour, minute, second);
   }
 
   return null;
