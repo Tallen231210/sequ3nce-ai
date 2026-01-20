@@ -87,6 +87,7 @@ export default defineSchema({
     endTime: v.number(), // Unix timestamp
     location: v.optional(v.string()),
     isAllDay: v.optional(v.boolean()),
+    meetingUrl: v.optional(v.string()), // Extracted Zoom/Meet/Teams URL for one-click join
     fetchedAt: v.number(), // When this event was last synced
   })
     .index("by_closer", ["closerId"])

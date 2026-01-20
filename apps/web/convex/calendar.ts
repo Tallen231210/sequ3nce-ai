@@ -319,6 +319,7 @@ export const upsertCalendarEvents = internalMutation({
         endTime: v.number(),
         location: v.optional(v.string()),
         isAllDay: v.optional(v.boolean()),
+        meetingUrl: v.optional(v.string()),
       })
     ),
   },
@@ -346,6 +347,7 @@ export const upsertCalendarEvents = internalMutation({
           endTime: event.endTime,
           location: event.location,
           isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
           fetchedAt: now,
         });
       } else {
@@ -360,6 +362,7 @@ export const upsertCalendarEvents = internalMutation({
           endTime: event.endTime,
           location: event.location,
           isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
           fetchedAt: now,
         });
       }
@@ -420,6 +423,39 @@ export const getCloserByEmailAndTeam = internalQuery({
 // ACTIONS (for external fetching)
 // ============================================
 
+// Extract meeting URL from text (location, description, etc.)
+function extractMeetingUrl(text: string | null | undefined): string | undefined {
+  if (!text) return undefined;
+
+  // Patterns for common video conferencing URLs
+  const patterns = [
+    // Zoom - various formats
+    /https?:\/\/(?:[\w-]+\.)?zoom\.us\/j\/\d+(?:\?[^\s<"']*)*/i,
+    /https?:\/\/(?:[\w-]+\.)?zoom\.us\/my\/[^\s<"']+/i,
+    // Google Meet
+    /https?:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i,
+    // Microsoft Teams
+    /https?:\/\/teams\.microsoft\.com\/[^\s<"']+/i,
+    // Webex
+    /https?:\/\/(?:[\w-]+\.)?webex\.com\/[^\s<"']+/i,
+    // Generic meeting links (some calendars use custom domains)
+    /https?:\/\/[^\s<"']*(?:meet|call|video|conference)[^\s<"']*/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      // Clean up the URL - remove trailing punctuation that might have been captured
+      let url = match[0];
+      // Remove trailing >, ), ], ", ' that might be part of HTML or markdown
+      url = url.replace(/[>)\]"']+$/, '');
+      return url;
+    }
+  }
+
+  return undefined;
+}
+
 // Parse ICS content into events
 function parseIcsContent(icsContent: string): Array<{
   uid: string;
@@ -429,6 +465,7 @@ function parseIcsContent(icsContent: string): Array<{
   endTime: number;
   location?: string;
   isAllDay?: boolean;
+  meetingUrl?: string;
 }> {
   const events: Array<{
     uid: string;
@@ -438,6 +475,7 @@ function parseIcsContent(icsContent: string): Array<{
     endTime: number;
     location?: string;
     isAllDay?: boolean;
+    meetingUrl?: string;
   }> = [];
 
   // Split into VEVENT blocks
@@ -460,6 +498,9 @@ function parseIcsContent(icsContent: string): Array<{
     const endTime = dtend ? parseIcsDate(dtend) || startTime + 60 * 60 * 1000 : startTime + 60 * 60 * 1000; // Default 1 hour
     const isAllDay = dtstart.length === 8; // DATE format without time
 
+    // Extract meeting URL from location first (most reliable), then description
+    const meetingUrl = extractMeetingUrl(location) || extractMeetingUrl(description);
+
     events.push({
       uid,
       title: summary,
@@ -468,6 +509,7 @@ function parseIcsContent(icsContent: string): Array<{
       endTime,
       location: location || undefined,
       isAllDay,
+      meetingUrl,
     });
   }
 

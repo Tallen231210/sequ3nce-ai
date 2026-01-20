@@ -132,6 +132,7 @@ struct CalendarEvent: Codable, Identifiable {
     let endTime: Double
     let location: String?
     let isAllDay: Bool?
+    let meetingUrl: String?  // Extracted Zoom/Meet/Teams URL for one-click join
 
     var id: String { _id }
 }

@@ -8,6 +8,31 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.6.0</title>
+            <pubDate>Mon, 20 Jan 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>34</sparkle:version>
+            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.6.0</h2>
+                <ul>
+                    <li>Smart Recording from Calendar - click "Join &amp; Record" to open meeting AND start recording in one click</li>
+                    <li>Calendar auto-syncs every 5 minutes (no more manual sync needed)</li>
+                    <li>Premium Schedule UI - card-based design with urgency badges</li>
+                    <li>Enhanced calendar button shows your next meeting in main window</li>
+                    <li>Supports Zoom, Google Meet, Microsoft Teams, and Webex links</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.6.0/Sequ3nce.zip"
+                length="1739512"
+                type="application/octet-stream"
+                sparkle:edSignature="8k1I3jcmSYWcmXX2sxjXvtYUwgWU2w1tNcbsw53pbMRbZrnGNTImWxtDnsXxZY6EL1FaQhLbp4Nh/TB3GL/fBw=="
+            />
+        </item>
+
+        <!-- v1.5.0 -->
+        <item>
             <title>Version 1.5.0</title>
             <pubDate>Sun, 19 Jan 2026 10:00:00 +0000</pubDate>
             <sparkle:version>32</sparkle:version>

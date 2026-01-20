@@ -160,6 +160,12 @@ struct MainRecordingView: View {
     @State private var rolePlayParticipantCount = 0
     @State private var rolePlayPollingTimer: Timer?
 
+    // Calendar: next upcoming event
+    @State private var nextCalendarEvent: CalendarEvent?
+    @State private var calendarPollingTimer: Timer?
+    @State private var now = Date()
+    private let timeUpdateTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
     // App version
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -173,12 +179,32 @@ struct MainRecordingView: View {
                 HStack {
                     Spacer()
 
+                    // Calendar button with next meeting preview
                     Button(action: {
                         windowManager.openScheduleWindow(appState: appState)
                     }) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color(white: 0.6))
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(white: 0.6))
+
+                            if let event = nextCalendarEvent {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(event.title)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(.black)
+                                        .lineLimit(1)
+                                    Text(timeUntilEvent(event))
+                                        .font(.system(size: 10))
+                                        .foregroundColor(Color(white: 0.55))
+                                }
+                                .frame(maxWidth: 100, alignment: .leading)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(nextCalendarEvent != nil ? Color(white: 0.95) : Color.clear)
+                        .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
                     .padding(.trailing, 8)
@@ -494,9 +520,50 @@ struct MainRecordingView: View {
         .animation(.easeInOut(duration: 0.3), value: appState.connectionState.isReconnecting)
         .onAppear {
             startRolePlayParticipantPolling()
+            startCalendarPolling()
         }
         .onDisappear {
             stopRolePlayParticipantPolling()
+            stopCalendarPolling()
+        }
+        .onReceive(timeUpdateTimer) { _ in
+            now = Date()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartRecordingFromCalendar"))) { notification in
+            // Handle "Join & Record" from ScheduleView
+            handleStartRecordingFromCalendar(notification: notification)
+        }
+    }
+
+    /// Handle "Join & Record" notification from ScheduleView
+    private func handleStartRecordingFromCalendar(notification: Notification) {
+        // Only start if we're not already recording
+        guard appState.recordingState == .idle else {
+            print("[ContentView] Cannot start from calendar - already recording")
+            return
+        }
+
+        // Get prospect name from notification
+        if let userInfo = notification.userInfo,
+           let calendarProspectName = userInfo["prospectName"] as? String {
+            // Set the prospect name from the calendar event
+            prospectName = calendarProspectName
+            prospectNameSaved = true  // Auto-save since it came from calendar
+            showProspectPrompt = false
+        }
+
+        // Start recording
+        Task {
+            await appState.startRecording()
+
+            // Update prospect name in Convex after recording starts
+            if !prospectName.isEmpty, let callId = appState.convexCallId {
+                try? await appState.convexService.updateProspectName(
+                    callId: callId,
+                    prospectName: prospectName.trimmingCharacters(in: .whitespaces)
+                )
+                print("[ContentView] Prospect name from calendar: \(prospectName)")
+            }
         }
     }
 
@@ -527,6 +594,76 @@ struct MainRecordingView: View {
             // Silently fail - participant count is optional info
             print("[MainRecordingView] Failed to fetch role play participants: \(error)")
         }
+    }
+
+    // MARK: - Calendar Polling
+
+    private func startCalendarPolling() {
+        // Poll every 5 minutes to match ScheduleView's auto-sync
+        calendarPollingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
+            Task { @MainActor in
+                await fetchNextCalendarEvent()
+            }
+        }
+        // Also fetch immediately
+        Task {
+            await fetchNextCalendarEvent()
+        }
+    }
+
+    private func stopCalendarPolling() {
+        calendarPollingTimer?.invalidate()
+        calendarPollingTimer = nil
+    }
+
+    private func fetchNextCalendarEvent() async {
+        do {
+            // Get events for the next 24 hours
+            let startOfDay = Calendar.current.startOfDay(for: Date())
+            let endDate = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
+
+            let events = try await appState.convexService.getCalendarEvents(
+                email: closerInfo.email,
+                teamId: closerInfo.teamId,
+                startDate: Int64(Date().timeIntervalSince1970 * 1000),
+                endDate: Int64(endDate.timeIntervalSince1970 * 1000)
+            )
+
+            // Get first upcoming event (events are sorted by startTime)
+            let nowMs = Date().timeIntervalSince1970 * 1000
+            nextCalendarEvent = events.first { $0.startTime > nowMs }
+        } catch {
+            // Silently fail - next event is optional info
+            print("[MainRecordingView] Failed to fetch next calendar event: \(error)")
+        }
+    }
+
+    /// Format time until an event starts
+    private func timeUntilEvent(_ event: CalendarEvent) -> String {
+        let nowMs = now.timeIntervalSince1970 * 1000
+        let diff = event.startTime - nowMs
+        let minutes = Int(diff / 60000)
+
+        if minutes < 0 {
+            return "Started"
+        } else if minutes < 1 {
+            return "Starting now"
+        } else if minutes < 60 {
+            return "in \(minutes) min"
+        }
+
+        let hours = minutes / 60
+        let remainingMins = minutes % 60
+
+        if hours < 24 {
+            if remainingMins > 0 {
+                return "in \(hours)h \(remainingMins)m"
+            }
+            return "in \(hours)h"
+        }
+
+        let days = hours / 24
+        return "in \(days)d"
     }
 
     // Footer status color matching Electron
