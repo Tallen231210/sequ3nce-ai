@@ -983,10 +983,24 @@ export default function SettingsPage() {
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground">
                   <p className="font-medium text-zinc-700 mb-2">Setup Instructions:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-xs">
-                    <li>Go to your Slack workspace settings</li>
-                    <li>Create an <strong>Incoming Webhook</strong> from the Slack App Directory</li>
-                    <li>Choose the channel for notifications</li>
+                  <ol className="list-decimal list-inside space-y-2 text-xs">
+                    <li>
+                      Go to{" "}
+                      <a
+                        href="https://api.slack.com/apps"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        api.slack.com/apps
+                      </a>
+                    </li>
+                    <li>Click <strong>&quot;Create New App&quot;</strong> → <strong>&quot;From scratch&quot;</strong></li>
+                    <li>Name it <strong>&quot;Sequ3nce Alerts&quot;</strong> and select your workspace</li>
+                    <li>In the left sidebar, click <strong>&quot;Incoming Webhooks&quot;</strong></li>
+                    <li>Toggle the switch to <strong>&quot;On&quot;</strong></li>
+                    <li>Click <strong>&quot;Add New Webhook to Workspace&quot;</strong></li>
+                    <li>Select the channel for alerts (e.g., #sales-alerts) and click <strong>&quot;Allow&quot;</strong></li>
                     <li>Copy the Webhook URL and paste it below</li>
                   </ol>
                 </div>
