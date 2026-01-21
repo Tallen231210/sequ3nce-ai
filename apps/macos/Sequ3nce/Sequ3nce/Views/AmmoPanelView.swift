@@ -62,8 +62,9 @@ struct AmmoPanelView: View {
                     }
                 }
                 .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 2)
 
                 // Request Reinforcements button (only shown during a call)
                 if panelState.callId != nil {
@@ -279,11 +280,12 @@ struct ReinforcementButton: View {
                 HStack(spacing: 3) {
                     Image(systemName: "hand.raised.fill")
                         .font(.system(size: 9))
-                    Text("Help")
-                        .font(.system(size: 10, weight: .medium))
+                    Text("Request Reinforcements")
+                        .font(.system(size: 9, weight: .medium))
+                        .lineLimit(1)
                 }
                 .foregroundColor(.orange)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 5)
                 .padding(.vertical, 3)
                 .background(Color.orange.opacity(0.1))
                 .overlay(
@@ -294,7 +296,7 @@ struct ReinforcementButton: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 4)
-            .help("Request Reinforcements")
+            .fixedSize()
         }
     }
 }
