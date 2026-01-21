@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { SubscriptionGate } from "@/components/dashboard/subscription-gate";
 import { ChatContainer } from "@/components/chat";
+import { ReinforcementAlert } from "@/components/dashboard/reinforcement-alert";
 
 export default function DashboardLayout({
   children,
@@ -11,6 +12,7 @@ export default function DashboardLayout({
     <SubscriptionGate>
       <div className="min-h-screen bg-background">
         <Sidebar />
+        <ReinforcementAlert />
         <main className="pl-64">{children}</main>
         <ChatContainer />
       </div>

@@ -13,6 +13,15 @@ struct AmmoPanelView: View {
     @StateObject private var panelState = AmmoPanelState()
     @State private var selectedTab = 0
 
+    // Reinforcement request state
+    @State private var showReinforcementInput = false
+    @State private var reinforcementMessage = ""
+    @State private var isRequestingReinforcement = false
+    @State private var reinforcementCooldownRemaining = 0
+    @State private var showReinforcementSuccess = false
+
+    private let convexService = ConvexService()
+
     var body: some View {
         VStack(spacing: 0) {
             // Tab bar - matches Electron: h-10 (40px), gray-50/50 bg, border-b
@@ -55,6 +64,18 @@ struct AmmoPanelView: View {
                 .fixedSize(horizontal: true, vertical: false)
 
                 Spacer(minLength: 4)
+
+                // Request Reinforcements button (only shown during a call)
+                if panelState.callId != nil {
+                    ReinforcementButton(
+                        isExpanded: $showReinforcementInput,
+                        message: $reinforcementMessage,
+                        isRequesting: $isRequestingReinforcement,
+                        cooldownRemaining: $reinforcementCooldownRemaining,
+                        showSuccess: $showReinforcementSuccess,
+                        onRequest: requestReinforcement
+                    )
+                }
 
                 // Status indicator (green when recording)
                 Circle()
@@ -110,6 +131,170 @@ struct AmmoPanelView: View {
                 print("[AmmoPanelView] onChange - calling stopTracking")
                 panelState.stopTracking()
             }
+        }
+    }
+
+    // MARK: - Request Reinforcement
+
+    private func requestReinforcement() {
+        guard let closerInfo = appState.closerInfo else {
+            print("[AmmoPanelView] No closer info available")
+            return
+        }
+
+        isRequestingReinforcement = true
+
+        Task {
+            do {
+                let success = try await convexService.requestReinforcement(
+                    teamId: closerInfo.teamId,
+                    closerId: closerInfo.closerId,
+                    closerName: closerInfo.name,
+                    callId: appState.convexCallId,
+                    message: reinforcementMessage.isEmpty ? nil : reinforcementMessage
+                )
+
+                await MainActor.run {
+                    isRequestingReinforcement = false
+
+                    if success {
+                        // Show success state
+                        showReinforcementSuccess = true
+                        reinforcementMessage = ""
+                        showReinforcementInput = false
+
+                        // Start 30-second cooldown
+                        reinforcementCooldownRemaining = 30
+                        startCooldownTimer()
+
+                        // Hide success message after 3 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            showReinforcementSuccess = false
+                        }
+                    }
+                }
+            } catch {
+                print("[AmmoPanelView] Failed to request reinforcement: \(error)")
+                await MainActor.run {
+                    isRequestingReinforcement = false
+                }
+            }
+        }
+    }
+
+    private func startCooldownTimer() {
+        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
+            if reinforcementCooldownRemaining > 0 {
+                reinforcementCooldownRemaining -= 1
+            } else {
+                timer.invalidate()
+            }
+        }
+    }
+}
+
+// MARK: - Reinforcement Button
+
+struct ReinforcementButton: View {
+    @Binding var isExpanded: Bool
+    @Binding var message: String
+    @Binding var isRequesting: Bool
+    @Binding var cooldownRemaining: Int
+    @Binding var showSuccess: Bool
+    let onRequest: () -> Void
+
+    var body: some View {
+        if showSuccess {
+            // Success state
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10))
+                Text("Sent!")
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundColor(.green)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(4)
+            .padding(.trailing, 4)
+        } else if cooldownRemaining > 0 {
+            // Cooldown state
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.system(size: 10))
+                Text("\(cooldownRemaining)s")
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundColor(Color(white: 0.5))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color(white: 0.95))
+            .cornerRadius(4)
+            .padding(.trailing, 4)
+        } else if isExpanded {
+            // Expanded state with text input
+            HStack(spacing: 4) {
+                TextField("Context (optional)", text: $message)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 10))
+                    .frame(width: 100)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color.white)
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color(white: 0.85), lineWidth: 1)
+                    )
+
+                if isRequesting {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .frame(width: 20, height: 20)
+                } else {
+                    Button(action: onRequest) {
+                        Text("Send")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange)
+                            .cornerRadius(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button(action: { isExpanded = false }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color(white: 0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.trailing, 4)
+        } else {
+            // Default collapsed state
+            Button(action: { isExpanded = true }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "hand.raised.fill")
+                        .font(.system(size: 9))
+                    Text("Help")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(.orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.orange.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                )
+                .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 4)
+            .help("Request Reinforcements")
         }
     }
 }

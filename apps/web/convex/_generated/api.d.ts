@@ -22,6 +22,7 @@ import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
 import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
+import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
 import type * as teams from "../teams.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
+  reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
   teams: typeof teams;

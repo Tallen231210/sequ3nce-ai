@@ -40,6 +40,8 @@ export default defineSchema({
         joinedAt: v.number(), // Unix timestamp when they joined
       })),
     })),
+    // Slack integration for reinforcement requests
+    slackWebhookUrl: v.optional(v.string()), // Slack incoming webhook URL for notifications
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -470,4 +472,21 @@ export default defineSchema({
     .index("by_recipient_user", ["recipientUserId", "isRead"])
     .index("by_sender_closer", ["senderCloserId"])
     .index("by_sender_user", ["senderUserId"]),
+
+  // Reinforcement Requests (closers requesting urgent help from managers)
+  reinforcementRequests: defineTable({
+    teamId: v.id("teams"),
+    closerId: v.id("closers"),
+    callId: v.optional(v.id("calls")), // Optional: the active call if any
+    closerName: v.string(), // Denormalized for display
+    message: v.optional(v.string()), // Optional context message
+    status: v.string(), // "pending" | "acknowledged" | "resolved"
+    acknowledgedBy: v.optional(v.id("users")), // Manager who acknowledged
+    acknowledgedAt: v.optional(v.number()),
+    resolvedAt: v.optional(v.number()),
+    slackNotificationSent: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_team_status", ["teamId", "status"])
+    .index("by_closer", ["closerId"]),
 });

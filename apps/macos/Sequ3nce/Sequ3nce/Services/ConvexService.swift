@@ -922,4 +922,57 @@ class ConvexService {
             throw ConvexError.serverError(errorResponse?.error ?? "Failed to mark messages as read")
         }
     }
+
+    // MARK: - Reinforcement Requests
+
+    /// Request reinforcements from the sales manager
+    /// Called when a closer needs urgent help during a call
+    func requestReinforcement(
+        teamId: String,
+        closerId: String,
+        closerName: String,
+        callId: String?,
+        message: String?
+    ) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/requestReinforcement")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "teamId": teamId,
+            "closerId": closerId,
+            "closerName": closerName
+        ]
+
+        if let callId = callId {
+            body["callId"] = callId
+        }
+        if let message = message, !message.isEmpty {
+            body["message"] = message
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        print("[ConvexService] Requesting reinforcement: \(body)")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let success = json["success"] as? Bool {
+                print("[ConvexService] Reinforcement request success: \(success)")
+                return success
+            }
+            return true
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to request reinforcement")
+        }
+    }
 }

@@ -198,6 +198,30 @@ export const updateCustomPlaybookCategories = mutation({
   },
 });
 
+// Update Slack webhook URL
+export const updateSlackWebhookUrl = mutation({
+  args: {
+    clerkId: v.string(),
+    slackWebhookUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Update the Slack webhook URL (empty string clears it)
+    const url = args.slackWebhookUrl?.trim() || undefined;
+    await ctx.db.patch(user.teamId, { slackWebhookUrl: url });
+
+    return { success: true };
+  },
+});
+
 // Get full settings data
 export const getSettings = query({
   args: { clerkId: v.string() },
@@ -234,6 +258,8 @@ export const getSettings = query({
         calendlyConnected: !!team.calendlyAccessToken,
         calendlyConnectedEmail: team.calendlyConnectedEmail,
         calendlyLastSyncAt: team.calendlyLastSyncAt,
+        // Slack integration
+        slackWebhookUrl: team.slackWebhookUrl,
       } : null,
     };
   },

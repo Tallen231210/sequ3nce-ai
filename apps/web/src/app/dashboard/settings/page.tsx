@@ -416,6 +416,10 @@ export default function SettingsPage() {
   const disconnectCalendly = useMutation(api.calendly.disconnectCalendly);
   const syncCalendlyEvents = useAction(api.calendly.syncEvents);
 
+  // Slack webhook
+  const updateSlackWebhookUrl = useMutation(api.teams.updateSlackWebhookUrl);
+  const testSlackWebhook = useAction(api.reinforcements.testSlackWebhook);
+
   // Form state
   const [teamName, setTeamName] = useState("");
   const [userName, setUserName] = useState("");
@@ -442,6 +446,13 @@ export default function SettingsPage() {
   const [isSyncingCalendly, setIsSyncingCalendly] = useState(false);
   const [calendlyConnectError, setCalendlyConnectError] = useState<string | undefined>();
 
+  // Slack webhook states
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState("");
+  const [savingSlackWebhook, setSavingSlackWebhook] = useState(false);
+  const [savedSlackWebhook, setSavedSlackWebhook] = useState(false);
+  const [testingSlackWebhook, setTestingSlackWebhook] = useState(false);
+  const [slackWebhookTestResult, setSlackWebhookTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+
   // Initialize form values when settings load
   useEffect(() => {
     if (settings) {
@@ -450,6 +461,7 @@ export default function SettingsPage() {
       setTimezone(settings.team?.timezone || "America/New_York");
       setCustomOutcomes(settings.team?.customOutcomes || []);
       setCustomCategories(settings.team?.customPlaybookCategories || []);
+      setSlackWebhookUrl(settings.team?.slackWebhookUrl || "");
     }
   }, [settings]);
 
@@ -634,6 +646,54 @@ export default function SettingsPage() {
       console.error("Failed to sync Calendly:", error);
     } finally {
       setIsSyncingCalendly(false);
+    }
+  };
+
+  // Slack webhook handlers
+  const handleSaveSlackWebhook = async () => {
+    if (!clerkId) return;
+    setSavingSlackWebhook(true);
+    setSlackWebhookTestResult(null);
+    try {
+      await updateSlackWebhookUrl({
+        clerkId,
+        slackWebhookUrl: slackWebhookUrl.trim() || undefined,
+      });
+      setSavedSlackWebhook(true);
+      setTimeout(() => setSavedSlackWebhook(false), 2000);
+    } catch (error) {
+      console.error("Failed to save Slack webhook:", error);
+    } finally {
+      setSavingSlackWebhook(false);
+    }
+  };
+
+  const handleTestSlackWebhook = async () => {
+    if (!slackWebhookUrl.trim()) return;
+    setTestingSlackWebhook(true);
+    setSlackWebhookTestResult(null);
+    try {
+      const result = await testSlackWebhook({ webhookUrl: slackWebhookUrl.trim() });
+      setSlackWebhookTestResult(result);
+    } catch (error) {
+      setSlackWebhookTestResult({ success: false, error: "Failed to test webhook" });
+    } finally {
+      setTestingSlackWebhook(false);
+    }
+  };
+
+  const handleDisconnectSlack = async () => {
+    if (!clerkId) return;
+    setSavingSlackWebhook(true);
+    try {
+      await updateSlackWebhookUrl({ clerkId, slackWebhookUrl: undefined });
+      setSlackWebhookUrl("");
+      setSavedSlackWebhook(true);
+      setTimeout(() => setSavedSlackWebhook(false), 2000);
+    } catch (error) {
+      console.error("Failed to disconnect Slack:", error);
+    } finally {
+      setSavingSlackWebhook(false);
     }
   };
 
@@ -896,12 +956,87 @@ export default function SettingsPage() {
               comingSoon
             />
 
-            <IntegrationCard
-              name="Slack"
-              description="Get notifications for completed calls and highlights"
-              icon={<MessageSquare className="h-5 w-5 text-zinc-600" />}
-              comingSoon
-            />
+            {/* Slack Webhook Integration */}
+            <div className="p-4 border rounded-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${settings?.team?.slackWebhookUrl ? "bg-green-50" : "bg-zinc-100"}`}>
+                    <MessageSquare className={`h-5 w-5 ${settings?.team?.slackWebhookUrl ? "text-green-600" : "text-zinc-600"}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">Slack</p>
+                      {settings?.team?.slackWebhookUrl && (
+                        <Badge variant="default" className="bg-green-100 text-green-700 hover:bg-green-100">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Connected
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Get notified when closers request reinforcements
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  <p className="font-medium text-zinc-700 mb-2">Setup Instructions:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-xs">
+                    <li>Go to your Slack workspace settings</li>
+                    <li>Create an <strong>Incoming Webhook</strong> from the Slack App Directory</li>
+                    <li>Choose the channel for notifications</li>
+                    <li>Copy the Webhook URL and paste it below</li>
+                  </ol>
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    value={slackWebhookUrl}
+                    onChange={(e) => setSlackWebhookUrl(e.target.value)}
+                    placeholder="https://hooks.slack.com/services/..."
+                    type="url"
+                    className="flex-1"
+                  />
+                  {settings?.team?.slackWebhookUrl ? (
+                    <Button
+                      variant="outline"
+                      onClick={handleDisconnectSlack}
+                      disabled={savingSlackWebhook}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      {savingSlackWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : "Disconnect"}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={handleTestSlackWebhook}
+                        disabled={!slackWebhookUrl.trim() || testingSlackWebhook}
+                      >
+                        {testingSlackWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+                      </Button>
+                      <Button
+                        onClick={handleSaveSlackWebhook}
+                        disabled={!slackWebhookUrl.trim() || savingSlackWebhook}
+                      >
+                        {savingSlackWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                      </Button>
+                    </>
+                  )}
+                  <SaveSuccess show={savedSlackWebhook} />
+                </div>
+
+                {slackWebhookTestResult && (
+                  <p className={`text-sm ${slackWebhookTestResult.success ? "text-green-600" : "text-red-600"}`}>
+                    {slackWebhookTestResult.success
+                      ? "Test message sent! Check your Slack channel."
+                      : slackWebhookTestResult.error || "Test failed"}
+                  </p>
+                )}
+              </div>
+            </div>
 
             <IntegrationCard
               name="GoHighLevel"

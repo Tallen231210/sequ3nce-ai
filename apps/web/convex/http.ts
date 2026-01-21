@@ -2671,4 +2671,249 @@ http.route({
   }),
 });
 
+// ============================================
+// REINFORCEMENT REQUESTS ENDPOINTS (for desktop app and web dashboard)
+// ============================================
+
+// POST endpoint to create a reinforcement request (closer needs help)
+http.route({
+  path: "/requestReinforcement",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { teamId, closerId, closerName, callId, message } = body;
+
+      if (!teamId || !closerId || !closerName) {
+        return new Response(JSON.stringify({ error: "teamId, closerId, and closerName are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.reinforcements.createRequest, {
+        teamId: teamId as Id<"teams">,
+        closerId: closerId as Id<"closers">,
+        closerName,
+        callId: callId ? (callId as Id<"calls">) : undefined,
+        message: message || undefined,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error creating reinforcement request:", error);
+      return new Response(JSON.stringify({ error: "Failed to create request" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for requestReinforcement
+http.route({
+  path: "/requestReinforcement",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// GET endpoint to get active reinforcement requests for a team
+http.route({
+  path: "/getActiveReinforcements",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const teamId = url.searchParams.get("teamId");
+
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "teamId is required" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const requests = await ctx.runQuery(api.reinforcements.getActiveRequestsForTeam, {
+        teamId: teamId as Id<"teams">,
+      });
+
+      return new Response(JSON.stringify(requests || []), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error getting active reinforcements:", error);
+      return new Response(JSON.stringify({ error: "Failed to get requests" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for getActiveReinforcements
+http.route({
+  path: "/getActiveReinforcements",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to acknowledge a reinforcement request
+http.route({
+  path: "/acknowledgeReinforcement",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { requestId, userId } = body;
+
+      if (!requestId || !userId) {
+        return new Response(JSON.stringify({ error: "requestId and userId are required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.reinforcements.acknowledgeRequest, {
+        requestId: requestId as Id<"reinforcementRequests">,
+        userId: userId as Id<"users">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error acknowledging reinforcement:", error);
+      return new Response(JSON.stringify({ error: "Failed to acknowledge request" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for acknowledgeReinforcement
+http.route({
+  path: "/acknowledgeReinforcement",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// POST endpoint to resolve a reinforcement request
+http.route({
+  path: "/resolveReinforcement",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { requestId } = body;
+
+      if (!requestId) {
+        return new Response(JSON.stringify({ error: "requestId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      const result = await ctx.runMutation(api.reinforcements.resolveRequest, {
+        requestId: requestId as Id<"reinforcementRequests">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error resolving reinforcement:", error);
+      return new Response(JSON.stringify({ error: "Failed to resolve request" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for resolveReinforcement
+http.route({
+  path: "/resolveReinforcement",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;
