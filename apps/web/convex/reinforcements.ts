@@ -207,72 +207,83 @@ export const sendSlackNotificationInternal = internalAction({
     v.object({ success: v.literal(false), error: v.string() })
   ),
   handler: async (ctx, args): Promise<SlackNotificationResult> => {
-    // Get the request details
-    const request = await ctx.runQuery(api.reinforcements.getRequestById, {
-      requestId: args.requestId,
-    });
-
-    if (!request) {
-      console.error("[Reinforcements] Request not found:", args.requestId);
-      return { success: false, error: "Request not found" };
-    }
-
-    // Get the team to check for Slack webhook
-    const team = await ctx.runQuery(api.teams.getTeamById, {
-      teamId: request.teamId,
-    });
-
-    if (!team?.slackWebhookUrl) {
-      console.log("[Reinforcements] No Slack webhook configured for team:", request.teamId);
-      return { success: true, skipped: true, reason: "No Slack webhook configured" };
-    }
-
-    // Build the Slack message
-    const blocks = [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: "🚨 Reinforcement Requested",
-          emoji: true,
-        },
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*${request.closerName}* needs help on a call!${
-            request.message ? `\n\n> ${request.message}` : ""
-          }`,
-        },
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Open Dashboard",
-              emoji: true,
-            },
-            url: "https://app.sequ3nce.ai/dashboard",
-            action_id: "open_dashboard",
-          },
-        ],
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `Requested at <!date^${Math.floor(request.createdAt / 1000)}^{time}|${new Date(request.createdAt).toLocaleTimeString()}>`,
-          },
-        ],
-      },
-    ];
-
     try {
+      console.log("[Reinforcements] sendSlackNotificationInternal started for request:", args.requestId);
+
+      // Get the request details
+      const request = await ctx.runQuery(api.reinforcements.getRequestById, {
+        requestId: args.requestId,
+      });
+
+      console.log("[Reinforcements] Request fetched:", request ? "found" : "not found");
+
+      if (!request) {
+        console.error("[Reinforcements] Request not found:", args.requestId);
+        return { success: false, error: "Request not found" };
+      }
+
+      console.log("[Reinforcements] Request teamId:", request.teamId);
+
+      // Get the team to check for Slack webhook
+      console.log("[Reinforcements] About to fetch team...");
+      const team = await ctx.runQuery(api.teams.getTeamById, {
+        teamId: request.teamId,
+      });
+
+      console.log("[Reinforcements] Team fetched:", team ? "found" : "not found", "slackWebhookUrl:", team?.slackWebhookUrl ? "configured" : "not configured");
+
+      if (!team?.slackWebhookUrl) {
+        console.log("[Reinforcements] No Slack webhook configured for team:", request.teamId);
+        return { success: true, skipped: true, reason: "No Slack webhook configured" };
+      }
+
+      // Build the Slack message
+      const blocks = [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: "🚨 Reinforcement Requested",
+            emoji: true,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*${request.closerName}* needs help on a call!${
+              request.message ? `\n\n> ${request.message}` : ""
+            }`,
+          },
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: {
+                type: "plain_text",
+                text: "Open Dashboard",
+                emoji: true,
+              },
+              url: "https://app.sequ3nce.ai/dashboard",
+              action_id: "open_dashboard",
+            },
+          ],
+        },
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: `Requested at <!date^${Math.floor(request.createdAt / 1000)}^{time}|${new Date(request.createdAt).toLocaleTimeString()}>`,
+            },
+          ],
+        },
+      ];
+
+      console.log("[Reinforcements] Sending to Slack webhook...");
+
       const webhookResponse = await fetch(team.slackWebhookUrl, {
         method: "POST",
         headers: {
@@ -292,10 +303,10 @@ export const sendSlackNotificationInternal = internalAction({
         requestId: args.requestId,
       });
 
-      console.log("[Reinforcements] Slack notification sent for request:", args.requestId);
+      console.log("[Reinforcements] Slack notification sent successfully for request:", args.requestId);
       return { success: true };
     } catch (error) {
-      console.error("[Reinforcements] Error sending Slack notification:", error);
+      console.error("[Reinforcements] ERROR in sendSlackNotificationInternal:", error);
       return { success: false, error: String(error) };
     }
   },
