@@ -266,7 +266,7 @@ export const sendSlackNotificationInternal = internalAction({
                 text: "Open Dashboard",
                 emoji: true,
               },
-              url: "https://app.sequ3nce.ai/dashboard",
+              url: "https://sequ3nce.ai/dashboard",
               action_id: "open_dashboard",
             },
           ],
