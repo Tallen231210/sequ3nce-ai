@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.7.6</string>
+	<string>1.7.7</string>
 	<key>CFBundleVersion</key>
-	<string>52</string>
+	<string>53</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSAudioCaptureUsageDescription</key>
@@ -35,7 +35,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/Tallen231210/sequ3nce-ai/main/apps/macos/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/Tallen231210/sequ3nce-releases/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>vJK5hxHZoumkn2YPbCZjvN5+XTTViTmcm069k1mdxSc=</string>
 	<key>UIBackgroundModes</key>
