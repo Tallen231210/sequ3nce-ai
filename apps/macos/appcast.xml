@@ -10,7 +10,7 @@
         <item>
             <title>Version 1.7.5</title>
             <pubDate>Wed, 22 Jan 2026 00:00:00 +0000</pubDate>
-            <sparkle:version>48</sparkle:version>
+            <sparkle:version>50</sparkle:version>
             <sparkle:shortVersionString>1.7.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
             <description><![CDATA[
@@ -25,9 +25,9 @@
             ]]></description>
             <enclosure
                 url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.7.5/Sequ3nce.zip"
-                length="PLACEHOLDER_LENGTH"
+                length="1789179"
                 type="application/octet-stream"
-                sparkle:edSignature="SIGNATURE_PLACEHOLDER"
+                sparkle:edSignature="4+3y8TvH88m9oQBCJ6NY5zrUWt9dA3uqMupgd9xSge57PnfrcoW6ofp4xE9WxDswlY27DWpmxCWij/TWDFMxDA=="
             />
         </item>
 
