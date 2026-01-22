@@ -19,6 +19,7 @@ struct AmmoPanelView: View {
     @State private var isRequestingReinforcement = false
     @State private var reinforcementCooldownRemaining = 0
     @State private var showReinforcementSuccess = false
+    @State private var cooldownTimer: Timer?  // Store timer reference to prevent memory leak
 
     private let convexService = ConvexService()
 
@@ -133,6 +134,10 @@ struct AmmoPanelView: View {
                 panelState.stopTracking()
             }
         }
+        .onDisappear {
+            // Clean up timer when view disappears to prevent memory leak
+            stopCooldownTimer()
+        }
     }
 
     // MARK: - Request Reinforcement
@@ -184,13 +189,22 @@ struct AmmoPanelView: View {
     }
 
     private func startCooldownTimer() {
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
+        // Cancel any existing timer before starting a new one
+        cooldownTimer?.invalidate()
+
+        cooldownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [self] timer in
             if reinforcementCooldownRemaining > 0 {
                 reinforcementCooldownRemaining -= 1
             } else {
                 timer.invalidate()
+                cooldownTimer = nil
             }
         }
+    }
+
+    private func stopCooldownTimer() {
+        cooldownTimer?.invalidate()
+        cooldownTimer = nil
     }
 }
 

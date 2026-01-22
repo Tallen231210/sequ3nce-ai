@@ -286,29 +286,48 @@ class AppState: ObservableObject {
             return
         }
 
+        // Log that recording is starting (for debugging)
+        print("[AppState] startRecording called - current state: \(recordingState)")
+
         recordingState = .connecting
         error = nil
+
+        // Track timing for diagnostics
+        let startTime = Date()
+        var stepTimings: [String: Double] = [:]
 
         do {
             // Generate call ID
             let callId = UUID().uuidString
             currentCallId = callId
 
-            // Set up audio capture
+            // Step 1: Set up audio capture
+            print("[AppState] Step 1: Setting up audio capture...")
+            let audioSetupStart = Date()
             try await audioService.setup()
+            stepTimings["audioSetup"] = Date().timeIntervalSince(audioSetupStart)
+            print("[AppState] Audio setup complete in \(stepTimings["audioSetup"]!)s")
 
             // Set call context for error reporting
             audioService.setCallContext(callId: callId, teamId: closer.teamId, closerId: closer.closerId)
 
-            // Connect WebSocket
+            // Step 2: Connect WebSocket
+            print("[AppState] Step 2: Connecting WebSocket...")
+            let wsConnectStart = Date()
             try await webSocketService.connect(
                 callId: callId,
                 teamId: closer.teamId,
                 closerId: closer.closerId
             )
+            stepTimings["wsConnect"] = Date().timeIntervalSince(wsConnectStart)
+            print("[AppState] WebSocket connected in \(stepTimings["wsConnect"]!)s")
 
-            // Start audio capture
+            // Step 3: Start audio capture
+            print("[AppState] Step 3: Starting audio capture...")
+            let audioCaptureStart = Date()
             try audioService.startCapture()
+            stepTimings["audioCapture"] = Date().timeIntervalSince(audioCaptureStart)
+            print("[AppState] Audio capture started in \(stepTimings["audioCapture"]!)s")
 
             // Start duration timer (every 1 second)
             durationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -325,25 +344,61 @@ class AppState: ObservableObject {
             }
 
             recordingState = .recording
-            // Note: convexCallId is now set automatically via the Combine observer
-            // when the server sends the "ready" response with the database call ID
+            let totalTime = Date().timeIntervalSince(startTime)
+            print("[AppState] Recording started successfully - callId: \(callId), totalTime: \(totalTime)s")
 
-            print("[AppState] Recording started - callId: \(callId)")
+            // Log successful start (helps track if issues happen after successful start)
+            Task {
+                await convexService.logClientError(
+                    closerId: closer.closerId,
+                    teamId: closer.teamId,
+                    errorType: "recording_started",
+                    errorMessage: "Recording started successfully",
+                    stackTrace: nil,
+                    context: [
+                        "callId": callId,
+                        "totalTimeMs": String(Int(totalTime * 1000)),
+                        "audioSetupMs": String(Int((stepTimings["audioSetup"] ?? 0) * 1000)),
+                        "wsConnectMs": String(Int((stepTimings["wsConnect"] ?? 0) * 1000)),
+                        "audioCaptureMs": String(Int((stepTimings["audioCapture"] ?? 0) * 1000))
+                    ]
+                )
+            }
 
         } catch {
+            let totalTime = Date().timeIntervalSince(startTime)
             recordingState = .error
             self.error = error.localizedDescription
-            print("[AppState] Failed to start recording: \(error)")
+            print("[AppState] Failed to start recording after \(totalTime)s: \(error)")
 
-            // Log error to server (fire and forget)
+            // Determine which step failed
+            let failedStep: String
+            if stepTimings["audioSetup"] == nil {
+                failedStep = "audio_setup"
+            } else if stepTimings["wsConnect"] == nil {
+                failedStep = "websocket_connect"
+            } else if stepTimings["audioCapture"] == nil {
+                failedStep = "audio_capture_start"
+            } else {
+                failedStep = "unknown"
+            }
+
+            // Log detailed error to server
             Task {
                 await convexService.logClientError(
                     closerId: closer.closerId,
                     teamId: closer.teamId,
                     errorType: "recording_start_failed",
                     errorMessage: error.localizedDescription,
-                    stackTrace: nil,
-                    context: ["callId": currentCallId ?? "unknown"]
+                    stackTrace: String(describing: error),
+                    context: [
+                        "callId": currentCallId ?? "unknown",
+                        "failedStep": failedStep,
+                        "totalTimeMs": String(Int(totalTime * 1000)),
+                        "audioSetupMs": String(Int((stepTimings["audioSetup"] ?? 0) * 1000)),
+                        "wsConnectMs": String(Int((stepTimings["wsConnect"] ?? 0) * 1000)),
+                        "osVersion": ProcessInfo.processInfo.operatingSystemVersionString
+                    ]
                 )
             }
         }

@@ -20,6 +20,12 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.white)
+        .onAppear {
+            print("[ContentView] onAppear - isAuthenticated: \(appState.isAuthenticated), hasCloserInfo: \(appState.closerInfo != nil)")
+        }
+        .onChange(of: appState.isAuthenticated) { oldValue, newValue in
+            print("[ContentView] isAuthenticated changed: \(oldValue) -> \(newValue)")
+        }
     }
 }
 
@@ -549,12 +555,35 @@ struct MainRecordingView: View {
         .animation(.easeInOut(duration: 0.2), value: showSpeakFirstReminder)
         .animation(.easeInOut(duration: 0.3), value: appState.connectionState.isReconnecting)
         .onAppear {
+            print("[MainRecordingView] onAppear - recordingState: \(appState.recordingState), closerId: \(closerInfo.closerId)")
             startRolePlayParticipantPolling()
             startCalendarPolling()
         }
         .onDisappear {
+            print("[MainRecordingView] onDisappear - recordingState: \(appState.recordingState)")
             stopRolePlayParticipantPolling()
             stopCalendarPolling()
+        }
+        .onChange(of: appState.recordingState) { oldValue, newValue in
+            print("[MainRecordingView] recordingState changed: \(oldValue) -> \(newValue)")
+            // Log state transitions to backend for debugging blank screen issues
+            if newValue == .error || (oldValue != .idle && newValue == .idle) {
+                Task {
+                    await appState.convexService.logClientError(
+                        closerId: closerInfo.closerId,
+                        teamId: closerInfo.teamId,
+                        errorType: "recording_state_change",
+                        errorMessage: "State: \(oldValue) -> \(newValue)",
+                        stackTrace: nil,
+                        context: [
+                            "previousState": String(describing: oldValue),
+                            "newState": String(describing: newValue),
+                            "hasError": appState.error != nil ? "true" : "false",
+                            "errorMessage": appState.error ?? "none"
+                        ]
+                    )
+                }
+            }
         }
         .onReceive(timeUpdateTimer) { _ in
             now = Date()
@@ -586,13 +615,32 @@ struct MainRecordingView: View {
         Task {
             await appState.startRecording()
 
+            // Wait for convexCallId to be set (it's set asynchronously when server responds)
+            // Timeout after 5 seconds to avoid hanging forever
+            guard !prospectName.isEmpty else { return }
+
+            var callId: String?
+            for _ in 0..<50 {  // 50 x 100ms = 5 seconds max
+                if let id = appState.convexCallId {
+                    callId = id
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+            }
+
             // Update prospect name in Convex after recording starts
-            if !prospectName.isEmpty, let callId = appState.convexCallId {
-                try? await appState.convexService.updateProspectName(
-                    callId: callId,
-                    prospectName: prospectName.trimmingCharacters(in: .whitespaces)
-                )
-                print("[ContentView] Prospect name from calendar: \(prospectName)")
+            if let callId = callId {
+                do {
+                    try await appState.convexService.updateProspectName(
+                        callId: callId,
+                        prospectName: prospectName.trimmingCharacters(in: .whitespaces)
+                    )
+                    print("[ContentView] Prospect name from calendar saved: \(prospectName)")
+                } catch {
+                    print("[ContentView] Failed to save prospect name from calendar: \(error)")
+                }
+            } else {
+                print("[ContentView] Warning: convexCallId not available after 5s, prospect name not saved to backend")
             }
         }
     }
@@ -760,8 +808,20 @@ struct MainRecordingView: View {
 
         // Save prospect name to backend
         Task {
-            guard let callId = appState.convexCallId else {
-                print("[ContentView] No convexCallId available yet, skipping prospect name update")
+            // Wait briefly for convexCallId if not yet available (race condition fix)
+            var callId = appState.convexCallId
+            if callId == nil {
+                for _ in 0..<30 {  // 30 x 100ms = 3 seconds max
+                    if let id = appState.convexCallId {
+                        callId = id
+                        break
+                    }
+                    try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+                }
+            }
+
+            guard let callId = callId else {
+                print("[ContentView] No convexCallId available after waiting, prospect name will be saved in post-call questionnaire")
                 return
             }
 
