@@ -13,13 +13,6 @@ export const DATE_RANGE_OPTIONS: DateRangeOption[] = [
   { value: "last_90_days", label: "Last 90 Days" },
 ];
 
-export const OUTCOME_OPTIONS = [
-  { value: "all", label: "All Outcomes" },
-  { value: "closed", label: "Closed" },
-  { value: "not_closed", label: "Lost" },
-  { value: "rescheduled", label: "Follow-up" },
-];
-
 // Format currency for display
 export function formatCurrency(amount: number): string {
   if (amount >= 1000000) {

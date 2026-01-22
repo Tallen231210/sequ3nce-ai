@@ -457,8 +457,8 @@ export const getLeadQualityAnalysis = query({
   },
 });
 
-// Get detection correlations (What's Happening on Calls)
-export const getDetectionCorrelations = query({
+// Get real objection analysis from user-submitted form data
+export const getObjectionAnalysis = query({
   args: {
     teamId: v.id("teams"),
     dateRange: v.string(),
@@ -467,7 +467,7 @@ export const getDetectionCorrelations = query({
   handler: async (ctx, args) => {
     const { start, end } = getDateRangeTimestamps(args.dateRange as DateRange);
 
-    // Get completed calls
+    // Get all completed calls in the period
     let calls = await ctx.db
       .query("calls")
       .withIndex("by_team_and_date", (q) =>
@@ -480,174 +480,118 @@ export const getDetectionCorrelations = query({
       calls = calls.filter((c) => c.closerId === args.closerId);
     }
 
-    const totalCalls = calls.length;
-    if (totalCalls === 0) {
-      return {
-        budget: { detectionRate: 0, closeRateWith: 0, closeRateWithout: 0 },
-        timeline: { detectionRate: 0, closeRateWith: 0, closeRateWithout: 0 },
-        decisionMaker: { detectionRate: 0, closeRateWith: 0, closeRateWithout: 0 },
-        spouse: { detectionRate: 0, closeRateWith: 0, closeRateWithout: 0 },
-        insights: [],
-      };
+    // Split by outcome
+    const lostCalls = calls.filter((c) => c.outcome === "lost" || c.outcome === "follow_up");
+    const closedCalls = calls.filter((c) => c.outcome === "closed");
+
+    // 1. Objections that caused losses (from primaryObjection on lost/follow_up)
+    const lostByObjection: Record<string, { count: number; value: number }> = {};
+    for (const call of lostCalls) {
+      const objection = call.primaryObjection || "unknown";
+      if (!lostByObjection[objection]) {
+        lostByObjection[objection] = { count: 0, value: 0 };
+      }
+      lostByObjection[objection].count += 1;
+      lostByObjection[objection].value += call.contractValue || 0;
     }
 
-    // Budget detection analysis
-    const budgetDetected = calls.filter((c) => c.budgetDiscussion?.detected);
-    const budgetNotDetected = calls.filter((c) => !c.budgetDiscussion?.detected);
-    const budgetCloseRate = budgetDetected.length > 0
-      ? (budgetDetected.filter((c) => c.outcome === "closed").length / budgetDetected.length) * 100
-      : 0;
-    const budgetNoCloseRate = budgetNotDetected.length > 0
-      ? (budgetNotDetected.filter((c) => c.outcome === "closed").length / budgetNotDetected.length) * 100
-      : 0;
+    // 2. Objections that were overcome (from objectionsOvercome on closed deals)
+    const overcomeByObjection: Record<string, { count: number; value: number }> = {};
+    for (const call of closedCalls) {
+      const objection = call.objectionsOvercome || "none";
+      if (!overcomeByObjection[objection]) {
+        overcomeByObjection[objection] = { count: 0, value: 0 };
+      }
+      overcomeByObjection[objection].count += 1;
+      overcomeByObjection[objection].value += call.contractValue || 0;
+    }
 
-    // Timeline detection analysis
-    const timelineDetected = calls.filter((c) => c.timelineUrgency?.detected);
-    const timelineNotDetected = calls.filter((c) => !c.timelineUrgency?.detected);
-    const timelineCloseRate = timelineDetected.length > 0
-      ? (timelineDetected.filter((c) => c.outcome === "closed").length / timelineDetected.length) * 100
-      : 0;
-    const timelineNoCloseRate = timelineNotDetected.length > 0
-      ? (timelineNotDetected.filter((c) => c.outcome === "closed").length / timelineNotDetected.length) * 100
-      : 0;
+    // 3. Calculate overcome rates per objection type
+    // Overcome rate = overcome / (lost + overcome) for each objection type
+    const allObjectionTypes = new Set([
+      ...Object.keys(lostByObjection),
+      ...Object.keys(overcomeByObjection),
+    ]);
 
-    // Decision maker detection analysis
-    const dmDetected = calls.filter((c) => c.decisionMakerDetection?.detected);
-    const dmNotDetected = calls.filter((c) => !c.decisionMakerDetection?.detected);
-    const dmCloseRate = dmDetected.length > 0
-      ? (dmDetected.filter((c) => c.outcome === "closed").length / dmDetected.length) * 100
-      : 0;
-    const dmNoCloseRate = dmNotDetected.length > 0
-      ? (dmNotDetected.filter((c) => c.outcome === "closed").length / dmNotDetected.length) * 100
-      : 0;
+    // Remove 'unknown' and 'none' from comparison (they're special cases)
+    allObjectionTypes.delete("unknown");
+    allObjectionTypes.delete("none");
 
-    // Spouse mention analysis
-    const spouseDetected = calls.filter((c) => c.spousePartnerMentions?.detected);
-    const spouseNotDetected = calls.filter((c) => !c.spousePartnerMentions?.detected);
-    const spouseCloseRate = spouseDetected.length > 0
-      ? (spouseDetected.filter((c) => c.outcome === "closed").length / spouseDetected.length) * 100
-      : 0;
-    const spouseNoCloseRate = spouseNotDetected.length > 0
-      ? (spouseNotDetected.filter((c) => c.outcome === "closed").length / spouseNotDetected.length) * 100
-      : 0;
+    const overcomeRates: Record<string, number> = {};
+    for (const objType of allObjectionTypes) {
+      const lost = lostByObjection[objType]?.count || 0;
+      const overcome = overcomeByObjection[objType]?.count || 0;
+      const total = lost + overcome;
+      if (total > 0) {
+        overcomeRates[objType] = Math.round((overcome / total) * 100);
+      }
+    }
 
-    // Generate insights for gaps
+    // Format for display - sort by lost value
+    const lostObjections = Object.entries(lostByObjection)
+      .filter(([key]) => key !== "unknown")
+      .map(([objection, data]) => ({
+        objection,
+        objectionLabel: formatObjectionLabel(objection),
+        count: data.count,
+        value: data.value,
+        overcomeRate: overcomeRates[objection] ?? null,
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    // Format overcome objections - sort by value
+    const overcomeObjections = Object.entries(overcomeByObjection)
+      .map(([objection, data]) => ({
+        objection,
+        objectionLabel: objection === "none" ? "No Objection" : formatObjectionLabel(objection),
+        count: data.count,
+        value: data.value,
+      }))
+      .sort((a, b) => b.value - a.value);
+
+    // Generate insights based on real data
     const insights: string[] = [];
 
-    const budgetRate = (budgetDetected.length / totalCalls) * 100;
-    if (budgetRate < 50 && budgetCloseRate > budgetNoCloseRate + 10) {
-      insights.push(`Budget is only discussed on ${Math.round(budgetRate)}% of calls — consider adding to required discovery`);
-    }
-
-    const timelineRate = (timelineDetected.length / totalCalls) * 100;
-    if (timelineRate < 50 && timelineCloseRate > timelineNoCloseRate + 10) {
-      insights.push(`Timeline is only uncovered on ${Math.round(timelineRate)}% of calls — drives higher close rates`);
-    }
-
-    return {
-      budget: {
-        detectionRate: Math.round((budgetDetected.length / totalCalls) * 100),
-        closeRateWith: Math.round(budgetCloseRate),
-        closeRateWithout: Math.round(budgetNoCloseRate),
-      },
-      timeline: {
-        detectionRate: Math.round((timelineDetected.length / totalCalls) * 100),
-        closeRateWith: Math.round(timelineCloseRate),
-        closeRateWithout: Math.round(timelineNoCloseRate),
-      },
-      decisionMaker: {
-        detectionRate: Math.round((dmDetected.length / totalCalls) * 100),
-        closeRateWith: Math.round(dmCloseRate),
-        closeRateWithout: Math.round(dmNoCloseRate),
-      },
-      spouse: {
-        detectionRate: Math.round((spouseDetected.length / totalCalls) * 100),
-        closeRateWith: Math.round(spouseCloseRate),
-        closeRateWithout: Math.round(spouseNoCloseRate),
-      },
-      insights,
-    };
-  },
-});
-
-// Get objection overcome rate (Detection vs Outcome)
-export const getObjectionOvercomeRate = query({
-  args: {
-    teamId: v.id("teams"),
-    dateRange: v.string(),
-    closerId: v.optional(v.id("closers")),
-  },
-  handler: async (ctx, args) => {
-    const { start, end } = getDateRangeTimestamps(args.dateRange as DateRange);
-
-    // Get completed calls
-    let calls = await ctx.db
-      .query("calls")
-      .withIndex("by_team_and_date", (q) =>
-        q.eq("teamId", args.teamId).gte("createdAt", start).lte("createdAt", end)
-      )
-      .filter((q) => q.eq(q.field("status"), "completed"))
-      .collect();
-
-    if (args.closerId) {
-      calls = calls.filter((c) => c.closerId === args.closerId);
-    }
-
-    // Track objections detected during call vs primary loss reason
-    const objectionTypes = ["spouse_partner", "price_money", "timing", "need_to_think", "not_qualified"];
-
-    const results = objectionTypes.map((objType) => {
-      // Count calls where this objection was detected during the call
-      const detectedCount = calls.filter((c) =>
-        c.objectionsDetected?.some((obj) => {
-          const t = obj.type.toLowerCase();
-          return t === objType ||
-                 t.includes(objType.replace("_", " ")) ||
-                 t.includes(objType.replace("_", "/"));
-        })
-      ).length;
-
-      // Count calls where this was the primary loss reason (lost or follow_up)
-      const lostToCount = calls.filter((c) =>
-        (c.outcome === "lost" || c.outcome === "follow_up") && c.primaryObjection === objType
-      ).length;
-
-      // Calculate overcome rate
-      const overcomeRate = detectedCount > 0
-        ? ((detectedCount - lostToCount) / detectedCount) * 100
-        : 0;
-
-      return {
-        objection: objType,
-        objectionLabel: formatObjectionLabel(objType),
-        detectedCount,
-        lostToCount,
-        overcomeRate: Math.round(overcomeRate),
-      };
-    });
-
-    // Filter out objections with no detections
-    const filteredResults = results.filter((r) => r.detectedCount > 0 || r.lostToCount > 0);
-
-    // Sort by detected count descending
-    filteredResults.sort((a, b) => b.detectedCount - a.detectedCount);
-
-    // Generate insights
-    const insights: string[] = [];
-    for (const result of filteredResults) {
-      if (result.overcomeRate >= 70 && result.detectedCount >= 5) {
+    // Highlight no-objection closes (great leads or great selling)
+    const noObjectionCloses = overcomeByObjection["none"];
+    if (noObjectionCloses && noObjectionCloses.count >= 3 && closedCalls.length > 0) {
+      const noObjPercent = Math.round((noObjectionCloses.count / closedCalls.length) * 100);
+      if (noObjPercent >= 30) {
         insights.push(
-          `${result.objectionLabel} objections are detected on ${result.detectedCount} calls but only caused ${result.lostToCount} losses — your team is overcoming ${result.overcomeRate}% of them. Good.`
+          `${noObjPercent}% of closes had no objection to overcome — great leads or smooth selling!`
         );
-      } else if (result.overcomeRate < 50 && result.detectedCount >= 3) {
+      }
+    }
+
+    // Find objections with low overcome rate
+    for (const [objType, rate] of Object.entries(overcomeRates)) {
+      const lost = lostByObjection[objType]?.count || 0;
+      if (rate < 40 && lost >= 3) {
+        const lostValue = lostByObjection[objType]?.value || 0;
         insights.push(
-          `${result.objectionLabel} objections: ${result.overcomeRate}% overcome rate is low. Focus training here.`
+          `${formatObjectionLabel(objType)} objections: only ${rate}% overcome rate — $${Math.round(lostValue / 1000)}k lost. Focus training here.`
+        );
+      }
+    }
+
+    // Find objections with high overcome rate (positive)
+    for (const [objType, rate] of Object.entries(overcomeRates)) {
+      const overcome = overcomeByObjection[objType]?.count || 0;
+      if (rate >= 60 && overcome >= 3) {
+        insights.push(
+          `${formatObjectionLabel(objType)} objections: ${rate}% overcome rate — team handles these well.`
         );
       }
     }
 
     return {
-      objections: filteredResults,
+      lostObjections,
+      overcomeObjections,
+      overcomeRates,
+      totalLost: lostCalls.length,
+      totalClosed: closedCalls.length,
+      totalLostValue: lostCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0),
+      totalClosedValue: closedCalls.reduce((sum, c) => sum + (c.contractValue || 0), 0),
       insights,
     };
   },
@@ -717,28 +661,6 @@ export const getRecommendations = query({
             priority: counts.value,
           });
         }
-      }
-    }
-
-    // SALES PROCESS: Check detection gaps
-    const totalCalls = calls.length;
-    if (totalCalls > 0) {
-      const budgetRate = (calls.filter((c) => c.budgetDiscussion?.detected).length / totalCalls) * 100;
-      if (budgetRate < 40) {
-        recommendations.push({
-          category: "SALES PROCESS",
-          message: `Budget is only discussed on ${Math.round(budgetRate)}% of calls — add to required discovery`,
-          priority: 80,
-        });
-      }
-
-      const timelineRate = (calls.filter((c) => c.timelineUrgency?.detected).length / totalCalls) * 100;
-      if (timelineRate < 40) {
-        recommendations.push({
-          category: "SALES PROCESS",
-          message: `Timeline is only uncovered on ${Math.round(timelineRate)}% of calls — add to required discovery`,
-          priority: 70,
-        });
       }
     }
 

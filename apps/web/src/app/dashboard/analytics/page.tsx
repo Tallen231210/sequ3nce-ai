@@ -10,8 +10,7 @@ import { MoneyView } from "@/components/analytics/MoneyView";
 import { WhereYouLosing } from "@/components/analytics/WhereYouLosing";
 import { WhoIsLosing } from "@/components/analytics/WhoIsLosing";
 import { LeadQualityCheck } from "@/components/analytics/LeadQualityCheck";
-import { WhatsHappeningOnCalls } from "@/components/analytics/WhatsHappeningOnCalls";
-import { ObjectionDetectionVsOutcome } from "@/components/analytics/ObjectionDetectionVsOutcome";
+import { ObjectionAnalysis } from "@/components/analytics/ObjectionAnalysis";
 import { Recommendations } from "@/components/analytics/Recommendations";
 import { Loader2 } from "lucide-react";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -20,19 +19,9 @@ export default function AnalyticsPage() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const [dateRange, setDateRange] = useState("last_30_days");
   const [closerId, setCloserId] = useState("all");
-  const [outcome, setOutcome] = useState("all");
 
   // Prepare filter args
   const filterArgs = team?._id
-    ? {
-        teamId: team._id,
-        dateRange,
-        closerId: closerId !== "all" ? (closerId as Id<"closers">) : undefined,
-        outcome: outcome !== "all" ? outcome : undefined,
-      }
-    : "skip";
-
-  const filterArgsNoOutcome = team?._id
     ? {
         teamId: team._id,
         dateRange,
@@ -49,11 +38,10 @@ export default function AnalyticsPage() {
 
   // Fetch all analytics data
   const summaryData = useQuery(api.analytics.getAnalyticsSummary, filterArgs);
-  const lostDealsData = useQuery(api.analytics.getLostDealsByObjection, filterArgsNoOutcome);
+  const lostDealsData = useQuery(api.analytics.getLostDealsByObjection, filterArgs);
   const closerBreakdown = useQuery(api.analytics.getCloserPerformanceBreakdown, teamOnlyArgs);
-  const leadQualityData = useQuery(api.analytics.getLeadQualityAnalysis, filterArgsNoOutcome);
-  const detectionData = useQuery(api.analytics.getDetectionCorrelations, filterArgsNoOutcome);
-  const objectionOvercome = useQuery(api.analytics.getObjectionOvercomeRate, filterArgsNoOutcome);
+  const leadQualityData = useQuery(api.analytics.getLeadQualityAnalysis, filterArgs);
+  const objectionAnalysis = useQuery(api.analytics.getObjectionAnalysis, filterArgs);
   const recommendations = useQuery(api.analytics.getRecommendations, teamOnlyArgs);
 
   const isLoading =
@@ -62,8 +50,7 @@ export default function AnalyticsPage() {
     lostDealsData === undefined ||
     closerBreakdown === undefined ||
     leadQualityData === undefined ||
-    detectionData === undefined ||
-    objectionOvercome === undefined ||
+    objectionAnalysis === undefined ||
     recommendations === undefined;
 
   // Extract closers for filter dropdown from closerBreakdown data
@@ -115,8 +102,6 @@ export default function AnalyticsPage() {
           onDateRangeChange={setDateRange}
           closerId={closerId}
           onCloserChange={handleCloserChange}
-          outcome={outcome}
-          onOutcomeChange={setOutcome}
           closers={closers || []}
           isLoading={isLoading}
         />
@@ -133,13 +118,10 @@ export default function AnalyticsPage() {
         {/* Section 4: Lead Quality Check */}
         <LeadQualityCheck data={leadQualityData} isLoading={leadQualityData === undefined} />
 
-        {/* Section 5: What's Happening on Calls */}
-        <WhatsHappeningOnCalls data={detectionData} isLoading={detectionData === undefined} />
+        {/* Section 5: Objection Analysis - Real form data */}
+        <ObjectionAnalysis data={objectionAnalysis} isLoading={objectionAnalysis === undefined} />
 
-        {/* Section 6: Objection Detection vs Outcome */}
-        <ObjectionDetectionVsOutcome data={objectionOvercome} isLoading={objectionOvercome === undefined} />
-
-        {/* Section 7: Recommendations */}
+        {/* Section 6: Recommendations */}
         <Recommendations data={recommendations} isLoading={recommendations === undefined} />
       </div>
     </>

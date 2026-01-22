@@ -7,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DATE_RANGE_OPTIONS, OUTCOME_OPTIONS } from "@/lib/analytics-utils";
+import { DATE_RANGE_OPTIONS } from "@/lib/analytics-utils";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 interface Closer {
@@ -20,8 +20,6 @@ interface FilterBarProps {
   onDateRangeChange: (value: string) => void;
   closerId: string;
   onCloserChange: (value: string) => void;
-  outcome: string;
-  onOutcomeChange: (value: string) => void;
   closers: Closer[];
   isLoading?: boolean;
 }
@@ -31,8 +29,6 @@ export function FilterBar({
   onDateRangeChange,
   closerId,
   onCloserChange,
-  outcome,
-  onOutcomeChange,
   closers,
   isLoading,
 }: FilterBarProps) {
@@ -67,23 +63,6 @@ export function FilterBar({
             {closers.map((closer) => (
               <SelectItem key={closer._id} value={closer._id}>
                 {closer.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Outcome Filter */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Outcome:</span>
-        <Select value={outcome} onValueChange={onOutcomeChange} disabled={isLoading}>
-          <SelectTrigger className="w-[140px] bg-white">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {OUTCOME_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
               </SelectItem>
             ))}
           </SelectContent>

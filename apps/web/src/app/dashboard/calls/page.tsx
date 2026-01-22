@@ -49,6 +49,7 @@ import { Id } from "../../../../convex/_generated/dataModel";
 // Filter types
 type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days";
 type OutcomeFilter = "all" | "closed" | "not_closed" | "follow_up" | "lost" | "no_show" | "rescheduled";
+type ObjectionFilter = "all" | "none" | "spouse_partner" | "price_money" | "timing" | "need_to_think" | "not_qualified" | "logistics" | "competitor" | "other";
 
 const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: "all", label: "All Time" },
@@ -66,6 +67,19 @@ const OUTCOME_FILTER_OPTIONS: { value: OutcomeFilter; label: string }[] = [
   { value: "lost", label: "Lost" },
   { value: "no_show", label: "No-Show" },
   { value: "rescheduled", label: "Rescheduled" },
+];
+
+const OBJECTION_FILTER_OPTIONS: { value: ObjectionFilter; label: string }[] = [
+  { value: "all", label: "All Objections" },
+  { value: "none", label: "No Objection" },
+  { value: "spouse_partner", label: "Spouse/Partner" },
+  { value: "price_money", label: "Price/Money" },
+  { value: "timing", label: "Timing" },
+  { value: "need_to_think", label: "Need to Think" },
+  { value: "not_qualified", label: "Not Qualified" },
+  { value: "logistics", label: "Logistics" },
+  { value: "competitor", label: "Competitor" },
+  { value: "other", label: "Other" },
 ];
 
 function formatDuration(seconds: number): string {
@@ -318,6 +332,7 @@ export default function CompletedCallsPage() {
   // Filter state
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
+  const [objectionFilter, setObjectionFilter] = useState<ObjectionFilter>("all");
   const [selectedClosers, setSelectedClosers] = useState<Set<string>>(new Set());
   const [prospectSearch, setProspectSearch] = useState("");
 
@@ -357,6 +372,18 @@ export default function CompletedCallsPage() {
         if (callOutcome !== outcomeFilter) return false;
       }
 
+      // Objection filter - checks both primaryObjection (lost/follow-up) and objectionsOvercome (closed)
+      if (objectionFilter !== "all") {
+        const primaryObj = call.primaryObjection;
+        const overcameObj = call.objectionsOvercome;
+
+        // Check if either field matches the filter
+        const matchesPrimary = primaryObj === objectionFilter;
+        const matchesOvercame = overcameObj === objectionFilter;
+
+        if (!matchesPrimary && !matchesOvercame) return false;
+      }
+
       // Closer filter (if any closers are selected)
       if (selectedClosers.size > 0 && call.closerId) {
         if (!selectedClosers.has(call.closerId)) return false;
@@ -371,15 +398,16 @@ export default function CompletedCallsPage() {
 
       return true;
     });
-  }, [calls, dateFilter, outcomeFilter, selectedClosers, prospectSearch]);
+  }, [calls, dateFilter, outcomeFilter, objectionFilter, selectedClosers, prospectSearch]);
 
   // Check if any filters are active
-  const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || selectedClosers.size > 0 || prospectSearch.trim() !== "";
+  const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || objectionFilter !== "all" || selectedClosers.size > 0 || prospectSearch.trim() !== "";
 
   // Clear all filters
   const clearAllFilters = () => {
     setDateFilter("all");
     setOutcomeFilter("all");
+    setObjectionFilter("all");
     setSelectedClosers(new Set());
     setProspectSearch("");
   };
@@ -449,6 +477,20 @@ export default function CompletedCallsPage() {
             </SelectTrigger>
             <SelectContent>
               {OUTCOME_FILTER_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Objection Filter */}
+          <Select value={objectionFilter} onValueChange={(v) => setObjectionFilter(v as ObjectionFilter)}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Objection" />
+            </SelectTrigger>
+            <SelectContent>
+              {OBJECTION_FILTER_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>
