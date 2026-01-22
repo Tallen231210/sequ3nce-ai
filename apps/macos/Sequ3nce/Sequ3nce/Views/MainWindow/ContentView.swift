@@ -1125,6 +1125,8 @@ struct PostCallQuestionnaireView: View {
     @State private var notes: String = ""
     @State private var primaryObjection: String?
     @State private var primaryObjectionOther: String = ""
+    @State private var objectionsOvercome: String?  // For closed deals
+    @State private var objectionsOvercomeOther: String = ""
     @State private var leadQualityScore: Int?
     @State private var prospectWasDecisionMaker: String?
     @State private var isSubmitting = false
@@ -1142,6 +1144,15 @@ struct PostCallQuestionnaireView: View {
         ("logistics", "Logistics"),
         ("competitor", "Went with competitor"),
         ("no_show_ghosted", "No-show / Ghosted"),
+        ("other", "Other")
+    ]
+    private let objectionsOvercomeOptions = [
+        ("none", "None - No objections"),
+        ("spouse_partner", "Spouse/Partner"),
+        ("price_money", "Price/Money"),
+        ("timing", "Timing"),
+        ("need_to_think", "Need to think about it"),
+        ("logistics", "Logistics"),
         ("other", "Other")
     ]
 
@@ -1273,6 +1284,54 @@ struct PostCallQuestionnaireView: View {
                                 Text("Cash collected is higher than contract value - is this correct?")
                                     .font(.system(size: 12))
                                     .foregroundColor(.orange)
+                            }
+
+                            // Objections Overcome (for closed deals)
+                            FormField(label: "Objections Overcome", description: "What objections did you overcome to close?") {
+                                VStack(spacing: 8) {
+                                    // Dropdown/Picker
+                                    Menu {
+                                        Button("Select objection...") {
+                                            objectionsOvercome = nil
+                                        }
+                                        ForEach(objectionsOvercomeOptions, id: \.0) { option in
+                                            Button(option.1) {
+                                                objectionsOvercome = option.0
+                                            }
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Text(objectionsOvercomeOptions.first { $0.0 == objectionsOvercome }?.1 ?? "Select objection...")
+                                                .foregroundColor(objectionsOvercome == nil ? .gray : .black)
+                                            Spacer()
+                                            Image(systemName: "chevron.down")
+                                                .foregroundColor(.gray)
+                                                .font(.system(size: 12))
+                                        }
+                                        .padding(12)
+                                        .background(Color(white: 0.97))
+                                        .cornerRadius(8)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(Color(white: 0.9), lineWidth: 1)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    // Other text input
+                                    if objectionsOvercome == "other" {
+                                        TextField("Describe the objection you overcame...", text: $objectionsOvercomeOther)
+                                            .textFieldStyle(.plain)
+                                            .foregroundColor(.black)
+                                            .padding(12)
+                                            .background(Color(white: 0.97))
+                                            .cornerRadius(8)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .stroke(Color(white: 0.9), lineWidth: 1)
+                                            )
+                                    }
+                                }
                             }
                         }
 
@@ -1526,6 +1585,8 @@ struct PostCallQuestionnaireView: View {
                     notes: notes.isEmpty ? nil : notes,
                     primaryObjection: primaryObjection,
                     primaryObjectionOther: primaryObjection == "other" ? primaryObjectionOther : nil,
+                    objectionsOvercome: outcome == .closed ? objectionsOvercome : nil,
+                    objectionsOvercomeOther: outcome == .closed && objectionsOvercome == "other" ? objectionsOvercomeOther : nil,
                     leadQualityScore: leadQualityScore,
                     prospectWasDecisionMaker: prospectWasDecisionMaker
                 )

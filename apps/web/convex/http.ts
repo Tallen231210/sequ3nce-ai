@@ -326,6 +326,8 @@ http.route({
         // Enhanced questionnaire fields
         primaryObjection,
         primaryObjectionOther,
+        objectionsOvercome,
+        objectionsOvercomeOther,
         leadQualityScore,
         prospectWasDecisionMaker,
       } = body;
@@ -361,6 +363,8 @@ http.route({
         // Enhanced questionnaire fields
         primaryObjection: primaryObjection || undefined,
         primaryObjectionOther: primaryObjectionOther || undefined,
+        objectionsOvercome: objectionsOvercome || undefined,
+        objectionsOvercomeOther: objectionsOvercomeOther || undefined,
         leadQualityScore: leadQualityScore || undefined,
         prospectWasDecisionMaker: prospectWasDecisionMaker || undefined,
       });

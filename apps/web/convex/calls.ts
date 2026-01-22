@@ -630,8 +630,10 @@ export const completeCallWithOutcome = mutation({
     contractValue: v.optional(v.number()), // Total contract commitment
     notes: v.optional(v.string()),
     // Enhanced questionnaire fields
-    primaryObjection: v.optional(v.string()), // Selected objection from dropdown
+    primaryObjection: v.optional(v.string()), // Selected objection from dropdown (for lost/follow_up)
     primaryObjectionOther: v.optional(v.string()), // Free text if "Other" was selected
+    objectionsOvercome: v.optional(v.string()), // For closed deals: "none", objection type, or "other"
+    objectionsOvercomeOther: v.optional(v.string()), // Free text if "Other" was selected
     leadQualityScore: v.optional(v.number()), // 1-10 rating
     prospectWasDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
   },
@@ -649,6 +651,8 @@ export const completeCallWithOutcome = mutation({
       // Enhanced questionnaire fields
       primaryObjection: args.primaryObjection,
       primaryObjectionOther: args.primaryObjectionOther,
+      objectionsOvercome: args.objectionsOvercome,
+      objectionsOvercomeOther: args.objectionsOvercomeOther,
       leadQualityScore: args.leadQualityScore,
       prospectWasDecisionMaker: args.prospectWasDecisionMaker,
       status: "completed",

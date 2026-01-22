@@ -170,8 +170,10 @@ export default defineSchema({
     })),
 
     // Post-call questionnaire fields (enhanced)
-    primaryObjection: v.optional(v.string()), // Selected objection from dropdown
+    primaryObjection: v.optional(v.string()), // Selected objection from dropdown (for lost/follow_up)
     primaryObjectionOther: v.optional(v.string()), // Free text if "Other" was selected
+    objectionsOvercome: v.optional(v.string()), // For closed deals: "none", objection type, or "other"
+    objectionsOvercomeOther: v.optional(v.string()), // Free text if "Other" was selected
     leadQualityScore: v.optional(v.number()), // 1-10 rating
     prospectWasDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
 

@@ -264,6 +264,8 @@ class ConvexService {
         notes: String?,
         primaryObjection: String?,
         primaryObjectionOther: String?,
+        objectionsOvercome: String?,
+        objectionsOvercomeOther: String?,
         leadQualityScore: Int?,
         prospectWasDecisionMaker: String?
     ) async throws {
@@ -295,6 +297,12 @@ class ConvexService {
         }
         if let objectionOther = primaryObjectionOther, !objectionOther.isEmpty {
             body["primaryObjectionOther"] = objectionOther
+        }
+        if let overcome = objectionsOvercome {
+            body["objectionsOvercome"] = overcome
+        }
+        if let overcomeOther = objectionsOvercomeOther, !overcomeOther.isEmpty {
+            body["objectionsOvercomeOther"] = overcomeOther
         }
         if let quality = leadQualityScore {
             body["leadQualityScore"] = quality
