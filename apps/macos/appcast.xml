@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.6</title>
+            <pubDate>Wed, 22 Jan 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>52</sparkle:version>
+            <sparkle:shortVersionString>1.7.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.6</h2>
+                <ul>
+                    <li>Objections Overcome - track what objections you overcame on closed deals</li>
+                    <li>New dropdown in post-call form for closed deals</li>
+                    <li>Feeds into analytics for real objection handling insights</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-ai/releases/download/macos-v1.7.6/Sequ3nce.zip"
+                length="1792533"
+                type="application/octet-stream"
+                sparkle:edSignature="mSW7LNx9xfm4qMkVIY2EjPmspbpmjVTQ3tReJgGjCYUxXoVTlenA3PuThe0h2ybF2pEyoUfc0nPP2ZUlApguCA=="
+            />
+        </item>
+
+        <!-- v1.7.5 -->
+        <item>
             <title>Version 1.7.5</title>
             <pubDate>Wed, 22 Jan 2026 00:00:00 +0000</pubDate>
             <sparkle:version>50</sparkle:version>
