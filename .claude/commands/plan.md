@@ -19,9 +19,11 @@ You are starting a **fresh planning session**. Your goal is to thoroughly unders
    - Include: problem statement, approach, files to modify, implementation steps
    - Be specific enough that implementation can happen in a separate session
 
-4. **Get User Approval**
-   - Present the plan summary
-   - Use ExitPlanMode when ready for approval
+4. **Save and Summarize**
+   - Save the complete plan to `.claude/plans/[descriptive-name].md`
+   - Present a summary to the user
+   - Tell them: "Plan saved. Start a new session and run `/implement` when ready."
+   - Do NOT use ExitPlanMode - just end naturally after saving the plan
 
 ## Important Notes
 
