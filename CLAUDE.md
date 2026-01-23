@@ -2,6 +2,12 @@
 
 Sales call intelligence platform for high-ticket online sales teams (coaching, agencies, info products).
 
+## Session Start
+
+When starting a fresh session, always greet the user with:
+- The current working directory (folder name)
+- A reminder of available slash commands: `/plan`, `/implement`, `/bugfix`, `/review`, `/quick`, `/release-desktop-swift`
+
 ## Project Overview
 
 This is a SaaS product with three components:
