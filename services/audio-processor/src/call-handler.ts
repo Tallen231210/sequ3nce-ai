@@ -12,6 +12,7 @@ import {
   getAmmoConfig,
   updateCallDetection,
   updateTalkTime,
+  getLastTranscriptTimestamp,
 } from "./convex.js";
 import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
@@ -47,6 +48,9 @@ export class CallHandler {
 
   // Silence warning callback
   private onSilenceWarning: OnSilenceWarningCallback | null = null;
+
+  // Timestamp offset for reconnection (adds to Speechmatics timestamps to maintain ordering)
+  private timestampOffset: number = 0;
 
   constructor(metadata: CallMetadata) {
     this.sampleRate = metadata.sampleRate || 48000;
@@ -94,6 +98,12 @@ export class CallHandler {
         // RECONNECTION: Reuse existing Convex call ID instead of creating new
         this.convexCallId = metadataConvexCallId!;
         logger.info(`[RECONNECT] Resuming call ${this.session.metadata.callId} with existing Convex ID: ${this.convexCallId}`);
+
+        // Query the last transcript timestamp to use as offset for new segments
+        // This ensures new segments appear AFTER existing ones in the transcript
+        const lastTimestamp = await getLastTranscriptTimestamp(this.convexCallId);
+        this.timestampOffset = lastTimestamp + 1; // Add 1 second buffer to ensure proper ordering
+        logger.info(`[RECONNECT] Last transcript timestamp: ${lastTimestamp}, using offset: ${this.timestampOffset}`);
 
         // Mark the call as active again (in case it was marked as ended)
         await updateCallStatus(this.convexCallId, "on_call", 2);
@@ -217,9 +227,12 @@ export class CallHandler {
       // Check bounds
       if (inputIndex + 3 >= buffer.length) break;
 
-      // Mix left + right channels to mono (both may have audio now)
+      // Read both channels - Left = Microphone (closer), Right = System audio (prospect)
       const left = buffer.readInt16LE(inputIndex);
       const right = buffer.readInt16LE(inputIndex + 2);
+
+      // Mix both channels but boost the quieter one to prevent one dominating
+      // This preserves both speakers while avoiding the volume reduction issue
       const mono = Math.round((left + right) / 2);
 
       output.writeInt16LE(mono, i * 2);
@@ -260,8 +273,8 @@ export class CallHandler {
       if (this.convexCallId) {
         const speaker = isCloser ? "closer" : "prospect";
         // Use Speechmatics' audio-aligned timestamp (accurate to the actual recording)
-        // This ensures playbook snippets play at the correct position
-        const timestampSeconds = Math.floor(chunk.audioTimestamp);
+        // Add timestampOffset for reconnection scenarios (ensures new segments sort after existing ones)
+        const timestampSeconds = Math.floor(chunk.audioTimestamp) + this.timestampOffset;
 
         // Track latest audio timestamp for ammo extraction
         this.session.lastAudioTimestamp = timestampSeconds;

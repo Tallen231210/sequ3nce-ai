@@ -538,6 +538,21 @@ export const getTranscriptSegments = query({
   },
 });
 
+// Get the latest transcript segment timestamp for a call (used for reconnection offset)
+export const getLastTranscriptTimestamp = query({
+  args: {
+    callId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const lastSegment = await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_call_and_time", (q) => q.eq("callId", args.callId as any))
+      .order("desc")
+      .first();
+    return lastSegment?.timestamp ?? 0;
+  },
+});
+
 // Get live calls with full details (closer info, latest ammo, transcript segments)
 export const getLiveCallsWithDetails = query({
   args: {

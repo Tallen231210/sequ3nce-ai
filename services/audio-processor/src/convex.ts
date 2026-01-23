@@ -80,6 +80,20 @@ export async function addTranscriptSegment(
   }
 }
 
+// Get the last transcript timestamp for a call (used for reconnection offset)
+export async function getLastTranscriptTimestamp(callId: string): Promise<number> {
+  try {
+    const timestamp = await convex.query("calls:getLastTranscriptTimestamp" as any, {
+      callId,
+    });
+    logger.info(`Last transcript timestamp for ${callId}: ${timestamp}`);
+    return timestamp as number;
+  } catch (error) {
+    logger.error("Failed to get last transcript timestamp", error);
+    return 0;
+  }
+}
+
 export async function getAmmoConfig(teamId: string): Promise<AmmoConfig | null> {
   try {
     const config = await convex.query("admin:getAmmoConfig" as any, { teamId });
