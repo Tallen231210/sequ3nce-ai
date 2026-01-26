@@ -100,6 +100,15 @@ class AudioCaptureService: ObservableObject {
     private var configurationChangeObserver: NSObjectProtocol?
     private var hasReportedAudioDeath = false  // Only report once per session
 
+    // MARK: - Silent Audio Detection
+    // Tracks audio amplitude to detect when audio taps produce silence but are still running
+    private nonisolated(unsafe) var maxRecentAmplitude: Float = 0.0  // Max amplitude in recent window
+    private nonisolated(unsafe) var lastNonSilentTime: Date = Date()  // Last time we saw real audio
+    private var hasReportedSilentAudio = false  // Only report once per session
+    private var isRecoveringFromSilence = false  // Prevent re-entry during recovery
+    private let SILENT_THRESHOLD: Float = 0.001  // Below this = silent (very low amplitude)
+    private let SILENT_TIMEOUT_SECONDS: Double = 15.0  // Trigger recovery after this many seconds of silence
+
     // MARK: - Call Context (for error reporting)
     private var currentCallId: String?
     private var currentTeamId: String?
@@ -206,6 +215,12 @@ class AudioCaptureService: ObservableObject {
         totalChunksSent = 0
         lastMicCallbackTime = Date()
         hasReportedAudioDeath = false
+
+        // SILENT AUDIO: Reset detection variables
+        maxRecentAmplitude = 0.0
+        lastNonSilentTime = Date()
+        hasReportedSilentAudio = false
+        isRecoveringFromSilence = false
 
         // DIAGNOSTIC: Start health check timer (every 5 seconds)
         healthCheckTimer?.invalidate()
@@ -447,6 +462,13 @@ class AudioCaptureService: ObservableObject {
             self.micLevel = level
         }
 
+        // SILENT AUDIO DETECTION: Track max amplitude
+        // If we see any significant audio, update the "last non-silent time"
+        if level > SILENT_THRESHOLD {
+            lastNonSilentTime = Date()
+            maxRecentAmplitude = max(maxRecentAmplitude, level)
+        }
+
         // Add to ring buffer
         ringBufferLock.lock()
         micRingBuffer.append(contentsOf: monoSamples)
@@ -570,6 +592,37 @@ class AudioCaptureService: ObservableObject {
             attemptAudioRecovery()
         }
 
+        // SILENT AUDIO DETECTION: Audio callbacks are happening but producing silence
+        // This catches cases where the audio tap is running but producing zeros
+        // (e.g., after Mac sleep, audio device change, etc.)
+        let timeSinceNonSilent = Date().timeIntervalSince(lastNonSilentTime)
+        let sessionHasRun = sessionDuration > 10.0  // Wait 10s before checking for silence
+
+        // Log silent audio status periodically
+        if sessionHasRun && timeSinceNonSilent > 5.0 {
+            print("[AudioCaptureService] SILENT CHECK: timeSinceNonSilent=\(String(format: "%.1f", timeSinceNonSilent))s, maxRecentAmplitude=\(maxRecentAmplitude), threshold=\(SILENT_THRESHOLD)")
+        }
+
+        // Only trigger if session has been running for a while, and we've had silence for SILENT_TIMEOUT_SECONDS
+        if sessionHasRun && timeSinceNonSilent > SILENT_TIMEOUT_SECONDS && _isCapturingAtomic && !isRecoveringFromSilence {
+            print("[AudioCaptureService] ⚠️ SILENT AUDIO DETECTED: No significant audio for \(String(format: "%.1f", timeSinceNonSilent))s!")
+            print("[AudioCaptureService] ⚠️ This may indicate audio taps are producing silence after a system event.")
+            print("[AudioCaptureService] ⚠️ State: engineRunning=\(engineRunning), chunksSent=\(totalChunksSent), maxRecentAmplitude=\(maxRecentAmplitude)")
+
+            // Send to backend (only once per session)
+            if !hasReportedSilentAudio {
+                hasReportedSilentAudio = true
+                sendErrorToBackend(
+                    errorType: "swift_silent_audio_detected",
+                    errorMessage: "Audio is silent for \(String(format: "%.1f", timeSinceNonSilent))s. Chunks sent: \(totalChunksSent). Max amplitude: \(maxRecentAmplitude). Attempting full reinitialization.",
+                    context: "engineRunning=\(engineRunning), duration=\(Int(sessionDuration))s"
+                )
+            }
+
+            // FULL REINITIALIZATION: More aggressive recovery than attemptAudioRecovery
+            attemptFullAudioReinitialization()
+        }
+
         // Warn if engine stopped but we think we're capturing
         if !engineRunning && _isCapturingAtomic {
             print("[AudioCaptureService] ⚠️ WARNING: Engine not running but isCapturing=true!")
@@ -662,6 +715,75 @@ class AudioCaptureService: ObservableObject {
                 errorMessage: "Recovery failed: \(error.localizedDescription)",
                 context: "totalChunksSent=\(totalChunksSent)"
             )
+        }
+    }
+
+    /// Full reinitialization for when audio taps are producing silence
+    /// More aggressive than attemptAudioRecovery - completely rebuilds audio capture
+    private func attemptFullAudioReinitialization() {
+        print("[AudioCaptureService] 🔄 FULL REINITIALIZATION: Completely rebuilding audio capture...")
+
+        // Prevent re-entry while recovering
+        isRecoveringFromSilence = true
+
+        // Save the callback before cleanup (we need to restore it)
+        let savedCallback = onAudioData
+
+        // Save call context for error reporting
+        let savedCallId = currentCallId
+        let savedTeamId = currentTeamId
+        let savedCloserId = currentCloserId
+
+        // Step 1: Stop current capture
+        print("[AudioCaptureService] 🔄 Step 1: Stopping current capture...")
+        stopCapture()
+
+        // Step 2: Full cleanup
+        print("[AudioCaptureService] 🔄 Step 2: Cleaning up resources...")
+        cleanup()
+
+        // Step 3: Restore the callback (cleanup clears it)
+        onAudioData = savedCallback
+
+        // Step 4: Run setup again (async)
+        print("[AudioCaptureService] 🔄 Step 3: Running setup...")
+        Task { @MainActor in
+            do {
+                try await self.setup()
+
+                // Restore call context
+                if let callId = savedCallId, let teamId = savedTeamId, let closerId = savedCloserId {
+                    self.setCallContext(callId: callId, teamId: teamId, closerId: closerId)
+                }
+
+                // Step 5: Start capture again
+                print("[AudioCaptureService] 🔄 Step 4: Starting capture...")
+                try self.startCapture()
+
+                // Reset silent audio tracking
+                self.lastNonSilentTime = Date()
+                self.maxRecentAmplitude = 0.0
+                self.isRecoveringFromSilence = false
+
+                print("[AudioCaptureService] ✅ FULL REINITIALIZATION SUCCESS: Audio capture rebuilt!")
+
+                // Report success to backend
+                self.sendErrorToBackend(
+                    errorType: "swift_silent_audio_recovery_success",
+                    errorMessage: "Full audio reinitialization successful after silent audio detected",
+                    context: "totalChunksSent=\(self.totalChunksSent)"
+                )
+            } catch {
+                print("[AudioCaptureService] ❌ FULL REINITIALIZATION FAILED: \(error.localizedDescription)")
+                self.isRecoveringFromSilence = false
+
+                // Report failure to backend
+                self.sendErrorToBackend(
+                    errorType: "swift_silent_audio_recovery_failed",
+                    errorMessage: "Full reinitialization failed: \(error.localizedDescription)",
+                    context: "totalChunksSent=\(self.totalChunksSent)"
+                )
+            }
         }
     }
 

@@ -6,7 +6,30 @@
         <description>Native macOS app for sales call recording</description>
         <language>en</language>
 
-        <!-- Latest Release - Points to NEW releases repo for migration -->
+        <!-- Latest Release -->
+        <item>
+            <title>Version 1.7.8</title>
+            <pubDate>Sun, 26 Jan 2026 20:00:00 +0000</pubDate>
+            <sparkle:version>56</sparkle:version>
+            <sparkle:shortVersionString>1.7.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.8</h2>
+                <ul>
+                    <li>Silent audio detection - automatically detects when audio becomes silent during calls</li>
+                    <li>Auto-recovery - full audio reinitialization when silent audio is detected</li>
+                    <li>Improved transcript reliability after network reconnections</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v1.7.8/Sequ3nce.zip"
+                length="1796095"
+                type="application/octet-stream"
+                sparkle:edSignature="krXhun8Skl3jH6vu1rB/G0pO1z5YYIFrCKT9Z9uhQ7TRaiHV0SOVfEOPvN5Ft9WReDsrpPXHUBfOHywOy9P0Cw=="
+            />
+        </item>
+
+        <!-- v1.7.7 -->
         <item>
             <title>Version 1.7.7</title>
             <pubDate>Wed, 22 Jan 2026 14:00:00 +0000</pubDate>
