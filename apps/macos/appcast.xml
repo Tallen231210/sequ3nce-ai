@@ -8,6 +8,28 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.9</title>
+            <pubDate>Mon, 27 Jan 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>58</sparkle:version>
+            <sparkle:shortVersionString>1.7.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.9</h2>
+                <ul>
+                    <li>Fixed main window not appearing when clicking Dock icon</li>
+                    <li>Main window now reliably comes to front during calls</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v1.7.9/Sequ3nce.zip"
+                length="1797110"
+                type="application/octet-stream"
+                sparkle:edSignature="1QJ6G370C4oeXklKAGX75vH/yAg2SuTNtrm6OO76NmjdMJDJvD5kVm2osP2sB0wX725G2V4wv2xbMtn7FgJSBQ=="
+            />
+        </item>
+
+        <!-- v1.7.8 -->
+        <item>
             <title>Version 1.7.8</title>
             <pubDate>Sun, 26 Jan 2026 20:00:00 +0000</pubDate>
             <sparkle:version>56</sparkle:version>
