@@ -18,6 +18,7 @@ import type * as calls from "../calls.js";
 import type * as clientErrors from "../clientErrors.js";
 import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
+import type * as diagnostics from "../diagnostics.js";
 import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
 import type * as liveMessages from "../liveMessages.js";
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   clientErrors: typeof clientErrors;
   closers: typeof closers;
   crons: typeof crons;
+  diagnostics: typeof diagnostics;
   highlights: typeof highlights;
   http: typeof http;
   liveMessages: typeof liveMessages;
