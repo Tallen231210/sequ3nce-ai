@@ -23,12 +23,13 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
 
     // MARK: - Reconnection Properties
     private var connectionParams: (callId: String, teamId: String, closerId: String)?
-    private var lastPongReceived: Date = Date()
+    private var lastHeartbeatAckReceived: Date = Date()
+    private var missedHeartbeatCount: Int = 0  // Track consecutive missed heartbeats
     private var reconnectAttempt: Int = 0
     private var isReconnecting: Bool = false
     private var maxReconnectAttempts: Int = 10
-    private var heartbeatInterval: TimeInterval = 10  // Send ping every 10 seconds
-    private var staleConnectionThreshold: TimeInterval = 20  // Consider stale after 20 seconds without pong
+    private var heartbeatInterval: TimeInterval = 15  // Send heartbeat every 15 seconds
+    private var maxMissedHeartbeats: Int = 2  // Reconnect after 2 missed heartbeats (30+ seconds)
 
     // MARK: - Callbacks
     var onStateChange: ((WebSocketState) -> Void)?
@@ -176,9 +177,10 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         throw NSError(domain: "StarscreamWS", code: -1, userInfo: [NSLocalizedDescriptionKey: "Connection timeout - server did not send ready"])
     }
 
-    private func startPingTimer() {
+    private func startHeartbeatTimer() {
         pingTimer?.invalidate()
-        lastPongReceived = Date()  // Reset on start
+        lastHeartbeatAckReceived = Date()  // Reset on start
+        missedHeartbeatCount = 0
 
         pingTimer = Timer.scheduledTimer(withTimeInterval: heartbeatInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -187,20 +189,29 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         }
     }
 
-    /// Check connection health and send ping
+    /// Check connection health and send heartbeat
+    /// Uses application-level JSON heartbeats instead of WebSocket protocol pings
+    /// (some networks/firewalls strip protocol-level ping/pong frames)
     private func checkConnectionHealth() {
         guard state == .connected || state == .ready else { return }
 
-        let timeSinceLastPong = Date().timeIntervalSince(lastPongReceived)
+        // Check if we received an ack since last heartbeat
+        let timeSinceLastAck = Date().timeIntervalSince(lastHeartbeatAckReceived)
 
-        if timeSinceLastPong > staleConnectionThreshold {
-            print("[StarscreamWS] Connection stale - no pong for \(Int(timeSinceLastPong))s, triggering reconnect")
-            handleConnectionStale()
-            return
+        // If no ack received since our last heartbeat, increment missed count
+        if timeSinceLastAck > heartbeatInterval {
+            missedHeartbeatCount += 1
+            print("[StarscreamWS] Heartbeat check: missed=\(missedHeartbeatCount), timeSinceAck=\(Int(timeSinceLastAck))s")
+
+            if missedHeartbeatCount >= maxMissedHeartbeats {
+                print("[StarscreamWS] Connection stale - \(missedHeartbeatCount) missed heartbeats, triggering reconnect")
+                handleConnectionStale()
+                return
+            }
         }
 
-        // Send ping
-        socket?.write(ping: Data())
+        // Send JSON heartbeat (more reliable than protocol ping)
+        socket?.write(string: "{\"type\":\"heartbeat\"}")
     }
 
     /// Handle stale/dead connection
@@ -282,7 +293,7 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
                 pendingMetadata = nil
             }
 
-            startPingTimer()
+            startHeartbeatTimer()
 
         case .disconnected(let reason, let code):
             print("[StarscreamWS] Disconnected: \(reason), code: \(code)")
@@ -308,8 +319,9 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
             break
 
         case .pong(_):
-            // Update last pong time - connection is healthy
-            lastPongReceived = Date()
+            // Protocol-level pong - also counts as connection healthy (backup)
+            lastHeartbeatAckReceived = Date()
+            missedHeartbeatCount = 0
             break
 
         case .viabilityChanged(let isViable):
@@ -381,6 +393,10 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
                 print("[StarscreamWS] Server error: \(error)")
             } else if let messageType = json["type"] as? String {
                 switch messageType {
+                case "heartbeat_ack":
+                    // Server acknowledged our heartbeat - connection is healthy
+                    lastHeartbeatAckReceived = Date()
+                    missedHeartbeatCount = 0
                 case "silence_warning":
                     // Server detected no speech for 30+ seconds
                     // This could indicate audio capture issues - trigger reconnection
