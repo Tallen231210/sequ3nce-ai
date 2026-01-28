@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.10</title>
+            <pubDate>Tue, 28 Jan 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>60</sparkle:version>
+            <sparkle:shortVersionString>1.7.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.10</h2>
+                <ul>
+                    <li>More reliable connection handling for restrictive networks</li>
+                    <li>Fixed constant reconnection issues some users experienced</li>
+                    <li>Improved transcript and live streaming stability</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v1.7.10/Sequ3nce.zip"
+                length="1797608"
+                type="application/octet-stream"
+                sparkle:edSignature="gcqMWZq/y4Ju5pp5Lm9i3glEre4c8J3KMzAaJQYgJaWfiPxvXLzBJs3ZGFsy+hZy86Xed9fPaSa7m+8ctkzwDQ=="
+            />
+        </item>
+
+        <!-- v1.7.9 -->
+        <item>
             <title>Version 1.7.9</title>
             <pubDate>Mon, 27 Jan 2026 12:00:00 +0000</pubDate>
             <sparkle:version>58</sparkle:version>
