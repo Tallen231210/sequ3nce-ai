@@ -491,4 +491,85 @@ export default defineSchema({
   })
     .index("by_team_status", ["teamId", "status"])
     .index("by_closer", ["closerId"]),
+
+  // Diagnostic Reports (for debugging user-specific issues from macOS app)
+  diagnosticReports: defineTable({
+    reportId: v.string(), // Short memorable ID like "ABC123"
+    closerId: v.optional(v.string()), // Closer ID as string (may not match ID in DB)
+    teamId: v.optional(v.string()), // Team ID as string
+    closerEmail: v.optional(v.string()), // Email for lookup
+    userDescription: v.optional(v.string()), // User's description of the issue
+
+    // System diagnostics
+    system: v.object({
+      macOSVersion: v.string(),
+      macOSBuild: v.string(),
+      hardwareModel: v.string(),
+      chipType: v.string(),
+      ramTotal: v.number(),
+      ramAvailable: v.number(),
+      appVersion: v.string(),
+      appBuild: v.string(),
+    }),
+
+    // Audio diagnostics
+    audio: v.object({
+      defaultInputDeviceName: v.optional(v.string()),
+      defaultInputDeviceUID: v.optional(v.string()),
+      systemAudioCaptureStatus: v.string(),
+      micLevel: v.number(),
+      systemLevel: v.number(),
+      silenceDetectionActive: v.boolean(),
+      lastMicCallbackSecondsAgo: v.number(),
+      totalChunksSent: v.number(),
+      isCapturing: v.boolean(),
+    }),
+
+    // WebSocket diagnostics
+    websocket: v.object({
+      connectionState: v.string(),
+      reconnectionCountThisSession: v.number(),
+      lastHeartbeatAckSecondsAgo: v.number(),
+      missedHeartbeatCount: v.number(),
+      reconnectionHistory: v.array(v.object({
+        timestamp: v.string(), // ISO timestamp
+        reason: v.string(),
+      })),
+    }),
+
+    // Call diagnostics
+    call: v.object({
+      currentCallId: v.optional(v.string()),
+      convexCallId: v.optional(v.string()),
+      closerId: v.optional(v.string()),
+      teamId: v.optional(v.string()),
+      recordingState: v.string(),
+      recordingDuration: v.number(),
+      timeSinceRecordingStarted: v.optional(v.number()),
+    }),
+
+    // Permission diagnostics
+    permissions: v.object({
+      microphonePermission: v.string(),
+      screenRecordingPermission: v.string(),
+    }),
+
+    // Log diagnostics
+    logs: v.object({
+      recentLogs: v.array(v.object({
+        timestamp: v.string(), // ISO timestamp
+        level: v.string(),
+        category: v.string(),
+        message: v.string(),
+      })),
+      errorCountLastHour: v.number(),
+      lastErrorMessage: v.optional(v.string()),
+      lastErrorTimestamp: v.optional(v.string()),
+    }),
+
+    createdAt: v.number(),
+  })
+    .index("by_report_id", ["reportId"])
+    .index("by_closer", ["closerId"])
+    .index("by_team", ["teamId"]),
 });

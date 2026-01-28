@@ -8,6 +8,30 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.11</title>
+            <pubDate>Tue, 28 Jan 2026 22:00:00 +0000</pubDate>
+            <sparkle:version>61</sparkle:version>
+            <sparkle:shortVersionString>1.7.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.11</h2>
+                <ul>
+                    <li>Send Diagnostics - one-click diagnostic reports from the menu bar</li>
+                    <li>Helps debug issues remotely without asking for Console logs</li>
+                    <li>Collects system info, audio state, connection history, and recent logs</li>
+                    <li>Improved logging throughout the app for better troubleshooting</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v1.7.11/Sequ3nce.zip"
+                length="1840867"
+                type="application/octet-stream"
+                sparkle:edSignature="igbrJtYUid+8nTuW7Dxek69HknyX+DT8sVY5v6iWz121SzOXTRxZny7MEi9WYsooL5ov6HfdZFYeJYZvlV4iAw=="
+            />
+        </item>
+
+        <!-- v1.7.10 -->
+        <item>
             <title>Version 1.7.10</title>
             <pubDate>Tue, 28 Jan 2026 12:00:00 +0000</pubDate>
             <sparkle:version>60</sparkle:version>

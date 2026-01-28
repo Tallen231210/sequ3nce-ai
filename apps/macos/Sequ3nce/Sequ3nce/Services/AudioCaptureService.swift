@@ -100,6 +100,18 @@ class AudioCaptureService: ObservableObject {
     private var configurationChangeObserver: NSObjectProtocol?
     private var hasReportedAudioDeath = false  // Only report once per session
 
+    // MARK: - Diagnostic Accessors (for DiagnosticsService)
+    var timeSinceLastMicCallback: Double {
+        Date().timeIntervalSince(lastMicCallbackTime)
+    }
+    var diagnosticTotalChunksSent: Int {
+        totalChunksSent
+    }
+    var diagnosticIsSilenceDetectionActive: Bool {
+        let timeSinceNonSilent = Date().timeIntervalSince(lastNonSilentTime)
+        return timeSinceNonSilent > 5.0  // Silence detection becomes active after 5s of silence
+    }
+
     // MARK: - Silent Audio Detection
     // Tracks audio amplitude to detect when audio taps produce silence but are still running
     private nonisolated(unsafe) var maxRecentAmplitude: Float = 0.0  // Max amplitude in recent window
@@ -572,6 +584,17 @@ class AudioCaptureService: ObservableObject {
             print("[AudioCaptureService] ⚠️ AUDIO DEATH DETECTED: No mic callbacks for \(String(format: "%.1f", timeSinceLastMic))s!")
             print("[AudioCaptureService] ⚠️ State: engineRunning=\(engineRunning), isCapturing=\(isCapturing), totalChunksSent=\(totalChunksSent)")
 
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.error(
+                "AUDIO DEATH: No mic callbacks for \(String(format: "%.1f", timeSinceLastMic))s",
+                category: .audio,
+                metadata: [
+                    "engineRunning": "\(engineRunning)",
+                    "totalChunksSent": "\(totalChunksSent)",
+                    "duration": "\(Int(sessionDuration))s"
+                ]
+            )
+
             // Check if engine stopped
             if !engineRunning {
                 print("[AudioCaptureService] ⚠️ AVAudioEngine has stopped running!")
@@ -608,6 +631,17 @@ class AudioCaptureService: ObservableObject {
             print("[AudioCaptureService] ⚠️ SILENT AUDIO DETECTED: No significant audio for \(String(format: "%.1f", timeSinceNonSilent))s!")
             print("[AudioCaptureService] ⚠️ This may indicate audio taps are producing silence after a system event.")
             print("[AudioCaptureService] ⚠️ State: engineRunning=\(engineRunning), chunksSent=\(totalChunksSent), maxRecentAmplitude=\(maxRecentAmplitude)")
+
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.error(
+                "SILENT AUDIO: No significant audio for \(String(format: "%.1f", timeSinceNonSilent))s",
+                category: .audio,
+                metadata: [
+                    "engineRunning": "\(engineRunning)",
+                    "totalChunksSent": "\(totalChunksSent)",
+                    "maxAmplitude": String(format: "%.4f", maxRecentAmplitude)
+                ]
+            )
 
             // Send to backend (only once per session)
             if !hasReportedSilentAudio {
@@ -699,6 +733,13 @@ class AudioCaptureService: ObservableObject {
             try engine.start()
             lastMicCallbackTime = Date()  // Reset the timer so we don't immediately detect death again
             print("[AudioCaptureService] ✅ AUTO-RECOVERY SUCCESS: Engine restarted!")
+
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.info(
+                "AUTO-RECOVERY SUCCESS: Engine restarted",
+                category: .audio,
+                metadata: ["totalChunksSent": "\(totalChunksSent)"]
+            )
 
             // Report success to backend
             sendErrorToBackend(

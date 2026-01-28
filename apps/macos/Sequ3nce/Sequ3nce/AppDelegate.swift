@@ -40,6 +40,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func setupMenuBar(with appState: AppState) {
         _menuBarController = MenuBarController(appState: appState)
+        // Wire up diagnostics service to menu bar controller
+        _menuBarController?.diagnosticsService = appState.diagnosticsService
 
         // Observe recording state to update isRecording flag
         appState.$recordingState

@@ -148,6 +148,7 @@ class AppState: ObservableObject {
     let audioService = AudioCaptureService()
     let webSocketService = StarscreamWebSocketService()  // Using Starscream for RFC 6455 compliance
     let convexService = ConvexService()
+    let diagnosticsService = DiagnosticsService()
 
     // Messaging state
     let messagingState = MessagingState()
@@ -164,6 +165,16 @@ class AppState: ObservableObject {
         loadSavedSession()
         setupAudioCallback()
         setupWebSocketObserver()
+        setupDiagnosticsService()
+    }
+
+    private func setupDiagnosticsService() {
+        // Wire up service references
+        diagnosticsService.audioService = audioService
+        diagnosticsService.webSocketService = webSocketService
+
+        // Update diagnostics service state when relevant properties change
+        // (will be updated in startRecording/stopRecording as well)
     }
 
     /// Observe WebSocket convexCallId changes and update AppState
@@ -175,6 +186,8 @@ class AppState: ObservableObject {
                 if self.convexCallId != newCallId {
                     print("[AppState] convexCallId updated: \(self.convexCallId ?? "nil") -> \(newCallId ?? "nil")")
                     self.convexCallId = newCallId
+                    // Update diagnostics service
+                    self.diagnosticsService.convexCallId = newCallId
                 }
             }
             .store(in: &cancellables)
@@ -229,6 +242,11 @@ class AppState: ObservableObject {
             self.isAuthenticated = true
             print("[AppState] Restored session for \(savedCloser.name)")
 
+            // Update diagnostics service with user info
+            diagnosticsService.closerId = savedCloser.closerId
+            diagnosticsService.teamId = savedCloser.teamId
+            diagnosticsService.closerEmail = savedCloser.email
+
             // Start messaging polling for restored session
             messagingState.startPolling(
                 closerId: savedCloser.closerId,
@@ -274,6 +292,11 @@ class AppState: ObservableObject {
         self.isAuthenticated = true
         saveSession()
 
+        // Update diagnostics service with user info
+        diagnosticsService.closerId = closerInfo.closerId
+        diagnosticsService.teamId = closerInfo.teamId
+        diagnosticsService.closerEmail = closerInfo.email
+
         // Start messaging polling
         messagingState.startPolling(
             closerId: closerInfo.closerId,
@@ -285,6 +308,11 @@ class AppState: ObservableObject {
     func logout() {
         // Stop messaging polling
         messagingState.stopPolling()
+
+        // Clear diagnostics service user info
+        diagnosticsService.closerId = nil
+        diagnosticsService.teamId = nil
+        diagnosticsService.closerEmail = nil
 
         isAuthenticated = false
         closerInfo = nil
@@ -346,7 +374,10 @@ class AppState: ObservableObject {
             // Start duration timer (every 1 second)
             durationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
                 Task { @MainActor in
-                    self?.recordingDuration += 1
+                    guard let self = self else { return }
+                    self.recordingDuration += 1
+                    // Keep diagnostics service in sync
+                    self.diagnosticsService.recordingDuration = self.recordingDuration
                 }
             }
 
@@ -360,6 +391,24 @@ class AppState: ObservableObject {
             recordingState = .recording
             let totalTime = Date().timeIntervalSince(startTime)
             print("[AppState] Recording started successfully - callId: \(callId), totalTime: \(totalTime)s")
+
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.info(
+                "Recording started",
+                category: .recording,
+                metadata: [
+                    "callId": callId,
+                    "totalTimeMs": "\(Int(totalTime * 1000))"
+                ]
+            )
+
+            // Update diagnostics service state
+            diagnosticsService.closerId = closer.closerId
+            diagnosticsService.teamId = closer.teamId
+            diagnosticsService.closerEmail = closer.email
+            diagnosticsService.currentCallId = callId
+            diagnosticsService.recordingState = "recording"
+            diagnosticsService.recordingStartTime = Date()
 
             // Log successful start (helps track if issues happen after successful start)
             Task {
@@ -384,6 +433,13 @@ class AppState: ObservableObject {
             recordingState = .error
             self.error = error.localizedDescription
             print("[AppState] Failed to start recording after \(totalTime)s: \(error)")
+
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.error(
+                "Recording failed to start: \(error.localizedDescription)",
+                category: .recording,
+                metadata: ["totalTimeMs": "\(Int(totalTime * 1000))"]
+            )
 
             // Determine which step failed
             let failedStep: String
@@ -441,6 +497,20 @@ class AppState: ObservableObject {
         audioLevel = 0.0
         currentCallId = nil
         convexCallId = nil
+
+        // Log to diagnostic buffer
+        DiagnosticLogger.shared.info(
+            "Recording stopped",
+            category: .recording,
+            metadata: ["duration": "\(Int(recordingDuration))s"]
+        )
+
+        // Update diagnostics service state
+        diagnosticsService.currentCallId = nil
+        diagnosticsService.convexCallId = nil
+        diagnosticsService.recordingState = "idle"
+        diagnosticsService.recordingDuration = 0
+        diagnosticsService.recordingStartTime = nil
 
         print("[AppState] Recording stopped")
     }

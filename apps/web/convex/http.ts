@@ -2920,4 +2920,100 @@ http.route({
   }),
 });
 
+// POST endpoint to submit diagnostic report from macOS app
+http.route({
+  path: "/submitDiagnosticReport",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+
+      // Validate required fields
+      if (!body.reportId) {
+        return new Response(JSON.stringify({ error: "reportId is required" }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Transform the report for storage
+      // Convert Date objects to ISO strings for nested objects
+      const transformedReport = {
+        reportId: body.reportId,
+        closerId: body.closerId || undefined,
+        teamId: body.teamId || undefined,
+        closerEmail: body.closerEmail || undefined,
+        userDescription: body.userDescription || undefined,
+        system: body.system,
+        audio: body.audio,
+        websocket: {
+          ...body.websocket,
+          reconnectionHistory: (body.websocket?.reconnectionHistory || []).map((event: { timestamp: string; reason: string }) => ({
+            timestamp: typeof event.timestamp === 'string' ? event.timestamp : new Date(event.timestamp).toISOString(),
+            reason: event.reason,
+          })),
+        },
+        call: body.call,
+        permissions: body.permissions,
+        logs: {
+          ...body.logs,
+          recentLogs: (body.logs?.recentLogs || []).map((log: { timestamp: string; level: string; category: string; message: string }) => ({
+            timestamp: typeof log.timestamp === 'string' ? log.timestamp : new Date(log.timestamp).toISOString(),
+            level: log.level,
+            category: log.category,
+            message: log.message,
+          })),
+          lastErrorTimestamp: body.logs?.lastErrorTimestamp
+            ? (typeof body.logs.lastErrorTimestamp === 'string'
+                ? body.logs.lastErrorTimestamp
+                : new Date(body.logs.lastErrorTimestamp).toISOString())
+            : undefined,
+        },
+        createdAt: Date.now(),
+      };
+
+      // Store the diagnostic report
+      await ctx.runMutation(internal.diagnostics.storeDiagnosticReport, transformedReport);
+
+      console.log(`[HTTP] Diagnostic report stored: ${body.reportId} from closer ${body.closerId || 'unknown'}`);
+
+      return new Response(JSON.stringify({ success: true, reportId: body.reportId }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error storing diagnostic report:", error);
+      return new Response(JSON.stringify({ error: "Failed to store diagnostic report" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// Handle CORS preflight for submitDiagnosticReport
+http.route({
+  path: "/submitDiagnosticReport",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

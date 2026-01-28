@@ -31,11 +31,24 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
     private var heartbeatInterval: TimeInterval = 15  // Send heartbeat every 15 seconds
     private var maxMissedHeartbeats: Int = 2  // Reconnect after 2 missed heartbeats (30+ seconds)
 
+    // MARK: - Diagnostic Properties
+    /// History of reconnection attempts this session (for diagnostics)
+    private(set) var reconnectionHistory: [ReconnectionEvent] = []
+    /// Total reconnection count this session
+    private var totalReconnectionCount: Int = 0
+
     // MARK: - Callbacks
     var onStateChange: ((WebSocketState) -> Void)?
     var onError: ((String) -> Void)?
     var onReconnecting: ((Int) -> Void)?  // Called with attempt number
     var onReconnected: (() -> Void)?  // Called when successfully reconnected
+
+    // MARK: - Diagnostic Accessors (for DiagnosticsService)
+    var diagnosticReconnectionCount: Int { totalReconnectionCount }
+    var diagnosticMissedHeartbeatCount: Int { missedHeartbeatCount }
+    var timeSinceLastHeartbeatAck: Double {
+        Date().timeIntervalSince(lastHeartbeatAckReceived)
+    }
 
     // MARK: - Public Methods
 
@@ -84,6 +97,14 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         // Reset reconnection state on successful connection
         if isReconnecting {
             print("[StarscreamWS] Reconnected successfully after \(reconnectAttempt) attempts")
+
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.info(
+                "WebSocket reconnected successfully",
+                category: .websocket,
+                metadata: ["attempts": "\(reconnectAttempt)"]
+            )
+
             isReconnecting = false
             reconnectAttempt = 0
             onReconnected?()
@@ -134,6 +155,9 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         isReconnecting = false
         reconnectAttempt = 0
         connectionParams = nil
+
+        // Reset diagnostic counters (keep history for diagnostics after call ends)
+        totalReconnectionCount = 0
 
         socket?.disconnect()
         socket = nil
@@ -225,6 +249,19 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         attemptReconnect()
     }
 
+    /// Determine the reason for reconnection based on current state
+    private func determineReconnectionReason() -> String {
+        if missedHeartbeatCount >= maxMissedHeartbeats {
+            return "missed_heartbeats_\(missedHeartbeatCount)"
+        }
+        // Check time since last heartbeat ack
+        let timeSinceAck = Date().timeIntervalSince(lastHeartbeatAckReceived)
+        if timeSinceAck > heartbeatInterval * 2 {
+            return "stale_connection_\(Int(timeSinceAck))s"
+        }
+        return "connection_lost"
+    }
+
     /// Attempt to reconnect with exponential backoff
     private func attemptReconnect() {
         guard let params = connectionParams else {
@@ -244,11 +281,28 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         }
 
         reconnectAttempt += 1
+        totalReconnectionCount += 1
         isReconnecting = true
+
+        // Track reconnection in history
+        let reason = determineReconnectionReason()
+        let event = ReconnectionEvent(timestamp: Date(), reason: reason)
+        reconnectionHistory.append(event)
+        // Keep only last 10 entries
+        if reconnectionHistory.count > 10 {
+            reconnectionHistory.removeFirst(reconnectionHistory.count - 10)
+        }
 
         // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
         let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
-        print("[StarscreamWS] Reconnect attempt \(reconnectAttempt)/\(maxReconnectAttempts) in \(delay)s")
+        print("[StarscreamWS] Reconnect attempt \(reconnectAttempt)/\(maxReconnectAttempts) in \(delay)s (reason: \(reason))")
+
+        // Log to diagnostic buffer
+        DiagnosticLogger.shared.warning(
+            "WebSocket reconnecting (attempt \(reconnectAttempt))",
+            category: .websocket,
+            metadata: ["reason": reason, "delay": "\(delay)s"]
+        )
 
         state = .reconnecting(attempt: reconnectAttempt)
         onReconnecting?(reconnectAttempt)
@@ -286,6 +340,13 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
             print("[StarscreamWS] Connected! Headers: \(headers)")
             state = .connected
 
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.info(
+                "WebSocket connected",
+                category: .websocket,
+                metadata: ["isReconnect": "\(isReconnecting)"]
+            )
+
             // Send metadata immediately after connection
             if let metadata = pendingMetadata {
                 print("[StarscreamWS] Sending metadata: \(metadata)")
@@ -298,6 +359,13 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         case .disconnected(let reason, let code):
             print("[StarscreamWS] Disconnected: \(reason), code: \(code)")
             pingTimer?.invalidate()
+
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.warning(
+                "WebSocket disconnected",
+                category: .websocket,
+                metadata: ["reason": reason, "code": "\(code)"]
+            )
 
             // If we have connection params and weren't cleanly disconnected, attempt reconnect
             if connectionParams != nil && !isReconnecting {
@@ -348,6 +416,12 @@ class StarscreamWebSocketService: ObservableObject, WebSocketDelegate {
         case .error(let error):
             let errorMsg = error?.localizedDescription ?? "Unknown error"
             print("[StarscreamWS] Error: \(errorMsg)")
+
+            // Log to diagnostic buffer
+            DiagnosticLogger.shared.error(
+                "WebSocket error: \(errorMsg)",
+                category: .websocket
+            )
 
             // If we have connection params, attempt reconnect instead of erroring out
             if connectionParams != nil && !isReconnecting {

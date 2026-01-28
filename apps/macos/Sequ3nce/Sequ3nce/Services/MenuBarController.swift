@@ -15,6 +15,9 @@ class MenuBarController {
     private weak var appState: AppState?
     private var cancellables = Set<AnyCancellable>()
 
+    // Reference to diagnostics service for sending diagnostics
+    weak var diagnosticsService: DiagnosticsService?
+
     // Local state for thread-safe access
     private var currentRecordingState: RecordingState = .idle
     private var currentIsAuthenticated: Bool = false
@@ -236,6 +239,11 @@ class MenuBarController {
         updateItem.target = self
         menu.addItem(updateItem)
 
+        // Send Diagnostics
+        let diagnosticsItem = NSMenuItem(title: "Send Diagnostics...", action: #selector(sendDiagnostics), keyEquivalent: "")
+        diagnosticsItem.target = self
+        menu.addItem(diagnosticsItem)
+
         menu.addItem(NSMenuItem.separator())
 
         // Quit
@@ -301,6 +309,91 @@ class MenuBarController {
     @objc func checkForUpdates() {
         // Post notification to trigger Sparkle update check
         NotificationCenter.default.post(name: Notification.Name("CheckForUpdates"), object: nil)
+    }
+
+    @objc func sendDiagnostics() {
+        showDiagnosticsAlert()
+    }
+
+    private func showDiagnosticsAlert() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Send Diagnostics"
+        alert.informativeText = "This will send system info and recent logs to help debug any issues you're experiencing.\n\nDescribe the issue (optional):"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Send")
+        alert.addButton(withTitle: "Cancel")
+
+        // Add text field for description
+        let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 80))
+        textField.placeholderString = "e.g., Audio stopped working after 5 minutes..."
+        textField.cell?.wraps = true
+        textField.cell?.isScrollable = false
+        alert.accessoryView = textField
+
+        let response = alert.runModal()
+
+        if response == .alertFirstButtonReturn {
+            let description = textField.stringValue.isEmpty ? nil : textField.stringValue
+            sendDiagnosticsToBackend(description: description)
+        }
+    }
+
+    private func sendDiagnosticsToBackend(description: String?) {
+        guard let diagnosticsService = diagnosticsService else {
+            showErrorAlert(message: "Diagnostics service not available")
+            return
+        }
+
+        // Show progress indicator
+        let progressAlert = NSAlert()
+        progressAlert.messageText = "Sending Diagnostics..."
+        progressAlert.informativeText = "Please wait..."
+        progressAlert.alertStyle = .informational
+        progressAlert.addButton(withTitle: "Cancel")
+
+        // Add spinner
+        let spinner = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 32, height: 32))
+        spinner.style = .spinning
+        spinner.startAnimation(nil)
+        progressAlert.accessoryView = spinner
+
+        // Run async task
+        Task { @MainActor in
+            do {
+                let reportId = try await diagnosticsService.sendDiagnostics(userDescription: description)
+                showSuccessAlert(reportId: reportId)
+            } catch {
+                showErrorAlert(message: error.localizedDescription)
+            }
+        }
+    }
+
+    private func showSuccessAlert(reportId: String) {
+        let alert = NSAlert()
+        alert.messageText = "Diagnostics Sent"
+        alert.informativeText = "Thank you! Your diagnostic report has been sent.\n\nReference ID: \(reportId)\n\nShare this ID with support if needed."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Copy ID")
+        alert.addButton(withTitle: "OK")
+
+        let response = alert.runModal()
+
+        if response == .alertFirstButtonReturn {
+            // Copy to clipboard
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(reportId, forType: .string)
+        }
+    }
+
+    private func showErrorAlert(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Failed to Send Diagnostics"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc func quitApp() {
