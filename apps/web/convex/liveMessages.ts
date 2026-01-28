@@ -2,6 +2,15 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 
+// DEBUG: Count all messages (temporary - remove after debugging)
+export const debugCountMessages = query({
+  args: {},
+  handler: async (ctx) => {
+    const messages = await ctx.db.query("liveMessages").collect();
+    return { count: messages.length };
+  },
+});
+
 // ============================================
 // MUTATIONS
 // ============================================
@@ -22,6 +31,16 @@ export const sendMessage = mutation({
     message: v.string(),
   },
   handler: async (ctx, args) => {
+    console.log(`[liveMessages] sendMessage called:`, {
+      teamId: args.teamId,
+      senderType: args.senderType,
+      senderUserId: args.senderUserId,
+      senderName: args.senderName,
+      recipientType: args.recipientType,
+      recipientCloserId: args.recipientCloserId,
+      messageLength: args.message.length,
+    });
+
     // Validate message length
     if (args.message.length > 500) {
       throw new Error("Message too long (max 500 characters)");
@@ -167,6 +186,8 @@ export const getMessagesForCloser = query({
     const closerIdTyped = args.closerId as Id<"closers">;
     const limit = args.limit ?? 100;
 
+    console.log(`[liveMessages] getMessagesForCloser called for closerId: ${args.closerId}`);
+
     // Get messages where closer is either sender or recipient
     const receivedMessages = await ctx.db
       .query("liveMessages")
@@ -188,6 +209,8 @@ export const getMessagesForCloser = query({
     const allMessages = [...receivedMessages, ...sentMessages]
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(-limit);
+
+    console.log(`[liveMessages] Found ${receivedMessages.length} received + ${sentMessages.length} sent = ${allMessages.length} total for closer ${args.closerId}`);
 
     return allMessages.map((msg) => ({
       _id: msg._id,
