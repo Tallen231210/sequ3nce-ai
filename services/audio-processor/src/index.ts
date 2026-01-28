@@ -170,7 +170,11 @@ wss.on("connection", async (ws, req) => {
         try {
           const command = JSON.parse(message);
 
-          if (command.type === "end" && callHandler) {
+          if (command.type === "heartbeat") {
+            // Respond to application-level heartbeat (more reliable than WebSocket ping/pong
+            // which some networks/firewalls strip)
+            ws.send(JSON.stringify({ type: "heartbeat_ack" }));
+          } else if (command.type === "end" && callHandler) {
             logger.info(`Received end command for call`);
             await callHandler.end();
             ws.send(JSON.stringify({ status: "ended", stats: callHandler.getStats() }));
