@@ -16,9 +16,10 @@ This is a SaaS product with three components:
 - **Tech:** Next.js
 - **Purpose:** Admin/manager interface for viewing live calls, recordings, transcripts, and team management
 
-### 2. Desktop App (`/apps/desktop`)
-- **Tech:** Electron
+### 2. macOS Desktop App (`/apps/macos`)
+- **Tech:** Swift/SwiftUI
 - **Purpose:** Closer-facing app to capture audio and display real-time "ammo" (key prospect quotes)
+- **Release:** Use `/release-desktop-swift` slash command
 
 ### 3. Audio Processing Service (`/services/audio-processor`)
 - **Tech:** Node.js
@@ -43,8 +44,20 @@ This project is being built by a non-developer using Claude Code through natural
 ## Key Commands
 
 ```bash
-# Commands will be added as the project develops
+# Convex CLI - ALWAYS use --prod for production data
+npx convex data closers --prod --limit 10      # Query production closers
+npx convex data liveMessages --prod --limit 10 # Query production messages
+npx convex deploy --yes                         # Deploy to production
+
+# Without --prod, CLI defaults to dev deployment (different data!)
 ```
+
+## Convex Deployments
+
+- **Production:** `ideal-ram-982` (used by macOS app and Vercel)
+- **Dev:** `fastidious-dragon-782` (local development)
+
+When debugging production issues, ALWAYS use `--prod` flag with Convex CLI commands.
 
 ## Documentation
 
