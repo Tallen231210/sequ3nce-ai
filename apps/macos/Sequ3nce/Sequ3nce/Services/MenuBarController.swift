@@ -249,14 +249,20 @@ class MenuBarController {
     // MARK: - Actions
 
     @objc func showMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-
-        // Find and show the main window
-        if let window = NSApp.windows.first(where: { $0.contentView != nil && !($0 is NSPanel) }) {
-            window.makeKeyAndOrderFront(nil)
+        // Delegate to AppDelegate which has the proper main window reference
+        if let appDelegate = NSApp.delegate as? AppDelegate {
+            appDelegate.showMainWindow()
         } else {
-            // If no window exists, the WindowGroup will create one
+            // Fallback if AppDelegate not available
             NSApp.activate(ignoringOtherApps: true)
+            let secondaryTitles = ["Ammo Tracker", "Training", "Role Play Room", "My Schedule", "Team Messages"]
+            if let window = NSApp.windows.first(where: {
+                $0.contentView != nil &&
+                !($0 is NSPanel) &&
+                !secondaryTitles.contains($0.title)
+            }) {
+                window.makeKeyAndOrderFront(nil)
+            }
         }
     }
 

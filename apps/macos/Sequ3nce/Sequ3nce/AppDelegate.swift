@@ -22,6 +22,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var _menuBarController: MenuBarController?
     private var cancellables = Set<AnyCancellable>()
 
+    // Store reference to main window so we can always bring it back
+    private var _mainWindow: NSWindow?
+    var mainWindow: NSWindow? {
+        get { _mainWindow }
+        set {
+            _mainWindow = newValue
+            // Prevent window from being released when closed (Cmd+W)
+            _mainWindow?.isReleasedWhenClosed = false
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Menu bar will be initialized after AppState is ready (in Sequ3nceApp)
     }
@@ -59,9 +70,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // This is always called on main thread
-        if !flag {
-            _menuBarController?.showMainWindow()
-        }
+        // Always show main window when Dock icon is clicked
+        // (flag may be true because Ammo Panel is visible, but user wants main window)
+        showMainWindow()
         return true
+    }
+
+    /// Show the main window - used by Dock click and menu bar
+    func showMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let window = _mainWindow {
+            // We have a stored reference to the main window
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            // Fallback: find main window by excluding known secondary windows
+            let secondaryTitles = ["Ammo Tracker", "Training", "Role Play Room", "My Schedule", "Team Messages"]
+            if let window = NSApp.windows.first(where: {
+                $0.contentView != nil &&
+                !($0 is NSPanel) &&
+                !secondaryTitles.contains($0.title)
+            }) {
+                window.makeKeyAndOrderFront(nil)
+                // Store for future use
+                _mainWindow = window
+                window.isReleasedWhenClosed = false
+            }
+        }
     }
 }

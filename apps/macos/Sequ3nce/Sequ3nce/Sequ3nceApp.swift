@@ -46,6 +46,20 @@ struct Sequ3nceApp: App {
                 .onAppear {
                     // Initialize menu bar after AppState is ready
                     appDelegate.setupMenuBar(with: appState)
+
+                    // Capture reference to main window so we can always bring it back
+                    // (Fixes bug where clicking Dock icon wouldn't show main window)
+                    DispatchQueue.main.async {
+                        let secondaryTitles = ["Ammo Tracker", "Training", "Role Play Room", "My Schedule", "Team Messages"]
+                        if let mainWindow = NSApp.windows.first(where: {
+                            $0.contentView != nil &&
+                            !($0 is NSPanel) &&
+                            !secondaryTitles.contains($0.title)
+                        }) {
+                            appDelegate.mainWindow = mainWindow
+                            print("[Sequ3nceApp] Captured main window reference")
+                        }
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CheckForUpdates"))) { _ in
                     // Handle "Check for Updates" from menu bar
