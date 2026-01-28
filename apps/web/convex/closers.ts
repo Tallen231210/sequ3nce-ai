@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 
 // Simple password hashing using Web Crypto API (available in Convex runtime)
@@ -16,6 +16,17 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   const inputHash = await hashPassword(password);
   return inputHash === hash;
 }
+
+// Update lastSeenAt timestamp when closer's app polls for messages
+// Called from HTTP endpoint to track "last active" status
+export const updateLastSeenAt = internalMutation({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.closerId, {
+      lastSeenAt: Date.now(),
+    });
+  },
+});
 
 // DEBUG: List all closers (for debugging)
 export const listAllClosers = query({

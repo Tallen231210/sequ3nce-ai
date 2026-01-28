@@ -16,6 +16,7 @@ interface CloserWithStatus {
   email: string;
   isOnCall: boolean;
   unreadCount: number;
+  lastSeenAt?: number; // When closer's app last polled for messages
   lastMessage: {
     message: string;
     createdAt: number;
@@ -37,6 +38,23 @@ function formatRelativeTime(timestamp: number): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function getActiveStatus(lastSeenAt?: number): { isActive: boolean; text: string } {
+  if (!lastSeenAt) return { isActive: false, text: "Never connected" };
+
+  const seconds = Math.floor((Date.now() - lastSeenAt) / 1000);
+  // Consider "active" if seen within 30 seconds (polling is every 2.5s)
+  if (seconds < 30) return { isActive: true, text: "Active now" };
+  if (seconds < 60) return { isActive: false, text: `Active ${seconds}s ago` };
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return { isActive: false, text: `Active ${minutes}m ago` };
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { isActive: false, text: `Active ${hours}h ago` };
+
+  return { isActive: false, text: `Active ${Math.floor(hours / 24)}d ago` };
 }
 
 function CloserListItem({
@@ -97,13 +115,28 @@ function CloserListItem({
         )}
 
         {/* Status badges */}
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
           {closer.isOnCall && (
             <span className="inline-flex items-center gap-1 text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
               <Phone className="h-2.5 w-2.5" />
               On call
             </span>
           )}
+          {(() => {
+            const { isActive, text } = getActiveStatus(closer.lastSeenAt);
+            return (
+              <span
+                className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded",
+                  isActive
+                    ? "text-emerald-600 bg-emerald-50"
+                    : "text-zinc-500 bg-zinc-100"
+                )}
+              >
+                {text}
+              </span>
+            );
+          })()}
         </div>
       </div>
 

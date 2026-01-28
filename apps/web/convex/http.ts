@@ -2379,6 +2379,11 @@ http.route({
     }
 
     try {
+      // Update lastSeenAt to track when closer's app is actively polling
+      await ctx.runMutation(internal.closers.updateLastSeenAt, {
+        closerId: closerId as Id<"closers">,
+      });
+
       const messages = await ctx.runQuery(api.liveMessages.getMessagesForCloser, {
         closerId,
         limit: limitParam ? parseInt(limitParam, 10) : undefined,

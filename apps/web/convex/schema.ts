@@ -73,6 +73,7 @@ export default defineSchema({
     invitedAt: v.number(),
     activatedAt: v.optional(v.number()),
     lastLoginAt: v.optional(v.number()), // Track last desktop app login
+    lastSeenAt: v.optional(v.number()), // Updated when desktop app polls for messages (for "last active" indicator)
   })
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])

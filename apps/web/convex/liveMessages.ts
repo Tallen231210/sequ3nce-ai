@@ -358,6 +358,7 @@ export const getClosersWithMessageStatus = query({
           email: closer.email,
           isOnCall: closersOnCall.has(closer._id.toString()),
           unreadCount: unreadFromCloser.length,
+          lastSeenAt: closer.lastSeenAt, // When closer's app last polled for messages
           lastMessage: lastMessage
             ? {
                 message: lastMessage.message,
