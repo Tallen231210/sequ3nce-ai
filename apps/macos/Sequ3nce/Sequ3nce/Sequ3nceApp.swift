@@ -38,12 +38,21 @@ struct Sequ3nceApp: App {
     }
 
     var body: some Scene {
-        // Main recording window
-        WindowGroup {
+        // Main recording window - using Window (not WindowGroup) to enforce single instance
+        // This prevents the dual-window bug where macOS state restoration could create multiple windows
+        Window("Sequ3nce", id: "main") {
             ContentView()
                 .environmentObject(appState)
                 .frame(width: 400, height: 600)
                 .onAppear {
+                    // Log app launch for diagnostics
+                    let windowCount = NSApp.windows.count
+                    DiagnosticLogger.shared.info(
+                        "Main window appeared",
+                        category: .app,
+                        metadata: ["windowCount": "\(windowCount)"]
+                    )
+
                     // Initialize menu bar after AppState is ready
                     appDelegate.setupMenuBar(with: appState)
 
@@ -57,7 +66,11 @@ struct Sequ3nceApp: App {
                             !secondaryTitles.contains($0.title)
                         }) {
                             appDelegate.mainWindow = mainWindow
-                            print("[Sequ3nceApp] Captured main window reference")
+                            DiagnosticLogger.shared.info(
+                                "Captured main window reference",
+                                category: .app,
+                                metadata: ["windowTitle": mainWindow.title]
+                            )
                         }
                     }
                 }
@@ -72,6 +85,9 @@ struct Sequ3nceApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 400, height: 600)
         .commands {
+            // Disable Cmd+N to prevent creating additional windows
+            CommandGroup(replacing: .newItem) { }
+
             // Add "Check for Updates..." menu item
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)

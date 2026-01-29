@@ -34,6 +34,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Log app launch for diagnostics
+        let windowCount = NSApp.windows.count
+        DiagnosticLogger.shared.info(
+            "App launched",
+            category: .app,
+            metadata: [
+                "windowCount": "\(windowCount)",
+                "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+                "buildNumber": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+            ]
+        )
+
         // Menu bar will be initialized after AppState is ready (in Sequ3nceApp)
     }
 
@@ -72,6 +84,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // This is always called on main thread
+        // Log reopen event for diagnostics
+        let windowCount = NSApp.windows.count
+        DiagnosticLogger.shared.info(
+            "App reopen requested (Dock click)",
+            category: .app,
+            metadata: [
+                "hasVisibleWindows": "\(flag)",
+                "windowCount": "\(windowCount)"
+            ]
+        )
+
         // Always show main window when Dock icon is clicked
         // (flag may be true because Ammo Panel is visible, but user wants main window)
         showMainWindow()
@@ -85,6 +108,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = _mainWindow {
             // We have a stored reference to the main window
             window.makeKeyAndOrderFront(nil)
+            DiagnosticLogger.shared.debug(
+                "Showing main window (stored reference)",
+                category: .app
+            )
         } else {
             // Fallback: find main window by excluding known secondary windows
             let secondaryTitles = ["Ammo Tracker", "Training", "Role Play Room", "My Schedule", "Team Messages"]
@@ -97,6 +124,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Store for future use
                 _mainWindow = window
                 window.isReleasedWhenClosed = false
+                DiagnosticLogger.shared.debug(
+                    "Showing main window (fallback lookup)",
+                    category: .app,
+                    metadata: ["windowTitle": window.title]
+                )
+            } else {
+                DiagnosticLogger.shared.warning(
+                    "Could not find main window to show",
+                    category: .app,
+                    metadata: ["totalWindows": "\(NSApp.windows.count)"]
+                )
             }
         }
     }
