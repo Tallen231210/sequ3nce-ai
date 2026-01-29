@@ -21,6 +21,11 @@ struct AmmoPanelView: View {
     @State private var showReinforcementSuccess = false
     @State private var cooldownTimer: Timer?  // Store timer reference to prevent memory leak
 
+    // Call going long state
+    @State private var isNotifyingCallGoingLong = false
+    @State private var callGoingLongSentThisCall = false
+    @State private var showCallGoingLongSuccess = false
+
     private let convexService = ConvexService()
 
     var body: some View {
@@ -66,6 +71,15 @@ struct AmmoPanelView: View {
                 .layoutPriority(1)
 
                 Spacer(minLength: 2)
+
+                // Call Going Long button (only shown during a call, once per call)
+                if panelState.callId != nil && !callGoingLongSentThisCall {
+                    CallGoingLongButton(
+                        isNotifying: $isNotifyingCallGoingLong,
+                        showSuccess: $showCallGoingLongSuccess,
+                        onNotify: notifyCallGoingLong
+                    )
+                }
 
                 // Request Reinforcements button (only shown during a call)
                 if panelState.callId != nil {
@@ -129,6 +143,9 @@ struct AmmoPanelView: View {
             if let callId = newCallId, let closerInfo = appState.closerInfo {
                 print("[AmmoPanelView] onChange - calling startTracking with convexCallId: \(callId)")
                 panelState.startTracking(callId: callId, teamId: closerInfo.teamId)
+                // Reset call-specific state for new call
+                callGoingLongSentThisCall = false
+                showCallGoingLongSuccess = false
             } else {
                 print("[AmmoPanelView] onChange - calling stopTracking")
                 panelState.stopTracking()
@@ -205,6 +222,103 @@ struct AmmoPanelView: View {
     private func stopCooldownTimer() {
         cooldownTimer?.invalidate()
         cooldownTimer = nil
+    }
+
+    // MARK: - Notify Call Going Long
+
+    private func notifyCallGoingLong() {
+        guard let closerInfo = appState.closerInfo else {
+            print("[AmmoPanelView] No closer info available")
+            return
+        }
+
+        isNotifyingCallGoingLong = true
+
+        Task {
+            do {
+                let success = try await convexService.callGoingLong(
+                    teamId: closerInfo.teamId,
+                    closerId: closerInfo.closerId,
+                    callId: appState.convexCallId
+                )
+
+                await MainActor.run {
+                    isNotifyingCallGoingLong = false
+
+                    if success {
+                        // Mark as sent for this call to prevent duplicate notifications
+                        callGoingLongSentThisCall = true
+                        showCallGoingLongSuccess = true
+
+                        // Hide success message after 3 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                            showCallGoingLongSuccess = false
+                        }
+                    }
+                }
+            } catch {
+                print("[AmmoPanelView] Failed to notify call going long: \(error)")
+                await MainActor.run {
+                    isNotifyingCallGoingLong = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Call Going Long Button
+
+struct CallGoingLongButton: View {
+    @Binding var isNotifying: Bool
+    @Binding var showSuccess: Bool
+    let onNotify: () -> Void
+
+    var body: some View {
+        if showSuccess {
+            // Success state
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10))
+                Text("Sent!")
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundColor(.green)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(4)
+            .padding(.trailing, 4)
+        } else if isNotifying {
+            // Loading state
+            ProgressView()
+                .scaleEffect(0.6)
+                .frame(width: 20, height: 20)
+                .padding(.trailing, 4)
+        } else {
+            // Default button state
+            Button(action: onNotify) {
+                HStack(spacing: 3) {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.system(size: 9))
+                    Text("Going Long")
+                        .font(.system(size: 9, weight: .medium))
+                        .lineLimit(1)
+                }
+                .foregroundColor(Color(red: 0.6, green: 0.4, blue: 0))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 3)
+                .background(Color(red: 1, green: 0.95, blue: 0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color(red: 0.85, green: 0.7, blue: 0.4), lineWidth: 1)
+                )
+                .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 4)
+            .fixedSize()
+            .help("Notify team that your call is running long")
+        }
     }
 }
 

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		102A16DD2F2AA72E00851137 /* DiagnosticLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102A16DC2F2AA72E00851137 /* DiagnosticLogger.swift */; };
+		102A16DF2F2AA73900851137 /* DiagnosticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 102A16DE2F2AA73900851137 /* DiagnosticsService.swift */; };
 		10D17FC32F0F2270006686F2 /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FC22F0F2270006686F2 /* WindowManager.swift */; };
 		10D17FC92F0F2A08006686F2 /* AmmoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FC82F0F2A08006686F2 /* AmmoModels.swift */; };
 		10D17FCB2F0F2A21006686F2 /* AmmoPanelState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D17FCA2F0F2A21006686F2 /* AmmoPanelState.swift */; };
@@ -34,6 +36,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		102A16DC2F2AA72E00851137 /* DiagnosticLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogger.swift; sourceTree = "<group>"; };
+		102A16DE2F2AA73900851137 /* DiagnosticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsService.swift; sourceTree = "<group>"; };
 		10D17FC22F0F2270006686F2 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
 		10D17FC82F0F2A08006686F2 /* AmmoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmmoModels.swift; sourceTree = "<group>"; };
 		10D17FCA2F0F2A21006686F2 /* AmmoPanelState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmmoPanelState.swift; sourceTree = "<group>"; };
@@ -126,6 +130,8 @@
 		A100000C111111110000000A /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				102A16DE2F2AA73900851137 /* DiagnosticsService.swift */,
+				102A16DC2F2AA72E00851137 /* DiagnosticLogger.swift */,
 				10D17FE72F201877006686F2 /* MenuBarController.swift */,
 				10D17FDB2F1DB286006686F2 /* MessagingState.swift */,
 				10D17FCA2F0F2A21006686F2 /* AmmoPanelState.swift */,
@@ -260,6 +266,7 @@
 				10D17FD32F0F33DB006686F2 /* TrainingView.swift in Sources */,
 				10D17FDC2F12A000006686F2 /* ScheduleView.swift in Sources */,
 				A1000002211111110000000A /* ContentView.swift in Sources */,
+				102A16DD2F2AA72E00851137 /* DiagnosticLogger.swift in Sources */,
 				10D17FC92F0F2A08006686F2 /* AmmoModels.swift in Sources */,
 				A1000020211111110000000A /* AudioCaptureService.swift in Sources */,
 				A1000021211111110000000A /* WebSocketService.swift in Sources */,
@@ -270,6 +277,7 @@
 				10D17FD12F0F33D2006686F2 /* AmmoPanelView.swift in Sources */,
 				10D17FDC2F1DB286006686F2 /* MessagingState.swift in Sources */,
 				10D17FDE2F1DB299006686F2 /* ChatModels.swift in Sources */,
+				102A16DF2F2AA73900851137 /* DiagnosticsService.swift in Sources */,
 				10D17FE02F1DB2C7006686F2 /* ChatPanelView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -983,4 +983,49 @@ class ConvexService {
             throw ConvexError.serverError(errorResponse?.error ?? "Failed to request reinforcement")
         }
     }
+
+    /// Notify that call is going long
+    /// Called when a closer clicks "Call Going Long" button
+    func callGoingLong(
+        teamId: String,
+        closerId: String,
+        callId: String?
+    ) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/callGoingLong")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "teamId": teamId,
+            "closerId": closerId
+        ]
+
+        if let callId = callId {
+            body["callId"] = callId
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        print("[ConvexService] Notifying call going long: \(body)")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let success = json["success"] as? Bool {
+                print("[ConvexService] Call going long notification success: \(success)")
+                return success
+            }
+            return true
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.error ?? "Failed to send call going long notification")
+        }
+    }
 }

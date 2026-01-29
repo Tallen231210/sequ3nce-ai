@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.13</title>
+            <pubDate>Thu, 30 Jan 2026 00:00:00 +0000</pubDate>
+            <sparkle:version>66</sparkle:version>
+            <sparkle:shortVersionString>1.7.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.13</h2>
+                <ul>
+                    <li>Call Going Long - notify your team when your call is running over</li>
+                    <li>New button appears in Ammo panel during calls</li>
+                    <li>Sends Slack notification so manager knows you may need coverage</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v1.7.13/Sequ3nce.zip"
+                length="1849569"
+                type="application/octet-stream"
+                sparkle:edSignature="ImWS6GJMpbmnw7tVhUEZqZ+mS1gcRQqZD/7fTVf1ck6k+G/g2BlzweAV8r7n/jZ08qa5jtrY/AjtQFR+IiNdAA=="
+            />
+        </item>
+
+        <!-- v1.7.12 -->
+        <item>
             <title>Version 1.7.12</title>
             <pubDate>Wed, 29 Jan 2026 23:00:00 +0000</pubDate>
             <sparkle:version>64</sparkle:version>
