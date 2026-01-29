@@ -865,8 +865,8 @@ export default function SettingsPage() {
     if (!settings?.team?._id) return;
 
     const clientId = process.env.NEXT_PUBLIC_SLACK_CLIENT_ID || "10226679921735.10416292908673";
-    // Always use app.sequ3nce.ai for the redirect URI (must match Slack app config)
-    const redirectUri = "https://app.sequ3nce.ai/api/slack/callback";
+    // Always use sequ3nce.ai for the redirect URI (must match Slack app config)
+    const redirectUri = "https://sequ3nce.ai/api/slack/callback";
     const state = settings.team._id; // Pass teamId as state
 
     // Slack OAuth URL

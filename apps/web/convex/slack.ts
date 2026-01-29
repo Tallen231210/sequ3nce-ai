@@ -19,7 +19,7 @@ export const exchangeCodeForToken = action({
   handler: async (ctx, args) => {
     const clientId = process.env.SLACK_CLIENT_ID;
     const clientSecret = process.env.SLACK_CLIENT_SECRET;
-    const redirectUri = process.env.SLACK_REDIRECT_URI || "https://app.sequ3nce.ai/api/slack/callback";
+    const redirectUri = process.env.SLACK_REDIRECT_URI || "https://sequ3nce.ai/api/slack/callback";
 
     if (!clientId || !clientSecret) {
       throw new Error("Slack credentials not configured");
