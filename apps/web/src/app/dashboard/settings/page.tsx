@@ -393,6 +393,110 @@ function CalendlyIntegration({
   );
 }
 
+// Notification channel configuration component
+interface NotificationChannelConfigProps {
+  type: string;
+  label: string;
+  description: string;
+  config?: { enabled: boolean; channelId?: string; channelName?: string };
+  channels: { id: string; name: string }[];
+  onUpdate: (enabled: boolean, channelId?: string, channelName?: string) => Promise<void>;
+  saving: boolean;
+  loadingChannels: boolean;
+}
+
+function NotificationChannelConfig({
+  type,
+  label,
+  description,
+  config,
+  channels,
+  onUpdate,
+  saving,
+  loadingChannels,
+}: NotificationChannelConfigProps) {
+  const isEnabled = config?.enabled ?? true; // Default to enabled if not configured
+  const selectedChannelId = config?.channelId || "";
+  const needsChannelSelection = isEnabled && !selectedChannelId && !loadingChannels && channels.length > 0;
+
+  return (
+    <div className={`p-3 rounded-lg space-y-2 ${needsChannelSelection ? "bg-amber-50 border border-amber-200" : "bg-zinc-50"}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        {saving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="radio"
+            name={`${type}-enabled`}
+            checked={!isEnabled}
+            onChange={() => onUpdate(false)}
+            className="h-4 w-4"
+          />
+          Disabled
+        </label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="radio"
+            name={`${type}-enabled`}
+            checked={isEnabled}
+            onChange={() => {
+              // When enabling, try to keep the same channel or prompt to select
+              if (selectedChannelId) {
+                const channel = channels.find(c => c.id === selectedChannelId);
+                onUpdate(true, selectedChannelId, channel?.name);
+              } else {
+                onUpdate(true);
+              }
+            }}
+            className="h-4 w-4"
+          />
+          Enabled
+        </label>
+        {isEnabled && (
+          <Select
+            value={selectedChannelId}
+            onValueChange={(value) => {
+              const channel = channels.find(c => c.id === value);
+              if (channel) {
+                onUpdate(true, channel.id, channel.name);
+              }
+            }}
+            disabled={loadingChannels}
+          >
+            <SelectTrigger className={`w-[180px] h-8 text-sm ${needsChannelSelection ? "border-amber-400" : ""}`}>
+              {loadingChannels ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading...
+                </span>
+              ) : (
+                <SelectValue placeholder="Select channel" />
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              {channels.map((channel) => (
+                <SelectItem key={channel.id} value={channel.id}>
+                  #{channel.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+      {needsChannelSelection && (
+        <p className="text-xs text-amber-700">
+          Please select a channel to receive these notifications
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
   const router = useRouter();
@@ -416,7 +520,17 @@ export default function SettingsPage() {
   const disconnectCalendly = useMutation(api.calendly.disconnectCalendly);
   const syncCalendlyEvents = useAction(api.calendly.syncEvents);
 
-  // Slack webhook
+  // Slack OAuth
+  const slackStatus = useQuery(
+    api.slack.getSlackStatus,
+    clerkId ? { clerkId } : "skip"
+  );
+  const disconnectSlack = useMutation(api.slack.disconnectSlack);
+  const testSlackConnection = useAction(api.slack.testSlackConnection);
+  const getSlackChannels = useAction(api.slack.getSlackChannels);
+  const updateSlackNotificationChannel = useMutation(api.teams.updateSlackNotificationChannel);
+
+  // Legacy Slack webhook (for migration period)
   const updateSlackWebhookUrl = useMutation(api.teams.updateSlackWebhookUrl);
   const testSlackWebhook = useAction(api.reinforcements.testSlackWebhook);
 
@@ -446,12 +560,61 @@ export default function SettingsPage() {
   const [isSyncingCalendly, setIsSyncingCalendly] = useState(false);
   const [calendlyConnectError, setCalendlyConnectError] = useState<string | undefined>();
 
-  // Slack webhook states
+  // Slack states
   const [slackWebhookUrl, setSlackWebhookUrl] = useState("");
   const [savingSlackWebhook, setSavingSlackWebhook] = useState(false);
   const [savedSlackWebhook, setSavedSlackWebhook] = useState(false);
   const [testingSlackWebhook, setTestingSlackWebhook] = useState(false);
   const [slackWebhookTestResult, setSlackWebhookTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [disconnectingSlack, setDisconnectingSlack] = useState(false);
+  const [testingSlackOAuth, setTestingSlackOAuth] = useState(false);
+  const [slackOAuthTestResult, setSlackOAuthTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [slackOAuthSuccess, setSlackOAuthSuccess] = useState(false);
+  const [slackOAuthError, setSlackOAuthError] = useState<string | undefined>();
+  const [slackChannels, setSlackChannels] = useState<{ id: string; name: string }[]>([]);
+  const [loadingSlackChannels, setLoadingSlackChannels] = useState(false);
+  const [savingNotificationChannel, setSavingNotificationChannel] = useState<string | null>(null);
+
+  // Handle Slack OAuth callback params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get("slack_success");
+    const error = params.get("slack_error");
+
+    if (success === "true") {
+      setSlackOAuthSuccess(true);
+      // Clear the URL params
+      window.history.replaceState({}, "", "/dashboard/settings");
+      setTimeout(() => setSlackOAuthSuccess(false), 5000);
+    }
+
+    if (error) {
+      setSlackOAuthError(error);
+      window.history.replaceState({}, "", "/dashboard/settings");
+      setTimeout(() => setSlackOAuthError(undefined), 5000);
+    }
+  }, []);
+
+  // Load Slack channels when connected via OAuth
+  useEffect(() => {
+    const fetchChannels = async () => {
+      if (slackStatus?.connected && slackStatus.method === "oauth" && clerkId) {
+        setLoadingSlackChannels(true);
+        try {
+          const result = await getSlackChannels({ clerkId });
+          if ("channels" in result) {
+            setSlackChannels(result.channels);
+          }
+        } catch (error) {
+          console.error("Failed to fetch Slack channels:", error);
+        } finally {
+          setLoadingSlackChannels(false);
+        }
+      }
+    };
+    fetchChannels();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slackStatus?.connected, slackStatus?.method, clerkId]);
 
   // Initialize form values when settings load
   useEffect(() => {
@@ -694,6 +857,74 @@ export default function SettingsPage() {
       console.error("Failed to disconnect Slack:", error);
     } finally {
       setSavingSlackWebhook(false);
+    }
+  };
+
+  // Slack OAuth handlers
+  const handleConnectSlackOAuth = () => {
+    if (!settings?.team?._id) return;
+
+    const clientId = process.env.NEXT_PUBLIC_SLACK_CLIENT_ID || "10226679921735.10416292908673";
+    const redirectUri = process.env.NEXT_PUBLIC_SLACK_REDIRECT_URI || `${window.location.origin}/api/slack/callback`;
+    const state = settings.team._id; // Pass teamId as state
+
+    // Slack OAuth URL
+    const slackAuthUrl = new URL("https://slack.com/oauth/v2/authorize");
+    slackAuthUrl.searchParams.set("client_id", clientId);
+    slackAuthUrl.searchParams.set("scope", "chat:write,channels:read");
+    slackAuthUrl.searchParams.set("redirect_uri", redirectUri);
+    slackAuthUrl.searchParams.set("state", state);
+
+    window.location.href = slackAuthUrl.toString();
+  };
+
+  const handleDisconnectSlackOAuth = async () => {
+    if (!clerkId) return;
+    setDisconnectingSlack(true);
+    try {
+      await disconnectSlack({ clerkId });
+    } catch (error) {
+      console.error("Failed to disconnect Slack:", error);
+    } finally {
+      setDisconnectingSlack(false);
+    }
+  };
+
+  const handleTestSlackOAuth = async () => {
+    if (!clerkId) return;
+    setTestingSlackOAuth(true);
+    setSlackOAuthTestResult(null);
+    try {
+      const result = await testSlackConnection({ clerkId });
+      setSlackOAuthTestResult(result);
+    } catch (error) {
+      setSlackOAuthTestResult({ success: false, error: "Failed to test connection" });
+    } finally {
+      setTestingSlackOAuth(false);
+    }
+  };
+
+  // Handle notification channel updates
+  const handleUpdateNotificationChannel = async (
+    notificationType: string,
+    enabled: boolean,
+    channelId?: string,
+    channelName?: string
+  ) => {
+    if (!clerkId) return;
+    setSavingNotificationChannel(notificationType);
+    try {
+      await updateSlackNotificationChannel({
+        clerkId,
+        notificationType,
+        enabled,
+        channelId,
+        channelName,
+      });
+    } catch (error) {
+      console.error("Failed to update notification channel:", error);
+    } finally {
+      setSavingNotificationChannel(null);
     }
   };
 
@@ -956,17 +1187,17 @@ export default function SettingsPage() {
               comingSoon
             />
 
-            {/* Slack Webhook Integration */}
+            {/* Slack OAuth Integration */}
             <div className="p-4 border rounded-lg space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${settings?.team?.slackWebhookUrl ? "bg-green-50" : "bg-zinc-100"}`}>
-                    <MessageSquare className={`h-5 w-5 ${settings?.team?.slackWebhookUrl ? "text-green-600" : "text-zinc-600"}`} />
+                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${slackStatus?.connected ? "bg-green-50" : "bg-zinc-100"}`}>
+                    <MessageSquare className={`h-5 w-5 ${slackStatus?.connected ? "text-green-600" : "text-zinc-600"}`} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-medium">Slack</p>
-                      {settings?.team?.slackWebhookUrl && (
+                      {slackStatus?.connected && (
                         <Badge variant="default" className="bg-green-100 text-green-700 hover:bg-green-100">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Connected
@@ -974,82 +1205,192 @@ export default function SettingsPage() {
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Get notified when closers request reinforcements
+                      Get notified about calls, reinforcement requests, and more
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="text-sm text-muted-foreground">
-                  <p className="font-medium text-zinc-700 mb-2">Setup Instructions:</p>
-                  <ol className="list-decimal list-inside space-y-2 text-xs">
-                    <li>
-                      Go to{" "}
-                      <a
-                        href="https://api.slack.com/apps"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        api.slack.com/apps
-                      </a>
-                    </li>
-                    <li>Click <strong>&quot;Create New App&quot;</strong> → <strong>&quot;From scratch&quot;</strong></li>
-                    <li>Name it <strong>&quot;Sequ3nce Alerts&quot;</strong> and select your workspace</li>
-                    <li>In the left sidebar, click <strong>&quot;Incoming Webhooks&quot;</strong></li>
-                    <li>Toggle the switch to <strong>&quot;On&quot;</strong></li>
-                    <li>Click <strong>&quot;Add New Webhook to Workspace&quot;</strong></li>
-                    <li>Select the channel for alerts (e.g., #sales-alerts) and click <strong>&quot;Allow&quot;</strong></li>
-                    <li>Copy the Webhook URL and paste it below</li>
-                  </ol>
+              {/* OAuth Success/Error Messages */}
+              {slackOAuthSuccess && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                  <CheckCircle2 className="h-4 w-4 inline mr-2" />
+                  Slack connected successfully! You&apos;ll now receive notifications.
                 </div>
+              )}
+              {slackOAuthError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <AlertTriangle className="h-4 w-4 inline mr-2" />
+                  Failed to connect Slack: {slackOAuthError}
+                </div>
+              )}
 
-                <div className="flex gap-2">
-                  <Input
-                    value={slackWebhookUrl}
-                    onChange={(e) => setSlackWebhookUrl(e.target.value)}
-                    placeholder="https://hooks.slack.com/services/..."
-                    type="url"
-                    className="flex-1"
-                  />
-                  {settings?.team?.slackWebhookUrl ? (
+              {slackStatus?.connected && slackStatus.method === "oauth" ? (
+                /* Connected via OAuth */
+                <div className="space-y-4">
+                  <div className="p-3 bg-zinc-50 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {slackStatus.slackTeamName || "Workspace"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Connected {slackStatus.connectedAt ? new Date(slackStatus.connectedAt).toLocaleDateString() : ""}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDisconnectSlackOAuth}
+                        disabled={disconnectingSlack}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        {disconnectingSlack ? <Loader2 className="h-4 w-4 animate-spin" /> : "Disconnect"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Per-notification channel configuration */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Configure Notifications</p>
+                      {loadingSlackChannels && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Loading channels...
+                        </span>
+                      )}
+                    </div>
+
+                    <NotificationChannelConfig
+                      type="reinforcement"
+                      label="Reinforcement Requests"
+                      description="When closers need urgent help during calls"
+                      config={slackStatus.notificationChannels?.reinforcement}
+                      channels={slackChannels}
+                      onUpdate={(enabled, channelId, channelName) =>
+                        handleUpdateNotificationChannel("reinforcement", enabled, channelId, channelName)
+                      }
+                      saving={savingNotificationChannel === "reinforcement"}
+                      loadingChannels={loadingSlackChannels}
+                    />
+
+                    <NotificationChannelConfig
+                      type="callStarted"
+                      label="Call Started"
+                      description="When a prospect joins and the call begins"
+                      config={slackStatus.notificationChannels?.callStarted}
+                      channels={slackChannels}
+                      onUpdate={(enabled, channelId, channelName) =>
+                        handleUpdateNotificationChannel("callStarted", enabled, channelId, channelName)
+                      }
+                      saving={savingNotificationChannel === "callStarted"}
+                      loadingChannels={loadingSlackChannels}
+                    />
+
+                    <NotificationChannelConfig
+                      type="callSummary"
+                      label="Call Summaries (30 & 60 min)"
+                      description="AI-generated summaries for long-running calls"
+                      config={slackStatus.notificationChannels?.callSummary}
+                      channels={slackChannels}
+                      onUpdate={(enabled, channelId, channelName) =>
+                        handleUpdateNotificationChannel("callSummary", enabled, channelId, channelName)
+                      }
+                      saving={savingNotificationChannel === "callSummary"}
+                      loadingChannels={loadingSlackChannels}
+                    />
+
+                    <NotificationChannelConfig
+                      type="callGoingLong"
+                      label="Call Going Long"
+                      description="When closers signal their call is running over"
+                      config={slackStatus.notificationChannels?.callGoingLong}
+                      channels={slackChannels}
+                      onUpdate={(enabled, channelId, channelName) =>
+                        handleUpdateNotificationChannel("callGoingLong", enabled, channelId, channelName)
+                      }
+                      saving={savingNotificationChannel === "callGoingLong"}
+                      loadingChannels={loadingSlackChannels}
+                    />
+
+                    {slackChannels.length === 0 && !loadingSlackChannels && (
+                      <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                        No channels found. Make sure the Sequ3nce bot has been added to at least one channel in Slack.
+                        Invite it by typing <code className="bg-amber-100 px-1 rounded">/invite @Sequ3nce</code> in any channel.
+                      </p>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={handleTestSlackOAuth}
+                      disabled={testingSlackOAuth}
+                    >
+                      {testingSlackOAuth ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                      Send Test Message
+                    </Button>
+                  </div>
+
+                  {slackOAuthTestResult && (
+                    <p className={`text-sm ${slackOAuthTestResult.success ? "text-green-600" : "text-red-600"}`}>
+                      {slackOAuthTestResult.success
+                        ? "Test message sent! Check your Slack channel."
+                        : slackOAuthTestResult.error || "Test failed"}
+                    </p>
+                  )}
+                </div>
+              ) : slackStatus?.connected && slackStatus.method === "webhook" ? (
+                /* Connected via legacy webhook - show migration prompt */
+                <div className="space-y-3">
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800">
+                      <AlertTriangle className="h-4 w-4 inline mr-2" />
+                      You&apos;re using the legacy webhook method. Upgrade to OAuth for more notification types.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={handleConnectSlackOAuth}>
+                      Upgrade to OAuth
+                    </Button>
                     <Button
                       variant="outline"
                       onClick={handleDisconnectSlack}
                       disabled={savingSlackWebhook}
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
-                      {savingSlackWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : "Disconnect"}
+                      {savingSlackWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : "Disconnect Webhook"}
                     </Button>
-                  ) : (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={handleTestSlackWebhook}
-                        disabled={!slackWebhookUrl.trim() || testingSlackWebhook}
-                      >
-                        {testingSlackWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
-                      </Button>
-                      <Button
-                        onClick={handleSaveSlackWebhook}
-                        disabled={!slackWebhookUrl.trim() || savingSlackWebhook}
-                      >
-                        {savingSlackWebhook ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-                      </Button>
-                    </>
-                  )}
-                  <SaveSuccess show={savedSlackWebhook} />
+                  </div>
                 </div>
-
-                {slackWebhookTestResult && (
-                  <p className={`text-sm ${slackWebhookTestResult.success ? "text-green-600" : "text-red-600"}`}>
-                    {slackWebhookTestResult.success
-                      ? "Test message sent! Check your Slack channel."
-                      : slackWebhookTestResult.error || "Test failed"}
+              ) : (
+                /* Not connected */
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Click the button below to connect your Slack workspace and select a channel for notifications.
                   </p>
-                )}
-              </div>
+
+                  <Button onClick={handleConnectSlackOAuth} className="w-full sm:w-auto">
+                    <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.27 0a2.528 2.528 0 0 1-2.522 2.521 2.528 2.528 0 0 1-2.521-2.521V2.522A2.528 2.528 0 0 1 15.165 0a2.528 2.528 0 0 1 2.521 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.521 2.522A2.528 2.528 0 0 1 15.165 24a2.528 2.528 0 0 1-2.521-2.522v-2.522h2.521zm0-1.27a2.528 2.528 0 0 1-2.521-2.522 2.528 2.528 0 0 1 2.521-2.521h6.313A2.528 2.528 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.521h-6.313z"/>
+                    </svg>
+                    Add to Slack
+                  </Button>
+
+                  <div className="text-xs text-muted-foreground pt-2 border-t">
+                    <p className="font-medium mb-1">What you&apos;ll receive:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li>Reinforcement requests from closers</li>
+                      <li>Call started alerts</li>
+                      <li>30 &amp; 60 minute call summaries</li>
+                      <li>Call going long alerts</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
             </div>
 
             <IntegrationCard

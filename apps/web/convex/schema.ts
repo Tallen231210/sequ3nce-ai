@@ -41,7 +41,41 @@ export default defineSchema({
       })),
     })),
     // Slack integration for reinforcement requests
-    slackWebhookUrl: v.optional(v.string()), // Slack incoming webhook URL for notifications
+    slackWebhookUrl: v.optional(v.string()), // DEPRECATED: Slack incoming webhook URL (kept for migration)
+    // Slack OAuth integration (new)
+    slackAccessToken: v.optional(v.string()), // Bot token from OAuth
+    slackChannelId: v.optional(v.string()), // LEGACY: Single channel ID (kept for backwards compatibility)
+    slackChannelName: v.optional(v.string()), // LEGACY: Channel name for display
+    slackTeamId: v.optional(v.string()), // Slack workspace ID
+    slackTeamName: v.optional(v.string()), // Workspace name for display
+    slackConnectedAt: v.optional(v.number()), // When connected
+    // Per-notification channel configuration
+    // Each notification type can be:
+    //   - undefined = not configured yet (falls back to legacy slackChannelId)
+    //   - { enabled: false } = explicitly disabled (don't send)
+    //   - { enabled: true, channelId, channelName } = send to this channel
+    slackNotificationChannels: v.optional(v.object({
+      reinforcement: v.optional(v.object({
+        enabled: v.boolean(),
+        channelId: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+      callStarted: v.optional(v.object({
+        enabled: v.boolean(),
+        channelId: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+      callSummary: v.optional(v.object({
+        enabled: v.boolean(),
+        channelId: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+      callGoingLong: v.optional(v.object({
+        enabled: v.boolean(),
+        channelId: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+    })),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -572,5 +606,15 @@ export default defineSchema({
   })
     .index("by_report_id", ["reportId"])
     .index("by_closer", ["closerId"])
+    .index("by_team", ["teamId"]),
+
+  // Slack Notifications (tracking sent notifications to prevent duplicates)
+  slackNotifications: defineTable({
+    teamId: v.id("teams"),
+    callId: v.optional(v.id("calls")),
+    type: v.string(), // "call_started" | "summary_30" | "summary_60" | "reinforcement" | "call_going_long"
+    sentAt: v.number(),
+  })
+    .index("by_call_and_type", ["callId", "type"])
     .index("by_team", ["teamId"]),
 });

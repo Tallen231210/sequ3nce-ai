@@ -26,6 +26,7 @@ import type * as liveStreams from "../liveStreams.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
+import type * as slack from "../slack.js";
 import type * as teams from "../teams.js";
 import type * as trainingPlaylists from "../trainingPlaylists.js";
 
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
+  slack: typeof slack;
   teams: typeof teams;
   trainingPlaylists: typeof trainingPlaylists;
 }>;

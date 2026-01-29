@@ -222,6 +222,56 @@ export const updateSlackWebhookUrl = mutation({
   },
 });
 
+// Update Slack notification channel for a specific notification type
+export const updateSlackNotificationChannel = mutation({
+  args: {
+    clerkId: v.string(),
+    notificationType: v.string(), // "reinforcement" | "callStarted" | "callSummary" | "callGoingLong"
+    enabled: v.boolean(),
+    channelId: v.optional(v.string()),
+    channelName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const team = await ctx.db.get(user.teamId);
+    if (!team) {
+      throw new Error("Team not found");
+    }
+
+    // Get current notification channels or create empty object
+    const currentChannels = team.slackNotificationChannels || {};
+
+    // Update the specific notification type
+    const validTypes = ["reinforcement", "callStarted", "callSummary", "callGoingLong"];
+    if (!validTypes.includes(args.notificationType)) {
+      throw new Error("Invalid notification type");
+    }
+
+    const updatedChannels = {
+      ...currentChannels,
+      [args.notificationType]: {
+        enabled: args.enabled,
+        channelId: args.channelId,
+        channelName: args.channelName,
+      },
+    };
+
+    await ctx.db.patch(user.teamId, {
+      slackNotificationChannels: updatedChannels,
+    });
+
+    return { success: true };
+  },
+});
+
 // Get full settings data
 export const getSettings = query({
   args: { clerkId: v.string() },
@@ -258,8 +308,14 @@ export const getSettings = query({
         calendlyConnected: !!team.calendlyAccessToken,
         calendlyConnectedEmail: team.calendlyConnectedEmail,
         calendlyLastSyncAt: team.calendlyLastSyncAt,
-        // Slack integration
+        // Slack integration (legacy webhook)
         slackWebhookUrl: team.slackWebhookUrl,
+        // Slack OAuth integration
+        slackConnected: !!(team.slackAccessToken || team.slackWebhookUrl),
+        slackChannelName: team.slackChannelName,
+        slackTeamName: team.slackTeamName,
+        slackConnectedAt: team.slackConnectedAt,
+        slackNotificationChannels: team.slackNotificationChannels,
       } : null,
     };
   },
