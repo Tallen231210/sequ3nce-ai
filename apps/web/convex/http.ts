@@ -3021,4 +3021,79 @@ http.route({
   }),
 });
 
+// ============================================
+// CALL GOING LONG NOTIFICATION
+// ============================================
+
+// POST endpoint for closers to notify that their call is running long
+http.route({
+  path: "/callGoingLong",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, callId, teamId } = body;
+
+      if (!closerId || !teamId) {
+        return new Response(
+          JSON.stringify({ error: "closerId and teamId are required" }),
+          {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          }
+        );
+      }
+
+      // Schedule the notification
+      await ctx.scheduler.runAfter(0, internal.slack.sendCallGoingLongNotification, {
+        closerId: closerId as Id<"closers">,
+        callId: callId as Id<"calls"> | undefined,
+        teamId: teamId as Id<"teams">,
+      });
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    } catch (error) {
+      console.error("[HTTP] Error in callGoingLong:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal server error" }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+  }),
+});
+
+// Handle CORS preflight for callGoingLong
+http.route({
+  path: "/callGoingLong",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

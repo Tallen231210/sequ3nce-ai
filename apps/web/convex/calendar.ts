@@ -67,6 +67,27 @@ export const getCloserEvents = query({
   },
 });
 
+// Get next upcoming event for a closer (used for Slack notifications)
+export const getNextEventForCloser = query({
+  args: {
+    closerId: v.id("closers"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const events = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+
+    // Find next event that starts after now
+    const futureEvents = events
+      .filter((e) => e.startTime > now)
+      .sort((a, b) => a.startTime - b.startTime);
+
+    return futureEvents[0] || null;
+  },
+});
+
 // Get events for a closer by email and team (for desktop app)
 export const getCloserEventsByEmail = query({
   args: {

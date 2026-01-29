@@ -61,6 +61,15 @@ export const activateCloserByEmail = mutation({
   },
 });
 
+// Get closer by ID (used for Slack notifications)
+export const getCloserById = query({
+  args: { closerId: v.string() },
+  handler: async (ctx, args) => {
+    const closer = await ctx.db.get(args.closerId as any);
+    return closer;
+  },
+});
+
 // Get closer info by email (used by desktop app for simple login)
 export const getCloserByEmail = query({
   args: { email: v.string() },

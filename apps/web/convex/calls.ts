@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
-import { api } from "./_generated/api";
+import { mutation, query, internalMutation, internalAction } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { buildCallStartedBlocks } from "./slack";
 
 // Create a new call record (called by audio processor when call starts)
 export const createCall = mutation({
@@ -93,10 +94,55 @@ export const updateCallStatus = mutation({
     speakerCount: v.number(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.callId as any, {
+    const callId = args.callId as Id<"calls">;
+
+    // Get current call to check for status change
+    const call = await ctx.db.get(callId);
+
+    // Update the status
+    await ctx.db.patch(callId, {
       status: args.status,
       speakerCount: args.speakerCount,
+      // Set startedAt when transitioning to on_call if not already set
+      ...(args.status === "on_call" && !call?.startedAt && { startedAt: Date.now() }),
     });
+
+    // If transitioning to "on_call" (prospect joined), schedule call started notification
+    if (call && call.status !== "on_call" && args.status === "on_call") {
+      // Schedule the call started notification
+      await ctx.scheduler.runAfter(0, internal.slack.sendCallStartedNotification, {
+        callId,
+      });
+    }
+  },
+});
+
+// Get call by ID (used for Slack notifications)
+export const getCallById = query({
+  args: { callId: v.string() },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId as any);
+    return call;
+  },
+});
+
+// Get active call for a closer (on_call or waiting status)
+export const getActiveCallForCloser = query({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    const activeCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "on_call"),
+          q.eq(q.field("status"), "waiting")
+        )
+      )
+      .order("desc")
+      .first();
+
+    return activeCalls;
   },
 });
 
@@ -390,6 +436,31 @@ export const getCompletedCallsWithCloser = query({
     );
 
     return callsWithCloser;
+  },
+});
+
+// Get all on_call calls across all teams (for Slack milestone checks)
+export const getLiveCallsForSlack = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get all teams with Slack connected
+    const teams = await ctx.db.query("teams").collect();
+    const slackTeamIds = teams
+      .filter((t) => t.slackAccessToken || t.slackWebhookUrl)
+      .map((t) => t._id);
+
+    if (slackTeamIds.length === 0) {
+      return [];
+    }
+
+    // Get all on_call calls for these teams
+    const allCalls = await ctx.db.query("calls").collect();
+    return allCalls.filter(
+      (call) =>
+        call.status === "on_call" &&
+        slackTeamIds.includes(call.teamId) &&
+        call.startedAt // Must have startedAt for duration calculation
+    );
   },
 });
 

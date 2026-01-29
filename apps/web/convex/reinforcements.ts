@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, action, internalMutation, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { buildReinforcementBlocks } from "./slack";
 
 // ============================================
 // MUTATIONS
@@ -196,6 +197,7 @@ type SlackNotificationResult =
 
 /**
  * Internal action to send Slack notification
+ * Uses the unified slack.sendSlackNotification which supports both OAuth and legacy webhook
  */
 export const sendSlackNotificationInternal = internalAction({
   args: {
@@ -224,78 +226,30 @@ export const sendSlackNotificationInternal = internalAction({
 
       console.log("[Reinforcements] Request teamId:", request.teamId);
 
-      // Get the team to check for Slack webhook
-      console.log("[Reinforcements] About to fetch team...");
-      const team = await ctx.runQuery(api.teams.getTeamById, {
+      // Build the message using the unified formatter
+      const { blocks, text } = buildReinforcementBlocks(
+        request.closerName,
+        request.message,
+        request.createdAt
+      );
+
+      // Send via unified Slack notification system
+      const result = await ctx.runAction(internal.slack.sendSlackNotification, {
         teamId: request.teamId,
+        callId: request.callId,
+        type: "reinforcement",
+        blocks,
+        text,
       });
 
-      console.log("[Reinforcements] Team fetched:", team ? "found" : "not found", "slackWebhookUrl:", team?.slackWebhookUrl ? "configured" : "not configured");
-
-      if (!team?.slackWebhookUrl) {
-        console.log("[Reinforcements] No Slack webhook configured for team:", request.teamId);
-        return { success: true, skipped: true, reason: "No Slack webhook configured" };
-      }
-
-      // Build the Slack message
-      const blocks = [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: "🚨 Reinforcement Requested",
-            emoji: true,
-          },
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*${request.closerName}* needs help on a call!${
-              request.message ? `\n\n> ${request.message}` : ""
-            }`,
-          },
-        },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: {
-                type: "plain_text",
-                text: "Open Dashboard",
-                emoji: true,
-              },
-              url: "https://sequ3nce.ai/dashboard",
-              action_id: "open_dashboard",
-            },
-          ],
-        },
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: `Requested at <!date^${Math.floor(request.createdAt / 1000)}^{time}|${new Date(request.createdAt).toLocaleTimeString()}>`,
-            },
-          ],
-        },
-      ];
-
-      console.log("[Reinforcements] Sending to Slack webhook...");
-
-      const webhookResponse = await fetch(team.slackWebhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ blocks }),
-      });
-
-      if (!webhookResponse.ok) {
-        const errorText = await webhookResponse.text();
-        console.error("[Reinforcements] Slack webhook failed:", webhookResponse.status, errorText);
-        return { success: false, error: `Slack webhook failed: ${webhookResponse.status}` };
+      if (!result.success) {
+        if ("skipped" in result && (result as any).skipped) {
+          const reason = (result as any).reason || "Unknown";
+          console.log("[Reinforcements] Notification skipped:", reason);
+          return { success: true, skipped: true, reason };
+        }
+        console.error("[Reinforcements] Failed to send:", (result as any).error);
+        return { success: false, error: (result as any).error || "Unknown error" };
       }
 
       // Mark as sent
