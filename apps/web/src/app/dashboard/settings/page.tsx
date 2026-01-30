@@ -885,7 +885,7 @@ export default function SettingsPage() {
     // Slack OAuth URL
     const slackAuthUrl = new URL("https://slack.com/oauth/v2/authorize");
     slackAuthUrl.searchParams.set("client_id", clientId);
-    slackAuthUrl.searchParams.set("scope", "chat:write,channels:read");
+    slackAuthUrl.searchParams.set("scope", "chat:write,channels:read,groups:read");
     slackAuthUrl.searchParams.set("redirect_uri", redirectUri);
     slackAuthUrl.searchParams.set("state", state);
 
