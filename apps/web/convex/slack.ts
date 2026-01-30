@@ -123,16 +123,27 @@ export const getSlackChannels = action({
     }
 
     try {
-      // Fetch all channels (including private ones the bot is in)
-      const response = await fetch("https://slack.com/api/conversations.list", {
+      // Fetch all channels (public and private) where the bot is a member
+      const url = new URL("https://slack.com/api/conversations.list");
+      url.searchParams.set("types", "public_channel,private_channel");
+      url.searchParams.set("exclude_archived", "true");
+      url.searchParams.set("limit", "200");
+
+      const response = await fetch(url.toString(), {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${team.slackAccessToken}`,
-          "Content-Type": "application/json",
         },
       });
 
       const data = await response.json();
+
+      console.log("[Slack] conversations.list response:", {
+        ok: data.ok,
+        error: data.error,
+        channelCount: data.channels?.length || 0,
+        memberChannels: data.channels?.filter((ch: any) => ch.is_member)?.length || 0,
+      });
 
       if (!data.ok) {
         console.error("[Slack] Failed to fetch channels:", data.error);
@@ -147,6 +158,8 @@ export const getSlackChannels = action({
           name: ch.name,
         }))
         .sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+      console.log("[Slack] Returning channels:", channels.map((c: any) => c.name));
 
       return { channels };
     } catch (error) {

@@ -598,18 +598,31 @@ export default function SettingsPage() {
   // Load Slack channels when connected via OAuth
   useEffect(() => {
     const fetchChannels = async () => {
+      console.log("[Slack Debug] Checking conditions:", {
+        connected: slackStatus?.connected,
+        method: slackStatus?.method,
+        clerkId: clerkId ? "present" : "missing",
+      });
+
       if (slackStatus?.connected && slackStatus.method === "oauth" && clerkId) {
+        console.log("[Slack Debug] Fetching channels...");
         setLoadingSlackChannels(true);
         try {
           const result = await getSlackChannels({ clerkId });
+          console.log("[Slack Debug] API result:", result);
           if ("channels" in result) {
+            console.log("[Slack Debug] Setting channels:", result.channels);
             setSlackChannels(result.channels);
+          } else if ("error" in result) {
+            console.error("[Slack Debug] API returned error:", result.error);
           }
         } catch (error) {
-          console.error("Failed to fetch Slack channels:", error);
+          console.error("[Slack Debug] Failed to fetch Slack channels:", error);
         } finally {
           setLoadingSlackChannels(false);
         }
+      } else {
+        console.log("[Slack Debug] Conditions not met, skipping fetch");
       }
     };
     fetchChannels();
