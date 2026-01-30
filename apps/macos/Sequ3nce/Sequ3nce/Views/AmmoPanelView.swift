@@ -77,7 +77,7 @@ struct AmmoPanelView: View {
                     CallGoingLongButton(
                         isNotifying: $isNotifyingCallGoingLong,
                         showSuccess: $showCallGoingLongSuccess,
-                        onNotify: notifyCallGoingLong
+                        onNotify: { minutes in notifyCallGoingLong(estimatedMinutes: minutes) }
                     )
                 }
 
@@ -226,7 +226,7 @@ struct AmmoPanelView: View {
 
     // MARK: - Notify Call Going Long
 
-    private func notifyCallGoingLong() {
+    private func notifyCallGoingLong(estimatedMinutes: Int) {
         guard let closerInfo = appState.closerInfo else {
             print("[AmmoPanelView] No closer info available")
             return
@@ -239,7 +239,8 @@ struct AmmoPanelView: View {
                 let success = try await convexService.callGoingLong(
                     teamId: closerInfo.teamId,
                     closerId: closerInfo.closerId,
-                    callId: appState.convexCallId
+                    callId: appState.convexCallId,
+                    estimatedMinutes: estimatedMinutes
                 )
 
                 await MainActor.run {
@@ -271,7 +272,9 @@ struct AmmoPanelView: View {
 struct CallGoingLongButton: View {
     @Binding var isNotifying: Bool
     @Binding var showSuccess: Bool
-    let onNotify: () -> Void
+    let onNotify: (Int) -> Void  // Now takes estimated minutes
+
+    @State private var showTimeOptions = false
 
     var body: some View {
         if showSuccess {
@@ -294,9 +297,46 @@ struct CallGoingLongButton: View {
                 .scaleEffect(0.6)
                 .frame(width: 20, height: 20)
                 .padding(.trailing, 4)
+        } else if showTimeOptions {
+            // Time estimate selector
+            HStack(spacing: 2) {
+                ForEach([15, 30, 45, 60], id: \.self) { minutes in
+                    Button(action: {
+                        showTimeOptions = false
+                        onNotify(minutes)
+                    }) {
+                        Text(minutes == 60 ? "1hr" : "\(minutes)m")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Color(red: 0.6, green: 0.4, blue: 0))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 3)
+                            .background(Color(red: 1, green: 0.95, blue: 0.85))
+                            .cornerRadius(3)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // Cancel button
+                Button(action: { showTimeOptions = false }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(Color(white: 0.5))
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(Color(white: 0.96))
+            .cornerRadius(4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color(red: 0.85, green: 0.7, blue: 0.4), lineWidth: 1)
+            )
+            .padding(.trailing, 4)
         } else {
             // Default button state
-            Button(action: onNotify) {
+            Button(action: { showTimeOptions = true }) {
                 HStack(spacing: 3) {
                     Image(systemName: "clock.badge.exclamationmark")
                         .font(.system(size: 9))

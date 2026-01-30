@@ -989,7 +989,8 @@ class ConvexService {
     func callGoingLong(
         teamId: String,
         closerId: String,
-        callId: String?
+        callId: String?,
+        estimatedMinutes: Int
     ) async throws -> Bool {
         let url = URL(string: "\(baseURL)/callGoingLong")!
 
@@ -999,7 +1000,8 @@ class ConvexService {
 
         var body: [String: Any] = [
             "teamId": teamId,
-            "closerId": closerId
+            "closerId": closerId,
+            "estimatedMinutes": estimatedMinutes
         ]
 
         if let callId = callId {

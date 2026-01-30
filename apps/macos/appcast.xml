@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 1.7.14</title>
+            <pubDate>Thu, 30 Jan 2026 01:00:00 +0000</pubDate>
+            <sparkle:version>68</sparkle:version>
+            <sparkle:shortVersionString>1.7.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>What's New in Sequ3nce 1.7.14</h2>
+                <ul>
+                    <li>Call Going Long now lets you select estimated time (15m, 30m, 45m, 1hr)</li>
+                    <li>Slack notification shows "Tyler needs ~30 more minutes" for better clarity</li>
+                    <li>Improved UX with time selector buttons</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v1.7.14/Sequ3nce.zip"
+                length="1853586"
+                type="application/octet-stream"
+                sparkle:edSignature="VeinWkr0Hqvr8nzFIlPWrFCY1Ho03JdstFTK6tzDNLB3JHl7D701LdvchgI4RAnGEJ+s6AYUfT5wkliaQiRrCA=="
+            />
+        </item>
+
+        <!-- v1.7.13 -->
+        <item>
             <title>Version 1.7.13</title>
             <pubDate>Thu, 30 Jan 2026 00:00:00 +0000</pubDate>
             <sparkle:version>66</sparkle:version>
