@@ -686,9 +686,17 @@ export function buildCallGoingLongBlocks(
   closerName: string,
   prospectName: string | undefined,
   durationMinutes: number,
+  estimatedMinutes?: number, // How much longer they estimate needing
   nextCallTime?: string, // Formatted time string like "3:00 PM"
   nextCallProspect?: string
 ) {
+  // Format estimated time nicely
+  const estimateText = estimatedMinutes
+    ? estimatedMinutes >= 60
+      ? `~${Math.floor(estimatedMinutes / 60)}h ${estimatedMinutes % 60 > 0 ? `${estimatedMinutes % 60}m` : ""}`
+      : `~${estimatedMinutes} more minutes`
+    : null;
+
   const blocks: any[] = [
     {
       type: "header",
@@ -702,7 +710,9 @@ export function buildCallGoingLongBlocks(
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*${closerName}*'s call is running over`,
+        text: estimateText
+          ? `*${closerName}* needs ${estimateText}`
+          : `*${closerName}*'s call is running over`,
       },
     },
     {
@@ -714,7 +724,7 @@ export function buildCallGoingLongBlocks(
         },
         {
           type: "mrkdwn",
-          text: `*Duration:*\n${durationMinutes >= 60 ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : `${durationMinutes}m`}`,
+          text: `*Current Duration:*\n${durationMinutes >= 60 ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : `${durationMinutes}m`}`,
         },
       ],
     },
@@ -1071,6 +1081,7 @@ export const sendCallGoingLongNotification = internalAction({
     closerId: v.id("closers"),
     callId: v.optional(v.id("calls")),
     teamId: v.id("teams"),
+    estimatedMinutes: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<SlackNotificationResult> => {
     try {
@@ -1145,6 +1156,7 @@ export const sendCallGoingLongNotification = internalAction({
         closer.name,
         prospectName,
         durationMinutes,
+        args.estimatedMinutes,
         nextCallTime,
         nextCallProspect
       );

@@ -3032,7 +3032,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, callId, teamId } = body;
+      const { closerId, callId, teamId, estimatedMinutes } = body;
 
       if (!closerId || !teamId) {
         return new Response(
@@ -3052,6 +3052,7 @@ http.route({
         closerId: closerId as Id<"closers">,
         callId: callId as Id<"calls"> | undefined,
         teamId: teamId as Id<"teams">,
+        estimatedMinutes: typeof estimatedMinutes === "number" ? estimatedMinutes : undefined,
       });
 
       return new Response(
