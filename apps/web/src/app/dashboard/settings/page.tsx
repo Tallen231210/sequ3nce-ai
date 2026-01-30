@@ -393,6 +393,136 @@ function CalendlyIntegration({
   );
 }
 
+// Discord notification channel configuration component
+interface DiscordNotificationConfigProps {
+  type: string;
+  label: string;
+  description: string;
+  config?: { enabled: boolean; webhookUrl?: string; channelName?: string };
+  onUpdate: (enabled: boolean, webhookUrl?: string, channelName?: string) => Promise<void>;
+  onTest: (webhookUrl: string, channelName?: string) => Promise<void>;
+  saving: boolean;
+  testing: boolean;
+  testResult?: { success: boolean; error?: string } | null;
+}
+
+function DiscordNotificationConfig({
+  type,
+  label,
+  description,
+  config,
+  onUpdate,
+  onTest,
+  saving,
+  testing,
+  testResult,
+}: DiscordNotificationConfigProps) {
+  const [webhookUrl, setWebhookUrl] = useState(config?.webhookUrl || "");
+  const [channelName, setChannelName] = useState(config?.channelName || "");
+  const isEnabled = config?.enabled ?? false;
+  const hasWebhook = !!webhookUrl.trim();
+
+  // Sync local state when config changes
+  useEffect(() => {
+    setWebhookUrl(config?.webhookUrl || "");
+    setChannelName(config?.channelName || "");
+  }, [config?.webhookUrl, config?.channelName]);
+
+  const handleSave = async () => {
+    await onUpdate(isEnabled, webhookUrl.trim() || undefined, channelName.trim() || undefined);
+  };
+
+  const handleToggle = async (enabled: boolean) => {
+    await onUpdate(enabled, webhookUrl.trim() || undefined, channelName.trim() || undefined);
+  };
+
+  return (
+    <div className={`p-3 rounded-lg space-y-3 ${isEnabled && !hasWebhook ? "bg-amber-50 border border-amber-200" : "bg-zinc-50"}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        {saving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="radio"
+            name={`discord-${type}-enabled`}
+            checked={!isEnabled}
+            onChange={() => handleToggle(false)}
+            className="h-4 w-4"
+          />
+          Disabled
+        </label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="radio"
+            name={`discord-${type}-enabled`}
+            checked={isEnabled}
+            onChange={() => handleToggle(true)}
+            className="h-4 w-4"
+          />
+          Enabled
+        </label>
+      </div>
+
+      {isEnabled && (
+        <div className="space-y-2 pt-2 border-t">
+          <div className="flex gap-2">
+            <Input
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="Discord webhook URL"
+              type="text"
+              className="flex-1 text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={channelName}
+              onChange={(e) => setChannelName(e.target.value)}
+              placeholder="Channel name (optional, for display)"
+              className="flex-1 text-sm"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSave}
+              disabled={saving || !hasWebhook}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onTest(webhookUrl, channelName)}
+              disabled={testing || !hasWebhook}
+            >
+              {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+            </Button>
+          </div>
+          {testResult && (
+            <p className={`text-xs ${testResult.success ? "text-green-600" : "text-red-600"}`}>
+              {testResult.success ? "Test message sent! Check your Discord channel." : testResult.error || "Test failed"}
+            </p>
+          )}
+        </div>
+      )}
+
+      {isEnabled && !hasWebhook && (
+        <p className="text-xs text-amber-700">
+          Please enter a webhook URL to receive these notifications
+        </p>
+      )}
+    </div>
+  );
+}
+
 // Notification channel configuration component
 interface NotificationChannelConfigProps {
   type: string;
@@ -534,6 +664,10 @@ export default function SettingsPage() {
   const updateSlackWebhookUrl = useMutation(api.teams.updateSlackWebhookUrl);
   const testSlackWebhook = useAction(api.reinforcements.testSlackWebhook);
 
+  // Discord webhooks
+  const updateDiscordNotificationChannel = useMutation(api.teams.updateDiscordNotificationChannel);
+  const testDiscordWebhook = useAction(api.discord.testDiscordWebhook);
+
   // Form state
   const [teamName, setTeamName] = useState("");
   const [userName, setUserName] = useState("");
@@ -574,6 +708,11 @@ export default function SettingsPage() {
   const [slackChannels, setSlackChannels] = useState<{ id: string; name: string }[]>([]);
   const [loadingSlackChannels, setLoadingSlackChannels] = useState(false);
   const [savingNotificationChannel, setSavingNotificationChannel] = useState<string | null>(null);
+
+  // Discord states
+  const [savingDiscordChannel, setSavingDiscordChannel] = useState<string | null>(null);
+  const [testingDiscordWebhook, setTestingDiscordWebhook] = useState<string | null>(null);
+  const [discordTestResults, setDiscordTestResults] = useState<{ [key: string]: { success: boolean; error?: string } | null }>({});
 
   // Handle Slack OAuth callback params
   useEffect(() => {
@@ -939,6 +1078,45 @@ export default function SettingsPage() {
       console.error("Failed to update notification channel:", error);
     } finally {
       setSavingNotificationChannel(null);
+    }
+  };
+
+  // Handle Discord notification channel updates
+  const handleUpdateDiscordChannel = async (
+    notificationType: string,
+    enabled: boolean,
+    webhookUrl?: string,
+    channelName?: string
+  ) => {
+    if (!clerkId) return;
+    setSavingDiscordChannel(notificationType);
+    try {
+      await updateDiscordNotificationChannel({
+        clerkId,
+        notificationType,
+        enabled,
+        webhookUrl,
+        channelName,
+      });
+    } catch (error) {
+      console.error("Failed to update Discord notification channel:", error);
+    } finally {
+      setSavingDiscordChannel(null);
+    }
+  };
+
+  // Handle Discord webhook test
+  const handleTestDiscordWebhook = async (notificationType: string, webhookUrl: string, channelName?: string) => {
+    if (!webhookUrl.trim()) return;
+    setTestingDiscordWebhook(notificationType);
+    setDiscordTestResults((prev) => ({ ...prev, [notificationType]: null }));
+    try {
+      const result = await testDiscordWebhook({ webhookUrl: webhookUrl.trim(), channelName });
+      setDiscordTestResults((prev) => ({ ...prev, [notificationType]: result }));
+    } catch (error) {
+      setDiscordTestResults((prev) => ({ ...prev, [notificationType]: { success: false, error: "Failed to test webhook" } }));
+    } finally {
+      setTestingDiscordWebhook(null);
     }
   };
 
@@ -1432,6 +1610,108 @@ export default function SettingsPage() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Discord Webhook Integration */}
+            <div className="p-4 border rounded-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${settings?.team?.discordConnected ? "bg-indigo-50" : "bg-zinc-100"}`}>
+                    <svg className={`h-5 w-5 ${settings?.team?.discordConnected ? "text-indigo-600" : "text-zinc-600"}`} viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026c.462-.62.874-1.275 1.226-1.963.021-.04.001-.088-.041-.104a13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.245.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">Discord</p>
+                      {settings?.team?.discordConnected && (
+                        <Badge variant="default" className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Connected
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Get notified via Discord webhooks
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Configure Notifications</p>
+                </div>
+
+                <DiscordNotificationConfig
+                  type="reinforcement"
+                  label="Reinforcement Requests"
+                  description="When closers need urgent help during calls"
+                  config={settings?.team?.discordNotificationChannels?.reinforcement}
+                  onUpdate={(enabled, webhookUrl, channelName) =>
+                    handleUpdateDiscordChannel("reinforcement", enabled, webhookUrl, channelName)
+                  }
+                  onTest={(webhookUrl, channelName) => handleTestDiscordWebhook("reinforcement", webhookUrl, channelName)}
+                  saving={savingDiscordChannel === "reinforcement"}
+                  testing={testingDiscordWebhook === "reinforcement"}
+                  testResult={discordTestResults.reinforcement}
+                />
+
+                <DiscordNotificationConfig
+                  type="callStarted"
+                  label="Call Started"
+                  description="When a prospect joins and the call begins"
+                  config={settings?.team?.discordNotificationChannels?.callStarted}
+                  onUpdate={(enabled, webhookUrl, channelName) =>
+                    handleUpdateDiscordChannel("callStarted", enabled, webhookUrl, channelName)
+                  }
+                  onTest={(webhookUrl, channelName) => handleTestDiscordWebhook("callStarted", webhookUrl, channelName)}
+                  saving={savingDiscordChannel === "callStarted"}
+                  testing={testingDiscordWebhook === "callStarted"}
+                  testResult={discordTestResults.callStarted}
+                />
+
+                <DiscordNotificationConfig
+                  type="callSummary"
+                  label="Call Summaries (30 & 60 min)"
+                  description="AI-generated summaries for long-running calls"
+                  config={settings?.team?.discordNotificationChannels?.callSummary}
+                  onUpdate={(enabled, webhookUrl, channelName) =>
+                    handleUpdateDiscordChannel("callSummary", enabled, webhookUrl, channelName)
+                  }
+                  onTest={(webhookUrl, channelName) => handleTestDiscordWebhook("callSummary", webhookUrl, channelName)}
+                  saving={savingDiscordChannel === "callSummary"}
+                  testing={testingDiscordWebhook === "callSummary"}
+                  testResult={discordTestResults.callSummary}
+                />
+
+                <DiscordNotificationConfig
+                  type="callGoingLong"
+                  label="Call Going Long"
+                  description="When closers signal their call is running over"
+                  config={settings?.team?.discordNotificationChannels?.callGoingLong}
+                  onUpdate={(enabled, webhookUrl, channelName) =>
+                    handleUpdateDiscordChannel("callGoingLong", enabled, webhookUrl, channelName)
+                  }
+                  onTest={(webhookUrl, channelName) => handleTestDiscordWebhook("callGoingLong", webhookUrl, channelName)}
+                  saving={savingDiscordChannel === "callGoingLong"}
+                  testing={testingDiscordWebhook === "callGoingLong"}
+                  testResult={discordTestResults.callGoingLong}
+                />
+
+                <div className="text-xs p-3 bg-blue-50 border border-blue-200 rounded">
+                  <p className="font-medium mb-2 text-blue-700">How to create a Discord webhook:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-blue-600">
+                    <li>In Discord, right-click the channel you want notifications in</li>
+                    <li>Click <strong>Edit Channel</strong> &rarr; <strong>Integrations</strong> &rarr; <strong>Webhooks</strong></li>
+                    <li>Click <strong>New Webhook</strong> and give it a name (e.g., &quot;Sequ3nce&quot;)</li>
+                    <li>Click <strong>Copy Webhook URL</strong> and paste it above</li>
+                  </ol>
+                  <p className="mt-2 text-blue-500">
+                    Tip: You can use the same webhook URL for all notification types, or create separate webhooks for different channels.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <IntegrationCard

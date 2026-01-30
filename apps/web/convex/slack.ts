@@ -2,6 +2,11 @@ import { v } from "convex/values";
 import { mutation, query, action, internalMutation, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import {
+  buildCallStartedEmbed,
+  buildCallSummaryEmbed,
+  buildCallGoingLongEmbed,
+} from "./discord";
 
 // ============================================
 // SLACK OAUTH
@@ -927,6 +932,27 @@ export const sendCallStartedNotification = internalAction({
         text,
       });
 
+      // Also send to Discord (if configured)
+      try {
+        const { content, embeds } = buildCallStartedEmbed(
+          closer.name,
+          call.prospectName,
+          args.callId
+        );
+
+        await ctx.runAction(internal.discord.sendDiscordNotification, {
+          teamId: call.teamId,
+          callId: args.callId,
+          type: "call_started",
+          content,
+          embeds,
+        });
+        console.log("[Discord] Call started notification sent for call:", args.callId);
+      } catch (discordError) {
+        // Log but don't fail the overall notification if Discord fails
+        console.error("[Discord] Call started notification failed:", discordError);
+      }
+
       return result;
     } catch (error) {
       console.error("[Slack] Error sending call started notification:", error);
@@ -1064,6 +1090,30 @@ export const sendCallSummaryNotification = internalAction({
         text,
       });
 
+      // Also send to Discord (if configured)
+      try {
+        const { content, embeds } = buildCallSummaryEmbed(
+          closer.name,
+          call.prospectName,
+          args.durationMinutes,
+          summary,
+          args.callId,
+          args.milestone
+        );
+
+        await ctx.runAction(internal.discord.sendDiscordNotification, {
+          teamId: call.teamId,
+          callId: args.callId,
+          type: notificationType,
+          content,
+          embeds,
+        });
+        console.log(`[Discord] ${args.milestone}-minute summary notification sent for call:`, args.callId);
+      } catch (discordError) {
+        // Log but don't fail the overall notification if Discord fails
+        console.error("[Discord] Call summary notification failed:", discordError);
+      }
+
       return result;
     } catch (error) {
       console.error("[Slack] Error sending call summary notification:", error);
@@ -1169,6 +1219,30 @@ export const sendCallGoingLongNotification = internalAction({
         blocks,
         text,
       });
+
+      // Also send to Discord (if configured)
+      try {
+        const { content, embeds } = buildCallGoingLongEmbed(
+          closer.name,
+          prospectName,
+          durationMinutes,
+          args.estimatedMinutes,
+          nextCallTime,
+          nextCallProspect
+        );
+
+        await ctx.runAction(internal.discord.sendDiscordNotification, {
+          teamId: args.teamId,
+          callId: callId,
+          type: "call_going_long",
+          content,
+          embeds,
+        });
+        console.log("[Discord] Call going long notification sent");
+      } catch (discordError) {
+        // Log but don't fail the overall notification if Discord fails
+        console.error("[Discord] Call going long notification failed:", discordError);
+      }
 
       return result;
     } catch (error) {

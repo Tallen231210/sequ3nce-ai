@@ -76,6 +76,30 @@ export default defineSchema({
         channelName: v.optional(v.string()),
       })),
     })),
+    // Discord webhook integration (simpler than Slack - one webhook URL per notification type)
+    discordNotificationChannels: v.optional(v.object({
+      reinforcement: v.optional(v.object({
+        enabled: v.boolean(),
+        webhookUrl: v.optional(v.string()),
+        channelName: v.optional(v.string()), // Display only
+      })),
+      callStarted: v.optional(v.object({
+        enabled: v.boolean(),
+        webhookUrl: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+      callSummary: v.optional(v.object({
+        enabled: v.boolean(),
+        webhookUrl: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+      callGoingLong: v.optional(v.object({
+        enabled: v.boolean(),
+        webhookUrl: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+    })),
+    discordConnectedAt: v.optional(v.number()),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 

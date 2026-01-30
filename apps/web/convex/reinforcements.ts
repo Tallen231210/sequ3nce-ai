@@ -3,6 +3,7 @@ import { mutation, query, action, internalMutation, internalAction } from "./_ge
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { buildReinforcementBlocks } from "./slack";
+import { buildReinforcementEmbed } from "./discord";
 
 // ============================================
 // MUTATIONS
@@ -258,6 +259,28 @@ export const sendSlackNotificationInternal = internalAction({
       });
 
       console.log("[Reinforcements] Slack notification sent successfully for request:", args.requestId);
+
+      // Also send to Discord (if configured)
+      try {
+        const { content, embeds } = buildReinforcementEmbed(
+          request.closerName,
+          request.message,
+          request.createdAt
+        );
+
+        await ctx.runAction(internal.discord.sendDiscordNotification, {
+          teamId: request.teamId,
+          callId: request.callId,
+          type: "reinforcement",
+          content,
+          embeds,
+        });
+        console.log("[Reinforcements] Discord notification sent for request:", args.requestId);
+      } catch (discordError) {
+        // Log but don't fail the overall notification if Discord fails
+        console.error("[Reinforcements] Discord notification failed:", discordError);
+      }
+
       return { success: true };
     } catch (error) {
       console.error("[Reinforcements] ERROR in sendSlackNotificationInternal:", error);

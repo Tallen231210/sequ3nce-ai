@@ -272,6 +272,66 @@ export const updateSlackNotificationChannel = mutation({
   },
 });
 
+// Update Discord notification channel for a specific notification type
+export const updateDiscordNotificationChannel = mutation({
+  args: {
+    clerkId: v.string(),
+    notificationType: v.string(), // "reinforcement" | "callStarted" | "callSummary" | "callGoingLong"
+    enabled: v.boolean(),
+    webhookUrl: v.optional(v.string()),
+    channelName: v.optional(v.string()), // Display only
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const team = await ctx.db.get(user.teamId);
+    if (!team) {
+      throw new Error("Team not found");
+    }
+
+    // Get current notification channels or create empty object
+    const currentChannels = team.discordNotificationChannels || {};
+
+    // Update the specific notification type
+    const validTypes = ["reinforcement", "callStarted", "callSummary", "callGoingLong"];
+    if (!validTypes.includes(args.notificationType)) {
+      throw new Error("Invalid notification type");
+    }
+
+    const updatedChannels = {
+      ...currentChannels,
+      [args.notificationType]: {
+        enabled: args.enabled,
+        webhookUrl: args.webhookUrl,
+        channelName: args.channelName,
+      },
+    };
+
+    // Set discordConnectedAt if this is the first webhook being configured
+    const wasConnected = team.discordConnectedAt;
+    const hasAnyWebhook =
+      updatedChannels.reinforcement?.webhookUrl ||
+      updatedChannels.callStarted?.webhookUrl ||
+      updatedChannels.callSummary?.webhookUrl ||
+      updatedChannels.callGoingLong?.webhookUrl;
+
+    await ctx.db.patch(user.teamId, {
+      discordNotificationChannels: updatedChannels,
+      // Set connectedAt on first webhook, clear if all removed
+      discordConnectedAt: hasAnyWebhook ? (wasConnected || Date.now()) : undefined,
+    });
+
+    return { success: true };
+  },
+});
+
 // Get full settings data
 export const getSettings = query({
   args: { clerkId: v.string() },
@@ -286,6 +346,14 @@ export const getSettings = query({
     }
 
     const team = await ctx.db.get(user.teamId);
+
+    // Check if any Discord webhook is configured
+    const discordChannels = team?.discordNotificationChannels;
+    const hasAnyDiscordWebhook =
+      discordChannels?.reinforcement?.webhookUrl ||
+      discordChannels?.callStarted?.webhookUrl ||
+      discordChannels?.callSummary?.webhookUrl ||
+      discordChannels?.callGoingLong?.webhookUrl;
 
     return {
       user: {
@@ -316,6 +384,10 @@ export const getSettings = query({
         slackTeamName: team.slackTeamName,
         slackConnectedAt: team.slackConnectedAt,
         slackNotificationChannels: team.slackNotificationChannels,
+        // Discord webhook integration
+        discordConnected: !!hasAnyDiscordWebhook,
+        discordConnectedAt: team.discordConnectedAt,
+        discordNotificationChannels: team.discordNotificationChannels,
       } : null,
     };
   },
