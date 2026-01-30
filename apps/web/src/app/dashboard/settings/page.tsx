@@ -1315,11 +1315,38 @@ export default function SettingsPage() {
                       loadingChannels={loadingSlackChannels}
                     />
 
-                    {slackChannels.length === 0 && !loadingSlackChannels && (
-                      <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-                        No channels found. Make sure the Sequ3nce bot has been added to at least one channel in Slack.
-                        Invite it by typing <code className="bg-amber-100 px-1 rounded">/invite @Sequ3nce</code> in any channel.
-                      </p>
+                    {!loadingSlackChannels && (
+                      <div className={`text-xs p-3 rounded border ${
+                        slackChannels.length === 0
+                          ? "bg-amber-50 border-amber-200"
+                          : "bg-blue-50 border-blue-200"
+                      }`}>
+                        <p className={`font-medium mb-2 ${
+                          slackChannels.length === 0 ? "text-amber-700" : "text-blue-700"
+                        }`}>
+                          {slackChannels.length === 0
+                            ? "No channels available yet"
+                            : `${slackChannels.length} channel${slackChannels.length === 1 ? "" : "s"} available`}
+                        </p>
+                        <div className={slackChannels.length === 0 ? "text-amber-600" : "text-blue-600"}>
+                          <p className="mb-2">
+                            The Sequ3nce bot can only send notifications to channels it has been invited to.
+                            To add a channel:
+                          </p>
+                          <ol className="list-decimal list-inside space-y-1 ml-1">
+                            <li>Open Slack and go to the channel you want notifications in</li>
+                            <li>Type <code className={`px-1 rounded ${
+                              slackChannels.length === 0 ? "bg-amber-100" : "bg-blue-100"
+                            }`}>/invite @Sequ3nce</code> and press Enter</li>
+                            <li>Refresh this page to see the channel in the dropdowns above</li>
+                          </ol>
+                          {slackChannels.length > 0 && (
+                            <p className="mt-2 text-blue-500">
+                              Tip: Add the bot to more channels to route different notification types to different places.
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
 
