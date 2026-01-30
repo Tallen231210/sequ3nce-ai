@@ -753,6 +753,7 @@ export function buildCallGoingLongBlocks(
 
 /**
  * Test Slack OAuth connection by sending a test message
+ * Finds any available channel to send the test to
  */
 export const testSlackConnection = action({
   args: {
@@ -764,13 +765,56 @@ export const testSlackConnection = action({
       return { success: false, error: "User not found" };
     }
 
-    const team = await ctx.runQuery(api.teams.getTeamById, { teamId: user.teamId as any }) as { slackAccessToken?: string; slackChannelId?: string } | null;
+    const team = await ctx.runQuery(api.teams.getTeamById, { teamId: user.teamId as any }) as TeamWithSlack | null;
     if (!team) {
       return { success: false, error: "Team not found" };
     }
 
-    if (!team.slackAccessToken || !team.slackChannelId) {
-      return { success: false, error: "Slack not connected via OAuth" };
+    if (!team.slackAccessToken) {
+      return { success: false, error: "Slack not connected" };
+    }
+
+    // Find a channel to send the test message to
+    // Priority: configured notification channels > legacy slackChannelId > fetch first available
+    let testChannelId: string | undefined;
+
+    // Check per-notification channels first
+    if (team.slackNotificationChannels) {
+      const channels = team.slackNotificationChannels;
+      testChannelId = channels.reinforcement?.channelId ||
+                      channels.callStarted?.channelId ||
+                      channels.callSummary?.channelId ||
+                      channels.callGoingLong?.channelId;
+    }
+
+    // Fall back to legacy channel
+    if (!testChannelId && team.slackChannelId) {
+      testChannelId = team.slackChannelId;
+    }
+
+    // If still no channel, fetch available channels and use the first one
+    if (!testChannelId) {
+      try {
+        const channelsResponse = await fetch("https://slack.com/api/conversations.list", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${team.slackAccessToken}`,
+          },
+        });
+        const channelsData = await channelsResponse.json();
+        if (channelsData.ok && channelsData.channels) {
+          const memberChannel = channelsData.channels.find((ch: any) => ch.is_member);
+          if (memberChannel) {
+            testChannelId = memberChannel.id;
+          }
+        }
+      } catch (e) {
+        console.error("[Slack] Error fetching channels for test:", e);
+      }
+    }
+
+    if (!testChannelId) {
+      return { success: false, error: "No channel available. Invite the bot to a channel first." };
     }
 
     // Send test message
@@ -781,13 +825,13 @@ export const testSlackConnection = action({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        channel: team.slackChannelId,
+        channel: testChannelId,
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: "✅ *Sequ3nce Slack Integration Test*\n\nYour Slack connection is working correctly! You'll receive notifications in this channel.",
+              text: "✅ *Sequ3nce Slack Integration Test*\n\nYour Slack connection is working correctly! You'll receive notifications in configured channels.",
             },
           },
         ],
