@@ -25,7 +25,7 @@ type DiscordNotificationResult =
   | { success: true; skipped: true; reason: string }
   | { success: false; error: string };
 
-type NotificationChannelKey = "reinforcement" | "callStarted" | "callSummary" | "callGoingLong";
+type NotificationChannelKey = "reinforcement" | "callStarted" | "callSummary" | "callGoingLong" | "callCompleted";
 
 interface DiscordEmbed {
   title?: string;
@@ -43,6 +43,7 @@ interface TeamWithDiscord {
     callStarted?: { enabled: boolean; webhookUrl?: string; channelName?: string };
     callSummary?: { enabled: boolean; webhookUrl?: string; channelName?: string };
     callGoingLong?: { enabled: boolean; webhookUrl?: string; channelName?: string };
+    callCompleted?: { enabled: boolean; webhookUrl?: string; channelName?: string };
   };
   discordConnectedAt?: number;
 }
@@ -62,6 +63,8 @@ function getNotificationChannelKey(type: string): NotificationChannelKey | null 
       return "callSummary";
     case "call_going_long":
       return "callGoingLong";
+    case "call_completed":
+      return "callCompleted";
     default:
       return null;
   }
@@ -212,6 +215,74 @@ export function buildCallGoingLongEmbed(
 
   return {
     content: `${closerName}'s call is running long (${durationText})${nextCallTime ? `. Next call at ${nextCallTime}` : ""}`,
+    embeds: [embed],
+  };
+}
+
+/**
+ * Build Discord embed for call completed notification (post-call summary)
+ */
+export function buildCallCompletedEmbed(
+  closerName: string,
+  prospectName: string | undefined,
+  outcome: string,
+  durationMinutes: number,
+  summary: string,
+  cashCollected?: number,
+  contractValue?: number,
+  callId?: string
+): { content: string; embeds: DiscordEmbed[] } {
+  const dashboardUrl = callId
+    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://app.sequ3nce.ai/dashboard";
+
+  // Color based on outcome: Green for closed, Yellow for follow-up, Red for lost/no-show
+  const color = outcome === "closed" ? 3066993 : outcome === "follow_up" ? 15844367 : 15158332;
+
+  // Format outcome text
+  const outcomeText = outcome === "closed" ? "Closed" :
+                      outcome === "follow_up" ? "Follow-up" :
+                      outcome === "lost" ? "Not Closed" :
+                      outcome === "no_show" ? "No Show" : outcome;
+
+  // Emoji based on outcome
+  const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" : "❌";
+
+  // Format duration nicely
+  const durationText =
+    durationMinutes >= 60
+      ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
+      : `${durationMinutes}m`;
+
+  const fields: { name: string; value: string; inline?: boolean }[] = [
+    { name: "Closer", value: closerName, inline: true },
+    { name: "Prospect", value: prospectName || "Unknown", inline: true },
+    { name: "Duration", value: durationText, inline: true },
+    { name: "Outcome", value: `${outcomeEmoji} ${outcomeText}`, inline: true },
+  ];
+
+  // Add deal values for closed deals
+  if (outcome === "closed") {
+    if (cashCollected) {
+      fields.push({ name: "💰 Cash Collected", value: `$${cashCollected.toLocaleString()}`, inline: true });
+    }
+    if (contractValue) {
+      fields.push({ name: "📄 Contract Value", value: `$${contractValue.toLocaleString()}`, inline: true });
+    }
+  }
+
+  const embed: DiscordEmbed = {
+    title: `${outcomeEmoji} Call Completed - ${outcomeText}`,
+    description: `**Summary:**\n${summary}`,
+    color,
+    fields,
+    timestamp: new Date().toISOString(),
+    footer: { text: "Sequ3nce.ai" },
+    url: dashboardUrl,
+  };
+
+  return {
+    content: `${outcomeEmoji} Call completed - ${outcomeText}: ${closerName} with ${prospectName || "prospect"} (${durationText})`,
     embeds: [embed],
   };
 }

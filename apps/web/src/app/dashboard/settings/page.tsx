@@ -1522,6 +1522,19 @@ export default function SettingsPage() {
                       loadingChannels={loadingSlackChannels}
                     />
 
+                    <NotificationChannelConfig
+                      type="callCompleted"
+                      label="Call Completed"
+                      description="Summary notification when a call ends"
+                      config={slackStatus.notificationChannels?.callCompleted}
+                      channels={slackChannels}
+                      onUpdate={(enabled, channelId, channelName) =>
+                        handleUpdateNotificationChannel("callCompleted", enabled, channelId, channelName)
+                      }
+                      saving={savingNotificationChannel === "callCompleted"}
+                      loadingChannels={loadingSlackChannels}
+                    />
+
                     {!loadingSlackChannels && (
                       <div className={`text-xs p-3 rounded border ${
                         slackChannels.length === 0
@@ -1724,6 +1737,20 @@ export default function SettingsPage() {
                   saving={savingDiscordChannel === "callGoingLong"}
                   testing={testingDiscordWebhook === "callGoingLong"}
                   testResult={discordTestResults.callGoingLong}
+                />
+
+                <DiscordNotificationConfig
+                  type="callCompleted"
+                  label="Call Completed"
+                  description="Summary notification when a call ends"
+                  config={settings?.team?.discordNotificationChannels?.callCompleted}
+                  onUpdate={(enabled, webhookUrl, channelName) =>
+                    handleUpdateDiscordChannel("callCompleted", enabled, webhookUrl, channelName)
+                  }
+                  onTest={(webhookUrl, channelName) => handleTestDiscordWebhook("callCompleted", webhookUrl, channelName)}
+                  saving={savingDiscordChannel === "callCompleted"}
+                  testing={testingDiscordWebhook === "callCompleted"}
+                  testResult={discordTestResults.callCompleted}
                 />
 
                 <div className="text-xs p-3 bg-blue-50 border border-blue-200 rounded">

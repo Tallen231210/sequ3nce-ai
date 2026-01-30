@@ -75,6 +75,11 @@ export default defineSchema({
         channelId: v.optional(v.string()),
         channelName: v.optional(v.string()),
       })),
+      callCompleted: v.optional(v.object({
+        enabled: v.boolean(),
+        channelId: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
     })),
     // Discord webhook integration (simpler than Slack - one webhook URL per notification type)
     discordNotificationChannels: v.optional(v.object({
@@ -94,6 +99,11 @@ export default defineSchema({
         channelName: v.optional(v.string()),
       })),
       callGoingLong: v.optional(v.object({
+        enabled: v.boolean(),
+        webhookUrl: v.optional(v.string()),
+        channelName: v.optional(v.string()),
+      })),
+      callCompleted: v.optional(v.object({
         enabled: v.boolean(),
         webhookUrl: v.optional(v.string()),
         channelName: v.optional(v.string()),

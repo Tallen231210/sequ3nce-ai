@@ -90,6 +90,11 @@ export const generateCallSummary = action({
           callId,
           summary,
         });
+
+        // Send call completed notification (Slack and Discord)
+        await ctx.runAction(internal.slack.sendCallCompletedNotification, {
+          callId,
+        });
       }
 
       return summary;

@@ -6,6 +6,7 @@ import {
   buildCallStartedEmbed,
   buildCallSummaryEmbed,
   buildCallGoingLongEmbed,
+  buildCallCompletedEmbed,
 } from "./discord";
 
 // ============================================
@@ -270,7 +271,8 @@ export type SlackNotificationType =
   | "call_started"
   | "summary_30"
   | "summary_60"
-  | "call_going_long";
+  | "call_going_long"
+  | "call_completed";
 
 /**
  * Check if a notification has already been sent for a call
@@ -318,7 +320,7 @@ type SlackNotificationResult =
   | { success: false; error: string };
 
 // Map notification type strings to slackNotificationChannels keys
-type NotificationChannelKey = "reinforcement" | "callStarted" | "callSummary" | "callGoingLong";
+type NotificationChannelKey = "reinforcement" | "callStarted" | "callSummary" | "callGoingLong" | "callCompleted";
 
 function getNotificationChannelKey(type: string): NotificationChannelKey | null {
   switch (type) {
@@ -331,6 +333,8 @@ function getNotificationChannelKey(type: string): NotificationChannelKey | null 
       return "callSummary";
     case "call_going_long":
       return "callGoingLong";
+    case "call_completed":
+      return "callCompleted";
     default:
       return null;
   }
@@ -346,6 +350,7 @@ interface TeamWithSlack {
     callStarted?: { enabled: boolean; channelId?: string; channelName?: string };
     callSummary?: { enabled: boolean; channelId?: string; channelName?: string };
     callGoingLong?: { enabled: boolean; channelId?: string; channelName?: string };
+    callCompleted?: { enabled: boolean; channelId?: string; channelName?: string };
   };
 }
 
@@ -776,6 +781,122 @@ export function buildCallGoingLongBlocks(
   return {
     blocks,
     text: `⏰ ${closerName}'s call is running long (${durationMinutes}min)${nextCallTime ? `. Next call at ${nextCallTime}` : ""}`,
+  };
+}
+
+/**
+ * Build Slack blocks for call completed notification (post-call summary)
+ */
+export function buildCallCompletedBlocks(
+  closerName: string,
+  prospectName: string | undefined,
+  outcome: string,
+  durationMinutes: number,
+  summary: string,
+  cashCollected?: number,
+  contractValue?: number,
+  callId?: string
+) {
+  // Emoji based on outcome
+  const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" : "❌";
+  const outcomeText = outcome === "closed" ? "Closed" :
+                      outcome === "follow_up" ? "Follow-up" :
+                      outcome === "lost" ? "Not Closed" :
+                      outcome === "no_show" ? "No Show" : outcome;
+
+  const dashboardUrl = callId
+    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://app.sequ3nce.ai/dashboard";
+
+  // Format duration nicely
+  const durationText =
+    durationMinutes >= 60
+      ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
+      : `${durationMinutes}m`;
+
+  const blocks: any[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `${outcomeEmoji} Call Completed - ${outcomeText}`,
+        emoji: true,
+      },
+    },
+    {
+      type: "section",
+      fields: [
+        {
+          type: "mrkdwn",
+          text: `*Closer:*\n${closerName}`,
+        },
+        {
+          type: "mrkdwn",
+          text: `*Prospect:*\n${prospectName || "Unknown"}`,
+        },
+        {
+          type: "mrkdwn",
+          text: `*Duration:*\n${durationText}`,
+        },
+      ],
+    },
+  ];
+
+  // Add deal values for closed deals
+  if (outcome === "closed" && (cashCollected || contractValue)) {
+    const dealFields: any[] = [];
+    if (cashCollected) {
+      dealFields.push({
+        type: "mrkdwn",
+        text: `*💰 Cash Collected:*\n$${cashCollected.toLocaleString()}`,
+      });
+    }
+    if (contractValue) {
+      dealFields.push({
+        type: "mrkdwn",
+        text: `*📄 Contract Value:*\n$${contractValue.toLocaleString()}`,
+      });
+    }
+    if (dealFields.length > 0) {
+      blocks.push({
+        type: "section",
+        fields: dealFields,
+      });
+    }
+  }
+
+  // Add summary section
+  blocks.push(
+    {
+      type: "divider",
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*📝 Summary:*\n${summary}`,
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "View Call Details",
+            emoji: true,
+          },
+          url: dashboardUrl,
+          action_id: "view_call",
+        },
+      ],
+    }
+  );
+
+  return {
+    blocks,
+    text: `${outcomeEmoji} Call completed - ${outcomeText}: ${closerName} with ${prospectName || "prospect"} (${durationText})`,
   };
 }
 
@@ -1247,6 +1368,123 @@ export const sendCallGoingLongNotification = internalAction({
       return result;
     } catch (error) {
       console.error("[Slack] Error sending call going long notification:", error);
+      return { success: false, error: String(error) };
+    }
+  },
+});
+
+/**
+ * Send call completed notification
+ * Called after generateCallSummary completes (when closer submits post-call questionnaire)
+ */
+export const sendCallCompletedNotification = internalAction({
+  args: {
+    callId: v.id("calls"),
+  },
+  handler: async (ctx, args): Promise<SlackNotificationResult> => {
+    try {
+      // Check if already sent
+      const alreadySent = await ctx.runQuery(api.slack.hasNotificationBeenSent, {
+        callId: args.callId,
+        type: "call_completed",
+      });
+
+      if (alreadySent) {
+        console.log("[Slack] Call completed notification already sent for:", args.callId);
+        return { success: true, skipped: true, reason: "Already sent" };
+      }
+
+      // Get call details (including the newly generated summary)
+      const call = await ctx.runQuery(api.calls.getCallById, { callId: args.callId as string }) as {
+        closerId: string;
+        teamId: any;
+        prospectName?: string;
+        outcome?: string;
+        summary?: string;
+        startedAt?: number;
+        endedAt?: number;
+        duration?: number;
+        cashCollected?: number;
+        contractValue?: number;
+      } | null;
+
+      if (!call) {
+        console.error("[Slack] Call not found for completed notification:", args.callId);
+        return { success: false, error: "Call not found" };
+      }
+
+      // Skip if no summary or outcome (not really completed)
+      if (!call.summary || !call.outcome) {
+        console.log("[Slack] Call missing summary or outcome, skipping notification:", args.callId);
+        return { success: true, skipped: true, reason: "Call not fully completed" };
+      }
+
+      // Get closer details
+      const closer = await ctx.runQuery(api.closers.getCloserById, { closerId: call.closerId }) as { name: string } | null;
+      if (!closer) {
+        console.error("[Slack] Closer not found:", call.closerId);
+        return { success: false, error: "Closer not found" };
+      }
+
+      // Calculate duration in minutes
+      let durationMinutes = 0;
+      if (call.duration) {
+        durationMinutes = Math.floor(call.duration / 60);
+      } else if (call.startedAt && call.endedAt) {
+        durationMinutes = Math.floor((call.endedAt - call.startedAt) / 60000);
+      }
+
+      // Build the Slack message
+      const { blocks, text } = buildCallCompletedBlocks(
+        closer.name,
+        call.prospectName,
+        call.outcome,
+        durationMinutes,
+        call.summary,
+        call.cashCollected,
+        call.contractValue,
+        args.callId
+      );
+
+      // Send via unified notification system
+      const result: SlackNotificationResult = await ctx.runAction(internal.slack.sendSlackNotification, {
+        teamId: call.teamId,
+        callId: args.callId,
+        type: "call_completed",
+        blocks,
+        text,
+      });
+
+      // Also send to Discord (if configured)
+      try {
+        const { content, embeds } = buildCallCompletedEmbed(
+          closer.name,
+          call.prospectName,
+          call.outcome,
+          durationMinutes,
+          call.summary,
+          call.cashCollected,
+          call.contractValue,
+          args.callId
+        );
+
+        await ctx.runAction(internal.discord.sendDiscordNotification, {
+          teamId: call.teamId,
+          callId: args.callId,
+          type: "call_completed",
+          content,
+          embeds,
+        });
+        console.log("[Discord] Call completed notification sent for call:", args.callId);
+      } catch (discordError) {
+        // Log but don't fail the overall notification if Discord fails
+        console.error("[Discord] Call completed notification failed:", discordError);
+      }
+
+      console.log("[Slack] Call completed notification sent for call:", args.callId);
+      return result;
+    } catch (error) {
+      console.error("[Slack] Error sending call completed notification:", error);
       return { success: false, error: String(error) };
     }
   },
