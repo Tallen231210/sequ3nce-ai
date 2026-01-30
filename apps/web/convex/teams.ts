@@ -250,7 +250,7 @@ export const updateSlackNotificationChannel = mutation({
     const currentChannels = team.slackNotificationChannels || {};
 
     // Update the specific notification type
-    const validTypes = ["reinforcement", "callStarted", "callSummary", "callGoingLong"];
+    const validTypes = ["reinforcement", "callStarted", "callSummary", "callGoingLong", "callCompleted"];
     if (!validTypes.includes(args.notificationType)) {
       throw new Error("Invalid notification type");
     }
@@ -276,7 +276,7 @@ export const updateSlackNotificationChannel = mutation({
 export const updateDiscordNotificationChannel = mutation({
   args: {
     clerkId: v.string(),
-    notificationType: v.string(), // "reinforcement" | "callStarted" | "callSummary" | "callGoingLong"
+    notificationType: v.string(), // "reinforcement" | "callStarted" | "callSummary" | "callGoingLong" | "callCompleted"
     enabled: v.boolean(),
     webhookUrl: v.optional(v.string()),
     channelName: v.optional(v.string()), // Display only
@@ -300,7 +300,7 @@ export const updateDiscordNotificationChannel = mutation({
     const currentChannels = team.discordNotificationChannels || {};
 
     // Update the specific notification type
-    const validTypes = ["reinforcement", "callStarted", "callSummary", "callGoingLong"];
+    const validTypes = ["reinforcement", "callStarted", "callSummary", "callGoingLong", "callCompleted"];
     if (!validTypes.includes(args.notificationType)) {
       throw new Error("Invalid notification type");
     }
@@ -320,7 +320,8 @@ export const updateDiscordNotificationChannel = mutation({
       updatedChannels.reinforcement?.webhookUrl ||
       updatedChannels.callStarted?.webhookUrl ||
       updatedChannels.callSummary?.webhookUrl ||
-      updatedChannels.callGoingLong?.webhookUrl;
+      updatedChannels.callGoingLong?.webhookUrl ||
+      updatedChannels.callCompleted?.webhookUrl;
 
     await ctx.db.patch(user.teamId, {
       discordNotificationChannels: updatedChannels,
