@@ -42,10 +42,15 @@ export async function GET(request: NextRequest) {
     // Get optional release tag from query params (e.g., "macos-v1.0.0" or "desktop-v1.2.27")
     const releaseTag = searchParams.get("release");
 
+    // Swift macOS releases live in sequ3nce-releases repo, Electron in sequ3nce-ai
+    const repo = releaseTag?.startsWith("macos-v")
+      ? "Tallen231210/sequ3nce-releases"
+      : "Tallen231210/sequ3nce-ai";
+
     // Fetch specific release by tag, or latest if not specified
     const releaseUrl = releaseTag
-      ? `https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases/tags/${releaseTag}`
-      : "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases/latest";
+      ? `https://api.github.com/repos/${repo}/releases/tags/${releaseTag}`
+      : `https://api.github.com/repos/${repo}/releases/latest`;
 
     const releaseResponse = await fetch(releaseUrl, {
       headers: {

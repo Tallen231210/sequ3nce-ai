@@ -49,37 +49,48 @@ export async function GET() {
   }
 
   try {
-    // Fetch all releases to find both Swift (macos-v*) and Electron (desktop-v*)
-    const response = await fetch(
-      "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-        cache: "no-store",
-      }
-    );
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github.v3+json",
+    };
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json(
-          { error: "No releases found" },
-          { status: 404 }
-        );
-      }
-      throw new Error(`GitHub API error: ${response.status}`);
+    // Fetch from both repos in parallel:
+    // - sequ3nce-releases: public repo for Swift macOS releases (macos-v*)
+    // - sequ3nce-ai: private repo for Electron/Windows releases (desktop-v*)
+    const [swiftResponse, electronResponse] = await Promise.all([
+      fetch(
+        "https://api.github.com/repos/Tallen231210/sequ3nce-releases/releases",
+        { headers, cache: "no-store" }
+      ),
+      fetch(
+        "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases",
+        { headers, cache: "no-store" }
+      ),
+    ]);
+
+    // Find latest Swift macOS release from sequ3nce-releases repo
+    let swiftRelease: GithubRelease | undefined;
+    if (swiftResponse.ok) {
+      const swiftReleases: GithubRelease[] = await swiftResponse.json();
+      swiftRelease = swiftReleases.find((r) => r.tag_name.startsWith("macos-v"));
     }
 
-    const releases: GithubRelease[] = await response.json();
+    // Find latest Electron desktop release from sequ3nce-ai repo
+    let electronRelease: GithubRelease | undefined;
+    if (electronResponse.ok) {
+      const electronReleases: GithubRelease[] = await electronResponse.json();
+      electronRelease = electronReleases.find((r) =>
+        r.tag_name.startsWith("desktop-v") ||
+        (r.tag_name.startsWith("v") && !r.tag_name.startsWith("macos-v"))
+      );
+    }
 
-    // Find latest Swift macOS release (macos-v*)
-    const swiftRelease = releases.find((r) => r.tag_name.startsWith("macos-v"));
-
-    // Find latest Electron desktop release (v* but not macos-v*)
-    const electronRelease = releases.find((r) =>
-      r.tag_name.startsWith("v") && !r.tag_name.startsWith("macos-v")
-    );
+    if (!swiftRelease && !electronRelease) {
+      return NextResponse.json(
+        { error: "No releases found" },
+        { status: 404 }
+      );
+    }
 
     // Return both releases with clear labels
     // Also include backwards-compatible top-level fields (from electron release)
