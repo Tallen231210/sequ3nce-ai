@@ -3,7 +3,8 @@ name: Build and Release Desktop App
 on:
   push:
     tags:
-      - 'desktop-v*' # Trigger on tags like desktop-v1.0.0
+      - 'desktop-v*'
+      - 'v[0-9]*'
   workflow_dispatch: # Allow manual trigger
     inputs:
       version:
@@ -132,7 +133,10 @@ jobs:
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
           else
-            echo "VERSION=${GITHUB_REF#refs/tags/desktop-v}" >> $GITHUB_OUTPUT
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG#desktop-v}
+            VERSION=${VERSION#v}
+            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           fi
 
       - name: Create Release
