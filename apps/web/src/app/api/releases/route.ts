@@ -63,7 +63,7 @@ export async function GET() {
         { headers, cache: "no-store" }
       ),
       fetch(
-        "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases",
+        "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases?per_page=100",
         { headers, cache: "no-store" }
       ),
     ]);
