@@ -80,8 +80,9 @@ export async function GET() {
     if (electronResponse.ok) {
       const electronReleases: GithubRelease[] = await electronResponse.json();
       electronRelease = electronReleases.find((r) =>
-        r.tag_name.startsWith("desktop-v") ||
-        (r.tag_name.startsWith("v") && !r.tag_name.startsWith("macos-v"))
+        (r.tag_name.startsWith("desktop-v") ||
+          (r.tag_name.startsWith("v") && !r.tag_name.startsWith("macos-v"))) &&
+        r.assets.some((a) => a.name.toLowerCase().endsWith(".exe"))
       );
     }
 
