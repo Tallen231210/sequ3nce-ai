@@ -139,6 +139,29 @@ jobs:
             echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           fi
 
+      - name: Generate Windows update manifest
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          EXE_FILE=$(find artifacts -name "*.exe" ! -name "*.nupkg" | head -1)
+          if [ -n "$EXE_FILE" ]; then
+            SHA512_BASE64=$(sha512sum "$EXE_FILE" | awk '{print $1}' | xxd -r -p | base64 -w 0)
+            SIZE=$(stat --format=%s "$EXE_FILE")
+            EXE_NAME=$(basename "$EXE_FILE")
+            RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+            cat > artifacts/latest.yml << EOF
+          version: ${VERSION}
+          files:
+            - url: ${EXE_NAME}
+              sha512: ${SHA512_BASE64}
+              size: ${SIZE}
+          path: ${EXE_NAME}
+          sha512: ${SHA512_BASE64}
+          releaseDate: '${RELEASE_DATE}'
+          EOF
+            echo "Generated latest.yml for Windows"
+            cat artifacts/latest.yml
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -152,6 +175,7 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.deb
             artifacts/**/*.rpm
+            artifacts/latest.yml
           body: |
             ## Sequ3nce Desktop v${{ steps.get_version.outputs.VERSION }}
 
