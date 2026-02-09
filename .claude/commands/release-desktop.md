@@ -1,6 +1,8 @@
-# Release Desktop App to Production
+# Release Windows Desktop App (Electron) to Production
 
-This command releases a new version of the Sequ3nce Electron desktop app.
+This command releases a new version of the Sequ3nce Electron desktop app for **Windows only**.
+
+> **Note:** macOS users use the Swift app instead (`/release-desktop-swift`). The Electron app is exclusively for Windows.
 
 ## Pre-flight Checklist
 
@@ -16,74 +18,88 @@ Edit `apps/desktop/package.json` and increment the version number:
 - Current format: `"version": "X.Y.Z"`
 - Increment Z for patches, Y for minor features, X for major changes
 
-### Step 2: Build and Publish
-
-Run this command from the desktop directory:
+### Step 2: Commit and Push
 
 ```bash
-cd /Users/tylerallen/Desktop/sequ3nce-ai/apps/desktop && GITHUB_TOKEN=$(gh auth token) npm run publish
+cd /Users/tylerallen/Desktop/sequ3nce-ai
+git add apps/desktop/package.json
+git commit -m "Bump Electron desktop version to X.Y.Z"
+git push
 ```
 
-This command:
-1. Gets the GitHub token from `gh` CLI (stored in keyring)
-2. Builds the Electron app
-3. Signs and notarizes with Apple (automatic, may take 1-2 minutes)
-4. Creates DMG and ZIP distributables
-5. Uploads to GitHub releases
-6. **Generates and uploads `latest-mac.yml`** (required for auto-update)
-7. **Publishes the release** (removes draft status)
+### Step 3: Create and Push Tag
 
-### Step 3: Verify Release
+The GitHub Actions CI workflow triggers on tags matching `desktop-v*` or `v[0-9]*`:
 
-Check that the release was created:
-- Go to: https://github.com/Tallen231210/sequ3nce-ai/releases
-- Verify the new version tag exists
-- Verify these files are attached: `Sequ3nce.dmg`, `Sequ3nce-darwin-arm64-X.Y.Z.zip`, `latest-mac.yml`
-- Verify the release is NOT a draft
-
-Or verify via CLI:
 ```bash
-VERSION=$(node -p "require('./package.json').version")
-gh release view "v${VERSION}" --json assets,isDraft -q '{isDraft: .isDraft, assets: [.assets[].name]}'
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
+
+This triggers the CI workflow (`.github/workflows/desktop-release.yml`) which:
+1. Builds the Windows `.exe` installer on `windows-latest`
+2. Builds Linux `.deb` and `.rpm` packages on `ubuntu-latest`
+3. Generates `latest.yml` (Windows auto-update manifest with SHA512 hash)
+4. Creates a **draft** GitHub release with all artifacts attached
+
+### Step 4: Publish the Release
+
+The CI creates a draft release. Publish it:
+
+```bash
+gh release edit vX.Y.Z --repo Tallen231210/sequ3nce-ai --draft=false
+```
+
+Or publish from the GitHub Releases web UI.
+
+### Step 5: Verify Release
+
+Check that the release was created correctly:
+
+```bash
+gh release view vX.Y.Z --repo Tallen231210/sequ3nce-ai --json assets --jq '.assets[].name'
+```
+
+Expected files:
+- `Sequ3nce-X.Y.Z.Setup.exe` — Windows installer
+- `latest.yml` — Windows auto-update manifest
+- `sequ3nce_X.Y.Z_amd64.deb` — Linux Debian package
+- `sequ3nce-X.Y.Z-1.x86_64.rpm` — Linux RPM package
 
 ## Troubleshooting
 
-### "GITHUB_TOKEN not set"
-The `gh` CLI handles this automatically. If it fails, run:
+### CI workflow didn't trigger
+Check that the tag matches the pattern `v[0-9]*` or `desktop-v*`:
 ```bash
-gh auth status
-```
-If not logged in, run:
-```bash
-gh auth login
+git tag -l "v*" | tail -5
 ```
 
-### "Notarization timed out"
-Apple's servers occasionally time out. Just run the publish command again.
-
-### "Failed to notarize"
-Check that Apple Developer credentials are configured in `forge.config.ts`.
-
-### Auto-update not working
-The `latest-mac.yml` file is required for electron-updater. Verify:
-1. The release is NOT a draft (`isDraft: false`)
-2. The `latest-mac.yml` file is attached to the release
-3. The version in `latest-mac.yml` matches the release version
-
-If `latest-mac.yml` is missing, you can manually generate and upload it:
+### Windows build failed
+Check GitHub Actions logs:
 ```bash
-cd /Users/tylerallen/Desktop/sequ3nce-ai/apps/desktop
-./scripts/upload-update-manifest.sh
+gh run list --repo Tallen231210/sequ3nce-ai --limit 5
+gh run view <run-id> --repo Tallen231210/sequ3nce-ai --log-failed
 ```
+
+### Auto-update not working for Windows users
+Verify `latest.yml` is attached to the release:
+```bash
+gh release view vX.Y.Z --repo Tallen231210/sequ3nce-ai --json assets --jq '.assets[] | select(.name == "latest.yml")'
+```
+
+The `latest.yml` must contain the correct version, SHA512 hash, and file size for `electron-updater` to find the update.
 
 ## Auto-Update
 
-Once published, users with the app installed will automatically receive the update via electron-updater. No manual distribution needed.
+Once published, Windows users with the app installed will automatically receive the update via `electron-updater`. The app checks on startup (5-second delay) and every 4 hours.
+
+## Download Page
+
+The download page at `/download` automatically picks up the latest release with a `.exe` asset. No manual changes needed — the releases API (`/api/releases`) fetches from the `sequ3nce-ai` repo with `?per_page=100`.
 
 ## Files Reference
 
 - Package config: `apps/desktop/package.json`
 - Forge config: `apps/desktop/forge.config.ts`
+- CI workflow: `.github/workflows/desktop-release.yml`
 - Build output: `apps/desktop/out/make/`
-- Upload script: `apps/desktop/scripts/upload-update-manifest.sh`

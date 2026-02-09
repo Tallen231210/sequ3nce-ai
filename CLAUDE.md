@@ -6,11 +6,11 @@ Sales call intelligence platform for high-ticket online sales teams (coaching, a
 
 When starting a fresh session, always greet the user with:
 - The current working directory (folder name)
-- A reminder of available slash commands: `/plan`, `/implement`, `/bugfix`, `/review`, `/quick`, `/release-desktop-swift`
+- A reminder of available slash commands: `/plan`, `/implement`, `/bugfix`, `/review`, `/quick`, `/release-desktop-swift`, `/release-desktop`
 
 ## Project Overview
 
-This is a SaaS product with three components:
+This is a SaaS product with four components:
 
 ### 1. Web Dashboard (`/apps/web`)
 - **Tech:** Next.js
@@ -18,15 +18,30 @@ This is a SaaS product with three components:
 
 ### 2. macOS Desktop App (`/apps/macos`)
 - **Tech:** Swift/SwiftUI
+- **Platform:** macOS only
 - **Purpose:** Closer-facing app to capture audio and display real-time "ammo" (key prospect quotes)
 - **Release:** Use `/release-desktop-swift` slash command
+- **Auto-update:** Sparkle framework, uses `appcast.xml` and GitHub releases in `sequ3nce-releases` repo
 
-### 3. Audio Processing Service (`/services/audio-processor`)
+### 3. Windows Desktop App (`/apps/desktop`)
+- **Tech:** Electron/React
+- **Platform:** Windows only (macOS builds disabled — use Swift app instead)
+- **Purpose:** Same closer-facing functionality as the Swift app, built for Windows users
+- **Release:** Use `/release-desktop` slash command — bumps version, pushes tag, CI builds `.exe` and creates GitHub release
+- **Auto-update:** electron-updater, uses `latest.yml` manifest in GitHub releases in `sequ3nce-ai` repo
+
+### 4. Audio Processing Service (`/services/audio-processor`)
 - **Tech:** Node.js
 - **Purpose:** Handles real-time transcription and AI extraction
 
 ### Shared Code (`/packages/shared`)
 - Shared TypeScript types, utilities, and constants used across components
+
+### Desktop App Strategy
+- **macOS users** → Swift app (`/apps/macos`) — native, primary experience
+- **Windows users** → Electron app (`/apps/desktop`) — Windows-only builds
+- These are two completely separate apps sharing only the Convex backend
+- The Electron app no longer ships macOS builds (disabled in CI)
 
 ## Development Context
 

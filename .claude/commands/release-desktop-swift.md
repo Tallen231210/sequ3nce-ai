@@ -1,6 +1,8 @@
 # Release Swift macOS Desktop App to Production
 
-This command releases a new version of the Sequ3nce Swift macOS app.
+This command releases a new version of the Sequ3nce Swift macOS app (**macOS only**).
+
+> **Note:** For Windows releases, use `/release-desktop` instead. The Swift and Electron apps are completely separate apps for their respective platforms.
 
 ## Pre-flight Checklist
 

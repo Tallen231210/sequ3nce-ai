@@ -35,7 +35,9 @@
 
 An AI-powered sales call intelligence platform designed specifically for high-ticket sales teams (coaching companies, agencies, info product businesses). The platform consists of two core components:
 
-1. **Desktop App for Closers** — Captures call audio, provides real-time "ammo tracking" (key moments from the conversation the closer can reference), and tags call outcomes.
+1. **Desktop Apps for Closers** — Two platform-specific apps that capture call audio, provide real-time "ammo tracking" (key moments from the conversation the closer can reference), and tag call outcomes:
+   - **macOS:** Native Swift/SwiftUI app (`/apps/macos`) — primary experience for Mac users
+   - **Windows:** Electron/React app (`/apps/desktop`) — dedicated Windows build
 
 2. **Web Dashboard for Managers** — Live view of all team calls, structured post-call data, recordings, transcripts, objection tracking, and no-show monitoring.
 
@@ -175,10 +177,12 @@ Sales managers at high-ticket businesses (coaching, agencies, info products) cur
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                                                                 │
-│                    DESKTOP APP                                  │
+│                    DESKTOP APPS                                 │
 │                    (For Closers)                                │
 │                                                                 │
-│    • Runs on Mac and Windows                                    │
+│    macOS: Swift/SwiftUI native app (/apps/macos)                │
+│    Windows: Electron/React app (/apps/desktop)                  │
+│    • Two separate apps, one per platform                        │
 │    • Captures system audio (hears both sides of Zoom call)      │
 │    • Shows floating "Ammo Tracker" window during calls          │
 │    • Post-call outcome tagging                                  │
@@ -318,8 +322,8 @@ Key moments from the conversation that the closer can use later. Extracted in re
    └── Lands on download page with Mac/Windows options
 
 3. DOWNLOAD APP
-   ├── Clicks "Download for Mac" or "Download for Windows"
-   └── Downloads .dmg or .exe file
+   ├── Clicks "Download" for Mac (Swift app, .zip) or "Download .exe" for Windows (Electron app)
+   └── Downloads Sequ3nce.zip (Mac) or Sequ3nce-X.Y.Z.Setup.exe (Windows)
 
 4. INSTALL APP
    ├── Opens installer
@@ -1171,11 +1175,17 @@ Option C: Hybrid (Recommended)
 
 **Purpose:** Keep the app up to date without manual downloads.
 
-**Behavior:**
-- App checks for updates on launch
-- If update available, downloads in background
+**macOS (Swift app):**
+- Uses Sparkle framework
+- Checks `appcast.xml` hosted in the repo for new versions
+- Downloads `Sequ3nce.zip` from `sequ3nce-releases` GitHub repo
 - Prompts user to restart to apply update
-- Handled by electron-builder/electron-updater
+
+**Windows (Electron app):**
+- Uses `electron-updater` with GitHub releases provider
+- Checks for `latest.yml` manifest in latest `sequ3nce-ai` GitHub release
+- Downloads `.exe` installer, prompts user to restart
+- Checks on startup (5-second delay) and every 4 hours
 
 #### 7.2.10 Role Play Room
 
@@ -1392,9 +1402,9 @@ When a recording starts:
 │                                                                         │
 │   ┌─────────────────────────┐      ┌─────────────────────────────┐      │
 │   │                         │      │                             │      │
-│   │    WEB DASHBOARD        │      │      DESKTOP APP            │      │
-│   │    (Next.js/Vercel)     │      │      (Electron/React)       │      │
-│   │                         │      │                             │      │
+│   │    WEB DASHBOARD        │      │      DESKTOP APPS           │      │
+│   │    (Next.js/Vercel)     │      │  macOS: Swift/SwiftUI       │      │
+│   │                         │      │  Windows: Electron/React    │      │
 │   └────────────┬────────────┘      └──────────────┬──────────────┘      │
 │                │                                  │                     │
 └────────────────┼──────────────────────────────────┼─────────────────────┘
@@ -1524,17 +1534,29 @@ When a recording starts:
 | Email | Resend | Transactional emails (invites, notifications) |
 | Styling | Tailwind CSS | Utility-first CSS |
 
-### Desktop App
+### macOS Desktop App (Swift)
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Framework | Electron | Cross-platform desktop apps |
+| Framework | Swift/SwiftUI | Native macOS app |
+| Audio Capture | ScreenCaptureKit | System audio capture |
+| Database | Convex Client (Swift) | Real-time sync with backend |
+| Auth | Clerk | Authentication |
+| Distribution | GitHub Releases (`sequ3nce-releases` repo) | Download and updates |
+| Auto-Update | Sparkle | In-app updates via `appcast.xml` |
+
+### Windows Desktop App (Electron)
+
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| Framework | Electron | Windows desktop app |
 | UI | React | Component-based UI |
 | Audio Capture | electron-audio-loopback | System audio capture |
 | Database | Convex Client | Real-time sync with backend |
 | Auth | Clerk (Electron flow) | Authentication |
-| Packaging | electron-builder | Build, sign, distribute |
-| Auto-Update | electron-updater | In-app updates |
+| Packaging | electron-forge | Build and distribute |
+| Auto-Update | electron-updater | In-app updates via `latest.yml` |
+| CI/CD | GitHub Actions | Builds `.exe` on tag push |
 | Styling | Tailwind CSS | Consistent with web |
 
 ### Audio Processing Service
@@ -1937,8 +1959,9 @@ async function sendCloserInvite(email, name, companyName, downloadLink) {
 - [ ] Account settings
 - [ ] Billing management (link to Stripe portal)
 
-**Desktop App:**
-- [ ] Mac and Windows builds
+**Desktop Apps (two separate apps):**
+- [x] macOS: Swift/SwiftUI native app with Sparkle auto-updates
+- [x] Windows: Electron/React app with electron-updater auto-updates
 - [ ] Closer login (Clerk)
 - [ ] Calendar connection (Google)
 - [ ] Audio capture (system audio)
@@ -1946,7 +1969,7 @@ async function sendCloserInvite(email, name, companyName, downloadLink) {
 - [ ] Ammo tracker floating window
 - [ ] Post-call outcome tagging
 - [ ] No-show detection and prompts
-- [ ] Auto-updates
+- [x] Auto-updates (macOS: Sparkle, Windows: electron-updater + latest.yml)
 
 **Backend:**
 - [ ] Audio processing service (WebSocket, Deepgram, Claude)
@@ -2218,24 +2241,33 @@ AWS_REGION=
 └── ...
 ```
 
-### Desktop App (Electron)
+### macOS Desktop App (Swift)
 ```
-/desktop-app
-├── src/
-│   ├── main/           # Electron main process
-│   │   ├── index.ts
-│   │   ├── audio.ts    # Audio capture
-│   │   └── ipc.ts      # IPC handlers
-│   ├── renderer/       # React app
-│   │   ├── App.tsx
-│   │   ├── components/
-│   │   │   ├── AmmoTracker.tsx
-│   │   │   ├── CallStatus.tsx
-│   │   │   └── OutcomePrompt.tsx
+/apps/macos
+├── Sequ3nce/
+│   ├── Sequ3nce/          # Main app source
+│   │   ├── Info.plist     # Version, permissions
 │   │   └── ...
-│   └── preload/
-├── electron-builder.yml
-└── ...
+│   ├── scripts/
+│   │   └── release.sh    # Build, sign, notarize
+│   └── build/            # Build output
+├── appcast.xml            # Sparkle auto-update feed
+└── scripts/bin/           # Sparkle signing tools
+```
+
+### Windows Desktop App (Electron)
+```
+/apps/desktop
+├── src/
+│   ├── index.ts           # Main process (audio, auto-update, IPC)
+│   ├── renderer.ts        # React renderer
+│   ├── preload.ts         # Preload scripts
+│   └── ...
+├── forge.config.ts        # Electron Forge config (makers, publishers)
+├── package.json           # Version, dependencies
+├── scripts/
+│   └── upload-update-manifest.sh  # macOS manifest (legacy)
+└── out/make/              # Build output
 ```
 
 ### Audio Processing Service (Node.js)
