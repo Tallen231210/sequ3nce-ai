@@ -40,9 +40,10 @@ Replace `X.Y.Z` with the version number (e.g., `1.4.1`).
 This script:
 1. Cleans and archives the Xcode project
 2. Exports the app with Developer ID signing
-3. Creates a ZIP for distribution
+3. Creates a ZIP and DMG for distribution
 4. Submits to Apple for notarization (may take 2-5 minutes)
-5. Staples the notarization ticket
+5. Staples the notarization ticket to both app and DMG
+6. Re-creates ZIP with stapled app (for Sparkle auto-updates)
 
 **User action:** Once the script finishes, paste the terminal output to Claude.
 
@@ -73,20 +74,18 @@ git add -A && git commit -m "Release macOS vX.Y.Z" && git push
 
 ### Step 7: Create GitHub Release (Claude does this)
 
-1. Go to: https://github.com/Tallen231210/sequ3nce-ai/releases/new
-2. Tag: `macos-vX.Y.Z` (e.g., `macos-v1.4.1`)
-3. Title: `macOS vX.Y.Z`
-4. Upload: `apps/macos/Sequ3nce/build/Sequ3nce.zip`
-5. Publish release
-
-Or use the GitHub CLI:
+Upload **both** the DMG (for new downloads) and ZIP (for Sparkle auto-updates) to the `sequ3nce-releases` repo:
 
 ```bash
 gh release create macos-vX.Y.Z \
+  --repo Tallen231210/sequ3nce-releases \
   --title "macOS vX.Y.Z" \
   --notes "See appcast.xml for release notes" \
-  apps/macos/Sequ3nce/build/Sequ3nce.zip
+  apps/macos/build/Sequ3nce-macOS.dmg \
+  apps/macos/build/Sequ3nce.zip
 ```
+
+> **Important:** Always upload the DMG alongside the ZIP. The download page serves the DMG to new users (avoids macOS Gatekeeper warnings). The ZIP is used by Sparkle for auto-updates to existing users.
 
 ## Troubleshooting
 
@@ -109,6 +108,8 @@ Once the GitHub release is published and appcast.xml is pushed:
 
 - Info.plist: `apps/macos/Sequ3nce/Sequ3nce/Info.plist`
 - Appcast: `apps/macos/appcast.xml`
-- Release script: `apps/macos/Sequ3nce/scripts/release.sh`
-- Build output: `apps/macos/Sequ3nce/build/`
+- Release script: `apps/macos/scripts/release.sh`
+- Build script: `apps/macos/scripts/build-release.sh`
+- Build output: `apps/macos/build/` (contains both `Sequ3nce.zip` and `Sequ3nce-macOS.dmg`)
 - Sparkle public key: In Info.plist under `SUPublicEDKey`
+- GitHub repo for releases: `Tallen231210/sequ3nce-releases` (public)
