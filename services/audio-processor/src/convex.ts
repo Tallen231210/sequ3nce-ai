@@ -177,6 +177,20 @@ export async function updateTalkTime(
   }
 }
 
+// Set a meeting bot's status to "active" when the audio processor connects
+// This is the primary signal that the bot has joined the call, since Meeting BaaS v2
+// does NOT send a "meeting.started" or "bot.in_call" webhook event.
+export async function activateBot(botId: string): Promise<void> {
+  try {
+    await convex.mutation("meetingBot:activateBotFromAudioProcessor" as any, {
+      botId,
+    });
+    logger.info(`[MeetingBaaS] Bot activated: ${botId}`);
+  } catch (error) {
+    logger.error(`[MeetingBaaS] Failed to activate bot: ${error}`);
+  }
+}
+
 // Link a call to a meeting bot (so desktop app can find the call with ammo data)
 export async function linkCallToBot(botId: string, callId: string): Promise<void> {
   try {

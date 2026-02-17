@@ -3508,7 +3508,9 @@ http.route({
         closerId: closerId as Id<"closers">,
       });
 
-      const firstBot = pendingBots.length > 0 ? pendingBots[0] : null;
+      // Find the first pending bot that has a linked callId (some old bots may not)
+      const firstBotWithCall = pendingBots.find((bot: any) => bot.callId) || null;
+      const firstBot = firstBotWithCall || (pendingBots.length > 0 ? pendingBots[0] : null);
       return new Response(JSON.stringify({
         count: pendingBots.length,
         firstCallId: firstBot?.callId ?? null,

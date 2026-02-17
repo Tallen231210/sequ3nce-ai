@@ -516,6 +516,39 @@ export const createCallFromBot = mutation({
   },
 });
 
+// Activate a bot from the audio processor — sets status to "active" with joinedAt
+// This is the PRIMARY mechanism for bot activation since Meeting BaaS v2 does NOT
+// send a "meeting.started" or "bot.in_call" webhook event.
+export const activateBotFromAudioProcessor = mutation({
+  args: {
+    botId: v.string(), // Our internal Convex meetingBots _id
+  },
+  handler: async (ctx, args) => {
+    const botDocId = ctx.db.normalizeId("meetingBots", args.botId);
+    if (!botDocId) {
+      console.error(`[activateBot] Invalid bot ID: ${args.botId}`);
+      return;
+    }
+
+    const bot = await ctx.db.get(botDocId);
+    if (!bot) {
+      console.error(`[activateBot] Bot not found: ${args.botId}`);
+      return;
+    }
+
+    // Only activate if not already active/completed
+    if (bot.status === "scheduled" || bot.status === "joining") {
+      await ctx.db.patch(botDocId, {
+        status: "active",
+        joinedAt: Date.now(),
+      });
+      console.log(`[activateBot] Bot ${args.botId} activated (was: ${bot.status})`);
+    } else {
+      console.log(`[activateBot] Bot ${args.botId} already in status: ${bot.status}, skipping`);
+    }
+  },
+});
+
 // Link an existing call (created by audio processor) to a meeting bot
 // Called by the audio processor after it creates a call for a bot session
 export const linkCallToBot = mutation({

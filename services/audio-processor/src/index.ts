@@ -13,6 +13,7 @@ import {
   getLiveStreamByVisitorCallId,
   isLiveStreamingEnabled,
   linkCallToBot,
+  activateBot,
 } from "./convex.js";
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
@@ -275,6 +276,13 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
 
   activeCalls.set(ws, callHandler);
   connectionVisitorCallIds.set(ws, botId);
+
+  // Activate the bot immediately — this is the primary signal that the bot is in the call.
+  // Meeting BaaS v2 does NOT send a "meeting.started" webhook, so the audio processor
+  // WebSocket connection is the only signal that the bot has joined.
+  activateBot(botId).catch((err) => {
+    logger.error(`[MeetingBaaS] Failed to activate bot: ${err}`);
+  });
 
   // Start the call handler (creates Convex call record, connects to Speechmatics, etc.)
   callHandler.start()
