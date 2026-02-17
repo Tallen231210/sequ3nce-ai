@@ -163,23 +163,36 @@ export const createBot = action({
         meeting_url: args.meetingUrl,
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
-        streaming_input: streamingUrl,
-        streaming_output: streamingUrl,
-        speech_to_text_provider: "Gladia",
-        webhook_url: webhookUrl,
         entry_message: "This meeting is being recorded.",
+        // v2 streaming config
+        streaming_enabled: true,
+        streaming_config: {
+          input_url: streamingUrl,
+          output_url: streamingUrl,
+        },
+        // v2 transcription config
+        transcription_enabled: true,
+        transcription_config: {
+          provider: "gladia",
+        },
+        // v2 callback/webhook config
+        callback_enabled: true,
+        callback_config: {
+          url: webhookUrl,
+          method: "POST",
+        },
       };
 
       // For Zoom meetings, include Zoom OAuth credentials if available
       const isZoomMeeting = args.meetingUrl.includes("zoom.us") || args.meetingUrl.includes("zoom.com");
       if (isZoomMeeting && closer?.zoomAccessToken && closer?.zoomRefreshToken) {
-        requestBody.zoom_credentials = {
-          access_token: closer.zoomAccessToken,
-          refresh_token: closer.zoomRefreshToken,
+        requestBody.zoom_config = {
+          credential_id: closer.zoomAccessToken,
+          credential_user_id: closer.zoomRefreshToken,
         };
       }
 
-      console.log(`[createBot] Request body: ${JSON.stringify({ ...requestBody, webhook_url: webhookUrl })}`);
+      console.log(`[createBot] Request body: ${JSON.stringify(requestBody)}`);
 
       const response = await fetch("https://api.meetingbaas.com/v2/bots", {
         method: "POST",
@@ -203,7 +216,8 @@ export const createBot = action({
       }
 
       const data = await response.json();
-      const rawBotId = data?.bot_id || data?.data?.bot_id || data?.id || "";
+      console.log(`[createBot] Meeting BaaS response: ${JSON.stringify(data)}`);
+      const rawBotId = data?.bot_id || data?.data?.bot_id || data?.id || data?.data?.id || "";
       const meetingBaasId = rawBotId ? String(rawBotId) : "";
 
       if (!meetingBaasId) {
@@ -344,23 +358,36 @@ export const createQuickBot = action({
         meeting_url: args.meetingUrl,
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
-        streaming_input: streamingUrl,
-        streaming_output: streamingUrl,
-        speech_to_text_provider: "Gladia",
-        webhook_url: webhookUrl,
         entry_message: "This meeting is being recorded.",
+        // v2 streaming config
+        streaming_enabled: true,
+        streaming_config: {
+          input_url: streamingUrl,
+          output_url: streamingUrl,
+        },
+        // v2 transcription config
+        transcription_enabled: true,
+        transcription_config: {
+          provider: "gladia",
+        },
+        // v2 callback/webhook config
+        callback_enabled: true,
+        callback_config: {
+          url: webhookUrl,
+          method: "POST",
+        },
       };
 
       // For Zoom meetings, include Zoom OAuth credentials if available
       const isZoomMeeting = args.meetingUrl.includes("zoom.us") || args.meetingUrl.includes("zoom.com");
       if (isZoomMeeting && closer?.zoomAccessToken && closer?.zoomRefreshToken) {
-        requestBody.zoom_credentials = {
-          access_token: closer.zoomAccessToken,
-          refresh_token: closer.zoomRefreshToken,
+        requestBody.zoom_config = {
+          credential_id: closer.zoomAccessToken,
+          credential_user_id: closer.zoomRefreshToken,
         };
       }
 
-      console.log(`[createQuickBot] Request body: ${JSON.stringify({ ...requestBody, webhook_url: webhookUrl })}`);
+      console.log(`[createQuickBot] Request body: ${JSON.stringify(requestBody)}`);
 
       const response = await fetch("https://api.meetingbaas.com/v2/bots", {
         method: "POST",
@@ -384,7 +411,9 @@ export const createQuickBot = action({
       }
 
       const data = await response.json();
-      const meetingBaasId = String(data.bot_id || data.id);
+      console.log(`[createQuickBot] Meeting BaaS response: ${JSON.stringify(data)}`);
+      const rawBotId = data?.bot_id || data?.data?.bot_id || data?.id || data?.data?.id || "";
+      const meetingBaasId = rawBotId ? String(rawBotId) : "";
 
       // 5. Update the meetingBot record with the Meeting BaaS ID
       await ctx.runMutation(internal.meetingBot.setBotMeetingBaasId, {
