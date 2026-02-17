@@ -164,11 +164,12 @@ export const createBot = action({
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config
+        // v2 streaming config — request 16kHz to match our Speechmatics config
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
+          audio_frequency: 16000,
         },
         // v2 transcription config
         transcription_enabled: true,
@@ -359,11 +360,12 @@ export const createQuickBot = action({
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config
+        // v2 streaming config — request 16kHz to match our Speechmatics config
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
+          audio_frequency: 16000,
         },
         // v2 transcription config
         transcription_enabled: true,
