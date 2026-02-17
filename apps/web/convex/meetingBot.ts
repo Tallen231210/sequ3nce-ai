@@ -163,9 +163,9 @@ export const createBot = action({
         meeting_url: args.meetingUrl,
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
-        reserved: false,
-        speech_to_text: { provider: "Gladia" },
-        streaming: { output: streamingUrl },
+        streaming_input: streamingUrl,
+        streaming_output: streamingUrl,
+        speech_to_text_provider: "Gladia",
         webhook_url: webhookUrl,
         entry_message: "This meeting is being recorded.",
       };
@@ -181,7 +181,7 @@ export const createBot = action({
 
       console.log(`[createBot] Request body: ${JSON.stringify({ ...requestBody, webhook_url: webhookUrl })}`);
 
-      const response = await fetch("https://api.meetingbaas.com/bots", {
+      const response = await fetch("https://api.meetingbaas.com/v2/bots", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -266,7 +266,7 @@ export const cancelBot = action({
       }
 
       try {
-        const response = await fetch(`https://api.meetingbaas.com/bots/${bot.meetingBaasId}`, {
+        const response = await fetch(`https://api.meetingbaas.com/v2/bots/${bot.meetingBaasId}`, {
           method: "DELETE",
           headers: {
             "x-meeting-baas-api-key": meetingBaasApiKey,
@@ -344,9 +344,9 @@ export const createQuickBot = action({
         meeting_url: args.meetingUrl,
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
-        reserved: false,
-        speech_to_text: { provider: "Gladia" },
-        streaming: { output: streamingUrl },
+        streaming_input: streamingUrl,
+        streaming_output: streamingUrl,
+        speech_to_text_provider: "Gladia",
         webhook_url: webhookUrl,
         entry_message: "This meeting is being recorded.",
       };
@@ -362,7 +362,7 @@ export const createQuickBot = action({
 
       console.log(`[createQuickBot] Request body: ${JSON.stringify({ ...requestBody, webhook_url: webhookUrl })}`);
 
-      const response = await fetch("https://api.meetingbaas.com/bots", {
+      const response = await fetch("https://api.meetingbaas.com/v2/bots", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
