@@ -14,6 +14,7 @@ import {
   isLiveStreamingEnabled,
   linkCallToBot,
   activateBot,
+  completeBot,
 } from "./convex.js";
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
@@ -362,6 +363,13 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
       await handler.end();
       activeCalls.delete(ws);
     }
+
+    // Mark the bot as "completed" immediately — don't wait for the Meeting BaaS webhook
+    // which may arrive late or not at all. This triggers the macOS app to close the
+    // ammo panel and show the post-call questionnaire.
+    completeBot(botId).catch((err) => {
+      logger.error(`[MeetingBaaS] Failed to complete bot: ${err}`);
+    });
 
     // End live stream and notify any listeners
     liveRelay.notifyCallEnded(botId);

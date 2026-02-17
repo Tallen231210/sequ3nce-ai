@@ -191,6 +191,20 @@ export async function activateBot(botId: string): Promise<void> {
   }
 }
 
+// Mark a meeting bot as "completed" when the audio processor WebSocket closes.
+// This is the primary signal that the bot has left the call, since Meeting BaaS v2
+// webhook (bot.completed) may arrive late or not at all.
+export async function completeBot(botId: string): Promise<void> {
+  try {
+    await convex.mutation("meetingBot:completeBotFromAudioProcessor" as any, {
+      botId,
+    });
+    logger.info(`[MeetingBaaS] Bot completed: ${botId}`);
+  } catch (error) {
+    logger.error(`[MeetingBaaS] Failed to complete bot: ${error}`);
+  }
+}
+
 // Link a call to a meeting bot (so desktop app can find the call with ammo data)
 export async function linkCallToBot(botId: string, callId: string): Promise<void> {
   try {

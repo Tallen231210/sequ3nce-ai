@@ -790,6 +790,14 @@ export const completeCallWithOutcome = mutation({
       completedAt: Date.now(),
     });
 
+    // Mark the linked meeting bot's questionnaire as completed (so pending count decreases)
+    if (call?.meetingBotId) {
+      const bot = await ctx.db.get(call.meetingBotId);
+      if (bot && bot.questionnaireCompleted !== true) {
+        await ctx.db.patch(call.meetingBotId, { questionnaireCompleted: true });
+      }
+    }
+
     // Schedule AI summary generation (runs async, doesn't block completion)
     if (call?.transcriptText) {
       await ctx.scheduler.runAfter(0, api.ai.generateCallSummary, {

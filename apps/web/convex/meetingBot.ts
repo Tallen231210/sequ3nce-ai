@@ -549,6 +549,40 @@ export const activateBotFromAudioProcessor = mutation({
   },
 });
 
+// Mark a bot as "completed" when the audio processor WebSocket closes.
+// This is the primary signal that a call has ended, since the Meeting BaaS v2
+// webhook (bot.completed) may arrive late or not at all.
+export const completeBotFromAudioProcessor = mutation({
+  args: {
+    botId: v.string(), // Our internal Convex meetingBots _id
+  },
+  handler: async (ctx, args) => {
+    const botDocId = ctx.db.normalizeId("meetingBots", args.botId);
+    if (!botDocId) {
+      console.error(`[completeBotFromAudioProcessor] Invalid bot ID: ${args.botId}`);
+      return;
+    }
+
+    const bot = await ctx.db.get(botDocId);
+    if (!bot) {
+      console.error(`[completeBotFromAudioProcessor] Bot not found: ${args.botId}`);
+      return;
+    }
+
+    // Only transition if not already completed (webhook may have beaten us)
+    if (bot.status === "completed") {
+      console.log(`[completeBotFromAudioProcessor] Bot ${args.botId} already completed, skipping`);
+      return;
+    }
+
+    await ctx.db.patch(botDocId, {
+      status: "completed",
+      endedAt: Date.now(),
+    });
+    console.log(`[completeBotFromAudioProcessor] Bot ${args.botId} marked as completed (was: ${bot.status})`);
+  },
+});
+
 // Link an existing call (created by audio processor) to a meeting bot
 // Called by the audio processor after it creates a call for a bot session
 export const linkCallToBot = mutation({

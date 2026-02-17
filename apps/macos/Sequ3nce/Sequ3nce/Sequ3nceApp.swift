@@ -705,7 +705,6 @@ class AppState: ObservableObject {
                 activeBotId = bot.botId
                 activeBotMeetingTitle = bot.meetingTitle
                 activeBotProspectName = bot.prospectName
-                showActiveCallView = true
 
                 // Auto-open ammo panel when bot call first becomes active
                 if !wasAlreadyActive {

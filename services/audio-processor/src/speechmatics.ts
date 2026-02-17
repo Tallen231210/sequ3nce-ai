@@ -10,8 +10,8 @@ import { logger } from "./logger.js";
 import type { TranscriptChunk } from "./types.js";
 
 // Buffer settings for grouping words into sentences
-const FLUSH_DELAY_MS = 500; // Emit after 0.5 seconds of silence (was 1500ms — too slow for live calls)
-const MAX_BUFFER_WORDS = 15; // Emit if buffer reaches 15 words (was 20)
+const FLUSH_DELAY_MS = 1200; // Emit after 1.2 seconds of silence (balance between latency and sentence coherence)
+const MAX_BUFFER_WORDS = 25; // Emit if buffer reaches 25 words (typical sentence is 12-15 words)
 
 const SPEECHMATICS_URL = "wss://eu2.rt.speechmatics.com/v2/en";
 
@@ -67,8 +67,8 @@ export function createSpeechmaticsConnection(
           speaker_diarization_config: {
             speaker_sensitivity: 0.5,
           },
-          enable_partials: true, // Enable partial transcripts for lower-latency live display
-          max_delay: 2.0, // Wait up to 2 seconds to group words (was 4.0 — halved for real-time)
+          enable_partials: false, // Disabled — partials fragment transcript into single words
+          max_delay: 3.0, // Wait up to 3 seconds to group words (balance latency vs sentence coherence)
         },
         audio_format: {
           type: "raw",
@@ -284,15 +284,10 @@ class TranscriptBuffer {
           this.flush();
         }
       } else if (result.type === "punctuation") {
-        // Flush immediately on sentence-ending punctuation
+        // Append punctuation to last word in buffer (don't flush — let natural grouping handle it)
         const punct = result.alternatives?.[0]?.content || "";
-        if (punct === "." || punct === "?" || punct === "!") {
-          // Append punctuation to last word in buffer
-          if (this.buffer.length > 0) {
-            this.buffer[this.buffer.length - 1].text += punct;
-          }
-          this.flush();
-          continue;
+        if (this.buffer.length > 0) {
+          this.buffer[this.buffer.length - 1].text += punct;
         }
       }
     }
