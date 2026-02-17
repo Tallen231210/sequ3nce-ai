@@ -1030,4 +1030,333 @@ class ConvexService {
             throw ConvexError.serverError(errorResponse?.error ?? "Failed to send call going long notification")
         }
     }
+
+    // MARK: - Meeting Bot
+
+    /// Check if team has meeting bot enabled
+    func isMeetingBotEnabled(teamId: String) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/isMeetingBotEnabled")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["teamId": teamId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return false
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let enabled = json["enabled"] as? Bool {
+            return enabled
+        }
+        return false
+    }
+
+    /// Check if closer needs calendar onboarding
+    func needsCalendarOnboarding(closerId: String) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/needsCalendarOnboarding")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["closerId": closerId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return false
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let needsOnboarding = json["needsOnboarding"] as? Bool {
+            return needsOnboarding
+        }
+        return false
+    }
+
+    /// Get active bot call for closer (returns nil if no active bot call)
+    func getActiveCallForCloserBot(closerId: String) async throws -> ActiveBotInfo? {
+        let url = URL(string: "\(baseURL)/getActiveCallForCloserBot")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["closerId": closerId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return nil
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let hasActiveCall = json["hasActiveCall"] as? Bool,
+           hasActiveCall,
+           let botId = json["botId"] as? String {
+            return ActiveBotInfo(
+                callId: json["callId"] as? String,
+                meetingTitle: json["meetingTitle"] as? String,
+                prospectName: json["prospectName"] as? String,
+                botId: botId,
+                status: json["status"] as? String ?? "active"
+            )
+        }
+        return nil
+    }
+
+    /// Get count of pending questionnaires
+    func getPendingQuestionnaireCount(closerId: String) async throws -> Int {
+        let url = URL(string: "\(baseURL)/getPendingQuestionnaireCount")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["closerId": closerId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return 0
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let count = json["count"] as? Int {
+            return count
+        }
+        return 0
+    }
+
+    /// Get upcoming bots for closer (next 24 hours)
+    func getUpcomingBotsForCloser(closerId: String) async throws -> [[String: Any]] {
+        let url = URL(string: "\(baseURL)/getUpcomingBotsForCloser")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["closerId": closerId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return []
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let bots = json["bots"] as? [[String: Any]] {
+            return bots
+        }
+        return []
+    }
+
+    /// Cancel/kick a bot from a meeting
+    func cancelBot(botId: String) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/cancelBot")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["botId": botId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return false
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let success = json["success"] as? Bool {
+            return success
+        }
+        return false
+    }
+
+    /// Create a quick bot (ad-hoc meeting)
+    func createQuickBot(meetingUrl: String, closerId: String, teamId: String, prospectName: String?) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/createQuickBot")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "meetingUrl": meetingUrl,
+            "closerId": closerId,
+            "teamId": teamId
+        ]
+        if let name = prospectName {
+            body["prospectName"] = name
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let success = json["success"] as? Bool {
+                return success
+            }
+            return true  // 200 status is success even without explicit field
+        } else {
+            // Parse error message from response
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorMsg = json["error"] as? String {
+                throw ConvexError.serverError(errorMsg)
+            }
+            throw ConvexError.serverError("Server returned status \(httpResponse.statusCode)")
+        }
+    }
+
+    /// Exclude a calendar event from bot auto-join
+    func excludeCalendarEvent(closerId: String, calendarEventId: String, eventTitle: String?) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/excludeCalendarEvent")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "closerId": closerId,
+            "calendarEventId": calendarEventId
+        ]
+        if let title = eventTitle {
+            body["eventTitle"] = title
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return false
+        }
+
+        return true
+    }
+
+    /// Get closer stats for dashboard
+    func getCloserStats(closerId: String, period: String) async throws -> [String: Any] {
+        let url = URL(string: "\(baseURL)/getCloserStats")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "closerId": closerId,
+            "period": period
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return [:]
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return json
+        }
+        return [:]
+    }
+
+    /// Mark calendar onboarding as completed
+    func markOnboardingCompleted(closerId: String) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/markOnboardingCompleted")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["closerId": closerId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return false
+        }
+
+        return true
+    }
+
+    /// Save meeting platform selection during onboarding
+    func saveMeetingPlatform(closerId: String, platform: String) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/saveMeetingPlatform")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "closerId": closerId,
+            "platform": platform
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return false
+        }
+
+        return true
+    }
+
+    /// Get call history for closer
+    func getCallHistory(closerId: String, limit: Int = 50) async throws -> [[String: Any]] {
+        let url = URL(string: "\(baseURL)/getCallHistory")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "closerId": closerId,
+            "limit": limit
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return []
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let calls = json["calls"] as? [[String: Any]] {
+            return calls
+        }
+        return []
+    }
 }

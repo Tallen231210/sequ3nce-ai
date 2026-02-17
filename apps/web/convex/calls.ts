@@ -488,6 +488,53 @@ export const getLiveCalls = query({
   },
 });
 
+// Get video recordings (calls recorded by meeting bot with video)
+export const getVideoRecordings = query({
+  args: {
+    teamId: v.id("teams"),
+    closerId: v.optional(v.id("closers")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    let callsQuery = ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("recordingType"), "video"),
+          q.neq(q.field("recordingUrl"), undefined)
+        )
+      );
+
+    let calls = await callsQuery.order("desc").take(args.limit || 50);
+
+    if (args.closerId) {
+      calls = calls.filter((c) => c.closerId === args.closerId);
+    }
+
+    // Enrich with closer names
+    const enriched = await Promise.all(
+      calls.map(async (call) => {
+        const closer = await ctx.db.get(call.closerId);
+        return {
+          ...call,
+          closerName: closer?.name || "Unknown",
+          closerInitials: closer?.name
+            ? closer.name
+                .split(" ")
+                .map((n: string) => n[0])
+                .join("")
+                .toUpperCase()
+                .slice(0, 2)
+            : "??",
+        };
+      })
+    );
+
+    return enriched;
+  },
+});
+
 // Get call by ID with ammo
 export const getCallWithAmmo = query({
   args: {

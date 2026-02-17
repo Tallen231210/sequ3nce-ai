@@ -33,7 +33,30 @@
 		A1000020211111110000000A /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020111111110000000A /* AudioCaptureService.swift */; };
 		A1000021211111110000000A /* WebSocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000021111111110000000A /* WebSocketService.swift */; };
 		A1000022211111110000000A /* ConvexService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022111111110000000A /* ConvexService.swift */; };
+		C1000001211111110000000A /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000001111111110000000A /* DashboardView.swift */; };
+		C1000002211111110000000A /* ActiveCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000002111111110000000A /* ActiveCallView.swift */; };
+		C1000003211111110000000A /* CallHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000003111111110000000A /* CallHistoryView.swift */; };
+		C1000004211111110000000A /* BotSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000004111111110000000A /* BotSettingsView.swift */; };
+		C1000005211111110000000A /* BotOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000005111111110000000A /* BotOnboardingView.swift */; };
+		E10000062111111100000006 /* Sequ3nceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000011111111100000001 /* Sequ3nceUITests.swift */; };
+		E10000072111111100000007 /* DashboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000021111111100000002 /* DashboardTests.swift */; };
+		E10000082111111100000008 /* QuickBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000031111111100000003 /* QuickBotTests.swift */; };
+		E10000092111111100000009 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000041111111100000004 /* TestHelpers.swift */; };
+		E1000A012111111100002002 /* OnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000A011111111100002001 /* OnboardingTests.swift */; };
+		E1000A022111111100002004 /* ActiveCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000A021111111100002003 /* ActiveCallTests.swift */; };
+		E1000A032111111100002006 /* CallHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000A031111111100002005 /* CallHistoryTests.swift */; };
+		E1000A042111111100002008 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000A041111111100002007 /* SettingsTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E10000401111111100000010 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1000016111111110000000A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1000012111111110000000A;
+			remoteInfo = Sequ3nce;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		102A16DC2F2AA72E00851137 /* DiagnosticLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogger.swift; sourceTree = "<group>"; };
@@ -63,6 +86,20 @@
 		A1000020111111110000000A /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		A1000021111111110000000A /* WebSocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketService.swift; sourceTree = "<group>"; };
 		A1000022111111110000000A /* ConvexService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConvexService.swift; sourceTree = "<group>"; };
+		C1000001111111110000000A /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		C1000002111111110000000A /* ActiveCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveCallView.swift; sourceTree = "<group>"; };
+		C1000003111111110000000A /* CallHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryView.swift; sourceTree = "<group>"; };
+		C1000004111111110000000A /* BotSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotSettingsView.swift; sourceTree = "<group>"; };
+		C1000005111111110000000A /* BotOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotOnboardingView.swift; sourceTree = "<group>"; };
+		E10000011111111100000001 /* Sequ3nceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sequ3nceUITests.swift; sourceTree = "<group>"; };
+		E10000021111111100000002 /* DashboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardTests.swift; sourceTree = "<group>"; };
+		E10000031111111100000003 /* QuickBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickBotTests.swift; sourceTree = "<group>"; };
+		E10000041111111100000004 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
+		E10000051111111100000005 /* Sequ3nceUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Sequ3nceUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1000A011111111100002001 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTests.swift; sourceTree = "<group>"; };
+		E1000A021111111100002003 /* ActiveCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveCallTests.swift; sourceTree = "<group>"; };
+		E1000A031111111100002005 /* CallHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryTests.swift; sourceTree = "<group>"; };
+		E1000A041111111100002007 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -75,6 +112,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E10000211111111100000D0E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -82,6 +126,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000009111111110000000A /* Sequ3nce */,
+				E10000101111111100000A0B /* Sequ3nceUITests */,
 				A100000A111111110000000A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -106,6 +151,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000006111111110000000A /* Sequ3nce.app */,
+				E10000051111111100000005 /* Sequ3nceUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -123,8 +169,53 @@
 				A100000F111111110000000A /* MainWindow */,
 				A1000010111111110000000A /* AmmoTrackerPanel */,
 				A1000011111111110000000A /* TrainingWindow */,
+				C1000010111111110000000A /* Dashboard */,
+				C1000011111111110000000A /* ActiveCall */,
+				C1000012111111110000000A /* Calls */,
+				C1000013111111110000000A /* Settings */,
+				C1000014111111110000000A /* Onboarding */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		C1000010111111110000000A /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				C1000001111111110000000A /* DashboardView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		C1000011111111110000000A /* ActiveCall */ = {
+			isa = PBXGroup;
+			children = (
+				C1000002111111110000000A /* ActiveCallView.swift */,
+			);
+			path = ActiveCall;
+			sourceTree = "<group>";
+		};
+		C1000012111111110000000A /* Calls */ = {
+			isa = PBXGroup;
+			children = (
+				C1000003111111110000000A /* CallHistoryView.swift */,
+			);
+			path = Calls;
+			sourceTree = "<group>";
+		};
+		C1000013111111110000000A /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				C1000004111111110000000A /* BotSettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		C1000014111111110000000A /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				C1000005111111110000000A /* BotOnboardingView.swift */,
+			);
+			path = Onboarding;
 			sourceTree = "<group>";
 		};
 		A100000C111111110000000A /* Services */ = {
@@ -183,6 +274,29 @@
 			path = TrainingWindow;
 			sourceTree = "<group>";
 		};
+		E10000101111111100000A0B /* Sequ3nceUITests */ = {
+			isa = PBXGroup;
+			children = (
+				E10000011111111100000001 /* Sequ3nceUITests.swift */,
+				E10000021111111100000002 /* DashboardTests.swift */,
+				E10000031111111100000003 /* QuickBotTests.swift */,
+				E1000A011111111100002001 /* OnboardingTests.swift */,
+				E1000A021111111100002003 /* ActiveCallTests.swift */,
+				E1000A031111111100002005 /* CallHistoryTests.swift */,
+				E1000A041111111100002007 /* SettingsTests.swift */,
+				E10000111111111100000B0C /* Helpers */,
+			);
+			path = Sequ3nceUITests;
+			sourceTree = "<group>";
+		};
+		E10000111111111100000B0C /* Helpers */ = {
+			isa = PBXGroup;
+			children = (
+				E10000041111111100000004 /* TestHelpers.swift */,
+			);
+			path = Helpers;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -203,6 +317,24 @@
 			productReference = A1000006111111110000000A /* Sequ3nce.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E10000301111111100000F00 /* Sequ3nceUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E10000701111111100001C00 /* Build configuration list for PBXNativeTarget "Sequ3nceUITests" */;
+			buildPhases = (
+				E10000201111111100000C0D /* Sources */,
+				E10000211111111100000D0E /* Frameworks */,
+				E10000221111111100000E0F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E10000501111111100001100 /* PBXTargetDependency */,
+			);
+			name = Sequ3nceUITests;
+			productName = Sequ3nceUITests;
+			productReference = E10000051111111100000005 /* Sequ3nceUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -215,6 +347,10 @@
 				TargetAttributes = {
 					A1000012111111110000000A = {
 						CreatedOnToolsVersion = 15.0;
+					};
+					E10000301111111100000F00 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A1000012111111110000000A;
 					};
 				};
 			};
@@ -236,6 +372,7 @@
 			projectRoot = "";
 			targets = (
 				A1000012111111110000000A /* Sequ3nce */,
+				E10000301111111100000F00 /* Sequ3nceUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -247,6 +384,13 @@
 			files = (
 				10D17FD52F0F5C65006686F2 /* release.sh in Resources */,
 				A1000003211111110000000A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000221111111100000E0F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,10 +423,38 @@
 				10D17FDE2F1DB299006686F2 /* ChatModels.swift in Sources */,
 				102A16DF2F2AA73900851137 /* DiagnosticsService.swift in Sources */,
 				10D17FE02F1DB2C7006686F2 /* ChatPanelView.swift in Sources */,
+				C1000001211111110000000A /* DashboardView.swift in Sources */,
+				C1000002211111110000000A /* ActiveCallView.swift in Sources */,
+				C1000003211111110000000A /* CallHistoryView.swift in Sources */,
+				C1000004211111110000000A /* BotSettingsView.swift in Sources */,
+				C1000005211111110000000A /* BotOnboardingView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E10000201111111100000C0D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E10000062111111100000006 /* Sequ3nceUITests.swift in Sources */,
+				E10000072111111100000007 /* DashboardTests.swift in Sources */,
+				E10000082111111100000008 /* QuickBotTests.swift in Sources */,
+				E10000092111111100000009 /* TestHelpers.swift in Sources */,
+				E1000A012111111100002002 /* OnboardingTests.swift in Sources */,
+				E1000A022111111100002004 /* ActiveCallTests.swift in Sources */,
+				E1000A032111111100002006 /* CallHistoryTests.swift in Sources */,
+				E1000A042111111100002008 /* SettingsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E10000501111111100001100 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1000012111111110000000A /* Sequ3nce */;
+			targetProxy = E10000401111111100000010 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A1000018111111110000000A /* Debug */ = {
@@ -463,6 +635,40 @@
 			};
 			name = Release;
 		};
+		E10000601111111100001A00 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = P3LCDZYPU5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sequ3nce.macos.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Sequ3nce;
+			};
+			name = Debug;
+		};
+		E10000611111111100001B00 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = P3LCDZYPU5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sequ3nce.macos.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = Sequ3nce;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -480,6 +686,15 @@
 			buildConfigurations = (
 				A1000018111111110000000A /* Debug */,
 				A1000019111111110000000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E10000701111111100001C00 /* Build configuration list for PBXNativeTarget "Sequ3nceUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E10000601111111100001A00 /* Debug */,
+				E10000611111111100001B00 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

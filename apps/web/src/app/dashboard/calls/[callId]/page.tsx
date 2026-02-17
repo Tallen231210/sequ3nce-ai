@@ -91,6 +91,7 @@ interface CallDetails {
   duration?: number;
   speakerCount: number;
   recordingUrl?: string;
+  recordingType?: string;
   transcriptText?: string;
   closerTalkTime?: number;
   prospectTalkTime?: number;
@@ -1762,19 +1763,32 @@ export default function CallDetailPage() {
           isLoading={call.status === "completed" && !call.summary && call.transcriptText ? true : false}
         />
 
-        {/* Audio Player - Sticky */}
+        {/* Recording Player - Video or Audio */}
         {call.recordingUrl ? (
-          <div className="sticky top-0 z-10 mb-6">
-            <AudioPlayer
-              src={call.recordingUrl}
-              onTimeUpdate={handleTimeUpdate}
-              seekTo={audioSeekTime}
-              speakerSegments={call.transcriptSegments?.map(seg => ({
-                speaker: seg.speaker,
-                timestamp: seg.timestamp,
-              }))}
-            />
-          </div>
+          call.recordingType === "video" ? (
+            <Card className="mb-6 overflow-hidden">
+              <CardContent className="p-0">
+                <video
+                  controls
+                  src={call.recordingUrl}
+                  className="w-full rounded-lg"
+                  style={{ maxHeight: "480px" }}
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="sticky top-0 z-10 mb-6">
+              <AudioPlayer
+                src={call.recordingUrl}
+                onTimeUpdate={handleTimeUpdate}
+                seekTo={audioSeekTime}
+                speakerSegments={call.transcriptSegments?.map(seg => ({
+                  speaker: seg.speaker,
+                  timestamp: seg.timestamp,
+                }))}
+              />
+            </div>
+          )
         ) : (
           <Card className="mb-6">
             <CardContent className="p-6">

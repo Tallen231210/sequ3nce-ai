@@ -58,6 +58,22 @@ struct CallDiagnostics: Codable {
     let timeSinceRecordingStarted: TimeInterval?
 }
 
+struct MeetingBotDiagnostics: Codable {
+    let meetingBotEnabled: Bool
+    let botCallActive: Bool
+    let activeBotCallId: String?
+    let activeBotId: String?
+    let activeBotMeetingTitle: String?
+    let activeBotProspectName: String?
+    let pendingQuestionnaireCount: Int
+    let showingPostCallQuestionnaire: Bool
+    let calendarConnected: Bool
+    let meetingPlatform: String?
+    let appMode: String // "legacy_recording" or "meeting_bot"
+    let currentSidebarItem: String?
+    let pollBotStatusActive: Bool
+}
+
 struct PermissionDiagnostics: Codable {
     let microphonePermission: String
     let screenRecordingPermission: String
@@ -89,6 +105,7 @@ struct DiagnosticReport: Codable {
     let audio: AudioDiagnostics
     let websocket: WebSocketDiagnostics
     let call: CallDiagnostics
+    let meetingBot: MeetingBotDiagnostics?
     let permissions: PermissionDiagnostics
     let logs: LogDiagnostics
 }
@@ -113,6 +130,20 @@ class DiagnosticsService {
     var recordingDuration: TimeInterval = 0
     var recordingStartTime: Date?
 
+    // Meeting bot state (set from AppState)
+    var meetingBotEnabled: Bool = false
+    var botCallActive: Bool = false
+    var activeBotCallId: String?
+    var activeBotId: String?
+    var activeBotMeetingTitle: String?
+    var activeBotProspectName: String?
+    var pendingQuestionnaireCount: Int = 0
+    var showingPostCallQuestionnaire: Bool = false
+    var calendarConnected: Bool = false
+    var meetingPlatform: String?
+    var currentSidebarItem: String?
+    var pollBotStatusActive: Bool = false
+
     // MARK: - Collection Methods
 
     /// Collect all diagnostics into a report
@@ -130,6 +161,7 @@ class DiagnosticsService {
             audio: collectAudioDiagnostics(),
             websocket: collectWebSocketDiagnostics(),
             call: collectCallDiagnostics(),
+            meetingBot: collectMeetingBotDiagnostics(),
             permissions: collectPermissionDiagnostics(),
             logs: collectLogDiagnostics()
         )
@@ -307,6 +339,27 @@ class DiagnosticsService {
             recordingState: recordingState,
             recordingDuration: recordingDuration,
             timeSinceRecordingStarted: timeSinceStarted
+        )
+    }
+
+    private func collectMeetingBotDiagnostics() -> MeetingBotDiagnostics? {
+        // Only include if meeting bot feature is relevant
+        guard meetingBotEnabled else { return nil }
+
+        return MeetingBotDiagnostics(
+            meetingBotEnabled: meetingBotEnabled,
+            botCallActive: botCallActive,
+            activeBotCallId: activeBotCallId,
+            activeBotId: activeBotId,
+            activeBotMeetingTitle: activeBotMeetingTitle,
+            activeBotProspectName: activeBotProspectName,
+            pendingQuestionnaireCount: pendingQuestionnaireCount,
+            showingPostCallQuestionnaire: showingPostCallQuestionnaire,
+            calendarConnected: calendarConnected,
+            meetingPlatform: meetingPlatform,
+            appMode: meetingBotEnabled ? "meeting_bot" : "legacy_recording",
+            currentSidebarItem: currentSidebarItem,
+            pollBotStatusActive: pollBotStatusActive
         )
     }
 

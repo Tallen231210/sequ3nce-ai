@@ -30,6 +30,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Calendar,
 } from "lucide-react";
 
 type DateRange = "today" | "this_week" | "this_month" | "last_30_days" | "all_time";
@@ -130,6 +131,7 @@ interface CloserCardProps {
     name: string;
     email: string;
     status: string;
+    calendarProvider?: string;
     closeRate: number;
     cashCollected: number;
     callsTaken: number;
@@ -239,6 +241,12 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {closer.calendarProvider && (
+              <Badge className="bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-50 gap-1 text-[10px] px-1.5 py-0 h-5">
+                <Calendar className="h-3 w-3" />
+                Calendar
+              </Badge>
+            )}
             <LiveStatusIndicator status={liveStatus} />
             <RankBadge rank={closer.rank} />
           </div>

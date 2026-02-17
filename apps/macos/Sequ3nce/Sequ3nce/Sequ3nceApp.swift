@@ -9,6 +9,7 @@
 import SwiftUI
 import Sparkle
 import Combine
+import UserNotifications
 
 @main
 struct Sequ3nceApp: App {
@@ -38,12 +39,10 @@ struct Sequ3nceApp: App {
     }
 
     var body: some Scene {
-        // Main recording window - using Window (not WindowGroup) to enforce single instance
-        // This prevents the dual-window bug where macOS state restoration could create multiple windows
+        // Main window - adapts between compact (legacy) and full-screen (meeting bot) mode
         Window("Sequ3nce", id: "main") {
-            ContentView()
+            MainWindowRouter()
                 .environmentObject(appState)
-                .frame(width: 400, height: 600)
                 .onAppear {
                     // Log app launch for diagnostics
                     let windowCount = NSApp.windows.count
@@ -56,8 +55,7 @@ struct Sequ3nceApp: App {
                     // Initialize menu bar after AppState is ready
                     appDelegate.setupMenuBar(with: appState)
 
-                    // Capture reference to main window so we can always bring it back
-                    // (Fixes bug where clicking Dock icon wouldn't show main window)
+                    // Capture reference to main window
                     DispatchQueue.main.async {
                         let secondaryTitles = ["Ammo Tracker", "Training", "Role Play Room", "My Schedule", "Team Messages"]
                         if let mainWindow = NSApp.windows.first(where: {
@@ -66,6 +64,14 @@ struct Sequ3nceApp: App {
                             !secondaryTitles.contains($0.title)
                         }) {
                             appDelegate.mainWindow = mainWindow
+
+                            // Resize for meeting bot mode if needed
+                            if self.appState.meetingBotEnabled {
+                                mainWindow.setContentSize(NSSize(width: 1200, height: 800))
+                                mainWindow.minSize = NSSize(width: 900, height: 600)
+                                mainWindow.center()
+                            }
+
                             DiagnosticLogger.shared.info(
                                 "Captured main window reference",
                                 category: .app,
@@ -73,22 +79,24 @@ struct Sequ3nceApp: App {
                             )
                         }
                     }
+
+                    // Check meeting bot status after login
+                    Task {
+                        await appState.checkMeetingBotStatus()
+                    }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CheckForUpdates"))) { _ in
-                    // Handle "Check for Updates" from menu bar
                     if updaterController.updater.canCheckForUpdates {
                         updaterController.updater.checkForUpdates()
                     }
                 }
         }
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 400, height: 600)
+        .windowResizability(appState.meetingBotEnabled ? .automatic : .contentSize)
+        .defaultSize(width: appState.meetingBotEnabled ? 1200 : 400,
+                     height: appState.meetingBotEnabled ? 800 : 600)
         .commands {
-            // Disable Cmd+N to prevent creating additional windows
             CommandGroup(replacing: .newItem) { }
-
-            // Add "Check for Updates..." menu item
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
             }
@@ -147,6 +155,29 @@ enum ConnectionState: Equatable {
     }
 }
 
+/// Navigation sidebar items for meeting bot mode
+enum SidebarItem: String, CaseIterable, Identifiable {
+    case dashboard = "Dashboard"
+    case stats = "Stats"
+    case calls = "Calls"
+    case messages = "Messages"
+    case training = "Training"
+    case settings = "Settings"
+
+    var id: String { rawValue }
+
+    var iconName: String {
+        switch self {
+        case .dashboard: return "house.fill"
+        case .stats: return "chart.bar.fill"
+        case .calls: return "phone.fill"
+        case .messages: return "message.fill"
+        case .training: return "play.rectangle.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
+}
+
 /// Global app state shared across views
 @MainActor
 class AppState: ObservableObject {
@@ -160,6 +191,23 @@ class AppState: ObservableObject {
     @Published var error: String?
     @Published var connectionState: ConnectionState = .disconnected
 
+    // Meeting Bot state
+    @Published var meetingBotEnabled: Bool = UserDefaults.standard.bool(forKey: "meetingBotEnabled")
+    @Published var botCallActive: Bool = false
+    @Published var activeBotCallId: String?
+    @Published var activeBotId: String?  // Meeting BaaS bot ID for kick/cancel
+    @Published var activeBotMeetingTitle: String?
+    @Published var activeBotProspectName: String?
+    @Published var pendingQuestionnaireCount: Int = 0
+    @Published var needsCalendarOnboarding: Bool = false
+    @Published var selectedSidebarItem: SidebarItem = .dashboard
+    @Published var showActiveCallView: Bool = false
+
+    // Post-call questionnaire state (triggered when bot call ends)
+    @Published var showBotPostCallQuestionnaire: Bool = false
+    @Published var botQuestionnaireCallId: String?
+    @Published var botQuestionnaireProspectName: String?
+
     // Services
     let audioService = AudioCaptureService()
     let webSocketService = StarscreamWebSocketService()  // Using Starscream for RFC 6455 compliance
@@ -168,6 +216,9 @@ class AppState: ObservableObject {
 
     // Messaging state
     let messagingState = MessagingState()
+
+    // Bot polling timer
+    private var botPollingTimer: Timer?
 
     // Timer for duration tracking
     private var durationTimer: Timer?
@@ -319,16 +370,47 @@ class AppState: ObservableObject {
             teamId: closerInfo.teamId,
             closerName: closerInfo.name
         )
+
+        // Check meeting bot status after login
+        await checkMeetingBotStatus()
     }
 
     func logout() {
         // Stop messaging polling
         messagingState.stopPolling()
 
+        // Stop bot polling
+        stopBotPolling()
+
         // Clear diagnostics service user info
         diagnosticsService.closerId = nil
         diagnosticsService.teamId = nil
         diagnosticsService.closerEmail = nil
+        diagnosticsService.meetingBotEnabled = false
+        diagnosticsService.botCallActive = false
+        diagnosticsService.activeBotCallId = nil
+        diagnosticsService.activeBotId = nil
+        diagnosticsService.activeBotMeetingTitle = nil
+        diagnosticsService.activeBotProspectName = nil
+        diagnosticsService.pendingQuestionnaireCount = 0
+        diagnosticsService.showingPostCallQuestionnaire = false
+        diagnosticsService.pollBotStatusActive = false
+
+        // Reset meeting bot state
+        meetingBotEnabled = false
+        UserDefaults.standard.removeObject(forKey: "meetingBotEnabled")
+        botCallActive = false
+        activeBotCallId = nil
+        activeBotId = nil
+        activeBotMeetingTitle = nil
+        activeBotProspectName = nil
+        pendingQuestionnaireCount = 0
+        needsCalendarOnboarding = false
+        selectedSidebarItem = .dashboard
+        showActiveCallView = false
+        showBotPostCallQuestionnaire = false
+        botQuestionnaireCallId = nil
+        botQuestionnaireProspectName = nil
 
         isAuthenticated = false
         closerInfo = nil
@@ -530,6 +612,146 @@ class AppState: ObservableObject {
 
         print("[AppState] Recording stopped")
     }
+
+    // MARK: - Meeting Bot
+
+    /// Check if the team has meeting bot enabled and start polling
+    func checkMeetingBotStatus() async {
+        guard let closer = closerInfo else { return }
+
+        do {
+            let enabled = try await convexService.isMeetingBotEnabled(teamId: closer.teamId)
+            self.meetingBotEnabled = enabled
+            UserDefaults.standard.set(enabled, forKey: "meetingBotEnabled")
+            diagnosticsService.meetingBotEnabled = enabled
+
+            if enabled {
+                // Check if closer needs calendar onboarding
+                let needsOnboarding = try await convexService.needsCalendarOnboarding(closerId: closer.closerId)
+                self.needsCalendarOnboarding = needsOnboarding
+
+                // Resize the window to full-screen hub size
+                DispatchQueue.main.async {
+                    if let mainWindow = NSApp.windows.first(where: {
+                        $0.contentView != nil &&
+                        !($0 is NSPanel) &&
+                        !["Ammo Tracker", "Training", "Role Play Room", "My Schedule", "Team Messages"].contains($0.title)
+                    }) {
+                        mainWindow.setContentSize(NSSize(width: 1200, height: 800))
+                        mainWindow.minSize = NSSize(width: 900, height: 600)
+                        mainWindow.center()
+                    }
+                }
+
+                // Start bot polling
+                startBotPolling()
+            }
+        } catch {
+            print("[AppState] Failed to check meeting bot status: \(error)")
+        }
+    }
+
+    /// Start polling for active bot calls every 10 seconds
+    func startBotPolling() {
+        guard botPollingTimer == nil else { return }
+
+        // Poll immediately
+        Task { await pollBotStatus() }
+
+        // Then poll every 10 seconds
+        botPollingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.pollBotStatus()
+            }
+        }
+        print("[AppState] Started bot polling")
+    }
+
+    /// Stop bot polling
+    func stopBotPolling() {
+        botPollingTimer?.invalidate()
+        botPollingTimer = nil
+        print("[AppState] Stopped bot polling")
+    }
+
+    /// Poll for active bot calls and pending questionnaires
+    private func pollBotStatus() async {
+        guard let closer = closerInfo else { return }
+
+        do {
+            // Check for active bot call
+            let activeBot = try await convexService.getActiveCallForCloserBot(closerId: closer.closerId)
+
+            let wasBotActive = botCallActive
+            let previousCallId = activeBotCallId
+            let previousProspectName = activeBotProspectName
+
+            if let bot = activeBot {
+                botCallActive = true
+                activeBotCallId = bot.callId
+                activeBotId = bot.botId
+                activeBotMeetingTitle = bot.meetingTitle
+                activeBotProspectName = bot.prospectName
+                showActiveCallView = true
+            } else {
+                botCallActive = false
+                activeBotCallId = nil
+                activeBotId = nil
+                activeBotMeetingTitle = nil
+                activeBotProspectName = nil
+
+                // If bot was active and now isn't, a call just ended
+                if wasBotActive {
+                    showActiveCallView = false
+
+                    // Trigger post-call questionnaire
+                    if let callId = previousCallId {
+                        botQuestionnaireCallId = callId
+                        botQuestionnaireProspectName = previousProspectName
+                        showBotPostCallQuestionnaire = true
+                    }
+
+                    // Send notification if app is in background
+                    sendBotCallEndedNotification()
+                }
+            }
+
+            // Check pending questionnaires
+            let pendingCount = try await convexService.getPendingQuestionnaireCount(closerId: closer.closerId)
+            self.pendingQuestionnaireCount = pendingCount
+
+            // Keep diagnostics service in sync
+            diagnosticsService.botCallActive = botCallActive
+            diagnosticsService.activeBotCallId = activeBotCallId
+            diagnosticsService.activeBotId = activeBotId
+            diagnosticsService.activeBotMeetingTitle = activeBotMeetingTitle
+            diagnosticsService.activeBotProspectName = activeBotProspectName
+            diagnosticsService.pendingQuestionnaireCount = pendingCount
+            diagnosticsService.showingPostCallQuestionnaire = showBotPostCallQuestionnaire
+            diagnosticsService.pollBotStatusActive = botPollingTimer != nil
+
+        } catch {
+            // Silent failure - polling will retry
+            print("[AppState] Bot poll error: \(error.localizedDescription)")
+        }
+    }
+
+    /// Send macOS notification when a bot call ends (app in background)
+    private func sendBotCallEndedNotification() {
+        guard !NSApp.isActive else { return } // Only notify if app is in background
+
+        let content = UNMutableNotificationContent()
+        content.title = "Call Ended"
+        content.body = "Your call with \(activeBotProspectName ?? "prospect") ended — how did it go?"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "botCallEnded-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
 }
 
 // MARK: - Models
@@ -563,5 +785,261 @@ enum RecordingState {
         case .recording: return .green
         case .error: return .red
         }
+    }
+}
+
+/// Info about an active bot call (returned from ConvexService)
+struct ActiveBotInfo {
+    let callId: String?
+    let meetingTitle: String?
+    let prospectName: String?
+    let botId: String
+    let status: String
+}
+
+// MARK: - Main Window Router
+
+/// Routes between legacy compact view (400x600) and new full-screen hub based on meetingBotEnabled flag
+struct MainWindowRouter: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        Group {
+            if !appState.isAuthenticated {
+                // Login view - same for both modes
+                ContentView()
+                    .frame(width: 400, height: 600)
+            } else if appState.meetingBotEnabled {
+                // Full-screen meeting bot hub with sidebar
+                MeetingBotHubView()
+            } else {
+                // Legacy compact recording view
+                ContentView()
+                    .frame(width: 400, height: 600)
+            }
+        }
+    }
+}
+
+// MARK: - Meeting Bot Hub (Full-Screen with Sidebar)
+
+/// The full-screen app layout with sidebar navigation for meeting bot mode
+struct MeetingBotHubView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var showQuickBotSheet = false
+
+    var body: some View {
+        ZStack {
+            // Main content with sidebar
+            NavigationSplitView {
+                // Sidebar
+                VStack(spacing: 0) {
+                    // Logo & User info
+                    VStack(spacing: 8) {
+                        Image("sequ3nce-logo")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 28)
+                            .padding(.top, 16)
+
+                        if let closer = appState.closerInfo {
+                            Text(closer.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text(closer.teamName)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.bottom, 16)
+
+                    Divider()
+
+                    // Navigation items
+                    VStack(spacing: 2) {
+                        ForEach(SidebarItem.allCases) { item in
+                            SidebarButton(
+                                item: item,
+                                isSelected: appState.selectedSidebarItem == item,
+                                badgeCount: badgeCount(for: item)
+                            ) {
+                                appState.selectedSidebarItem = item
+                                appState.showActiveCallView = false
+
+                                // Mark messages as read when switching to Messages tab
+                                if item == .messages {
+                                    appState.messagingState.openChatPanel()
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
+
+                    Spacer()
+
+                    // Sign Out
+                    HStack {
+                        Spacer()
+
+                        Button(action: {
+                            appState.logout()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    .font(.system(size: 12))
+                                Text("Sign Out")
+                                    .font(.system(size: 11))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                }
+                .frame(minWidth: 180, idealWidth: 200, maxWidth: 220)
+                .background(Color(NSColor.controlBackgroundColor))
+            } detail: {
+                // Main content area
+                VStack(spacing: 0) {
+                    // Top bar with Quick Bot button
+                    if !appState.showActiveCallView || !appState.botCallActive {
+                        HStack {
+                            Spacer()
+
+                            Button(action: {
+                                showQuickBotSheet = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 13))
+                                    Text("Quick Bot")
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(Color.black)
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 12)
+                        .padding(.bottom, 4)
+                    }
+
+                    // Content
+                    Group {
+                        if appState.showActiveCallView && appState.botCallActive {
+                            ActiveCallView()
+                        } else {
+                            switch appState.selectedSidebarItem {
+                            case .dashboard:
+                                DashboardView()
+                            case .stats:
+                                StatsView()
+                            case .calls:
+                                CallHistoryView()
+                            case .messages:
+                                InlineMessagesView(messagingState: appState.messagingState)
+                            case .training:
+                                TrainingView()
+                            case .settings:
+                                BotSettingsView()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationSplitViewStyle(.balanced)
+
+            // Post-call questionnaire overlay (triggered when bot call ends)
+            if appState.showBotPostCallQuestionnaire,
+               let callId = appState.botQuestionnaireCallId {
+                PostCallQuestionnaireView(
+                    callId: callId,
+                    initialProspectName: appState.botQuestionnaireProspectName ?? "",
+                    isPresented: $appState.showBotPostCallQuestionnaire,
+                    onComplete: {
+                        appState.showBotPostCallQuestionnaire = false
+                        appState.botQuestionnaireCallId = nil
+                        appState.botQuestionnaireProspectName = nil
+                    }
+                )
+                .transition(.opacity)
+            }
+
+            // Onboarding overlay (blocks everything until completed)
+            if appState.needsCalendarOnboarding {
+                BotOnboardingView()
+                    .transition(.opacity)
+            }
+        }
+        .frame(minWidth: 900, minHeight: 600)
+        .onAppear {
+            // Force light mode
+            NSApp.appearance = NSAppearance(named: .aqua)
+        }
+        .sheet(isPresented: $showQuickBotSheet) {
+            QuickBotSheet(isPresented: $showQuickBotSheet)
+                .environmentObject(appState)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowQuickBot"))) { _ in
+            showQuickBotSheet = true
+        }
+    }
+
+    private func badgeCount(for item: SidebarItem) -> Int {
+        switch item {
+        case .calls:
+            return appState.pendingQuestionnaireCount
+        case .messages:
+            return appState.messagingState.unreadCount
+        default:
+            return 0
+        }
+    }
+}
+
+// MARK: - Sidebar Button
+
+struct SidebarButton: View {
+    let item: SidebarItem
+    let isSelected: Bool
+    var badgeCount: Int = 0
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: item.iconName)
+                    .font(.system(size: 14))
+                    .frame(width: 20)
+                Text(item.rawValue)
+                    .font(.system(size: 13))
+                Spacer()
+                if badgeCount > 0 {
+                    Text("\(badgeCount)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.red)
+                        .cornerRadius(8)
+                }
+            }
+            .foregroundColor(isSelected ? .white : .primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? Color.black : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }

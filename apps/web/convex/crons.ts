@@ -17,4 +17,11 @@ crons.interval(
   internal.slack.checkCallMilestones
 );
 
+// Auto-schedule meeting bots for upcoming calendar events
+crons.interval(
+  "auto-schedule-meeting-bots",
+  { minutes: 15 },
+  api.meetingBot.autoScheduleBotsForAllClosers
+);
+
 export default crons;

@@ -53,6 +53,7 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Bot,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -670,6 +671,10 @@ export default function SettingsPage() {
   const updateDiscordNotificationChannel = useMutation(api.teams.updateDiscordNotificationChannel);
   const testDiscordWebhook = useAction(api.discord.testDiscordWebhook);
 
+  // Meeting Bot
+  const updateMeetingBotEnabled = useMutation(api.teams.updateMeetingBotEnabled);
+  const updateMeetingBotName = useMutation(api.teams.updateMeetingBotName);
+
   // Form state
   const [teamName, setTeamName] = useState("");
   const [userName, setUserName] = useState("");
@@ -715,6 +720,12 @@ export default function SettingsPage() {
   const [savingDiscordChannel, setSavingDiscordChannel] = useState<string | null>(null);
   const [testingDiscordWebhook, setTestingDiscordWebhook] = useState<string | null>(null);
   const [discordTestResults, setDiscordTestResults] = useState<{ [key: string]: { success: boolean; error?: string } | null }>({});
+
+  // Meeting Bot states
+  const [savingMeetingBot, setSavingMeetingBot] = useState(false);
+  const [meetingBotName, setMeetingBotName] = useState("");
+  const [savingBotName, setSavingBotName] = useState(false);
+  const [savedBotName, setSavedBotName] = useState(false);
 
   // Expand/collapse states for integration sections
   const [slackExpanded, setSlackExpanded] = useState(false);
@@ -783,6 +794,7 @@ export default function SettingsPage() {
       setCustomOutcomes(settings.team?.customOutcomes || []);
       setCustomCategories(settings.team?.customPlaybookCategories || []);
       setSlackWebhookUrl(settings.team?.slackWebhookUrl || "");
+      setMeetingBotName(settings.team?.meetingBotName || "Sequ3nce.ai");
     }
   }, [settings]);
 
@@ -1084,6 +1096,33 @@ export default function SettingsPage() {
       console.error("Failed to update notification channel:", error);
     } finally {
       setSavingNotificationChannel(null);
+    }
+  };
+
+  // Meeting Bot handlers
+  const handleToggleMeetingBot = async (enabled: boolean) => {
+    if (!clerkId) return;
+    setSavingMeetingBot(true);
+    try {
+      await updateMeetingBotEnabled({ clerkId, enabled });
+    } catch (error) {
+      console.error("Failed to toggle meeting bot:", error);
+    } finally {
+      setSavingMeetingBot(false);
+    }
+  };
+
+  const handleSaveBotName = async () => {
+    if (!clerkId || !meetingBotName.trim()) return;
+    setSavingBotName(true);
+    try {
+      await updateMeetingBotName({ clerkId, botName: meetingBotName });
+      setSavedBotName(true);
+      setTimeout(() => setSavedBotName(false), 2000);
+    } catch (error) {
+      console.error("Failed to save bot name:", error);
+    } finally {
+      setSavingBotName(false);
     }
   };
 
@@ -1782,6 +1821,63 @@ export default function SettingsPage() {
               icon={<User className="h-5 w-5 text-zinc-600" />}
               comingSoon
             />
+          </CardContent>
+        </Card>
+
+        {/* Meeting Bot (Beta) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              Meeting Bot
+              <Badge variant="secondary" className="text-xs">Beta</Badge>
+            </CardTitle>
+            <CardDescription>
+              Automatically record and analyze sales calls by having a bot join your team&apos;s video meetings
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Enable/Disable Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">Enable Meeting Bot</p>
+                <p className="text-sm text-muted-foreground">
+                  When enabled, bots will auto-join scheduled video calls for your team&apos;s closers
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {savingMeetingBot && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                <button
+                  onClick={() => handleToggleMeetingBot(!settings?.team?.meetingBotEnabled)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    settings?.team?.meetingBotEnabled ? "bg-green-600" : "bg-zinc-300"
+                  }`}
+                  disabled={savingMeetingBot}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      settings?.team?.meetingBotEnabled ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {settings?.team?.meetingBotEnabled && (
+              <>
+                {/* Info about what happens when enabled */}
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  <p className="font-medium mb-2">How it works:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Closers connect their calendar in the desktop app (one-time setup)</li>
+                    <li>Bots automatically join scheduled video calls (Zoom, Google Meet, Teams)</li>
+                    <li>Real-time coaching and transcription happen automatically</li>
+                    <li>Post-call questionnaire triggers when the meeting ends</li>
+                    <li>Video recordings are available in the dashboard</li>
+                  </ul>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

@@ -12,6 +12,20 @@ export interface CallMetadata {
   isReconnect?: boolean; // True if this is a reconnection attempt
 }
 
+// Meeting BaaS connection metadata (first message on /meetingbaas path)
+export interface MeetingBaasMetadata {
+  type: "meetingbaas";
+  botId: string;
+  meetingUrl: string;
+  closerId: string;
+  teamId: string;
+  prospectName?: string;
+  sampleRate?: number; // Audio sample rate (may differ from desktop's 48kHz)
+}
+
+// Source type for call handler - determines behavior differences
+export type CallSource = "closer" | "meetingbaas";
+
 export interface AmmoItem {
   text: string;
   type: "emotional" | "urgency" | "budget" | "commitment" | "objection_preview" | "pain_point";

@@ -3,5 +3,15 @@
 .vercel
 .env*.local
 
+# Playwright
+tests/.auth/
+test-results/
+playwright-report/
+
 # clerk configuration (can include secrets)
 /.clerk/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

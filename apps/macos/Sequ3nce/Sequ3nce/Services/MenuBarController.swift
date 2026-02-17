@@ -22,6 +22,8 @@ class MenuBarController {
     private var currentRecordingState: RecordingState = .idle
     private var currentIsAuthenticated: Bool = false
     private var currentRecordingDuration: TimeInterval = 0
+    private var currentMeetingBotEnabled: Bool = false
+    private var currentBotCallActive: Bool = false
 
     // Upcoming calendar events with meeting URLs (for submenu)
     private var upcomingMeetings: [CalendarEvent] = []
@@ -81,6 +83,23 @@ class MenuBarController {
                 if self?.currentRecordingState == .recording {
                     self?.rebuildMenu()
                 }
+            }
+            .store(in: &cancellables)
+
+        // Observe meeting bot state
+        appState.$meetingBotEnabled
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                self?.currentMeetingBotEnabled = enabled
+                self?.rebuildMenu()
+            }
+            .store(in: &cancellables)
+
+        appState.$botCallActive
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active in
+                self?.currentBotCallActive = active
+                self?.rebuildMenu()
             }
             .store(in: &cancellables)
 
@@ -166,72 +185,117 @@ class MenuBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Recording controls
-        if currentRecordingState == .recording {
-            // Duration display
-            let durationItem = NSMenuItem(
-                title: "● Recording: \(formatDuration(currentRecordingDuration))",
-                action: nil,
-                keyEquivalent: ""
-            )
-            durationItem.isEnabled = false
-            menu.addItem(durationItem)
+        if currentMeetingBotEnabled && currentIsAuthenticated {
+            // --- MEETING BOT MODE MENU ---
 
-            // Stop Recording
-            let stopItem = NSMenuItem(title: "Stop Recording", action: #selector(stopRecording), keyEquivalent: "")
-            stopItem.target = self
-            menu.addItem(stopItem)
-        } else if currentRecordingState == .connecting {
-            let connectingItem = NSMenuItem(title: "Connecting...", action: nil, keyEquivalent: "")
-            connectingItem.isEnabled = false
-            menu.addItem(connectingItem)
-        } else if currentIsAuthenticated {
-            // Join Meeting submenu (if there are meetings with URLs)
+            // Bot status
+            if currentBotCallActive {
+                let activeItem = NSMenuItem(title: "● Bot Recording", action: nil, keyEquivalent: "")
+                activeItem.isEnabled = false
+                menu.addItem(activeItem)
+            } else {
+                let readyItem = NSMenuItem(title: "Bot Ready", action: nil, keyEquivalent: "")
+                readyItem.isEnabled = false
+                menu.addItem(readyItem)
+            }
+
+            menu.addItem(NSMenuItem.separator())
+
+            // Quick Bot
+            let quickBotItem = NSMenuItem(title: "Quick Bot...", action: #selector(showQuickBot), keyEquivalent: "")
+            quickBotItem.target = self
+            menu.addItem(quickBotItem)
+
+            // Upcoming calls (if there are meetings)
             if !upcomingMeetings.isEmpty {
-                let joinSubmenu = NSMenu()
+                menu.addItem(NSMenuItem.separator())
+                let upcomingHeader = NSMenuItem(title: "Upcoming Calls", action: nil, keyEquivalent: "")
+                upcomingHeader.isEnabled = false
+                menu.addItem(upcomingHeader)
 
-                for (index, meeting) in upcomingMeetings.prefix(5).enumerated() {
+                for meeting in upcomingMeetings.prefix(5) {
                     let timeLabel = formatTimeUntilMeeting(meeting)
                     let truncatedTitle = meeting.title.count > 30
                         ? String(meeting.title.prefix(30)) + "..."
                         : meeting.title
-
                     let meetingItem = NSMenuItem(
-                        title: "\(truncatedTitle) (\(timeLabel))",
-                        action: #selector(joinMeetingAtIndex(_:)),
+                        title: "  \(truncatedTitle) (\(timeLabel))",
+                        action: nil,
                         keyEquivalent: ""
                     )
-                    meetingItem.target = self
-                    meetingItem.tag = index
-                    joinSubmenu.addItem(meetingItem)
+                    meetingItem.isEnabled = false
+                    menu.addItem(meetingItem)
+                }
+            }
+
+            menu.addItem(NSMenuItem.separator())
+        } else {
+            // --- LEGACY MODE MENU ---
+
+            // Recording controls
+            if currentRecordingState == .recording {
+                let durationItem = NSMenuItem(
+                    title: "● Recording: \(formatDuration(currentRecordingDuration))",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                durationItem.isEnabled = false
+                menu.addItem(durationItem)
+
+                let stopItem = NSMenuItem(title: "Stop Recording", action: #selector(stopRecording), keyEquivalent: "")
+                stopItem.target = self
+                menu.addItem(stopItem)
+            } else if currentRecordingState == .connecting {
+                let connectingItem = NSMenuItem(title: "Connecting...", action: nil, keyEquivalent: "")
+                connectingItem.isEnabled = false
+                menu.addItem(connectingItem)
+            } else if currentIsAuthenticated {
+                // Join Meeting submenu
+                if !upcomingMeetings.isEmpty {
+                    let joinSubmenu = NSMenu()
+
+                    for (index, meeting) in upcomingMeetings.prefix(5).enumerated() {
+                        let timeLabel = formatTimeUntilMeeting(meeting)
+                        let truncatedTitle = meeting.title.count > 30
+                            ? String(meeting.title.prefix(30)) + "..."
+                            : meeting.title
+
+                        let meetingItem = NSMenuItem(
+                            title: "\(truncatedTitle) (\(timeLabel))",
+                            action: #selector(joinMeetingAtIndex(_:)),
+                            keyEquivalent: ""
+                        )
+                        meetingItem.target = self
+                        meetingItem.tag = index
+                        joinSubmenu.addItem(meetingItem)
+                    }
+
+                    let joinItem = NSMenuItem(title: "Join Meeting", action: nil, keyEquivalent: "")
+                    joinItem.submenu = joinSubmenu
+                    menu.addItem(joinItem)
+
+                    menu.addItem(NSMenuItem.separator())
                 }
 
-                let joinItem = NSMenuItem(title: "Join Meeting", action: nil, keyEquivalent: "")
-                joinItem.submenu = joinSubmenu
-                menu.addItem(joinItem)
+                let startItem = NSMenuItem(title: "Start Recording", action: #selector(startRecording), keyEquivalent: "")
+                startItem.target = self
+                menu.addItem(startItem)
+            }
+
+            menu.addItem(NSMenuItem.separator())
+
+            // Quick access (legacy mode only)
+            if currentIsAuthenticated {
+                let ammoItem = NSMenuItem(title: "Open Ammo Panel", action: #selector(openAmmoPanel), keyEquivalent: "")
+                ammoItem.target = self
+                menu.addItem(ammoItem)
+
+                let scheduleItem = NSMenuItem(title: "My Schedule", action: #selector(openSchedule), keyEquivalent: "")
+                scheduleItem.target = self
+                menu.addItem(scheduleItem)
 
                 menu.addItem(NSMenuItem.separator())
             }
-
-            // Start Recording (for ad-hoc recordings)
-            let startItem = NSMenuItem(title: "Start Recording", action: #selector(startRecording), keyEquivalent: "")
-            startItem.target = self
-            menu.addItem(startItem)
-        }
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Quick access (authenticated only)
-        if currentIsAuthenticated {
-            let ammoItem = NSMenuItem(title: "Open Ammo Panel", action: #selector(openAmmoPanel), keyEquivalent: "")
-            ammoItem.target = self
-            menu.addItem(ammoItem)
-
-            let scheduleItem = NSMenuItem(title: "My Schedule", action: #selector(openSchedule), keyEquivalent: "")
-            scheduleItem.target = self
-            menu.addItem(scheduleItem)
-
-            menu.addItem(NSMenuItem.separator())
         }
 
         // Check for Updates
@@ -272,6 +336,12 @@ class MenuBarController {
                 window.makeKeyAndOrderFront(nil)
             }
         }
+    }
+
+    @objc func showQuickBot() {
+        showMainWindow()
+        // The main window will show the Quick Bot sheet
+        NotificationCenter.default.post(name: Notification.Name("ShowQuickBot"), object: nil)
     }
 
     @objc func startRecording() {

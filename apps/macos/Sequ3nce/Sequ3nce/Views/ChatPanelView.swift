@@ -244,6 +244,189 @@ struct ComposeMessageView: View {
     }
 }
 
+// MARK: - Inline Messages View (for sidebar tab)
+
+/// Full-size messages view displayed inline in the main content area
+struct InlineMessagesView: View {
+    @ObservedObject var messagingState: MessagingState
+    @State private var messageText: String = ""
+    @FocusState private var isTextFieldFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Team Messages")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.black)
+
+                Spacer()
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            // Messages area
+            if messagingState.messages.isEmpty {
+                VStack(spacing: 16) {
+                    Spacer()
+
+                    Image(systemName: "message")
+                        .font(.system(size: 48))
+                        .foregroundColor(Color(white: 0.75))
+
+                    Text("No messages yet")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(Color(white: 0.5))
+
+                    Text("Messages from your manager will appear here.\nYou can also send messages to your team.")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(white: 0.6))
+                        .multilineTextAlignment(.center)
+
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            ForEach(messagingState.messages) { message in
+                                InlineMessageBubble(message: message)
+                                    .id(message.id)
+                            }
+                        }
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 16)
+                    }
+                    .onChange(of: messagingState.messages.count) {
+                        if let lastMessage = messagingState.messages.last {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onAppear {
+                        if let lastMessage = messagingState.messages.last {
+                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            // Compose area
+            HStack(spacing: 12) {
+                TextField("Type a message...", text: $messageText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(white: 0.97))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(white: 0.9), lineWidth: 1)
+                    )
+                    .onSubmit {
+                        if canSend { sendMessage() }
+                    }
+                    .focused($isTextFieldFocused)
+
+                Button(action: sendMessage) {
+                    if messagingState.isSendingMessage {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 40, height: 40)
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(canSend ? .white : Color(white: 0.6))
+                            .frame(width: 40, height: 40)
+                            .background(canSend ? Color.black : Color(white: 0.92))
+                            .cornerRadius(10)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 16)
+
+            // Error message
+            if let error = messagingState.sendError {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 8)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white)
+        .onAppear {
+            messagingState.openChatPanel()
+            isTextFieldFocused = true
+        }
+        .onDisappear {
+            messagingState.closeChatPanel()
+        }
+    }
+
+    private var canSend: Bool {
+        !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !messagingState.isSendingMessage
+    }
+
+    private func sendMessage() {
+        let text = messageText
+        messageText = ""
+        Task {
+            await messagingState.sendMessage(text)
+        }
+    }
+}
+
+/// Wider message bubble for the inline view
+struct InlineMessageBubble: View {
+    let message: ChatMessage
+
+    var body: some View {
+        HStack {
+            if message.isFromMe {
+                Spacer(minLength: 120)
+            }
+
+            VStack(alignment: message.isFromMe ? .trailing : .leading, spacing: 4) {
+                if !message.isFromMe {
+                    Text(message.senderName)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color(white: 0.5))
+                }
+
+                Text(message.message)
+                    .font(.system(size: 14))
+                    .foregroundColor(message.isFromMe ? .white : .black)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(message.isFromMe ? Color.black : Color(white: 0.95))
+                    )
+
+                Text(message.timeString)
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(white: 0.6))
+            }
+
+            if !message.isFromMe {
+                Spacer(minLength: 120)
+            }
+        }
+    }
+}
+
 #Preview {
     ChatPanelView(messagingState: MessagingState())
 }

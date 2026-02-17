@@ -17,6 +17,8 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   return inputHash === hash;
 }
 
+
+
 // Update lastSeenAt timestamp when closer's app polls for messages
 // Called from HTTP endpoint to track "last active" status
 export const updateLastSeenAt = internalMutation({
@@ -373,6 +375,7 @@ interface CloserStats {
   name: string;
   email: string;
   status: string;
+  calendarProvider?: string;
 
   // Primary stats
   closeRate: number; // percentage
@@ -650,6 +653,7 @@ export const getCloserStats = query({
         name: closer.name,
         email: closer.email,
         status: closer.status,
+        calendarProvider: closer.calendarProvider,
         closeRate,
         cashCollected,
         callsTaken,

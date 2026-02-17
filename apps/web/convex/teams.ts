@@ -333,6 +333,58 @@ export const updateDiscordNotificationChannel = mutation({
   },
 });
 
+// Toggle meeting bot feature flag for the team
+export const updateMeetingBotEnabled = mutation({
+  args: {
+    clerkId: v.string(),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (user.role !== "admin") {
+      throw new Error("Only admins can toggle meeting bot");
+    }
+
+    await ctx.db.patch(user.teamId, { meetingBotEnabled: args.enabled });
+
+    return { success: true };
+  },
+});
+
+// Update meeting bot display name
+export const updateMeetingBotName = mutation({
+  args: {
+    clerkId: v.string(),
+    botName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (user.role !== "admin") {
+      throw new Error("Only admins can update bot name");
+    }
+
+    await ctx.db.patch(user.teamId, { meetingBotName: args.botName.trim() });
+
+    return { success: true };
+  },
+});
+
 // Get full settings data
 export const getSettings = query({
   args: { clerkId: v.string() },
@@ -389,6 +441,9 @@ export const getSettings = query({
         discordConnected: !!hasAnyDiscordWebhook,
         discordConnectedAt: team.discordConnectedAt,
         discordNotificationChannels: team.discordNotificationChannels,
+        // Meeting Bot
+        meetingBotEnabled: team.meetingBotEnabled,
+        meetingBotName: team.meetingBotName,
       } : null,
     };
   },

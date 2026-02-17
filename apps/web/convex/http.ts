@@ -3097,4 +3097,783 @@ http.route({
   }),
 });
 
+// ============================================
+// MEETING BAAS WEBHOOK HANDLER
+// ============================================
+
+http.route({
+  path: "/webhooks/meetingbaas",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error("[webhook] Failed to parse body:", error);
+      return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const eventType = body.event || body.type;
+    const botData = body.data || body;
+    const meetingBaasId = botData.bot_id || botData.id;
+
+    if (!meetingBaasId) {
+      console.error("[webhook] No bot ID in payload:", JSON.stringify(body));
+      return new Response(JSON.stringify({ error: "Missing bot ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`[webhook] Event: ${eventType} for bot: ${meetingBaasId}`);
+
+    try {
+      switch (eventType) {
+        case "bot.joining": {
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            meetingBaasId,
+            status: "joining",
+          });
+          break;
+        }
+
+        case "bot.in_call": {
+          // Update bot status to active
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            meetingBaasId,
+            status: "active",
+            joinedAt: Date.now(),
+          });
+
+          // Get bot record to create a call
+          const botRecord = await ctx.runQuery(api.meetingBot.getBotByMeetingBaasId, {
+            meetingBaasId,
+          });
+
+          if (botRecord) {
+            // Create a call record
+            const callId = await ctx.runMutation(api.meetingBot.createCallFromBot, {
+              closerId: botRecord.closerId,
+              teamId: botRecord.teamId,
+              meetingBotId: botRecord._id,
+              prospectName: botRecord.prospectName,
+            });
+
+            // Link call back to bot
+            await ctx.runMutation(api.meetingBot.updateBotStatus, {
+              meetingBaasId,
+              callId,
+            });
+
+            console.log(`[webhook] Bot in call. Created call: ${callId}`);
+          }
+          break;
+        }
+
+        case "bot.recording": {
+          console.log(`[webhook] Bot recording: ${meetingBaasId}`);
+          break;
+        }
+
+        case "bot.completed": {
+          const recordingUrl = botData.recording_url || botData.mp4_url || botData.video_url;
+          const recordingDuration = botData.recording_duration || botData.duration;
+          const endedAt = Date.now();
+
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            meetingBaasId,
+            status: "completed",
+            endedAt,
+            recordingUrl,
+            recordingDuration,
+            questionnaireCompleted: false,
+          });
+
+          // Complete linked call
+          const completedBot = await ctx.runQuery(api.meetingBot.getBotByMeetingBaasId, {
+            meetingBaasId,
+          });
+
+          if (completedBot?.callId) {
+            await ctx.runMutation(api.meetingBot.completeCallFromBot, {
+              callId: completedBot.callId,
+              endedAt,
+              recordingUrl,
+              duration: recordingDuration,
+            });
+          }
+          break;
+        }
+
+        case "bot.failed": {
+          const failureReason = botData.error || botData.failure_reason || botData.message || "Unknown failure";
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            meetingBaasId,
+            status: "failed",
+            failureReason,
+          });
+          console.error(`[webhook] Bot failed: ${meetingBaasId}, reason: ${failureReason}`);
+          break;
+        }
+
+        case "bot.left": {
+          const leftBot = await ctx.runQuery(api.meetingBot.getBotByMeetingBaasId, {
+            meetingBaasId,
+          });
+
+          if (leftBot && leftBot.status !== "completed") {
+            const wasKicked = botData.reason === "kicked" || botData.kicked === true;
+            await ctx.runMutation(api.meetingBot.updateBotStatus, {
+              meetingBaasId,
+              status: wasKicked ? "kicked" : "completed",
+              endedAt: Date.now(),
+            });
+
+            if (leftBot.callId) {
+              await ctx.runMutation(api.meetingBot.completeCallFromBot, {
+                callId: leftBot.callId,
+                endedAt: Date.now(),
+              });
+            }
+          }
+          break;
+        }
+
+        default: {
+          console.log(`[webhook] Unhandled event: ${eventType}`);
+        }
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error(`[webhook] Error processing ${eventType}:`, error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/webhooks/meetingbaas",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, x-meeting-baas-api-key",
+      },
+    });
+  }),
+});
+
+// ============================================
+// MEETING BOT HTTP ROUTES
+// ============================================
+
+// Check if team has meeting bot enabled
+http.route({
+  path: "/isMeetingBotEnabled",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const teamId = body.teamId;
+
+      if (!teamId) {
+        return new Response(JSON.stringify({ error: "teamId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const enabled = await ctx.runQuery(api.meetingBot.isMeetingBotEnabled, {
+        teamId: teamId as Id<"teams">,
+      });
+
+      return new Response(JSON.stringify({ enabled }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in isMeetingBotEnabled:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/isMeetingBotEnabled",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Check if closer needs calendar onboarding
+http.route({
+  path: "/needsCalendarOnboarding",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const closerId = body.closerId;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const needsOnboarding = await ctx.runQuery(api.meetingBot.needsCalendarOnboarding, {
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify({ needsOnboarding }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in needsCalendarOnboarding:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/needsCalendarOnboarding",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get active bot call for closer
+http.route({
+  path: "/getActiveCallForCloserBot",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const closerId = body.closerId;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runQuery(api.meetingBot.getActiveCallForCloserBot, {
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getActiveCallForCloserBot:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getActiveCallForCloserBot",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get pending questionnaire count for closer
+http.route({
+  path: "/getPendingQuestionnaireCount",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const closerId = body.closerId;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const pendingBots = await ctx.runQuery(api.meetingBot.getPendingQuestionnaires, {
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify({ count: pendingBots.length }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getPendingQuestionnaireCount:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getPendingQuestionnaireCount",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get upcoming bots for closer
+http.route({
+  path: "/getUpcomingBotsForCloser",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const closerId = body.closerId;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const bots = await ctx.runQuery(api.meetingBot.getUpcomingBots, {
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify({ bots }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getUpcomingBotsForCloser:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getUpcomingBotsForCloser",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Cancel/kick a bot
+http.route({
+  path: "/cancelBot",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const botId = body.botId;
+
+      if (!botId) {
+        return new Response(JSON.stringify({ error: "botId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runAction(api.meetingBot.cancelBot, {
+        botId: botId as Id<"meetingBots">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in cancelBot:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/cancelBot",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Create a quick bot (ad-hoc meeting)
+http.route({
+  path: "/createQuickBot",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { meetingUrl, closerId, teamId, prospectName } = body;
+
+      if (!meetingUrl || !closerId || !teamId) {
+        return new Response(JSON.stringify({ error: "meetingUrl, closerId, and teamId are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runAction(api.meetingBot.createQuickBot, {
+        meetingUrl,
+        closerId: closerId as Id<"closers">,
+        teamId: teamId as Id<"teams">,
+        prospectName: prospectName || undefined,
+      });
+
+      return new Response(JSON.stringify({ success: true, botId: result.botId }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in createQuickBot:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/createQuickBot",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Exclude a calendar event from bot auto-join
+http.route({
+  path: "/excludeCalendarEvent",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, calendarEventId, eventTitle } = body;
+
+      if (!closerId || !calendarEventId) {
+        return new Response(JSON.stringify({ error: "closerId and calendarEventId are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      await ctx.runMutation(api.meetingBot.excludeCalendarEvent, {
+        closerId: closerId as Id<"closers">,
+        calendarEventId,
+        eventTitle: eventTitle || undefined,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in excludeCalendarEvent:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/excludeCalendarEvent",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get closer dashboard stats
+http.route({
+  path: "/getCloserStats",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, period } = body;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const stats = await ctx.runQuery(api.meetingBot.getCloserDashboardStats, {
+        closerId: closerId as Id<"closers">,
+        period: period || "week",
+      });
+
+      return new Response(JSON.stringify(stats), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getCloserStats:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCloserStats",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Mark calendar onboarding as completed
+http.route({
+  path: "/markOnboardingCompleted",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const closerId = body.closerId;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      await ctx.runMutation(api.calendarOAuth.markOnboardingCompleted, {
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in markOnboardingCompleted:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/markOnboardingCompleted",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Save meeting platform preference
+http.route({
+  path: "/saveMeetingPlatform",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, platform } = body;
+
+      if (!closerId || !platform) {
+        return new Response(JSON.stringify({ error: "closerId and platform are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      await ctx.runMutation(api.meetingBot.saveMeetingPlatform, {
+        closerId: closerId as Id<"closers">,
+        platform,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in saveMeetingPlatform:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/saveMeetingPlatform",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get call history for closer
+http.route({
+  path: "/getCallHistory",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, limit } = body;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const calls = await ctx.runQuery(api.meetingBot.getCallHistoryForCloser, {
+        closerId: closerId as Id<"closers">,
+        limit: typeof limit === "number" ? limit : undefined,
+      });
+
+      return new Response(JSON.stringify({ calls }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getCallHistory:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCallHistory",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

@@ -13,6 +13,7 @@ import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
 import type * as billing from "../billing.js";
 import type * as calendar from "../calendar.js";
+import type * as calendarOAuth from "../calendarOAuth.js";
 import type * as calendly from "../calendly.js";
 import type * as calls from "../calls.js";
 import type * as clientErrors from "../clientErrors.js";
@@ -24,12 +25,14 @@ import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
 import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
+import type * as meetingBot from "../meetingBot.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
 import type * as slack from "../slack.js";
 import type * as teams from "../teams.js";
 import type * as trainingPlaylists from "../trainingPlaylists.js";
+import type * as zoomOAuth from "../zoomOAuth.js";
 
 import type {
   ApiFromModules,
@@ -43,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   billing: typeof billing;
   calendar: typeof calendar;
+  calendarOAuth: typeof calendarOAuth;
   calendly: typeof calendly;
   calls: typeof calls;
   clientErrors: typeof clientErrors;
@@ -54,12 +58,14 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
+  meetingBot: typeof meetingBot;
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
   slack: typeof slack;
   teams: typeof teams;
   trainingPlaylists: typeof trainingPlaylists;
+  zoomOAuth: typeof zoomOAuth;
 }>;
 
 /**

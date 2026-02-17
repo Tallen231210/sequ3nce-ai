@@ -42,6 +42,12 @@ wss.on("connection", async (ws, req) => {
     return;
   }
 
+  // Check if this is a Meeting BaaS connection (path: /meetingbaas)
+  if (url.pathname === "/meetingbaas") {
+    handleMeetingBaasConnection(ws, req);
+    return;
+  }
+
   // This is a closer connection (existing flow)
   let callHandler: CallHandler | null = null;
   let isInitialized = false;
@@ -220,6 +226,138 @@ wss.on("connection", async (ws, req) => {
 });
 
 // ============================================
+// MEETING BAAS CONNECTION HANDLER
+// ============================================
+
+/**
+ * Handle a Meeting BaaS bot connecting to stream audio from a meeting.
+ *
+ * Meeting BaaS connects to our streaming URL and sends:
+ * - Binary messages: raw PCM audio chunks
+ * - JSON arrays: speaker metadata ([{ name, id, timestamp, isSpeaking }])
+ * - JSON objects: heartbeat/control messages
+ *
+ * Metadata (botId, closerId, teamId) is extracted from URL query parameters
+ * set when creating the bot via the Meeting BaaS API.
+ */
+function handleMeetingBaasConnection(ws: WebSocket, req: import("http").IncomingMessage): void {
+  logger.info(`[MeetingBaaS] New bot connection`);
+
+  // Extract metadata from URL query parameters
+  const url = new URL(req.url || "/", `wss://${req.headers.host || "localhost"}`);
+  const botId = url.searchParams.get("botId");
+  const closerId = url.searchParams.get("closerId");
+  const teamId = url.searchParams.get("teamId");
+  const prospectName = url.searchParams.get("prospectName");
+
+  if (!botId || !closerId || !teamId) {
+    logger.error(`[MeetingBaaS] Missing required query params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}`);
+    ws.close();
+    return;
+  }
+
+  logger.info(`[MeetingBaaS] Connection params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}, prospectName: ${prospectName || "unknown"}`);
+
+  // Create CallHandler immediately with metadata from URL params
+  const callMetadata: CallMetadata = {
+    callId: botId,
+    teamId,
+    closerId,
+    prospectName: prospectName || undefined,
+    sampleRate: 16000, // Meeting BaaS typically sends 16kHz
+  };
+
+  const callHandler = new CallHandler(callMetadata, {
+    source: "meetingbaas",
+    recordingType: "video",
+  });
+
+  activeCalls.set(ws, callHandler);
+  connectionVisitorCallIds.set(ws, botId);
+
+  // Start the call handler (creates Convex call record, connects to Speechmatics, etc.)
+  callHandler.start()
+    .then((convexCallId) => {
+      logger.info(`[MeetingBaaS] Call initialized: botId=${botId}, Convex ID: ${convexCallId}`);
+
+      // Create live stream record if team has live streaming enabled
+      createLiveStream(convexCallId!, botId, teamId, closerId)
+        .then((streamId) => {
+          if (streamId) {
+            logger.info(`[MeetingBaaS] Live stream created for bot ${botId}`);
+          }
+        })
+        .catch((err) => {
+          logger.error(`[MeetingBaaS] Failed to create live stream: ${err}`);
+        });
+    })
+    .catch((err) => {
+      logger.error(`[MeetingBaaS] Failed to start call handler: ${err}`);
+    });
+
+  ws.on("message", async (data, isBinary) => {
+    try {
+      if (isBinary) {
+        // Binary data is raw PCM audio from Meeting BaaS
+        const audioBuffer = Buffer.from(data as Buffer);
+        callHandler.processAudio(audioBuffer);
+
+        // Broadcast audio to any connected listeners (managers)
+        if (liveRelay.hasListeners(botId)) {
+          liveRelay.broadcastAudio(botId, audioBuffer);
+        }
+      } else {
+        // Text messages from Meeting BaaS
+        const message = data.toString();
+        try {
+          const parsed = JSON.parse(message);
+
+          if (Array.isArray(parsed)) {
+            // Speaker metadata array: [{ name, id, timestamp, isSpeaking }]
+            // Used for speaker diarization - log for now
+            logger.info(`[MeetingBaaS] Speaker update: ${JSON.stringify(parsed)}`);
+          } else if (parsed.type === "heartbeat" || parsed.type === "ping") {
+            ws.send(JSON.stringify({ type: "heartbeat_ack" }));
+          } else if (parsed.type === "end") {
+            logger.info(`[MeetingBaaS] Received end command`);
+            await callHandler.end();
+            ws.send(JSON.stringify({ status: "ended", stats: callHandler.getStats() }));
+          } else {
+            logger.info(`[MeetingBaaS] Received message: ${message}`);
+          }
+        } catch {
+          // Non-JSON text message - log and ignore
+          logger.info(`[MeetingBaaS] Non-JSON message: ${message}`);
+        }
+      }
+    } catch (error) {
+      logger.error("[MeetingBaaS] Error processing message", error);
+    }
+  });
+
+  ws.on("close", async () => {
+    logger.info("[MeetingBaaS] Bot connection closed (bot left meeting)");
+
+    const handler = activeCalls.get(ws);
+    if (handler) {
+      await handler.end();
+      activeCalls.delete(ws);
+    }
+
+    // End live stream and notify any listeners
+    liveRelay.notifyCallEnded(botId);
+    endLiveStream(botId).catch((err) => {
+      logger.error(`[MeetingBaaS] Failed to end live stream: ${err}`);
+    });
+    connectionVisitorCallIds.delete(ws);
+  });
+
+  ws.on("error", (error) => {
+    logger.error("[MeetingBaaS] WebSocket error", error);
+  });
+}
+
+// ============================================
 // MANAGER LISTENER CONNECTION HANDLER
 // ============================================
 
@@ -338,9 +476,15 @@ process.on("SIGINT", async () => {
 
 // Health check endpoint info
 logger.info("Service ready. Protocol:");
-logger.info("1. Connect via WebSocket to ws://localhost:" + PORT);
-logger.info("2. Send JSON metadata: { callId, teamId, closerId, prospectName? }");
-logger.info("3. Receive { status: 'ready' } confirmation");
-logger.info("4. Stream binary audio data");
-logger.info("5. Send { type: 'end' } when call ends");
-logger.info("6. Receive { status: 'ended', stats } confirmation");
+logger.info("  Closer (desktop app):");
+logger.info("    1. Connect via WebSocket to ws://localhost:" + PORT);
+logger.info("    2. Send JSON metadata: { callId, teamId, closerId, prospectName? }");
+logger.info("    3. Receive { status: 'ready' } confirmation");
+logger.info("    4. Stream binary audio data (48kHz stereo PCM)");
+logger.info("    5. Send { type: 'end' } when call ends");
+logger.info("  Meeting BaaS (bot):");
+logger.info("    1. Connect via WebSocket to ws://localhost:" + PORT + "/meetingbaas");
+logger.info("    2. Send JSON metadata: { type: 'meetingbaas', botId, meetingUrl, closerId, teamId }");
+logger.info("    3. Receive { status: 'ready' } confirmation");
+logger.info("    4. Stream binary audio data");
+logger.info("    5. Connection close = bot left meeting");

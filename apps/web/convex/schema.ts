@@ -27,6 +27,9 @@ export default defineSchema({
     calendlyLastSyncAt: v.optional(v.number()), // Last sync timestamp
     // Ammo V2 feature flag
     ammoV2Enabled: v.optional(v.boolean()), // Enable AI-powered real-time ammo analysis
+    // Meeting Bot feature flag
+    meetingBotEnabled: v.optional(v.boolean()), // Enable meeting bot auto-join via Meeting BaaS
+    meetingBotName: v.optional(v.string()), // Configurable bot display name (what other participants see)
     // Beta features array - for staged rollout of new features
     // e.g., ["liveStreaming", "aiCoaching", "advancedAnalytics"]
     betaFeatures: v.optional(v.array(v.string())),
@@ -138,6 +141,17 @@ export default defineSchema({
     calendarConnected: v.optional(v.boolean()), // Legacy field - kept for backward compatibility
     calendarConnectedAt: v.optional(v.number()), // When calendar was connected
     calendarLastSyncAt: v.optional(v.number()), // Last successful sync timestamp
+    // Meeting Bot calendar OAuth integration
+    googleCalendarRefreshToken: v.optional(v.string()), // Google Calendar OAuth refresh token
+    microsoftCalendarRefreshToken: v.optional(v.string()), // Microsoft/Outlook OAuth refresh token
+    calendarProvider: v.optional(v.string()), // "google" | "microsoft"
+    meetingBaasCalendarId: v.optional(v.string()), // Meeting BaaS calendar integration ID
+    calendarOnboardingCompleted: v.optional(v.boolean()), // Whether closer completed bot onboarding
+    meetingPlatform: v.optional(v.string()), // "google_meet" | "zoom" | "microsoft_teams"
+    // Zoom OAuth (mandatory for OBF compliance)
+    zoomAccessToken: v.optional(v.string()), // Zoom OAuth access token
+    zoomRefreshToken: v.optional(v.string()), // Zoom OAuth refresh token
+    zoomConnectedAt: v.optional(v.number()), // When Zoom was connected
     invitedAt: v.number(),
     activatedAt: v.optional(v.number()),
     lastLoginAt: v.optional(v.number()), // Track last desktop app login
@@ -198,8 +212,10 @@ export default defineSchema({
     endedAt: v.optional(v.number()),
     duration: v.optional(v.number()), // In seconds
     speakerCount: v.number(), // 1 = waiting, 2+ = on call
-    recordingUrl: v.optional(v.string()), // S3 URL
+    recordingUrl: v.optional(v.string()), // S3 URL or Meeting BaaS video URL
+    recordingType: v.optional(v.string()), // "audio" (legacy desktop) | "video" (meeting bot)
     transcriptText: v.optional(v.string()), // Full transcript
+    meetingBotId: v.optional(v.id("meetingBots")), // Link to meeting bot that recorded this call
     // Talk-to-listen ratio (from Deepgram speaker diarization)
     closerTalkTime: v.optional(v.number()), // Closer talk time in seconds
     prospectTalkTime: v.optional(v.number()), // Prospect talk time in seconds
@@ -651,4 +667,43 @@ export default defineSchema({
   })
     .index("by_call_and_type", ["callId", "type"])
     .index("by_team", ["teamId"]),
+
+  // Meeting Bots (bots that auto-join video calls via Meeting BaaS)
+  meetingBots: defineTable({
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    callId: v.optional(v.id("calls")), // Created when bot joins and call record is made
+    meetingBaasId: v.optional(v.string()), // Meeting BaaS bot ID
+    meetingUrl: v.string(), // Zoom/Meet/Teams URL
+    meetingTitle: v.optional(v.string()), // From calendar event
+    prospectName: v.optional(v.string()), // Auto-populated from calendar or manual entry
+    status: v.string(), // "scheduled" | "joining" | "active" | "completed" | "failed" | "cancelled" | "kicked"
+    scheduledAt: v.optional(v.number()), // When the meeting is scheduled to start
+    joinedAt: v.optional(v.number()), // When bot actually joined
+    endedAt: v.optional(v.number()), // When bot left/call ended
+    calendarEventId: v.optional(v.string()), // Link to calendar event UID
+    recordingUrl: v.optional(v.string()), // Meeting BaaS video recording URL
+    recordingDuration: v.optional(v.number()), // Duration in seconds
+    questionnaireCompleted: v.optional(v.boolean()), // Whether closer filled post-call form
+    source: v.string(), // "calendar" | "quick_bot"
+    failureReason: v.optional(v.string()), // Why the bot failed (if status === "failed")
+    createdAt: v.number(),
+  })
+    .index("by_closer", ["closerId"])
+    .index("by_team", ["teamId"])
+    .index("by_closer_and_status", ["closerId", "status"])
+    .index("by_team_and_status", ["teamId", "status"])
+    .index("by_meeting_baas_id", ["meetingBaasId"])
+    .index("by_calendar_event", ["calendarEventId"]),
+
+  // Excluded Calendar Events (events the closer marked as "not a sales call")
+  excludedCalendarEvents: defineTable({
+    closerId: v.id("closers"),
+    calendarEventId: v.string(), // Calendar event UID
+    eventTitle: v.optional(v.string()), // For display
+    isRecurring: v.optional(v.boolean()), // If true, exclude all instances
+    createdAt: v.number(),
+  })
+    .index("by_closer", ["closerId"])
+    .index("by_closer_and_event", ["closerId", "calendarEventId"]),
 });

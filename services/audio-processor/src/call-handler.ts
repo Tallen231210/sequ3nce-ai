@@ -18,7 +18,7 @@ import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
 import { AmmoAnalyzer, type AmmoV2Analysis } from "./ammoAnalyzer.js";
 import { logger } from "./logger.js";
-import type { CallMetadata, CallSession, TranscriptChunk, AmmoConfig } from "./types.js";
+import type { CallMetadata, CallSession, TranscriptChunk, AmmoConfig, CallSource } from "./types.js";
 
 const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
 const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours max call duration
@@ -28,6 +28,11 @@ export type OnAmmoV2AnalysisCallback = (analysis: AmmoV2Analysis) => void;
 
 // Callback type for silence warning
 export type OnSilenceWarningCallback = (silenceDurationSeconds: number) => void;
+
+export interface CallHandlerOptions {
+  source?: CallSource; // "closer" (default) or "meetingbaas"
+  recordingType?: "audio" | "video"; // "audio" (default) or "video" for meeting bot recordings
+}
 
 export class CallHandler {
   private session: CallSession;
@@ -52,7 +57,13 @@ export class CallHandler {
   // Timestamp offset for reconnection (adds to Speechmatics timestamps to maintain ordering)
   private timestampOffset: number = 0;
 
-  constructor(metadata: CallMetadata) {
+  // Source tracking: "closer" (desktop app) or "meetingbaas" (meeting bot)
+  private source: CallSource;
+  private recordingType: "audio" | "video";
+
+  constructor(metadata: CallMetadata, options?: CallHandlerOptions) {
+    this.source = options?.source || "closer";
+    this.recordingType = options?.recordingType || "audio";
     this.sampleRate = metadata.sampleRate || 48000;
     this.session = {
       metadata,
@@ -68,7 +79,7 @@ export class CallHandler {
       lastAudioTimestamp: 0,
     };
 
-    logger.info(`Call handler created for call ${metadata.callId} (sampleRate: ${this.sampleRate}Hz)`, metadata);
+    logger.info(`Call handler created for call ${metadata.callId} (source: ${this.source}, sampleRate: ${this.sampleRate}Hz)`, metadata);
   }
 
   /**
@@ -123,13 +134,17 @@ export class CallHandler {
 
       // Initialize Speechmatics connection with speaker diarization
       // First speaker detected will be assumed to be the Closer
+      // For meetingbaas: disable silence detection (bot manages its own session lifecycle)
+      const silenceCallback = this.source === "meetingbaas"
+        ? undefined
+        : (this.onSilenceWarning ? this.onSilenceWarning : undefined);
       this.speechmatics = await createSpeechmaticsConnection(
         this.handleTranscript.bind(this),
         this.handleSpeechmaticsError.bind(this),
-        this.onSilenceWarning ? this.onSilenceWarning : undefined
+        silenceCallback
       );
 
-      logger.info(`Call ${isReconnect ? 'resumed' : 'started'}: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
+      logger.info(`Call ${isReconnect ? 'resumed' : 'started'}: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, source: ${this.source}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
 
       // Set up max duration timeout (2 hours) to prevent runaway calls
       this.maxDurationTimeout = setTimeout(async () => {
@@ -180,32 +195,61 @@ export class CallHandler {
 
     // Resample and send to Speechmatics for transcription
     if (this.speechmatics) {
-      const resampled = this.resampleAudio(audioData);
+      let processed: Buffer;
 
-      // Log BOTH input and resampled stats for the SAME chunk (every 50 chunks)
-      if (this.audioChunkCount % 50 === 1) {
-        // Input stats - check ALL samples, not just first 1000 bytes
-        let inputMaxLeft = 0;
-        let inputMaxRight = 0;
-        for (let i = 0; i < audioData.length - 3; i += 4) {
-          const left = Math.abs(audioData.readInt16LE(i));
-          const right = Math.abs(audioData.readInt16LE(i + 2));
-          if (left > inputMaxLeft) inputMaxLeft = left;
-          if (right > inputMaxRight) inputMaxRight = right;
+      if (this.source === "meetingbaas") {
+        // Meeting BaaS audio: may be mono 16-bit PCM at various sample rates
+        // TODO: Handle different audio formats from Meeting BaaS (e.g., 16kHz mono, 44.1kHz mono)
+        // For now, assume 16-bit mono PCM and pass through directly to Speechmatics
+        // If stereo (4 bytes per sample pair), convert to mono; otherwise pass as-is
+        const bytesPerSample = 2; // 16-bit
+        const isLikelyStereo = audioData.length % 4 === 0 && this.sampleRate >= 44100;
+        if (isLikelyStereo && audioData.length >= 4) {
+          // Check if it looks like stereo by examining if it could be stereo at the reported sample rate
+          // Default to treating as mono unless we have strong evidence of stereo
+          processed = audioData; // Assume mono by default for Meeting BaaS
+        } else {
+          processed = audioData; // Mono, pass through
         }
 
-        // Resampled stats - check ALL samples
-        let resampledMax = 0;
-        for (let i = 0; i < resampled.length - 1; i += 2) {
-          const sample = Math.abs(resampled.readInt16LE(i));
-          if (sample > resampledMax) resampledMax = sample;
+        // Log periodically for Meeting BaaS audio debugging
+        if (this.audioChunkCount % 50 === 1) {
+          let maxSample = 0;
+          for (let i = 0; i < audioData.length - 1; i += bytesPerSample) {
+            const sample = Math.abs(audioData.readInt16LE(i));
+            if (sample > maxSample) maxSample = sample;
+          }
+          logger.info(`[Audio][MeetingBaaS] Chunk #${this.audioChunkCount}: size=${audioData.length}b max=${maxSample} sampleRate=${this.sampleRate}Hz`);
         }
+      } else {
+        // Desktop closer audio: 48kHz stereo interleaved PCM -> mono
+        processed = this.resampleAudio(audioData);
 
-        const expectedSize = (audioData.length / 4) * 2; // stereo to mono, no decimation
-        logger.info(`[Audio] Chunk #${this.audioChunkCount}: input=${audioData.length}b L=${inputMaxLeft} R=${inputMaxRight} -> mono=${resampled.length}b (exp=${expectedSize}) max=${resampledMax}`);
+        // Log BOTH input and resampled stats for the SAME chunk (every 50 chunks)
+        if (this.audioChunkCount % 50 === 1) {
+          // Input stats - check ALL samples, not just first 1000 bytes
+          let inputMaxLeft = 0;
+          let inputMaxRight = 0;
+          for (let i = 0; i < audioData.length - 3; i += 4) {
+            const left = Math.abs(audioData.readInt16LE(i));
+            const right = Math.abs(audioData.readInt16LE(i + 2));
+            if (left > inputMaxLeft) inputMaxLeft = left;
+            if (right > inputMaxRight) inputMaxRight = right;
+          }
+
+          // Resampled stats - check ALL samples
+          let resampledMax = 0;
+          for (let i = 0; i < processed.length - 1; i += 2) {
+            const sample = Math.abs(processed.readInt16LE(i));
+            if (sample > resampledMax) resampledMax = sample;
+          }
+
+          const expectedSize = (audioData.length / 4) * 2; // stereo to mono, no decimation
+          logger.info(`[Audio] Chunk #${this.audioChunkCount}: input=${audioData.length}b L=${inputMaxLeft} R=${inputMaxRight} -> mono=${processed.length}b (exp=${expectedSize}) max=${resampledMax}`);
+        }
       }
 
-      this.speechmatics.sendAudio(resampled);
+      this.speechmatics.sendAudio(processed);
     }
   }
 
@@ -254,6 +298,9 @@ export class CallHandler {
     // Add to transcript
     if (chunk.isFinal && chunk.text.trim()) {
       // Speaker diarization: first speaker detected is assumed to be Closer
+      // TODO: Meeting BaaS may provide speaker labels differently (e.g., participant names
+      // from the meeting platform). When that data is available, use it instead of the
+      // first-speaker heuristic for meetingbaas source calls.
       const isCloser = this.getIsCloser(chunk.speaker);
       const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
       const line = `${speakerLabel}: ${chunk.text}`;
@@ -438,6 +485,10 @@ export class CallHandler {
     logger.info(`Call ended: ${this.session.metadata.callId} (duration: ${duration}s, chunks: ${audioChunkCount}, hasRecording: ${!!recordingUrl})`);
   }
 
+  getSource(): CallSource {
+    return this.source;
+  }
+
   getStats() {
     return {
       callId: this.session.metadata.callId,
@@ -445,6 +496,7 @@ export class CallHandler {
       speakerCount: this.session.speakersDetected.size,
       transcriptLength: this.session.fullTranscript.length,
       audioChunks: this.session.audioBuffer.length,
+      source: this.source,
     };
   }
 }

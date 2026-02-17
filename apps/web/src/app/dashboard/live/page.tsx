@@ -17,6 +17,7 @@ import {
   Mic,
   MicOff,
   Zap,
+  Bot,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ interface LiveCall {
   ammo: AmmoItem[];
   transcriptSegments: TranscriptSegment[];
   ammoAnalysis?: AmmoV2Analysis;
+  meetingBotId?: string;
 }
 
 // Utility functions
@@ -239,6 +241,12 @@ function LiveCallCard({ call, isExpanded, onToggleExpand, visitorCallId }: LiveC
             </span>
             {isOnCall && (
               <Radio className="h-3 w-3 text-zinc-500 animate-pulse" />
+            )}
+            {call.meetingBotId && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-1 text-zinc-500 border-zinc-300">
+                <Bot className="h-3 w-3" />
+                Bot
+              </Badge>
             )}
           </div>
           <div className="flex items-center gap-3">
