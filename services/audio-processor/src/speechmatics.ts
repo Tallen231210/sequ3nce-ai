@@ -10,8 +10,8 @@ import { logger } from "./logger.js";
 import type { TranscriptChunk } from "./types.js";
 
 // Buffer settings for grouping words into sentences
-const FLUSH_DELAY_MS = 1500; // Emit after 1.5 seconds of silence
-const MAX_BUFFER_WORDS = 20; // Emit if buffer reaches 20 words
+const FLUSH_DELAY_MS = 500; // Emit after 0.5 seconds of silence (was 1500ms — too slow for live calls)
+const MAX_BUFFER_WORDS = 15; // Emit if buffer reaches 15 words (was 20)
 
 const SPEECHMATICS_URL = "wss://eu2.rt.speechmatics.com/v2/en";
 
@@ -67,8 +67,8 @@ export function createSpeechmaticsConnection(
           speaker_diarization_config: {
             speaker_sensitivity: 0.5,
           },
-          enable_partials: false, // Disable partials - only get final transcripts
-          max_delay: 4.0, // Wait up to 4 seconds to group more words together
+          enable_partials: true, // Enable partial transcripts for lower-latency live display
+          max_delay: 2.0, // Wait up to 2 seconds to group words (was 4.0 — halved for real-time)
         },
         audio_format: {
           type: "raw",
@@ -157,8 +157,11 @@ export function createSpeechmaticsConnection(
             break;
 
           case "AddPartialTranscript":
-            // Optionally handle partial transcripts for real-time display
-            // For now, we only use final transcripts
+            // Partial transcripts provide real-time feedback while speech is ongoing
+            // Update lastWordTime so silence detection stays accurate
+            if ((message.results || []).some((r: any) => r.type === "word")) {
+              lastWordTime = Date.now();
+            }
             break;
 
           case "EndOfTranscript":
@@ -280,11 +283,24 @@ class TranscriptBuffer {
         if (this.buffer.length >= MAX_BUFFER_WORDS) {
           this.flush();
         }
+      } else if (result.type === "punctuation") {
+        // Flush immediately on sentence-ending punctuation
+        const punct = result.alternatives?.[0]?.content || "";
+        if (punct === "." || punct === "?" || punct === "!") {
+          // Append punctuation to last word in buffer
+          if (this.buffer.length > 0) {
+            this.buffer[this.buffer.length - 1].text += punct;
+          }
+          this.flush();
+          continue;
+        }
       }
     }
 
     // Reset the flush timer - will flush after silence
-    this.resetFlushTimer();
+    if (this.buffer.length > 0) {
+      this.resetFlushTimer();
+    }
   }
 
   private resetFlushTimer(): void {
