@@ -24,7 +24,8 @@ export interface SpeechmaticsConnection {
 export function createSpeechmaticsConnection(
   onTranscript: (chunk: TranscriptChunk) => void,
   onError: (error: Error) => void,
-  onSilenceWarning?: (silenceDurationSeconds: number) => void
+  onSilenceWarning?: (silenceDurationSeconds: number) => void,
+  sampleRate: number = 48000
 ): Promise<SpeechmaticsConnection> {
   return new Promise((resolve, reject) => {
     const apiKey = process.env.SPEECHMATICS_API_KEY;
@@ -72,7 +73,7 @@ export function createSpeechmaticsConnection(
         audio_format: {
           type: "raw",
           encoding: "pcm_s16le",
-          sample_rate: 48000, // Matches desktop AudioContext sample rate
+          sample_rate: sampleRate,
         },
       };
 

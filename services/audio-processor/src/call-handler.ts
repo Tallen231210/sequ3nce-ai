@@ -141,7 +141,8 @@ export class CallHandler {
       this.speechmatics = await createSpeechmaticsConnection(
         this.handleTranscript.bind(this),
         this.handleSpeechmaticsError.bind(this),
-        silenceCallback
+        silenceCallback,
+        this.sampleRate
       );
 
       logger.info(`Call ${isReconnect ? 'resumed' : 'started'}: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, source: ${this.source}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
