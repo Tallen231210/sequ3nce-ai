@@ -160,7 +160,10 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case stats = "Stats"
     case calls = "Calls"
+    case schedule = "Schedule"
+    case roleplay = "Role Play"
     case messages = "Messages"
+    case resources = "Resources"
     case training = "Training"
     case settings = "Settings"
 
@@ -170,8 +173,11 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "house.fill"
         case .stats: return "chart.bar.fill"
-        case .calls: return "phone.fill"
+        case .calls: return "video.fill"
+        case .schedule: return "calendar"
+        case .roleplay: return "person.2.fill"
         case .messages: return "message.fill"
+        case .resources: return "folder.fill"
         case .training: return "play.rectangle.fill"
         case .settings: return "gearshape.fill"
         }
@@ -199,6 +205,8 @@ class AppState: ObservableObject {
     @Published var activeBotMeetingTitle: String?
     @Published var activeBotProspectName: String?
     @Published var pendingQuestionnaireCount: Int = 0
+    @Published var firstPendingCallId: String?
+    @Published var firstPendingProspectName: String?
     @Published var needsCalendarOnboarding: Bool = false
     @Published var selectedSidebarItem: SidebarItem = .dashboard
     @Published var showActiveCallView: Bool = false
@@ -405,6 +413,8 @@ class AppState: ObservableObject {
         activeBotMeetingTitle = nil
         activeBotProspectName = nil
         pendingQuestionnaireCount = 0
+        firstPendingCallId = nil
+        firstPendingProspectName = nil
         needsCalendarOnboarding = false
         selectedSidebarItem = .dashboard
         showActiveCallView = false
@@ -658,8 +668,8 @@ class AppState: ObservableObject {
         // Poll immediately
         Task { await pollBotStatus() }
 
-        // Then poll every 10 seconds
-        botPollingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
+        // Then poll every 3 seconds (fast enough to catch call end promptly)
+        botPollingTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.pollBotStatus()
             }
@@ -686,13 +696,22 @@ class AppState: ObservableObject {
             let previousCallId = activeBotCallId
             let previousProspectName = activeBotProspectName
 
+            print("[AppState] pollBotStatus: activeBot=\(activeBot != nil), wasBotActive=\(wasBotActive), botCallActive=\(botCallActive)")
+
             if let bot = activeBot {
+                let wasAlreadyActive = botCallActive
                 botCallActive = true
                 activeBotCallId = bot.callId
                 activeBotId = bot.botId
                 activeBotMeetingTitle = bot.meetingTitle
                 activeBotProspectName = bot.prospectName
                 showActiveCallView = true
+
+                // Auto-open ammo panel when bot call first becomes active
+                if !wasAlreadyActive {
+                    print("[AppState] AUTO-OPENING ammo panel — bot call just became active")
+                    WindowManager.shared.openAmmoPanel(appState: self)
+                }
             } else {
                 botCallActive = false
                 activeBotCallId = nil
@@ -702,13 +721,20 @@ class AppState: ObservableObject {
 
                 // If bot was active and now isn't, a call just ended
                 if wasBotActive {
+                    print("[AppState] BOT CALL ENDED — opening questionnaire for callId=\(previousCallId ?? "nil")")
                     showActiveCallView = false
+                    WindowManager.shared.closeAmmoPanel()
 
-                    // Trigger post-call questionnaire
+                    // Open floating questionnaire panel over all windows
                     if let callId = previousCallId {
                         botQuestionnaireCallId = callId
                         botQuestionnaireProspectName = previousProspectName
                         showBotPostCallQuestionnaire = true
+                        WindowManager.shared.openQuestionnairePanel(
+                            appState: self,
+                            callId: callId,
+                            prospectName: previousProspectName ?? "Prospect"
+                        )
                     }
 
                     // Send notification if app is in background
@@ -717,8 +743,10 @@ class AppState: ObservableObject {
             }
 
             // Check pending questionnaires
-            let pendingCount = try await convexService.getPendingQuestionnaireCount(closerId: closer.closerId)
-            self.pendingQuestionnaireCount = pendingCount
+            let pendingInfo = try await convexService.getPendingQuestionnaireInfo(closerId: closer.closerId)
+            self.pendingQuestionnaireCount = pendingInfo.count
+            self.firstPendingCallId = pendingInfo.firstCallId
+            self.firstPendingProspectName = pendingInfo.firstProspectName
 
             // Keep diagnostics service in sync
             diagnosticsService.botCallActive = botCallActive
@@ -726,9 +754,14 @@ class AppState: ObservableObject {
             diagnosticsService.activeBotId = activeBotId
             diagnosticsService.activeBotMeetingTitle = activeBotMeetingTitle
             diagnosticsService.activeBotProspectName = activeBotProspectName
-            diagnosticsService.pendingQuestionnaireCount = pendingCount
+            diagnosticsService.pendingQuestionnaireCount = pendingInfo.count
             diagnosticsService.showingPostCallQuestionnaire = showBotPostCallQuestionnaire
             diagnosticsService.pollBotStatusActive = botPollingTimer != nil
+            diagnosticsService.currentSidebarItem = selectedSidebarItem.rawValue
+            diagnosticsService.ammoPanelVisible = WindowManager.shared.isAmmoPanelVisible
+            diagnosticsService.questionnairePanelVisible = WindowManager.shared.isQuestionnairePanelVisible
+            diagnosticsService.firstPendingCallId = firstPendingCallId
+            diagnosticsService.firstPendingProspectName = firstPendingProspectName
 
         } catch {
             // Silent failure - polling will retry
@@ -944,8 +977,14 @@ struct MeetingBotHubView: View {
                                 StatsView()
                             case .calls:
                                 CallHistoryView()
+                            case .schedule:
+                                ScheduleView()
+                            case .roleplay:
+                                RolePlayRoomView()
                             case .messages:
                                 InlineMessagesView(messagingState: appState.messagingState)
+                            case .resources:
+                                ResourcesView()
                             case .training:
                                 TrainingView()
                             case .settings:
@@ -956,22 +995,6 @@ struct MeetingBotHubView: View {
                 }
             }
             .navigationSplitViewStyle(.balanced)
-
-            // Post-call questionnaire overlay (triggered when bot call ends)
-            if appState.showBotPostCallQuestionnaire,
-               let callId = appState.botQuestionnaireCallId {
-                PostCallQuestionnaireView(
-                    callId: callId,
-                    initialProspectName: appState.botQuestionnaireProspectName ?? "",
-                    isPresented: $appState.showBotPostCallQuestionnaire,
-                    onComplete: {
-                        appState.showBotPostCallQuestionnaire = false
-                        appState.botQuestionnaireCallId = nil
-                        appState.botQuestionnaireProspectName = nil
-                    }
-                )
-                .transition(.opacity)
-            }
 
             // Onboarding overlay (blocks everything until completed)
             if appState.needsCalendarOnboarding {

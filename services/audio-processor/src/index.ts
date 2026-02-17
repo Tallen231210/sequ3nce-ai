@@ -302,9 +302,11 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
         const audioBuffer = Buffer.from(data as Buffer);
         callHandler.processAudio(audioBuffer);
 
-        // Broadcast audio to any connected listeners (managers)
+        // Broadcast normalized audio (48kHz stereo) to listeners
+        // Meeting BaaS sends 16kHz mono — must upsample to match dashboard expectations
         if (liveRelay.hasListeners(botId)) {
-          liveRelay.broadcastAudio(botId, audioBuffer);
+          const normalized = callHandler.normalizeForBroadcast(audioBuffer);
+          liveRelay.broadcastAudio(botId, normalized);
         }
       } else {
         // Text messages from Meeting BaaS

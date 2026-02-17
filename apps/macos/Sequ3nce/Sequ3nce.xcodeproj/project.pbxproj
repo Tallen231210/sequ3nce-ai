@@ -38,6 +38,7 @@
 		C1000003211111110000000A /* CallHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000003111111110000000A /* CallHistoryView.swift */; };
 		C1000004211111110000000A /* BotSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000004111111110000000A /* BotSettingsView.swift */; };
 		C1000005211111110000000A /* BotOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000005111111110000000A /* BotOnboardingView.swift */; };
+		C1000006211111110000000A /* ResourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000006111111110000000A /* ResourcesView.swift */; };
 		E10000062111111100000006 /* Sequ3nceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000011111111100000001 /* Sequ3nceUITests.swift */; };
 		E10000072111111100000007 /* DashboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000021111111100000002 /* DashboardTests.swift */; };
 		E10000082111111100000008 /* QuickBotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10000031111111100000003 /* QuickBotTests.swift */; };
@@ -91,6 +92,7 @@
 		C1000003111111110000000A /* CallHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryView.swift; sourceTree = "<group>"; };
 		C1000004111111110000000A /* BotSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotSettingsView.swift; sourceTree = "<group>"; };
 		C1000005111111110000000A /* BotOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotOnboardingView.swift; sourceTree = "<group>"; };
+		C1000006111111110000000A /* ResourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourcesView.swift; sourceTree = "<group>"; };
 		E10000011111111100000001 /* Sequ3nceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sequ3nceUITests.swift; sourceTree = "<group>"; };
 		E10000021111111100000002 /* DashboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardTests.swift; sourceTree = "<group>"; };
 		E10000031111111100000003 /* QuickBotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickBotTests.swift; sourceTree = "<group>"; };
@@ -164,6 +166,7 @@
 				10D17FDB2F12A000006686F2 /* ScheduleView.swift */,
 				10D17FD92F11B8CE006686F2 /* RolePlayRoomView.swift */,
 				10D17FD22F0F33DB006686F2 /* TrainingView.swift */,
+				C1000006111111110000000A /* ResourcesView.swift */,
 				10D17FD42F0F5C65006686F2 /* release.sh */,
 				10D17FD02F0F33D2006686F2 /* AmmoPanelView.swift */,
 				A100000F111111110000000A /* MainWindow */,
@@ -428,6 +431,7 @@
 				C1000003211111110000000A /* CallHistoryView.swift in Sources */,
 				C1000004211111110000000A /* BotSettingsView.swift in Sources */,
 				C1000005211111110000000A /* BotOnboardingView.swift in Sources */,
+				C1000006211111110000000A /* ResourcesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

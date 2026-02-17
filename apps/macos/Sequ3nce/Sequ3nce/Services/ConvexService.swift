@@ -154,6 +154,13 @@ struct RolePlayRoomParticipant: Codable, Identifiable {
     var id: String { closerId }
 }
 
+/// Pending questionnaire info returned from API
+struct PendingQuestionnaireInfo {
+    let count: Int
+    let firstCallId: String?
+    let firstProspectName: String?
+}
+
 /// Service for Convex HTTP API calls
 class ConvexService {
     // MARK: - Configuration
@@ -1116,8 +1123,8 @@ class ConvexService {
         return nil
     }
 
-    /// Get count of pending questionnaires
-    func getPendingQuestionnaireCount(closerId: String) async throws -> Int {
+    /// Get pending questionnaire info (count + first pending call details)
+    func getPendingQuestionnaireInfo(closerId: String) async throws -> PendingQuestionnaireInfo {
         let url = URL(string: "\(baseURL)/getPendingQuestionnaireCount")!
 
         var request = URLRequest(url: url)
@@ -1131,14 +1138,18 @@ class ConvexService {
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
-            return 0
+            return PendingQuestionnaireInfo(count: 0, firstCallId: nil, firstProspectName: nil)
         }
 
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let count = json["count"] as? Int {
-            return count
+            return PendingQuestionnaireInfo(
+                count: count,
+                firstCallId: json["firstCallId"] as? String,
+                firstProspectName: json["firstProspectName"] as? String
+            )
         }
-        return 0
+        return PendingQuestionnaireInfo(count: 0, firstCallId: nil, firstProspectName: nil)
     }
 
     /// Get upcoming bots for closer (next 24 hours)

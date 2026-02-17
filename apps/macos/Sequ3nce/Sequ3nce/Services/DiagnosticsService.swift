@@ -72,6 +72,10 @@ struct MeetingBotDiagnostics: Codable {
     let appMode: String // "legacy_recording" or "meeting_bot"
     let currentSidebarItem: String?
     let pollBotStatusActive: Bool
+    let ammoPanelVisible: Bool
+    let questionnairePanelVisible: Bool
+    let firstPendingCallId: String?
+    let firstPendingProspectName: String?
 }
 
 struct PermissionDiagnostics: Codable {
@@ -143,6 +147,10 @@ class DiagnosticsService {
     var meetingPlatform: String?
     var currentSidebarItem: String?
     var pollBotStatusActive: Bool = false
+    var ammoPanelVisible: Bool = false
+    var questionnairePanelVisible: Bool = false
+    var firstPendingCallId: String?
+    var firstPendingProspectName: String?
 
     // MARK: - Collection Methods
 
@@ -260,15 +268,21 @@ class DiagnosticsService {
             // Get device name
             propertyAddress.mSelector = kAudioDevicePropertyDeviceNameCFString
             var nameRef: CFString? = nil
-            propertySize = UInt32(MemoryLayout<CFString>.size)
-            if AudioObjectGetPropertyData(defaultDevice, &propertyAddress, 0, nil, &propertySize, &nameRef) == noErr {
+            propertySize = UInt32(MemoryLayout<CFString?>.size)
+            let nameStatus = withUnsafeMutablePointer(to: &nameRef) { ptr -> OSStatus in
+                AudioObjectGetPropertyData(defaultDevice, &propertyAddress, 0, nil, &propertySize, UnsafeMutableRawPointer(ptr))
+            }
+            if nameStatus == noErr {
                 deviceName = nameRef as String?
             }
 
             // Get device UID
             propertyAddress.mSelector = kAudioDevicePropertyDeviceUID
             var uidRef: CFString? = nil
-            if AudioObjectGetPropertyData(defaultDevice, &propertyAddress, 0, nil, &propertySize, &uidRef) == noErr {
+            let uidStatus = withUnsafeMutablePointer(to: &uidRef) { ptr -> OSStatus in
+                AudioObjectGetPropertyData(defaultDevice, &propertyAddress, 0, nil, &propertySize, UnsafeMutableRawPointer(ptr))
+            }
+            if uidStatus == noErr {
                 deviceUID = uidRef as String?
             }
         }
@@ -359,7 +373,11 @@ class DiagnosticsService {
             meetingPlatform: meetingPlatform,
             appMode: meetingBotEnabled ? "meeting_bot" : "legacy_recording",
             currentSidebarItem: currentSidebarItem,
-            pollBotStatusActive: pollBotStatusActive
+            pollBotStatusActive: pollBotStatusActive,
+            ammoPanelVisible: ammoPanelVisible,
+            questionnairePanelVisible: questionnairePanelVisible,
+            firstPendingCallId: firstPendingCallId,
+            firstPendingProspectName: firstPendingProspectName
         )
     }
 

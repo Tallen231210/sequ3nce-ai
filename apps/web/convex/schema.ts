@@ -652,6 +652,27 @@ export default defineSchema({
       lastErrorTimestamp: v.optional(v.string()),
     }),
 
+    // Meeting bot diagnostics (optional - only present when meetingBotEnabled)
+    meetingBot: v.optional(v.object({
+      meetingBotEnabled: v.boolean(),
+      botCallActive: v.boolean(),
+      activeBotCallId: v.optional(v.string()),
+      activeBotId: v.optional(v.string()),
+      activeBotMeetingTitle: v.optional(v.string()),
+      activeBotProspectName: v.optional(v.string()),
+      pendingQuestionnaireCount: v.number(),
+      showingPostCallQuestionnaire: v.boolean(),
+      calendarConnected: v.boolean(),
+      meetingPlatform: v.optional(v.string()),
+      appMode: v.string(),
+      currentSidebarItem: v.optional(v.string()),
+      pollBotStatusActive: v.boolean(),
+      ammoPanelVisible: v.boolean(),
+      questionnairePanelVisible: v.boolean(),
+      firstPendingCallId: v.optional(v.string()),
+      firstPendingProspectName: v.optional(v.string()),
+    })),
+
     createdAt: v.number(),
   })
     .index("by_report_id", ["reportId"])

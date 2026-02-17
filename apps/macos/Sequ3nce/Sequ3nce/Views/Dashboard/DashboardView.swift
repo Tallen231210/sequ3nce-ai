@@ -177,7 +177,17 @@ struct DashboardView: View {
             Spacer()
 
             Button(action: {
-                appState.selectedSidebarItem = .calls
+                // Open floating questionnaire panel for first pending call
+                if let callId = appState.firstPendingCallId {
+                    WindowManager.shared.openQuestionnairePanel(
+                        appState: appState,
+                        callId: callId,
+                        prospectName: appState.firstPendingProspectName ?? "Prospect"
+                    )
+                } else {
+                    // Fallback: navigate to calls tab
+                    appState.selectedSidebarItem = .calls
+                }
             }) {
                 Text("Fill In")
                     .font(.system(size: 13, weight: .semibold))

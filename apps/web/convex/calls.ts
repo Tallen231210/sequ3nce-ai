@@ -413,12 +413,9 @@ export const getCompletedCallsWithCloser = query({
       .order("desc")
       .take(100);
 
-    // Filter to only include calls that have an outcome (questionnaire completed)
-    const callsWithOutcome = calls.filter((call) => call.outcome != null);
-
-    // Fetch closer info for each call
+    // Fetch closer info for each call (show all completed calls, not just ones with outcome)
     const callsWithCloser = await Promise.all(
-      callsWithOutcome.map(async (call) => {
+      calls.map(async (call) => {
         const closer = await ctx.db.get(call.closerId);
         return {
           ...call,
@@ -431,6 +428,7 @@ export const getCompletedCallsWithCloser = query({
                 .toUpperCase()
                 .slice(0, 2)
             : "??",
+          needsOutcome: call.outcome == null,
         };
       })
     );

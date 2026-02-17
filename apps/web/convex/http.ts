@@ -2962,6 +2962,7 @@ http.route({
           })),
         },
         call: body.call,
+        meetingBot: body.meetingBot || undefined,
         permissions: body.permissions,
         logs: {
           ...body.logs,
@@ -3179,7 +3180,11 @@ http.route({
         }
 
         case "bot.completed": {
-          const recordingUrl = botData.recording_url || botData.mp4_url || botData.video_url;
+          // Log payload to verify field names from Meeting BaaS v2
+          console.log(`[webhook] bot.completed data keys: ${Object.keys(botData).join(", ")}`);
+          console.log(`[webhook] bot.completed data (truncated): ${JSON.stringify(botData).substring(0, 500)}`);
+
+          const recordingUrl = botData.recording || botData.mp4 || botData.recording_url || botData.mp4_url || botData.video_url;
           const recordingDuration = botData.recording_duration || botData.duration;
           const endedAt = Date.now();
 
@@ -3447,7 +3452,12 @@ http.route({
         closerId: closerId as Id<"closers">,
       });
 
-      return new Response(JSON.stringify({ count: pendingBots.length }), {
+      const firstBot = pendingBots.length > 0 ? pendingBots[0] : null;
+      return new Response(JSON.stringify({
+        count: pendingBots.length,
+        firstCallId: firstBot?.callId ?? null,
+        firstProspectName: firstBot?.prospectName ?? firstBot?.meetingTitle ?? null,
+      }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });

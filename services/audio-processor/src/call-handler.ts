@@ -286,6 +286,36 @@ export class CallHandler {
     return output;
   }
 
+  /**
+   * Normalize audio to 48kHz stereo for live broadcast to web dashboard.
+   * Meeting BaaS sends 16kHz mono — upsample 3x and duplicate to stereo.
+   * Desktop audio is already 48kHz stereo and passes through unchanged.
+   */
+  normalizeForBroadcast(audioData: Buffer): Buffer {
+    if (this.source !== "meetingbaas") {
+      return audioData; // Desktop audio already 48kHz stereo
+    }
+
+    // Upsample 16kHz mono → 48kHz stereo via linear interpolation
+    const inputSamples = audioData.length / 2; // 16-bit mono = 2 bytes per sample
+    const outputSamples = inputSamples * 3; // 3x upsample (16kHz → 48kHz)
+    const output = Buffer.alloc(outputSamples * 4); // stereo = 4 bytes per frame (L16 + R16)
+
+    for (let i = 0; i < inputSamples; i++) {
+      const sample = audioData.readInt16LE(i * 2);
+      const nextSample = i + 1 < inputSamples ? audioData.readInt16LE((i + 1) * 2) : sample;
+
+      for (let j = 0; j < 3; j++) {
+        const interpolated = Math.round(sample + (nextSample - sample) * (j / 3));
+        const outIdx = (i * 3 + j) * 4;
+        output.writeInt16LE(interpolated, outIdx);     // Left channel
+        output.writeInt16LE(interpolated, outIdx + 2); // Right channel (duplicate)
+      }
+    }
+
+    return output;
+  }
+
   private async handleTranscript(chunk: TranscriptChunk): Promise<void> {
     if (this.isEnded) return;
 
