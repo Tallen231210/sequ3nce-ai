@@ -131,23 +131,34 @@ struct AmmoPanelView: View {
         .background(Color.white)
         .preferredColorScheme(.light)
         .onAppear {
-            // Sync with app state - use convexCallId for API calls
-            print("[AmmoPanelView] onAppear - convexCallId: \(appState.convexCallId ?? "nil"), currentCallId: \(appState.currentCallId ?? "nil")")
-            if let callId = appState.convexCallId, let closerInfo = appState.closerInfo {
-                print("[AmmoPanelView] onAppear - calling startTracking with convexCallId: \(callId)")
+            // Sync with app state - use convexCallId for direct calls, activeBotCallId for bot calls
+            let activeCallId = appState.convexCallId ?? appState.activeBotCallId
+            print("[AmmoPanelView] onAppear - convexCallId: \(appState.convexCallId ?? "nil"), activeBotCallId: \(appState.activeBotCallId ?? "nil"), using: \(activeCallId ?? "nil")")
+            if let callId = activeCallId, let closerInfo = appState.closerInfo {
+                print("[AmmoPanelView] onAppear - calling startTracking with callId: \(callId)")
                 panelState.startTracking(callId: callId, teamId: closerInfo.teamId)
             }
         }
         .onChange(of: appState.convexCallId) { _, newCallId in
-            print("[AmmoPanelView] onChange - convexCallId changed to: \(newCallId ?? "nil")")
-            if let callId = newCallId, let closerInfo = appState.closerInfo {
-                print("[AmmoPanelView] onChange - calling startTracking with convexCallId: \(callId)")
+            let activeCallId = newCallId ?? appState.activeBotCallId
+            print("[AmmoPanelView] onChange convexCallId - now: \(newCallId ?? "nil"), activeBotCallId: \(appState.activeBotCallId ?? "nil")")
+            if let callId = activeCallId, let closerInfo = appState.closerInfo {
                 panelState.startTracking(callId: callId, teamId: closerInfo.teamId)
-                // Reset call-specific state for new call
                 callGoingLongSentThisCall = false
                 showCallGoingLongSuccess = false
             } else {
-                print("[AmmoPanelView] onChange - calling stopTracking")
+                panelState.stopTracking()
+            }
+        }
+        .onChange(of: appState.activeBotCallId) { _, newCallId in
+            // Track bot call changes — bot calls don't have a convexCallId from WebSocket
+            let activeCallId = appState.convexCallId ?? newCallId
+            print("[AmmoPanelView] onChange activeBotCallId - now: \(newCallId ?? "nil"), using: \(activeCallId ?? "nil")")
+            if let callId = activeCallId, let closerInfo = appState.closerInfo {
+                panelState.startTracking(callId: callId, teamId: closerInfo.teamId)
+                callGoingLongSentThisCall = false
+                showCallGoingLongSuccess = false
+            } else {
                 panelState.stopTracking()
             }
         }

@@ -3182,13 +3182,16 @@ http.route({
             joinedAt: Date.now(),
           });
 
-          // Get bot record to create a call
+          // Check if audio processor already created and linked a call
           const botRecord = await ctx.runQuery(api.meetingBot.getBotByMeetingBaasId, {
             meetingBaasId,
           });
 
-          if (botRecord && !botRecord.callId) {
-            // Create a call record (only if one doesn't already exist)
+          if (botRecord?.callId) {
+            // Audio processor already linked a call — use it (has ammo/transcript data)
+            console.log(`[webhook] Bot active, call already linked by audio processor: ${botRecord.callId}`);
+          } else if (botRecord) {
+            // No call linked yet — create one as fallback (audio processor may be slow)
             const callId = await ctx.runMutation(api.meetingBot.createCallFromBot, {
               closerId: botRecord.closerId,
               teamId: botRecord.teamId,
@@ -3196,15 +3199,12 @@ http.route({
               prospectName: botRecord.prospectName,
             });
 
-            // Link call back to bot
             await ctx.runMutation(api.meetingBot.updateBotStatus, {
               meetingBaasId,
               callId,
             });
 
-            console.log(`[webhook] Bot active in call. Created call: ${callId}`);
-          } else if (botRecord?.callId) {
-            console.log(`[webhook] Bot active, call already exists: ${botRecord.callId}`);
+            console.log(`[webhook] Bot active, created fallback call: ${callId}`);
           }
           break;
         }

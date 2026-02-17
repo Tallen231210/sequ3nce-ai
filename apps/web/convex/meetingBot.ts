@@ -516,6 +516,49 @@ export const createCallFromBot = mutation({
   },
 });
 
+// Link an existing call (created by audio processor) to a meeting bot
+// Called by the audio processor after it creates a call for a bot session
+export const linkCallToBot = mutation({
+  args: {
+    botId: v.string(), // Our internal Convex meetingBots _id
+    callId: v.string(), // The Convex calls _id from the audio processor
+  },
+  handler: async (ctx, args) => {
+    // Normalize the bot ID
+    const botDocId = ctx.db.normalizeId("meetingBots", args.botId);
+    if (!botDocId) {
+      console.error(`[linkCallToBot] Invalid bot ID: ${args.botId}`);
+      return { success: false };
+    }
+
+    const bot = await ctx.db.get(botDocId);
+    if (!bot) {
+      console.error(`[linkCallToBot] Bot not found: ${args.botId}`);
+      return { success: false };
+    }
+
+    // Update the bot record with the call ID
+    const callDocId = ctx.db.normalizeId("calls", args.callId);
+    if (callDocId) {
+      await ctx.db.patch(botDocId, {
+        callId: callDocId,
+      });
+
+      // Also update the call to reference the bot
+      await ctx.db.patch(callDocId, {
+        meetingBotId: botDocId,
+        recordingType: "video",
+      });
+
+      console.log(`[linkCallToBot] Linked call ${args.callId} to bot ${args.botId}`);
+      return { success: true };
+    }
+
+    console.error(`[linkCallToBot] Invalid call ID: ${args.callId}`);
+    return { success: false };
+  },
+});
+
 // Mark a call as completed when meeting bot finishes
 export const completeCallFromBot = mutation({
   args: {
@@ -1008,6 +1051,8 @@ export const getCallHistoryForCloser = query({
       cashCollected: call.cashCollected,
       contractValue: call.contractValue,
       meetingBotId: call.meetingBotId,
+      closerTalkTime: call.closerTalkTime,
+      prospectTalkTime: call.prospectTalkTime,
     }));
   },
 });

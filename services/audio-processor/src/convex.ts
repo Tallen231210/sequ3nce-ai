@@ -177,6 +177,19 @@ export async function updateTalkTime(
   }
 }
 
+// Link a call to a meeting bot (so desktop app can find the call with ammo data)
+export async function linkCallToBot(botId: string, callId: string): Promise<void> {
+  try {
+    await convex.mutation("meetingBot:linkCallToBot" as any, {
+      botId,
+      callId,
+    });
+    logger.info(`[MeetingBaaS] Linked call ${callId} to bot ${botId}`);
+  } catch (error) {
+    logger.error(`[MeetingBaaS] Failed to link call to bot: ${error}`);
+  }
+}
+
 // ============================================
 // LIVE STREAMING FUNCTIONS
 // ============================================

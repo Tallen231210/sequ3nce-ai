@@ -12,6 +12,7 @@ import {
   updateLiveStreamListenerCount,
   getLiveStreamByVisitorCallId,
   isLiveStreamingEnabled,
+  linkCallToBot,
 } from "./convex.js";
 
 const PORT = parseInt(process.env.PORT || "8080", 10);
@@ -279,6 +280,14 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
   callHandler.start()
     .then((convexCallId) => {
       logger.info(`[MeetingBaaS] Call initialized: botId=${botId}, Convex ID: ${convexCallId}`);
+
+      // Link this call to the meeting bot so the desktop app can find it
+      // The bot record needs callId to return in getActiveCallForCloserBot
+      if (convexCallId) {
+        linkCallToBot(botId, convexCallId).catch((err) => {
+          logger.error(`[MeetingBaaS] Failed to link call to bot: ${err}`);
+        });
+      }
 
       // Create live stream record if team has live streaming enabled
       createLiveStream(convexCallId!, botId, teamId, closerId)
