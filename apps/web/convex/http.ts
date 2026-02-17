@@ -3119,7 +3119,11 @@ http.route({
 
     const eventType = body.event || body.type;
     const botData = body.data || body;
-    const meetingBaasId = botData.bot_id || botData.id;
+    // Meeting BaaS v2 puts bot_id at top level, not nested in data
+    const meetingBaasId = body.bot_id || botData.bot_id || botData.id;
+
+    // Log full payload for debugging (first 1000 chars)
+    console.log(`[webhook] Full payload: ${JSON.stringify(body).substring(0, 1000)}`);
 
     if (!meetingBaasId) {
       console.error("[webhook] No bot ID in payload:", JSON.stringify(body));
@@ -3131,9 +3135,38 @@ http.route({
 
     console.log(`[webhook] Event: ${eventType} for bot: ${meetingBaasId}`);
 
-    try {
+    // Normalize event type — Meeting BaaS v2 uses "meeting.started", "meeting.completed", etc.
+    // while earlier versions used "complete", "failed", "bot.in_call", etc.
+    const normalizedEvent = (() => {
       switch (eventType) {
-        case "bot.joining": {
+        // Meeting BaaS v2 event names
+        case "meeting.started": return "bot_active";
+        case "meeting.completed": return "bot_completed";
+        case "meeting.failed": return "bot_failed";
+        case "transcription.available": return "transcription";
+        case "transcription.updated": return "transcription";
+        // Meeting BaaS v1/legacy event names
+        case "complete": return "bot_completed";
+        case "failed": return "bot_failed";
+        case "transcription_complete": return "transcription";
+        // Original handler event names (kept for compatibility)
+        case "bot.joining": return "bot_joining";
+        case "bot.in_call": return "bot_active";
+        case "bot.recording": return "bot_recording";
+        case "bot.completed": return "bot_completed";
+        case "bot.failed": return "bot_failed";
+        case "bot.left": return "bot_left";
+        // Status change wrapper (v2 may also send this)
+        case "bot.status_change": return "bot_status_change";
+        default: return "unknown";
+      }
+    })();
+
+    console.log(`[webhook] Normalized event: ${normalizedEvent} (raw: ${eventType})`);
+
+    try {
+      switch (normalizedEvent) {
+        case "bot_joining": {
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
             meetingBaasId,
             status: "joining",
@@ -3141,8 +3174,8 @@ http.route({
           break;
         }
 
-        case "bot.in_call": {
-          // Update bot status to active
+        case "bot_active": {
+          // Bot has joined the meeting — set status to "active"
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
             meetingBaasId,
             status: "active",
@@ -3154,8 +3187,8 @@ http.route({
             meetingBaasId,
           });
 
-          if (botRecord) {
-            // Create a call record
+          if (botRecord && !botRecord.callId) {
+            // Create a call record (only if one doesn't already exist)
             const callId = await ctx.runMutation(api.meetingBot.createCallFromBot, {
               closerId: botRecord.closerId,
               teamId: botRecord.teamId,
@@ -3169,23 +3202,26 @@ http.route({
               callId,
             });
 
-            console.log(`[webhook] Bot in call. Created call: ${callId}`);
+            console.log(`[webhook] Bot active in call. Created call: ${callId}`);
+          } else if (botRecord?.callId) {
+            console.log(`[webhook] Bot active, call already exists: ${botRecord.callId}`);
           }
           break;
         }
 
-        case "bot.recording": {
+        case "bot_recording": {
           console.log(`[webhook] Bot recording: ${meetingBaasId}`);
           break;
         }
 
-        case "bot.completed": {
+        case "bot_completed": {
           // Log payload to verify field names from Meeting BaaS v2
-          console.log(`[webhook] bot.completed data keys: ${Object.keys(botData).join(", ")}`);
-          console.log(`[webhook] bot.completed data (truncated): ${JSON.stringify(botData).substring(0, 500)}`);
+          console.log(`[webhook] completed data keys: ${Object.keys(botData).join(", ")}`);
+          console.log(`[webhook] body keys: ${Object.keys(body).join(", ")}`);
 
-          const recordingUrl = botData.recording || botData.mp4 || botData.recording_url || botData.mp4_url || botData.video_url;
-          const recordingDuration = botData.recording_duration || botData.duration;
+          // v2 puts mp4 at body level, v1 might nest in data
+          const recordingUrl = body.mp4 || body.recording || botData.recording || botData.mp4 || botData.recording_url || botData.mp4_url || botData.video_url;
+          const recordingDuration = body.recording_duration || botData.recording_duration || botData.duration;
           const endedAt = Date.now();
 
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
@@ -3209,12 +3245,13 @@ http.route({
               recordingUrl,
               duration: recordingDuration,
             });
+            console.log(`[webhook] Completed call: ${completedBot.callId}`);
           }
           break;
         }
 
-        case "bot.failed": {
-          const failureReason = botData.error || botData.failure_reason || botData.message || "Unknown failure";
+        case "bot_failed": {
+          const failureReason = body.error || body.message || botData.error || botData.failure_reason || botData.message || "Unknown failure";
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
             meetingBaasId,
             status: "failed",
@@ -3224,7 +3261,7 @@ http.route({
           break;
         }
 
-        case "bot.left": {
+        case "bot_left": {
           const leftBot = await ctx.runQuery(api.meetingBot.getBotByMeetingBaasId, {
             meetingBaasId,
           });
@@ -3247,8 +3284,27 @@ http.route({
           break;
         }
 
+        case "bot_status_change": {
+          // v2 may send a status_change wrapper with a nested status field
+          const status = botData.status || body.status;
+          console.log(`[webhook] bot.status_change — status: ${status}`);
+          if (status === "joining") {
+            await ctx.runMutation(api.meetingBot.updateBotStatus, { meetingBaasId, status: "joining" });
+          } else if (status === "in_call" || status === "active" || status === "recording") {
+            await ctx.runMutation(api.meetingBot.updateBotStatus, { meetingBaasId, status: "active", joinedAt: Date.now() });
+          } else if (status === "ended" || status === "completed") {
+            await ctx.runMutation(api.meetingBot.updateBotStatus, { meetingBaasId, status: "completed", endedAt: Date.now() });
+          }
+          break;
+        }
+
+        case "transcription": {
+          console.log(`[webhook] Transcription event for bot: ${meetingBaasId}`);
+          break;
+        }
+
         default: {
-          console.log(`[webhook] Unhandled event: ${eventType}`);
+          console.log(`[webhook] Unhandled event: ${eventType} (normalized: ${normalizedEvent}), full body: ${JSON.stringify(body).substring(0, 500)}`);
         }
       }
 
