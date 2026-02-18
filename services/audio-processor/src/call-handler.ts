@@ -186,9 +186,21 @@ export class CallHandler {
 
   private audioChunkCount = 0;
   private lastAudioLogTime = 0;
+  private lastChunkTime = 0;
+  private maxGapMs = 0;
+  private gapCount = 0; // chunks with >100ms gap
 
   processAudio(audioData: Buffer): void {
     if (this.isEnded) return;
+
+    // Track chunk timing to detect gaps
+    const now = Date.now();
+    if (this.lastChunkTime > 0) {
+      const gap = now - this.lastChunkTime;
+      if (gap > 100) this.gapCount++;
+      if (gap > this.maxGapMs) this.maxGapMs = gap;
+    }
+    this.lastChunkTime = now;
 
     // Buffer audio for recording (keep original format for S3)
     this.session.audioBuffer.push(audioData);
@@ -199,28 +211,18 @@ export class CallHandler {
       let processed: Buffer;
 
       if (this.source === "meetingbaas") {
-        // Meeting BaaS audio: may be mono 16-bit PCM at various sample rates
-        // TODO: Handle different audio formats from Meeting BaaS (e.g., 16kHz mono, 44.1kHz mono)
-        // For now, assume 16-bit mono PCM and pass through directly to Speechmatics
-        // If stereo (4 bytes per sample pair), convert to mono; otherwise pass as-is
-        const bytesPerSample = 2; // 16-bit
-        const isLikelyStereo = audioData.length % 4 === 0 && this.sampleRate >= 44100;
-        if (isLikelyStereo && audioData.length >= 4) {
-          // Check if it looks like stereo by examining if it could be stereo at the reported sample rate
-          // Default to treating as mono unless we have strong evidence of stereo
-          processed = audioData; // Assume mono by default for Meeting BaaS
-        } else {
-          processed = audioData; // Mono, pass through
-        }
+        // Meeting BaaS audio: 16kHz mono 16-bit PCM — pass through directly
+        processed = audioData;
 
         // Log periodically for Meeting BaaS audio debugging
         if (this.audioChunkCount % 50 === 1) {
+          const bytesPerSample = 2;
           let maxSample = 0;
           for (let i = 0; i < audioData.length - 1; i += bytesPerSample) {
             const sample = Math.abs(audioData.readInt16LE(i));
             if (sample > maxSample) maxSample = sample;
           }
-          logger.info(`[Audio][MeetingBaaS] Chunk #${this.audioChunkCount}: size=${audioData.length}b max=${maxSample} sampleRate=${this.sampleRate}Hz`);
+          logger.info(`[Audio][MeetingBaaS] Chunk #${this.audioChunkCount}: size=${audioData.length}b max=${maxSample} sampleRate=${this.sampleRate}Hz gaps=${this.gapCount} maxGap=${this.maxGapMs}ms`);
         }
       } else {
         // Desktop closer audio: 48kHz stereo interleaved PCM -> mono
@@ -288,7 +290,7 @@ export class CallHandler {
 
   /**
    * Normalize audio to 48kHz stereo for live broadcast to web dashboard.
-   * Meeting BaaS now sends 48kHz mono — just duplicate to stereo.
+   * Meeting BaaS sends 16kHz mono — upsample to 48kHz stereo (repeat each sample 3x).
    * Desktop audio is already 48kHz stereo and passes through unchanged.
    */
   normalizeForBroadcast(audioData: Buffer): Buffer {
@@ -296,14 +298,19 @@ export class CallHandler {
       return audioData; // Desktop audio already 48kHz stereo
     }
 
-    // Meeting BaaS sends 48kHz mono — duplicate to stereo (no resampling needed)
+    // Meeting BaaS sends 16kHz mono — upsample to 48kHz stereo for dashboard
+    // Upsample: repeat each sample 3x (16kHz→48kHz), duplicate to stereo
     const inputSamples = audioData.length / 2; // 16-bit mono = 2 bytes per sample
-    const output = Buffer.alloc(inputSamples * 4); // stereo = 4 bytes per frame (L16 + R16)
+    const upsampleFactor = 3; // 16kHz → 48kHz
+    const output = Buffer.alloc(inputSamples * upsampleFactor * 4); // 48kHz stereo = 4 bytes per frame
 
     for (let i = 0; i < inputSamples; i++) {
       const sample = audioData.readInt16LE(i * 2);
-      output.writeInt16LE(sample, i * 4);     // Left channel
-      output.writeInt16LE(sample, i * 4 + 2); // Right channel (duplicate)
+      for (let r = 0; r < upsampleFactor; r++) {
+        const outIdx = (i * upsampleFactor + r) * 4;
+        output.writeInt16LE(sample, outIdx);     // Left channel
+        output.writeInt16LE(sample, outIdx + 2); // Right channel (duplicate)
+      }
     }
 
     return output;
