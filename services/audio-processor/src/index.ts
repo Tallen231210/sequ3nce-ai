@@ -26,7 +26,10 @@ const activeCalls = new Map<WebSocket, CallHandler>();
 const connectionVisitorCallIds = new Map<WebSocket, string>();
 
 // Create WebSocket server
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({
+  port: PORT,
+  perMessageDeflate: false, // Disable compression — PCM audio doesn't compress well and adds latency
+});
 
 logger.info(`Audio processing server starting on port ${PORT}`);
 
@@ -267,7 +270,7 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
     teamId,
     closerId,
     prospectName: prospectName || undefined,
-    sampleRate: 48000, // Meeting BaaS sends 48kHz (matches our audio_frequency config)
+    sampleRate: 16000, // Meeting BaaS sends 16kHz (reduces bandwidth 3x for reliable streaming)
   };
 
   const callHandler = new CallHandler(callMetadata, {
@@ -321,7 +324,7 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
         callHandler.processAudio(audioBuffer);
 
         // Broadcast normalized audio (48kHz stereo) to listeners
-        // Meeting BaaS sends 48kHz mono — duplicate to stereo for dashboard
+        // Meeting BaaS sends 16kHz mono — upsample to 48kHz stereo for dashboard
         if (liveRelay.hasListeners(botId)) {
           const normalized = callHandler.normalizeForBroadcast(audioBuffer);
           liveRelay.broadcastAudio(botId, normalized);
