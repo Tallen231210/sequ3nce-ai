@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   description: "AI-powered sales call intelligence for high-ticket sales teams",
 };
 
+// Force dynamic rendering so Next.js doesn't try to prerender pages at build time.
+// ClerkProvider requires NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY which is only available
+// at runtime in the Vercel environment, not during the build step.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{
