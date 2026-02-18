@@ -3232,10 +3232,11 @@ http.route({
           console.log(`[webhook] completed full payload: ${JSON.stringify(body).substring(0, 2000)}`);
 
           // Check all possible field names across Meeting BaaS v1 and v2
-          const recordingUrl = body.recording_url || body.mp4 || body.recording || body.video_url
-            || botData.recording_url || botData.mp4 || botData.recording || botData.mp4_url || botData.video_url;
-          const recordingDuration = body.recording_duration || body.duration
-            || botData.recording_duration || botData.duration;
+          // v2 uses "video" and "audio" fields for recording URLs
+          const recordingUrl = body.video || body.recording_url || body.mp4 || body.recording || body.video_url
+            || botData.video || botData.recording_url || botData.mp4 || botData.recording || botData.mp4_url || botData.video_url;
+          const recordingDuration = body.recording_duration || body.duration || body.duration_seconds
+            || botData.recording_duration || botData.duration || botData.duration_seconds;
 
           console.log(`[webhook] Extracted recordingUrl: ${recordingUrl || "NONE"}, duration: ${recordingDuration || "NONE"}`);
           const endedAt = Date.now();
@@ -4015,6 +4016,170 @@ http.route({
 
 http.route({
   path: "/createBotForMeeting",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Helper to map desktop period names to analytics date ranges
+function mapPeriodToDateRange(period: string): string {
+  switch (period) {
+    case "today": return "last_7_days";
+    case "week": return "this_week";
+    case "month": return "this_month";
+    case "last30": return "last_30_days";
+    default: return "last_30_days";
+  }
+}
+
+// Get closer analytics summary (money view)
+http.route({
+  path: "/getCloserAnalyticsSummary",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, teamId, period } = body;
+
+      if (!closerId || !teamId) {
+        return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runQuery(api.analytics.getAnalyticsSummary, {
+        teamId: teamId as Id<"teams">,
+        dateRange: mapPeriodToDateRange(period || "week"),
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getCloserAnalyticsSummary:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCloserAnalyticsSummary",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get closer lost deals by objection
+http.route({
+  path: "/getCloserLostDeals",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, teamId, period } = body;
+
+      if (!closerId || !teamId) {
+        return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runQuery(api.analytics.getLostDealsByObjection, {
+        teamId: teamId as Id<"teams">,
+        dateRange: mapPeriodToDateRange(period || "week"),
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getCloserLostDeals:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCloserLostDeals",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get closer objection analysis
+http.route({
+  path: "/getCloserObjectionAnalysis",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, teamId, period } = body;
+
+      if (!closerId || !teamId) {
+        return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runQuery(api.analytics.getObjectionAnalysis, {
+        teamId: teamId as Id<"teams">,
+        dateRange: mapPeriodToDateRange(period || "week"),
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getCloserObjectionAnalysis:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCloserObjectionAnalysis",
   method: "OPTIONS",
   handler: httpAction(async () => {
     return new Response(null, {

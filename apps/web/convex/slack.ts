@@ -1030,6 +1030,13 @@ export const sendCallStartedNotification = internalAction({
         return { success: false, error: "Call not found" };
       }
 
+      // Record dedup BEFORE sending to prevent duplicates (especially for Discord-only teams)
+      await ctx.runMutation(internal.slack.recordNotificationSent, {
+        teamId: call.teamId,
+        callId: args.callId,
+        type: "call_started",
+      });
+
       // Get closer details
       const closer = await ctx.runQuery(api.closers.getCloserById, { closerId: call.closerId }) as { name: string } | null;
       if (!closer) {
@@ -1165,11 +1172,20 @@ export const sendCallSummaryNotification = internalAction({
   },
   handler: async (ctx, args): Promise<SlackNotificationResult> => {
     try {
+      const notificationType = args.milestone === "30" ? "summary_30" : "summary_60";
+
       // Get call details
       const call = await ctx.runQuery(api.calls.getCallById, { callId: args.callId as string }) as { closerId: string; teamId: any; prospectName?: string; transcriptText?: string } | null;
       if (!call) {
         return { success: false, error: "Call not found" };
       }
+
+      // Record dedup BEFORE sending to prevent duplicates (especially for Discord-only teams)
+      await ctx.runMutation(internal.slack.recordNotificationSent, {
+        teamId: call.teamId,
+        callId: args.callId,
+        type: notificationType,
+      });
 
       // Get closer details
       const closer = await ctx.runQuery(api.closers.getCloserById, { closerId: call.closerId }) as { name: string } | null;
@@ -1202,7 +1218,6 @@ export const sendCallSummaryNotification = internalAction({
       );
 
       // Send via unified notification system
-      const notificationType = args.milestone === "30" ? "summary_30" : "summary_60";
       const result: SlackNotificationResult = await ctx.runAction(internal.slack.sendSlackNotification, {
         teamId: call.teamId,
         callId: args.callId,
@@ -1300,6 +1315,13 @@ export const sendCallGoingLongNotification = internalAction({
           console.log("[Slack] Call going long notification already sent for:", callId);
           return { success: true, skipped: true, reason: "Already sent" };
         }
+
+        // Record dedup BEFORE sending to prevent duplicates (especially for Discord-only teams)
+        await ctx.runMutation(internal.slack.recordNotificationSent, {
+          teamId: args.teamId,
+          callId: callId,
+          type: "call_going_long",
+        });
       }
 
       // Look up next calendar event for context
@@ -1418,6 +1440,13 @@ export const sendCallCompletedNotification = internalAction({
         console.log("[Slack] Call missing summary or outcome, skipping notification:", args.callId);
         return { success: true, skipped: true, reason: "Call not fully completed" };
       }
+
+      // Record dedup BEFORE sending to prevent duplicates (especially for Discord-only teams)
+      await ctx.runMutation(internal.slack.recordNotificationSent, {
+        teamId: call.teamId,
+        callId: args.callId,
+        type: "call_completed",
+      });
 
       // Get closer details
       const closer = await ctx.runQuery(api.closers.getCloserById, { closerId: call.closerId }) as { name: string } | null;

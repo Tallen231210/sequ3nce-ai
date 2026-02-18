@@ -281,13 +281,12 @@ export const createBot = action({
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/bot-avatar.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config — 16kHz reduces bandwidth 3x vs 48kHz for reliable
-        // cross-region WebSocket streaming (Meeting BaaS EU → Railway US)
+        // v2 streaming config — 24kHz is Meeting BaaS default; good balance of quality and bandwidth
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: 16000,
+          audio_frequency: "24khz",
         },
         // v2 transcription config
         transcription_enabled: true,
@@ -478,13 +477,12 @@ export const createQuickBot = action({
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/bot-avatar.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config — 16kHz reduces bandwidth 3x vs 48kHz for reliable
-        // cross-region WebSocket streaming (Meeting BaaS EU → Railway US)
+        // v2 streaming config — 24kHz is Meeting BaaS default; good balance of quality and bandwidth
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: 16000,
+          audio_frequency: "24khz",
         },
         // v2 transcription config
         transcription_enabled: true,

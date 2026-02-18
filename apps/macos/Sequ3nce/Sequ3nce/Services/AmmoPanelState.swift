@@ -39,9 +39,12 @@ class AmmoPanelState: ObservableObject {
     @Published var isAmmoV2Enabled: Bool = false
     @Published var ammoV2Analysis: AmmoV2Analysis?
 
+    // Minimize/Expand state
+    @Published var isPanelExpanded: Bool = true
+
     // MARK: - Configuration
 
-    private let pollInterval: TimeInterval = 2.0  // Poll every 2 seconds
+    private let pollInterval: TimeInterval = 1.0  // Poll every 1 second for faster real-time transcript
     private let notesSaveDelay: TimeInterval = 2.0  // Auto-save after 2 seconds of no typing
 
     // MARK: - Private State
@@ -87,6 +90,14 @@ class AmmoPanelState: ObservableObject {
             counts[item.type, default: 0] += 1
         }
         return counts
+    }
+
+    /// Overall engagement score for minimized tab (average of all buying beliefs)
+    var overallScore: Int {
+        guard let analysis = ammoV2Analysis else { return 0 }
+        let b = analysis.beliefs
+        let values = [b.problem, b.solution, b.vehicle, b.selfBelief, b.time, b.money, b.urgency]
+        return values.reduce(0, +) / max(values.count, 1)
     }
 
     /// Filters that have at least one item

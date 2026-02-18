@@ -1334,6 +1334,81 @@ class ConvexService {
         return [:]
     }
 
+    /// Get analytics summary for a closer
+    func getAnalyticsSummary(closerId: String, teamId: String, period: String) async throws -> AnalyticsSummary? {
+        let url = URL(string: "\(baseURL)/getCloserAnalyticsSummary")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "closerId": closerId,
+            "teamId": teamId,
+            "period": period
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(AnalyticsSummary.self, from: data)
+    }
+
+    /// Get lost deals by objection for a closer
+    func getLostDealsByObjection(closerId: String, teamId: String, period: String) async throws -> LostDealsData? {
+        let url = URL(string: "\(baseURL)/getCloserLostDeals")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "closerId": closerId,
+            "teamId": teamId,
+            "period": period
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(LostDealsData.self, from: data)
+    }
+
+    /// Get objection analysis for a closer
+    func getObjectionAnalysis(closerId: String, teamId: String, period: String) async throws -> ObjectionAnalysisData? {
+        let url = URL(string: "\(baseURL)/getCloserObjectionAnalysis")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "closerId": closerId,
+            "teamId": teamId,
+            "period": period
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(ObjectionAnalysisData.self, from: data)
+    }
+
     /// Mark calendar onboarding as completed
     func markOnboardingCompleted(closerId: String) async throws -> Bool {
         let url = URL(string: "\(baseURL)/markOnboardingCompleted")!

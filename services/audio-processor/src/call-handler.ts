@@ -215,7 +215,7 @@ export class CallHandler {
       let processed: Buffer;
 
       if (this.source === "meetingbaas") {
-        // Meeting BaaS audio: 16kHz mono 16-bit PCM — pass through directly
+        // Meeting BaaS audio: 24kHz mono 16-bit PCM — pass through directly
         processed = audioData;
 
         // Log periodically for Meeting BaaS audio debugging
@@ -294,7 +294,7 @@ export class CallHandler {
 
   /**
    * Normalize audio to 48kHz stereo for live broadcast to web dashboard.
-   * Meeting BaaS sends 16kHz mono — upsample to 48kHz stereo (repeat each sample 3x).
+   * Meeting BaaS sends 24kHz mono — upsample to 48kHz stereo via linear interpolation.
    * Desktop audio is already 48kHz stereo and passes through unchanged.
    */
   normalizeForBroadcast(audioData: Buffer): Buffer {
@@ -302,18 +302,22 @@ export class CallHandler {
       return audioData; // Desktop audio already 48kHz stereo
     }
 
-    // Meeting BaaS sends 16kHz mono — upsample to 48kHz stereo for dashboard
-    // Upsample: repeat each sample 3x (16kHz→48kHz), duplicate to stereo
+    // 24kHz mono → 48kHz stereo via linear interpolation (2x upsample)
     const inputSamples = audioData.length / 2; // 16-bit mono = 2 bytes per sample
-    const upsampleFactor = 3; // 16kHz → 48kHz
+    const upsampleFactor = 2; // 24kHz → 48kHz
     const output = Buffer.alloc(inputSamples * upsampleFactor * 4); // 48kHz stereo = 4 bytes per frame
 
     for (let i = 0; i < inputSamples; i++) {
-      const sample = audioData.readInt16LE(i * 2);
+      const current = audioData.readInt16LE(i * 2);
+      const next = (i + 1 < inputSamples) ? audioData.readInt16LE((i + 1) * 2) : current;
+
+      // Linear interpolation: original sample, then midpoint between current and next
+      const samples = [current, Math.round((current + next) / 2)];
+
       for (let r = 0; r < upsampleFactor; r++) {
         const outIdx = (i * upsampleFactor + r) * 4;
-        output.writeInt16LE(sample, outIdx);     // Left channel
-        output.writeInt16LE(sample, outIdx + 2); // Right channel (duplicate)
+        output.writeInt16LE(samples[r], outIdx);     // Left channel
+        output.writeInt16LE(samples[r], outIdx + 2); // Right channel (mono → stereo)
       }
     }
 

@@ -31,6 +31,67 @@ struct RecentCallItem: Identifiable {
     let date: Date
 }
 
+// MARK: - Analytics Models
+
+struct AnalyticsSummary: Codable {
+    let totalPitched: Int
+    let totalClosed: Int
+    let leftOnTable: Int
+    let closeRate: Double
+    let totalCalls: Int
+    let closedCalls: Int
+    let lostOrFollowUpCalls: Int
+    let trends: AnalyticsTrends
+}
+
+struct AnalyticsTrends: Codable {
+    let pitched: Double
+    let closed: Double
+    let leftOnTable: Double
+    let closeRate: Double
+}
+
+struct LostDealsData: Codable {
+    let objections: [ObjectionBreakdown]
+    let totalLost: Int
+    let totalDeals: Int
+    let problemAreas: [String]
+}
+
+struct ObjectionBreakdown: Codable, Identifiable {
+    var id: String { objection }
+    let objection: String
+    let objectionLabel: String
+    let lostAmount: Int
+    let dealCount: Int
+    let trend: Double
+}
+
+struct ObjectionAnalysisData: Codable {
+    let lostObjections: [LostObjectionItem]
+    let overcomeObjections: [OvercomeObjectionItem]
+    let totalLostValue: Int
+    let totalClosedValue: Int
+    let insights: [String]
+}
+
+struct LostObjectionItem: Codable, Identifiable {
+    var id: String { objection }
+    let objection: String
+    let objectionLabel: String
+    let count: Int
+    let value: Int
+    let overcomeRate: Int?
+}
+
+struct OvercomeObjectionItem: Codable, Identifiable {
+    var id: String { objection }
+    let objection: String
+    let objectionLabel: String
+    let count: Int
+    let value: Int
+}
+
 // MARK: - DashboardView
 
 struct DashboardView: View {
@@ -696,6 +757,10 @@ struct StatsView: View {
     @State private var stats: [String: Any] = [:]
     @State private var isLoading = false
     @State private var selectedPeriod = "week"
+    @State private var analyticsSummary: AnalyticsSummary?
+    @State private var lostDeals: LostDealsData?
+    @State private var objectionAnalysis: ObjectionAnalysisData?
+    @State private var isLoadingAnalytics = false
 
     private let periodOptions = [
         ("today", "Today"),
@@ -782,6 +847,18 @@ struct StatsView: View {
                 // Team Comparison
                 teamComparisonSection
 
+                // Money Overview
+                moneyOverviewSection
+
+                // Where You're Losing Money
+                lostDealsSection
+
+                // Objection Handling
+                objectionHandlingSection
+
+                // Insights
+                insightsSection
+
                 Spacer(minLength: 40)
             }
             .padding(32)
@@ -864,6 +941,181 @@ struct StatsView: View {
         }
     }
 
+    // MARK: - Money Overview
+
+    private var moneyOverviewSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("MONEY OVERVIEW")
+                .font(.system(size: 11, weight: .medium))
+                .tracking(0.5)
+                .foregroundColor(Color(white: 0.45))
+
+            if let summary = analyticsSummary {
+                HStack(spacing: 12) {
+                    StatCard(
+                        title: "Total Pitched",
+                        value: formatCurrency(summary.totalPitched),
+                        icon: "dollarsign.circle",
+                        trend: summary.trends.pitched
+                    )
+
+                    StatCard(
+                        title: "Total Closed",
+                        value: formatCurrency(summary.totalClosed),
+                        icon: "checkmark.circle.fill",
+                        trend: summary.trends.closed
+                    )
+
+                    StatCard(
+                        title: "Left on Table",
+                        value: formatCurrency(summary.leftOnTable),
+                        icon: "exclamationmark.triangle",
+                        trend: summary.trends.leftOnTable,
+                        invertTrend: true
+                    )
+                }
+            } else {
+                Text("No data for this period")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(white: 0.5))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+            }
+        }
+    }
+
+    // MARK: - Lost Deals
+
+    private var lostDealsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Text("WHERE YOU'RE LOSING MONEY")
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(0.5)
+                    .foregroundColor(Color(white: 0.45))
+
+                Spacer()
+
+                if let deals = lostDeals, deals.totalDeals > 0 {
+                    Text("\(deals.totalDeals) deals · \(formatCurrency(deals.totalLost))")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.55))
+                }
+            }
+
+            if let deals = lostDeals, !deals.objections.isEmpty {
+                VStack(spacing: 0) {
+                    // Problem areas badges
+                    if !deals.problemAreas.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(deals.problemAreas, id: \.self) { area in
+                                Text(area)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(Color(red: 0.86, green: 0.15, blue: 0.15))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color(red: 1, green: 0.93, blue: 0.93))
+                                    .cornerRadius(4)
+                            }
+                            Spacer()
+                        }
+                        .padding(.bottom, 12)
+                    }
+
+                    // Objection rows
+                    ForEach(deals.objections) { objection in
+                        ObjectionBarRow(
+                            objection: objection,
+                            maxAmount: deals.objections.first?.lostAmount ?? 1,
+                            formatCurrency: formatCurrency
+                        )
+                    }
+                }
+                .padding(16)
+                .background(Color(white: 0.98))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(white: 0.9), lineWidth: 0.5)
+                )
+            } else {
+                Text("No lost deals this period")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(white: 0.5))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+            }
+        }
+    }
+
+    // MARK: - Objection Handling
+
+    private var objectionHandlingSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("OBJECTION HANDLING")
+                .font(.system(size: 11, weight: .medium))
+                .tracking(0.5)
+                .foregroundColor(Color(white: 0.45))
+
+            let itemsWithRate = objectionAnalysis?.lostObjections.filter { $0.overcomeRate != nil } ?? []
+
+            if !itemsWithRate.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(itemsWithRate) { item in
+                        OvercomeRateRow(item: item)
+                    }
+                }
+                .padding(16)
+                .background(Color(white: 0.98))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(white: 0.9), lineWidth: 0.5)
+                )
+            } else {
+                Text("Not enough data yet")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(white: 0.5))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+            }
+        }
+    }
+
+    // MARK: - Insights
+
+    @ViewBuilder
+    private var insightsSection: some View {
+        if let insights = objectionAnalysis?.insights, !insights.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("INSIGHTS")
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(0.5)
+                    .foregroundColor(Color(white: 0.45))
+
+                VStack(spacing: 8) {
+                    ForEach(insights, id: \.self) { insight in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "lightbulb.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(red: 0.85, green: 0.65, blue: 0))
+                                .padding(.top, 2)
+
+                            Text(insight)
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(white: 0.3))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(red: 1, green: 0.97, blue: 0.88))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func periodLabel(_ base: String) -> String {
@@ -881,11 +1133,15 @@ struct StatsView: View {
         isLoading = true
         defer { isLoading = false }
 
-        do {
-            stats = try await appState.convexService.getCloserStats(closerId: closer.closerId, period: selectedPeriod)
-        } catch {
-            print("[Stats] Failed to load stats: \(error)")
-        }
+        async let statsTask = appState.convexService.getCloserStats(closerId: closer.closerId, period: selectedPeriod)
+        async let summaryTask = appState.convexService.getAnalyticsSummary(closerId: closer.closerId, teamId: closer.teamId, period: selectedPeriod)
+        async let lostTask = appState.convexService.getLostDealsByObjection(closerId: closer.closerId, teamId: closer.teamId, period: selectedPeriod)
+        async let objectionTask = appState.convexService.getObjectionAnalysis(closerId: closer.closerId, teamId: closer.teamId, period: selectedPeriod)
+
+        stats = (try? await statsTask) ?? [:]
+        analyticsSummary = try? await summaryTask
+        lostDeals = try? await lostTask
+        objectionAnalysis = try? await objectionTask
     }
 
     private func formatCurrency(_ amount: Int) -> String {
@@ -915,6 +1171,7 @@ struct StatCard: View {
     let value: String
     let icon: String
     var trend: Double? = nil
+    var invertTrend: Bool = false
 
     @State private var displayValue: String = ""
     @State private var opacity: Double = 0
@@ -948,7 +1205,11 @@ struct StatCard: View {
                             Text(String(format: "%.1f%%", abs(trend)))
                                 .font(.system(size: 10, weight: .medium))
                         }
-                        .foregroundColor(trend >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.13) : Color(red: 0.86, green: 0.15, blue: 0.15))
+                        .foregroundColor({
+                            let isPositive = trend >= 0
+                            let showGreen = invertTrend ? !isPositive : isPositive
+                            return showGreen ? Color(red: 0.13, green: 0.55, blue: 0.13) : Color(red: 0.86, green: 0.15, blue: 0.15)
+                        }())
                     }
                 }
             }
@@ -1081,6 +1342,97 @@ struct ComparisonRow: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Objection Bar Row
+
+struct ObjectionBarRow: View {
+    let objection: ObjectionBreakdown
+    let maxAmount: Int
+    let formatCurrency: (Int) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(objection.objectionLabel)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.black)
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Text(formatCurrency(objection.lostAmount))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(red: 0.86, green: 0.15, blue: 0.15))
+
+                    Text("\(objection.dealCount) deal\(objection.dealCount == 1 ? "" : "s")")
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(white: 0.5))
+
+                    if objection.trend != 0 {
+                        HStack(spacing: 2) {
+                            Image(systemName: objection.trend > 0 ? "arrow.up.right" : "arrow.down.right")
+                                .font(.system(size: 8, weight: .semibold))
+                            Text(String(format: "%.0f%%", abs(objection.trend)))
+                                .font(.system(size: 9, weight: .medium))
+                        }
+                        .foregroundColor(objection.trend > 0 ? Color(red: 0.86, green: 0.15, blue: 0.15) : Color(red: 0.13, green: 0.55, blue: 0.13))
+                    }
+                }
+            }
+
+            GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(red: 0.86, green: 0.15, blue: 0.15).opacity(0.3))
+                    .frame(width: max(geo.size.width * (Double(objection.lostAmount) / Double(max(maxAmount, 1))), 4))
+            }
+            .frame(height: 4)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Overcome Rate Row
+
+struct OvercomeRateRow: View {
+    let item: LostObjectionItem
+
+    private var rate: Int { item.overcomeRate ?? 0 }
+
+    private var rateColor: Color {
+        if rate >= 60 { return Color(red: 0.13, green: 0.55, blue: 0.13) }
+        if rate >= 40 { return Color(red: 0.85, green: 0.65, blue: 0) }
+        return Color(red: 0.86, green: 0.15, blue: 0.15)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(item.objectionLabel)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.black)
+
+                Spacer()
+
+                Text("\(rate)%")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(rateColor)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color(white: 0.9))
+
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(rateColor)
+                        .frame(width: max(geo.size.width * (Double(rate) / 100.0), 2))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.vertical, 2)
     }
 }
 
