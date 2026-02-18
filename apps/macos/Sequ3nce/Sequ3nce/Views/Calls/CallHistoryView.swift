@@ -578,7 +578,7 @@ struct CallDetailSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     // Video/Audio player
-                    if let urlString = call.recordingUrl, let url = URL(string: urlString) {
+                    if let urlString = call.recordingUrl, let _ = URL(string: urlString) {
                         VStack(spacing: 12) {
                             sectionHeader("Recording")
 

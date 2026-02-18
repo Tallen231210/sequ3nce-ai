@@ -286,7 +286,7 @@ export const createBot = action({
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: "24khz",
+          audio_frequency: 24000,
         },
         // v2 transcription config
         transcription_enabled: true,
@@ -482,7 +482,7 @@ export const createQuickBot = action({
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: "24khz",
+          audio_frequency: 24000,
         },
         // v2 transcription config
         transcription_enabled: true,

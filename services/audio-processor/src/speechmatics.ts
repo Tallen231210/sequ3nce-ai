@@ -10,7 +10,7 @@ import { logger } from "./logger.js";
 import type { TranscriptChunk } from "./types.js";
 
 // Buffer settings for grouping words into sentences
-const FLUSH_DELAY_MS = 400; // Emit after 0.4 seconds of silence (tighter grouping for faster real-time display)
+const FLUSH_DELAY_MS = 800; // Emit after 0.8 seconds of silence (groups words into natural sentences)
 const MAX_BUFFER_WORDS = 18; // Emit if buffer reaches 18 words (smaller chunks for faster display)
 
 const SPEECHMATICS_URL = "wss://eu2.rt.speechmatics.com/v2/en";
@@ -67,8 +67,8 @@ export function createSpeechmaticsConnection(
           speaker_diarization_config: {
             speaker_sensitivity: 0.5,
           },
-          enable_partials: true, // Enabled for responsive real-time transcript display
-          max_delay: 1.0, // Reduced from 2.0 for faster real-time display
+          enable_partials: false, // Disabled — partials fragment transcript into single words
+          max_delay: 1.5, // Reduced from 2.0 for faster delivery while keeping good word grouping
         },
         audio_format: {
           type: "raw",
@@ -162,8 +162,7 @@ export function createSpeechmaticsConnection(
             if ((message.results || []).some((r: any) => r.type === "word")) {
               lastWordTime = Date.now();
             }
-            // Emit partial transcript for responsive real-time display
-            transcriptBuffer.addPartialWords(message);
+            // Partials disabled — just track silence detection timing
             break;
 
           case "EndOfTranscript":
