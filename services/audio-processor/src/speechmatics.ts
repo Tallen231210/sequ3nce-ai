@@ -62,13 +62,13 @@ export function createSpeechmaticsConnection(
         message: "StartRecognition",
         transcription_config: {
           language: "en",
-          operating_point: "standard", // Standard accuracy (~1-2% less than enhanced, ~50% cheaper)
+          operating_point: "enhanced", // Enhanced accuracy for degraded cross-region audio
           diarization: "speaker",
           speaker_diarization_config: {
             speaker_sensitivity: 0.5,
           },
           enable_partials: false, // Disabled — partials fragment transcript into single words
-          max_delay: 1.5, // Reduced from 2.0 for faster delivery while keeping good word grouping
+          max_delay: 2.5, // More context = better accuracy for cross-region audio
         },
         audio_format: {
           type: "raw",
