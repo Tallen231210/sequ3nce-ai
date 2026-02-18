@@ -1760,7 +1760,7 @@ export default function CallDetailPage() {
         {/* AI Call Summary - Expandable */}
         <CallSummary
           summary={call.summary}
-          isLoading={call.status === "completed" && !call.summary && call.transcriptText ? true : false}
+          isLoading={call.status === "completed" && !call.summary && call.transcriptText && call.endedAt && (Date.now() - call.endedAt) < 5 * 60 * 1000 ? true : false}
         />
 
         {/* Recording Player - Video or Audio */}
