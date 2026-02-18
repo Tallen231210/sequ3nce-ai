@@ -1157,383 +1157,342 @@ struct PostCallQuestionnaireView: View {
     ]
 
     var body: some View {
-        ZStack {
-            // Dimmed background
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
+        HStack(spacing: 0) {
+            // Left: Sequ3nce app icon
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.leading, 24)
+                .padding(.trailing, 16)
 
-            // Modal
+            // Right: Form content
             VStack(spacing: 0) {
-                // Header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Call Summary")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.black)
-
-                    Text("Complete this before your next call")
+            // Row 1: Name + Outcome + Lead Quality
+            HStack(alignment: .top, spacing: 16) {
+                // Prospect name
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Prospect")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(white: 0.5))
+                    TextField("Name", text: $prospectName)
+                        .textFieldStyle(.plain)
                         .font(.system(size: 13))
-                        .foregroundColor(.gray)
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.black.opacity(0.05))
+                        .cornerRadius(8)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-                .background(Color(white: 0.99))
+                .frame(width: 160)
 
-                Divider()
-
-                // Scrollable form content
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Prospect Name
-                        FormField(label: "Prospect Name", required: true) {
-                            TextField("Enter prospect's name", text: $prospectName)
-                                .textFieldStyle(.plain)
-                                .foregroundColor(.black)
-                                .padding(12)
-                                .background(Color(white: 0.97))
-                                .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color(white: 0.9), lineWidth: 1)
-                                )
-                        }
-
-                        // Call Outcome
-                        FormField(label: "Call Outcome", required: true) {
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                                OutcomeButton(label: "Closed", value: .closed, selected: outcome == .closed) {
-                                    outcome = .closed
-                                }
-                                OutcomeButton(label: "Follow Up", value: .followUp, selected: outcome == .followUp) {
-                                    outcome = .followUp
-                                }
-                                OutcomeButton(label: "Lost", value: .lost, selected: outcome == .lost) {
-                                    outcome = .lost
-                                }
-                                OutcomeButton(label: "No Show", value: .noShow, selected: outcome == .noShow) {
-                                    outcome = .noShow
-                                }
+                // Call outcome pills
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Outcome")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(white: 0.5))
+                    HStack(spacing: 4) {
+                        ForEach([
+                            ("Closed", CallOutcome.closed),
+                            ("Follow Up", CallOutcome.followUp),
+                            ("Lost", CallOutcome.lost),
+                            ("No Show", CallOutcome.noShow)
+                        ], id: \.0) { label, value in
+                            Button(action: { outcome = value }) {
+                                Text(label)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(outcome == value ? Color.black : Color.black.opacity(0.05))
+                                    .foregroundColor(outcome == value ? .white : Color(white: 0.4))
+                                    .cornerRadius(14)
                             }
-                        }
-
-                        // Cash Collected & Contract Value (only for closed)
-                        if outcome == .closed {
-                            FormField(label: "Cash Collected", required: true, description: "Amount paid on this call") {
-                                VStack(spacing: 8) {
-                                    // Preset buttons
-                                    HStack(spacing: 6) {
-                                        ForEach(cashPresets, id: \.self) { preset in
-                                            PresetButton(
-                                                amount: preset,
-                                                isSelected: cashCollected == String(preset),
-                                                onTap: { cashCollected = String(preset) }
-                                            )
-                                        }
-                                    }
-
-                                    // Custom input
-                                    HStack {
-                                        Text("$")
-                                            .foregroundColor(.gray)
-                                        TextField("Custom amount", text: $cashCollected)
-                                            .textFieldStyle(.plain)
-                                            .foregroundColor(.black)
-                                    }
-                                    .padding(12)
-                                    .background(Color(white: 0.97))
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color(white: 0.9), lineWidth: 1)
-                                    )
-                                }
-                            }
-
-                            FormField(label: "Contract Value", required: true, description: "Total contract commitment") {
-                                VStack(spacing: 8) {
-                                    // Preset buttons
-                                    HStack(spacing: 6) {
-                                        ForEach(contractPresets, id: \.self) { preset in
-                                            PresetButton(
-                                                amount: preset,
-                                                isSelected: contractValue == String(preset),
-                                                onTap: { contractValue = String(preset) }
-                                            )
-                                        }
-                                    }
-
-                                    // Custom input
-                                    HStack {
-                                        Text("$")
-                                            .foregroundColor(.gray)
-                                        TextField("Custom amount", text: $contractValue)
-                                            .textFieldStyle(.plain)
-                                            .foregroundColor(.black)
-                                    }
-                                    .padding(12)
-                                    .background(Color(white: 0.97))
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color(white: 0.9), lineWidth: 1)
-                                    )
-                                }
-                            }
-
-                            // Warning if cash > contract
-                            if let cash = Int(cashCollected), let contract = Int(contractValue), cash > contract {
-                                Text("Cash collected is higher than contract value - is this correct?")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.orange)
-                            }
-
-                            // Objections Overcome (for closed deals)
-                            FormField(label: "Objections Overcome", description: "What objections did you overcome to close?") {
-                                VStack(spacing: 8) {
-                                    // Dropdown/Picker
-                                    Menu {
-                                        Button("Select objection...") {
-                                            objectionsOvercome = nil
-                                        }
-                                        ForEach(objectionsOvercomeOptions, id: \.0) { option in
-                                            Button(option.1) {
-                                                objectionsOvercome = option.0
-                                            }
-                                        }
-                                    } label: {
-                                        HStack {
-                                            Text(objectionsOvercomeOptions.first { $0.0 == objectionsOvercome }?.1 ?? "Select objection...")
-                                                .foregroundColor(objectionsOvercome == nil ? .gray : .black)
-                                            Spacer()
-                                            Image(systemName: "chevron.down")
-                                                .foregroundColor(.gray)
-                                                .font(.system(size: 12))
-                                        }
-                                        .padding(12)
-                                        .background(Color(white: 0.97))
-                                        .cornerRadius(8)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color(white: 0.9), lineWidth: 1)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    // Other text input
-                                    if objectionsOvercome == "other" {
-                                        TextField("Describe the objection you overcame...", text: $objectionsOvercomeOther)
-                                            .textFieldStyle(.plain)
-                                            .foregroundColor(.black)
-                                            .padding(12)
-                                            .background(Color(white: 0.97))
-                                            .cornerRadius(8)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 8)
-                                                    .stroke(Color(white: 0.9), lineWidth: 1)
-                                            )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Pitched Value (for lost or follow_up)
-                        if outcome == .lost || outcome == .followUp {
-                            FormField(label: "What was the deal worth?", required: true, description: "The value you pitched to the prospect") {
-                                VStack(spacing: 8) {
-                                    // Preset buttons
-                                    HStack(spacing: 6) {
-                                        ForEach(pitchedPresets, id: \.self) { preset in
-                                            PresetButton(
-                                                amount: preset,
-                                                isSelected: pitchedValue == String(preset),
-                                                onTap: { pitchedValue = String(preset) }
-                                            )
-                                        }
-                                    }
-
-                                    // Custom input
-                                    HStack {
-                                        Text("$")
-                                            .foregroundColor(.gray)
-                                        TextField("Custom amount", text: $pitchedValue)
-                                            .textFieldStyle(.plain)
-                                            .foregroundColor(.black)
-                                    }
-                                    .padding(12)
-                                    .background(Color(white: 0.97))
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color(white: 0.9), lineWidth: 1)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Primary Objection (for lost or follow_up)
-                        if outcome == .lost || outcome == .followUp {
-                            FormField(label: "Primary Objection") {
-                                VStack(spacing: 8) {
-                                    // Dropdown/Picker
-                                    Menu {
-                                        Button("Select objection...") {
-                                            primaryObjection = nil
-                                        }
-                                        ForEach(objectionOptions, id: \.0) { option in
-                                            Button(option.1) {
-                                                primaryObjection = option.0
-                                            }
-                                        }
-                                    } label: {
-                                        HStack {
-                                            Text(objectionOptions.first { $0.0 == primaryObjection }?.1 ?? "Select objection...")
-                                                .foregroundColor(primaryObjection == nil ? .gray : .black)
-                                            Spacer()
-                                            Image(systemName: "chevron.down")
-                                                .foregroundColor(.gray)
-                                                .font(.system(size: 12))
-                                        }
-                                        .padding(12)
-                                        .background(Color(white: 0.97))
-                                        .cornerRadius(8)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(Color(white: 0.9), lineWidth: 1)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    // Other text input
-                                    if primaryObjection == "other" {
-                                        TextField("Describe the objection...", text: $primaryObjectionOther)
-                                            .textFieldStyle(.plain)
-                                            .foregroundColor(.black)
-                                            .padding(12)
-                                            .background(Color(white: 0.97))
-                                            .cornerRadius(8)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 8)
-                                                    .stroke(Color(white: 0.9), lineWidth: 1)
-                                            )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Lead Quality Score
-                        FormField(label: "Lead Quality (1-10)", description: "Was this a real opportunity?") {
-                            HStack(spacing: 4) {
-                                ForEach(1...10, id: \.self) { score in
-                                    Button(action: { leadQualityScore = score }) {
-                                        Text("\(score)")
-                                            .font(.system(size: 13, weight: .medium))
-                                            .frame(width: 28, height: 32)
-                                            .background(leadQualityScore == score ? Color.black : Color(white: 0.95))
-                                            .foregroundColor(leadQualityScore == score ? .white : .gray)
-                                            .cornerRadius(6)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-
-                        // Decision Maker
-                        FormField(label: "Was the prospect the decision maker?") {
-                            HStack(spacing: 8) {
-                                ForEach([("yes", "Yes"), ("no", "No"), ("unclear", "Unclear")], id: \.0) { option in
-                                    Button(action: { prospectWasDecisionMaker = option.0 }) {
-                                        Text(option.1)
-                                            .font(.system(size: 13, weight: .medium))
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 10)
-                                            .background(prospectWasDecisionMaker == option.0 ? Color.black : Color(white: 0.95))
-                                            .foregroundColor(prospectWasDecisionMaker == option.0 ? .white : .gray)
-                                            .cornerRadius(8)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-
-                        // Notes
-                        FormField(label: "Notes", optional: true) {
-                            TextEditor(text: $notes)
-                                .font(.system(size: 14))
-                                .foregroundColor(.black)
-                                .scrollContentBackground(.hidden)
-                                .frame(height: 80)
-                                .padding(8)
-                                .background(Color(white: 0.97))
-                                .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color(white: 0.9), lineWidth: 1)
-                                )
-                        }
-
-                        // Validation warning
-                        if showValidationWarning && !isValid {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.red)
-                                Text("Please complete all required fields before closing.")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.red)
-                            }
-                            .padding(12)
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
+                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(20)
                 }
 
-                Divider()
+                Spacer()
 
-                // Footer buttons
-                HStack {
-                    Button("Cancel") {
+                // Lead quality 1-10
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Lead Quality")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(white: 0.5))
+                    HStack(spacing: 2) {
+                        ForEach(1...10, id: \.self) { score in
+                            Button(action: { leadQualityScore = score }) {
+                                Text("\(score)")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .frame(width: 24, height: 26)
+                                    .background(leadQualityScore == score ? Color.black : Color.black.opacity(0.05))
+                                    .foregroundColor(leadQualityScore == score ? .white : Color(white: 0.5))
+                                    .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+
+            // Row 2: Conditional fields + Decision Maker + Notes + Save
+            HStack(alignment: .top, spacing: 16) {
+                // Conditional: Cash/Contract (closed) or Pitched/Objection (lost/followup)
+                if outcome == .closed {
+                    // Cash collected
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Cash Collected")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color(white: 0.5))
+                        HStack(spacing: 4) {
+                            ForEach(cashPresets, id: \.self) { preset in
+                                Button(action: { cashCollected = String(preset) }) {
+                                    Text("$\(preset / 1000)k")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 5)
+                                        .background(cashCollected == String(preset) ? Color.black : Color.black.opacity(0.05))
+                                        .foregroundColor(cashCollected == String(preset) ? .white : Color(white: 0.4))
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            HStack(spacing: 2) {
+                                Text("$").font(.system(size: 11)).foregroundColor(Color(white: 0.5))
+                                TextField("Amt", text: $cashCollected)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.black)
+                                    .frame(width: 50)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.05))
+                            .cornerRadius(6)
+                        }
+                    }
+
+                    // Contract value
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Contract Value")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color(white: 0.5))
+                        HStack(spacing: 4) {
+                            ForEach(contractPresets, id: \.self) { preset in
+                                Button(action: { contractValue = String(preset) }) {
+                                    Text("$\(preset / 1000)k")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 5)
+                                        .background(contractValue == String(preset) ? Color.black : Color.black.opacity(0.05))
+                                        .foregroundColor(contractValue == String(preset) ? .white : Color(white: 0.4))
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            HStack(spacing: 2) {
+                                Text("$").font(.system(size: 11)).foregroundColor(Color(white: 0.5))
+                                TextField("Amt", text: $contractValue)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.black)
+                                    .frame(width: 50)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.05))
+                            .cornerRadius(6)
+                        }
+                    }
+
+                    // Objections overcome dropdown
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Objection Overcome")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color(white: 0.5))
+                        compactDropdown(
+                            options: objectionsOvercomeOptions,
+                            selection: $objectionsOvercome,
+                            placeholder: "None"
+                        )
+                    }
+                } else if outcome == .lost || outcome == .followUp {
+                    // Pitched value
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Deal Value")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color(white: 0.5))
+                        HStack(spacing: 4) {
+                            ForEach(pitchedPresets, id: \.self) { preset in
+                                Button(action: { pitchedValue = String(preset) }) {
+                                    Text("$\(preset / 1000)k")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 5)
+                                        .background(pitchedValue == String(preset) ? Color.black : Color.black.opacity(0.05))
+                                        .foregroundColor(pitchedValue == String(preset) ? .white : Color(white: 0.4))
+                                        .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            HStack(spacing: 2) {
+                                Text("$").font(.system(size: 11)).foregroundColor(Color(white: 0.5))
+                                TextField("Amt", text: $pitchedValue)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.black)
+                                    .frame(width: 50)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.05))
+                            .cornerRadius(6)
+                        }
+                    }
+
+                    // Primary objection dropdown
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Objection")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color(white: 0.5))
+                        compactDropdown(
+                            options: objectionOptions,
+                            selection: $primaryObjection,
+                            placeholder: "Select..."
+                        )
+                    }
+                }
+
+                // Decision maker
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Decision Maker?")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(white: 0.5))
+                    HStack(spacing: 3) {
+                        ForEach([("yes", "Yes"), ("no", "No"), ("unclear", "?")], id: \.0) { key, label in
+                            Button(action: { prospectWasDecisionMaker = key }) {
+                                Text(label)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(prospectWasDecisionMaker == key ? Color.black : Color.black.opacity(0.05))
+                                    .foregroundColor(prospectWasDecisionMaker == key ? .white : Color(white: 0.4))
+                                    .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Notes (compact single line)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Notes")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color(white: 0.5))
+                    TextField("Quick notes...", text: $notes)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.05))
+                        .cornerRadius(6)
+                }
+                .frame(minWidth: 120)
+
+                Spacer()
+
+                // Save button
+                VStack(spacing: 4) {
+                    Button(action: handleSubmit) {
+                        HStack(spacing: 4) {
+                            if isSubmitting {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            }
+                            Text(isSubmitting ? "Saving..." : "Save")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(isValid ? Color.black : Color(white: 0.7))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!isValid || isSubmitting)
+
+                    Button(action: {
                         if isValid {
                             isPresented = false
                             onComplete()
                         } else {
                             showValidationWarning = true
                         }
+                    }) {
+                        Text("Skip")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(white: 0.5))
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(.gray)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-
-                    Spacer()
-
-                    Button(action: handleSubmit) {
-                        HStack {
-                            if isSubmitting {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            }
-                            Text(isSubmitting ? "Saving..." : "Save & Finish")
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 10)
-                        .background(isValid ? Color.black : Color.gray)
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!isValid || isSubmitting)
                 }
-                .padding(16)
+                .padding(.top, 6)
             }
-            .frame(width: 420, height: 600)
-            .background(Color.white)
-            .cornerRadius(12)
-            .shadow(color: .black.opacity(0.2), radius: 30, x: 0, y: 15)
+            .padding(.horizontal, 24)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
+
+            // Validation warning
+            if showValidationWarning && !isValid {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.red)
+                    Text("Complete required fields")
+                        .font(.system(size: 10))
+                        .foregroundColor(.red)
+                }
+                .padding(.bottom, 8)
+            }
         }
+        } // end HStack (logo + form)
         .onAppear {
             prospectName = initialProspectName
         }
+    }
+
+    // MARK: - Compact Dropdown
+
+    private func compactDropdown(
+        options: [(String, String)],
+        selection: Binding<String?>,
+        placeholder: String
+    ) -> some View {
+        Menu {
+            Button(placeholder) { selection.wrappedValue = nil }
+            ForEach(options, id: \.0) { option in
+                Button(option.1) { selection.wrappedValue = option.0 }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(options.first { $0.0 == selection.wrappedValue }?.1 ?? placeholder)
+                    .font(.system(size: 11))
+                    .foregroundColor(selection.wrappedValue == nil ? Color(white: 0.5) : .black)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8))
+                    .foregroundColor(Color(white: 0.5))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color.black.opacity(0.05))
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
     }
 
     private var isValid: Bool {

@@ -8,9 +8,141 @@
 
 import SwiftUI
 
+// MARK: - Pulsing Green Dot Animation
+
+struct PulsingOpacity: ViewModifier {
+    @State private var isPulsing = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isPulsing ? 0.5 : 1.0)
+            .animation(
+                .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                value: isPulsing
+            )
+            .onAppear { isPulsing = true }
+    }
+}
+
+// MARK: - Ammo Panel Container (Expanded/Minimized States)
+
+/// Root view hosted by the borderless NSPanel. Manages expanded panel vs minimized side tab.
+/// Panel is resized by WindowManager when toggling between states — no click-through needed.
+struct AmmoPanelContainerView: View {
+    @ObservedObject var panelState: AmmoPanelState
+    @EnvironmentObject var appState: AppState
+    @State private var isMinimizeHovered = false
+
+    var body: some View {
+        Group {
+            if panelState.isPanelExpanded {
+                expandedPanel
+            } else {
+                minimizedTab
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    // MARK: - Expanded Panel
+
+    private var expandedPanel: some View {
+        VStack(spacing: 0) {
+            // Minimize button header
+            HStack {
+                Spacer()
+                Button(action: {
+                    panelState.isPanelExpanded = false
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(isMinimizeHovered ? Color(red: 1, green: 0.23, blue: 0.19) : Color(white: 0.4))
+                        .frame(width: 24, height: 24)
+                        .background(isMinimizeHovered ? Color(red: 1, green: 0.23, blue: 0.19).opacity(0.15) : Color.black.opacity(0.05))
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    isMinimizeHovered = hovering
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
+            // Existing AmmoPanelView content (unchanged)
+            AmmoPanelView()
+                .environmentObject(appState)
+                .environmentObject(panelState)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.black.opacity(0.1), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 8)
+        .padding(6)
+    }
+
+    // MARK: - Minimized Tab
+
+    private var minimizedTab: some View {
+        Button(action: {
+            panelState.isPanelExpanded = true
+        }) {
+            VStack(spacing: 8) {
+                // Pulsing green dot
+                Circle()
+                    .fill(Color(red: 0.19, green: 0.82, blue: 0.35)) // #30D158
+                    .frame(width: 8, height: 8)
+                    .modifier(PulsingOpacity())
+
+                // App icon
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 24, height: 24)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+
+                // Left-pointing chevron
+                Text("\u{2039}")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(Color.black.opacity(0.3))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 12,
+                    bottomLeadingRadius: 12,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
+                .fill(Color.white)
+            )
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 12,
+                    bottomLeadingRadius: 12,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
+            )
+            .shadow(color: Color.black.opacity(0.15), radius: 10, x: -3, y: 0)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Ammo Panel View (Internal Content)
+
 struct AmmoPanelView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var panelState = AmmoPanelState()
+    @EnvironmentObject var panelState: AmmoPanelState
     @State private var selectedTab = 0
 
     // Reinforcement request state
@@ -30,9 +162,8 @@ struct AmmoPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tab bar - matches Electron: h-10 (40px), gray-50/50 bg, border-b
+            // Tab bar row — tabs + status dot
             HStack(spacing: 0) {
-                // Tab buttons in a non-wrapping row
                 HStack(spacing: 2) {
                     TabButton(
                         icon: "bolt.fill",
@@ -67,31 +198,8 @@ struct AmmoPanelView: View {
                         selectedTab = 3
                     }
                 }
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
 
-                Spacer(minLength: 2)
-
-                // Call Going Long button (only shown during a call, once per call)
-                if panelState.callId != nil && !callGoingLongSentThisCall {
-                    CallGoingLongButton(
-                        isNotifying: $isNotifyingCallGoingLong,
-                        showSuccess: $showCallGoingLongSuccess,
-                        onNotify: { minutes in notifyCallGoingLong(estimatedMinutes: minutes) }
-                    )
-                }
-
-                // Request Reinforcements button (only shown during a call)
-                if panelState.callId != nil {
-                    ReinforcementButton(
-                        isExpanded: $showReinforcementInput,
-                        message: $reinforcementMessage,
-                        isRequesting: $isRequestingReinforcement,
-                        cooldownRemaining: $reinforcementCooldownRemaining,
-                        showSuccess: $showReinforcementSuccess,
-                        onRequest: requestReinforcement
-                    )
-                }
+                Spacer()
 
                 // Status indicator (green when recording)
                 Circle()
@@ -101,6 +209,33 @@ struct AmmoPanelView: View {
             .padding(.horizontal, 6)
             .frame(height: 40)
             .background(Color(white: 0.98))
+
+            // Action buttons row — only shown during active call
+            if panelState.callId != nil {
+                HStack(spacing: 6) {
+                    if !callGoingLongSentThisCall {
+                        CallGoingLongButton(
+                            isNotifying: $isNotifyingCallGoingLong,
+                            showSuccess: $showCallGoingLongSuccess,
+                            onNotify: { minutes in notifyCallGoingLong(estimatedMinutes: minutes) }
+                        )
+                    }
+
+                    ReinforcementButton(
+                        isExpanded: $showReinforcementInput,
+                        message: $reinforcementMessage,
+                        isRequesting: $isRequestingReinforcement,
+                        cooldownRemaining: $reinforcementCooldownRemaining,
+                        showSuccess: $showReinforcementSuccess,
+                        onRequest: requestReinforcement
+                    )
+
+                    Spacer()
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(Color(white: 0.96))
+            }
 
             Divider()
                 .background(Color(white: 0.88))
@@ -127,8 +262,6 @@ struct AmmoPanelView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(white: 0.99))
         }
-        .frame(minWidth: 320, idealWidth: 320, minHeight: 400, idealHeight: 500)
-        .background(Color.white)
         .preferredColorScheme(.light)
         .onAppear {
             // Sync with app state - use convexCallId for direct calls, activeBotCallId for bot calls

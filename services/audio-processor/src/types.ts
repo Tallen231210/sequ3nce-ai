@@ -26,6 +26,14 @@ export interface MeetingBaasMetadata {
 // Source type for call handler - determines behavior differences
 export type CallSource = "closer" | "meetingbaas";
 
+// Speaker metadata sent by Meeting BaaS as JSON arrays
+export interface MeetingBaasSpeakerEvent {
+  name: string;
+  id: string | number;
+  timestamp?: number;
+  isSpeaking: boolean;
+}
+
 export interface AmmoItem {
   text: string;
   type: "emotional" | "urgency" | "budget" | "commitment" | "objection_preview" | "pain_point";

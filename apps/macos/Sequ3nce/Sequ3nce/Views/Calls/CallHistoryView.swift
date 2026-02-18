@@ -22,6 +22,8 @@ struct CallHistoryItem: Identifiable {
     let hasVideo: Bool
     let recordingType: String // "audio" or "video"
     let recordingUrl: String?
+    let summary: String?
+    let transcriptText: String?
 }
 
 // MARK: - Call History View
@@ -137,10 +139,52 @@ struct CallHistoryView: View {
             } else if filteredCalls.isEmpty {
                 emptyState
             } else {
-                callTable
+                // Pending questionnaire banner
+                if appState.pendingQuestionnaireCount > 0, let callId = appState.firstPendingCallId {
+                    pendingQuestionnaireBanner(callId: callId, prospectName: appState.firstPendingProspectName)
+                }
+
+                // Table header
+                HStack(spacing: 0) {
+                    Text("DATE / TIME")
+                        .frame(width: 160, alignment: .leading)
+                    Text("PROSPECT")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("DURATION")
+                        .frame(width: 90, alignment: .trailing)
+                    Text("OUTCOME")
+                        .frame(width: 110, alignment: .center)
+                    Text("TALK")
+                        .frame(width: 60, alignment: .trailing)
+                    // Space for video icon
+                    Color.clear.frame(width: 30, height: 1)
+                }
+                .font(.system(size: 10, weight: .medium))
+                .tracking(0.5)
+                .foregroundColor(Color(white: 0.45))
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+                .background(Color(white: 0.98))
+
+                Divider()
+
+                // Table rows
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(filteredCalls.enumerated()), id: \.element.id) { index, call in
+                            CallTableRow(call: call, isEven: index % 2 == 0)
+                                .onTapGesture {
+                                    selectedCall = call
+                                }
+
+                            Divider()
+                                .padding(.horizontal, 24)
+                        }
+                    }
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.white)
         .preferredColorScheme(.light)
         .onAppear {
@@ -228,68 +272,6 @@ struct CallHistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Call Table
-
-    private var callTable: some View {
-        VStack(spacing: 0) {
-            // Pending questionnaire banner
-            if appState.pendingQuestionnaireCount > 0, let callId = appState.firstPendingCallId {
-                pendingQuestionnaireBanner(callId: callId, prospectName: appState.firstPendingProspectName)
-            }
-
-            // Table header
-            HStack(spacing: 0) {
-                Text("DATE / TIME")
-                    .frame(width: 160, alignment: .leading)
-                Text("PROSPECT")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("DURATION")
-                    .frame(width: 90, alignment: .trailing)
-                Text("OUTCOME")
-                    .frame(width: 110, alignment: .center)
-                Text("TALK")
-                    .frame(width: 60, alignment: .trailing)
-                // Space for video icon
-                Color.clear.frame(width: 30)
-            }
-            .font(.system(size: 10, weight: .medium))
-            .tracking(0.5)
-            .foregroundColor(Color(white: 0.45))
-            .padding(.horizontal, 24)
-            .padding(.vertical, 8)
-            .background(Color(white: 0.98))
-
-            Divider()
-
-            // Table rows
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(filteredCalls.enumerated()), id: \.element.id) { index, call in
-                        CallTableRow(call: call, isEven: index % 2 == 0)
-                            .opacity(rowsVisible ? 1 : 0)
-                            .offset(y: rowsVisible ? 0 : 8)
-                            .animation(
-                                .easeOut(duration: 0.3).delay(Double(min(index, 10)) * 0.04),
-                                value: rowsVisible
-                            )
-                            .onTapGesture {
-                                selectedCall = call
-                            }
-
-                        Divider()
-                            .padding(.horizontal, 24)
-                            .opacity(rowsVisible ? 1 : 0)
-                            .animation(
-                                .easeOut(duration: 0.3).delay(Double(min(index, 10)) * 0.04),
-                                value: rowsVisible
-                            )
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
     // MARK: - Pending Questionnaire Banner
 
     private func pendingQuestionnaireBanner(callId: String, prospectName: String?) -> some View {
@@ -375,6 +357,9 @@ struct CallHistoryView: View {
                         closerTalkPercent = (ct / (ct + pt)) * 100
                     }
 
+                    let summary = dict["summary"] as? String
+                    let transcriptText = dict["transcriptText"] as? String
+
                     return CallHistoryItem(
                         id: id,
                         prospectName: prospectName,
@@ -385,18 +370,16 @@ struct CallHistoryView: View {
                         cashCollected: cashCollected,
                         hasVideo: hasVideo,
                         recordingType: recordingType,
-                        recordingUrl: recordingUrl
+                        recordingUrl: recordingUrl,
+                        summary: summary,
+                        transcriptText: transcriptText
                     )
                 }
 
                 await MainActor.run {
-                    rowsVisible = false
                     calls = items
                     isLoading = false
-                    // Trigger staggered animation on next frame
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        rowsVisible = true
-                    }
+                    rowsVisible = true
                 }
             } catch {
                 print("[CallHistory] Error loading calls: \(error)")
@@ -532,6 +515,18 @@ struct CallDetailSheet: View {
     let call: CallHistoryItem
     @Environment(\.dismiss) private var dismiss
 
+    // Video player — persisted in @State to avoid recreation on view updates
+    @State private var player: AVPlayer?
+
+    // On-demand data
+    @State private var ammoItems: [AmmoItem] = []
+    @State private var transcriptSegments: [TranscriptSegment] = []
+    @State private var isLoadingAmmo = true
+    @State private var isLoadingTranscript = true
+    @State private var isTranscriptExpanded = false
+
+    private let convexService = ConvexService()
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -582,54 +577,181 @@ struct CallDetailSheet: View {
             // Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Video player
-                    if call.hasVideo, let urlString = call.recordingUrl, let url = URL(string: urlString) {
+                    // Video/Audio player
+                    if let urlString = call.recordingUrl, let url = URL(string: urlString) {
                         VStack(spacing: 12) {
                             sectionHeader("Recording")
 
-                            VideoPlayer(player: AVPlayer(url: url))
-                                .frame(height: 280)
-                                .cornerRadius(10)
+                            if call.hasVideo {
+                                VideoPlayer(player: player)
+                                    .frame(height: 280)
+                                    .cornerRadius(10)
+                            } else {
+                                // Audio-only player
+                                VideoPlayer(player: player)
+                                    .frame(height: 60)
+                                    .cornerRadius(10)
+                            }
                         }
                     }
 
-                    // AI Summary placeholder
+                    // AI Summary
                     VStack(spacing: 8) {
                         sectionHeader("AI Summary")
 
-                        Text("AI-generated call summary will appear here once analysis is complete.")
-                            .font(.system(size: 13))
-                            .foregroundColor(Color(white: 0.45))
-                            .padding(16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(white: 0.97))
-                            .cornerRadius(8)
+                        if let summary = call.summary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(white: 0.25))
+                                .lineSpacing(3)
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(white: 0.97))
+                                .cornerRadius(8)
+                        } else {
+                            Text("No summary available for this call.")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(white: 0.5))
+                                .italic()
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(white: 0.97))
+                                .cornerRadius(8)
+                        }
                     }
 
-                    // Ammo Analysis placeholder
+                    // Ammo Analysis
                     VStack(spacing: 8) {
                         sectionHeader("Ammo Analysis")
 
-                        Text("Coaching insights from the call analysis will appear here.")
-                            .font(.system(size: 13))
-                            .foregroundColor(Color(white: 0.45))
+                        if isLoadingAmmo {
+                            HStack(spacing: 8) {
+                                ProgressView().scaleEffect(0.7)
+                                Text("Loading ammo...")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(white: 0.5))
+                            }
                             .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(white: 0.97))
                             .cornerRadius(8)
+                        } else if ammoItems.isEmpty {
+                            Text("No ammo captured for this call.")
+                                .font(.system(size: 13))
+                                .foregroundColor(Color(white: 0.5))
+                                .italic()
+                                .padding(16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(white: 0.97))
+                                .cornerRadius(8)
+                        } else {
+                            VStack(spacing: 8) {
+                                ForEach(ammoItems) { item in
+                                    HStack(alignment: .top, spacing: 10) {
+                                        Text(item.type.label)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(item.type.textColor)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(item.type.backgroundColor)
+                                            .cornerRadius(4)
+
+                                        Text("\"\(item.text)\"")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(Color(white: 0.25))
+                                            .lineLimit(3)
+                                    }
+                                    .padding(10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.white)
+                                    .cornerRadius(6)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color(white: 0.9), lineWidth: 1)
+                                    )
+                                }
+                            }
+                            .padding(12)
+                            .background(Color(white: 0.97))
+                            .cornerRadius(8)
+                        }
                     }
 
-                    // Full Transcript placeholder
+                    // Full Transcript — scrollable section
                     VStack(spacing: 8) {
-                        sectionHeader("Full Transcript")
+                        HStack {
+                            sectionHeader("Full Transcript")
+                            Spacer()
+                            if !transcriptSegments.isEmpty {
+                                Button(action: { isTranscriptExpanded.toggle() }) {
+                                    Text(isTranscriptExpanded ? "Collapse" : "Show All")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(Color(white: 0.4))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
 
-                        Text("The full call transcript will be available here for review.")
-                            .font(.system(size: 13))
-                            .foregroundColor(Color(white: 0.45))
+                        if isLoadingTranscript {
+                            HStack(spacing: 8) {
+                                ProgressView().scaleEffect(0.7)
+                                Text("Loading transcript...")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(white: 0.5))
+                            }
                             .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(white: 0.97))
                             .cornerRadius(8)
+                        } else if transcriptSegments.isEmpty {
+                            // Fallback to transcriptText if no segments
+                            if let text = call.transcriptText, !text.isEmpty {
+                                ScrollView {
+                                    Text(text)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color(white: 0.25))
+                                        .lineSpacing(3)
+                                        .padding(12)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(maxHeight: isTranscriptExpanded ? .infinity : 300)
+                                .background(Color(white: 0.97))
+                                .cornerRadius(8)
+                            } else {
+                                Text("No transcript available for this call.")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(white: 0.5))
+                                    .italic()
+                                    .padding(16)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color(white: 0.97))
+                                    .cornerRadius(8)
+                            }
+                        } else {
+                            ScrollView {
+                                VStack(spacing: 4) {
+                                    ForEach(transcriptSegments) { segment in
+                                        HStack(alignment: .top, spacing: 8) {
+                                            Text(segment.displaySpeaker)
+                                                .font(.system(size: 10, weight: .semibold))
+                                                .foregroundColor(segment.isCloser ? Color(white: 0.5) : .blue)
+                                                .frame(width: 60, alignment: .trailing)
+
+                                            Text(segment.text)
+                                                .font(.system(size: 12))
+                                                .foregroundColor(Color(white: 0.25))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, 12)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                            }
+                            .frame(maxHeight: isTranscriptExpanded ? 600 : 300)
+                            .background(Color(white: 0.97))
+                            .cornerRadius(8)
+                        }
                     }
 
                     // Post-Call Questionnaire Data
@@ -657,9 +779,52 @@ struct CallDetailSheet: View {
                 .padding(20)
             }
         }
-        .frame(width: 600, height: 500)
+        .frame(width: 700, height: 600)
         .background(Color.white)
         .preferredColorScheme(.light)
+        .onAppear {
+            // Create persistent player
+            if let urlString = call.recordingUrl, let url = URL(string: urlString) {
+                player = AVPlayer(url: url)
+            }
+            // Fetch ammo and transcript
+            Task {
+                await loadAmmoItems()
+                await loadTranscriptSegments()
+            }
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+    }
+
+    // MARK: - Data Loading
+
+    private func loadAmmoItems() async {
+        do {
+            let items = try await convexService.getAmmoItems(callId: call.id)
+            await MainActor.run {
+                ammoItems = items.sorted { $0.createdAt > $1.createdAt }
+                isLoadingAmmo = false
+            }
+        } catch {
+            print("[CallDetail] Failed to load ammo: \(error)")
+            await MainActor.run { isLoadingAmmo = false }
+        }
+    }
+
+    private func loadTranscriptSegments() async {
+        do {
+            let segments = try await convexService.getTranscriptSegments(callId: call.id)
+            await MainActor.run {
+                transcriptSegments = segments
+                isLoadingTranscript = false
+            }
+        } catch {
+            print("[CallDetail] Failed to load transcript: \(error)")
+            await MainActor.run { isLoadingTranscript = false }
+        }
     }
 
     // MARK: - Section Header

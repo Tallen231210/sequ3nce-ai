@@ -10,7 +10,7 @@ import { logger } from "./logger.js";
 import type { TranscriptChunk } from "./types.js";
 
 // Buffer settings for grouping words into sentences
-const FLUSH_DELAY_MS = 800; // Emit after 0.8 seconds of silence (tighter grouping reduces "incomplete sentences")
+const FLUSH_DELAY_MS = 400; // Emit after 0.4 seconds of silence (tighter grouping for faster real-time display)
 const MAX_BUFFER_WORDS = 18; // Emit if buffer reaches 18 words (smaller chunks for faster display)
 
 const SPEECHMATICS_URL = "wss://eu2.rt.speechmatics.com/v2/en";
@@ -67,8 +67,8 @@ export function createSpeechmaticsConnection(
           speaker_diarization_config: {
             speaker_sensitivity: 0.5,
           },
-          enable_partials: false, // Disabled — partials fragment transcript into single words
-          max_delay: 2.0, // Wait up to 2 seconds to group words (Speechmatics recommended optimal)
+          enable_partials: true, // Enabled for responsive real-time transcript display
+          max_delay: 1.0, // Reduced from 2.0 for faster real-time display
         },
         audio_format: {
           type: "raw",
@@ -162,6 +162,8 @@ export function createSpeechmaticsConnection(
             if ((message.results || []).some((r: any) => r.type === "word")) {
               lastWordTime = Date.now();
             }
+            // Emit partial transcript for responsive real-time display
+            transcriptBuffer.addPartialWords(message);
             break;
 
           case "EndOfTranscript":
@@ -296,6 +298,31 @@ class TranscriptBuffer {
     if (this.buffer.length > 0) {
       this.resetFlushTimer();
     }
+  }
+
+  addPartialWords(message: any): void {
+    const results = message.results || [];
+    if (results.length === 0) return;
+
+    const words = results
+      .filter((r: any) => r.type === "word")
+      .map((r: any) => r.alternatives?.[0]?.content || "")
+      .filter((w: string) => w.trim());
+
+    if (words.length === 0) return;
+
+    const speaker = results.find((r: any) => r.type === "word")?.alternatives?.[0]?.speaker || "UNK";
+    const startTime = results.find((r: any) => r.type === "word")?.start_time || 0;
+    const text = words.join(" ");
+
+    // Emit as non-final (partial) — call-handler will handle display without persisting
+    this.onTranscript({
+      text,
+      speaker,
+      timestamp: Date.now(),
+      audioTimestamp: startTime,
+      isFinal: false,
+    });
   }
 
   private resetFlushTimer(): void {

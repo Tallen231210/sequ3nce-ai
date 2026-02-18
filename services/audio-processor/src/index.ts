@@ -270,7 +270,7 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
     teamId,
     closerId,
     prospectName: prospectName || undefined,
-    sampleRate: 16000, // Meeting BaaS sends 16kHz (reduces bandwidth 3x for reliable streaming)
+    sampleRate: 24000, // Meeting BaaS sends 24kHz (default quality; good balance of fidelity and bandwidth)
   };
 
   const callHandler = new CallHandler(callMetadata, {
@@ -324,7 +324,7 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
         callHandler.processAudio(audioBuffer);
 
         // Broadcast normalized audio (48kHz stereo) to listeners
-        // Meeting BaaS sends 16kHz mono — upsample to 48kHz stereo for dashboard
+        // Meeting BaaS sends 24kHz mono — upsample to 48kHz stereo for dashboard
         if (liveRelay.hasListeners(botId)) {
           const normalized = callHandler.normalizeForBroadcast(audioBuffer);
           liveRelay.broadcastAudio(botId, normalized);
@@ -337,7 +337,8 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
 
           if (Array.isArray(parsed)) {
             // Speaker metadata array: [{ name, id, timestamp, isSpeaking }]
-            // Used for speaker diarization - log for now
+            // Forward to CallHandler for Speechmatics speaker ID → participant name mapping
+            callHandler.updateMeetingBaasSpeakers(parsed);
             logger.info(`[MeetingBaaS] Speaker update: ${JSON.stringify(parsed)}`);
           } else if (parsed.type === "heartbeat" || parsed.type === "ping") {
             ws.send(JSON.stringify({ type: "heartbeat_ack" }));

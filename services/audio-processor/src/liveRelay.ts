@@ -1,5 +1,6 @@
 // Live Relay - Manages WebSocket connections for managers listening to live calls
 // Broadcasts audio from closers to connected managers
+// Includes jitter buffer to smooth out variable-timing audio chunks
 
 import { WebSocket } from "ws";
 import { logger } from "./logger.js";
@@ -15,6 +16,21 @@ interface ListenerInfo {
   connectedAt: number;
 }
 const listenerInfo = new Map<WebSocket, ListenerInfo>();
+
+// Jitter buffer: accumulate audio chunks and flush at regular intervals
+// This smooths out variable-timing chunks from Meeting BaaS cross-region WebSocket
+const JITTER_BUFFER_MS = 100;
+const BROADCAST_SAMPLE_RATE = 48000; // broadcast format is 48kHz stereo
+const BYTES_PER_FRAME = 4; // 16-bit stereo = 4 bytes per frame
+const JITTER_BUFFER_BYTES = Math.floor(BROADCAST_SAMPLE_RATE * (JITTER_BUFFER_MS / 1000)) * BYTES_PER_FRAME;
+
+interface CallBuffer {
+  chunks: Buffer[];
+  totalBytes: number;
+  timer: NodeJS.Timeout | null;
+}
+
+const callBuffers = new Map<string, CallBuffer>();
 
 /**
  * Add a manager as a listener for a specific call
@@ -70,8 +86,50 @@ export function removeListener(ws: WebSocket): void {
 }
 
 /**
- * Broadcast audio data to all listeners for a specific call
- * Returns the number of listeners that received the audio
+ * Flush the jitter buffer for a call — concatenate and broadcast all buffered chunks
+ */
+function flushBuffer(visitorCallId: string): void {
+  const buf = callBuffers.get(visitorCallId);
+  if (!buf || buf.chunks.length === 0) return;
+
+  // Concatenate all buffered chunks into one
+  const combined = Buffer.concat(buf.chunks);
+  buf.chunks = [];
+  buf.totalBytes = 0;
+  if (buf.timer) {
+    clearTimeout(buf.timer);
+    buf.timer = null;
+  }
+
+  // Send to all listeners
+  const listeners = listenersByCall.get(visitorCallId);
+  if (!listeners || listeners.size === 0) return;
+
+  const deadConnections: WebSocket[] = [];
+
+  for (const ws of listeners) {
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(combined);
+      } catch (error) {
+        logger.error(`[LiveRelay] Error sending to listener:`, error);
+        deadConnections.push(ws);
+      }
+    } else {
+      deadConnections.push(ws);
+    }
+  }
+
+  for (const ws of deadConnections) {
+    removeListener(ws);
+  }
+}
+
+/**
+ * Broadcast audio data to all listeners for a specific call.
+ * Uses a jitter buffer to accumulate chunks and flush at regular intervals,
+ * smoothing out variable-timing from cross-region WebSocket streams.
+ * Returns the number of listeners for the call.
  */
 export function broadcastAudio(visitorCallId: string, audioData: Buffer): number {
   const listeners = listenersByCall.get(visitorCallId);
@@ -79,36 +137,39 @@ export function broadcastAudio(visitorCallId: string, audioData: Buffer): number
     return 0;
   }
 
-  let sentCount = 0;
-  const deadConnections: WebSocket[] = [];
-
-  for (const ws of listeners) {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(audioData);
-        sentCount++;
-      } catch (error) {
-        logger.error(`[LiveRelay] Error sending to listener:`, error);
-        deadConnections.push(ws);
-      }
-    } else {
-      // Connection is no longer open, mark for cleanup
-      deadConnections.push(ws);
-    }
+  // Get or create jitter buffer for this call
+  let buf = callBuffers.get(visitorCallId);
+  if (!buf) {
+    buf = { chunks: [], totalBytes: 0, timer: null };
+    callBuffers.set(visitorCallId, buf);
   }
 
-  // Clean up dead connections
-  for (const ws of deadConnections) {
-    removeListener(ws);
+  // Add chunk to buffer
+  buf.chunks.push(audioData);
+  buf.totalBytes += audioData.length;
+
+  // Flush if buffer has accumulated enough data
+  if (buf.totalBytes >= JITTER_BUFFER_BYTES) {
+    flushBuffer(visitorCallId);
+  } else if (!buf.timer) {
+    // Set fallback timer to flush after JITTER_BUFFER_MS even if threshold not reached
+    // This prevents stale audio during pauses or low-bitrate periods
+    buf.timer = setTimeout(() => {
+      flushBuffer(visitorCallId);
+    }, JITTER_BUFFER_MS);
   }
 
-  return sentCount;
+  return listeners.size;
 }
 
 /**
  * Notify all listeners that the call has ended
  */
 export function notifyCallEnded(visitorCallId: string): void {
+  // Flush any remaining buffered audio
+  flushBuffer(visitorCallId);
+  cleanupBuffer(visitorCallId);
+
   const listeners = listenersByCall.get(visitorCallId);
   if (!listeners || listeners.size === 0) {
     return;
@@ -138,6 +199,17 @@ export function notifyCallEnded(visitorCallId: string): void {
 }
 
 /**
+ * Clean up jitter buffer for a call
+ */
+function cleanupBuffer(visitorCallId: string): void {
+  const buf = callBuffers.get(visitorCallId);
+  if (buf) {
+    if (buf.timer) clearTimeout(buf.timer);
+    callBuffers.delete(visitorCallId);
+  }
+}
+
+/**
  * Get the number of listeners for a specific call
  */
 export function getListenerCount(visitorCallId: string): number {
@@ -163,10 +235,16 @@ export function getActiveCallIds(): string[] {
  * Clean up all listeners (for graceful shutdown)
  */
 export function cleanupAll(): void {
+  // Flush and clean up all jitter buffers
+  for (const visitorCallId of callBuffers.keys()) {
+    flushBuffer(visitorCallId);
+    cleanupBuffer(visitorCallId);
+  }
   for (const [visitorCallId, listeners] of listenersByCall) {
     notifyCallEnded(visitorCallId);
   }
   listenersByCall.clear();
   listenerInfo.clear();
+  callBuffers.clear();
   logger.info("[LiveRelay] All listeners cleaned up");
 }
