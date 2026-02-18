@@ -2,6 +2,7 @@
 
 import "dotenv/config";
 import { WebSocketServer, WebSocket } from "ws";
+import * as fs from "fs";
 import { CallHandler } from "./call-handler.js";
 import { logger } from "./logger.js";
 import type { CallMetadata } from "./types.js";
@@ -264,6 +265,17 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
 
   logger.info(`[MeetingBaaS] Connection params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}, prospectName: ${prospectName || "unknown"}`);
 
+  // === RAW AUDIO DIAGNOSTIC: Save incoming audio to file for quality analysis ===
+  const rawAudioPath = `/tmp/meetingbaas-raw-${Date.now()}.pcm`;
+  const rawAudioStream = fs.createWriteStream(rawAudioPath);
+  let diagLastChunkTime = Date.now();
+  let diagTotalBytes = 0;
+  let diagChunkCount = 0;
+  let diagGapHistogram: Record<string, number> = {}; // bucket gaps for summary
+  const diagStartTime = Date.now();
+  logger.info(`[MeetingBaaS][DIAG] Saving raw audio to ${rawAudioPath}`);
+  // === END DIAGNOSTIC SETUP ===
+
   // Create CallHandler immediately with metadata from URL params
   const callMetadata: CallMetadata = {
     callId: botId,
@@ -321,6 +333,27 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
       if (isBinary) {
         // Binary data is raw PCM audio from Meeting BaaS
         const audioBuffer = Buffer.from(data as Buffer);
+
+        // === RAW AUDIO DIAGNOSTIC: Log chunk timing and save raw audio ===
+        const diagNow = Date.now();
+        const diagGap = diagNow - diagLastChunkTime;
+        diagLastChunkTime = diagNow;
+        diagTotalBytes += audioBuffer.length;
+        diagChunkCount++;
+
+        // Bucket gaps for summary logging
+        const bucket = diagGap < 10 ? "0-9ms" : diagGap < 30 ? "10-29ms" : diagGap < 60 ? "30-59ms" : diagGap < 100 ? "60-99ms" : diagGap < 200 ? "100-199ms" : diagGap < 500 ? "200-499ms" : "500ms+";
+        diagGapHistogram[bucket] = (diagGapHistogram[bucket] || 0) + 1;
+
+        // Log every 100 chunks
+        if (diagChunkCount % 100 === 0) {
+          logger.info(`[MeetingBaaS][DIAG] Chunk #${diagChunkCount}: size=${audioBuffer.length}b, gap=${diagGap}ms, totalBytes=${diagTotalBytes}, histogram=${JSON.stringify(diagGapHistogram)}`);
+        }
+
+        // Save raw audio before any processing
+        rawAudioStream.write(audioBuffer);
+        // === END DIAGNOSTIC ===
+
         callHandler.processAudio(audioBuffer);
 
         // Broadcast normalized audio (48kHz stereo) to listeners
@@ -361,6 +394,14 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
 
   ws.on("close", async () => {
     logger.info("[MeetingBaaS] Bot connection closed (bot left meeting)");
+
+    // === RAW AUDIO DIAGNOSTIC: Close file and log summary ===
+    rawAudioStream.end();
+    const diagDuration = (Date.now() - diagStartTime) / 1000;
+    const expectedBytes = 24000 * 2 * diagDuration; // 24kHz * 16-bit * seconds
+    logger.info(`[MeetingBaaS][DIAG] SUMMARY: duration=${diagDuration.toFixed(1)}s, chunks=${diagChunkCount}, totalBytes=${diagTotalBytes}, expectedBytes=${Math.round(expectedBytes)}, ratio=${(diagTotalBytes / expectedBytes).toFixed(2)}, file=${rawAudioPath}`);
+    logger.info(`[MeetingBaaS][DIAG] Gap histogram: ${JSON.stringify(diagGapHistogram)}`);
+    // === END DIAGNOSTIC ===
 
     const handler = activeCalls.get(ws);
     if (handler) {
