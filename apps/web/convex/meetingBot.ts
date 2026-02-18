@@ -629,6 +629,13 @@ export const createCallFromBot = mutation({
     });
 
     console.log(`[createCallFromBot] Call created: ${callId} for bot: ${args.meetingBotId}`);
+
+    // Schedule call started notification (Slack + Discord)
+    // Safe: sendCallStartedNotification has dedup, so if audio processor also triggers it, the second is skipped
+    await ctx.scheduler.runAfter(0, internal.slack.sendCallStartedNotification, {
+      callId,
+    });
+
     return callId;
   },
 });
