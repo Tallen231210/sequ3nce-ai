@@ -21,7 +21,7 @@ struct ResourcesView: View {
             VStack(alignment: .leading, spacing: 24) {
                 // Header
                 Text("Resources")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.black)
 
                 Text("Sales scripts, payment links, and documents from your manager.")
@@ -54,10 +54,10 @@ struct ResourcesView: View {
                         Spacer()
                         VStack(spacing: 8) {
                             Image(systemName: "folder")
-                                .font(.system(size: 28))
-                                .foregroundColor(Color(white: 0.7))
+                                .font(.system(size: 24))
+                                .foregroundColor(Color(white: 0.75))
                             Text("No resources yet")
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(Color(white: 0.5))
                             Text("Your manager hasn't added any resources for your team.")
                                 .font(.system(size: 13))

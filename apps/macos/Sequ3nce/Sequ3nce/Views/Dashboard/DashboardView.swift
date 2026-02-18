@@ -2,8 +2,8 @@
 //  DashboardView.swift
 //  Sequ3nce
 //
-//  Dashboard home view - shows upcoming calls and quick actions
-//  Displayed when closer opens the app in meeting bot mode
+//  Dashboard home view - shows stats, schedule, recent calls, and quick actions
+//  Stats view - shows detailed performance metrics and team comparison
 //
 
 import SwiftUI
@@ -23,30 +23,48 @@ struct UpcomingCall: Identifiable {
     }
 }
 
+struct RecentCallItem: Identifiable {
+    let id: String
+    let prospectName: String
+    let duration: TimeInterval
+    let outcome: String?
+    let date: Date
+}
+
 // MARK: - DashboardView
 
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
 
-    // Upcoming calls (loaded from API)
+    // Data
     @State private var upcomingCalls: [UpcomingCall] = []
+    @State private var recentCalls: [RecentCallItem] = []
+    @State private var stats: [String: Any] = [:]
+    @State private var calendarEvents: [CalendarEvent] = []
     @State private var isLoadingCalls = false
+    @State private var isLoadingStats = false
+    @State private var selectedEvent: CalendarEvent?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
+            VStack(alignment: .leading, spacing: 24) {
                 // 1. Welcome Header
                 welcomeHeader
 
-                // 2. Upcoming Calls
-                upcomingCallsSection
+                // 2. Quick Stats Row
+                quickStatsRow
 
-                // 3. Pending Questionnaires Banner
+                // 3. Today's Schedule
+                todayScheduleSection
+
+                // 4. Recent Calls
+                recentCallsSection
+
+                // 5. Pending Questionnaires Banner
                 if appState.pendingQuestionnaireCount > 0 {
                     pendingQuestionnaireBanner
                 }
 
-                // Bottom spacing
                 Spacer(minLength: 40)
             }
             .padding(32)
@@ -55,8 +73,11 @@ struct DashboardView: View {
         .background(Color.white)
         .onAppear {
             Task {
-                await loadUpcomingCalls()
+                await loadAllData()
             }
+        }
+        .sheet(item: $selectedEvent) { event in
+            meetingConfirmationSheet(event)
         }
     }
 
@@ -65,11 +86,11 @@ struct DashboardView: View {
     private var welcomeHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(greetingText)
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: 24, weight: .bold))
                 .foregroundColor(.black)
 
             Text(currentDateFormatted)
-                .font(.system(size: 15))
+                .font(.system(size: 13))
                 .foregroundColor(Color(white: 0.5))
         }
     }
@@ -93,71 +114,233 @@ struct DashboardView: View {
         return formatter.string(from: Date())
     }
 
-    // MARK: - Upcoming Calls Section
+    // MARK: - Quick Stats Row
 
-    private var upcomingCallsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "clock.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(Color(white: 0.4))
-                Text("Upcoming Calls")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.black)
+    private var quickStatsRow: some View {
+        HStack(spacing: 12) {
+            StatCard(
+                title: "Calls This Week",
+                value: "\(stats["callsThisPeriod"] as? Int ?? 0)",
+                icon: "phone.fill"
+            )
+
+            StatCard(
+                title: "Close Rate",
+                value: "\(Int(stats["closeRate"] as? Double ?? 0))%",
+                icon: "target"
+            )
+
+            StatCard(
+                title: "Cash Collected",
+                value: formatCurrency(stats["cashCollected"] as? Int ?? 0),
+                icon: "dollarsign.circle.fill"
+            )
+
+            StatCard(
+                title: "Avg Call",
+                value: formatDurationShort(stats["avgCallDuration"] as? Int ?? 0),
+                icon: "clock.fill"
+            )
+        }
+    }
+
+    // MARK: - Today's Schedule Section
+
+    private var todayScheduleSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text("TODAY'S SCHEDULE")
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(0.5)
+                    .foregroundColor(Color(white: 0.45))
+
+                Spacer()
+
+                if !todayEvents.isEmpty {
+                    Button(action: {
+                        appState.selectedSidebarItem = .schedule
+                    }) {
+                        Text("View All")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(white: 0.45))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
-            if isLoadingCalls {
+            if todayEvents.isEmpty {
                 HStack {
                     Spacer()
-                    ProgressView()
-                        .padding(.vertical, 24)
-                    Spacer()
-                }
-                .background(Color(white: 0.98))
-                .cornerRadius(12)
-            } else if upcomingCalls.isEmpty {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         Image(systemName: "calendar")
-                            .font(.system(size: 24))
+                            .font(.system(size: 20))
                             .foregroundColor(Color(white: 0.7))
-                        Text("No upcoming calls")
-                            .font(.system(size: 14))
+                        Text("No calls scheduled today")
+                            .font(.system(size: 13))
                             .foregroundColor(Color(white: 0.5))
-                        Text("Connect your calendar in Settings to see upcoming meetings")
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(white: 0.6))
-                            .multilineTextAlignment(.center)
                     }
-                    .padding(.vertical, 24)
+                    .padding(.vertical, 20)
                     Spacer()
                 }
                 .background(Color(white: 0.98))
-                .cornerRadius(12)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(white: 0.9), lineWidth: 0.5)
+                )
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(upcomingCalls.prefix(5).enumerated()), id: \.element.id) { index, call in
-                        UpcomingCallRow(call: call, onExclude: {
-                            Task {
-                                await excludeCall(call)
-                            }
-                        })
+                    ForEach(Array(todayEvents.prefix(5).enumerated()), id: \.element.id) { index, event in
+                        todayEventRow(event)
 
-                        if index < min(upcomingCalls.count, 5) - 1 {
+                        if index < min(todayEvents.count, 5) - 1 {
                             Divider()
                                 .padding(.horizontal, 16)
                         }
                     }
                 }
                 .background(Color(white: 0.98))
-                .cornerRadius(12)
+                .cornerRadius(8)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(white: 0.92), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(white: 0.9), lineWidth: 0.5)
                 )
             }
         }
+    }
+
+    private var todayEvents: [CalendarEvent] {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: Date())
+        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { return [] }
+        let startMs = startOfDay.timeIntervalSince1970 * 1000
+        let endMs = endOfDay.timeIntervalSince1970 * 1000
+
+        return calendarEvents
+            .filter { $0.startTime >= startMs && $0.startTime < endMs }
+            .sorted { $0.startTime < $1.startTime }
+    }
+
+    private func todayEventRow(_ event: CalendarEvent) -> some View {
+        HStack(spacing: 12) {
+            Text(formatEventTime(event.startTime))
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundColor(Color(white: 0.3))
+                .frame(width: 80, alignment: .leading)
+
+            Text(event.title)
+                .font(.system(size: 13))
+                .foregroundColor(.black)
+                .lineLimit(1)
+
+            Spacer()
+
+            if event.meetingUrl != nil {
+                Button(action: {
+                    selectedEvent = event
+                }) {
+                    Text("Join")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color.black)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Recent Calls Section
+
+    private var recentCallsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Text("RECENT CALLS")
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(0.5)
+                    .foregroundColor(Color(white: 0.45))
+
+                Spacer()
+
+                if !recentCalls.isEmpty {
+                    Button(action: {
+                        appState.selectedSidebarItem = .calls
+                    }) {
+                        Text("View All")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(white: 0.45))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if recentCalls.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(systemName: "phone.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color(white: 0.7))
+                        Text("No recent calls")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color(white: 0.5))
+                    }
+                    .padding(.vertical, 20)
+                    Spacer()
+                }
+                .background(Color(white: 0.98))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(white: 0.9), lineWidth: 0.5)
+                )
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(recentCalls.prefix(5).enumerated()), id: \.element.id) { index, call in
+                        recentCallRow(call)
+
+                        if index < min(recentCalls.count, 5) - 1 {
+                            Divider()
+                                .padding(.horizontal, 16)
+                        }
+                    }
+                }
+                .background(Color(white: 0.98))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(white: 0.9), lineWidth: 0.5)
+                )
+            }
+        }
+    }
+
+    private func recentCallRow(_ call: RecentCallItem) -> some View {
+        HStack(spacing: 12) {
+            Text(call.prospectName)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.black)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(formatDurationShort(Int(call.duration)))
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Color(white: 0.5))
+
+            Text(outcomeLabel(call.outcome))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(outcomeColor(call.outcome))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(outcomeBg(call.outcome))
+                .cornerRadius(10)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Pending Questionnaire Banner
@@ -165,19 +348,16 @@ struct DashboardView: View {
     private var pendingQuestionnaireBanner: some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 18))
+                .font(.system(size: 16))
                 .foregroundColor(Color(red: 0.72, green: 0.53, blue: 0.0))
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("You have \(appState.pendingQuestionnaireCount) call\(appState.pendingQuestionnaireCount == 1 ? "" : "s") that need\(appState.pendingQuestionnaireCount == 1 ? "s" : "") outcomes")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(red: 0.55, green: 0.40, blue: 0.0))
-            }
+            Text("\(appState.pendingQuestionnaireCount) call\(appState.pendingQuestionnaireCount == 1 ? "" : "s") need\(appState.pendingQuestionnaireCount == 1 ? "s" : "") outcomes")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(Color(red: 0.55, green: 0.40, blue: 0.0))
 
             Spacer()
 
             Button(action: {
-                // Open floating questionnaire panel for first pending call
                 if let callId = appState.firstPendingCallId {
                     WindowManager.shared.openQuestionnairePanel(
                         appState: appState,
@@ -185,38 +365,102 @@ struct DashboardView: View {
                         prospectName: appState.firstPendingProspectName ?? "Prospect"
                     )
                 } else {
-                    // Fallback: navigate to calls tab
                     appState.selectedSidebarItem = .calls
                 }
             }) {
                 Text("Fill In")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(Color(red: 0.55, green: 0.40, blue: 0.0))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
                     .background(Color(red: 0.99, green: 0.92, blue: 0.72))
-                    .cornerRadius(8)
+                    .cornerRadius(6)
             }
             .buttonStyle(.plain)
         }
-        .padding(16)
+        .padding(14)
         .background(Color(red: 1.0, green: 0.97, blue: 0.88))
-        .cornerRadius(12)
+        .cornerRadius(8)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(red: 0.95, green: 0.87, blue: 0.65), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(red: 0.95, green: 0.87, blue: 0.65), lineWidth: 0.5)
         )
     }
 
     // MARK: - Data Loading
 
-    private func loadUpcomingCalls() async {
+    private func loadAllData() async {
         guard let closer = appState.closerInfo else { return }
+
+        // Load stats, calendar events, and recent calls in parallel
+        async let statsTask: Void = loadStats(closerId: closer.closerId)
+        async let calendarTask: Void = loadCalendarEvents(email: closer.email, teamId: closer.teamId)
+        async let callsTask: Void = loadRecentCalls(closerId: closer.closerId)
+        async let upcomingTask: Void = loadUpcomingCalls(closerId: closer.closerId)
+
+        _ = await (statsTask, calendarTask, callsTask, upcomingTask)
+    }
+
+    private func loadStats(closerId: String) async {
+        isLoadingStats = true
+        defer { isLoadingStats = false }
+
+        do {
+            stats = try await appState.convexService.getCloserStats(closerId: closerId, period: "week")
+        } catch {
+            print("[Dashboard] Failed to load stats: \(error)")
+        }
+    }
+
+    private func loadCalendarEvents(email: String, teamId: String) async {
+        do {
+            let calendar = Calendar.current
+            let startOfDay = calendar.startOfDay(for: Date())
+            guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { return }
+
+            let events = try await appState.convexService.getCalendarEvents(
+                email: email,
+                teamId: teamId,
+                startDate: Int64(startOfDay.timeIntervalSince1970 * 1000),
+                endDate: Int64(endOfDay.timeIntervalSince1970 * 1000)
+            )
+
+            await MainActor.run {
+                calendarEvents = events
+            }
+        } catch {
+            print("[Dashboard] Failed to load calendar events: \(error)")
+        }
+    }
+
+    private func loadRecentCalls(closerId: String) async {
+        do {
+            let rawCalls = try await appState.convexService.getCallHistory(closerId: closerId)
+            let items: [RecentCallItem] = rawCalls.prefix(5).compactMap { dict in
+                guard let id = dict["_id"] as? String else { return nil }
+                let prospectName = dict["prospectName"] as? String ?? "Unknown"
+                let duration = dict["duration"] as? Double ?? 0
+                let outcome = dict["outcome"] as? String
+                let startedAt = dict["startedAt"] as? Double ?? 0
+                let date = Date(timeIntervalSince1970: startedAt / 1000)
+
+                return RecentCallItem(id: id, prospectName: prospectName, duration: duration, outcome: outcome, date: date)
+            }
+
+            await MainActor.run {
+                recentCalls = Array(items)
+            }
+        } catch {
+            print("[Dashboard] Failed to load recent calls: \(error)")
+        }
+    }
+
+    private func loadUpcomingCalls(closerId: String) async {
         isLoadingCalls = true
         defer { isLoadingCalls = false }
 
         do {
-            let bots = try await appState.convexService.getUpcomingBotsForCloser(closerId: closer.closerId)
+            let bots = try await appState.convexService.getUpcomingBotsForCloser(closerId: closerId)
             let formatter = DateFormatter()
             formatter.dateFormat = "h:mm a"
 
@@ -237,73 +481,210 @@ struct DashboardView: View {
         }
     }
 
-    private func excludeCall(_ call: UpcomingCall) async {
-        guard let closer = appState.closerInfo, let eventId = call.calendarEventId else { return }
+    // MARK: - Helpers
 
-        do {
-            let _ = try await appState.convexService.excludeCalendarEvent(
-                closerId: closer.closerId,
-                calendarEventId: eventId,
-                eventTitle: call.title
-            )
-            withAnimation {
-                upcomingCalls.removeAll { $0.id == call.id }
-            }
-        } catch {
-            print("[Dashboard] Failed to exclude call: \(error)")
+    private func formatCurrency(_ amount: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
+    }
+
+    private func formatDurationShort(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        let secs = seconds % 60
+        if minutes >= 60 {
+            return "\(minutes / 60)h \(minutes % 60)m"
+        }
+        return "\(minutes)m \(secs)s"
+    }
+
+    private func formatEventTime(_ timestamp: Double) -> String {
+        let date = Date(timeIntervalSince1970: timestamp / 1000)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
+    }
+
+    private func outcomeLabel(_ outcome: String?) -> String {
+        switch outcome {
+        case "closed": return "Closed"
+        case "lost": return "Not Closed"
+        case "no_show": return "No Show"
+        case "follow_up": return "Follow Up"
+        default: return "Pending"
         }
     }
-}
 
-// MARK: - Upcoming Call Row
+    private func outcomeColor(_ outcome: String?) -> Color {
+        switch outcome {
+        case "closed": return Color(red: 0.09, green: 0.63, blue: 0.22)
+        case "lost": return Color(red: 0.86, green: 0.15, blue: 0.15)
+        case "no_show": return Color(white: 0.5)
+        case "follow_up": return Color(red: 0.2, green: 0.4, blue: 0.8)
+        default: return Color(white: 0.5)
+        }
+    }
 
-struct UpcomingCallRow: View {
-    let call: UpcomingCall
-    let onExclude: () -> Void
+    private func outcomeBg(_ outcome: String?) -> Color {
+        switch outcome {
+        case "closed": return Color(red: 0.94, green: 0.99, blue: 0.94)
+        case "lost": return Color(red: 1.0, green: 0.94, blue: 0.94)
+        case "no_show": return Color(white: 0.95)
+        case "follow_up": return Color(red: 0.93, green: 0.95, blue: 1.0)
+        default: return Color(white: 0.95)
+        }
+    }
 
-    var body: some View {
-        HStack(spacing: 12) {
-            // Time
-            Text(call.time)
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundColor(Color(white: 0.3))
-                .frame(width: 80, alignment: .leading)
+    // MARK: - Meeting Confirmation Sheet
 
-            // Title
-            Text(call.title)
-                .font(.system(size: 14))
-                .foregroundColor(.black)
-                .lineLimit(1)
+    private func meetingConfirmationSheet(_ event: CalendarEvent) -> some View {
+        VStack(spacing: 0) {
+            // Header bar
+            HStack {
+                Spacer()
+                Button(action: { selectedEvent = nil }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(white: 0.45))
+                        .frame(width: 24, height: 24)
+                        .background(Color(white: 0.96))
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color(white: 0.9), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
 
             Spacer()
 
-            // Bot status badge
-            Text(call.botStatus.rawValue)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(call.botStatus == .ready
-                    ? Color(red: 0.13, green: 0.55, blue: 0.13)
-                    : Color(white: 0.5))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(call.botStatus == .ready
-                    ? Color(red: 0.13, green: 0.55, blue: 0.13).opacity(0.1)
-                    : Color(white: 0.95))
-                .cornerRadius(6)
+            VStack(spacing: 20) {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.96))
+                        .frame(width: 56, height: 56)
+                    Image(systemName: "video.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(Color(white: 0.4))
+                }
 
-            // Exclude button
-            Button(action: onExclude) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color(white: 0.6))
-                    .frame(width: 24, height: 24)
-                    .background(Color(white: 0.95))
-                    .cornerRadius(12)
+                Text(event.title)
+                    .font(.system(size: 18, weight: .semibold))
+                    .tracking(-0.3)
+                    .foregroundColor(.black)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+
+                Text(event.isAllDay == true ? "All day" : "\(formatEventTime(event.startTime)) – \(formatEventTime(event.endTime))")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(Color(white: 0.5))
+
+                if let platform = meetingPlatformName(event) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 12))
+                        Text(platform)
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(Color(red: 0.2, green: 0.5, blue: 0.9))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 0.93, green: 0.95, blue: 1.0))
+                    .cornerRadius(6)
+                }
             }
-            .buttonStyle(.plain)
-            .help("Exclude this event from bot auto-join")
+            .padding(.horizontal, 24)
+
+            Spacer()
+
+            VStack(spacing: 10) {
+                if event.meetingUrl != nil {
+                    Button(action: {
+                        if let meetingUrl = event.meetingUrl {
+                            selectedEvent = nil
+                            joinAndRecord(event: event, meetingUrl: meetingUrl)
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 14))
+                            Text("Join & Start Meeting")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.black)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("No video meeting link found")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(white: 0.5))
+                }
+
+                Button(action: { selectedEvent = nil }) {
+                    Text("Cancel")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color(white: 0.45))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 20)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .frame(width: 340, height: 360)
+        .background(Color.white)
+    }
+
+    private func meetingPlatformName(_ event: CalendarEvent) -> String? {
+        guard let url = event.meetingUrl?.lowercased() else { return nil }
+        if url.contains("zoom.us") { return "Zoom Meeting" }
+        if url.contains("meet.google.com") { return "Google Meet" }
+        if url.contains("teams.microsoft.com") { return "Microsoft Teams" }
+        if url.contains("webex.com") { return "Webex" }
+        return "Video Call"
+    }
+
+    private func joinAndRecord(event: CalendarEvent, meetingUrl: String) {
+        if let closerInfo = appState.closerInfo {
+            Task {
+                do {
+                    let success = try await appState.convexService.createBotForMeeting(
+                        closerId: closerInfo.closerId,
+                        teamId: closerInfo.teamId,
+                        meetingUrl: meetingUrl,
+                        meetingTitle: event.title,
+                        prospectName: event.title
+                    )
+                    print("[DashboardView] Bot creation \(success ? "succeeded" : "failed") for: \(event.title)")
+                } catch {
+                    print("[DashboardView] Failed to create bot: \(error)")
+                }
+            }
+        }
+
+        WindowManager.shared.openAmmoPanelSnapped(appState: appState)
+
+        if let url = URL(string: meetingUrl) {
+            NSWorkspace.shared.open(url)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            WindowManager.shared.resizeFrontmostWindowToLeft()
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            NotificationCenter.default.post(
+                name: Notification.Name("StartRecordingFromCalendar"),
+                object: nil,
+                userInfo: ["prospectName": event.title]
+            )
+        }
     }
 }
 
@@ -316,30 +697,87 @@ struct StatsView: View {
     @State private var isLoading = false
     @State private var selectedPeriod = "week"
 
+    private let periodOptions = [
+        ("today", "Today"),
+        ("week", "This Week"),
+        ("month", "This Month"),
+        ("last30", "Last 30 Days"),
+    ]
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
+            VStack(alignment: .leading, spacing: 24) {
                 // Header with period selector
                 HStack {
-                    Text("Your Performance")
-                        .font(.system(size: 28, weight: .bold))
+                    Text("Performance")
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.black)
 
                     Spacer()
 
-                    Picker("Period", selection: $selectedPeriod) {
-                        Text("This Week").tag("week")
-                        Text("This Month").tag("month")
+                    HStack(spacing: 4) {
+                        ForEach(periodOptions, id: \.0) { option in
+                            Button(action: { selectedPeriod = option.0 }) {
+                                Text(option.1)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(selectedPeriod == option.0 ? .white : Color(white: 0.45))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(selectedPeriod == option.0 ? Color.black : Color(white: 0.95))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 220)
                     .onChange(of: selectedPeriod) {
                         Task { await loadStats() }
                     }
                 }
 
-                // Stats Cards
-                statsCards
+                // Stats Cards - 2 rows of 3
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        StatCard(
+                            title: periodLabel("Calls"),
+                            value: "\(stats["callsThisPeriod"] as? Int ?? 0)",
+                            icon: "phone.fill"
+                        )
+
+                        StatCard(
+                            title: "Close Rate",
+                            value: "\(Int(stats["closeRate"] as? Double ?? 0))%",
+                            icon: "target"
+                        )
+
+                        StatCard(
+                            title: "Cash Collected",
+                            value: formatCurrency(stats["cashCollected"] as? Int ?? 0),
+                            icon: "dollarsign.circle.fill"
+                        )
+                    }
+
+                    HStack(spacing: 12) {
+                        StatCard(
+                            title: "Avg Call Duration",
+                            value: formatDuration(stats["avgCallDuration"] as? Int ?? 0),
+                            icon: "clock.fill"
+                        )
+
+                        StatCard(
+                            title: "Talk Ratio",
+                            value: "\(Int(stats["avgTalkRatio"] as? Double ?? 0))%",
+                            icon: "waveform"
+                        )
+
+                        StatCard(
+                            title: "Contract Value",
+                            value: formatCurrency(stats["totalContractValue"] as? Int ?? 0),
+                            icon: "doc.text.fill"
+                        )
+                    }
+                }
 
                 // Team Comparison
                 teamComparisonSection
@@ -355,53 +793,27 @@ struct StatsView: View {
         }
     }
 
-    // MARK: - Stats Cards
-
-    private var statsCards: some View {
-        HStack(spacing: 16) {
-            StatCard(
-                title: selectedPeriod == "week" ? "Calls This Week" : "Calls This Month",
-                value: "\(stats["callsThisPeriod"] as? Int ?? 0)",
-                icon: "phone.fill"
-            )
-
-            StatCard(
-                title: "Close Rate",
-                value: "\(Int(stats["closeRate"] as? Double ?? 0))%",
-                icon: "target"
-            )
-
-            StatCard(
-                title: "Cash Collected",
-                value: formatCurrency(stats["cashCollected"] as? Int ?? 0),
-                icon: "dollarsign.circle.fill"
-            )
-        }
-    }
-
     // MARK: - Team Comparison
 
     private var teamComparisonSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 8) {
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(Color(white: 0.4))
-                Text("You vs Team Average")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.black)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Text("YOU VS TEAM AVERAGE")
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(0.5)
+                    .foregroundColor(Color(white: 0.45))
 
                 Spacer()
 
                 let teamSize = stats["teamSize"] as? Int ?? 0
                 if teamSize > 0 {
                     Text("\(teamSize) closers")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(white: 0.5))
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.55))
                 }
             }
 
-            VStack(spacing: 16) {
+            VStack(spacing: 14) {
                 ComparisonRow(
                     label: "Close Rate",
                     yours: "\(Int(stats["closeRate"] as? Double ?? 0))%",
@@ -425,18 +837,44 @@ struct StatsView: View {
                     yourValue: Double(stats["callsThisPeriod"] as? Int ?? 0),
                     teamValue: stats["teamAvgCalls"] as? Double ?? 0
                 )
+
+                ComparisonRow(
+                    label: "Avg Duration",
+                    yours: formatDuration(stats["avgCallDuration"] as? Int ?? 0),
+                    team: formatDuration(stats["teamAvgDuration"] as? Int ?? 0),
+                    yourValue: Double(stats["avgCallDuration"] as? Int ?? 0),
+                    teamValue: Double(stats["teamAvgDuration"] as? Int ?? 0)
+                )
+
+                ComparisonRow(
+                    label: "Talk Ratio",
+                    yours: "\(Int(stats["avgTalkRatio"] as? Double ?? 0))%",
+                    team: "\(Int(stats["teamAvgTalkRatio"] as? Double ?? 0))%",
+                    yourValue: stats["avgTalkRatio"] as? Double ?? 0,
+                    teamValue: stats["teamAvgTalkRatio"] as? Double ?? 0
+                )
             }
-            .padding(20)
+            .padding(16)
             .background(Color(white: 0.98))
-            .cornerRadius(12)
+            .cornerRadius(8)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(white: 0.92), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(white: 0.9), lineWidth: 0.5)
             )
         }
     }
 
-    // MARK: - Data Loading
+    // MARK: - Helpers
+
+    private func periodLabel(_ base: String) -> String {
+        switch selectedPeriod {
+        case "today": return "\(base) Today"
+        case "week": return "\(base) This Week"
+        case "month": return "\(base) This Month"
+        case "last30": return "\(base) (30 Days)"
+        default: return base
+        }
+    }
 
     private func loadStats() async {
         guard let closer = appState.closerInfo else { return }
@@ -456,6 +894,18 @@ struct StatsView: View {
         formatter.maximumFractionDigits = 0
         return formatter.string(from: NSNumber(value: amount)) ?? "$\(amount)"
     }
+
+    private func formatDuration(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        let secs = seconds % 60
+        if minutes >= 60 {
+            return "\(minutes / 60)h \(minutes % 60)m"
+        }
+        if minutes == 0 && secs == 0 {
+            return "—"
+        }
+        return "\(minutes)m \(secs)s"
+    }
 }
 
 // MARK: - Stat Card
@@ -466,45 +916,122 @@ struct StatCard: View {
     let icon: String
     var trend: Double? = nil
 
+    @State private var displayValue: String = ""
+    @State private var opacity: Double = 0
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .foregroundColor(Color(white: 0.5))
                 Spacer()
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(value)
-                    .font(.system(size: 24, weight: .bold))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayValue.isEmpty ? " " : displayValue)
+                    .font(.system(size: 28, weight: .bold, design: .monospaced))
                     .foregroundColor(.black)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
 
                 HStack(spacing: 4) {
-                    Text(title)
-                        .font(.system(size: 12))
+                    Text(title.uppercased())
+                        .font(.system(size: 11, weight: .medium))
+                        .tracking(0.5)
                         .foregroundColor(Color(white: 0.5))
 
                     if let trend = trend {
                         HStack(spacing: 2) {
                             Image(systemName: trend >= 0 ? "arrow.up.right" : "arrow.down.right")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 9, weight: .semibold))
                             Text(String(format: "%.1f%%", abs(trend)))
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 10, weight: .medium))
                         }
                         .foregroundColor(trend >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.13) : Color(red: 0.86, green: 0.15, blue: 0.15))
                     }
                 }
             }
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white)
-        .cornerRadius(12)
+        .cornerRadius(8)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(white: 0.92), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(white: 0.9), lineWidth: 0.5)
         )
+        .opacity(opacity)
+        .onAppear {
+            animateValue()
+        }
+        .onChange(of: value) { _, _ in
+            animateValue()
+        }
+    }
+
+    private func animateValue() {
+        // Extract the numeric part from the value
+        let cleaned = value.replacingOccurrences(of: ",", with: "")
+
+        // For duration strings like "5m 23s" or "0m 0s", just fade in
+        if value.contains("m ") || value.contains("h ") {
+            withAnimation(.easeOut(duration: 0.4)) {
+                displayValue = value
+                opacity = 1
+            }
+            return
+        }
+
+        // Try to extract a number
+        let prefix = value.hasPrefix("$") ? "$" : ""
+        let suffix = value.hasSuffix("%") ? "%" : ""
+        let numStr = cleaned
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: "%", with: "")
+            .trimmingCharacters(in: .whitespaces)
+
+        guard let targetNum = Double(numStr), targetNum > 0 else {
+            withAnimation(.easeOut(duration: 0.4)) {
+                displayValue = value
+                opacity = 1
+            }
+            return
+        }
+
+        // Animate counting up
+        let steps = 20
+        let duration = 0.6
+        let interval = duration / Double(steps)
+
+        displayValue = "\(prefix)0\(suffix)"
+        withAnimation(.easeOut(duration: 0.3)) {
+            opacity = 1
+        }
+
+        for i in 1...steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval * Double(i)) {
+                let progress = easeOutCubic(Double(i) / Double(steps))
+                let current = targetNum * progress
+
+                if targetNum == Double(Int(targetNum)) {
+                    // Integer value
+                    displayValue = "\(prefix)\(Int(current))\(suffix)"
+                } else {
+                    // Decimal value
+                    displayValue = "\(prefix)\(String(format: "%.1f", current))\(suffix)"
+                }
+
+                // Ensure final value is exact
+                if i == steps {
+                    displayValue = value
+                }
+            }
+        }
+    }
+
+    private func easeOutCubic(_ t: Double) -> Double {
+        1 - pow(1 - t, 3)
     }
 }
 
@@ -520,36 +1047,37 @@ struct ComparisonRow: View {
     private var maxVal: Double { max(yourValue, teamValue, 1) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(Color(white: 0.4))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label.uppercased())
+                .font(.system(size: 11, weight: .medium))
+                .tracking(0.5)
+                .foregroundColor(Color(white: 0.45))
 
             HStack(spacing: 12) {
                 // Your bar
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("You: \(yours)")
                         .font(.system(size: 12))
                         .foregroundColor(.black)
                     GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 2)
                             .fill(Color.black)
-                            .frame(width: geo.size.width * (yourValue / maxVal))
+                            .frame(width: max(geo.size.width * (yourValue / maxVal), 2))
                     }
-                    .frame(height: 8)
+                    .frame(height: 4)
                 }
 
                 // Team bar
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Team Avg: \(team)")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Team: \(team)")
                         .font(.system(size: 12))
                         .foregroundColor(Color(white: 0.5))
                     GeometryReader { geo in
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 2)
                             .fill(Color(white: 0.8))
-                            .frame(width: geo.size.width * (teamValue / maxVal))
+                            .frame(width: max(geo.size.width * (teamValue / maxVal), 2))
                     }
-                    .frame(height: 8)
+                    .frame(height: 4)
                 }
             }
         }

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AVKit
 
 // MARK: - Call History Item Model
 
@@ -20,6 +21,7 @@ struct CallHistoryItem: Identifiable {
     let cashCollected: Double?
     let hasVideo: Bool
     let recordingType: String // "audio" or "video"
+    let recordingUrl: String?
 }
 
 // MARK: - Call History View
@@ -31,8 +33,10 @@ struct CallHistoryView: View {
     @State private var selectedCall: CallHistoryItem?
     @State private var isLoading: Bool = true
     @State private var filterOutcome: String = "all"
+    @State private var searchText: String = ""
     @State private var startDate: Date = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     @State private var endDate: Date = Date()
+    @State private var rowsVisible = false
 
     private let outcomeFilters = [
         ("all", "All"),
@@ -44,10 +48,8 @@ struct CallHistoryView: View {
 
     var filteredCalls: [CallHistoryItem] {
         calls.filter { call in
-            // Date filter
             let inDateRange = call.date >= startDate && call.date <= endDate
 
-            // Outcome filter
             let matchesOutcome: Bool
             if filterOutcome == "all" {
                 matchesOutcome = true
@@ -55,7 +57,14 @@ struct CallHistoryView: View {
                 matchesOutcome = call.outcome == filterOutcome
             }
 
-            return inDateRange && matchesOutcome
+            let matchesSearch: Bool
+            if searchText.isEmpty {
+                matchesSearch = true
+            } else {
+                matchesSearch = call.prospectName.localizedCaseInsensitiveContains(searchText)
+            }
+
+            return inDateRange && matchesOutcome && matchesSearch
         }
     }
 
@@ -63,13 +72,12 @@ struct CallHistoryView: View {
         VStack(spacing: 0) {
             // Header
             HStack(alignment: .center) {
-                Text("Call History")
-                    .font(.system(size: 20, weight: .bold))
+                Text("Calls")
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.black)
 
                 Spacer()
 
-                // Call count
                 Text("\(filteredCalls.count) calls")
                     .font(.system(size: 13))
                     .foregroundColor(Color(white: 0.5))
@@ -77,6 +85,37 @@ struct CallHistoryView: View {
             .padding(.horizontal, 24)
             .padding(.top, 20)
             .padding(.bottom, 12)
+
+            // Search bar
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(white: 0.5))
+
+                TextField("Search by prospect name...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundColor(.black)
+
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color(white: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(white: 0.97))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(white: 0.9), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 24)
+            .padding(.bottom, 10)
 
             // Filter bar
             filterBar
@@ -98,7 +137,7 @@ struct CallHistoryView: View {
             } else if filteredCalls.isEmpty {
                 emptyState
             } else {
-                callList
+                callTable
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -189,21 +228,118 @@ struct CallHistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Call List
+    // MARK: - Call Table
 
-    private var callList: some View {
-        ScrollView {
-            LazyVStack(spacing: 8) {
-                ForEach(filteredCalls) { call in
-                    CallCard(call: call)
-                        .onTapGesture {
-                            selectedCall = call
-                        }
+    private var callTable: some View {
+        VStack(spacing: 0) {
+            // Pending questionnaire banner
+            if appState.pendingQuestionnaireCount > 0, let callId = appState.firstPendingCallId {
+                pendingQuestionnaireBanner(callId: callId, prospectName: appState.firstPendingProspectName)
+            }
+
+            // Table header
+            HStack(spacing: 0) {
+                Text("DATE / TIME")
+                    .frame(width: 160, alignment: .leading)
+                Text("PROSPECT")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("DURATION")
+                    .frame(width: 90, alignment: .trailing)
+                Text("OUTCOME")
+                    .frame(width: 110, alignment: .center)
+                Text("TALK")
+                    .frame(width: 60, alignment: .trailing)
+                // Space for video icon
+                Color.clear.frame(width: 30)
+            }
+            .font(.system(size: 10, weight: .medium))
+            .tracking(0.5)
+            .foregroundColor(Color(white: 0.45))
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            .background(Color(white: 0.98))
+
+            Divider()
+
+            // Table rows
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(filteredCalls.enumerated()), id: \.element.id) { index, call in
+                        CallTableRow(call: call, isEven: index % 2 == 0)
+                            .opacity(rowsVisible ? 1 : 0)
+                            .offset(y: rowsVisible ? 0 : 8)
+                            .animation(
+                                .easeOut(duration: 0.3).delay(Double(min(index, 10)) * 0.04),
+                                value: rowsVisible
+                            )
+                            .onTapGesture {
+                                selectedCall = call
+                            }
+
+                        Divider()
+                            .padding(.horizontal, 24)
+                            .opacity(rowsVisible ? 1 : 0)
+                            .animation(
+                                .easeOut(duration: 0.3).delay(Double(min(index, 10)) * 0.04),
+                                value: rowsVisible
+                            )
+                    }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // MARK: - Pending Questionnaire Banner
+
+    private func pendingQuestionnaireBanner(callId: String, prospectName: String?) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(Color(red: 0.9, green: 0.5, blue: 0.1))
+
+            Text("You have a pending post-call questionnaire")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color(white: 0.3))
+
+            if let name = prospectName {
+                Text("for \(name)")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(white: 0.5))
+            }
+
+            Spacer()
+
+            Button(action: {
+                // Open the questionnaire panel
+                appState.botQuestionnaireCallId = callId
+                appState.botQuestionnaireProspectName = prospectName
+                appState.showBotPostCallQuestionnaire = true
+                WindowManager.shared.openQuestionnairePanel(
+                    appState: appState,
+                    callId: callId,
+                    prospectName: prospectName ?? "Prospect"
+                )
+            }) {
+                Text("Fill Out Now")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(Color.black)
+                    .cornerRadius(6)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
+        .background(Color(red: 1.0, green: 0.97, blue: 0.92))
+        .overlay(
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color(red: 0.9, green: 0.85, blue: 0.75)),
+            alignment: .bottom
+        )
     }
 
     // MARK: - Load Calls
@@ -211,74 +347,75 @@ struct CallHistoryView: View {
     private func loadCalls() {
         isLoading = true
 
-        // Placeholder demo data
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            calls = [
-                CallHistoryItem(
-                    id: "call_1",
-                    prospectName: "John Smith",
-                    date: Date().addingTimeInterval(-3600),
-                    duration: 1845,
-                    outcome: "closed",
-                    closerTalkPercent: 42,
-                    cashCollected: 5000,
-                    hasVideo: false,
-                    recordingType: "audio"
-                ),
-                CallHistoryItem(
-                    id: "call_2",
-                    prospectName: "Sarah Johnson",
-                    date: Date().addingTimeInterval(-86400),
-                    duration: 2340,
-                    outcome: "follow_up",
-                    closerTalkPercent: 55,
-                    cashCollected: nil,
-                    hasVideo: true,
-                    recordingType: "video"
-                ),
-                CallHistoryItem(
-                    id: "call_3",
-                    prospectName: "Mike Williams",
-                    date: Date().addingTimeInterval(-172800),
-                    duration: 420,
-                    outcome: "no_show",
-                    closerTalkPercent: nil,
-                    cashCollected: nil,
-                    hasVideo: false,
-                    recordingType: "audio"
-                ),
-                CallHistoryItem(
-                    id: "call_4",
-                    prospectName: "Emily Davis",
-                    date: Date().addingTimeInterval(-259200),
-                    duration: 3150,
-                    outcome: "lost",
-                    closerTalkPercent: 61,
-                    cashCollected: nil,
-                    hasVideo: true,
-                    recordingType: "video"
-                ),
-                CallHistoryItem(
-                    id: "call_5",
-                    prospectName: "Alex Thompson",
-                    date: Date().addingTimeInterval(-345600),
-                    duration: 2700,
-                    outcome: "closed",
-                    closerTalkPercent: 38,
-                    cashCollected: 10000,
-                    hasVideo: false,
-                    recordingType: "audio"
-                )
-            ]
+        guard let closerId = appState.closerInfo?.closerId else {
             isLoading = false
+            return
+        }
+
+        Task {
+            do {
+                let rawCalls = try await appState.convexService.getCallHistory(closerId: closerId)
+                let items: [CallHistoryItem] = rawCalls.compactMap { dict in
+                    guard let id = dict["_id"] as? String else { return nil }
+
+                    let prospectName = dict["prospectName"] as? String ?? "Unknown Prospect"
+                    let startedAt = dict["startedAt"] as? Double ?? 0
+                    let date = Date(timeIntervalSince1970: startedAt / 1000)
+                    let duration = dict["duration"] as? Double ?? 0
+                    let outcome = dict["outcome"] as? String
+                    let cashCollected = dict["cashCollected"] as? Double
+                    let recordingUrl = dict["recordingUrl"] as? String
+                    let recordingType = dict["recordingType"] as? String ?? "audio"
+                    let hasVideo = recordingType == "video" && recordingUrl != nil
+
+                    let closerTalkTime = dict["closerTalkTime"] as? Double
+                    let prospectTalkTime = dict["prospectTalkTime"] as? Double
+                    var closerTalkPercent: Double? = nil
+                    if let ct = closerTalkTime, let pt = prospectTalkTime, (ct + pt) > 0 {
+                        closerTalkPercent = (ct / (ct + pt)) * 100
+                    }
+
+                    return CallHistoryItem(
+                        id: id,
+                        prospectName: prospectName,
+                        date: date,
+                        duration: duration,
+                        outcome: outcome,
+                        closerTalkPercent: closerTalkPercent,
+                        cashCollected: cashCollected,
+                        hasVideo: hasVideo,
+                        recordingType: recordingType,
+                        recordingUrl: recordingUrl
+                    )
+                }
+
+                await MainActor.run {
+                    rowsVisible = false
+                    calls = items
+                    isLoading = false
+                    // Trigger staggered animation on next frame
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        rowsVisible = true
+                    }
+                }
+            } catch {
+                print("[CallHistory] Error loading calls: \(error)")
+                await MainActor.run {
+                    calls = []
+                    isLoading = false
+                    rowsVisible = true
+                }
+            }
         }
     }
 }
 
-// MARK: - Call Card
+// MARK: - Call Table Row
 
-struct CallCard: View {
+struct CallTableRow: View {
     let call: CallHistoryItem
+    let isEven: Bool
+    @State private var isHovered = false
 
     private var outcomeBadgeColor: Color {
         switch call.outcome {
@@ -305,92 +442,74 @@ struct CallCard: View {
         case "closed": return "Closed"
         case "lost": return "Not Closed"
         case "no_show": return "No Show"
-        case "follow_up": return "Rescheduled"
+        case "follow_up": return "Follow Up"
         default: return "Unknown"
         }
     }
 
     var body: some View {
-        HStack(spacing: 16) {
-            // Left: Date + prospect + duration
-            VStack(alignment: .leading, spacing: 4) {
-                Text(call.date.formatted(date: .abbreviated, time: .shortened))
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(white: 0.5))
+        HStack(spacing: 0) {
+            // Date/Time
+            Text(call.date.formatted(date: .abbreviated, time: .shortened))
+                .font(.system(size: 12))
+                .foregroundColor(Color(white: 0.4))
+                .frame(width: 160, alignment: .leading)
 
-                Text(call.prospectName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.black)
-                    .lineLimit(1)
+            // Prospect
+            Text(call.prospectName)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.black)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(formatCallDuration(call.duration))
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(white: 0.5))
-            }
-            .frame(minWidth: 160, alignment: .leading)
+            // Duration
+            Text(formatCallDuration(call.duration))
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Color(white: 0.4))
+                .frame(width: 90, alignment: .trailing)
 
-            Spacer()
-
-            // Center: Outcome badge
+            // Outcome badge
             Text(outcomeLabel)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(outcomeBadgeColor)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
                 .background(outcomeBadgeBg)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(outcomeBadgeColor.opacity(0.3), lineWidth: 1)
-                )
+                .cornerRadius(10)
+                .frame(width: 110, alignment: .center)
 
-            Spacer()
+            // Talk ratio
+            if let talkPercent = call.closerTalkPercent {
+                Text("\(Int(talkPercent))%")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(Color(white: 0.4))
+                    .frame(width: 60, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(white: 0.7))
+                    .frame(width: 60, alignment: .trailing)
+            }
 
-            // Right: Talk ratio, cash, video icon
-            HStack(spacing: 12) {
-                // Mini talk ratio bar
-                if let talkPercent = call.closerTalkPercent {
-                    VStack(spacing: 2) {
-                        Text("\(Int(talkPercent))%")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Color(white: 0.5))
-
-                        GeometryReader { geometry in
-                            HStack(spacing: 1) {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.black.opacity(0.6))
-                                    .frame(width: geometry.size.width * CGFloat(talkPercent / 100))
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.blue.opacity(0.3))
-                            }
-                        }
-                        .frame(width: 60, height: 4)
-                    }
-                }
-
-                // Cash collected
-                if let cash = call.cashCollected, cash > 0 {
-                    Text("$\(formatCash(cash))")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color(red: 0.09, green: 0.63, blue: 0.22))
-                }
-
-                // Video icon
-                if call.hasVideo {
-                    Image(systemName: "video.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(white: 0.5))
-                }
+            // Video icon
+            if call.hasVideo {
+                Image(systemName: "video.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(white: 0.5))
+                    .frame(width: 30, alignment: .center)
+            } else {
+                Color.clear.frame(width: 30)
             }
         }
-        .padding(16)
-        .background(Color.white)
-        .cornerRadius(10)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color(white: 0.9), lineWidth: 1)
-        )
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
+        .background(isHovered ? Color(white: 0.96) : (isEven ? Color.white : Color(white: 0.99)))
         .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovered = hovering
+            }
+        }
     }
 
     private func formatCallDuration(_ duration: TimeInterval) -> String {
@@ -403,18 +522,8 @@ struct CallCard: View {
         }
         return "\(minutes)m \(seconds)s"
     }
-
-    private func formatCash(_ amount: Double) -> String {
-        if amount >= 1000 {
-            let k = amount / 1000
-            if k == Double(Int(k)) {
-                return "\(Int(k))k"
-            }
-            return String(format: "%.1fk", k)
-        }
-        return "\(Int(amount))"
-    }
 }
+
 
 // MARK: - Call Detail Sheet
 
@@ -473,28 +582,14 @@ struct CallDetailSheet: View {
             // Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Video player placeholder
-                    if call.hasVideo {
+                    // Video player
+                    if call.hasVideo, let urlString = call.recordingUrl, let url = URL(string: urlString) {
                         VStack(spacing: 12) {
                             sectionHeader("Recording")
 
-                            VStack(spacing: 12) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color(white: 0.95))
-                                        .frame(height: 200)
-
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "play.circle.fill")
-                                            .font(.system(size: 40))
-                                            .foregroundColor(Color(white: 0.7))
-
-                                        Text("Video playback coming soon")
-                                            .font(.system(size: 13))
-                                            .foregroundColor(Color(white: 0.5))
-                                    }
-                                }
-                            }
+                            VideoPlayer(player: AVPlayer(url: url))
+                                .frame(height: 280)
+                                .cornerRadius(10)
                         }
                     }
 
@@ -537,7 +632,7 @@ struct CallDetailSheet: View {
                             .cornerRadius(8)
                     }
 
-                    // Post-Call Questionnaire Data placeholder
+                    // Post-Call Questionnaire Data
                     VStack(spacing: 8) {
                         sectionHeader("Post-Call Data")
 

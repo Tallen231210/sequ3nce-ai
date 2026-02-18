@@ -257,7 +257,7 @@ struct InlineMessagesView: View {
             // Header
             HStack {
                 Text("Team Messages")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.black)
 
                 Spacer()
@@ -272,11 +272,11 @@ struct InlineMessagesView: View {
                     Spacer()
 
                     Image(systemName: "message")
-                        .font(.system(size: 48))
+                        .font(.system(size: 36))
                         .foregroundColor(Color(white: 0.75))
 
                     Text("No messages yet")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Color(white: 0.5))
 
                     Text("Messages from your manager will appear here.\nYou can also send messages to your team.")
@@ -325,10 +325,10 @@ struct InlineMessagesView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(Color(white: 0.97))
-                    .cornerRadius(10)
+                    .cornerRadius(8)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(white: 0.9), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(white: 0.9), lineWidth: 0.5)
                     )
                     .onSubmit {
                         if canSend { sendMessage() }
@@ -346,7 +346,7 @@ struct InlineMessagesView: View {
                             .foregroundColor(canSend ? .white : Color(white: 0.6))
                             .frame(width: 40, height: 40)
                             .background(canSend ? Color.black : Color(white: 0.92))
-                            .cornerRadius(10)
+                            .cornerRadius(8)
                     }
                 }
                 .buttonStyle(.plain)

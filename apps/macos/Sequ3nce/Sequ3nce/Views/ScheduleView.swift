@@ -29,6 +29,22 @@ struct ScheduleView: View {
     // Auto-sync timer (every 5 minutes)
     private let autoSyncTimer = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
 
+    // View mode toggle and week navigation
+    @State private var viewMode: ScheduleViewMode = .week
+    @State private var weekOffset: Int = 0
+
+    // Selected event for join confirmation
+    @State private var selectedEvent: CalendarEvent?
+
+    private let hourHeight: CGFloat = 60.0
+    private let gridStartHour: Int = 6   // 6 AM
+    private let gridEndHour: Int = 22    // 10 PM
+
+    private enum ScheduleViewMode: String, CaseIterable {
+        case list = "List"
+        case week = "Week"
+    }
+
     private var closerEmail: String? {
         appState.closerInfo?.email
     }
@@ -65,6 +81,12 @@ struct ScheduleView: View {
             Task {
                 await silentSync()
             }
+        }
+        .onChange(of: weekOffset) {
+            Task { await fetchCalendarData() }
+        }
+        .onChange(of: viewMode) {
+            Task { await fetchCalendarData() }
         }
     }
 
@@ -320,58 +342,230 @@ struct ScheduleView: View {
             // Header
             header
 
-            // Events list or empty state
-            if events.isEmpty {
-                emptyEventsView
+            if viewMode == .list {
+                // Events list or empty state
+                if events.isEmpty {
+                    emptyEventsView
+                } else {
+                    eventsList
+                }
             } else {
-                eventsList
+                weeklyCalendarView
             }
         }
+        .sheet(item: $selectedEvent) { event in
+            meetingConfirmationSheet(event)
+        }
+    }
+
+    // MARK: - Meeting Confirmation Sheet
+
+    private func meetingConfirmationSheet(_ event: CalendarEvent) -> some View {
+        VStack(spacing: 0) {
+            // Header bar
+            HStack {
+                Spacer()
+                Button(action: { selectedEvent = nil }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(white: 0.45))
+                        .frame(width: 24, height: 24)
+                        .background(Color(white: 0.96))
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color(white: 0.9), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            Spacer()
+
+            VStack(spacing: 20) {
+                // Meeting icon
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.96))
+                        .frame(width: 56, height: 56)
+
+                    Image(systemName: "video.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(Color(white: 0.4))
+                }
+
+                // Meeting title
+                Text(event.title)
+                    .font(.system(size: 18, weight: .semibold))
+                    .tracking(-0.3)
+                    .foregroundColor(.black)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+
+                // Time
+                Text(event.isAllDay == true ? "All day" : "\(formatTime(event.startTime)) – \(formatTime(event.endTime))")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(Color(white: 0.5))
+
+                // Platform
+                if let platform = meetingPlatformName(event) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 12))
+                        Text(platform)
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(Color(red: 0.2, green: 0.5, blue: 0.9))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 0.93, green: 0.95, blue: 1.0))
+                    .cornerRadius(6)
+                }
+            }
+            .padding(.horizontal, 24)
+
+            Spacer()
+
+            // Action buttons
+            VStack(spacing: 10) {
+                if event.meetingUrl != nil {
+                    Button(action: {
+                        if let meetingUrl = event.meetingUrl {
+                            selectedEvent = nil
+                            joinAndRecord(event: event, meetingUrl: meetingUrl)
+                        }
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "video.fill")
+                                .font(.system(size: 14))
+                            Text("Join & Start Meeting")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.black)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("No video meeting link found")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(white: 0.5))
+                }
+
+                Button(action: { selectedEvent = nil }) {
+                    Text("Cancel")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color(white: 0.45))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 20)
+        }
+        .frame(width: 340, height: 360)
+        .background(Color.white)
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center) {
-            // Last synced with icon
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(red: 0.2, green: 0.7, blue: 0.4))
+        VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                // Last synced with icon
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(red: 0.2, green: 0.7, blue: 0.4))
 
-                Text("Synced \(formatLastSynced(calendarStatus?.lastSynced))")
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(white: 0.5))
-            }
-
-            Spacer()
-
-            // Action buttons (subtle)
-            HStack(spacing: 16) {
-                Button(action: handleSync) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .medium))
-                            .rotationEffect(.degrees(isSyncing ? 360 : 0))
-                            .animation(isSyncing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isSyncing)
-                        Text(isSyncing ? "Syncing" : "Refresh")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundColor(Color(white: 0.4))
-                }
-                .buttonStyle(.plain)
-                .disabled(isSyncing)
-
-                Button(action: handleDisconnect) {
-                    Text("Disconnect")
-                        .font(.system(size: 12, weight: .medium))
+                    Text("Synced \(formatLastSynced(calendarStatus?.lastSynced))")
+                        .font(.system(size: 12))
                         .foregroundColor(Color(white: 0.5))
                 }
-                .buttonStyle(.plain)
+
+                Spacer()
+
+                // View mode toggle
+                Picker("View", selection: $viewMode) {
+                    ForEach(ScheduleViewMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 120)
+
+                Spacer()
+
+                // Action buttons (subtle)
+                HStack(spacing: 16) {
+                    Button(action: handleSync) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .medium))
+                                .rotationEffect(.degrees(isSyncing ? 360 : 0))
+                                .animation(isSyncing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isSyncing)
+                            Text(isSyncing ? "Syncing" : "Refresh")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(Color(white: 0.4))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSyncing)
+
+                    Button(action: handleDisconnect) {
+                        Text("Disconnect")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color(white: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            // Week navigation bar (only in week mode)
+            if viewMode == .week {
+                HStack(spacing: 12) {
+                    Button(action: { weekOffset -= 1 }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(white: 0.35))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { weekOffset = 0 }) {
+                        Text("Today")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(weekOffset == 0 ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color(white: 0.35))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                weekOffset == 0
+                                    ? Color(red: 0.2, green: 0.5, blue: 0.9).opacity(0.1)
+                                    : Color(white: 0.94)
+                            )
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: { weekOffset += 1 }) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(Color(white: 0.35))
+                    }
+                    .buttonStyle(.plain)
+
+                    Text(weekLabel)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.black)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
         .background(Color.white)
     }
 
@@ -476,9 +670,9 @@ struct ScheduleView: View {
             }
 
             // Join & Record button (only for meetings with video URLs)
-            if let meetingUrl = event.meetingUrl {
+            if event.meetingUrl != nil {
                 Button(action: {
-                    joinAndRecord(event: event, meetingUrl: meetingUrl)
+                    selectedEvent = event
                 }) {
                     HStack(spacing: 8) {
                         Image(systemName: "video.fill")
@@ -500,6 +694,284 @@ struct ScheduleView: View {
         .background(Color.white)
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+    }
+
+    // MARK: - Weekly Calendar Grid
+
+    private var weeklyCalendarView: some View {
+        let dates = currentWeekDates
+        let totalHeight = CGFloat(gridEndHour - gridStartHour) * hourHeight
+
+        return VStack(spacing: 0) {
+            // Day header row
+            HStack(spacing: 0) {
+                // Spacer for time column
+                Color.clear
+                    .frame(width: 52, height: 1)
+
+                ForEach(dates, id: \.self) { date in
+                    dayHeaderCell(date)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.vertical, 8)
+            .background(Color.white)
+
+            Divider()
+
+            // Scrollable time grid
+            ScrollView(.vertical, showsIndicators: true) {
+                HStack(alignment: .top, spacing: 0) {
+                    // Hour labels column
+                    VStack(spacing: 0) {
+                        ForEach(gridStartHour..<gridEndHour, id: \.self) { hour in
+                            Text(formatHourLabel(hour))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(Color(white: 0.5))
+                                .frame(width: 52, height: hourHeight, alignment: .topTrailing)
+                                .padding(.trailing, 6)
+                                .offset(y: -6)
+                        }
+                    }
+
+                    // Day columns
+                    ForEach(dates, id: \.self) { date in
+                        dayColumn(date: date, totalHeight: totalHeight)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+        .background(Color(white: 0.97))
+    }
+
+    private func dayHeaderCell(_ date: Date) -> some View {
+        let calendar = Calendar.current
+        let isToday = calendar.isDateInToday(date)
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "EEE"
+        let dayName = dayFormatter.string(from: date)
+        let dayNumber = calendar.component(.day, from: date)
+
+        return VStack(spacing: 4) {
+            Text(dayName.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.3)
+                .foregroundColor(isToday ? Color(red: 0.2, green: 0.5, blue: 0.9) : Color(white: 0.5))
+
+            ZStack {
+                if isToday {
+                    Circle()
+                        .fill(Color(red: 0.2, green: 0.5, blue: 0.9))
+                        .frame(width: 28, height: 28)
+                }
+                Text("\(dayNumber)")
+                    .font(.system(size: 14, weight: isToday ? .bold : .regular))
+                    .foregroundColor(isToday ? .white : .black)
+            }
+        }
+    }
+
+    private func dayColumn(date: Date, totalHeight: CGFloat) -> some View {
+        let calendar = Calendar.current
+        let isToday = calendar.isDateInToday(date)
+        let dayEvents = eventsForDate(date)
+
+        return ZStack(alignment: .topLeading) {
+            // Today background highlight
+            if isToday {
+                Rectangle()
+                    .fill(Color(red: 0.93, green: 0.95, blue: 1.0).opacity(0.5))
+            }
+
+            // Hourly grid lines
+            VStack(spacing: 0) {
+                ForEach(gridStartHour..<gridEndHour, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color(white: 0.88))
+                        .frame(height: 0.5)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: hourHeight, alignment: .top)
+                }
+            }
+
+            // Event blocks
+            ForEach(dayEvents) { event in
+                weekEventBlock(event)
+            }
+
+            // Current time indicator
+            if isToday {
+                currentTimeIndicator
+            }
+        }
+        .frame(height: totalHeight)
+        .clipped()
+    }
+
+    private func weekEventBlock(_ event: CalendarEvent) -> some View {
+        let yOffset = eventYOffset(event)
+        let height = eventBlockHeight(event)
+        let urgency = eventUrgency(event)
+        let color = urgencyBlockColor(urgency)
+        let hasMeeting = event.meetingUrl != nil
+
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(event.title)
+                .font(.system(size: 10, weight: .semibold))
+                .lineLimit(height > 35 ? 2 : 1)
+
+            if height > 30 {
+                Text(formatTime(event.startTime))
+                    .font(.system(size: 9))
+                    .opacity(0.85)
+            }
+
+            if height > 50, let platform = meetingPlatformName(event) {
+                HStack(spacing: 2) {
+                    Image(systemName: "video.fill")
+                        .font(.system(size: 7))
+                    Text(platform)
+                        .font(.system(size: 8))
+                }
+                .opacity(0.85)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .frame(height: max(height, 18), alignment: .top)
+        .background(color.opacity(0.9))
+        .foregroundColor(.white)
+        .cornerRadius(4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(color, lineWidth: 1)
+        )
+        .shadow(color: color.opacity(0.2), radius: 2, x: 0, y: 1)
+        .offset(y: yOffset)
+        .padding(.horizontal, 2)
+        .onTapGesture {
+            selectedEvent = event
+        }
+        .help(hasMeeting ? "\(event.title) — Click for details" : event.title)
+    }
+
+    private var currentTimeIndicator: some View {
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: now)
+        let minute = calendar.component(.minute, from: now)
+        let yPosition = CGFloat(hour - gridStartHour) * hourHeight + CGFloat(minute) / 60.0 * hourHeight
+
+        return HStack(spacing: 0) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 8, height: 8)
+            Rectangle()
+                .fill(Color.red)
+                .frame(height: 2)
+                .frame(maxWidth: .infinity)
+        }
+        .offset(y: yPosition - 4)
+    }
+
+    // MARK: - Week View Helpers
+
+    private var currentWeekDates: [Date] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        // weekday: 1=Sunday, 2=Monday, ..., 7=Saturday
+        let weekday = calendar.component(.weekday, from: today)
+        let daysToMonday = (weekday == 1) ? -6 : (2 - weekday)
+        guard let monday = calendar.date(byAdding: .day, value: daysToMonday + (weekOffset * 7), to: today) else {
+            return []
+        }
+        return (0..<7).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: monday)
+        }
+    }
+
+    private var weekLabel: String {
+        let dates = currentWeekDates
+        guard let first = dates.first, let last = dates.last else { return "" }
+        let calendar = Calendar.current
+        let sameMonth = calendar.component(.month, from: first) == calendar.component(.month, from: last)
+
+        let formatter = DateFormatter()
+        if sameMonth {
+            formatter.dateFormat = "MMM d"
+            let startStr = formatter.string(from: first)
+            formatter.dateFormat = "d, yyyy"
+            let endStr = formatter.string(from: last)
+            return "\(startStr) – \(endStr)"
+        } else {
+            formatter.dateFormat = "MMM d"
+            let startStr = formatter.string(from: first)
+            formatter.dateFormat = "MMM d, yyyy"
+            let endStr = formatter.string(from: last)
+            return "\(startStr) – \(endStr)"
+        }
+    }
+
+    private func eventsForDate(_ date: Date) -> [CalendarEvent] {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { return [] }
+        let startMs = startOfDay.timeIntervalSince1970 * 1000
+        let endMs = endOfDay.timeIntervalSince1970 * 1000
+
+        return events.filter { $0.startTime >= startMs && $0.startTime < endMs }
+            .sorted { $0.startTime < $1.startTime }
+    }
+
+    private func eventYOffset(_ event: CalendarEvent) -> CGFloat {
+        let date = Date(timeIntervalSince1970: event.startTime / 1000)
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+        let effectiveHour = max(hour, gridStartHour)
+        let effectiveMinute = hour < gridStartHour ? 0 : minute
+        return CGFloat(effectiveHour - gridStartHour) * hourHeight + CGFloat(effectiveMinute) / 60.0 * hourHeight
+    }
+
+    private func eventBlockHeight(_ event: CalendarEvent) -> CGFloat {
+        let durationMs = event.endTime - event.startTime
+        let durationMinutes = durationMs / 60000
+        return max(CGFloat(durationMinutes) / 60.0 * hourHeight, 18)
+    }
+
+    private func urgencyBlockColor(_ urgency: EventUrgency) -> Color {
+        switch urgency {
+        case .now: return Color(red: 0.9, green: 0.25, blue: 0.25)
+        case .soon: return Color(red: 0.85, green: 0.65, blue: 0.15)
+        case .later: return Color(red: 0.2, green: 0.65, blue: 0.4)
+        case .future: return Color(red: 0.3, green: 0.5, blue: 0.85)
+        case .past: return Color(white: 0.6)
+        }
+    }
+
+    private func formatHourLabel(_ hour: Int) -> String {
+        if hour == 0 { return "12 AM" }
+        if hour < 12 { return "\(hour) AM" }
+        if hour == 12 { return "12 PM" }
+        return "\(hour - 12) PM"
+    }
+
+    private var fetchDateRange: (Date, Date) {
+        let calendar = Calendar.current
+        if viewMode == .week {
+            let dates = currentWeekDates
+            guard let first = dates.first, let last = dates.last,
+                  let end = calendar.date(byAdding: .day, value: 1, to: last) else {
+                let today = calendar.startOfDay(for: Date())
+                return (today, calendar.date(byAdding: .day, value: 7, to: today)!)
+            }
+            return (first, end)
+        } else {
+            let startOfDay = calendar.startOfDay(for: Date())
+            let endDate = calendar.date(byAdding: .day, value: 7, to: startOfDay)!
+            return (startOfDay, endDate)
+        }
     }
 
     // MARK: - Urgency System
@@ -578,20 +1050,38 @@ struct ScheduleView: View {
     }
 
     private func joinAndRecord(event: CalendarEvent, meetingUrl: String) {
-        // 1. Open Ammo Panel snapped to right side of screen FIRST
+        // 1. Send a meeting bot to join the call (async, fire-and-forget)
+        if let closerInfo = appState.closerInfo {
+            Task {
+                do {
+                    let success = try await appState.convexService.createBotForMeeting(
+                        closerId: closerInfo.closerId,
+                        teamId: closerInfo.teamId,
+                        meetingUrl: meetingUrl,
+                        meetingTitle: event.title,
+                        prospectName: event.title
+                    )
+                    print("[ScheduleView] Bot creation \(success ? "succeeded" : "failed") for: \(event.title)")
+                } catch {
+                    print("[ScheduleView] Failed to create bot: \(error)")
+                }
+            }
+        }
+
+        // 2. Open Ammo Panel snapped to right side of screen
         WindowManager.shared.openAmmoPanelSnapped(appState: appState)
 
-        // 2. Open meeting URL in default browser/app (will appear on left)
+        // 3. Open meeting URL in default browser/app (will appear on left)
         if let url = URL(string: meetingUrl) {
             NSWorkspace.shared.open(url)
         }
 
-        // 3. After browser opens, resize it to fit the left side (alongside Ammo Panel)
+        // 4. After browser opens, resize it to fit the left side (alongside Ammo Panel)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             WindowManager.shared.resizeFrontmostWindowToLeft()
         }
 
-        // 4. Start recording with event title as prospect name (after delay)
+        // 5. Start recording with event title as prospect name (after delay)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             NotificationCenter.default.post(
                 name: Notification.Name("StartRecordingFromCalendar"),
@@ -619,14 +1109,13 @@ struct ScheduleView: View {
             }
 
             if status?.connected == true {
-                let startOfDay = Calendar.current.startOfDay(for: Date())
-                let endDate = Calendar.current.date(byAdding: .day, value: 7, to: startOfDay)!
+                let (rangeStart, rangeEnd) = fetchDateRange
 
                 let fetchedEvents = try await appState.convexService.getCalendarEvents(
                     email: email,
                     teamId: teamId,
-                    startDate: Int64(startOfDay.timeIntervalSince1970 * 1000),
-                    endDate: Int64(endDate.timeIntervalSince1970 * 1000)
+                    startDate: Int64(rangeStart.timeIntervalSince1970 * 1000),
+                    endDate: Int64(rangeEnd.timeIntervalSince1970 * 1000)
                 )
 
                 await MainActor.run {

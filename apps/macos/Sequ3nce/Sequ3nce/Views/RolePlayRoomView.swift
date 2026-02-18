@@ -14,11 +14,12 @@ import SwiftUI
 @MainActor
 class RolePlayRoomViewModel: ObservableObject {
     @Published var roomUrl: String?
-    @Published var isLoading = true
+    @Published var isLoading = false
     @Published var error: String?
     @Published var participants: [RolePlayRoomParticipant] = []
     @Published var sessionStartTime: Date?
     @Published var sessionDuration: TimeInterval = 0
+    @Published var isInRoom = false
 
     private let convexService = ConvexService()
     private var participantPollingTimer: Timer?
@@ -36,10 +37,9 @@ class RolePlayRoomViewModel: ObservableObject {
         self.userName = userName
     }
 
-    func loadRoom() async {
+    func enterRoom() async {
         guard !teamId.isEmpty else {
             error = "Team ID not set"
-            isLoading = false
             return
         }
 
@@ -49,6 +49,7 @@ class RolePlayRoomViewModel: ObservableObject {
         do {
             let response = try await convexService.getOrCreateRolePlayRoom(teamId: teamId)
             roomUrl = response.roomUrl
+            isInRoom = true
             isLoading = false
 
             // Start polling for participants
@@ -74,16 +75,20 @@ class RolePlayRoomViewModel: ObservableObject {
     }
 
     func leaveRoom() async {
-        guard hasJoined else { return }
-
-        do {
-            try await convexService.leaveRolePlayRoom(teamId: teamId, closerId: closerId)
-            hasJoined = false
-            stopSessionTimer()
-            print("[RolePlayRoom] Left room")
-        } catch {
-            print("[RolePlayRoom] Failed to leave room: \(error)")
+        if hasJoined {
+            do {
+                try await convexService.leaveRolePlayRoom(teamId: teamId, closerId: closerId)
+                print("[RolePlayRoom] Left room")
+            } catch {
+                print("[RolePlayRoom] Failed to leave room: \(error)")
+            }
         }
+
+        hasJoined = false
+        isInRoom = false
+        roomUrl = nil
+        stopParticipantPolling()
+        stopSessionTimer()
     }
 
     func cleanup() {
@@ -161,47 +166,45 @@ class RolePlayRoomViewModel: ObservableObject {
 struct RolePlayRoomView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var viewModel = RolePlayRoomViewModel()
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            headerView
+            if viewModel.isInRoom {
+                // In-room view
+                headerView
 
-            Divider()
+                Divider()
 
-            // Main content
-            if viewModel.isLoading {
-                loadingView
-            } else if let error = viewModel.error {
-                errorView(error)
-            } else if let roomUrl = viewModel.roomUrl {
-                DailyWebView(
-                    roomUrl: roomUrl,
-                    userName: appState.closerInfo?.name ?? "User",
-                    onJoined: {
-                        Task {
-                            await viewModel.joinRoom()
+                if let roomUrl = viewModel.roomUrl {
+                    DailyWebView(
+                        roomUrl: roomUrl,
+                        userName: appState.closerInfo?.name ?? "User",
+                        onJoined: {
+                            Task {
+                                await viewModel.joinRoom()
+                            }
                         }
-                    }
-                )
+                    )
+                }
+
+                Divider()
+
+                footerView
+            } else {
+                // Lobby view
+                lobbyView
             }
-
-            Divider()
-
-            // Footer
-            footerView
         }
-        .frame(minWidth: 700, minHeight: 500)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white)
         .preferredColorScheme(.light)
-        .task {
+        .onAppear {
             if let closer = appState.closerInfo {
                 viewModel.setup(
                     teamId: closer.teamId,
                     closerId: closer.closerId,
                     userName: closer.name
                 )
-                await viewModel.loadRoom()
             }
         }
         .onDisappear {
@@ -209,16 +212,80 @@ struct RolePlayRoomView: View {
         }
     }
 
+    // MARK: - Lobby View
+
+    private var lobbyView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 36))
+                .foregroundColor(Color(white: 0.7))
+
+            VStack(spacing: 8) {
+                Text("Role Play Room")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.black)
+
+                Text("Practice your pitch with teammates in a live video room")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(white: 0.5))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 60)
+            }
+
+            Button(action: {
+                Task {
+                    await viewModel.enterRoom()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 16, height: 16)
+                    } else {
+                        Image(systemName: "video.fill")
+                    }
+                    Text(viewModel.isLoading ? "Connecting..." : "Enter Role Play Room")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(viewModel.isLoading ? Color.gray : Color.black)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isLoading)
+
+            if let error = viewModel.error {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 40)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Header
+
     private var headerView: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Role Play Room")
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .semibold))
 
                 if viewModel.sessionStartTime != nil {
                     Text("You've been here for \(viewModel.formattedDuration)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(white: 0.5))
                 }
             }
 
@@ -227,7 +294,7 @@ struct RolePlayRoomView: View {
             // Participant count
             HStack(spacing: 4) {
                 Image(systemName: "person.2.fill")
-                    .foregroundColor(.green)
+                    .foregroundColor(Color(red: 0.2, green: 0.7, blue: 0.4))
                 Text("\(viewModel.participants.count)")
                     .fontWeight(.medium)
             }
@@ -240,27 +307,29 @@ struct RolePlayRoomView: View {
         .padding(.vertical, 12)
     }
 
+    // MARK: - Footer
+
     private var footerView: some View {
         HStack {
-            // Participants list (scrollable horizontal)
+            // Participants list
             if !viewModel.participants.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(viewModel.participants) { participant in
                             Text(participant.userName)
-                                .font(.caption)
+                                .font(.system(size: 11, weight: .medium))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color(white: 0.9))
-                                .cornerRadius(4)
+                                .background(Color(white: 0.95))
+                                .cornerRadius(6)
                         }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Text("No one else here yet")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(white: 0.5))
                 Spacer()
             }
 
@@ -269,7 +338,6 @@ struct RolePlayRoomView: View {
                 Task {
                     await viewModel.leaveRoom()
                 }
-                dismiss()
             }) {
                 Text("Leave Room")
                     .font(.system(size: 13, weight: .medium))
@@ -277,43 +345,12 @@ struct RolePlayRoomView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(Color.red)
-                    .cornerRadius(6)
+                    .cornerRadius(8)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-    }
-
-    private var loadingView: some View {
-        VStack {
-            ProgressView()
-                .scaleEffect(1.5)
-            Text("Setting up role play room...")
-                .foregroundColor(.secondary)
-                .padding(.top, 16)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
-                .foregroundColor(.orange)
-
-            Text(message)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-
-            Button("Try Again") {
-                Task {
-                    await viewModel.loadRoom()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -365,8 +402,6 @@ struct DailyWebView: NSViewRepresentable {
             print("[DailyWebView] Page loaded")
 
             // Call onJoined when Daily.co page loads
-            // Note: In a more sophisticated implementation, you'd use JavaScript bridge
-            // to detect when the user actually joins the call
             if !hasCalledJoined {
                 hasCalledJoined = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
@@ -390,7 +425,6 @@ struct DailyWebView: NSViewRepresentable {
                      type: WKMediaCaptureType,
                      decisionHandler: @escaping (WKPermissionDecision) -> Void) {
             print("[DailyWebView] Media permission requested: \(type) from \(origin.host)")
-            // Auto-grant camera and microphone permissions for Daily.co
             decisionHandler(.grant)
         }
     }

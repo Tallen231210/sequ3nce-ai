@@ -109,7 +109,7 @@ struct TrainingView: View {
                 .scaleEffect(1.5)
             Text("Loading...")
                 .font(.system(size: 14))
-                .foregroundColor(.gray)
+                .foregroundColor(Color(white: 0.5))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -117,19 +117,29 @@ struct TrainingView: View {
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
-                .foregroundColor(.red)
+                .font(.system(size: 36))
+                .foregroundColor(Color(red: 0.86, green: 0.15, blue: 0.15))
             Text(message)
                 .font(.system(size: 14))
-                .foregroundColor(.red)
-            Button("Try Again") {
+                .foregroundColor(Color(red: 0.86, green: 0.15, blue: 0.15))
+            Button(action: {
                 if let closerId = appState.closerInfo?.closerId {
                     Task {
                         await viewModel.loadPlaylists(closerId: closerId)
                     }
                 }
+            }) {
+                Text("Try Again")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.black)
+                    )
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -137,14 +147,14 @@ struct TrainingView: View {
     private var notLoggedInView: some View {
         VStack(spacing: 16) {
             Image(systemName: "lock.fill")
-                .font(.system(size: 48))
-                .foregroundColor(.gray)
+                .font(.system(size: 36))
+                .foregroundColor(Color(white: 0.5))
             Text("Not Logged In")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(.black)
             Text("Please log in to access your training playlists.")
                 .font(.system(size: 14))
-                .foregroundColor(.gray)
+                .foregroundColor(Color(white: 0.5))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -161,13 +171,14 @@ struct PlaylistListView: View {
             // Header
             HStack {
                 Text("Your Training Playlists")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.black)
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(Color(white: 0.97))
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+            .background(Color.white)
 
             Divider()
 
@@ -194,14 +205,14 @@ struct PlaylistListView: View {
     private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "music.note.list")
-                .font(.system(size: 48))
-                .foregroundColor(.gray)
+                .font(.system(size: 36))
+                .foregroundColor(Color(white: 0.75))
             Text("No Training Playlists")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.black)
             Text("Your manager hasn't assigned any training playlists to you yet. Check back later!")
                 .font(.system(size: 14))
-                .foregroundColor(.gray)
+                .foregroundColor(Color(white: 0.5))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
@@ -225,7 +236,7 @@ struct PlaylistCard: View {
                 if let description = playlist.description, !description.isEmpty {
                     Text(description)
                         .font(.system(size: 13))
-                        .foregroundColor(.gray)
+                        .foregroundColor(Color(white: 0.5))
                         .lineLimit(2)
                 }
 
@@ -235,15 +246,15 @@ struct PlaylistCard: View {
                     Label("Assigned \(formatDate(playlist.assignedAt))", systemImage: "calendar")
                 }
                 .font(.system(size: 11))
-                .foregroundColor(.gray)
+                .foregroundColor(Color(white: 0.5))
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.white)
-            .cornerRadius(12)
+            .cornerRadius(8)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(white: 0.9), lineWidth: 0.5)
             )
         }
         .buttonStyle(.plain)
@@ -347,7 +358,7 @@ struct TrainingPlayerView: View {
                     Text(viewModel.selectedPlaylist?.name ?? "Back")
                         .font(.system(size: 13))
                 }
-                .foregroundColor(.gray)
+                .foregroundColor(Color(white: 0.5))
             }
             .buttonStyle(.plain)
 
@@ -514,7 +525,7 @@ struct TrainingPlayerView: View {
                 Spacer()
             }
             .padding(12)
-            .background(Color(white: 0.97))
+            .background(Color(white: 0.98))
 
             Divider()
 
@@ -545,7 +556,7 @@ struct TrainingPlayerView: View {
             }
         }
         .frame(width: 200)
-        .background(Color(white: 0.97))
+        .background(Color(white: 0.98))
     }
 
     private func categoryBadge(category: String) -> some View {

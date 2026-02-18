@@ -19,12 +19,14 @@ class WindowManager: ObservableObject {
     private var rolePlayRoomWindow: NSWindow?
     private var scheduleWindow: NSWindow?
     private var chatPanelWindow: NSWindow?
+    private var questionnairePanelWindow: NSWindow?
 
     @Published var isAmmoPanelVisible = false
     @Published var isTrainingVisible = false
     @Published var isRolePlayRoomVisible = false
     @Published var isScheduleVisible = false
     @Published var isChatPanelVisible = false
+    @Published var isQuestionnairePanelVisible = false
 
     private init() {}
 
@@ -423,5 +425,133 @@ class WindowManager: ObservableObject {
         chatPanelWindow?.close()
         chatPanelWindow = nil
         isChatPanelVisible = false
+    }
+
+    // MARK: - Post-Call Questionnaire Panel
+
+    func openQuestionnairePanel(appState: AppState, callId: String, prospectName: String) {
+        guard questionnairePanelWindow == nil else {
+            questionnairePanelWindow?.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // Wrapper view that manages its own @State for isPresented
+        let contentView = QuestionnaireWindowWrapper(
+            callId: callId,
+            prospectName: prospectName,
+            onComplete: { [weak self] in
+                Task { @MainActor in
+                    self?.closeQuestionnairePanel()
+                    appState.showBotPostCallQuestionnaire = false
+                    appState.botQuestionnaireCallId = nil
+                    appState.botQuestionnaireProspectName = nil
+                }
+            }
+        )
+        .environmentObject(appState)
+
+        guard let screen = NSScreen.main else { return }
+        let screenFrame = screen.visibleFrame
+
+        // Position at top-center of screen (Raycast-style drop-down)
+        let panelWidth: CGFloat = 500
+        let panelHeight: CGFloat = 520
+        let panelX = screenFrame.midX - panelWidth / 2
+        let panelY = screenFrame.maxY - panelHeight - 20
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: panelX, y: panelY, width: panelWidth, height: panelHeight),
+            styleMask: [.titled, .closable, .nonactivatingPanel, .hudWindow],
+            backing: .buffered,
+            defer: false
+        )
+
+        panel.title = "How did the call go?"
+        panel.contentView = NSHostingView(rootView: contentView)
+        panel.isReleasedWhenClosed = false
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.appearance = NSAppearance(named: .aqua)
+        panel.isMovableByWindowBackground = true
+        panel.becomesKeyOnlyIfNeeded = false
+
+        // Animate slide-down from top
+        panel.alphaValue = 0
+        panel.setFrame(
+            NSRect(x: panelX, y: panelY + 30, width: panelWidth, height: panelHeight),
+            display: false
+        )
+        panel.makeKeyAndOrderFront(nil)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+            panel.animator().setFrame(
+                NSRect(x: panelX, y: panelY, width: panelWidth, height: panelHeight),
+                display: true
+            )
+        }
+
+        // Bring app to front
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Watch for window close
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.questionnairePanelWindow = nil
+                self?.isQuestionnairePanelVisible = false
+            }
+        }
+
+        questionnairePanelWindow = panel
+        isQuestionnairePanelVisible = true
+    }
+
+    func closeQuestionnairePanel() {
+        if let panel = questionnairePanelWindow {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.2
+                panel.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                panel.close()
+                self?.questionnairePanelWindow = nil
+                self?.isQuestionnairePanelVisible = false
+            })
+        }
+    }
+}
+
+// MARK: - Questionnaire Window Wrapper
+
+/// Wraps PostCallQuestionnaireView for use in a floating NSPanel.
+/// Manages its own @State for the isPresented binding.
+struct QuestionnaireWindowWrapper: View {
+    let callId: String
+    let prospectName: String
+    let onComplete: () -> Void
+    @EnvironmentObject var appState: AppState
+
+    @State private var isPresented: Bool = true
+
+    var body: some View {
+        PostCallQuestionnaireView(
+            callId: callId,
+            initialProspectName: prospectName,
+            isPresented: $isPresented,
+            onComplete: {
+                onComplete()
+            }
+        )
+        .environmentObject(appState)
+        .onChange(of: isPresented) { _, newValue in
+            if !newValue {
+                onComplete()
+            }
+        }
     }
 }

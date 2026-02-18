@@ -552,22 +552,40 @@ class MenuBarController {
             return
         }
 
-        // 1. Open Ammo Panel snapped to right side of screen FIRST
+        // 1. Send a meeting bot to join the call (async, fire-and-forget)
+        Task { @MainActor in
+            if let state = appState, let closerInfo = state.closerInfo {
+                do {
+                    let success = try await state.convexService.createBotForMeeting(
+                        closerId: closerInfo.closerId,
+                        teamId: closerInfo.teamId,
+                        meetingUrl: meetingUrlString,
+                        meetingTitle: event.title,
+                        prospectName: event.title
+                    )
+                    print("[MenuBar] Bot creation \(success ? "succeeded" : "failed") for: \(event.title)")
+                } catch {
+                    print("[MenuBar] Failed to create bot: \(error)")
+                }
+            }
+        }
+
+        // 2. Open Ammo Panel snapped to right side of screen
         Task { @MainActor in
             if let state = appState {
                 WindowManager.shared.openAmmoPanelSnapped(appState: state)
             }
         }
 
-        // 2. Open the meeting URL in browser (will appear on left)
+        // 3. Open the meeting URL in browser (will appear on left)
         NSWorkspace.shared.open(meetingUrl)
 
-        // 3. After browser opens, resize it to fit the left side (alongside Ammo Panel)
+        // 4. After browser opens, resize it to fit the left side (alongside Ammo Panel)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             WindowManager.shared.resizeFrontmostWindowToLeft()
         }
 
-        // 4. Post notification to set prospect name BEFORE starting recording
+        // 5. Post notification to set prospect name BEFORE starting recording
         //    (ContentView handler checks for idle state, so must be before startRecording)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             NotificationCenter.default.post(

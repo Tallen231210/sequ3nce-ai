@@ -1123,6 +1123,42 @@ class ConvexService {
         return nil
     }
 
+    /// Create a meeting bot on demand (when closer clicks "Join & Record")
+    func createBotForMeeting(closerId: String, teamId: String, meetingUrl: String, meetingTitle: String?, prospectName: String?) async throws -> Bool {
+        let url = URL(string: "\(baseURL)/createBotForMeeting")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "closerId": closerId,
+            "teamId": teamId,
+            "meetingUrl": meetingUrl,
+        ]
+        if let meetingTitle = meetingTitle {
+            body["meetingTitle"] = meetingTitle
+        }
+        if let prospectName = prospectName {
+            body["prospectName"] = prospectName
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            print("[ConvexService] createBotForMeeting failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+            return false
+        }
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let success = json["success"] as? Bool {
+            return success
+        }
+        return false
+    }
+
     /// Get pending questionnaire info (count + first pending call details)
     func getPendingQuestionnaireInfo(closerId: String) async throws -> PendingQuestionnaireInfo {
         let url = URL(string: "\(baseURL)/getPendingQuestionnaireCount")!
