@@ -288,7 +288,7 @@ export class CallHandler {
 
   /**
    * Normalize audio to 48kHz stereo for live broadcast to web dashboard.
-   * Meeting BaaS sends 16kHz mono — upsample 3x and duplicate to stereo.
+   * Meeting BaaS now sends 48kHz mono — just duplicate to stereo.
    * Desktop audio is already 48kHz stereo and passes through unchanged.
    */
   normalizeForBroadcast(audioData: Buffer): Buffer {
@@ -296,21 +296,14 @@ export class CallHandler {
       return audioData; // Desktop audio already 48kHz stereo
     }
 
-    // Upsample 16kHz mono → 48kHz stereo via linear interpolation
+    // Meeting BaaS sends 48kHz mono — duplicate to stereo (no resampling needed)
     const inputSamples = audioData.length / 2; // 16-bit mono = 2 bytes per sample
-    const outputSamples = inputSamples * 3; // 3x upsample (16kHz → 48kHz)
-    const output = Buffer.alloc(outputSamples * 4); // stereo = 4 bytes per frame (L16 + R16)
+    const output = Buffer.alloc(inputSamples * 4); // stereo = 4 bytes per frame (L16 + R16)
 
     for (let i = 0; i < inputSamples; i++) {
       const sample = audioData.readInt16LE(i * 2);
-      const nextSample = i + 1 < inputSamples ? audioData.readInt16LE((i + 1) * 2) : sample;
-
-      for (let j = 0; j < 3; j++) {
-        const interpolated = Math.round(sample + (nextSample - sample) * (j / 3));
-        const outIdx = (i * 3 + j) * 4;
-        output.writeInt16LE(interpolated, outIdx);     // Left channel
-        output.writeInt16LE(interpolated, outIdx + 2); // Right channel (duplicate)
-      }
+      output.writeInt16LE(sample, i * 4);     // Left channel
+      output.writeInt16LE(sample, i * 4 + 2); // Right channel (duplicate)
     }
 
     return output;
@@ -357,21 +350,28 @@ export class CallHandler {
         // Track latest audio timestamp for ammo extraction
         this.session.lastAudioTimestamp = timestampSeconds;
 
-        // Add segment for real-time viewing (non-blocking)
-        addTranscriptSegment(
-          this.convexCallId,
-          this.session.metadata.teamId,
-          speaker,
-          chunk.text,
-          timestampSeconds
-        ).catch(err => logger.error("Failed to add transcript segment", err));
+        // Add segment for real-time viewing (blocking to prevent data loss on process exit)
+        try {
+          await addTranscriptSegment(
+            this.convexCallId,
+            this.session.metadata.teamId,
+            speaker,
+            chunk.text,
+            timestampSeconds
+          );
+        } catch (err) {
+          logger.error("Failed to add transcript segment", err);
+        }
       }
 
       // Update full transcript more frequently (every 5 lines instead of sporadic)
       const lineCount = this.session.fullTranscript.split('\n').filter(l => l.trim()).length;
       if (this.convexCallId && lineCount % 5 === 0) {
-        addTranscript(this.convexCallId, this.session.fullTranscript)
-          .catch(err => logger.error("Failed to update transcript", err));
+        try {
+          await addTranscript(this.convexCallId, this.session.fullTranscript);
+        } catch (err) {
+          logger.error("Failed to update transcript", err);
+        }
       }
 
       // Update talk time periodically
@@ -483,11 +483,14 @@ export class CallHandler {
         const combinedBuffer = Buffer.concat(this.session.audioBuffer);
         logger.info(`Recording upload: Combined buffer size = ${combinedBuffer.length} bytes`);
 
+        // Meeting BaaS sends mono (1 channel), desktop sends stereo (2 channels)
+        const numChannels = this.source === "meetingbaas" ? 1 : 2;
         recordingUrl = await uploadRecording(
           this.session.metadata.teamId,
           this.session.metadata.callId,
           combinedBuffer,
-          this.sampleRate
+          this.sampleRate,
+          numChannels
         );
 
         if (recordingUrl) {

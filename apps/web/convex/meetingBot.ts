@@ -1,7 +1,121 @@
 import { v } from "convex/values";
-import { mutation, query, action, internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query, action, internalMutation, internalQuery, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+
+// Schedule a delayed fetch of the recording URL from Meeting BaaS API
+export const scheduleRecordingFetch = internalMutation({
+  args: {
+    meetingBaasId: v.string(),
+    delayMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.scheduler.runAfter(args.delayMs, internal.meetingBot.fetchBotRecording, {
+      meetingBaasId: args.meetingBaasId,
+      attempt: 1,
+    });
+  },
+});
+
+// Fetch recording URL from Meeting BaaS API and update bot + call records
+export const fetchBotRecording = internalAction({
+  args: {
+    meetingBaasId: v.string(),
+    attempt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const meetingBaasApiKey = process.env.MEETING_BAAS_API_KEY;
+    if (!meetingBaasApiKey) {
+      console.error(`[fetchBotRecording] MEETING_BAAS_API_KEY not configured`);
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://api.meetingbaas.com/v2/bots/${args.meetingBaasId}`, {
+        method: "GET",
+        headers: {
+          "x-meeting-baas-api-key": meetingBaasApiKey,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[fetchBotRecording] API error: ${response.status} for bot ${args.meetingBaasId}`);
+        // Retry up to 3 times with increasing delay
+        if (args.attempt < 3) {
+          await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
+            meetingBaasId: args.meetingBaasId,
+            delayMs: args.attempt * 60000, // 1min, 2min, 3min
+          });
+        }
+        return;
+      }
+
+      const data = await response.json();
+      console.log(`[fetchBotRecording] API response keys: ${Object.keys(data).join(", ")}`);
+      console.log(`[fetchBotRecording] API response: ${JSON.stringify(data).substring(0, 2000)}`);
+
+      // Extract recording URL from API response
+      const recordingUrl = data.recording_url || data.mp4 || data.recording || data.video_url
+        || data.mp4_url || data.outputs?.recording_url || data.outputs?.mp4;
+
+      if (!recordingUrl) {
+        console.log(`[fetchBotRecording] No recording URL yet for ${args.meetingBaasId}, attempt ${args.attempt}`);
+        // Retry with increasing delay
+        if (args.attempt < 3) {
+          await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
+            meetingBaasId: args.meetingBaasId,
+            delayMs: args.attempt * 60000,
+          });
+        } else {
+          console.error(`[fetchBotRecording] Gave up fetching recording for ${args.meetingBaasId} after ${args.attempt} attempts`);
+        }
+        return;
+      }
+
+      console.log(`[fetchBotRecording] Found recording URL for ${args.meetingBaasId}: ${recordingUrl}`);
+
+      // Update bot record
+      await ctx.runMutation(api.meetingBot.updateBotStatus, {
+        meetingBaasId: args.meetingBaasId,
+        recordingUrl,
+      });
+
+      // Update linked call record
+      const bot = await ctx.runQuery(api.meetingBot.getBotByMeetingBaasId, {
+        meetingBaasId: args.meetingBaasId,
+      });
+
+      if (bot?.callId) {
+        await ctx.runMutation(internal.meetingBot.updateCallRecordingUrl, {
+          callId: bot.callId,
+          recordingUrl,
+        });
+        console.log(`[fetchBotRecording] Updated call ${bot.callId} with recording URL`);
+      }
+    } catch (error) {
+      console.error(`[fetchBotRecording] Error fetching recording:`, error);
+      if (args.attempt < 3) {
+        await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
+          meetingBaasId: args.meetingBaasId,
+          delayMs: args.attempt * 60000,
+        });
+      }
+    }
+  },
+});
+
+// Update call recording URL (internal, used by fetchBotRecording)
+export const updateCallRecordingUrl = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    recordingUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      recordingUrl: args.recordingUrl,
+    });
+  },
+});
 
 // ============================================
 // INTERNAL QUERIES (used by actions)
@@ -164,12 +278,13 @@ export const createBot = action({
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config — request 16kHz to match our Speechmatics config
+        // v2 streaming config — request 48kHz to avoid aliasing from downsampling
+        // (16kHz caused same aliasing artifacts found in desktop audio path)
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: 16000,
+          audio_frequency: 48000,
         },
         // v2 transcription config
         transcription_enabled: true,
@@ -360,12 +475,13 @@ export const createQuickBot = action({
         bot_name: botName,
         bot_image: "https://sequ3nce.ai/icon.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config — request 16kHz to match our Speechmatics config
+        // v2 streaming config — request 48kHz to avoid aliasing from downsampling
+        // (16kHz caused same aliasing artifacts found in desktop audio path)
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: 16000,
+          audio_frequency: 48000,
         },
         // v2 transcription config
         transcription_enabled: true,
@@ -648,8 +764,87 @@ export const completeCallFromBot = mutation({
       ...(args.duration && { duration: args.duration }),
     });
 
+    // Schedule AI summary generation with 60s delay to let transcript fully flush
+    // (audio processor may still be writing transcript segments when bot completes)
+    if (call.transcriptText) {
+      await ctx.scheduler.runAfter(60000, api.ai.generateCallSummary, {
+        callId: args.callId,
+        transcript: call.transcriptText,
+        outcome: call.outcome || "unknown",
+        prospectName: call.prospectName || "Prospect",
+      });
+      console.log(`[completeCallFromBot] Scheduled AI summary for call ${args.callId}`);
+    } else {
+      // Transcript not ready yet — schedule a retry in 60 seconds
+      await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
+        callId: args.callId,
+        attempt: 1,
+      });
+      console.log(`[completeCallFromBot] Transcript not ready, scheduled retry for call ${args.callId}`);
+    }
+
     console.log(`[completeCallFromBot] Call completed: ${args.callId}`);
     return { success: true };
+  },
+});
+
+// Retry summary generation if transcript wasn't ready when bot completed
+export const retrySummaryGeneration = internalAction({
+  args: {
+    callId: v.id("calls"),
+    attempt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.runQuery(internal.meetingBot.getCallByIdInternal, {
+      callId: args.callId,
+    });
+
+    if (!call) {
+      console.error(`[retrySummaryGeneration] Call not found: ${args.callId}`);
+      return;
+    }
+
+    if (call.transcriptText && call.transcriptText.trim().length > 50) {
+      // Transcript is ready — generate summary
+      await ctx.runAction(api.ai.generateCallSummary, {
+        callId: args.callId,
+        transcript: call.transcriptText,
+        outcome: call.outcome || "unknown",
+        prospectName: call.prospectName || "Prospect",
+      });
+      console.log(`[retrySummaryGeneration] Generated summary for call ${args.callId} on attempt ${args.attempt}`);
+    } else if (args.attempt < 3) {
+      // Retry again in 60 seconds (max 3 attempts)
+      await ctx.runMutation(internal.meetingBot.scheduleRetry, {
+        callId: args.callId,
+        attempt: args.attempt + 1,
+      });
+      console.log(`[retrySummaryGeneration] Transcript still empty, scheduling attempt ${args.attempt + 1} for call ${args.callId}`);
+    } else {
+      console.log(`[retrySummaryGeneration] Gave up after ${args.attempt} attempts for call ${args.callId}`);
+    }
+  },
+});
+
+// Internal query to get call by ID (used by retrySummaryGeneration)
+export const getCallByIdInternal = internalQuery({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.callId);
+  },
+});
+
+// Schedule a retry for summary generation
+export const scheduleRetry = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    attempt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
+      callId: args.callId,
+      attempt: args.attempt,
+    });
   },
 });
 
@@ -715,19 +910,14 @@ export const removeExcludedEvent = mutation({
 // QUERIES
 // ============================================
 
-// Get active bots (joining or active) for a closer
+// Get active bots (actually in the meeting) for a closer
 export const getActiveBots = query({
   args: { closerId: v.id("closers") },
   handler: async (ctx, args) => {
     const bots = await ctx.db
       .query("meetingBots")
       .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
-      .filter((q) =>
-        q.or(
-          q.eq(q.field("status"), "active"),
-          q.eq(q.field("status"), "joining")
-        )
-      )
+      .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
     return bots;
@@ -986,6 +1176,7 @@ export const autoScheduleBotsForAllClosers = action({
         });
 
         // 6. Schedule bots for new events
+        // NOTE: This cron is disabled — bots are now created on-demand via "Join & Record"
         for (const event of eligibleEvents) {
           if (existingBotEventIds.includes(event.uid)) continue;
           if (!event.meetingUrl) continue;
@@ -996,7 +1187,7 @@ export const autoScheduleBotsForAllClosers = action({
               closerId: closer.closerId,
               teamId: closer.teamId,
               meetingTitle: event.title,
-              prospectName: event.title, // Default to event title as prospect name
+              prospectName: event.title,
               calendarEventId: event.uid,
               scheduledAt: event.startTime,
             });
@@ -1038,26 +1229,53 @@ export const needsCalendarOnboarding = query({
 });
 
 // Get active bot call for a closer (for the Active Call View)
-export const getActiveCallForCloserBot = query({
+// This is a mutation (not query) because it performs stale bot cleanup as a side effect.
+export const getActiveCallForCloserBot = mutation({
   args: { closerId: v.id("closers") },
   handler: async (ctx, args) => {
-    // Find active or joining bots for this closer
-    const bots = await ctx.db
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000;
+
+    // Find bots that are active OR recently scheduled (within last 10 minutes)
+    const allBots = await ctx.db
       .query("meetingBots")
       .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
       .filter((q) =>
         q.or(
           q.eq(q.field("status"), "active"),
-          q.eq(q.field("status"), "joining")
+          q.and(
+            q.eq(q.field("status"), "scheduled"),
+            q.gte(q.field("_creationTime"), tenMinutesAgo)
+          )
         )
       )
       .collect();
 
-    if (bots.length === 0) {
+    // Auto-cleanup stale bots before returning results
+    for (const bot of allBots) {
+      if (bot.status === "scheduled" && bot._creationTime < tenMinutesAgo) {
+        await ctx.db.patch(bot._id, { status: "completed", endedAt: Date.now() });
+        console.log(`[getActiveCallForCloserBot] Cleaned up stale scheduled bot: ${bot._id}`);
+      }
+      if (bot.status === "active" && (bot.joinedAt || bot._creationTime) < threeHoursAgo) {
+        await ctx.db.patch(bot._id, { status: "completed", endedAt: Date.now() });
+        console.log(`[getActiveCallForCloserBot] Cleaned up stale active bot: ${bot._id}`);
+      }
+    }
+
+    // Filter to non-stale bots only
+    const validBots = allBots.filter((bot) => {
+      if (bot.status === "scheduled" && bot._creationTime < tenMinutesAgo) return false;
+      if (bot.status === "active" && (bot.joinedAt || bot._creationTime) < threeHoursAgo) return false;
+      return true;
+    });
+
+    if (validBots.length === 0) {
       return { hasActiveCall: false };
     }
 
-    const bot = bots[0];
+    // Prefer active over scheduled
+    const bot = validBots.find((b) => b.status === "active") || validBots[0];
     return {
       hasActiveCall: true,
       botId: bot.meetingBaasId,     // Meeting BaaS ID for kick/cancel API
@@ -1128,7 +1346,7 @@ export const getCallHistoryForCloser = query({
 export const getCloserDashboardStats = query({
   args: {
     closerId: v.id("closers"),
-    period: v.string(), // "week" | "month"
+    period: v.string(), // "today" | "week" | "month" | "last30"
   },
   handler: async (ctx, args) => {
     const closer = await ctx.db.get(args.closerId);
@@ -1136,11 +1354,17 @@ export const getCloserDashboardStats = query({
 
     const now = Date.now();
     let periodStart: number;
-    if (args.period === "month") {
+    if (args.period === "today") {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      periodStart = d.getTime();
+    } else if (args.period === "month") {
       const d = new Date();
       d.setDate(1);
       d.setHours(0, 0, 0, 0);
       periodStart = d.getTime();
+    } else if (args.period === "last30") {
+      periodStart = now - 30 * 24 * 60 * 60 * 1000;
     } else {
       // Default to week
       const d = new Date();
@@ -1157,9 +1381,22 @@ export const getCloserDashboardStats = query({
       .collect();
 
     const myCompleted = myCalls.filter((c) => c.status === "completed" || c.endedAt);
-    const myClosed = myCompleted.filter((c) => c.outcome === "closed_won");
+    const myClosed = myCompleted.filter((c) => c.outcome === "closed" || c.outcome === "closed_won");
     const myCloseRate = myCompleted.length > 0 ? (myClosed.length / myCompleted.length) * 100 : 0;
     const myCash = myCompleted.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+
+    // Compute avg call duration (seconds)
+    const myDurations = myCompleted.filter((c) => c.duration && c.duration > 0).map((c) => c.duration!);
+    const avgCallDuration = myDurations.length > 0 ? myDurations.reduce((a, b) => a + b, 0) / myDurations.length : 0;
+
+    // Compute avg talk ratio
+    const myTalkCalls = myCompleted.filter((c) => c.closerTalkTime && c.prospectTalkTime && (c.closerTalkTime + c.prospectTalkTime) > 0);
+    const avgTalkRatio = myTalkCalls.length > 0
+      ? myTalkCalls.reduce((sum, c) => sum + (c.closerTalkTime! / (c.closerTalkTime! + c.prospectTalkTime!)) * 100, 0) / myTalkCalls.length
+      : 0;
+
+    // Compute total contract value from closed deals
+    const totalContractValue = myClosed.reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
     // Get all team closers for comparison
     const teamClosers = await ctx.db
@@ -1172,6 +1409,11 @@ export const getCloserDashboardStats = query({
     let teamTotalCompleted = 0;
     let teamTotalClosed = 0;
     let teamTotalCash = 0;
+    let teamTotalDuration = 0;
+    let teamDurationCount = 0;
+    let teamTotalTalkRatio = 0;
+    let teamTalkRatioCount = 0;
+    let teamTotalContractValue = 0;
 
     for (const tc of teamClosers) {
       const tcCalls = await ctx.db
@@ -1180,25 +1422,45 @@ export const getCloserDashboardStats = query({
         .filter((q) => q.gte(q.field("startedAt"), periodStart))
         .collect();
       const tcCompleted = tcCalls.filter((c) => c.status === "completed" || c.endedAt);
-      const tcClosed = tcCompleted.filter((c) => c.outcome === "closed_won");
+      const tcClosed = tcCompleted.filter((c) => c.outcome === "closed" || c.outcome === "closed_won");
       teamTotalCalls += tcCalls.length;
       teamTotalCompleted += tcCompleted.length;
       teamTotalClosed += tcClosed.length;
       teamTotalCash += tcCompleted.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+      teamTotalContractValue += tcClosed.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+
+      // Duration
+      const tcDurations = tcCompleted.filter((c) => c.duration && c.duration > 0);
+      teamTotalDuration += tcDurations.reduce((sum, c) => sum + c.duration!, 0);
+      teamDurationCount += tcDurations.length;
+
+      // Talk ratio
+      const tcTalkCalls = tcCompleted.filter((c) => c.closerTalkTime && c.prospectTalkTime && (c.closerTalkTime + c.prospectTalkTime) > 0);
+      teamTotalTalkRatio += tcTalkCalls.reduce((sum, c) => sum + (c.closerTalkTime! / (c.closerTalkTime! + c.prospectTalkTime!)) * 100, 0);
+      teamTalkRatioCount += tcTalkCalls.length;
     }
 
     const teamCount = teamClosers.length || 1;
     const teamAvgCloseRate = teamTotalCompleted > 0 ? (teamTotalClosed / teamTotalCompleted) * 100 : 0;
     const teamAvgCash = teamTotalCash / teamCount;
     const teamAvgCalls = teamTotalCalls / teamCount;
+    const teamAvgDuration = teamDurationCount > 0 ? teamTotalDuration / teamDurationCount : 0;
+    const teamAvgTalkRatio = teamTalkRatioCount > 0 ? teamTotalTalkRatio / teamTalkRatioCount : 0;
+    const teamAvgContractValue = teamTotalContractValue / teamCount;
 
     return {
       callsThisPeriod: myCalls.length,
       closeRate: Math.round(myCloseRate * 10) / 10,
       cashCollected: myCash,
+      avgCallDuration: Math.round(avgCallDuration),
+      avgTalkRatio: Math.round(avgTalkRatio * 10) / 10,
+      totalContractValue: Math.round(totalContractValue),
       teamAvgCloseRate: Math.round(teamAvgCloseRate * 10) / 10,
       teamAvgCash: Math.round(teamAvgCash),
       teamAvgCalls: Math.round(teamAvgCalls * 10) / 10,
+      teamAvgDuration: Math.round(teamAvgDuration),
+      teamAvgTalkRatio: Math.round(teamAvgTalkRatio * 10) / 10,
+      teamAvgContractValue: Math.round(teamAvgContractValue),
       teamSize: teamClosers.length,
     };
   },

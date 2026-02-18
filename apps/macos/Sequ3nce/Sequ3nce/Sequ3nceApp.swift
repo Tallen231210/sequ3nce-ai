@@ -200,6 +200,8 @@ class AppState: ObservableObject {
     // Meeting Bot state
     @Published var meetingBotEnabled: Bool = UserDefaults.standard.bool(forKey: "meetingBotEnabled")
     @Published var botCallActive: Bool = false
+    @Published var botIsScheduled: Bool = false  // Bot exists but hasn't joined yet
+    @Published var botActiveStartTime: Date? = nil  // When bot became active (for min duration guard)
     @Published var activeBotCallId: String?
     @Published var activeBotId: String?  // Meeting BaaS bot ID for kick/cancel
     @Published var activeBotMeetingTitle: String?
@@ -699,19 +701,33 @@ class AppState: ObservableObject {
             print("[AppState] pollBotStatus: activeBot=\(activeBot != nil), wasBotActive=\(wasBotActive), botCallActive=\(botCallActive)")
 
             if let bot = activeBot {
-                let wasAlreadyActive = botCallActive
-                botCallActive = true
-                activeBotCallId = bot.callId
-                activeBotId = bot.botId
-                activeBotMeetingTitle = bot.meetingTitle
-                activeBotProspectName = bot.prospectName
+                if bot.status == "active" {
+                    let wasAlreadyActive = botCallActive
+                    botCallActive = true
+                    botIsScheduled = false
+                    activeBotCallId = bot.callId
+                    activeBotId = bot.botId
+                    activeBotMeetingTitle = bot.meetingTitle
+                    activeBotProspectName = bot.prospectName
 
-                // Auto-open ammo panel when bot call first becomes active
-                if !wasAlreadyActive {
-                    print("[AppState] AUTO-OPENING ammo panel — bot call just became active")
-                    WindowManager.shared.openAmmoPanel(appState: self)
+                    // Auto-open ammo panel when bot call first becomes active
+                    if !wasAlreadyActive {
+                        botActiveStartTime = Date()  // Track when bot became active
+                        print("[AppState] AUTO-OPENING ammo panel — bot call just became active")
+                        print("[AppState] NOTE: If testing on same computer, live audio may break up due to audio feedback loop")
+                        WindowManager.shared.openAmmoPanel(appState: self)
+                    }
+                } else if bot.status == "scheduled" {
+                    // Bot exists but hasn't joined the meeting yet
+                    botIsScheduled = true
+                    botCallActive = false
+                    activeBotId = bot.botId
+                    activeBotMeetingTitle = bot.meetingTitle
+                    activeBotProspectName = bot.prospectName
+                    print("[AppState] Bot is scheduled (joining meeting...)")
                 }
             } else {
+                botIsScheduled = false
                 botCallActive = false
                 activeBotCallId = nil
                 activeBotId = nil
@@ -719,25 +735,36 @@ class AppState: ObservableObject {
                 activeBotProspectName = nil
 
                 // If bot was active and now isn't, a call just ended
+                // Guard: require bot to have been active for at least 30 seconds
+                // and not in "scheduled" state (prevents premature questionnaire)
                 if wasBotActive {
-                    print("[AppState] BOT CALL ENDED — opening questionnaire for callId=\(previousCallId ?? "nil")")
-                    showActiveCallView = false
-                    WindowManager.shared.closeAmmoPanel()
+                    let activeSeconds = botActiveStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                    botActiveStartTime = nil  // Reset
 
-                    // Open floating questionnaire panel over all windows
-                    if let callId = previousCallId {
-                        botQuestionnaireCallId = callId
-                        botQuestionnaireProspectName = previousProspectName
-                        showBotPostCallQuestionnaire = true
-                        WindowManager.shared.openQuestionnairePanel(
-                            appState: self,
-                            callId: callId,
-                            prospectName: previousProspectName ?? "Prospect"
-                        )
+                    if activeSeconds >= 30 {
+                        print("[AppState] BOT CALL ENDED (\(Int(activeSeconds))s) — opening questionnaire for callId=\(previousCallId ?? "nil")")
+                        showActiveCallView = false
+                        WindowManager.shared.closeAmmoPanel()
+
+                        // Open floating questionnaire panel over all windows
+                        if let callId = previousCallId {
+                            botQuestionnaireCallId = callId
+                            botQuestionnaireProspectName = previousProspectName
+                            showBotPostCallQuestionnaire = true
+                            WindowManager.shared.openQuestionnairePanel(
+                                appState: self,
+                                callId: callId,
+                                prospectName: previousProspectName ?? "Prospect"
+                            )
+                        }
+
+                        // Send notification if app is in background
+                        sendBotCallEndedNotification()
+                    } else {
+                        print("[AppState] BOT CALL TOO SHORT (\(Int(activeSeconds))s) — skipping questionnaire")
                     }
-
-                    // Send notification if app is in background
-                    sendBotCallEndedNotification()
+                } else {
+                    botActiveStartTime = nil  // Reset if no active bot
                 }
             }
 
@@ -868,11 +895,12 @@ struct MeetingBotHubView: View {
                 VStack(spacing: 0) {
                     // Logo & User info
                     VStack(spacing: 8) {
-                        Image("sequ3nce-logo")
+                        Image("Logo")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(height: 28)
-                            .padding(.top, 16)
+                            .frame(height: 40)
+                            .padding(.top, 20)
+                            .padding(.horizontal, 24)
 
                         if let closer = appState.closerInfo {
                             Text(closer.name)
@@ -960,8 +988,8 @@ struct MeetingBotHubView: View {
                             .buttonStyle(.plain)
                         }
                         .padding(.horizontal, 24)
-                        .padding(.top, 12)
-                        .padding(.bottom, 4)
+                        .padding(.vertical, 10)
+                        .background(Color(white: 0.98))
                     }
 
                     // Content
@@ -1034,6 +1062,7 @@ struct SidebarButton: View {
     let isSelected: Bool
     var badgeCount: Int = 0
     let action: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
@@ -1054,14 +1083,20 @@ struct SidebarButton: View {
                         .cornerRadius(8)
                 }
             }
-            .foregroundColor(isSelected ? .white : .primary)
+            .foregroundColor(isSelected ? .white : (isHovered ? .black : .primary))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isSelected ? Color.black : Color.clear)
+                    .fill(isSelected ? Color.black : (isHovered ? Color(white: 0.93) : Color.clear))
             )
+            .shadow(color: isSelected ? Color.black.opacity(0.25) : Color.clear, radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
     }
 }

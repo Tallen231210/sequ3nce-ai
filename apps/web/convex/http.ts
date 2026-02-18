@@ -3210,18 +3210,34 @@ http.route({
         }
 
         case "bot_recording": {
-          console.log(`[webhook] Bot recording: ${meetingBaasId}`);
+          // Recording event may carry the recording URL
+          const recUrl = body.recording_url || body.mp4 || botData.recording_url || botData.mp4 || botData.recording || botData.video_url;
+          console.log(`[webhook] Bot recording event: ${meetingBaasId}, url: ${recUrl || "NONE"}`);
+          console.log(`[webhook] recording event payload: ${JSON.stringify(body).substring(0, 2000)}`);
+
+          if (recUrl) {
+            await ctx.runMutation(api.meetingBot.updateBotStatus, {
+              meetingBaasId,
+              status: "active",
+              recordingUrl: recUrl,
+            });
+          }
           break;
         }
 
         case "bot_completed": {
-          // Log payload to verify field names from Meeting BaaS v2
-          console.log(`[webhook] completed data keys: ${Object.keys(botData).join(", ")}`);
-          console.log(`[webhook] body keys: ${Object.keys(body).join(", ")}`);
+          // Log full payload to debug recording URL extraction
+          console.log(`[webhook] completed body keys: ${Object.keys(body).join(", ")}`);
+          console.log(`[webhook] completed botData keys: ${Object.keys(botData).join(", ")}`);
+          console.log(`[webhook] completed full payload: ${JSON.stringify(body).substring(0, 2000)}`);
 
-          // v2 puts mp4 at body level, v1 might nest in data
-          const recordingUrl = body.mp4 || body.recording || botData.recording || botData.mp4 || botData.recording_url || botData.mp4_url || botData.video_url;
-          const recordingDuration = body.recording_duration || botData.recording_duration || botData.duration;
+          // Check all possible field names across Meeting BaaS v1 and v2
+          const recordingUrl = body.recording_url || body.mp4 || body.recording || body.video_url
+            || botData.recording_url || botData.mp4 || botData.recording || botData.mp4_url || botData.video_url;
+          const recordingDuration = body.recording_duration || body.duration
+            || botData.recording_duration || botData.duration;
+
+          console.log(`[webhook] Extracted recordingUrl: ${recordingUrl || "NONE"}, duration: ${recordingDuration || "NONE"}`);
           const endedAt = Date.now();
 
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
@@ -3246,6 +3262,15 @@ http.route({
               duration: recordingDuration,
             });
             console.log(`[webhook] Completed call: ${completedBot.callId}`);
+          }
+
+          // If no recording URL in webhook payload, schedule a delayed API fetch
+          if (!recordingUrl) {
+            console.log(`[webhook] No recording URL in bot_completed payload, scheduling API fetch for ${meetingBaasId}`);
+            await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
+              meetingBaasId,
+              delayMs: 30000, // 30 seconds — give Meeting BaaS time to process recording
+            });
           }
           break;
         }
@@ -3280,6 +3305,12 @@ http.route({
                 endedAt: Date.now(),
               });
             }
+
+            // Schedule recording URL fetch — bot_left doesn't include recording URL
+            await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
+              meetingBaasId,
+              delayMs: 30000,
+            });
           }
           break;
         }
@@ -3455,7 +3486,7 @@ http.route({
         });
       }
 
-      const result = await ctx.runQuery(api.meetingBot.getActiveCallForCloserBot, {
+      const result = await ctx.runMutation(api.meetingBot.getActiveCallForCloserBot, {
         closerId: closerId as Id<"closers">,
       });
 
@@ -3931,6 +3962,59 @@ http.route({
 
 http.route({
   path: "/getCallHistory",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Create a meeting bot on demand (called when closer clicks "Join & Record")
+http.route({
+  path: "/createBotForMeeting",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, teamId, meetingUrl, meetingTitle, prospectName } = body;
+
+      if (!closerId || !teamId || !meetingUrl) {
+        return new Response(JSON.stringify({ error: "closerId, teamId, and meetingUrl are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runAction(api.meetingBot.createBot, {
+        meetingUrl,
+        closerId: closerId as Id<"closers">,
+        teamId: teamId as Id<"teams">,
+        meetingTitle: meetingTitle || undefined,
+        prospectName: prospectName || undefined,
+      });
+
+      return new Response(JSON.stringify({ success: true, botId: result.botId, meetingBaasId: result.meetingBaasId }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in createBotForMeeting:", error);
+      return new Response(JSON.stringify({ error: "Failed to create bot" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/createBotForMeeting",
   method: "OPTIONS",
   handler: httpAction(async () => {
     return new Response(null, {

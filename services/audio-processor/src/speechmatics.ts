@@ -10,8 +10,8 @@ import { logger } from "./logger.js";
 import type { TranscriptChunk } from "./types.js";
 
 // Buffer settings for grouping words into sentences
-const FLUSH_DELAY_MS = 1200; // Emit after 1.2 seconds of silence (balance between latency and sentence coherence)
-const MAX_BUFFER_WORDS = 25; // Emit if buffer reaches 25 words (typical sentence is 12-15 words)
+const FLUSH_DELAY_MS = 800; // Emit after 0.8 seconds of silence (tighter grouping reduces "incomplete sentences")
+const MAX_BUFFER_WORDS = 18; // Emit if buffer reaches 18 words (smaller chunks for faster display)
 
 const SPEECHMATICS_URL = "wss://eu2.rt.speechmatics.com/v2/en";
 
@@ -68,7 +68,7 @@ export function createSpeechmaticsConnection(
             speaker_sensitivity: 0.5,
           },
           enable_partials: false, // Disabled — partials fragment transcript into single words
-          max_delay: 3.0, // Wait up to 3 seconds to group words (balance latency vs sentence coherence)
+          max_delay: 2.0, // Wait up to 2 seconds to group words (Speechmatics recommended optimal)
         },
         audio_format: {
           type: "raw",

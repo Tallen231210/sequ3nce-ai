@@ -267,7 +267,7 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
     teamId,
     closerId,
     prospectName: prospectName || undefined,
-    sampleRate: 16000, // Meeting BaaS typically sends 16kHz
+    sampleRate: 48000, // Meeting BaaS sends 48kHz (matches our audio_frequency config)
   };
 
   const callHandler = new CallHandler(callMetadata, {
@@ -321,7 +321,7 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
         callHandler.processAudio(audioBuffer);
 
         // Broadcast normalized audio (48kHz stereo) to listeners
-        // Meeting BaaS sends 16kHz mono — must upsample to match dashboard expectations
+        // Meeting BaaS sends 48kHz mono — duplicate to stereo for dashboard
         if (liveRelay.hasListeners(botId)) {
           const normalized = callHandler.normalizeForBroadcast(audioBuffer);
           liveRelay.broadcastAudio(botId, normalized);
