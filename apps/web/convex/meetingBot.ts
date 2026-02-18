@@ -55,8 +55,11 @@ export const fetchBotRecording = internalAction({
       console.log(`[fetchBotRecording] API response: ${JSON.stringify(data).substring(0, 2000)}`);
 
       // Extract recording URL from API response
-      const recordingUrl = data.recording_url || data.mp4 || data.recording || data.video_url
-        || data.mp4_url || data.outputs?.recording_url || data.outputs?.mp4;
+      // Meeting BaaS v2 wraps response in { success, data: { video, audio, ... } }
+      const botData = data.data || data;
+      const recordingUrl = botData.video || botData.mp4 || botData.recording_url || botData.recording
+        || botData.video_url || botData.mp4_url || botData.outputs?.recording_url || botData.outputs?.mp4
+        || data.video || data.mp4 || data.recording_url || data.recording || data.video_url;
 
       if (!recordingUrl) {
         console.log(`[fetchBotRecording] No recording URL yet for ${args.meetingBaasId}, attempt ${args.attempt}`);
@@ -276,15 +279,15 @@ export const createBot = action({
       const requestBody: Record<string, any> = {
         meeting_url: args.meetingUrl,
         bot_name: botName,
-        bot_image: "https://sequ3nce.ai/icon.png",
+        bot_image: "https://sequ3nce.ai/bot-avatar.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config — request 48kHz to avoid aliasing from downsampling
-        // (16kHz caused same aliasing artifacts found in desktop audio path)
+        // v2 streaming config — 16kHz reduces bandwidth 3x vs 48kHz for reliable
+        // cross-region WebSocket streaming (Meeting BaaS EU → Railway US)
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: 48000,
+          audio_frequency: 16000,
         },
         // v2 transcription config
         transcription_enabled: true,
@@ -473,15 +476,15 @@ export const createQuickBot = action({
       const requestBody: Record<string, any> = {
         meeting_url: args.meetingUrl,
         bot_name: botName,
-        bot_image: "https://sequ3nce.ai/icon.png",
+        bot_image: "https://sequ3nce.ai/bot-avatar.png",
         entry_message: "This meeting is being recorded.",
-        // v2 streaming config — request 48kHz to avoid aliasing from downsampling
-        // (16kHz caused same aliasing artifacts found in desktop audio path)
+        // v2 streaming config — 16kHz reduces bandwidth 3x vs 48kHz for reliable
+        // cross-region WebSocket streaming (Meeting BaaS EU → Railway US)
         streaming_enabled: true,
         streaming_config: {
           input_url: streamingUrl,
           output_url: streamingUrl,
-          audio_frequency: 48000,
+          audio_frequency: 16000,
         },
         // v2 transcription config
         transcription_enabled: true,
@@ -1338,6 +1341,8 @@ export const getCallHistoryForCloser = query({
       meetingBotId: call.meetingBotId,
       closerTalkTime: call.closerTalkTime,
       prospectTalkTime: call.prospectTalkTime,
+      summary: call.summary,
+      transcriptText: call.transcriptText,
     }));
   },
 });
