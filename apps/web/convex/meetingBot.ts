@@ -304,7 +304,7 @@ export const createBot = action({
             provider: {
               recallai_streaming: {
                 language_code: "en",
-                mode: "prioritize_latency",
+                mode: "prioritize_low_latency",
               },
             },
           },
@@ -502,7 +502,7 @@ export const createQuickBot = action({
             provider: {
               recallai_streaming: {
                 language_code: "en",
-                mode: "prioritize_latency",
+                mode: "prioritize_low_latency",
               },
             },
           },
