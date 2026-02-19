@@ -302,9 +302,12 @@ export const createBot = action({
         recording_config: {
           transcript: {
             provider: {
-              meeting_captions: {},
+              recallai_streaming: {
+                language_code: "en",
+              },
             },
           },
+          audio_mixed_raw: {},
           realtime_endpoints: [
             {
               type: "websocket" as const,
@@ -495,9 +498,12 @@ export const createQuickBot = action({
         recording_config: {
           transcript: {
             provider: {
-              meeting_captions: {},
+              recallai_streaming: {
+                language_code: "en",
+              },
             },
           },
+          audio_mixed_raw: {},
           realtime_endpoints: [
             {
               type: "websocket" as const,

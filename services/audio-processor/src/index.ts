@@ -527,7 +527,8 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
       switch (eventType) {
         case "audio_mixed_raw.data": {
           // Base64-encoded 16kHz mono S16LE PCM audio
-          const audioBuffer = Buffer.from(message.data.buffer, "base64");
+          // Recall.ai nests payload under data.data
+          const audioBuffer = Buffer.from(message.data.data.buffer, "base64");
           callHandler.processAudio(audioBuffer);
 
           // Broadcast normalized audio to listeners
@@ -539,17 +540,19 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
         }
 
         case "transcript.data": {
-          // Recall.ai transcript event with words and participant info
-          const words = message.data?.words || [];
+          // Recall.ai transcript event — payload nested under data.data
+          const transcriptData = message.data?.data;
+          const words = transcriptData?.words || [];
           const text = words.map((w: any) => w.text).join(" ");
-          const participantName = message.data?.participant?.name || "Unknown";
+          const participantName = transcriptData?.participant?.name || "Unknown";
 
           if (text.trim()) {
+            const startTimestamp = words[0]?.start_timestamp?.relative || 0;
             callHandler.handleRecallTranscript({
               text,
               speaker: participantName,
               timestamp: Date.now(),
-              startMs: words[0]?.start_ms || 0,
+              startMs: startTimestamp * 1000, // relative is in seconds, convert to ms
             });
           }
           break;
