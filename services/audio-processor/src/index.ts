@@ -518,7 +518,21 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
       logger.error(`[Recall] Failed to start call handler: ${err}`);
     });
 
+  let messageCount = 0;
+  let audioEventCount = 0;
+  let transcriptEventCount = 0;
+
   ws.on("message", async (data, isBinary) => {
+    messageCount++;
+
+    // Log first 5 messages in detail + periodic summary
+    if (messageCount <= 5) {
+      const preview = data.toString().slice(0, 300);
+      logger.info(`[Recall] MSG #${messageCount} (binary=${isBinary}, len=${data.toString().length}): ${preview}`);
+    } else if (messageCount % 100 === 0) {
+      logger.info(`[Recall] Stats: ${messageCount} msgs, ${audioEventCount} audio, ${transcriptEventCount} transcript`);
+    }
+
     try {
       // Recall.ai sends all events as JSON text messages
       const message = JSON.parse(data.toString());
@@ -526,9 +540,18 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
 
       switch (eventType) {
         case "audio_mixed_raw.data": {
+          audioEventCount++;
           // Base64-encoded 16kHz mono S16LE PCM audio
           // Recall.ai nests payload under data.data
-          const audioBuffer = Buffer.from(message.data.data.buffer, "base64");
+          const rawData = message.data?.data || message.data;
+          const bufferStr = rawData?.buffer || rawData?.data;
+          if (!bufferStr) {
+            if (audioEventCount <= 3) {
+              logger.error(`[Recall] Audio event missing buffer. Keys: ${JSON.stringify(Object.keys(message.data || {}))}. data.data keys: ${JSON.stringify(Object.keys(message.data?.data || {}))}`);
+            }
+            break;
+          }
+          const audioBuffer = Buffer.from(bufferStr, "base64");
           callHandler.processAudio(audioBuffer);
 
           // Broadcast normalized audio to listeners
@@ -540,19 +563,22 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
         }
 
         case "transcript.data": {
+          transcriptEventCount++;
           // Recall.ai transcript event — payload nested under data.data
-          const transcriptData = message.data?.data;
+          const transcriptData = message.data?.data || message.data;
           const words = transcriptData?.words || [];
           const text = words.map((w: any) => w.text).join(" ");
           const participantName = transcriptData?.participant?.name || "Unknown";
 
+          logger.info(`[Recall] Transcript #${transcriptEventCount}: "${text}" by ${participantName} (${words.length} words)`);
+
           if (text.trim()) {
-            const startTimestamp = words[0]?.start_timestamp?.relative || 0;
+            const startTimestamp = words[0]?.start_timestamp?.relative || words[0]?.start_ms || 0;
             callHandler.handleRecallTranscript({
               text,
               speaker: participantName,
               timestamp: Date.now(),
-              startMs: startTimestamp * 1000, // relative is in seconds, convert to ms
+              startMs: typeof startTimestamp === 'number' && startTimestamp < 1000 ? startTimestamp * 1000 : startTimestamp,
             });
           }
           break;
@@ -564,28 +590,28 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
         }
 
         case "participant_events.join": {
-          const participant = message.data?.participant;
+          const participant = message.data?.data?.participant || message.data?.participant;
           logger.info(`[Recall] Participant joined: ${participant?.name} (host: ${participant?.is_host})`);
           break;
         }
 
         case "participant_events.leave": {
-          const participant = message.data?.participant;
+          const participant = message.data?.data?.participant || message.data?.participant;
           logger.info(`[Recall] Participant left: ${participant?.name}`);
           break;
         }
 
         default: {
-          logger.info(`[Recall] Received event: ${eventType}`);
+          logger.info(`[Recall] Unknown event: ${eventType}`);
         }
       }
     } catch (error) {
-      logger.error("[Recall] Error processing message", error);
+      logger.error(`[Recall] Error processing message #${messageCount}`, error);
     }
   });
 
   ws.on("close", async () => {
-    logger.info("[Recall] Bot connection closed (bot left meeting)");
+    logger.info(`[Recall] Bot connection closed. Total: ${messageCount} msgs, ${audioEventCount} audio, ${transcriptEventCount} transcript`);
 
     const handler = activeCalls.get(ws);
     if (handler) {
