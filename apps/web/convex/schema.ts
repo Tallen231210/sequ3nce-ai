@@ -694,7 +694,8 @@ export default defineSchema({
     closerId: v.id("closers"),
     teamId: v.id("teams"),
     callId: v.optional(v.id("calls")), // Created when bot joins and call record is made
-    meetingBaasId: v.optional(v.string()), // Meeting BaaS bot ID
+    meetingBaasId: v.optional(v.string()), // Meeting BaaS bot ID (legacy)
+    recallBotId: v.optional(v.string()), // Recall.ai bot UUID
     meetingUrl: v.string(), // Zoom/Meet/Teams URL
     meetingTitle: v.optional(v.string()), // From calendar event
     prospectName: v.optional(v.string()), // Auto-populated from calendar or manual entry
@@ -715,6 +716,7 @@ export default defineSchema({
     .index("by_closer_and_status", ["closerId", "status"])
     .index("by_team_and_status", ["teamId", "status"])
     .index("by_meeting_baas_id", ["meetingBaasId"])
+    .index("by_recall_bot_id", ["recallBotId"])
     .index("by_calendar_event", ["calendarEventId"]),
 
   // Excluded Calendar Events (events the closer marked as "not a sales call")

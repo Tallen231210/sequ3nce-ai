@@ -30,8 +30,9 @@ export type OnAmmoV2AnalysisCallback = (analysis: AmmoV2Analysis) => void;
 export type OnSilenceWarningCallback = (silenceDurationSeconds: number) => void;
 
 export interface CallHandlerOptions {
-  source?: CallSource; // "closer" (default) or "meetingbaas"
+  source?: CallSource; // "closer" (default), "meetingbaas" (legacy), or "recall"
   recordingType?: "audio" | "video"; // "audio" (default) or "video" for meeting bot recordings
+  skipSpeechmatics?: boolean; // true for Recall.ai (provides its own transcription)
 }
 
 export class CallHandler {
@@ -61,13 +62,15 @@ export class CallHandler {
   // Timestamp offset for reconnection (adds to Speechmatics timestamps to maintain ordering)
   private timestampOffset: number = 0;
 
-  // Source tracking: "closer" (desktop app) or "meetingbaas" (meeting bot)
+  // Source tracking: "closer" (desktop app), "meetingbaas" (legacy), or "recall"
   private source: CallSource;
   private recordingType: "audio" | "video";
+  private skipSpeechmatics: boolean;
 
   constructor(metadata: CallMetadata, options?: CallHandlerOptions) {
     this.source = options?.source || "closer";
     this.recordingType = options?.recordingType || "audio";
+    this.skipSpeechmatics = options?.skipSpeechmatics || false;
     this.sampleRate = metadata.sampleRate || 48000;
     this.session = {
       metadata,
@@ -137,19 +140,21 @@ export class CallHandler {
       this.customPrompt = await getTeamCustomPrompt(this.session.metadata.teamId);
 
       // Initialize Speechmatics connection with speaker diarization
-      // First speaker detected will be assumed to be the Closer
-      // For meetingbaas: disable silence detection (bot manages its own session lifecycle)
-      const silenceCallback = this.source === "meetingbaas"
-        ? undefined
-        : (this.onSilenceWarning ? this.onSilenceWarning : undefined);
-      this.speechmatics = await createSpeechmaticsConnection(
-        this.handleTranscript.bind(this),
-        this.handleSpeechmaticsError.bind(this),
-        silenceCallback,
-        this.sampleRate
-      );
+      // Skip for Recall.ai calls (Recall provides its own transcription via WebSocket events)
+      if (!this.skipSpeechmatics) {
+        // For meetingbaas/closer: disable silence detection for bot sessions
+        const silenceCallback = (this.source === "meetingbaas" || this.source === "recall")
+          ? undefined
+          : (this.onSilenceWarning ? this.onSilenceWarning : undefined);
+        this.speechmatics = await createSpeechmaticsConnection(
+          this.handleTranscript.bind(this),
+          this.handleSpeechmaticsError.bind(this),
+          silenceCallback,
+          this.sampleRate
+        );
+      }
 
-      logger.info(`Call ${isReconnect ? 'resumed' : 'started'}: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, source: ${this.source}, hasAmmoConfig: ${!!this.ammoConfig}, mode: SPEECHMATICS_SPEAKER_DIARIZATION`);
+      logger.info(`Call ${isReconnect ? 'resumed' : 'started'}: ${this.session.metadata.callId}, Convex ID: ${this.convexCallId}, source: ${this.source}, hasAmmoConfig: ${!!this.ammoConfig}, speechmatics: ${!this.skipSpeechmatics}`);
 
       // Set up max duration timeout (2 hours) to prevent runaway calls
       this.maxDurationTimeout = setTimeout(async () => {
@@ -210,7 +215,7 @@ export class CallHandler {
     this.session.audioBuffer.push(audioData);
     this.audioChunkCount++;
 
-    // Resample and send to Speechmatics for transcription
+    // Resample and send to Speechmatics for transcription (skip for Recall — it provides its own)
     if (this.speechmatics) {
       let processed: Buffer;
 
@@ -234,7 +239,6 @@ export class CallHandler {
 
         // Log BOTH input and resampled stats for the SAME chunk (every 50 chunks)
         if (this.audioChunkCount % 50 === 1) {
-          // Input stats - check ALL samples, not just first 1000 bytes
           let inputMaxLeft = 0;
           let inputMaxRight = 0;
           for (let i = 0; i < audioData.length - 3; i += 4) {
@@ -244,19 +248,23 @@ export class CallHandler {
             if (right > inputMaxRight) inputMaxRight = right;
           }
 
-          // Resampled stats - check ALL samples
           let resampledMax = 0;
           for (let i = 0; i < processed.length - 1; i += 2) {
             const sample = Math.abs(processed.readInt16LE(i));
             if (sample > resampledMax) resampledMax = sample;
           }
 
-          const expectedSize = (audioData.length / 4) * 2; // stereo to mono, no decimation
+          const expectedSize = (audioData.length / 4) * 2;
           logger.info(`[Audio] Chunk #${this.audioChunkCount}: input=${audioData.length}b L=${inputMaxLeft} R=${inputMaxRight} -> mono=${processed.length}b (exp=${expectedSize}) max=${resampledMax}`);
         }
       }
 
       this.speechmatics.sendAudio(processed);
+    } else if (this.source === "recall") {
+      // Recall audio: 16kHz mono — log periodically (transcription comes from Recall events)
+      if (this.audioChunkCount % 100 === 1) {
+        logger.info(`[Audio][Recall] Chunk #${this.audioChunkCount}: size=${audioData.length}b sampleRate=${this.sampleRate}Hz`);
+      }
     }
   }
 
@@ -294,24 +302,52 @@ export class CallHandler {
 
   /**
    * Normalize audio to 48kHz stereo for live broadcast to web dashboard.
-   * Meeting BaaS sends 24kHz mono — upsample to 48kHz stereo via linear interpolation.
-   * Desktop audio is already 48kHz stereo and passes through unchanged.
+   * - Recall sends 16kHz mono — upsample 3x to 48kHz stereo via linear interpolation.
+   * - Meeting BaaS sends 24kHz mono — upsample 2x to 48kHz stereo (legacy).
+   * - Desktop audio is already 48kHz stereo and passes through unchanged.
    */
   normalizeForBroadcast(audioData: Buffer): Buffer {
-    if (this.source !== "meetingbaas") {
+    if (this.source === "closer") {
       return audioData; // Desktop audio already 48kHz stereo
     }
 
-    // 24kHz mono → 48kHz stereo via linear interpolation (2x upsample)
     const inputSamples = audioData.length / 2; // 16-bit mono = 2 bytes per sample
-    const upsampleFactor = 2; // 24kHz → 48kHz
-    const output = Buffer.alloc(inputSamples * upsampleFactor * 4); // 48kHz stereo = 4 bytes per frame
+
+    if (this.source === "recall") {
+      // 16kHz mono → 48kHz stereo via linear interpolation (3x upsample)
+      const upsampleFactor = 3;
+      const output = Buffer.alloc(inputSamples * upsampleFactor * 4); // stereo = 4 bytes per frame
+
+      for (let i = 0; i < inputSamples; i++) {
+        const current = audioData.readInt16LE(i * 2);
+        const next = (i + 1 < inputSamples) ? audioData.readInt16LE((i + 1) * 2) : current;
+
+        // Linear interpolation: 3 evenly spaced samples between current and next
+        const diff = next - current;
+        const samples = [
+          current,
+          Math.round(current + diff / 3),
+          Math.round(current + (diff * 2) / 3),
+        ];
+
+        for (let r = 0; r < upsampleFactor; r++) {
+          const outIdx = (i * upsampleFactor + r) * 4;
+          output.writeInt16LE(samples[r], outIdx);     // Left channel
+          output.writeInt16LE(samples[r], outIdx + 2); // Right channel (mono → stereo)
+        }
+      }
+
+      return output;
+    }
+
+    // Meeting BaaS (legacy): 24kHz mono → 48kHz stereo (2x upsample)
+    const upsampleFactor = 2;
+    const output = Buffer.alloc(inputSamples * upsampleFactor * 4);
 
     for (let i = 0; i < inputSamples; i++) {
       const current = audioData.readInt16LE(i * 2);
       const next = (i + 1 < inputSamples) ? audioData.readInt16LE((i + 1) * 2) : current;
 
-      // Linear interpolation: original sample, then midpoint between current and next
       const samples = [current, Math.round((current + next) / 2)];
 
       for (let r = 0; r < upsampleFactor; r++) {
@@ -419,6 +455,53 @@ export class CallHandler {
         logger.info(`[MeetingBaaS] Speaker active: "${event.name}" (id: ${event.id})`);
       }
     }
+  }
+
+  /**
+   * Handle pre-parsed transcript from Recall.ai events.
+   * Recall provides speaker names directly (no Speechmatics speaker IDs to map).
+   * Determines closer vs prospect from participant name, then feeds into
+   * the existing handleTranscript pipeline for AI detection, ammo, and Convex writes.
+   */
+  async handleRecallTranscript(chunk: {
+    text: string;
+    speaker: string; // Participant name from Recall (e.g., "John Smith")
+    timestamp: number;
+    startMs: number;
+  }): Promise<void> {
+    if (this.isEnded) return;
+
+    // Determine closer vs prospect from participant name
+    const isCloser = this.getIsCloserByName(chunk.speaker);
+    const role = isCloser ? "closer" : "prospect";
+
+    // Feed into existing transcript pipeline
+    await this.handleTranscript({
+      text: chunk.text,
+      speaker: role, // Pass role directly — handleTranscript's getIsCloser will match "closer" as first speaker
+      timestamp: chunk.timestamp,
+      audioTimestamp: chunk.startMs / 1000,
+      isFinal: true,
+    });
+  }
+
+  /**
+   * Determine if a participant is the Closer by their name (used by Recall.ai).
+   * Compares against the known prospectName — if it matches, they're the prospect.
+   * If no prospectName is set, first speaker is assumed to be the Closer.
+   */
+  private getIsCloserByName(participantName: string): boolean {
+    const prospectName = this.session.metadata.prospectName;
+    if (prospectName) {
+      const isProspect = participantName.toLowerCase().trim() === prospectName.toLowerCase().trim();
+      return !isProspect;
+    }
+    // No prospectName — first speaker is Closer
+    if (!this.firstSpeaker) {
+      this.firstSpeaker = participantName;
+      logger.info(`[Recall] First speaker: "${participantName}" → Closer`);
+    }
+    return participantName === this.firstSpeaker;
   }
 
   /**
