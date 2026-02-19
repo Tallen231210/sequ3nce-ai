@@ -492,12 +492,19 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
     logger.error(`[Recall] Failed to activate bot: ${err}`);
   });
 
+  // Track the Convex call ID once created — used as relay key for live streaming
+  let relayCallId: string | null = null;
+
   // Start the call handler (creates Convex call record, etc.)
   callHandler.start()
     .then((convexCallId) => {
       logger.info(`[Recall] Call initialized: botId=${botId}, Convex ID: ${convexCallId}`);
+      relayCallId = convexCallId || null;
 
+      // Also register this call ID for cleanup on disconnect
       if (convexCallId) {
+        connectionVisitorCallIds.set(ws, convexCallId);
+
         linkCallToBot(botId, convexCallId).catch((err) => {
           logger.error(`[Recall] Failed to link call to bot: ${err}`);
         });
@@ -554,10 +561,11 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
           const audioBuffer = Buffer.from(bufferStr, "base64");
           callHandler.processAudio(audioBuffer);
 
-          // Broadcast normalized audio to listeners
-          if (liveRelay.hasListeners(botId)) {
+          // Broadcast normalized audio to live stream listeners (using Convex call ID)
+          const audioRelayId = relayCallId || botId;
+          if (liveRelay.hasListeners(audioRelayId)) {
             const normalized = callHandler.normalizeForBroadcast(audioBuffer);
-            liveRelay.broadcastAudio(botId, normalized);
+            liveRelay.broadcastAudio(audioRelayId, normalized);
           }
           break;
         }
@@ -585,7 +593,25 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
         }
 
         case "transcript.partial_data": {
-          // Partial transcript — log but don't process (we use finals only)
+          // Partial/interim transcript — process for real-time display
+          const partialData = message.data?.data || message.data;
+          const partialWords = partialData?.words || [];
+          const partialText = partialWords.map((w: any) => w.text).join(" ");
+          const partialSpeaker = partialData?.participant?.name || "Unknown";
+
+          if (partialText.trim()) {
+            transcriptEventCount++;
+            if (transcriptEventCount <= 5) {
+              logger.info(`[Recall] Partial transcript #${transcriptEventCount}: "${partialText}" by ${partialSpeaker}`);
+            }
+            const partialStartTimestamp = partialWords[0]?.start_timestamp?.relative || partialWords[0]?.start_ms || 0;
+            callHandler.handleRecallTranscript({
+              text: partialText,
+              speaker: partialSpeaker,
+              timestamp: Date.now(),
+              startMs: typeof partialStartTimestamp === 'number' && partialStartTimestamp < 1000 ? partialStartTimestamp * 1000 : partialStartTimestamp,
+            });
+          }
           break;
         }
 
@@ -624,9 +650,10 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
       logger.error(`[Recall] Failed to complete bot: ${err}`);
     });
 
-    // End live stream and notify any listeners
-    liveRelay.notifyCallEnded(botId);
-    endLiveStream(botId).catch((err) => {
+    // End live stream and notify any listeners (use Convex call ID if available)
+    const closeRelayId = relayCallId || botId;
+    liveRelay.notifyCallEnded(closeRelayId);
+    endLiveStream(closeRelayId).catch((err) => {
       logger.error(`[Recall] Failed to end live stream: ${err}`);
     });
     connectionVisitorCallIds.delete(ws);

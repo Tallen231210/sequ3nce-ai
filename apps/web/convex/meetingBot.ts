@@ -304,6 +304,7 @@ export const createBot = action({
             provider: {
               recallai_streaming: {
                 language_code: "en",
+                mode: "prioritize_latency",
               },
             },
           },
@@ -315,6 +316,7 @@ export const createBot = action({
               events: [
                 "audio_mixed_raw.data",
                 "transcript.data",
+                "transcript.partial_data",
                 "participant_events.join",
                 "participant_events.leave",
               ],
@@ -500,6 +502,7 @@ export const createQuickBot = action({
             provider: {
               recallai_streaming: {
                 language_code: "en",
+                mode: "prioritize_latency",
               },
             },
           },
@@ -511,6 +514,7 @@ export const createQuickBot = action({
               events: [
                 "audio_mixed_raw.data",
                 "transcript.data",
+                "transcript.partial_data",
                 "participant_events.join",
                 "participant_events.leave",
               ],
