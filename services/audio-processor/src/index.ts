@@ -510,11 +510,12 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
         });
       }
 
-      // Create live stream record if team has live streaming enabled
-      createLiveStream(convexCallId!, botId, teamId, closerId)
+      // Create live stream record — use convexCallId as visitorCallId so the
+      // web dashboard listener key matches the audio broadcast relay key
+      createLiveStream(convexCallId!, convexCallId!, teamId, closerId)
         .then((streamId) => {
           if (streamId) {
-            logger.info(`[Recall] Live stream created for bot ${botId}`);
+            logger.info(`[Recall] Live stream created for call ${convexCallId}`);
           }
         })
         .catch((err) => {
