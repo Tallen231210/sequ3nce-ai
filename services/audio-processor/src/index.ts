@@ -593,25 +593,9 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
         }
 
         case "transcript.partial_data": {
-          // Partial/interim transcript — process for real-time display
-          const partialData = message.data?.data || message.data;
-          const partialWords = partialData?.words || [];
-          const partialText = partialWords.map((w: any) => w.text).join(" ");
-          const partialSpeaker = partialData?.participant?.name || "Unknown";
-
-          if (partialText.trim()) {
-            transcriptEventCount++;
-            if (transcriptEventCount <= 5) {
-              logger.info(`[Recall] Partial transcript #${transcriptEventCount}: "${partialText}" by ${partialSpeaker}`);
-            }
-            const partialStartTimestamp = partialWords[0]?.start_timestamp?.relative || partialWords[0]?.start_ms || 0;
-            callHandler.handleRecallTranscript({
-              text: partialText,
-              speaker: partialSpeaker,
-              timestamp: Date.now(),
-              startMs: typeof partialStartTimestamp === 'number' && partialStartTimestamp < 1000 ? partialStartTimestamp * 1000 : partialStartTimestamp,
-            });
-          }
+          // Partial/interim transcript — skip, we use finals only (they arrive fast
+          // with prioritize_low_latency mode, ~1-3s). Storing partials causes duplicates
+          // since each partial is a progressive update of the same utterance.
           break;
         }
 

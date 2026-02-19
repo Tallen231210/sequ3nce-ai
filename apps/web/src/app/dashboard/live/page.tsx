@@ -233,7 +233,7 @@ function LiveCallCard({ call, isExpanded, onToggleExpand, visitorCallId }: LiveC
             <div
               className={cn(
                 "h-2 w-2 rounded-full",
-                isOnCall ? "bg-black animate-pulse" : "bg-zinc-400"
+                isOnCall ? "bg-green-500 animate-pulse" : "bg-zinc-400"
               )}
             />
             <span className="text-sm font-medium">
