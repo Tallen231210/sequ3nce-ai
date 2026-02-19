@@ -49,7 +49,13 @@ wss.on("connection", async (ws, req) => {
     return;
   }
 
-  // Check if this is a Meeting BaaS connection (path: /meetingbaas)
+  // Check if this is a Recall.ai connection (path: /recall)
+  if (url.pathname === "/recall") {
+    handleRecallConnection(ws, req);
+    return;
+  }
+
+  // Check if this is a Meeting BaaS connection (path: /meetingbaas) — legacy
   if (url.pathname === "/meetingbaas") {
     handleMeetingBaasConnection(ws, req);
     return;
@@ -426,6 +432,179 @@ function handleMeetingBaasConnection(ws: WebSocket, req: import("http").Incoming
 
   ws.on("error", (error) => {
     logger.error("[MeetingBaaS] WebSocket error", error);
+  });
+}
+
+// ============================================
+// RECALL.AI CONNECTION HANDLER
+// ============================================
+
+/**
+ * Handle a Recall.ai bot connecting to stream audio and events from a meeting.
+ *
+ * Recall.ai connects to our WebSocket URL (configured per-bot in realtime_endpoints)
+ * and sends JSON events:
+ * - audio_mixed_raw.data: base64-encoded 16kHz mono S16LE PCM audio
+ * - transcript.data: real-time transcript with speaker/participant info
+ * - participant_events.join/leave: participant metadata
+ *
+ * Metadata (botId, closerId, teamId) is extracted from URL query parameters
+ * set when creating the bot via the Recall.ai API.
+ */
+function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessage): void {
+  logger.info(`[Recall] New bot connection`);
+
+  // Extract metadata from URL query parameters
+  const url = new URL(req.url || "/", `wss://${req.headers.host || "localhost"}`);
+  const botId = url.searchParams.get("botId");
+  const closerId = url.searchParams.get("closerId");
+  const teamId = url.searchParams.get("teamId");
+  const prospectName = url.searchParams.get("prospectName");
+
+  if (!botId || !closerId || !teamId) {
+    logger.error(`[Recall] Missing required query params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}`);
+    ws.close();
+    return;
+  }
+
+  logger.info(`[Recall] Connection params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}, prospectName: ${prospectName || "unknown"}`);
+
+  // Create CallHandler with Recall-specific config
+  const callMetadata: CallMetadata = {
+    callId: botId,
+    teamId,
+    closerId,
+    prospectName: prospectName || undefined,
+    sampleRate: 16000, // Recall.ai sends 16kHz mono S16LE PCM
+  };
+
+  const callHandler = new CallHandler(callMetadata, {
+    source: "recall",
+    recordingType: "video",
+    skipSpeechmatics: true, // Recall.ai provides transcription via transcript.data events
+  });
+
+  activeCalls.set(ws, callHandler);
+  connectionVisitorCallIds.set(ws, botId);
+
+  // Activate the bot immediately — same as Meeting BaaS flow
+  activateBot(botId).catch((err) => {
+    logger.error(`[Recall] Failed to activate bot: ${err}`);
+  });
+
+  // Start the call handler (creates Convex call record, etc.)
+  callHandler.start()
+    .then((convexCallId) => {
+      logger.info(`[Recall] Call initialized: botId=${botId}, Convex ID: ${convexCallId}`);
+
+      if (convexCallId) {
+        linkCallToBot(botId, convexCallId).catch((err) => {
+          logger.error(`[Recall] Failed to link call to bot: ${err}`);
+        });
+      }
+
+      // Create live stream record if team has live streaming enabled
+      createLiveStream(convexCallId!, botId, teamId, closerId)
+        .then((streamId) => {
+          if (streamId) {
+            logger.info(`[Recall] Live stream created for bot ${botId}`);
+          }
+        })
+        .catch((err) => {
+          logger.error(`[Recall] Failed to create live stream: ${err}`);
+        });
+    })
+    .catch((err) => {
+      logger.error(`[Recall] Failed to start call handler: ${err}`);
+    });
+
+  ws.on("message", async (data, isBinary) => {
+    try {
+      // Recall.ai sends all events as JSON text messages
+      const message = JSON.parse(data.toString());
+      const eventType = message.event || message.type;
+
+      switch (eventType) {
+        case "audio_mixed_raw.data": {
+          // Base64-encoded 16kHz mono S16LE PCM audio
+          const audioBuffer = Buffer.from(message.data.buffer, "base64");
+          callHandler.processAudio(audioBuffer);
+
+          // Broadcast normalized audio to listeners
+          if (liveRelay.hasListeners(botId)) {
+            const normalized = callHandler.normalizeForBroadcast(audioBuffer);
+            liveRelay.broadcastAudio(botId, normalized);
+          }
+          break;
+        }
+
+        case "transcript.data": {
+          // Recall.ai transcript event with words and participant info
+          const words = message.data?.words || [];
+          const text = words.map((w: any) => w.text).join(" ");
+          const participantName = message.data?.participant?.name || "Unknown";
+
+          if (text.trim()) {
+            callHandler.handleRecallTranscript({
+              text,
+              speaker: participantName,
+              timestamp: Date.now(),
+              startMs: words[0]?.start_ms || 0,
+            });
+          }
+          break;
+        }
+
+        case "transcript.partial_data": {
+          // Partial transcript — log but don't process (we use finals only)
+          break;
+        }
+
+        case "participant_events.join": {
+          const participant = message.data?.participant;
+          logger.info(`[Recall] Participant joined: ${participant?.name} (host: ${participant?.is_host})`);
+          break;
+        }
+
+        case "participant_events.leave": {
+          const participant = message.data?.participant;
+          logger.info(`[Recall] Participant left: ${participant?.name}`);
+          break;
+        }
+
+        default: {
+          logger.info(`[Recall] Received event: ${eventType}`);
+        }
+      }
+    } catch (error) {
+      logger.error("[Recall] Error processing message", error);
+    }
+  });
+
+  ws.on("close", async () => {
+    logger.info("[Recall] Bot connection closed (bot left meeting)");
+
+    const handler = activeCalls.get(ws);
+    if (handler) {
+      await handler.end();
+      activeCalls.delete(ws);
+    }
+
+    // Mark the bot as "completed" immediately
+    completeBot(botId).catch((err) => {
+      logger.error(`[Recall] Failed to complete bot: ${err}`);
+    });
+
+    // End live stream and notify any listeners
+    liveRelay.notifyCallEnded(botId);
+    endLiveStream(botId).catch((err) => {
+      logger.error(`[Recall] Failed to end live stream: ${err}`);
+    });
+    connectionVisitorCallIds.delete(ws);
+  });
+
+  ws.on("error", (error) => {
+    logger.error("[Recall] WebSocket error", error);
   });
 }
 

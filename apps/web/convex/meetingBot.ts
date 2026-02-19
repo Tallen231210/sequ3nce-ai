@@ -3,89 +3,103 @@ import { mutation, query, action, internalMutation, internalQuery, internalActio
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
-// Schedule a delayed fetch of the recording URL from Meeting BaaS API
+// Schedule a delayed fetch of the recording URL from Recall.ai API
 export const scheduleRecordingFetch = internalMutation({
   args: {
-    meetingBaasId: v.string(),
+    recallBotId: v.optional(v.string()),
+    meetingBaasId: v.optional(v.string()), // Legacy support
     delayMs: v.number(),
   },
   handler: async (ctx, args) => {
-    await ctx.scheduler.runAfter(args.delayMs, internal.meetingBot.fetchBotRecording, {
-      meetingBaasId: args.meetingBaasId,
-      attempt: 1,
-    });
+    if (args.recallBotId) {
+      await ctx.scheduler.runAfter(args.delayMs, internal.meetingBot.fetchBotRecording, {
+        recallBotId: args.recallBotId,
+        attempt: 1,
+      });
+    } else if (args.meetingBaasId) {
+      // Legacy: schedule fetch for old Meeting BaaS bots (will fail gracefully since API key removed)
+      console.log(`[scheduleRecordingFetch] Legacy meetingBaasId ${args.meetingBaasId} — skipping`);
+    }
   },
 });
 
-// Fetch recording URL from Meeting BaaS API and update bot + call records
+// Fetch recording URL from Recall.ai API and update bot + call records
 export const fetchBotRecording = internalAction({
   args: {
-    meetingBaasId: v.string(),
+    recallBotId: v.string(),
     attempt: v.number(),
   },
   handler: async (ctx, args) => {
-    const meetingBaasApiKey = process.env.MEETING_BAAS_API_KEY;
-    if (!meetingBaasApiKey) {
-      console.error(`[fetchBotRecording] MEETING_BAAS_API_KEY not configured`);
+    const recallApiKey = process.env.RECALL_API_KEY;
+    if (!recallApiKey) {
+      console.error(`[fetchBotRecording] RECALL_API_KEY not configured`);
       return;
     }
 
     try {
-      const response = await fetch(`https://api.meetingbaas.com/v2/bots/${args.meetingBaasId}`, {
-        method: "GET",
-        headers: {
-          "x-meeting-baas-api-key": meetingBaasApiKey,
-        },
-      });
+      const response = await fetch(
+        `https://us-west-2.recall.ai/api/v1/bot/${args.recallBotId}/`,
+        {
+          headers: {
+            "Authorization": `Token ${recallApiKey}`,
+          },
+        }
+      );
 
       if (!response.ok) {
-        console.error(`[fetchBotRecording] API error: ${response.status} for bot ${args.meetingBaasId}`);
-        // Retry up to 3 times with increasing delay
+        console.error(`[fetchBotRecording] Recall API error: ${response.status} for bot ${args.recallBotId}`);
         if (args.attempt < 3) {
           await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
-            meetingBaasId: args.meetingBaasId,
-            delayMs: args.attempt * 60000, // 1min, 2min, 3min
+            recallBotId: args.recallBotId,
+            delayMs: args.attempt * 30000, // 30s, 60s, 90s (Recall is faster than MBaaS)
           });
         }
         return;
       }
 
       const data = await response.json();
-      console.log(`[fetchBotRecording] API response keys: ${Object.keys(data).join(", ")}`);
-      console.log(`[fetchBotRecording] API response: ${JSON.stringify(data).substring(0, 2000)}`);
+      console.log(`[fetchBotRecording] Recall API response keys: ${Object.keys(data).join(", ")}`);
+      console.log(`[fetchBotRecording] Recall API response: ${JSON.stringify(data).substring(0, 2000)}`);
 
-      // Extract recording URL from API response
-      // Meeting BaaS v2 wraps response in { success, data: { video, audio, ... } }
-      const botData = data.data || data;
-      const recordingUrl = botData.video || botData.mp4 || botData.recording_url || botData.recording
-        || botData.video_url || botData.mp4_url || botData.outputs?.recording_url || botData.outputs?.mp4
-        || data.video || data.mp4 || data.recording_url || data.recording || data.video_url;
+      // Extract recording URL from Recall.ai response
+      const recordingUrl = data.recordings?.[0]?.media_shortcuts?.video_mixed?.data?.download_url;
 
       if (!recordingUrl) {
-        console.log(`[fetchBotRecording] No recording URL yet for ${args.meetingBaasId}, attempt ${args.attempt}`);
-        // Retry with increasing delay
+        console.log(`[fetchBotRecording] No recording URL yet for ${args.recallBotId}, attempt ${args.attempt}`);
         if (args.attempt < 3) {
           await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
-            meetingBaasId: args.meetingBaasId,
-            delayMs: args.attempt * 60000,
+            recallBotId: args.recallBotId,
+            delayMs: args.attempt * 30000,
           });
         } else {
-          console.error(`[fetchBotRecording] Gave up fetching recording for ${args.meetingBaasId} after ${args.attempt} attempts`);
+          console.error(`[fetchBotRecording] Gave up fetching recording for ${args.recallBotId} after ${args.attempt} attempts`);
         }
         return;
       }
 
-      console.log(`[fetchBotRecording] Found recording URL for ${args.meetingBaasId}: ${recordingUrl}`);
+      // Calculate duration from bot status changes if available
+      const statusChanges = data.status_changes || [];
+      let recordingDuration: number | undefined;
+      const joinedEvent = statusChanges.find((sc: any) => sc.code === "in_call_recording");
+      const doneEvent = statusChanges.find((sc: any) => sc.code === "done");
+      if (joinedEvent && doneEvent) {
+        recordingDuration = Math.round(
+          (new Date(doneEvent.created_at).getTime() - new Date(joinedEvent.created_at).getTime()) / 1000
+        );
+      }
+
+      console.log(`[fetchBotRecording] Found recording URL for ${args.recallBotId}: ${recordingUrl}, duration: ${recordingDuration || "unknown"}s`);
 
       // Update bot record
       await ctx.runMutation(api.meetingBot.updateBotStatus, {
-        meetingBaasId: args.meetingBaasId,
+        recallBotId: args.recallBotId,
         recordingUrl,
+        ...(recordingDuration && { recordingDuration }),
       });
 
       // Update linked call record
-      const bot = await ctx.runQuery(api.meetingBot.getBotByMeetingBaasId, {
-        meetingBaasId: args.meetingBaasId,
+      const bot = await ctx.runQuery(api.meetingBot.getBotByRecallId, {
+        recallBotId: args.recallBotId,
       });
 
       if (bot?.callId) {
@@ -99,8 +113,8 @@ export const fetchBotRecording = internalAction({
       console.error(`[fetchBotRecording] Error fetching recording:`, error);
       if (args.attempt < 3) {
         await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
-          meetingBaasId: args.meetingBaasId,
-          delayMs: args.attempt * 60000,
+          recallBotId: args.recallBotId,
+          delayMs: args.attempt * 30000,
         });
       }
     }
@@ -181,7 +195,7 @@ export const insertBot = internalMutation({
   },
 });
 
-// Update a meeting bot with the Meeting BaaS ID (internal, called from createBot action)
+// Update a meeting bot with the Meeting BaaS ID (legacy, kept for historical bots)
 export const setBotMeetingBaasId = internalMutation({
   args: {
     botId: v.id("meetingBots"),
@@ -190,6 +204,19 @@ export const setBotMeetingBaasId = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.botId, {
       meetingBaasId: args.meetingBaasId,
+    });
+  },
+});
+
+// Update a meeting bot with the Recall.ai bot UUID
+export const setBotRecallId = internalMutation({
+  args: {
+    botId: v.id("meetingBots"),
+    recallBotId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.botId, {
+      recallBotId: args.recallBotId,
     });
   },
 });
@@ -224,7 +251,7 @@ export const markBotCancelled = internalMutation({
 // ACTIONS (have network access for Meeting BaaS API calls)
 // ============================================
 
-// Create a meeting bot for a calendar event
+// Create a meeting bot for a calendar event (via Recall.ai API)
 export const createBot = action({
   args: {
     meetingUrl: v.string(),
@@ -235,7 +262,7 @@ export const createBot = action({
     calendarEventId: v.optional(v.string()),
     scheduledAt: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; meetingBaasId: string }> => {
+  handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
     // 1. Create the meetingBot record with status "scheduled"
     const botId: Id<"meetingBots"> = await ctx.runMutation(internal.meetingBot.insertBot, {
       closerId: args.closerId,
@@ -255,75 +282,58 @@ export const createBot = action({
 
     const botName = team?.meetingBotName || "Sequ3nce.ai";
 
-    // 3. Get closer info for Zoom OAuth credentials (if applicable)
-    const closer = await ctx.runQuery(internal.meetingBot.getCloserById, {
-      closerId: args.closerId,
-    });
-
-    // 4. Call Meeting BaaS API to create the bot
-    const meetingBaasApiKey = process.env.MEETING_BAAS_API_KEY;
-    if (!meetingBaasApiKey) {
+    // 3. Call Recall.ai API to create the bot
+    const recallApiKey = process.env.RECALL_API_KEY;
+    if (!recallApiKey) {
       await ctx.runMutation(internal.meetingBot.markBotFailed, {
         botId,
-        failureReason: "MEETING_BAAS_API_KEY not configured",
+        failureReason: "RECALL_API_KEY not configured",
       });
-      throw new Error("MEETING_BAAS_API_KEY not configured");
+      throw new Error("RECALL_API_KEY not configured");
     }
 
     try {
-      // Build streaming URL with query params so audio processor can identify the call
-      const streamingUrl = `wss://amusing-charm-production.up.railway.app/meetingbaas?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
+      // Build WebSocket URL for audio processor (Recall.ai connects to this)
+      const streamingUrl = `wss://amusing-charm-production.up.railway.app/recall?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
 
-      const webhookUrl = `${process.env.CONVEX_SITE_URL}/webhooks/meetingbaas`;
-
-      const requestBody: Record<string, any> = {
+      const requestBody = {
         meeting_url: args.meetingUrl,
         bot_name: botName,
-        bot_image: "https://sequ3nce.ai/bot-avatar.png",
-        entry_message: "This meeting is being recorded.",
-        // v2 streaming config — 24kHz is Meeting BaaS default; good balance of quality and bandwidth
-        streaming_enabled: true,
-        streaming_config: {
-          input_url: streamingUrl,
-          output_url: streamingUrl,
-          audio_frequency: 24000,
-        },
-        // v2 transcription config
-        transcription_enabled: true,
-        transcription_config: {
-          provider: "gladia",
-        },
-        // v2 callback/webhook config
-        callback_enabled: true,
-        callback_config: {
-          url: webhookUrl,
-          method: "POST",
+        recording_config: {
+          transcript: {
+            provider: {
+              meeting_captions: {},
+            },
+          },
+          realtime_endpoints: [
+            {
+              type: "websocket" as const,
+              url: streamingUrl,
+              events: [
+                "audio_mixed_raw.data",
+                "transcript.data",
+                "participant_events.join",
+                "participant_events.leave",
+              ],
+            },
+          ],
         },
       };
 
-      // For Zoom meetings, include Zoom OAuth credentials if available
-      const isZoomMeeting = args.meetingUrl.includes("zoom.us") || args.meetingUrl.includes("zoom.com");
-      if (isZoomMeeting && closer?.zoomAccessToken && closer?.zoomRefreshToken) {
-        requestBody.zoom_config = {
-          credential_id: closer.zoomAccessToken,
-          credential_user_id: closer.zoomRefreshToken,
-        };
-      }
+      console.log(`[createBot] Recall.ai request body: ${JSON.stringify(requestBody)}`);
 
-      console.log(`[createBot] Request body: ${JSON.stringify(requestBody)}`);
-
-      const response = await fetch("https://api.meetingbaas.com/v2/bots", {
+      const response = await fetch("https://us-west-2.recall.ai/api/v1/bot/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-meeting-baas-api-key": meetingBaasApiKey,
+          "Authorization": `Token ${recallApiKey}`,
         },
         body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        const failureReason = `Meeting BaaS API error: ${response.status} ${errorText}`;
+        const failureReason = `Recall.ai API error: ${response.status} ${errorText}`;
         console.error(`[createBot] ${failureReason}`);
 
         await ctx.runMutation(internal.meetingBot.markBotFailed, {
@@ -334,27 +344,25 @@ export const createBot = action({
       }
 
       const data = await response.json();
-      console.log(`[createBot] Meeting BaaS response: ${JSON.stringify(data)}`);
-      const rawBotId = data?.bot_id || data?.data?.bot_id || data?.id || data?.data?.id || "";
-      const meetingBaasId = rawBotId ? String(rawBotId) : "";
+      console.log(`[createBot] Recall.ai response: ${JSON.stringify(data)}`);
+      const recallBotId = data?.id || "";
 
-      if (!meetingBaasId) {
-        console.warn(`[createBot] Could not extract bot_id from response: ${JSON.stringify(data)}`);
+      if (!recallBotId) {
+        console.warn(`[createBot] Could not extract bot id from Recall response: ${JSON.stringify(data)}`);
       }
 
-      // 5. Update the meetingBot record with the Meeting BaaS ID
-      if (meetingBaasId) {
-        await ctx.runMutation(internal.meetingBot.setBotMeetingBaasId, {
+      // 4. Update the meetingBot record with the Recall.ai bot UUID
+      if (recallBotId) {
+        await ctx.runMutation(internal.meetingBot.setBotRecallId, {
           botId,
-          meetingBaasId,
+          recallBotId,
         });
       }
 
-      console.log(`[createBot] Bot created successfully: ${botId}, meetingBaasId: ${meetingBaasId}`);
-      return { botId, meetingBaasId };
+      console.log(`[createBot] Bot created successfully: ${botId}, recallBotId: ${recallBotId}`);
+      return { botId, recallBotId };
     } catch (error) {
-      // If it's already our handled error, rethrow
-      if (error instanceof Error && error.message.startsWith("Meeting BaaS API error:")) {
+      if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
         throw error;
       }
 
@@ -370,7 +378,7 @@ export const createBot = action({
   },
 });
 
-// Cancel a meeting bot
+// Cancel a meeting bot (via Recall.ai API)
 export const cancelBot = action({
   args: {
     botId: v.id("meetingBots"),
@@ -390,28 +398,44 @@ export const cancelBot = action({
       return { success: true, alreadyCancelled: true };
     }
 
-    // 2. Call Meeting BaaS API to cancel/remove the bot
-    if (bot.meetingBaasId) {
-      const meetingBaasApiKey = process.env.MEETING_BAAS_API_KEY;
-      if (!meetingBaasApiKey) {
-        throw new Error("MEETING_BAAS_API_KEY not configured");
+    // 2. Call Recall.ai API to cancel/remove the bot
+    if (bot.recallBotId) {
+      const recallApiKey = process.env.RECALL_API_KEY;
+      if (!recallApiKey) {
+        throw new Error("RECALL_API_KEY not configured");
       }
 
       try {
-        const response = await fetch(`https://api.meetingbaas.com/v2/bots/${bot.meetingBaasId}`, {
-          method: "DELETE",
-          headers: {
-            "x-meeting-baas-api-key": meetingBaasApiKey,
-          },
-        });
+        // Try leave_call first (for in-call bots)
+        const leaveResponse = await fetch(
+          `https://us-west-2.recall.ai/api/v1/bot/${bot.recallBotId}/leave_call/`,
+          {
+            method: "POST",
+            headers: { "Authorization": `Token ${recallApiKey}` },
+          }
+        );
 
-        if (!response.ok && response.status !== 404) {
-          const errorText = await response.text();
-          console.error(`[cancelBot] Meeting BaaS API error: ${response.status} ${errorText}`);
-          // Continue with local cancellation even if API call fails
+        if (!leaveResponse.ok) {
+          // If bot hasn't joined yet (400), try DELETE for scheduled bots
+          if (leaveResponse.status === 400 || leaveResponse.status === 405) {
+            const deleteResponse = await fetch(
+              `https://us-west-2.recall.ai/api/v1/bot/${bot.recallBotId}/`,
+              {
+                method: "DELETE",
+                headers: { "Authorization": `Token ${recallApiKey}` },
+              }
+            );
+            if (!deleteResponse.ok && deleteResponse.status !== 404) {
+              const errorText = await deleteResponse.text();
+              console.error(`[cancelBot] Recall.ai DELETE error: ${deleteResponse.status} ${errorText}`);
+            }
+          } else if (leaveResponse.status !== 404) {
+            const errorText = await leaveResponse.text();
+            console.error(`[cancelBot] Recall.ai leave_call error: ${leaveResponse.status} ${errorText}`);
+          }
         }
       } catch (error) {
-        console.error(`[cancelBot] Failed to call Meeting BaaS API:`, error);
+        console.error(`[cancelBot] Failed to call Recall.ai API:`, error);
         // Continue with local cancellation even if API call fails
       }
     }
@@ -426,7 +450,7 @@ export const cancelBot = action({
   },
 });
 
-// Create a quick bot (manual, not from calendar)
+// Create a quick bot (manual, not from calendar) via Recall.ai API
 export const createQuickBot = action({
   args: {
     meetingUrl: v.string(),
@@ -434,7 +458,7 @@ export const createQuickBot = action({
     teamId: v.id("teams"),
     prospectName: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; meetingBaasId: string }> => {
+  handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
     // 1. Create the meetingBot record with status "scheduled" and source "quick_bot"
     const botId: Id<"meetingBots"> = await ctx.runMutation(internal.meetingBot.insertBot, {
       closerId: args.closerId,
@@ -451,75 +475,58 @@ export const createQuickBot = action({
 
     const botName = team?.meetingBotName || "Sequ3nce.ai";
 
-    // 3. Get closer info for Zoom OAuth credentials (if applicable)
-    const closer = await ctx.runQuery(internal.meetingBot.getCloserById, {
-      closerId: args.closerId,
-    });
-
-    // 4. Call Meeting BaaS API to create the bot
-    const meetingBaasApiKey = process.env.MEETING_BAAS_API_KEY;
-    if (!meetingBaasApiKey) {
+    // 3. Call Recall.ai API to create the bot
+    const recallApiKey = process.env.RECALL_API_KEY;
+    if (!recallApiKey) {
       await ctx.runMutation(internal.meetingBot.markBotFailed, {
         botId,
-        failureReason: "MEETING_BAAS_API_KEY not configured",
+        failureReason: "RECALL_API_KEY not configured",
       });
-      throw new Error("MEETING_BAAS_API_KEY not configured");
+      throw new Error("RECALL_API_KEY not configured");
     }
 
     try {
-      // Build streaming URL with query params so audio processor can identify the call
-      const streamingUrl = `wss://amusing-charm-production.up.railway.app/meetingbaas?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
+      // Build WebSocket URL for audio processor (Recall.ai connects to this)
+      const streamingUrl = `wss://amusing-charm-production.up.railway.app/recall?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
 
-      const webhookUrl = `${process.env.CONVEX_SITE_URL}/webhooks/meetingbaas`;
-
-      const requestBody: Record<string, any> = {
+      const requestBody = {
         meeting_url: args.meetingUrl,
         bot_name: botName,
-        bot_image: "https://sequ3nce.ai/bot-avatar.png",
-        entry_message: "This meeting is being recorded.",
-        // v2 streaming config — 24kHz is Meeting BaaS default; good balance of quality and bandwidth
-        streaming_enabled: true,
-        streaming_config: {
-          input_url: streamingUrl,
-          output_url: streamingUrl,
-          audio_frequency: 24000,
-        },
-        // v2 transcription config
-        transcription_enabled: true,
-        transcription_config: {
-          provider: "gladia",
-        },
-        // v2 callback/webhook config
-        callback_enabled: true,
-        callback_config: {
-          url: webhookUrl,
-          method: "POST",
+        recording_config: {
+          transcript: {
+            provider: {
+              meeting_captions: {},
+            },
+          },
+          realtime_endpoints: [
+            {
+              type: "websocket" as const,
+              url: streamingUrl,
+              events: [
+                "audio_mixed_raw.data",
+                "transcript.data",
+                "participant_events.join",
+                "participant_events.leave",
+              ],
+            },
+          ],
         },
       };
 
-      // For Zoom meetings, include Zoom OAuth credentials if available
-      const isZoomMeeting = args.meetingUrl.includes("zoom.us") || args.meetingUrl.includes("zoom.com");
-      if (isZoomMeeting && closer?.zoomAccessToken && closer?.zoomRefreshToken) {
-        requestBody.zoom_config = {
-          credential_id: closer.zoomAccessToken,
-          credential_user_id: closer.zoomRefreshToken,
-        };
-      }
+      console.log(`[createQuickBot] Recall.ai request body: ${JSON.stringify(requestBody)}`);
 
-      console.log(`[createQuickBot] Request body: ${JSON.stringify(requestBody)}`);
-
-      const response = await fetch("https://api.meetingbaas.com/v2/bots", {
+      const response = await fetch("https://us-west-2.recall.ai/api/v1/bot/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-meeting-baas-api-key": meetingBaasApiKey,
+          "Authorization": `Token ${recallApiKey}`,
         },
         body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        const failureReason = `Meeting BaaS API error: ${response.status} ${errorText}`;
+        const failureReason = `Recall.ai API error: ${response.status} ${errorText}`;
         console.error(`[createQuickBot] ${failureReason}`);
 
         await ctx.runMutation(internal.meetingBot.markBotFailed, {
@@ -530,20 +537,19 @@ export const createQuickBot = action({
       }
 
       const data = await response.json();
-      console.log(`[createQuickBot] Meeting BaaS response: ${JSON.stringify(data)}`);
-      const rawBotId = data?.bot_id || data?.data?.bot_id || data?.id || data?.data?.id || "";
-      const meetingBaasId = rawBotId ? String(rawBotId) : "";
+      console.log(`[createQuickBot] Recall.ai response: ${JSON.stringify(data)}`);
+      const recallBotId = data?.id || "";
 
-      // 5. Update the meetingBot record with the Meeting BaaS ID
-      await ctx.runMutation(internal.meetingBot.setBotMeetingBaasId, {
+      // 4. Update the meetingBot record with the Recall.ai bot UUID
+      await ctx.runMutation(internal.meetingBot.setBotRecallId, {
         botId,
-        meetingBaasId: meetingBaasId,
+        recallBotId,
       });
 
-      console.log(`[createQuickBot] Bot created successfully: ${botId}, meetingBaasId: ${meetingBaasId}`);
-      return { botId, meetingBaasId };
+      console.log(`[createQuickBot] Bot created successfully: ${botId}, recallBotId: ${recallBotId}`);
+      return { botId, recallBotId };
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith("Meeting BaaS API error:")) {
+      if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
         throw error;
       }
 
@@ -566,7 +572,8 @@ export const createQuickBot = action({
 // Update bot status from webhook events (called by webhook route)
 export const updateBotStatus = mutation({
   args: {
-    meetingBaasId: v.string(),
+    meetingBaasId: v.optional(v.string()), // Legacy Meeting BaaS lookup
+    recallBotId: v.optional(v.string()),   // Recall.ai lookup
     status: v.optional(v.string()),
     callId: v.optional(v.id("calls")),
     joinedAt: v.optional(v.number()),
@@ -577,14 +584,23 @@ export const updateBotStatus = mutation({
     questionnaireCompleted: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    // Find bot by meetingBaasId index
-    const bot = await ctx.db
-      .query("meetingBots")
-      .withIndex("by_meeting_baas_id", (q) => q.eq("meetingBaasId", args.meetingBaasId))
-      .first();
+    // Find bot by recallBotId first, then fall back to meetingBaasId
+    let bot = null;
+    if (args.recallBotId) {
+      bot = await ctx.db
+        .query("meetingBots")
+        .withIndex("by_recall_bot_id", (q) => q.eq("recallBotId", args.recallBotId))
+        .first();
+    }
+    if (!bot && args.meetingBaasId) {
+      bot = await ctx.db
+        .query("meetingBots")
+        .withIndex("by_meeting_baas_id", (q) => q.eq("meetingBaasId", args.meetingBaasId))
+        .first();
+    }
 
     if (!bot) {
-      console.error(`[updateBotStatus] Bot not found for meetingBaasId: ${args.meetingBaasId}`);
+      console.error(`[updateBotStatus] Bot not found for recallBotId: ${args.recallBotId}, meetingBaasId: ${args.meetingBaasId}`);
       return { success: false, error: "Bot not found" };
     }
 
@@ -996,13 +1012,24 @@ export const getExcludedEvents = query({
   },
 });
 
-// Get a bot by its Meeting BaaS ID (used by webhook route)
+// Get a bot by its Meeting BaaS ID (legacy, used by old webhook route)
 export const getBotByMeetingBaasId = query({
   args: { meetingBaasId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("meetingBots")
       .withIndex("by_meeting_baas_id", (q) => q.eq("meetingBaasId", args.meetingBaasId))
+      .first();
+  },
+});
+
+// Get a bot by its Recall.ai bot UUID (used by Recall webhook route)
+export const getBotByRecallId = query({
+  args: { recallBotId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("meetingBots")
+      .withIndex("by_recall_bot_id", (q) => q.eq("recallBotId", args.recallBotId))
       .first();
   },
 });
@@ -1286,7 +1313,7 @@ export const getActiveCallForCloserBot = mutation({
     const bot = validBots.find((b) => b.status === "active") || validBots[0];
     return {
       hasActiveCall: true,
-      botId: bot.meetingBaasId,     // Meeting BaaS ID for kick/cancel API
+      botId: bot.recallBotId || bot.meetingBaasId,     // Recall or legacy Meeting BaaS ID
       convexBotId: bot._id,         // Convex ID for internal queries
       callId: bot.callId,
       meetingTitle: bot.meetingTitle,

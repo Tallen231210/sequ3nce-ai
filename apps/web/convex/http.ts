@@ -3370,6 +3370,175 @@ http.route({
 });
 
 // ============================================
+// RECALL.AI WEBHOOK HANDLER
+// ============================================
+
+http.route({
+  path: "/webhooks/recall",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    let body: any;
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error("[recall-webhook] Failed to parse body:", error);
+      return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Recall.ai Svix webhook format
+    const eventType = body.event;
+    const recallBotId = body.data?.bot?.id;
+    const eventData = body.data?.data;
+
+    // Log full payload for debugging (first 1000 chars)
+    console.log(`[recall-webhook] Full payload: ${JSON.stringify(body).substring(0, 1000)}`);
+
+    if (!recallBotId) {
+      console.error("[recall-webhook] No bot ID in payload:", JSON.stringify(body));
+      return new Response(JSON.stringify({ error: "Missing bot ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    console.log(`[recall-webhook] Event: ${eventType} for bot: ${recallBotId}`);
+
+    try {
+      switch (eventType) {
+        case "bot.joining_call": {
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            recallBotId,
+            status: "joining",
+          });
+          break;
+        }
+
+        case "bot.in_waiting_room": {
+          console.log(`[recall-webhook] Bot in waiting room: ${recallBotId}`);
+          break;
+        }
+
+        case "bot.in_call_not_recording":
+        case "bot.in_call_recording": {
+          // Bot has joined and is recording — set status to "active"
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            recallBotId,
+            status: "active",
+            joinedAt: Date.now(),
+          });
+
+          // Check if audio processor already created and linked a call
+          const botRecord = await ctx.runQuery(api.meetingBot.getBotByRecallId, {
+            recallBotId,
+          });
+
+          if (botRecord?.callId) {
+            console.log(`[recall-webhook] Bot active, call already linked by audio processor: ${botRecord.callId}`);
+          } else if (botRecord) {
+            // No call linked yet — create one as fallback
+            const callId = await ctx.runMutation(api.meetingBot.createCallFromBot, {
+              closerId: botRecord.closerId,
+              teamId: botRecord.teamId,
+              meetingBotId: botRecord._id,
+              prospectName: botRecord.prospectName,
+            });
+
+            await ctx.runMutation(api.meetingBot.updateBotStatus, {
+              recallBotId,
+              callId,
+            });
+
+            console.log(`[recall-webhook] Bot active, created fallback call: ${callId}`);
+          }
+          break;
+        }
+
+        case "bot.call_ended": {
+          // Bot detected call ended, recording being processed
+          console.log(`[recall-webhook] Call ended for bot: ${recallBotId}, waiting for bot.done`);
+          break;
+        }
+
+        case "bot.done": {
+          // Bot fully done — recording available
+          const endedAt = Date.now();
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            recallBotId,
+            status: "completed",
+            endedAt,
+            questionnaireCompleted: false,
+          });
+
+          // Complete linked call
+          const completedBot = await ctx.runQuery(api.meetingBot.getBotByRecallId, {
+            recallBotId,
+          });
+
+          if (completedBot?.callId) {
+            await ctx.runMutation(api.meetingBot.completeCallFromBot, {
+              callId: completedBot.callId,
+              endedAt,
+            });
+            console.log(`[recall-webhook] Completed call: ${completedBot.callId}`);
+          }
+
+          // Schedule recording URL fetch (Recall doesn't include it in webhook)
+          await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
+            recallBotId,
+            delayMs: 3000, // Recall is fast, 3s should be enough
+          });
+          break;
+        }
+
+        case "bot.fatal": {
+          const failureReason = eventData?.sub_code || eventData?.code || "Unknown failure";
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            recallBotId,
+            status: "failed",
+            failureReason,
+          });
+          console.error(`[recall-webhook] Bot fatal: ${recallBotId}, reason: ${failureReason}`);
+          break;
+        }
+
+        default: {
+          console.log(`[recall-webhook] Unhandled event: ${eventType}, full body: ${JSON.stringify(body).substring(0, 500)}`);
+        }
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      console.error(`[recall-webhook] Error processing ${eventType}:`, error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/webhooks/recall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
 // MEETING BOT HTTP ROUTES
 // ============================================
 
@@ -4000,7 +4169,7 @@ http.route({
         prospectName: prospectName || undefined,
       });
 
-      return new Response(JSON.stringify({ success: true, botId: result.botId, meetingBaasId: result.meetingBaasId }), {
+      return new Response(JSON.stringify({ success: true, botId: result.botId, recallBotId: result.recallBotId }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
