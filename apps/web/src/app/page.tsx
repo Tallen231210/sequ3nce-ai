@@ -295,14 +295,24 @@ export default function Home() {
       {/* ═══════════════════════════════════════════ */}
       <header
         className={cn(
-          "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
+          "fixed left-0 right-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
           isScrolled
-            ? "bg-white/80 backdrop-blur-xl border-b border-zinc-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-            : "bg-transparent border-b border-transparent"
+            ? "top-4 px-4 sm:px-6 lg:px-8"
+            : "top-0 px-0"
         )}
       >
-        <div className="mx-auto max-w-7xl px-6">
-          <div className="flex h-16 items-center justify-between">
+        <div
+          className={cn(
+            "mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+            isScrolled
+              ? "max-w-4xl bg-white/80 backdrop-blur-xl border border-zinc-200/60 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.08)] rounded-full px-6"
+              : "max-w-7xl px-6"
+          )}
+        >
+          <div className={cn(
+            "flex items-center justify-between transition-all duration-500",
+            isScrolled ? "h-14" : "h-16"
+          )}>
             <Logo href="/" height={28} />
             <nav className="hidden md:flex items-center gap-8">
               {["features", "how-it-works", "pricing"].map((id) => (
