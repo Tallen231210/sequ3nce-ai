@@ -13,6 +13,7 @@ import {
   updateCallDetection,
   updateTalkTime,
   getLastTranscriptTimestamp,
+  getBotExistingCallId,
 } from "./convex.js";
 import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
@@ -113,7 +114,7 @@ export class CallHandler {
       logger.info(`[RECONNECT CHECK] metadata.isReconnect=${metadataIsReconnect}, metadata.convexCallId=${metadataConvexCallId}, isReconnect=${isReconnect}`);
 
       if (isReconnect) {
-        // RECONNECTION: Reuse existing Convex call ID instead of creating new
+        // RECONNECTION (explicit): Desktop client sent existing convexCallId
         this.convexCallId = metadataConvexCallId!;
         logger.info(`[RECONNECT] Resuming call ${this.session.metadata.callId} with existing Convex ID: ${this.convexCallId}`);
 
@@ -126,8 +127,29 @@ export class CallHandler {
         // Mark the call as active again (in case it was marked as ended)
         await updateCallStatus(this.convexCallId, "on_call", 2);
         logger.info(`[RECONNECT] Call status updated to on_call`);
+      } else if (this.source === "recall" || this.source === "meetingbaas") {
+        // BOT CALL: Check if bot already has a linked call (implicit reconnection)
+        // This handles the case where Recall.ai reconnects but doesn't send isReconnect metadata.
+        // If the bot already has an active call record, reuse it instead of creating a duplicate.
+        const existingCallId = await getBotExistingCallId(this.session.metadata.callId);
+        if (existingCallId) {
+          this.convexCallId = existingCallId;
+          logger.info(`[BOT RECONNECT] Bot ${this.session.metadata.callId} already has call ${existingCallId} — resuming`);
+
+          const lastTimestamp = await getLastTranscriptTimestamp(this.convexCallId);
+          this.timestampOffset = lastTimestamp + 1;
+          logger.info(`[BOT RECONNECT] Last transcript timestamp: ${lastTimestamp}, using offset: ${this.timestampOffset}`);
+
+          await updateCallStatus(this.convexCallId, "on_call", 2);
+          logger.info(`[BOT RECONNECT] Call status updated to on_call`);
+        } else {
+          // First connection for this bot — create new call record
+          logger.info(`[NEW CALL] Creating new call record for bot ${this.session.metadata.callId}`);
+          this.convexCallId = await createCall(this.session.metadata);
+          logger.info(`[NEW CALL] Created with Convex ID: ${this.convexCallId}`);
+        }
       } else {
-        // NEW CALL: Create call record in Convex - this returns the Convex _id
+        // NEW CALL (desktop closer): Create call record in Convex
         logger.info(`[NEW CALL] Creating new call record for ${this.session.metadata.callId}`);
         this.convexCallId = await createCall(this.session.metadata);
         logger.info(`[NEW CALL] Created with Convex ID: ${this.convexCallId}`);

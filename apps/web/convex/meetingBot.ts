@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, action, internalMutation, internalQuery, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
 
 // Schedule a delayed fetch of the recording URL from Recall.ai API
 export const scheduleRecordingFetch = internalMutation({
@@ -299,6 +300,16 @@ export const createBot = action({
       const requestBody = {
         meeting_url: args.meetingUrl,
         bot_name: botName,
+        automatic_video_output: {
+          in_call_recording: {
+            kind: "jpeg" as const,
+            b64_data: BOT_AVATAR_JPEG_B64,
+          },
+          in_call_not_recording: {
+            kind: "jpeg" as const,
+            b64_data: BOT_AVATAR_JPEG_B64,
+          },
+        },
         recording_config: {
           transcript: {
             provider: {
@@ -325,7 +336,7 @@ export const createBot = action({
         },
       };
 
-      console.log(`[createBot] Recall.ai request body: ${JSON.stringify(requestBody)}`);
+      console.log(`[createBot] Recall.ai request body: ${JSON.stringify(requestBody).substring(0, 500)}...`);
 
       const response = await fetch("https://us-west-2.recall.ai/api/v1/bot/", {
         method: "POST",
@@ -497,6 +508,16 @@ export const createQuickBot = action({
       const requestBody = {
         meeting_url: args.meetingUrl,
         bot_name: botName,
+        automatic_video_output: {
+          in_call_recording: {
+            kind: "jpeg" as const,
+            b64_data: BOT_AVATAR_JPEG_B64,
+          },
+          in_call_not_recording: {
+            kind: "jpeg" as const,
+            b64_data: BOT_AVATAR_JPEG_B64,
+          },
+        },
         recording_config: {
           transcript: {
             provider: {
@@ -523,7 +544,7 @@ export const createQuickBot = action({
         },
       };
 
-      console.log(`[createQuickBot] Recall.ai request body: ${JSON.stringify(requestBody)}`);
+      console.log(`[createQuickBot] Recall.ai request body: ${JSON.stringify(requestBody).substring(0, 500)}...`);
 
       const response = await fetch("https://us-west-2.recall.ai/api/v1/bot/", {
         method: "POST",
@@ -1030,6 +1051,26 @@ export const getBotByMeetingBaasId = query({
       .query("meetingBots")
       .withIndex("by_meeting_baas_id", (q) => q.eq("meetingBaasId", args.meetingBaasId))
       .first();
+  },
+});
+
+// Get a bot's existing linked callId (used by audio processor for reconnection)
+// If the bot already has a call record, returns it so the audio processor can
+// resume the existing call instead of creating a duplicate.
+export const getBotCallId = query({
+  args: { botId: v.string() },
+  handler: async (ctx, args) => {
+    const botDocId = ctx.db.normalizeId("meetingBots", args.botId);
+    if (!botDocId) return null;
+
+    const bot = await ctx.db.get(botDocId);
+    if (!bot || !bot.callId) return null;
+
+    // Verify the linked call exists and is not already completed
+    const call = await ctx.db.get(bot.callId);
+    if (!call || call.status === "completed") return null;
+
+    return { callId: bot.callId.toString() };
   },
 });
 

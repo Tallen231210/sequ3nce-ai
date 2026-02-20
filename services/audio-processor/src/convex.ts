@@ -205,6 +205,21 @@ export async function completeBot(botId: string): Promise<void> {
   }
 }
 
+// Get a bot's existing linked callId (for reconnection — reuse instead of creating duplicate)
+export async function getBotExistingCallId(botId: string): Promise<string | null> {
+  try {
+    const result = await convex.query("meetingBot:getBotCallId" as any, { botId });
+    if (result?.callId) {
+      logger.info(`[Bot] Found existing call for bot ${botId}: ${result.callId}`);
+      return result.callId;
+    }
+    return null;
+  } catch (error) {
+    logger.error(`[Bot] Failed to get existing call for bot ${botId}: ${error}`);
+    return null;
+  }
+}
+
 // Link a call to a meeting bot (so desktop app can find the call with ammo data)
 export async function linkCallToBot(botId: string, callId: string): Promise<void> {
   try {
