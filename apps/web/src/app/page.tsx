@@ -231,7 +231,7 @@ function ScreenshotTabs() {
       </div>
 
       {/* Active tab description */}
-      <p className="text-center text-zinc-400 text-sm">
+      <p className="text-center text-zinc-500 text-sm">
         {tabs[activeTab].description}
       </p>
     </div>
@@ -390,7 +390,7 @@ export default function Home() {
           "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
           isScrolled
             ? "bg-white/80 backdrop-blur-xl border-b border-zinc-200/50 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-            : "bg-transparent"
+            : "bg-white"
         )}
       >
         <div className="mx-auto max-w-6xl px-6">
@@ -440,37 +440,35 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section — Dark, dramatic */}
-      <section className="relative pt-32 pb-32 bg-zinc-950 overflow-hidden">
+      {/* Hero Section */}
+      <section className="relative pt-32 pb-32 bg-white overflow-hidden">
         {/* Subtle grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+            backgroundImage: `linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)`,
             backgroundSize: "64px 64px",
           }}
         />
-        {/* Radial glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-zinc-800/30 rounded-full blur-[120px]" />
 
         <div className="relative mx-auto max-w-6xl px-6">
           <div className="max-w-3xl mx-auto text-center">
             <AnimatedSection>
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900/50 text-xs font-medium tracking-widest uppercase text-zinc-400 mb-8">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-zinc-200 bg-zinc-50 text-xs font-medium tracking-widest uppercase text-zinc-500 mb-8">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Now with automatic meeting bot
               </div>
             </AnimatedSection>
 
             <AnimatedSection delay={100}>
-              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-[1.05] text-white">
+              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-[1.05] text-black">
                 Finally see why deals close
-                <span className="text-zinc-500"> — and why they don&apos;t.</span>
+                <span className="text-zinc-400"> — and why they don&apos;t.</span>
               </h1>
             </AnimatedSection>
 
             <AnimatedSection delay={200}>
-              <p className="mt-8 text-lg text-zinc-400 max-w-xl mx-auto leading-relaxed">
+              <p className="mt-8 text-lg text-zinc-500 max-w-xl mx-auto leading-relaxed">
                 Stop managing your sales team blind. See every call as it happens,
                 know exactly what&apos;s being said, and make decisions based on data
                 — not what your closers tell you after the fact.
@@ -480,14 +478,14 @@ export default function Home() {
             <AnimatedSection delay={300}>
               <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
                 <SignedOut>
-                  <BookDemoButton size="lg" className="bg-white !text-black hover:bg-zinc-100 shadow-[0_0_24px_rgba(255,255,255,0.1)]">
+                  <BookDemoButton size="lg">
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
-                    <Button size="lg" className="bg-white text-black hover:bg-zinc-100">
+                    <Button size="lg">
                       Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                     </Button>
@@ -495,7 +493,7 @@ export default function Home() {
                 </SignedIn>
                 <button
                   onClick={() => scrollToSection("how-it-works")}
-                  className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
+                  className="text-sm text-zinc-500 hover:text-black transition-colors flex items-center gap-1"
                 >
                   See How It Works
                   <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -507,10 +505,7 @@ export default function Home() {
           {/* Hero video */}
           <AnimatedSection delay={400} className="mt-20">
             <div className="relative max-w-4xl mx-auto">
-              {/* Glow behind video */}
-              <div className="absolute -inset-4 bg-gradient-to-b from-zinc-800/50 via-zinc-900/30 to-transparent rounded-3xl blur-2xl" />
-
-              <div className="relative rounded-2xl overflow-hidden border border-zinc-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)]">
+              <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.12)]">
                 <video
                   autoPlay
                   loop
@@ -525,9 +520,6 @@ export default function Home() {
             </div>
           </AnimatedSection>
         </div>
-
-        {/* Bottom fade to white */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-white to-transparent" />
       </section>
 
       {/* Product Screenshots Section */}
@@ -552,22 +544,12 @@ export default function Home() {
       </section>
 
       {/* Pain Points Section */}
-      <section className="py-32 bg-zinc-950 relative overflow-hidden">
-        {/* Noise texture overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.015]"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E")`,
-          }}
-        />
-
+      <section className="py-32 bg-zinc-50 relative overflow-hidden">
         <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
-              <SectionLabel>
-                <span className="text-zinc-400">The Problem</span>
-              </SectionLabel>
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-white">
+              <SectionLabel>The Problem</SectionLabel>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-black">
                 You&apos;re running a sales team blind
               </h2>
               <p className="mt-4 text-zinc-500 max-w-xl mx-auto">
@@ -579,11 +561,11 @@ export default function Home() {
           <div className="grid sm:grid-cols-2 gap-4 max-w-4xl mx-auto">
             {painPoints.map((pain, index) => (
               <AnimatedSection key={index} delay={index * 100}>
-                <div className="p-8 rounded-2xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-sm hover:border-zinc-700 transition-colors h-full">
-                  <div className="text-xs font-mono text-zinc-600 mb-4">
+                <div className="p-8 rounded-2xl border border-zinc-200 bg-white hover:border-zinc-300 transition-colors h-full hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.06)]">
+                  <div className="text-xs font-mono text-zinc-300 mb-4">
                     {String(index + 1).padStart(2, "0")}
                   </div>
-                  <p className="text-[17px] font-medium leading-relaxed text-zinc-200">
+                  <p className="text-[17px] font-medium leading-relaxed text-zinc-700">
                     {pain}
                   </p>
                 </div>
@@ -594,7 +576,7 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-32 bg-zinc-50">
+      <section id="features" className="py-32 bg-white">
         <div className="mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
@@ -771,31 +753,28 @@ export default function Home() {
       </section>
 
       {/* Final CTA Section */}
-      <section className="py-32 bg-zinc-950 relative overflow-hidden">
-        {/* Radial glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-zinc-800/30 rounded-full blur-[100px]" />
-
+      <section className="py-32 bg-white relative overflow-hidden">
         <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center">
-              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white">
+              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-black">
                 Stop wondering.
                 <br />
                 Start knowing.
               </h2>
-              <p className="mt-6 text-lg text-zinc-400 max-w-xl mx-auto">
+              <p className="mt-6 text-lg text-zinc-500 max-w-xl mx-auto">
                 See exactly why deals close and why they don&apos;t — starting today.
               </p>
               <div className="mt-10">
                 <SignedOut>
-                  <BookDemoButton size="lg" className="bg-white !text-black hover:bg-zinc-100 shadow-[0_0_24px_rgba(255,255,255,0.1)]">
+                  <BookDemoButton size="lg">
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
-                    <Button size="lg" className="bg-white text-black hover:bg-zinc-100">
+                    <Button size="lg">
                       Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                     </Button>
