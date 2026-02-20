@@ -1824,60 +1824,28 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Meeting Bot (Beta) */}
+        {/* Meeting Bot */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bot className="h-5 w-5" />
               Meeting Bot
-              <Badge variant="secondary" className="text-xs">Beta</Badge>
             </CardTitle>
             <CardDescription>
               Automatically record and analyze sales calls by having a bot join your team&apos;s video meetings
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Enable/Disable Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">Enable Meeting Bot</p>
-                <p className="text-sm text-muted-foreground">
-                  When enabled, bots will auto-join scheduled video calls for your team&apos;s closers
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {savingMeetingBot && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                <button
-                  onClick={() => handleToggleMeetingBot(!settings?.team?.meetingBotEnabled)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    settings?.team?.meetingBotEnabled ? "bg-green-600" : "bg-zinc-300"
-                  }`}
-                  disabled={savingMeetingBot}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      settings?.team?.meetingBotEnabled ? "translate-x-6" : "translate-x-1"
-                    }`}
-                  />
-                </button>
-              </div>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              <p className="font-medium mb-2">How it works:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Closers connect their Google Calendar in the desktop app (one-time setup)</li>
+                <li>Bots automatically join scheduled video calls (Zoom, Google Meet, Teams)</li>
+                <li>Real-time coaching and transcription happen automatically</li>
+                <li>Post-call questionnaire triggers when the meeting ends</li>
+                <li>Video recordings are available in the dashboard</li>
+              </ul>
             </div>
-
-            {settings?.team?.meetingBotEnabled && (
-              <>
-                {/* Info about what happens when enabled */}
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-                  <p className="font-medium mb-2">How it works:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>Closers connect their calendar in the desktop app (one-time setup)</li>
-                    <li>Bots automatically join scheduled video calls (Zoom, Google Meet, Teams)</li>
-                    <li>Real-time coaching and transcription happen automatically</li>
-                    <li>Post-call questionnaire triggers when the meeting ends</li>
-                    <li>Video recordings are available in the dashboard</li>
-                  </ul>
-                </div>
-              </>
-            )}
           </CardContent>
         </Card>
 

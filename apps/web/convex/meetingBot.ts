@@ -311,6 +311,7 @@ export const createBot = action({
           },
         },
         recording_config: {
+          retention: { type: "forever" as const },
           transcript: {
             provider: {
               recallai_streaming: {
@@ -519,6 +520,7 @@ export const createQuickBot = action({
           },
         },
         recording_config: {
+          retention: { type: "forever" as const },
           transcript: {
             provider: {
               recallai_streaming: {
@@ -1093,14 +1095,13 @@ export const getCallById = query({
   },
 });
 
-// Check if a team has meeting bot enabled
+// Meeting bot is enabled for all teams (launched v2.0.0)
 export const isMeetingBotEnabled = query({
   args: { teamId: v.id("teams") },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
     if (!team) return false;
-
-    return team.meetingBotEnabled === true;
+    return true;
   },
 });
 
@@ -1113,9 +1114,9 @@ export const isMeetingBotEnabled = query({
 export const getClosersWithCalendars = internalQuery({
   args: {},
   handler: async (ctx) => {
-    // Get all teams with meeting bot enabled
+    // Get all teams (meeting bot is enabled for everyone)
     const allTeams = await ctx.db.query("teams").collect();
-    const botEnabledTeams = allTeams.filter((t) => t.meetingBotEnabled === true);
+    const botEnabledTeams = allTeams;
 
     if (botEnabledTeams.length === 0) return [];
 
@@ -1305,12 +1306,11 @@ export const needsCalendarOnboarding = query({
     const closer = await ctx.db.get(args.closerId);
     if (!closer) return false;
 
-    // Check if the closer's team has meeting bot enabled
-    const team = await ctx.db.get(closer.teamId);
-    if (!team || !team.meetingBotEnabled) return false;
+    // Skip onboarding if already completed OR if calendar is already connected
+    if (closer.calendarOnboardingCompleted === true) return false;
+    if (closer.icsUrl) return false;
 
-    // Needs onboarding if they haven't completed it yet
-    return closer.calendarOnboardingCompleted !== true;
+    return true;
   },
 });
 

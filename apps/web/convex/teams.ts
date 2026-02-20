@@ -359,6 +359,22 @@ export const updateMeetingBotEnabled = mutation({
   },
 });
 
+// One-time: Enable meeting bot for all teams (v2.0.0 launch)
+export const enableMeetingBotForAllTeams = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const teams = await ctx.db.query("teams").collect();
+    let updated = 0;
+    for (const team of teams) {
+      if (team.meetingBotEnabled !== true) {
+        await ctx.db.patch(team._id, { meetingBotEnabled: true });
+        updated++;
+      }
+    }
+    return { total: teams.length, updated };
+  },
+});
+
 // Update meeting bot display name
 export const updateMeetingBotName = mutation({
   args: {

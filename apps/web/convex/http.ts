@@ -2962,7 +2962,23 @@ http.route({
           })),
         },
         call: body.call,
-        meetingBot: body.meetingBot || undefined,
+        meetingBot: body.meetingBot ? {
+          ...body.meetingBot,
+          lastBotErrorAt: body.meetingBot.lastBotErrorAt
+            ? (typeof body.meetingBot.lastBotErrorAt === 'string'
+                ? body.meetingBot.lastBotErrorAt
+                : new Date(body.meetingBot.lastBotErrorAt).toISOString())
+            : undefined,
+        } : undefined,
+        ammoPanel: body.ammoPanel || undefined,
+        api: body.api ? {
+          ...body.api,
+          lastApiErrorAt: body.api.lastApiErrorAt
+            ? (typeof body.api.lastApiErrorAt === 'string'
+                ? body.api.lastApiErrorAt
+                : new Date(body.api.lastApiErrorAt).toISOString())
+            : undefined,
+        } : undefined,
         permissions: body.permissions,
         logs: {
           ...body.logs,
@@ -3423,35 +3439,23 @@ http.route({
 
         case "bot.in_call_not_recording":
         case "bot.in_call_recording": {
-          // Bot has joined and is recording — set status to "active"
+          // Bot has joined — set status to "active"
+          // The audio processor creates the call record via callHandler.start()
+          // and links it via linkCallToBot, so no fallback call needed here.
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
             recallBotId,
             status: "active",
             joinedAt: Date.now(),
           });
 
-          // Check if audio processor already created and linked a call
           const botRecord = await ctx.runQuery(api.meetingBot.getBotByRecallId, {
             recallBotId,
           });
 
           if (botRecord?.callId) {
-            console.log(`[recall-webhook] Bot active, call already linked by audio processor: ${botRecord.callId}`);
-          } else if (botRecord) {
-            // No call linked yet — create one as fallback
-            const callId = await ctx.runMutation(api.meetingBot.createCallFromBot, {
-              closerId: botRecord.closerId,
-              teamId: botRecord.teamId,
-              meetingBotId: botRecord._id,
-              prospectName: botRecord.prospectName,
-            });
-
-            await ctx.runMutation(api.meetingBot.updateBotStatus, {
-              recallBotId,
-              callId,
-            });
-
-            console.log(`[recall-webhook] Bot active, created fallback call: ${callId}`);
+            console.log(`[recall-webhook] Bot active, call linked by audio processor: ${botRecord.callId}`);
+          } else {
+            console.log(`[recall-webhook] Bot active, waiting for audio processor to create call`);
           }
           break;
         }
