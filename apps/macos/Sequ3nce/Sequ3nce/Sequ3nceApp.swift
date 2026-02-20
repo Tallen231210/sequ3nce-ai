@@ -249,6 +249,7 @@ class AppState: ObservableObject {
         // Wire up service references
         diagnosticsService.audioService = audioService
         diagnosticsService.webSocketService = webSocketService
+        diagnosticsService.convexService = convexService
 
         // Update diagnostics service state when relevant properties change
         // (will be updated in startRecording/stopRecording as well)
@@ -788,10 +789,15 @@ class AppState: ObservableObject {
             diagnosticsService.questionnairePanelVisible = WindowManager.shared.isQuestionnairePanelVisible
             diagnosticsService.firstPendingCallId = firstPendingCallId
             diagnosticsService.firstPendingProspectName = firstPendingProspectName
+            diagnosticsService.botStatus = activeBot?.status
+            diagnosticsService.botIsScheduled = botIsScheduled
+            diagnosticsService.botActiveSeconds = botActiveStartTime.map { Date().timeIntervalSince($0) }
 
         } catch {
             // Silent failure - polling will retry
             print("[AppState] Bot poll error: \(error.localizedDescription)")
+            diagnosticsService.lastBotError = error.localizedDescription
+            diagnosticsService.lastBotErrorAt = Date()
         }
     }
 

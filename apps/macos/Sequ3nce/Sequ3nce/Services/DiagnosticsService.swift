@@ -21,6 +21,7 @@ struct SystemDiagnostics: Codable {
     let ramAvailable: UInt64
     let appVersion: String
     let appBuild: String
+    let appUptime: TimeInterval
 }
 
 struct AudioDiagnostics: Codable {
@@ -76,6 +77,27 @@ struct MeetingBotDiagnostics: Codable {
     let questionnairePanelVisible: Bool
     let firstPendingCallId: String?
     let firstPendingProspectName: String?
+    // Bot lifecycle details
+    let botStatus: String? // "joining", "scheduled", "active", "waiting_room", "failed"
+    let botIsScheduled: Bool
+    let botActiveSeconds: Double? // How long the bot has been active
+    let lastBotError: String?
+    let lastBotErrorAt: Date?
+}
+
+struct AmmoPanelDiagnostics: Codable {
+    let ammoItemCount: Int
+    let transcriptSegmentCount: Int
+    let isPolling: Bool
+    let trackedCallId: String?
+    let isAmmoV2Enabled: Bool
+}
+
+struct ApiDiagnostics: Codable {
+    let lastApiError: String?
+    let lastApiErrorEndpoint: String?
+    let lastApiErrorAt: Date?
+    let apiErrorCountLastHour: Int
 }
 
 struct PermissionDiagnostics: Codable {
@@ -112,6 +134,8 @@ struct DiagnosticReport: Codable {
     let meetingBot: MeetingBotDiagnostics?
     let permissions: PermissionDiagnostics
     let logs: LogDiagnostics
+    let ammoPanel: AmmoPanelDiagnostics?
+    let api: ApiDiagnostics
 }
 
 // MARK: - Diagnostics Service
@@ -123,6 +147,10 @@ class DiagnosticsService {
     // References to services for collecting diagnostics
     weak var audioService: AudioCaptureService?
     weak var webSocketService: StarscreamWebSocketService?
+    weak var convexService: ConvexService?
+
+    // App launch time for uptime tracking
+    let appLaunchTime = Date()
 
     // App state info (set from AppState)
     var closerId: String?
@@ -152,6 +180,13 @@ class DiagnosticsService {
     var firstPendingCallId: String?
     var firstPendingProspectName: String?
 
+    // Bot lifecycle details (set from AppState polling)
+    var botStatus: String?
+    var botIsScheduled: Bool = false
+    var botActiveSeconds: Double?
+    var lastBotError: String?
+    var lastBotErrorAt: Date?
+
     // MARK: - Collection Methods
 
     /// Collect all diagnostics into a report
@@ -171,7 +206,9 @@ class DiagnosticsService {
             call: collectCallDiagnostics(),
             meetingBot: collectMeetingBotDiagnostics(),
             permissions: collectPermissionDiagnostics(),
-            logs: collectLogDiagnostics()
+            logs: collectLogDiagnostics(),
+            ammoPanel: collectAmmoPanelDiagnostics(),
+            api: collectApiDiagnostics()
         )
     }
 
@@ -238,7 +275,8 @@ class DiagnosticsService {
             ramTotal: ramTotal,
             ramAvailable: ramAvailable,
             appVersion: appVersion,
-            appBuild: appBuild
+            appBuild: appBuild,
+            appUptime: Date().timeIntervalSince(appLaunchTime)
         )
     }
 
@@ -377,7 +415,12 @@ class DiagnosticsService {
             ammoPanelVisible: ammoPanelVisible,
             questionnairePanelVisible: questionnairePanelVisible,
             firstPendingCallId: firstPendingCallId,
-            firstPendingProspectName: firstPendingProspectName
+            firstPendingProspectName: firstPendingProspectName,
+            botStatus: botStatus,
+            botIsScheduled: botIsScheduled,
+            botActiveSeconds: botActiveSeconds,
+            lastBotError: lastBotError,
+            lastBotErrorAt: lastBotErrorAt
         )
     }
 
@@ -404,7 +447,7 @@ class DiagnosticsService {
     }
 
     private func collectLogDiagnostics() -> LogDiagnostics {
-        let recentLogs = DiagnosticLogger.shared.getRecentLogs(count: 100)
+        let recentLogs = DiagnosticLogger.shared.getRecentLogs(count: 200)
         let errorStats = DiagnosticLogger.shared.getErrorStats()
 
         let logsForExport = recentLogs.map { entry in
@@ -421,6 +464,29 @@ class DiagnosticsService {
             errorCountLastHour: errorStats.count,
             lastErrorMessage: errorStats.lastMessage,
             lastErrorTimestamp: errorStats.lastTime
+        )
+    }
+
+    private func collectAmmoPanelDiagnostics() -> AmmoPanelDiagnostics? {
+        let panelState = WindowManager.shared.ammoPanelState
+        // Only include if there's an active tracked call
+        guard panelState.callId != nil else { return nil }
+
+        return AmmoPanelDiagnostics(
+            ammoItemCount: panelState.ammoItems.count,
+            transcriptSegmentCount: panelState.transcriptSegments.count,
+            isPolling: panelState.callId != nil,
+            trackedCallId: panelState.callId,
+            isAmmoV2Enabled: panelState.isAmmoV2Enabled
+        )
+    }
+
+    private func collectApiDiagnostics() -> ApiDiagnostics {
+        return ApiDiagnostics(
+            lastApiError: convexService?.lastApiError,
+            lastApiErrorEndpoint: convexService?.lastApiErrorEndpoint,
+            lastApiErrorAt: convexService?.lastApiErrorAt,
+            apiErrorCountLastHour: convexService?.apiErrorCountLastHour ?? 0
         )
     }
 

@@ -556,6 +556,7 @@ class MenuBarController {
         Task { @MainActor in
             if let state = appState, let closerInfo = state.closerInfo {
                 do {
+                    DiagnosticLogger.shared.info("Creating bot from menu bar", category: .app, metadata: ["meetingUrl": meetingUrlString, "title": event.title])
                     let success = try await state.convexService.createBotForMeeting(
                         closerId: closerInfo.closerId,
                         teamId: closerInfo.teamId,
@@ -565,6 +566,7 @@ class MenuBarController {
                     )
                     print("[MenuBar] Bot creation \(success ? "succeeded" : "failed") for: \(event.title)")
                 } catch {
+                    DiagnosticLogger.shared.error("Menu bar bot creation failed", category: .app, metadata: ["meetingUrl": meetingUrlString, "error": error.localizedDescription])
                     print("[MenuBar] Failed to create bot: \(error)")
                 }
             }

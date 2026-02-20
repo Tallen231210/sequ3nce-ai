@@ -167,6 +167,24 @@ class ConvexService {
     private let baseURL = "https://ideal-ram-982.convex.site"
     private let session: URLSession
 
+    // MARK: - API Error Tracking (for diagnostics)
+    var lastApiError: String?
+    var lastApiErrorEndpoint: String?
+    var lastApiErrorAt: Date?
+    var apiErrorCountLastHour: Int = 0
+    private var apiErrorResetTime = Date()
+
+    func trackApiError(endpoint: String, error: String) {
+        lastApiError = error
+        lastApiErrorEndpoint = endpoint
+        lastApiErrorAt = Date()
+        apiErrorCountLastHour += 1
+        if Date().timeIntervalSince(apiErrorResetTime) > 3600 {
+            apiErrorCountLastHour = 1
+            apiErrorResetTime = Date()
+        }
+    }
+
     // MARK: - Initialization
     init() {
         let config = URLSessionConfiguration.default
@@ -1105,6 +1123,7 @@ class ConvexService {
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
+            trackApiError(endpoint: "getActiveCallForCloserBot", error: "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
             return nil
         }
 
@@ -1148,7 +1167,9 @@ class ConvexService {
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
-            print("[ConvexService] createBotForMeeting failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print("[ConvexService] createBotForMeeting failed: HTTP \(statusCode)")
+            trackApiError(endpoint: "createBotForMeeting", error: "HTTP \(statusCode)")
             return false
         }
 
@@ -1273,8 +1294,10 @@ class ConvexService {
             // Parse error message from response
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let errorMsg = json["error"] as? String {
+                trackApiError(endpoint: "createQuickBot", error: errorMsg)
                 throw ConvexError.serverError(errorMsg)
             }
+            trackApiError(endpoint: "createQuickBot", error: "HTTP \(httpResponse.statusCode)")
             throw ConvexError.serverError("Server returned status \(httpResponse.statusCode)")
         }
     }

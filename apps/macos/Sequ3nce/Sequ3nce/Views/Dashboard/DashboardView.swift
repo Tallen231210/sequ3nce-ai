@@ -715,6 +715,7 @@ struct DashboardView: View {
         if let closerInfo = appState.closerInfo {
             Task {
                 do {
+                    DiagnosticLogger.shared.info("Creating bot for calendar meeting", category: .app, metadata: ["meetingUrl": meetingUrl, "title": event.title])
                     let success = try await appState.convexService.createBotForMeeting(
                         closerId: closerInfo.closerId,
                         teamId: closerInfo.teamId,
@@ -724,6 +725,7 @@ struct DashboardView: View {
                     )
                     print("[DashboardView] Bot creation \(success ? "succeeded" : "failed") for: \(event.title)")
                 } catch {
+                    DiagnosticLogger.shared.error("Bot creation failed", category: .app, metadata: ["meetingUrl": meetingUrl, "error": error.localizedDescription])
                     print("[DashboardView] Failed to create bot: \(error)")
                 }
             }
@@ -1559,6 +1561,7 @@ struct QuickBotSheet: View {
         errorMessage = nil
 
         do {
+            DiagnosticLogger.shared.info("Creating QuickBot", category: .app, metadata: ["meetingUrl": meetingUrl.trimmingCharacters(in: .whitespaces)])
             let success = try await appState.convexService.createQuickBot(
                 meetingUrl: meetingUrl.trimmingCharacters(in: .whitespaces),
                 closerId: closer.closerId,
@@ -1570,9 +1573,11 @@ struct QuickBotSheet: View {
                 print("[QuickBot] Bot sent to meeting: \(meetingUrl)")
                 isPresented = false
             } else {
+                DiagnosticLogger.shared.error("QuickBot creation returned false", category: .app, metadata: ["meetingUrl": meetingUrl])
                 errorMessage = "Failed to create bot. Please try again."
             }
         } catch {
+            DiagnosticLogger.shared.error("QuickBot creation failed", category: .app, metadata: ["meetingUrl": meetingUrl, "error": error.localizedDescription])
             print("[QuickBot] Error: \(error)")
             errorMessage = "Error: \(error.localizedDescription)"
         }

@@ -3,7 +3,7 @@
 //  Sequ3nce
 //
 //  Full-screen onboarding overlay for meeting bot calendar connection
-//  Uses ICS feed URL approach (same as existing calendar connection)
+//  Uses ICS feed URL approach (Google Calendar)
 //  Blocks the app until the closer connects their calendar
 //
 
@@ -15,7 +15,6 @@ struct BotOnboardingView: View {
     @EnvironmentObject var appState: AppState
 
     @State private var currentStep: Int = 0
-    @State private var selectedPlatform: String?
     @State private var icsUrlInput: String = ""
     @State private var isConnecting = false
     @State private var connectionError: String?
@@ -24,7 +23,7 @@ struct BotOnboardingView: View {
     private let convexService = ConvexService()
 
     /// Total number of steps
-    private let totalSteps = 4
+    private let totalSteps = 3
 
     var body: some View {
         ZStack {
@@ -40,10 +39,8 @@ struct BotOnboardingView: View {
                     case 0:
                         welcomeStep
                     case 1:
-                        platformSelectionStep
-                    case 2:
                         connectCalendarStep
-                    case 3:
+                    case 2:
                         allSetStep
                     default:
                         EmptyView()
@@ -107,74 +104,7 @@ struct BotOnboardingView: View {
         }
     }
 
-    // MARK: - Step 1: Platform Selection
-
-    private var platformSelectionStep: some View {
-        VStack(spacing: 24) {
-            Spacer()
-
-            VStack(spacing: 8) {
-                Text("Which meeting platform do you primarily use?")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.black)
-                    .multilineTextAlignment(.center)
-
-                Text("We'll optimize your setup for this platform")
-                    .font(.system(size: 14))
-                    .foregroundColor(Color(white: 0.5))
-            }
-            .padding(.horizontal, 32)
-
-            VStack(spacing: 12) {
-                PlatformButton(
-                    name: "Google Meet",
-                    description: "Video calls through Google Workspace",
-                    iconName: "video.fill",
-                    isSelected: selectedPlatform == "google_meet",
-                    action: { selectedPlatform = "google_meet" }
-                )
-
-                PlatformButton(
-                    name: "Zoom",
-                    description: "Zoom meetings and webinars",
-                    iconName: "person.2.fill",
-                    isSelected: selectedPlatform == "zoom",
-                    action: { selectedPlatform = "zoom" }
-                )
-
-                PlatformButton(
-                    name: "Microsoft Teams",
-                    description: "Teams meetings and calls",
-                    iconName: "bubble.left.and.bubble.right.fill",
-                    isSelected: selectedPlatform == "teams",
-                    action: { selectedPlatform = "teams" }
-                )
-            }
-            .padding(.horizontal, 40)
-
-            Spacer()
-
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    currentStep = 2
-                }
-            }) {
-                Text("Continue")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(selectedPlatform != nil ? Color.black : Color(white: 0.7))
-                    .cornerRadius(10)
-            }
-            .buttonStyle(.plain)
-            .disabled(selectedPlatform == nil)
-            .padding(.horizontal, 40)
-            .padding(.bottom, 8)
-        }
-    }
-
-    // MARK: - Step 2: Connect Calendar (ICS URL)
+    // MARK: - Step 1: Connect Calendar (ICS URL)
 
     private var connectCalendarStep: some View {
         VStack(spacing: 20) {
@@ -192,12 +122,12 @@ struct BotOnboardingView: View {
             }
 
             VStack(spacing: 8) {
-                Text("Connect Your Calendar")
+                Text("Connect Your Google Calendar")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.black)
                     .multilineTextAlignment(.center)
 
-                Text("Paste your calendar's ICS feed URL so we can automatically detect your upcoming calls and send bots to record them.")
+                Text("Paste your Google Calendar ICS feed URL so we can automatically detect your upcoming calls and send bots to record them.")
                     .font(.system(size: 14))
                     .foregroundColor(Color(white: 0.5))
                     .multilineTextAlignment(.center)
@@ -225,7 +155,7 @@ struct BotOnboardingView: View {
                 HStack(spacing: 4) {
                     Image(systemName: showHelp ? "chevron.up" : "questionmark.circle")
                         .font(.system(size: 12))
-                    Text(showHelp ? "Hide instructions" : "Where do I find my ICS URL?")
+                    Text(showHelp ? "Hide instructions" : "How do I find my ICS URL?")
                         .font(.system(size: 13))
                 }
                 .foregroundColor(Color(white: 0.4))
@@ -262,40 +192,29 @@ struct BotOnboardingView: View {
     }
 
     private var helpSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            helpItem(
-                title: "Google Calendar",
-                steps: "Settings > Select calendar > \"Secret address in iCal format\" > Copy URL"
-            )
-            helpItem(
-                title: "Outlook / Office 365",
-                steps: "Settings > Shared calendars > Publish a calendar > Copy ICS link"
-            )
-            helpItem(
-                title: "Calendly",
-                steps: "Account > Calendar Sync > Export ICS feed URL"
-            )
-            helpItem(
-                title: "Cal.com",
-                steps: "Settings > Calendars > Copy ICS feed URL"
-            )
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Google Calendar")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.black)
+
+            VStack(alignment: .leading, spacing: 4) {
+                helpStep("1. Open Google Calendar on your computer")
+                helpStep("2. Click the gear icon → Settings")
+                helpStep("3. On the left, select the calendar you use for meetings")
+                helpStep("4. Scroll to \"Secret address in iCal format\"")
+                helpStep("5. Copy the URL and paste it above")
+            }
         }
-        .padding(.horizontal, 40)
-        .padding(.vertical, 8)
+        .padding(16)
         .background(Color(white: 0.97))
         .cornerRadius(8)
-        .padding(.horizontal, 32)
+        .padding(.horizontal, 40)
     }
 
-    private func helpItem(title: String, steps: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.black)
-            Text(steps)
-                .font(.system(size: 11))
-                .foregroundColor(Color(white: 0.5))
-        }
+    private func helpStep(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12))
+            .foregroundColor(Color(white: 0.4))
     }
 
     private var isValidIcsUrl: Bool {
@@ -303,7 +222,7 @@ struct BotOnboardingView: View {
         return !trimmed.isEmpty && (trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") || trimmed.hasPrefix("webcal://"))
     }
 
-    // MARK: - Step 3: All Set
+    // MARK: - Step 2: All Set
 
     private var allSetStep: some View {
         VStack(spacing: 24) {
@@ -381,7 +300,7 @@ struct BotOnboardingView: View {
 
         Task {
             do {
-                // 1. Connect calendar with ICS URL (same as existing ScheduleView flow)
+                // 1. Connect calendar with ICS URL
                 try await convexService.connectCalendar(
                     email: closer.email,
                     teamId: closer.teamId,
@@ -397,7 +316,7 @@ struct BotOnboardingView: View {
                 await MainActor.run {
                     isConnecting = false
                     withAnimation(.easeInOut(duration: 0.3)) {
-                        currentStep = 3 // Go to "All Set" step
+                        currentStep = 2 // Go to "All Set" step
                     }
                 }
             } catch {
@@ -418,15 +337,6 @@ struct BotOnboardingView: View {
         if let closer = appState.closerInfo {
             Task {
                 do {
-                    // Save meeting platform preference
-                    if let platform = selectedPlatform {
-                        let _ = try await appState.convexService.saveMeetingPlatform(
-                            closerId: closer.closerId,
-                            platform: platform
-                        )
-                    }
-
-                    // Mark onboarding completed
                     let _ = try await appState.convexService.markOnboardingCompleted(
                         closerId: closer.closerId
                     )
@@ -435,66 +345,6 @@ struct BotOnboardingView: View {
                     print("[BotOnboardingView] Failed to mark onboarding complete: \(error)")
                 }
             }
-        }
-    }
-}
-
-// MARK: - Platform Button
-
-struct PlatformButton: View {
-    let name: String
-    let description: String
-    let iconName: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                // Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(isSelected ? Color.black.opacity(0.05) : Color(white: 0.96))
-                        .frame(width: 44, height: 44)
-
-                    Image(systemName: iconName)
-                        .font(.system(size: 18))
-                        .foregroundColor(isSelected ? .black : Color(white: 0.5))
-                }
-
-                // Text
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(name)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.black)
-
-                    Text(description)
-                        .font(.system(size: 12))
-                        .foregroundColor(Color(white: 0.5))
-                }
-
-                Spacer()
-
-                // Selection indicator
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.black)
-                }
-            }
-            .padding(14)
-            .background(Color.white)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.black : Color(white: 0.88), lineWidth: isSelected ? 2 : 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovered = hovering
         }
     }
 }
