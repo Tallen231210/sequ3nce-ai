@@ -285,7 +285,7 @@ export default function Home() {
       <div
         className="fixed inset-0 pointer-events-none z-0"
         style={{
-          backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px)`,
+          backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.12) 1px, transparent 1px)`,
           backgroundSize: "24px 24px",
         }}
       />
@@ -487,7 +487,7 @@ export default function Home() {
       <section className="py-32 relative z-10">
         <div className="relative mx-auto max-w-7xl px-6">
           <AnimatedSection>
-            <div className="max-w-2xl">
+            <div className="text-center max-w-3xl mx-auto">
               <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
                 Platform
               </div>
@@ -606,12 +606,21 @@ export default function Home() {
           </AnimatedSection>
 
           {/* Bento grid */}
-          <div className="grid lg:grid-cols-3 gap-4">
-            {features.map((feature, index) => (
+          <div className="grid lg:grid-cols-6 gap-4">
+            {features.map((feature, index) => {
+              // Large items span 4 of 6 cols, small items span 2
+              // Last two small items (index 4,5) each span 3 to fill the row
+              const isLastRow = index >= 4 && feature.size === "small";
+              const colSpan = feature.size === "large"
+                ? "lg:col-span-4"
+                : isLastRow
+                  ? "lg:col-span-3"
+                  : "lg:col-span-2";
+              return (
               <AnimatedSection
                 key={index}
                 delay={index * 80}
-                className={feature.size === "large" ? "lg:col-span-2" : ""}
+                className={colSpan}
               >
                 <div
                   className={cn(
@@ -662,7 +671,8 @@ export default function Home() {
                   </div>
                 </div>
               </AnimatedSection>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
