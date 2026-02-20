@@ -23,6 +23,7 @@ import {
   UserPlus,
   Eye,
   ArrowUpRight,
+  Video,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -252,7 +253,7 @@ function FeatureCard({
 }) {
   return (
     <AnimatedSection delay={index * 80}>
-      <div className="group relative p-8 rounded-2xl border border-zinc-100 bg-white hover:border-zinc-200 transition-all duration-300 hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.06)] h-full">
+      <div className="group relative p-8 rounded-2xl border border-zinc-200 bg-white hover:border-zinc-300 transition-all duration-300 hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.08)] h-full">
         <div className="w-10 h-10 rounded-xl bg-zinc-950 flex items-center justify-center mb-5">
           <Icon className="h-5 w-5 text-white" strokeWidth={1.5} />
         </div>
@@ -260,6 +261,40 @@ function FeatureCard({
         <p className="text-zinc-500 text-sm leading-relaxed">
           {description}
         </p>
+      </div>
+    </AnimatedSection>
+  );
+}
+
+// Platform logo (inline SVG for Zoom, Meet, Teams, Calendar)
+function PlatformLogos() {
+  return (
+    <AnimatedSection delay={350}>
+      <div className="flex flex-wrap items-center justify-center gap-8 mt-14 pt-14 border-t border-zinc-100">
+        <span className="text-xs tracking-widest uppercase text-zinc-400 font-medium">Works with</span>
+        {/* Zoom */}
+        <div className="flex items-center gap-2 text-zinc-400">
+          <Video className="h-4 w-4" strokeWidth={1.5} />
+          <span className="text-sm font-medium">Zoom</span>
+        </div>
+        {/* Google Meet */}
+        <div className="flex items-center gap-2 text-zinc-400">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="6" width="12" height="12" rx="2" />
+            <path d="M14 9l6-3v12l-6-3" />
+          </svg>
+          <span className="text-sm font-medium">Google Meet</span>
+        </div>
+        {/* Microsoft Teams */}
+        <div className="flex items-center gap-2 text-zinc-400">
+          <Users className="h-4 w-4" strokeWidth={1.5} />
+          <span className="text-sm font-medium">Teams</span>
+        </div>
+        {/* Google Calendar */}
+        <div className="flex items-center gap-2 text-zinc-400">
+          <Calendar className="h-4 w-4" strokeWidth={1.5} />
+          <span className="text-sm font-medium">Google Calendar</span>
+        </div>
       </div>
     </AnimatedSection>
   );
@@ -324,10 +359,22 @@ export default function Home() {
   ];
 
   const painPoints = [
-    "Deal fell through? You'll never know if your closer fumbled or if the lead was bad.",
-    "Your top performer is closing 3x more — but you can't replicate what they're doing.",
-    "You're spending $50k/month on leads, but have zero proof when they no-show.",
-    "Coaching is a guessing game. You're giving feedback on calls you never heard.",
+    {
+      text: "Deal fell through? You'll never know if your closer fumbled or if the lead was bad.",
+      bold: "never know",
+    },
+    {
+      text: "Your top performer is closing 3x more — but you can't replicate what they're doing.",
+      bold: "3x more",
+    },
+    {
+      text: "You're spending $50k/month on leads, but have zero proof when they no-show.",
+      bold: "$50k/month on leads",
+    },
+    {
+      text: "Coaching is a guessing game. You're giving feedback on calls you never heard.",
+      bold: "never heard",
+    },
   ];
 
   const steps = [
@@ -390,7 +437,7 @@ export default function Home() {
           "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
           isScrolled
             ? "bg-white/80 backdrop-blur-xl border-b border-zinc-200/50 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-            : "bg-white"
+            : "bg-white border-b border-transparent"
         )}
       >
         <div className="mx-auto max-w-6xl px-6">
@@ -441,7 +488,7 @@ export default function Home() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative pt-32 pb-32 bg-white overflow-hidden">
+      <section className="relative pt-32 pb-24 bg-white overflow-hidden">
         {/* Subtle grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -505,7 +552,9 @@ export default function Home() {
           {/* Hero video */}
           <AnimatedSection delay={400} className="mt-20">
             <div className="relative max-w-4xl mx-auto">
-              <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.12)]">
+              {/* Soft glow behind video */}
+              <div className="absolute -inset-6 bg-gradient-to-b from-zinc-200/50 via-zinc-100/30 to-transparent rounded-3xl blur-2xl" />
+              <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.15)]">
                 <video
                   autoPlay
                   loop
@@ -519,8 +568,16 @@ export default function Home() {
               </div>
             </div>
           </AnimatedSection>
+
+          {/* Platform logos */}
+          <PlatformLogos />
         </div>
       </section>
+
+      {/* Divider */}
+      <div className="mx-auto max-w-6xl px-6">
+        <div className="h-px bg-gradient-to-r from-transparent via-zinc-200 to-transparent" />
+      </div>
 
       {/* Product Screenshots Section */}
       <section className="py-32 bg-white">
@@ -544,7 +601,10 @@ export default function Home() {
       </section>
 
       {/* Pain Points Section */}
-      <section className="py-32 bg-zinc-50 relative overflow-hidden">
+      <section className="py-32 bg-zinc-100 relative overflow-hidden">
+        {/* Subtle top border accent */}
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-300 to-transparent" />
+
         <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
@@ -558,21 +618,31 @@ export default function Home() {
             </div>
           </AnimatedSection>
 
-          <div className="grid sm:grid-cols-2 gap-4 max-w-4xl mx-auto">
+          <div className="grid sm:grid-cols-2 gap-5 max-w-4xl mx-auto">
             {painPoints.map((pain, index) => (
               <AnimatedSection key={index} delay={index * 100}>
-                <div className="p-8 rounded-2xl border border-zinc-200 bg-white hover:border-zinc-300 transition-colors h-full hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.06)]">
+                <div className="p-8 rounded-2xl border border-zinc-200/80 bg-white hover:border-zinc-300 transition-all duration-300 h-full hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.08)]">
                   <div className="text-xs font-mono text-zinc-300 mb-4">
                     {String(index + 1).padStart(2, "0")}
                   </div>
-                  <p className="text-[17px] font-medium leading-relaxed text-zinc-700">
-                    {pain}
+                  <p className="text-lg font-medium leading-relaxed text-zinc-700">
+                    {pain.text.split(pain.bold).map((part, i, arr) => (
+                      <span key={i}>
+                        {part}
+                        {i < arr.length - 1 && (
+                          <span className="text-black font-semibold">{pain.bold}</span>
+                        )}
+                      </span>
+                    ))}
                   </p>
                 </div>
               </AnimatedSection>
             ))}
           </div>
         </div>
+
+        {/* Subtle bottom border accent */}
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-300 to-transparent" />
       </section>
 
       {/* Features Section */}
@@ -590,13 +660,18 @@ export default function Home() {
             </div>
           </AnimatedSection>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {features.map((feature, index) => (
               <FeatureCard key={index} index={index} {...feature} />
             ))}
           </div>
         </div>
       </section>
+
+      {/* Divider */}
+      <div className="mx-auto max-w-6xl px-6">
+        <div className="h-px bg-gradient-to-r from-transparent via-zinc-200 to-transparent" />
+      </div>
 
       {/* How It Works Section */}
       <section id="how-it-works" className="py-32 bg-white">
@@ -619,16 +694,18 @@ export default function Home() {
                 <div className="relative text-center px-8">
                   {/* Connector line */}
                   {index < steps.length - 1 && (
-                    <div className="hidden md:block absolute top-8 left-[calc(50%+32px)] w-[calc(100%-64px)] h-px bg-zinc-200" />
+                    <div className="hidden md:block absolute top-10 left-[calc(50%+40px)] w-[calc(100%-80px)] h-px bg-zinc-200" />
                   )}
 
-                  <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-zinc-950 mb-6">
-                    <step.icon className="h-6 w-6 text-white" strokeWidth={1.5} />
+                  <div className="relative inline-flex flex-col items-center">
+                    <div className="text-5xl font-semibold text-zinc-100 mb-3 tabular-nums">
+                      {step.step}
+                    </div>
+                    <div className="w-14 h-14 rounded-2xl bg-zinc-950 flex items-center justify-center mb-6">
+                      <step.icon className="h-6 w-6 text-white" strokeWidth={1.5} />
+                    </div>
                   </div>
 
-                  <div className="text-xs font-mono text-zinc-400 mb-3 tracking-wider">
-                    Step {step.step}
-                  </div>
                   <h3 className="font-semibold text-lg mb-2">{step.title}</h3>
                   <p className="text-zinc-500 text-sm leading-relaxed">
                     {step.description}
@@ -642,6 +719,9 @@ export default function Home() {
 
       {/* Pricing Section */}
       <section id="pricing" className="py-32 bg-zinc-50">
+        {/* Subtle top border */}
+        <div className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-zinc-200 to-transparent" />
+
         <div className="mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
@@ -662,7 +742,8 @@ export default function Home() {
                   <div className="text-xs tracking-widest uppercase text-zinc-400 mb-6 font-medium">
                     One-time setup
                   </div>
-                  <div className="text-5xl font-semibold tracking-tight">TBD</div>
+                  <div className="text-5xl font-semibold tracking-tight">Custom</div>
+                  <p className="text-sm text-zinc-400 mt-2">Based on team size</p>
                 </div>
 
                 <div className="border-t border-zinc-100 pt-8 mb-10 space-y-5">
@@ -688,6 +769,7 @@ export default function Home() {
                     "Playbook builder",
                     "Closer stats & analytics",
                     "Call recordings & playback",
+                    "Automatic meeting bot",
                   ].map((feature, index) => (
                     <div key={index} className="flex items-center gap-3">
                       <div className="w-5 h-5 rounded-full bg-zinc-950 flex items-center justify-center shrink-0">
@@ -752,29 +834,32 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Final CTA Section */}
-      <section className="py-32 bg-white relative overflow-hidden">
+      {/* Final CTA Section — Dark bookend */}
+      <section className="py-32 bg-zinc-950 relative overflow-hidden">
+        {/* Subtle radial glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-zinc-800/20 rounded-full blur-[100px]" />
+
         <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center">
-              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-black">
+              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white">
                 Stop wondering.
                 <br />
                 Start knowing.
               </h2>
-              <p className="mt-6 text-lg text-zinc-500 max-w-xl mx-auto">
+              <p className="mt-6 text-lg text-zinc-400 max-w-xl mx-auto">
                 See exactly why deals close and why they don&apos;t — starting today.
               </p>
               <div className="mt-10">
                 <SignedOut>
-                  <BookDemoButton size="lg">
+                  <BookDemoButton size="lg" className="bg-white !text-black hover:bg-zinc-100">
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
-                    <Button size="lg">
+                    <Button size="lg" className="bg-white text-black hover:bg-zinc-100">
                       Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                     </Button>
@@ -874,7 +959,7 @@ export default function Home() {
 
           <div className="border-t border-zinc-200 mt-16 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
             <p className="text-xs text-zinc-400">
-              © 2025 Sequ3nce.ai. All rights reserved.
+              &copy; 2026 Sequ3nce.ai. All rights reserved.
             </p>
             <div className="flex gap-6 text-xs text-zinc-400">
               <Link href="/privacy" className="hover:text-black transition-colors">
