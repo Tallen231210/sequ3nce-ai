@@ -696,7 +696,15 @@ struct QuestionnaireWindowWrapper: View {
                 topTrailingRadius: 24
             )
         )
-        .shadow(color: Color.black.opacity(0.15), radius: 30, x: 0, y: -20)
+        .overlay(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 24,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 24
+            )
+            .stroke(Color.black.opacity(0.12), lineWidth: 0.5)
+        )
         .onChange(of: isPresented) { _, newValue in
             if !newValue {
                 onComplete()

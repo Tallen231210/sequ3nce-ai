@@ -83,9 +83,8 @@ struct AmmoPanelContainerView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                .stroke(Color.black.opacity(0.12), lineWidth: 0.5)
         )
-        .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 8)
         .padding(6)
     }
 
@@ -132,7 +131,15 @@ struct AmmoPanelContainerView: View {
                     topTrailingRadius: 0
                 )
             )
-            .shadow(color: Color.black.opacity(0.15), radius: 10, x: -3, y: 0)
+            .overlay(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 12,
+                    bottomLeadingRadius: 12,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: 0
+                )
+                .stroke(Color.black.opacity(0.12), lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -208,7 +215,7 @@ struct AmmoPanelView: View {
             }
             .padding(.horizontal, 6)
             .frame(height: 40)
-            .background(Color(white: 0.98))
+            .background(Color.white)
 
             // Action buttons row — only shown during active call
             if panelState.callId != nil {
@@ -234,11 +241,10 @@ struct AmmoPanelView: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .background(Color(white: 0.96))
+                .background(Color(white: 0.97))
             }
 
             Divider()
-                .background(Color(white: 0.88))
 
             // Tab content - slightly off-white background like Electron
             Group {
@@ -260,7 +266,7 @@ struct AmmoPanelView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(white: 0.99))
+            .background(Color.white)
         }
         .preferredColorScheme(.light)
         .onAppear {
@@ -556,10 +562,6 @@ struct ReinforcementButton: View {
                     .padding(.vertical, 4)
                     .background(Color.white)
                     .cornerRadius(4)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(Color(white: 0.85), lineWidth: 1)
-                    )
 
                 if isRequesting {
                     ProgressView()
@@ -640,10 +642,6 @@ struct TabButton: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(isSelected ? Color.white : Color.clear)
                         .shadow(color: isSelected ? Color.black.opacity(0.06) : Color.clear, radius: 2, x: 0, y: 1)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isSelected ? Color(white: 0.88) : Color.clear, lineWidth: 1)
                 )
 
                 // Badge
@@ -761,10 +759,6 @@ struct AmmoCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.white)
             .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(white: 0.88), lineWidth: 1)
-            )
             .overlay(
                 // Copied overlay
                 Group {
@@ -885,10 +879,6 @@ struct TranscriptTabView: View {
                     .padding(8)
                     .background(Color.white)
                     .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(white: 0.88), lineWidth: 1)
-                    )
                     .padding(8)
 
                     // Transcript segments
@@ -943,10 +933,6 @@ struct TranscriptLine: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(segment.isCloser ? Color(white: 0.97) : Color.white)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(segment.isCloser ? Color.clear : Color(white: 0.95), lineWidth: 1)
-        )
     }
 }
 
@@ -1136,10 +1122,6 @@ struct ResourceCard: View {
         .padding(12)
         .background(Color.white)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.88), lineWidth: 1)
-        )
     }
 }
 
@@ -1253,10 +1235,6 @@ struct EngagementCard: View {
         .padding(12)
         .background(Color.white)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.88), lineWidth: 1)
-        )
     }
 }
 
@@ -1278,10 +1256,6 @@ struct CallSummaryCard: View {
         .padding(12)
         .background(Color.white)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.88), lineWidth: 1)
-        )
     }
 }
 
@@ -1303,10 +1277,6 @@ struct BuyingBeliefsCard: View {
         .padding(12)
         .background(Color.white)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.88), lineWidth: 1)
-        )
     }
 }
 
@@ -1394,10 +1364,6 @@ struct ObjectionsCard: View {
         .padding(12)
         .background(Color.white)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.88), lineWidth: 1)
-        )
     }
 }
 
@@ -1474,10 +1440,6 @@ struct PainPointsCard: View {
         .padding(12)
         .background(Color.white)
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.88), lineWidth: 1)
-        )
     }
 }
 
@@ -1502,10 +1464,6 @@ struct PainPointQuote: View {
                     .padding(8)
                     .background(Color.white)
                     .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(white: 0.88), lineWidth: 1)
-                    )
                     .opacity(copied ? 0.1 : 1)
 
                 if copied {

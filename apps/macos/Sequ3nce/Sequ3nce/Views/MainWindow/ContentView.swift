@@ -867,10 +867,6 @@ struct ProspectNamePromptView: View {
                     .padding(10)
                     .background(Color.white)
                     .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color(white: 0.85), lineWidth: 1)
-                    )
                     .onSubmit(onSubmit)
 
                 Button(action: onSubmit) {
@@ -889,10 +885,6 @@ struct ProspectNamePromptView: View {
         .padding(12)
         .background(Color(white: 0.97))
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(white: 0.9), lineWidth: 1)
-        )
     }
 }
 
@@ -1169,29 +1161,31 @@ struct PostCallQuestionnaireView: View {
 
             // Right: Form content
             VStack(spacing: 0) {
-            // Row 1: Name + Outcome + Lead Quality
-            HStack(alignment: .top, spacing: 16) {
+            // Row 1: Prospect → Outcome (color-coded) → Objection (contextual)
+            HStack(alignment: .center, spacing: 16) {
                 // Prospect name
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Prospect")
-                        .font(.system(size: 10, weight: .medium))
+                    Text("PROSPECT")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(Color(white: 0.5))
+                        .tracking(0.5)
                     TextField("Name", text: $prospectName)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
                         .foregroundColor(.black)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.05))
+                        .background(Color.black.opacity(0.06))
                         .cornerRadius(8)
                 }
-                .frame(width: 160)
+                .frame(width: 180)
 
-                // Call outcome pills
+                // Outcome (color-coded)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Outcome")
-                        .font(.system(size: 10, weight: .medium))
+                    Text("OUTCOME")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(Color(white: 0.5))
+                        .tracking(0.5)
                     HStack(spacing: 4) {
                         ForEach([
                             ("Closed", CallOutcome.closed),
@@ -1204,7 +1198,7 @@ struct PostCallQuestionnaireView: View {
                                     .font(.system(size: 11, weight: .medium))
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
-                                    .background(outcome == value ? Color.black : Color.black.opacity(0.05))
+                                    .background(outcome == value ? outcomeButtonColor(value) : Color.black.opacity(0.06))
                                     .foregroundColor(outcome == value ? .white : Color(white: 0.4))
                                     .cornerRadius(14)
                             }
@@ -1213,48 +1207,115 @@ struct PostCallQuestionnaireView: View {
                     }
                 }
 
-                Spacer()
+                // Objection (contextual — appears when outcome requires it)
+                if outcome == .lost || outcome == .followUp {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("OBJECTION")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color(white: 0.5))
+                            .tracking(0.5)
+                        compactDropdown(
+                            options: objectionOptions,
+                            selection: $primaryObjection,
+                            placeholder: "Select..."
+                        )
+                    }
+                } else if outcome == .closed {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("OBJECTION OVERCOME")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color(white: 0.5))
+                            .tracking(0.5)
+                        compactDropdown(
+                            options: objectionsOvercomeOptions,
+                            selection: $objectionsOvercome,
+                            placeholder: "None"
+                        )
+                    }
+                }
 
-                // Lead quality 1-10
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+
+            // Divider between rows
+            Rectangle()
+                .fill(Color(white: 0.3))
+                .frame(height: 1)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+
+            // Row 2: Decision Maker → Lead Quality (gradient) → Value → Notes → Save
+            HStack(alignment: .top, spacing: 16) {
+                // Decision Maker
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Lead Quality")
-                        .font(.system(size: 10, weight: .medium))
+                    Text("DECISION MAKER")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(Color(white: 0.5))
-                    HStack(spacing: 2) {
-                        ForEach(1...10, id: \.self) { score in
-                            Button(action: { leadQualityScore = score }) {
-                                Text("\(score)")
+                        .tracking(0.5)
+                    HStack(spacing: 3) {
+                        ForEach([("yes", "Yes"), ("no", "No"), ("unclear", "?")], id: \.0) { key, label in
+                            Button(action: { prospectWasDecisionMaker = key }) {
+                                Text(label)
                                     .font(.system(size: 11, weight: .medium))
-                                    .frame(width: 24, height: 26)
-                                    .background(leadQualityScore == score ? Color.black : Color.black.opacity(0.05))
-                                    .foregroundColor(leadQualityScore == score ? .white : Color(white: 0.5))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(prospectWasDecisionMaker == key ? Color.black : Color.black.opacity(0.06))
+                                    .foregroundColor(prospectWasDecisionMaker == key ? .white : Color(white: 0.4))
                                     .cornerRadius(6)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 12)
 
-            // Row 2: Conditional fields + Decision Maker + Notes + Save
-            HStack(alignment: .top, spacing: 16) {
-                // Conditional: Cash/Contract (closed) or Pitched/Objection (lost/followup)
+                // Lead Quality (gradient fill bar: red 1-3, orange 4-6, green 7-10)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("LEAD QUALITY")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color(white: 0.5))
+                        .tracking(0.5)
+                    HStack(spacing: 2) {
+                        ForEach(1...10, id: \.self) { score in
+                            Button(action: { leadQualityScore = score }) {
+                                Text("\(score)")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .frame(width: 24, height: 26)
+                                    .background(
+                                        leadQualityScore != nil && score <= leadQualityScore!
+                                            ? leadQualityColor(for: score)
+                                            : Color.black.opacity(0.06)
+                                    )
+                                    .foregroundColor(
+                                        leadQualityScore != nil && score <= leadQualityScore!
+                                            ? .white
+                                            : Color(white: 0.5)
+                                    )
+                                    .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                // Value fields (contextual based on outcome)
                 if outcome == .closed {
-                    // Cash collected
+                    // Cash Collected
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Cash Collected")
-                            .font(.system(size: 10, weight: .medium))
+                        Text("CASH COLLECTED")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color(white: 0.5))
+                            .tracking(0.5)
                         HStack(spacing: 4) {
                             ForEach(cashPresets, id: \.self) { preset in
                                 Button(action: { cashCollected = String(preset) }) {
                                     Text("$\(preset / 1000)k")
                                         .font(.system(size: 10, weight: .medium))
+                                        .fixedSize()
                                         .padding(.horizontal, 7)
                                         .padding(.vertical, 5)
-                                        .background(cashCollected == String(preset) ? Color.black : Color.black.opacity(0.05))
+                                        .background(cashCollected == String(preset) ? Color.black : Color.black.opacity(0.06))
                                         .foregroundColor(cashCollected == String(preset) ? .white : Color(white: 0.4))
                                         .cornerRadius(6)
                                 }
@@ -1270,24 +1331,26 @@ struct PostCallQuestionnaireView: View {
                             }
                             .padding(.horizontal, 6)
                             .padding(.vertical, 5)
-                            .background(Color.black.opacity(0.05))
+                            .background(Color.black.opacity(0.06))
                             .cornerRadius(6)
                         }
                     }
 
-                    // Contract value
+                    // Contract Value
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Contract Value")
-                            .font(.system(size: 10, weight: .medium))
+                        Text("CONTRACT VALUE")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color(white: 0.5))
+                            .tracking(0.5)
                         HStack(spacing: 4) {
                             ForEach(contractPresets, id: \.self) { preset in
                                 Button(action: { contractValue = String(preset) }) {
                                     Text("$\(preset / 1000)k")
                                         .font(.system(size: 10, weight: .medium))
+                                        .fixedSize()
                                         .padding(.horizontal, 7)
                                         .padding(.vertical, 5)
-                                        .background(contractValue == String(preset) ? Color.black : Color.black.opacity(0.05))
+                                        .background(contractValue == String(preset) ? Color.black : Color.black.opacity(0.06))
                                         .foregroundColor(contractValue == String(preset) ? .white : Color(white: 0.4))
                                         .cornerRadius(6)
                                 }
@@ -1303,36 +1366,26 @@ struct PostCallQuestionnaireView: View {
                             }
                             .padding(.horizontal, 6)
                             .padding(.vertical, 5)
-                            .background(Color.black.opacity(0.05))
+                            .background(Color.black.opacity(0.06))
                             .cornerRadius(6)
                         }
                     }
-
-                    // Objections overcome dropdown
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Objection Overcome")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Color(white: 0.5))
-                        compactDropdown(
-                            options: objectionsOvercomeOptions,
-                            selection: $objectionsOvercome,
-                            placeholder: "None"
-                        )
-                    }
                 } else if outcome == .lost || outcome == .followUp {
-                    // Pitched value
+                    // Deal Value
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Deal Value")
-                            .font(.system(size: 10, weight: .medium))
+                        Text("DEAL VALUE")
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color(white: 0.5))
+                            .tracking(0.5)
                         HStack(spacing: 4) {
                             ForEach(pitchedPresets, id: \.self) { preset in
                                 Button(action: { pitchedValue = String(preset) }) {
                                     Text("$\(preset / 1000)k")
                                         .font(.system(size: 10, weight: .medium))
+                                        .fixedSize()
                                         .padding(.horizontal, 7)
                                         .padding(.vertical, 5)
-                                        .background(pitchedValue == String(preset) ? Color.black : Color.black.opacity(0.05))
+                                        .background(pitchedValue == String(preset) ? Color.black : Color.black.opacity(0.06))
                                         .foregroundColor(pitchedValue == String(preset) ? .white : Color(white: 0.4))
                                         .cornerRadius(6)
                                 }
@@ -1348,103 +1401,54 @@ struct PostCallQuestionnaireView: View {
                             }
                             .padding(.horizontal, 6)
                             .padding(.vertical, 5)
-                            .background(Color.black.opacity(0.05))
+                            .background(Color.black.opacity(0.06))
                             .cornerRadius(6)
                         }
                     }
-
-                    // Primary objection dropdown
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Objection")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Color(white: 0.5))
-                        compactDropdown(
-                            options: objectionOptions,
-                            selection: $primaryObjection,
-                            placeholder: "Select..."
-                        )
-                    }
                 }
 
-                // Decision maker
+                // Notes
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Decision Maker?")
-                        .font(.system(size: 10, weight: .medium))
+                    Text("NOTES")
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(Color(white: 0.5))
-                    HStack(spacing: 3) {
-                        ForEach([("yes", "Yes"), ("no", "No"), ("unclear", "?")], id: \.0) { key, label in
-                            Button(action: { prospectWasDecisionMaker = key }) {
-                                Text(label)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 5)
-                                    .background(prospectWasDecisionMaker == key ? Color.black : Color.black.opacity(0.05))
-                                    .foregroundColor(prospectWasDecisionMaker == key ? .white : Color(white: 0.4))
-                                    .cornerRadius(6)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-                // Notes (compact single line)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Notes")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(white: 0.5))
+                        .tracking(0.5)
                     TextField("Quick notes...", text: $notes)
                         .textFieldStyle(.plain)
                         .font(.system(size: 11))
                         .foregroundColor(.black)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.05))
+                        .background(Color.black.opacity(0.06))
                         .cornerRadius(6)
                 }
                 .frame(minWidth: 120)
 
                 Spacer()
 
-                // Save button
-                VStack(spacing: 4) {
-                    Button(action: handleSubmit) {
-                        HStack(spacing: 4) {
-                            if isSubmitting {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            }
-                            Text(isSubmitting ? "Saving..." : "Save")
-                                .font(.system(size: 12, weight: .semibold))
+                // Save
+                Button(action: handleSubmit) {
+                    HStack(spacing: 4) {
+                        if isSubmitting {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        .background(isValid ? Color.black : Color(white: 0.7))
-                        .cornerRadius(8)
+                        Text(isSubmitting ? "Saving..." : "Save")
+                            .font(.system(size: 12, weight: .semibold))
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!isValid || isSubmitting)
-
-                    Button(action: {
-                        if isValid {
-                            isPresented = false
-                            onComplete()
-                        } else {
-                            showValidationWarning = true
-                        }
-                    }) {
-                        Text("Skip")
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(white: 0.5))
-                    }
-                    .buttonStyle(.plain)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .background(isValid ? Color.black : Color(white: 0.7))
+                    .cornerRadius(8)
                 }
-                .padding(.top, 6)
+                .buttonStyle(.plain)
+                .disabled(!isValid || isSubmitting)
             }
             .padding(.horizontal, 24)
-            .padding(.top, 10)
-            .padding(.bottom, 16)
+            .padding(.top, 4)
+            .padding(.bottom, 12)
 
             // Validation warning
             if showValidationWarning && !isValid {
@@ -1463,6 +1467,33 @@ struct PostCallQuestionnaireView: View {
         .onAppear {
             prospectName = initialProspectName
         }
+    }
+
+    // MARK: - Color Helpers
+
+    private var selectedOutcomeColor: Color {
+        switch outcome {
+        case .closed: return Color(red: 0.3, green: 0.75, blue: 0.35)
+        case .followUp: return Color(red: 0.95, green: 0.68, blue: 0.15)
+        case .lost: return Color(red: 0.9, green: 0.3, blue: 0.3)
+        case .noShow: return Color(white: 0.55)
+        case .none: return Color(white: 0.85)
+        }
+    }
+
+    private func outcomeButtonColor(_ value: CallOutcome) -> Color {
+        switch value {
+        case .closed: return Color(red: 0.3, green: 0.75, blue: 0.35)
+        case .followUp: return Color(red: 0.95, green: 0.68, blue: 0.15)
+        case .lost: return Color(red: 0.9, green: 0.3, blue: 0.3)
+        case .noShow: return Color(white: 0.55)
+        }
+    }
+
+    private func leadQualityColor(for score: Int) -> Color {
+        if score <= 3 { return Color(red: 0.9, green: 0.35, blue: 0.3) }
+        if score <= 6 { return Color(red: 0.95, green: 0.7, blue: 0.2) }
+        return Color(red: 0.3, green: 0.75, blue: 0.35)
     }
 
     // MARK: - Compact Dropdown
@@ -1505,10 +1536,14 @@ struct PostCallQuestionnaireView: View {
         case .closed:
             let hasCash = Int(cashCollected) ?? 0 > 0
             let hasContract = Int(contractValue) ?? 0 > 0
-            return hasCash && hasContract
+            let hasLeadQuality = leadQualityScore != nil
+            return hasCash && hasContract && hasLeadQuality
         case .lost, .followUp:
             let hasPitched = Int(pitchedValue) ?? 0 > 0
-            return hasPitched
+            let hasObjection = primaryObjection != nil
+            let hasLeadQuality = leadQualityScore != nil
+            let hasDecisionMaker = prospectWasDecisionMaker != nil
+            return hasPitched && hasObjection && hasLeadQuality && hasDecisionMaker
         case .noShow, .none:
             return true
         }
