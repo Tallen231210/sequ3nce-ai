@@ -8,6 +8,32 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 2.0.0</title>
+            <pubDate>Thu, 20 Feb 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>70</sparkle:version>
+            <sparkle:shortVersionString>2.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>Sequ3nce 2.0 — Meeting Bot</h2>
+                <ul>
+                    <li>Automatic bot joins your scheduled calls (Google Meet, Zoom, Teams)</li>
+                    <li>Connect your Google Calendar for hands-free setup</li>
+                    <li>Live coaching with real-time AMMO detection</li>
+                    <li>Video recordings saved automatically</li>
+                    <li>Streamlined post-call questionnaire</li>
+                    <li>New clean panel design</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v2.0.0/Sequ3nce.zip"
+                length="2365535"
+                type="application/octet-stream"
+                sparkle:edSignature="02fXUS1GdHYvKNk6LMAMqMsahRiksTd1ee87+O/rsN7Vfhu8QrzwmOhDk5PIqTBoTFTDwQw3h2XTs4/GHjcYCQ=="
+            />
+        </item>
+
+        <!-- v1.7.14 -->
+        <item>
             <title>Version 1.7.14</title>
             <pubDate>Thu, 30 Jan 2026 01:00:00 +0000</pubDate>
             <sparkle:version>68</sparkle:version>
