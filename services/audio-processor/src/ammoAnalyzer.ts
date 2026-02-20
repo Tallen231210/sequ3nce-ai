@@ -210,7 +210,7 @@ export class AmmoAnalyzer {
       logger.info(`[AmmoAnalyzer] Running analysis on ${preparedTranscript.length} chars of transcript`);
 
       const response = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: "claude-haiku-4-5-20241022",
         max_tokens: 1024,
         system: AMMO_V2_SYSTEM_PROMPT,
         messages: [{
