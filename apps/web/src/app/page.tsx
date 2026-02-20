@@ -22,8 +22,9 @@ import {
   Monitor,
   UserPlus,
   Eye,
+  ArrowUpRight,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 // Scroll animation hook
@@ -51,7 +52,7 @@ function useInView(threshold = 0.1) {
   return { ref, isInView };
 }
 
-// Animated section wrapper
+// Staggered animated section
 function AnimatedSection({
   children,
   className,
@@ -61,14 +62,14 @@ function AnimatedSection({
   className?: string;
   delay?: number;
 }) {
-  const { ref, isInView } = useInView();
+  const { ref, isInView } = useInView(0.05);
 
   return (
     <div
       ref={ref}
       className={cn(
-        "transition-all duration-700 ease-out",
-        isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8",
+        "transition-all duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+        isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12",
         className
       )}
       style={{ transitionDelay: `${delay}ms` }}
@@ -78,47 +79,66 @@ function AnimatedSection({
   );
 }
 
+// Section label pill
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-zinc-200 bg-white text-xs font-medium tracking-widest uppercase text-zinc-500 mb-6">
+      {children}
+    </div>
+  );
+}
+
 // FAQ Accordion Item
 function FAQItem({
   question,
   answer,
+  index,
 }: {
   question: string;
   answer: string;
+  index: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="border-b border-border">
+    <div className="group border-b border-zinc-200/80">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between py-5 text-left"
+        className="flex w-full items-center justify-between py-6 text-left hover:opacity-70 transition-opacity"
       >
-        <span className="font-medium">{question}</span>
+        <div className="flex items-baseline gap-4">
+          <span className="text-xs font-mono text-zinc-300 tabular-nums">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <span className="font-medium text-[15px]">{question}</span>
+        </div>
         <ChevronDown
           className={cn(
-            "h-5 w-5 text-muted-foreground transition-transform duration-200",
+            "h-4 w-4 text-zinc-400 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 ml-4",
             isOpen && "rotate-180"
           )}
         />
       </button>
       <div
         className={cn(
-          "grid transition-all duration-200 ease-out",
-          isOpen ? "grid-rows-[1fr] pb-5" : "grid-rows-[0fr]"
+          "grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          isOpen ? "grid-rows-[1fr] pb-6" : "grid-rows-[0fr]"
         )}
       >
         <div className="overflow-hidden">
-          <p className="text-muted-foreground">{answer}</p>
+          <p className="text-zinc-500 text-[15px] leading-relaxed pl-10">
+            {answer}
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-// Screenshot tabs
+// Screenshot tabs with refined browser frame
 function ScreenshotTabs() {
   const [activeTab, setActiveTab] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const tabs = [
     {
@@ -133,29 +153,38 @@ function ScreenshotTabs() {
     },
     {
       label: "Analytics",
-      description: "Deep insights into team performance and trends",
+      description: "Deep insights into team performance",
       gif: "/screenshots/analytics.gif",
     },
     {
       label: "Playbook",
-      description: "Build a training library from winning call moments",
+      description: "Build a training library from real calls",
       gif: "/screenshots/playbook.gif",
     },
   ];
 
+  const switchTab = useCallback((index: number) => {
+    if (index === activeTab) return;
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setActiveTab(index);
+      setIsTransitioning(false);
+    }, 150);
+  }, [activeTab]);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Tab buttons */}
-      <div className="flex flex-wrap justify-center gap-2">
+      <div className="flex flex-wrap justify-center gap-1 p-1 bg-zinc-100 rounded-xl max-w-fit mx-auto">
         {tabs.map((tab, index) => (
           <button
             key={index}
-            onClick={() => setActiveTab(index)}
+            onClick={() => switchTab(index)}
             className={cn(
-              "px-6 py-3 rounded-lg text-sm font-medium transition-all",
+              "px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
               activeTab === index
-                ? "bg-foreground text-background"
-                : "bg-zinc-100 text-muted-foreground hover:bg-zinc-200"
+                ? "bg-white text-black shadow-sm"
+                : "text-zinc-500 hover:text-zinc-700"
             )}
           >
             {tab.label}
@@ -164,22 +193,34 @@ function ScreenshotTabs() {
       </div>
 
       {/* Screenshot display */}
-      <div className="relative max-w-4xl mx-auto">
-        <div className="bg-zinc-100 rounded-xl p-3 shadow-2xl shadow-zinc-200/50">
-          {/* Browser frame */}
-          <div className="bg-zinc-200 rounded-t-lg px-4 py-3 flex items-center gap-2">
-            <div className="flex gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-zinc-400" />
-              <div className="w-3 h-3 rounded-full bg-zinc-400" />
-              <div className="w-3 h-3 rounded-full bg-zinc-400" />
+      <div className="relative max-w-5xl mx-auto">
+        {/* Glow effect behind the browser frame */}
+        <div className="absolute -inset-8 bg-gradient-to-b from-zinc-200/40 via-zinc-100/20 to-transparent rounded-3xl blur-2xl" />
+
+        <div className="relative bg-zinc-950 rounded-2xl p-1.5 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.15)]">
+          {/* Browser chrome */}
+          <div className="bg-zinc-900 rounded-t-xl px-4 py-3 flex items-center">
+            <div className="flex gap-2">
+              <div className="w-3 h-3 rounded-full bg-zinc-700" />
+              <div className="w-3 h-3 rounded-full bg-zinc-700" />
+              <div className="w-3 h-3 rounded-full bg-zinc-700" />
             </div>
-            <div className="flex-1 mx-4">
-              <div className="bg-zinc-300 rounded-md h-6 max-w-md mx-auto" />
+            <div className="flex-1 mx-16">
+              <div className="bg-zinc-800 rounded-lg h-7 max-w-sm mx-auto flex items-center justify-center">
+                <span className="text-[11px] text-zinc-500 font-mono">
+                  app.sequ3nce.ai
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* GIF display */}
-          <div className="bg-white rounded-b-lg overflow-hidden border border-zinc-200">
+          {/* Screenshot content */}
+          <div
+            className={cn(
+              "bg-white rounded-b-xl overflow-hidden transition-opacity duration-150",
+              isTransitioning ? "opacity-0" : "opacity-100"
+            )}
+          >
             <img
               src={tabs[activeTab].gif}
               alt={tabs[activeTab].label}
@@ -188,7 +229,39 @@ function ScreenshotTabs() {
           </div>
         </div>
       </div>
+
+      {/* Active tab description */}
+      <p className="text-center text-zinc-400 text-sm">
+        {tabs[activeTab].description}
+      </p>
     </div>
+  );
+}
+
+// Feature card with hover effect
+function FeatureCard({
+  icon: Icon,
+  title,
+  description,
+  index,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  index: number;
+}) {
+  return (
+    <AnimatedSection delay={index * 80}>
+      <div className="group relative p-8 rounded-2xl border border-zinc-100 bg-white hover:border-zinc-200 transition-all duration-300 hover:shadow-[0_8px_32px_-8px_rgba(0,0,0,0.06)] h-full">
+        <div className="w-10 h-10 rounded-xl bg-zinc-950 flex items-center justify-center mb-5">
+          <Icon className="h-5 w-5 text-white" strokeWidth={1.5} />
+        </div>
+        <h3 className="font-semibold text-[15px] mb-2">{title}</h3>
+        <p className="text-zinc-500 text-sm leading-relaxed">
+          {description}
+        </p>
+      </div>
+    </AnimatedSection>
   );
 }
 
@@ -211,24 +284,142 @@ export default function Home() {
     }
   };
 
+  const features = [
+    {
+      icon: Radio,
+      title: "Know what's happening right now",
+      description:
+        "See every live call on your team. Who's on, how long they've been on, and what's being said — in real-time.",
+    },
+    {
+      icon: Sparkles,
+      title: "Catch buying signals instantly",
+      description:
+        'AI extracts key quotes as they\'re spoken. When a prospect says "money isn\'t the issue," you\'ll know before the call ends.',
+    },
+    {
+      icon: BarChart3,
+      title: "Identify who's costing you deals",
+      description:
+        "Talk-to-listen ratios, close rates, and cash collected. Spot underperformers before they burn through your leads.",
+    },
+    {
+      icon: BookOpen,
+      title: "Clone your best closer",
+      description:
+        "Save winning call moments and build a training library from real closes. New hires learn from what actually works.",
+    },
+    {
+      icon: Users,
+      title: "Hold closers accountable",
+      description:
+        'Full call recordings, transcripts, and stats. No more "the lead was bad" — you have the proof.',
+    },
+    {
+      icon: Calendar,
+      title: "Never miss a scheduled call",
+      description:
+        "Track scheduled calls and follow-ups. Know exactly when calls should happen and if they actually did.",
+    },
+  ];
+
+  const painPoints = [
+    "Deal fell through? You'll never know if your closer fumbled or if the lead was bad.",
+    "Your top performer is closing 3x more — but you can't replicate what they're doing.",
+    "You're spending $50k/month on leads, but have zero proof when they no-show.",
+    "Coaching is a guessing game. You're giving feedback on calls you never heard.",
+  ];
+
+  const steps = [
+    {
+      icon: UserPlus,
+      step: "01",
+      title: "Create your team",
+      description:
+        "Set up your account and add your closers in minutes.",
+    },
+    {
+      icon: Monitor,
+      step: "02",
+      title: "Closers install the app",
+      description:
+        "One download, one login. The bot auto-joins their calls. That's it.",
+    },
+    {
+      icon: Eye,
+      step: "03",
+      title: "You see everything",
+      description:
+        "Watch calls live, review transcripts, track performance. Full visibility from day one.",
+    },
+  ];
+
+  const faqs = [
+    {
+      question: "What types of calls does Sequ3nce work with?",
+      answer:
+        "Zoom, Google Meet, Microsoft Teams — any video call platform. Our bot automatically joins scheduled calls through your Google Calendar, so it works with whatever platform your team uses.",
+    },
+    {
+      question: "How does the meeting bot work?",
+      answer:
+        "Closers connect their Google Calendar once. Our bot automatically detects upcoming calls and joins them to record, transcribe, and provide live coaching — completely hands-free.",
+    },
+    {
+      question: "Is my call data secure?",
+      answer:
+        "Yes, all calls are encrypted in transit and at rest. You own your data, and we never share it with third parties.",
+    },
+    {
+      question: "What if my closers aren't tech-savvy?",
+      answer:
+        "The setup is dead simple. Download the app, log in, connect your Google Calendar. After that, everything is automatic — no buttons to press, no recording to start.",
+    },
+    {
+      question: "Do you integrate with my CRM?",
+      answer:
+        "CRM integrations (GoHighLevel, Close) are coming soon. Let us know what you need and we'll prioritize accordingly.",
+    },
+  ];
+
   return (
-    <main className="min-h-screen bg-background">
-      {/* Navigation - Sticky */}
+    <main className="min-h-screen bg-background overflow-x-hidden">
+      {/* Navigation */}
       <header
         className={cn(
-          "fixed top-0 left-0 right-0 z-50 transition-all duration-200",
+          "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
           isScrolled
-            ? "bg-background/80 backdrop-blur-lg border-b border-border"
+            ? "bg-white/80 backdrop-blur-xl border-b border-zinc-200/50 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
             : "bg-transparent"
         )}
       >
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex h-16 items-center justify-between">
-            <Logo href="/" height={30} />
-            <div className="flex items-center gap-4">
+            <Logo href="/" height={28} />
+            <nav className="hidden md:flex items-center gap-8">
+              <button
+                onClick={() => scrollToSection("features")}
+                className="text-sm text-zinc-500 hover:text-black transition-colors"
+              >
+                Features
+              </button>
+              <button
+                onClick={() => scrollToSection("how-it-works")}
+                className="text-sm text-zinc-500 hover:text-black transition-colors"
+              >
+                How It Works
+              </button>
+              <button
+                onClick={() => scrollToSection("pricing")}
+                className="text-sm text-zinc-500 hover:text-black transition-colors"
+              >
+                Pricing
+              </button>
+            </nav>
+            <div className="flex items-center gap-3">
               <SignedOut>
                 <SignInButton mode="modal">
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="text-zinc-600">
                     Log in
                   </Button>
                 </SignInButton>
@@ -249,56 +440,77 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="pt-32 pb-24">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left - Copy */}
-            <div>
-              <AnimatedSection>
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.1]">
-                  Finally see why deals close
-                  <span className="text-muted-foreground"> — and why they don&apos;t.</span>
-                </h1>
-              </AnimatedSection>
+      {/* Hero Section — Dark, dramatic */}
+      <section className="relative pt-32 pb-32 bg-zinc-950 overflow-hidden">
+        {/* Subtle grid pattern */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+            backgroundSize: "64px 64px",
+          }}
+        />
+        {/* Radial glow */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-zinc-800/30 rounded-full blur-[120px]" />
 
-              <AnimatedSection delay={100}>
-                <p className="mt-6 text-lg text-muted-foreground max-w-xl">
-                  Stop managing your sales team blind. See every call as it happens,
-                  know exactly what&apos;s being said, and make decisions based on data
-                  — not what your closers tell you after the fact.
-                </p>
-              </AnimatedSection>
+        <div className="relative mx-auto max-w-6xl px-6">
+          <div className="max-w-3xl mx-auto text-center">
+            <AnimatedSection>
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900/50 text-xs font-medium tracking-widest uppercase text-zinc-400 mb-8">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Now with automatic meeting bot
+              </div>
+            </AnimatedSection>
 
-              <AnimatedSection delay={200}>
-                <div className="mt-10 flex flex-wrap items-center gap-4">
-                  <SignedOut>
-                    <BookDemoButton size="lg">
-                      Book a Demo
+            <AnimatedSection delay={100}>
+              <h1 className="text-5xl sm:text-6xl lg:text-7xl font-semibold tracking-tight leading-[1.05] text-white">
+                Finally see why deals close
+                <span className="text-zinc-500"> — and why they don&apos;t.</span>
+              </h1>
+            </AnimatedSection>
+
+            <AnimatedSection delay={200}>
+              <p className="mt-8 text-lg text-zinc-400 max-w-xl mx-auto leading-relaxed">
+                Stop managing your sales team blind. See every call as it happens,
+                know exactly what&apos;s being said, and make decisions based on data
+                — not what your closers tell you after the fact.
+              </p>
+            </AnimatedSection>
+
+            <AnimatedSection delay={300}>
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+                <SignedOut>
+                  <BookDemoButton size="lg" className="bg-white !text-black hover:bg-zinc-100 shadow-[0_0_24px_rgba(255,255,255,0.1)]">
+                    Book a Demo
+                    <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                  </BookDemoButton>
+                </SignedOut>
+                <SignedIn>
+                  <Link href="/dashboard">
+                    <Button size="lg" className="bg-white text-black hover:bg-zinc-100">
+                      Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                    </BookDemoButton>
-                  </SignedOut>
-                  <SignedIn>
-                    <Link href="/dashboard">
-                      <Button size="lg">
-                        Go to Dashboard
-                        <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                      </Button>
-                    </Link>
-                  </SignedIn>
-                  <button
-                    onClick={() => scrollToSection("how-it-works")}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    See How It Works →
-                  </button>
-                </div>
-              </AnimatedSection>
-            </div>
+                    </Button>
+                  </Link>
+                </SignedIn>
+                <button
+                  onClick={() => scrollToSection("how-it-works")}
+                  className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1"
+                >
+                  See How It Works
+                  <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+              </div>
+            </AnimatedSection>
+          </div>
 
-            {/* Right - Demo Video */}
-            <AnimatedSection delay={300} className="lg:pl-8">
-              <div className="rounded-xl overflow-hidden shadow-2xl shadow-zinc-300/30 border border-zinc-200">
+          {/* Hero video */}
+          <AnimatedSection delay={400} className="mt-20">
+            <div className="relative max-w-4xl mx-auto">
+              {/* Glow behind video */}
+              <div className="absolute -inset-4 bg-gradient-to-b from-zinc-800/50 via-zinc-900/30 to-transparent rounded-3xl blur-2xl" />
+
+              <div className="relative rounded-2xl overflow-hidden border border-zinc-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)]">
                 <video
                   autoPlay
                   loop
@@ -310,21 +522,25 @@ export default function Home() {
                   <source src="/videos/hero.mp4" type="video/mp4" />
                 </video>
               </div>
-            </AnimatedSection>
-          </div>
+            </div>
+          </AnimatedSection>
         </div>
+
+        {/* Bottom fade to white */}
+        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-white to-transparent" />
       </section>
 
       {/* Product Screenshots Section */}
-      <section className="py-24 bg-zinc-50">
+      <section className="py-32 bg-white">
         <div className="mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+              <SectionLabel>Platform</SectionLabel>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight">
                 Your sales floor, in one dashboard
               </h2>
-              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-                Real-time visibility into every call, every closer, every deal
+              <p className="mt-4 text-zinc-500 max-w-xl mx-auto">
+                Real-time visibility into every call, every closer, every deal.
               </p>
             </div>
           </AnimatedSection>
@@ -336,29 +552,38 @@ export default function Home() {
       </section>
 
       {/* Pain Points Section */}
-      <section className="py-24">
-        <div className="mx-auto max-w-6xl px-6">
+      <section className="py-32 bg-zinc-950 relative overflow-hidden">
+        {/* Noise texture overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.015]"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E")`,
+          }}
+        />
+
+        <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+              <SectionLabel>
+                <span className="text-zinc-400">The Problem</span>
+              </SectionLabel>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-white">
                 You&apos;re running a sales team blind
               </h2>
-              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-                Right now, you only know what your closers choose to tell you
+              <p className="mt-4 text-zinc-500 max-w-xl mx-auto">
+                Right now, you only know what your closers choose to tell you.
               </p>
             </div>
           </AnimatedSection>
 
-          <div className="grid sm:grid-cols-2 gap-6 max-w-4xl mx-auto">
-            {[
-              "Deal fell through? You'll never know if your closer fumbled or if the lead was bad",
-              "Your top performer is closing 3x more — but you can't replicate what they're doing",
-              "You're spending $50k/month on leads, but have zero proof when they no-show",
-              "Coaching is a guessing game. You're giving feedback on calls you never heard",
-            ].map((pain, index) => (
+          <div className="grid sm:grid-cols-2 gap-4 max-w-4xl mx-auto">
+            {painPoints.map((pain, index) => (
               <AnimatedSection key={index} delay={index * 100}>
-                <div className="p-6 rounded-xl border border-border bg-zinc-50/50">
-                  <p className="text-lg font-medium leading-relaxed">
+                <div className="p-8 rounded-2xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-sm hover:border-zinc-700 transition-colors h-full">
+                  <div className="text-xs font-mono text-zinc-600 mb-4">
+                    {String(index + 1).padStart(2, "0")}
+                  </div>
+                  <p className="text-[17px] font-medium leading-relaxed text-zinc-200">
                     {pain}
                   </p>
                 </div>
@@ -369,120 +594,61 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section className="py-24 bg-zinc-50">
+      <section id="features" className="py-32 bg-zinc-50">
         <div className="mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+              <SectionLabel>Features</SectionLabel>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight">
                 Stop guessing. Start knowing.
               </h2>
-              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-                Everything you need to manage a high-performing sales team
+              <p className="mt-4 text-zinc-500 max-w-xl mx-auto">
+                Everything you need to manage a high-performing sales team.
               </p>
             </div>
           </AnimatedSection>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Radio,
-                title: "Know what's happening right now",
-                description:
-                  "See every live call on your team. Who's on, how long they've been on, and what's being said — in real-time.",
-              },
-              {
-                icon: Sparkles,
-                title: "Catch buying signals instantly",
-                description:
-                  "AI extracts key quotes as they're spoken. When a prospect says \"money isn't the issue,\" you'll know before the call ends.",
-              },
-              {
-                icon: BarChart3,
-                title: "Identify who's costing you deals",
-                description:
-                  "Talk-to-listen ratios, close rates, and cash collected. Spot underperformers before they burn through your leads.",
-              },
-              {
-                icon: BookOpen,
-                title: "Clone your best closer",
-                description:
-                  "Save winning call moments and build a training library from real closes. New hires learn from what actually works.",
-              },
-              {
-                icon: Users,
-                title: "Hold closers accountable",
-                description:
-                  "Full call recordings, transcripts, and stats. No more \"the lead was bad\" — you have the proof.",
-              },
-              {
-                icon: Calendar,
-                title: "Never miss a scheduled call",
-                description:
-                  "Track scheduled calls and follow-ups. Know exactly when calls should happen and if they actually did.",
-              },
-            ].map((feature, index) => (
-              <AnimatedSection key={index} delay={index * 100}>
-                <div className="p-6">
-                  <feature.icon className="h-8 w-8 mb-4" strokeWidth={1.5} />
-                  <h3 className="font-semibold text-lg">{feature.title}</h3>
-                  <p className="mt-2 text-muted-foreground">
-                    {feature.description}
-                  </p>
-                </div>
-              </AnimatedSection>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {features.map((feature, index) => (
+              <FeatureCard key={index} index={index} {...feature} />
             ))}
           </div>
         </div>
       </section>
 
       {/* How It Works Section */}
-      <section id="how-it-works" className="py-24">
+      <section id="how-it-works" className="py-32 bg-white">
         <div className="mx-auto max-w-6xl px-6">
           <AnimatedSection>
-            <div className="text-center mb-16">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+            <div className="text-center mb-20">
+              <SectionLabel>Setup</SectionLabel>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight">
                 Start seeing everything in minutes
               </h2>
-              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+              <p className="mt-4 text-zinc-500 max-w-xl mx-auto">
                 No complex setup. No IT required. Just visibility.
               </p>
             </div>
           </AnimatedSection>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {[
-              {
-                icon: UserPlus,
-                step: "1",
-                title: "Create your team",
-                description:
-                  "Set up your account and add your closers in minutes.",
-              },
-              {
-                icon: Monitor,
-                step: "2",
-                title: "Closers install the app",
-                description:
-                  "One download, one login. They click record when calls start. That's it.",
-              },
-              {
-                icon: Eye,
-                step: "3",
-                title: "You see everything",
-                description:
-                  "Watch calls live, review transcripts, track performance. Full visibility from day one.",
-              },
-            ].map((step, index) => (
+          <div className="grid md:grid-cols-3 gap-0 max-w-4xl mx-auto">
+            {steps.map((step, index) => (
               <AnimatedSection key={index} delay={index * 150}>
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-zinc-100 mb-6">
-                    <step.icon className="h-7 w-7" strokeWidth={1.5} />
+                <div className="relative text-center px-8">
+                  {/* Connector line */}
+                  {index < steps.length - 1 && (
+                    <div className="hidden md:block absolute top-8 left-[calc(50%+32px)] w-[calc(100%-64px)] h-px bg-zinc-200" />
+                  )}
+
+                  <div className="relative inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-zinc-950 mb-6">
+                    <step.icon className="h-6 w-6 text-white" strokeWidth={1.5} />
                   </div>
-                  <div className="text-sm text-muted-foreground mb-2">
+
+                  <div className="text-xs font-mono text-zinc-400 mb-3 tracking-wider">
                     Step {step.step}
                   </div>
-                  <h3 className="font-semibold text-lg">{step.title}</h3>
-                  <p className="mt-2 text-muted-foreground">
+                  <h3 className="font-semibold text-lg mb-2">{step.title}</h3>
+                  <p className="text-zinc-500 text-sm leading-relaxed">
                     {step.description}
                   </p>
                 </div>
@@ -493,11 +659,12 @@ export default function Home() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-24 bg-zinc-50">
+      <section id="pricing" className="py-32 bg-zinc-50">
         <div className="mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center mb-16">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+              <SectionLabel>Pricing</SectionLabel>
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight">
                 Simple, transparent pricing
               </h2>
             </div>
@@ -505,26 +672,33 @@ export default function Home() {
 
           <AnimatedSection delay={100}>
             <div className="max-w-lg mx-auto">
-              <div className="bg-white rounded-2xl border border-border p-8 shadow-sm">
-                <div className="text-center mb-8">
-                  <div className="text-sm text-muted-foreground mb-4">
+              <div className="relative bg-white rounded-3xl border border-zinc-200 p-10 shadow-[0_16px_48px_-12px_rgba(0,0,0,0.08)]">
+                {/* Subtle top accent */}
+                <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-zinc-300 to-transparent" />
+
+                <div className="text-center mb-10">
+                  <div className="text-xs tracking-widest uppercase text-zinc-400 mb-6 font-medium">
                     One-time setup
                   </div>
-                  <div className="text-4xl font-semibold">TBD</div>
+                  <div className="text-5xl font-semibold tracking-tight">TBD</div>
                 </div>
 
-                <div className="border-t border-border pt-8 mb-8">
-                  <div className="flex justify-between items-baseline mb-4">
-                    <span className="text-muted-foreground">Platform fee</span>
-                    <span className="text-xl font-semibold">$499/mo</span>
+                <div className="border-t border-zinc-100 pt-8 mb-10 space-y-5">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-zinc-500 text-sm">Platform fee</span>
+                    <span className="text-2xl font-semibold">
+                      $499<span className="text-sm font-normal text-zinc-400">/mo</span>
+                    </span>
                   </div>
                   <div className="flex justify-between items-baseline">
-                    <span className="text-muted-foreground">Per closer seat</span>
-                    <span className="text-xl font-semibold">$149/mo</span>
+                    <span className="text-zinc-500 text-sm">Per closer seat</span>
+                    <span className="text-2xl font-semibold">
+                      $149<span className="text-sm font-normal text-zinc-400">/mo</span>
+                    </span>
                   </div>
                 </div>
 
-                <div className="space-y-3 mb-8">
+                <div className="space-y-4 mb-10">
                   {[
                     "Unlimited calls",
                     "Real-time transcription",
@@ -534,14 +708,16 @@ export default function Home() {
                     "Call recordings & playback",
                   ].map((feature, index) => (
                     <div key={index} className="flex items-center gap-3">
-                      <Check className="h-5 w-5 text-foreground" strokeWidth={1.5} />
-                      <span>{feature}</span>
+                      <div className="w-5 h-5 rounded-full bg-zinc-950 flex items-center justify-center shrink-0">
+                        <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
+                      </div>
+                      <span className="text-sm">{feature}</span>
                     </div>
                   ))}
                 </div>
 
                 <SignedOut>
-                  <BookDemoButton size="lg" className="w-full">
+                  <BookDemoButton size="lg" className="w-full justify-center">
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
@@ -561,64 +737,65 @@ export default function Home() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-24">
+      <section id="faq" className="py-32 bg-white">
         <div className="mx-auto max-w-6xl px-6">
-          <AnimatedSection>
-            <div className="text-center mb-16">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                Questions? We&apos;ve got answers.
-              </h2>
-            </div>
-          </AnimatedSection>
+          <div className="grid lg:grid-cols-[1fr,1.5fr] gap-16 max-w-5xl mx-auto">
+            <AnimatedSection>
+              <div className="lg:sticky lg:top-32">
+                <SectionLabel>FAQ</SectionLabel>
+                <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+                  Questions?
+                  <br />
+                  We&apos;ve got answers.
+                </h2>
+                <p className="mt-4 text-zinc-500">
+                  Everything you need to know about getting started with Sequ3nce.
+                </p>
+              </div>
+            </AnimatedSection>
 
-          <AnimatedSection delay={100}>
-            <div className="max-w-2xl mx-auto">
-              <FAQItem
-                question="What types of calls does Sequ3nce work with?"
-                answer="Zoom, Google Meet, phone calls — any audio your computer plays. The desktop app captures system audio, so it works with any calling platform."
-              />
-              <FAQItem
-                question="How does the desktop app work?"
-                answer="Closers download a simple app that captures system audio. One click to start recording, one click to stop. It runs quietly in the background during calls."
-              />
-              <FAQItem
-                question="Is my call data secure?"
-                answer="Yes, all calls are encrypted in transit and at rest. You own your data, and we never share it with third parties."
-              />
-              <FAQItem
-                question="What if my closers aren't tech-savvy?"
-                answer="The app is dead simple. Download, login with your email, click the big record button. If they can use Zoom, they can use Sequ3nce."
-              />
-              <FAQItem
-                question="Do you integrate with my CRM?"
-                answer="CRM integrations (GoHighLevel, Close) are coming soon. Let us know what you need and we'll prioritize accordingly."
-              />
-            </div>
-          </AnimatedSection>
+            <AnimatedSection delay={100}>
+              <div>
+                {faqs.map((faq, index) => (
+                  <FAQItem
+                    key={index}
+                    index={index}
+                    question={faq.question}
+                    answer={faq.answer}
+                  />
+                ))}
+              </div>
+            </AnimatedSection>
+          </div>
         </div>
       </section>
 
       {/* Final CTA Section */}
-      <section className="py-24 bg-zinc-50">
-        <div className="mx-auto max-w-6xl px-6">
+      <section className="py-32 bg-zinc-950 relative overflow-hidden">
+        {/* Radial glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-zinc-800/30 rounded-full blur-[100px]" />
+
+        <div className="relative mx-auto max-w-6xl px-6">
           <AnimatedSection>
             <div className="text-center">
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                Stop wondering. Start knowing.
+              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white">
+                Stop wondering.
+                <br />
+                Start knowing.
               </h2>
-              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+              <p className="mt-6 text-lg text-zinc-400 max-w-xl mx-auto">
                 See exactly why deals close and why they don&apos;t — starting today.
               </p>
               <div className="mt-10">
                 <SignedOut>
-                  <BookDemoButton size="lg">
+                  <BookDemoButton size="lg" className="bg-white !text-black hover:bg-zinc-100 shadow-[0_0_24px_rgba(255,255,255,0.1)]">
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
-                    <Button size="lg">
+                    <Button size="lg" className="bg-white text-black hover:bg-zinc-100">
                       Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                     </Button>
@@ -631,26 +808,34 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-background">
-        <div className="mx-auto max-w-6xl px-6 py-12">
-          <div className="grid md:grid-cols-4 gap-8">
-            {/* Logo & Copyright */}
+      <footer className="border-t border-zinc-200 bg-white">
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <div className="grid md:grid-cols-4 gap-12">
             <div className="md:col-span-2">
-              <Logo height={30} />
-              <p className="mt-4 text-sm text-muted-foreground max-w-xs">
-                Sales management software for high-ticket teams. Full visibility
+              <Logo height={28} />
+              <p className="mt-4 text-sm text-zinc-500 max-w-xs leading-relaxed">
+                Sales call intelligence for high-ticket teams. Full visibility
                 into every call, every closer, every deal.
               </p>
             </div>
 
-            {/* Product Links */}
             <div>
-              <h4 className="font-semibold mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
+              <h4 className="text-xs font-medium tracking-widest uppercase text-zinc-400 mb-4">
+                Product
+              </h4>
+              <ul className="space-y-3 text-sm text-zinc-500">
+                <li>
+                  <button
+                    onClick={() => scrollToSection("features")}
+                    className="hover:text-black transition-colors"
+                  >
+                    Features
+                  </button>
+                </li>
                 <li>
                   <button
                     onClick={() => scrollToSection("how-it-works")}
-                    className="hover:text-foreground transition-colors"
+                    className="hover:text-black transition-colors"
                   >
                     How It Works
                   </button>
@@ -658,7 +843,7 @@ export default function Home() {
                 <li>
                   <button
                     onClick={() => scrollToSection("pricing")}
-                    className="hover:text-foreground transition-colors"
+                    className="hover:text-black transition-colors"
                   >
                     Pricing
                   </button>
@@ -666,7 +851,7 @@ export default function Home() {
                 <li>
                   <button
                     onClick={() => scrollToSection("faq")}
-                    className="hover:text-foreground transition-colors"
+                    className="hover:text-black transition-colors"
                   >
                     FAQ
                   </button>
@@ -674,14 +859,15 @@ export default function Home() {
               </ul>
             </div>
 
-            {/* Account Links */}
             <div>
-              <h4 className="font-semibold mb-4">Account</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground">
+              <h4 className="text-xs font-medium tracking-widest uppercase text-zinc-400 mb-4">
+                Account
+              </h4>
+              <ul className="space-y-3 text-sm text-zinc-500">
                 <li>
                   <SignedOut>
                     <SignInButton mode="modal">
-                      <button className="hover:text-foreground transition-colors">
+                      <button className="hover:text-black transition-colors">
                         Log in
                       </button>
                     </SignInButton>
@@ -689,25 +875,33 @@ export default function Home() {
                   <SignedIn>
                     <Link
                       href="/dashboard"
-                      className="hover:text-foreground transition-colors"
+                      className="hover:text-black transition-colors"
                     >
                       Dashboard
                     </Link>
                   </SignedIn>
                 </li>
+                <li>
+                  <Link
+                    href="/download"
+                    className="hover:text-black transition-colors"
+                  >
+                    Download App
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>
 
-          <div className="border-t border-border mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="border-t border-zinc-200 mt-16 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <p className="text-xs text-zinc-400">
               © 2025 Sequ3nce.ai. All rights reserved.
             </p>
-            <div className="flex gap-6 text-sm text-muted-foreground">
-              <Link href="/privacy" className="hover:text-foreground transition-colors">
+            <div className="flex gap-6 text-xs text-zinc-400">
+              <Link href="/privacy" className="hover:text-black transition-colors">
                 Privacy Policy
               </Link>
-              <Link href="/terms" className="hover:text-foreground transition-colors">
+              <Link href="/terms" className="hover:text-black transition-colors">
                 Terms of Service
               </Link>
             </div>
