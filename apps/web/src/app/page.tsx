@@ -24,7 +24,6 @@ import {
   Eye,
   ArrowUpRight,
   Video,
-  Zap,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -85,22 +84,22 @@ function FAQItem({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
-    <div className="group border-b border-zinc-800">
+    <div className="group border-b border-zinc-200">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex w-full items-center justify-between py-7 text-left hover:opacity-70 transition-opacity"
       >
         <div className="flex items-baseline gap-5">
-          <span className="text-xs font-mono text-zinc-600 tabular-nums">
+          <span className="text-xs font-mono text-zinc-400 tabular-nums">
             {String(index + 1).padStart(2, "0")}
           </span>
-          <span className="font-medium text-[15px] text-zinc-200">
+          <span className="font-medium text-[15px] text-zinc-900">
             {question}
           </span>
         </div>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-zinc-600 transition-transform duration-300 shrink-0 ml-4",
+            "h-4 w-4 text-zinc-400 transition-transform duration-300 shrink-0 ml-4",
             isOpen && "rotate-180"
           )}
         />
@@ -281,7 +280,16 @@ export default function Home() {
   ];
 
   return (
-    <main className="min-h-screen bg-zinc-950 overflow-x-hidden">
+    <main className="min-h-screen bg-white overflow-x-hidden relative">
+      {/* ─── Global grid pattern ─── */}
+      <div
+        className="fixed inset-0 pointer-events-none z-0"
+        style={{
+          backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.04) 1px, transparent 1px)`,
+          backgroundSize: "24px 24px",
+        }}
+      />
+
       {/* ═══════════════════════════════════════════ */}
       {/* NAV                                         */}
       {/* ═══════════════════════════════════════════ */}
@@ -289,7 +297,7 @@ export default function Home() {
         className={cn(
           "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
           isScrolled
-            ? "bg-zinc-950/80 backdrop-blur-xl border-b border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.3)]"
+            ? "bg-white/80 backdrop-blur-xl border-b border-zinc-200/60 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
             : "bg-transparent border-b border-transparent"
         )}
       >
@@ -301,7 +309,7 @@ export default function Home() {
                 <button
                   key={id}
                   onClick={() => scrollToSection(id)}
-                  className="text-sm text-zinc-500 hover:text-white transition-colors"
+                  className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors"
                 >
                   {id === "how-it-works"
                     ? "How It Works"
@@ -315,7 +323,7 @@ export default function Home() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-zinc-400 hover:text-white hover:bg-white/10"
+                    className="text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
                   >
                     Log in
                   </Button>
@@ -336,51 +344,34 @@ export default function Home() {
       </header>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* HERO — Dark, immersive, massive type         */}
+      {/* HERO                                        */}
       {/* ═══════════════════════════════════════════ */}
-      <section className="relative pt-36 pb-32 overflow-hidden">
-        {/* Animated gradient blobs */}
-        <div className="absolute top-[-20%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-zinc-800/40 blur-[120px] animate-blob-1" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-zinc-700/25 blur-[100px] animate-blob-2" />
-
-        {/* Grid overlay */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)`,
-            backgroundSize: "64px 64px",
-          }}
-        />
-
-        {/* Noise grain */}
-        <div
-          className="absolute inset-0 opacity-[0.02] pointer-events-none"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-          }}
-        />
+      <section className="relative pt-36 pb-32 overflow-hidden z-10">
+        {/* Subtle gradient wash for hero depth */}
+        <div className="absolute top-0 left-[-20%] w-[60vw] h-[60vw] rounded-full bg-zinc-100/80 blur-[150px] pointer-events-none" />
+        <div className="absolute bottom-[-20%] right-[-15%] w-[50vw] h-[50vw] rounded-full bg-zinc-50/60 blur-[120px] pointer-events-none" />
 
         <div className="relative mx-auto max-w-7xl px-6">
           {/* Badge */}
           <AnimatedSection>
-            <div className="glass inline-flex items-center gap-2.5 px-5 py-2 rounded-full text-xs font-medium tracking-widest uppercase text-zinc-400 mb-10">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full text-xs font-medium tracking-widest uppercase text-zinc-500 mb-10 border border-zinc-200 bg-white/60 backdrop-blur-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Now with automatic meeting bot
             </div>
           </AnimatedSection>
 
           {/* Massive headline */}
           <AnimatedSection delay={100}>
-            <h1 className="text-[3.5rem] sm:text-[5rem] md:text-[6.5rem] lg:text-[8rem] xl:text-[9rem] font-semibold tracking-[-0.04em] leading-[0.9] text-white max-w-6xl">
+            <h1 className="text-[3.5rem] sm:text-[5rem] md:text-[6.5rem] lg:text-[8rem] xl:text-[9rem] font-semibold tracking-[-0.04em] leading-[0.9] text-zinc-950 max-w-6xl">
               Finally see why
               <br />
               deals close
-              <span className="text-zinc-700">.</span>
+              <span className="text-zinc-300">.</span>
             </h1>
           </AnimatedSection>
 
           <AnimatedSection delay={200}>
-            <p className="text-xl sm:text-2xl text-zinc-500 mt-6 tracking-wide font-light">
+            <p className="text-xl sm:text-2xl text-zinc-400 mt-6 tracking-wide font-light">
               And why they don&apos;t.
             </p>
           </AnimatedSection>
@@ -388,21 +379,21 @@ export default function Home() {
           {/* Subtext + CTA */}
           <AnimatedSection delay={300}>
             <div className="mt-12 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-10 max-w-6xl">
-              <p className="text-lg text-zinc-400 max-w-lg leading-relaxed">
+              <p className="text-lg text-zinc-500 max-w-lg leading-relaxed">
                 Stop managing your sales team blind. See every call as it
                 happens, know exactly what&apos;s being said, and make decisions
                 based on data — not what your closers tell you after the fact.
               </p>
               <div className="flex flex-wrap items-center gap-4 shrink-0">
                 <SignedOut>
-                  <BookDemoButton size="lg" className="bg-white !text-black hover:bg-zinc-200">
+                  <BookDemoButton size="lg">
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
-                    <Button size="lg" className="bg-white text-black hover:bg-zinc-200">
+                    <Button size="lg">
                       Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                     </Button>
@@ -410,7 +401,7 @@ export default function Home() {
                 </SignedIn>
                 <button
                   onClick={() => scrollToSection("how-it-works")}
-                  className="text-sm text-zinc-500 hover:text-white transition-colors flex items-center gap-1.5"
+                  className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors flex items-center gap-1.5"
                 >
                   See How It Works
                   <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -419,9 +410,9 @@ export default function Home() {
             </div>
           </AnimatedSection>
 
-          {/* Glass stat bar */}
+          {/* Stat bar */}
           <AnimatedSection delay={400}>
-            <div className="mt-20 grid grid-cols-2 lg:grid-cols-4 glass rounded-2xl overflow-hidden divide-x divide-white/[0.06]">
+            <div className="mt-20 grid grid-cols-2 lg:grid-cols-4 rounded-2xl overflow-hidden divide-x divide-zinc-200 border border-zinc-200 bg-white/60 backdrop-blur-sm">
               {[
                 { value: "100%", label: "Call visibility" },
                 { value: "<3min", label: "Setup time" },
@@ -429,10 +420,10 @@ export default function Home() {
                 { value: "24/7", label: "Automatic recording" },
               ].map((stat, i) => (
                 <div key={i} className="px-6 py-7 lg:py-9 text-center">
-                  <div className="text-2xl lg:text-3xl font-semibold tracking-tight text-white tabular-nums">
+                  <div className="text-2xl lg:text-3xl font-semibold tracking-tight text-zinc-950 tabular-nums">
                     {stat.value}
                   </div>
-                  <div className="text-[10px] text-zinc-500 mt-1.5 uppercase tracking-[0.2em] font-medium">
+                  <div className="text-[10px] text-zinc-400 mt-1.5 uppercase tracking-[0.2em] font-medium">
                     {stat.label}
                   </div>
                 </div>
@@ -444,8 +435,8 @@ export default function Home() {
           <AnimatedSection delay={500} className="mt-20">
             <div className="relative">
               {/* Glow behind video */}
-              <div className="absolute -inset-6 bg-gradient-to-b from-zinc-700/20 via-zinc-800/10 to-transparent rounded-3xl blur-2xl" />
-              <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] shadow-[0_50px_100px_-30px_rgba(0,0,0,0.6)]">
+              <div className="absolute -inset-6 bg-gradient-to-b from-zinc-200/50 via-zinc-100/20 to-transparent rounded-3xl blur-2xl" />
+              <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-[0_50px_100px_-30px_rgba(0,0,0,0.15)]">
                 <video
                   autoPlay
                   loop
@@ -463,7 +454,7 @@ export default function Home() {
           {/* Platform logos */}
           <AnimatedSection delay={600}>
             <div className="flex flex-wrap items-center justify-center gap-8 mt-20">
-              <span className="text-[10px] tracking-[0.25em] uppercase text-zinc-600 font-medium">
+              <span className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium">
                 Works with
               </span>
               {[
@@ -480,7 +471,7 @@ export default function Home() {
                 { icon: <Users className="h-4 w-4" strokeWidth={1.5} />, name: "Teams" },
                 { icon: <Calendar className="h-4 w-4" strokeWidth={1.5} />, name: "Google Calendar" },
               ].map((p, i) => (
-                <div key={i} className="flex items-center gap-2 text-zinc-500">
+                <div key={i} className="flex items-center gap-2 text-zinc-400">
                   {p.icon}
                   <span className="text-sm font-medium">{p.name}</span>
                 </div>
@@ -491,17 +482,9 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* SCREENSHOTS — White, elevated                */}
+      {/* SCREENSHOTS                                 */}
       {/* ═══════════════════════════════════════════ */}
-      <section className="py-32 bg-white relative">
-        {/* Subtle dot grid */}
-        <div
-          className="absolute inset-0 opacity-[0.3]"
-          style={{
-            backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)`,
-            backgroundSize: "24px 24px",
-          }}
-        />
+      <section className="py-32 relative z-10">
         <div className="relative mx-auto max-w-7xl px-6">
           <AnimatedSection>
             <div className="max-w-2xl">
@@ -526,28 +509,20 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* PAIN POINTS — Dark, confrontational          */}
+      {/* PAIN POINTS                                 */}
       {/* ═══════════════════════════════════════════ */}
-      <section className="py-32 bg-zinc-950 text-white relative overflow-hidden">
-        {/* Subtle scan lines */}
-        <div
-          className="absolute inset-0 opacity-[0.03] pointer-events-none"
-          style={{
-            backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.05) 2px, rgba(255,255,255,0.05) 4px)`,
-          }}
-        />
-
+      <section className="py-32 relative z-10">
         <div className="relative mx-auto max-w-7xl px-6">
           <AnimatedSection>
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-12 mb-20">
               <div>
-                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-600 font-medium mb-5">
+                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
                   The Problem
                 </div>
-                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
+                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05] text-zinc-950">
                   You&apos;re running a
                   <br />
-                  sales team blind<span className="text-zinc-700">.</span>
+                  sales team blind<span className="text-zinc-300">.</span>
                 </h2>
               </div>
               <p className="text-zinc-500 text-lg max-w-md lg:pt-12 leading-relaxed">
@@ -561,17 +536,17 @@ export default function Home() {
           <div className="grid lg:grid-cols-12 gap-4">
             {/* Featured pain point */}
             <AnimatedSection delay={100} className="lg:col-span-7">
-              <div className="relative p-10 lg:p-14 rounded-2xl glass h-full flex flex-col justify-end group hover:border-white/[0.12] transition-all min-h-[320px]">
-                <div className="text-[140px] lg:text-[180px] font-semibold leading-none text-white/[0.04] select-none absolute top-2 right-8 pointer-events-none">
+              <div className="relative p-10 lg:p-14 rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm h-full flex flex-col justify-end group hover:border-zinc-300 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.08)] transition-all min-h-[320px]">
+                <div className="text-[140px] lg:text-[180px] font-semibold leading-none text-zinc-100 select-none absolute top-2 right-8 pointer-events-none">
                   &ldquo;
                 </div>
                 <div>
-                  <div className="text-[10px] font-mono text-zinc-600 mb-6 tracking-widest">
+                  <div className="text-[10px] font-mono text-zinc-400 mb-6 tracking-widest">
                     01
                   </div>
-                  <p className="text-2xl lg:text-3xl font-medium leading-snug text-zinc-200 relative z-10 max-w-lg">
+                  <p className="text-2xl lg:text-3xl font-medium leading-snug text-zinc-700 relative z-10 max-w-lg">
                     Deal fell through? You&apos;ll{" "}
-                    <span className="text-white">never know</span> if your
+                    <span className="text-zinc-950 font-semibold">never know</span> if your
                     closer fumbled or if the lead was bad.
                   </p>
                 </div>
@@ -582,16 +557,16 @@ export default function Home() {
             <div className="lg:col-span-5 flex flex-col gap-4">
               {painPoints.slice(1).map((pain, index) => (
                 <AnimatedSection key={index} delay={200 + index * 100}>
-                  <div className="p-8 rounded-2xl glass hover:border-white/[0.12] transition-all group">
-                    <div className="text-[10px] font-mono text-zinc-600 mb-4 tracking-widest">
+                  <div className="p-8 rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm hover:border-zinc-300 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.08)] transition-all group">
+                    <div className="text-[10px] font-mono text-zinc-400 mb-4 tracking-widest">
                       {String(index + 2).padStart(2, "0")}
                     </div>
-                    <p className="text-lg font-medium leading-relaxed text-zinc-300">
+                    <p className="text-lg font-medium leading-relaxed text-zinc-600">
                       {pain.text.split(pain.bold).map((part, i, arr) => (
                         <span key={i}>
                           {part}
                           {i < arr.length - 1 && (
-                            <span className="text-white font-semibold">
+                            <span className="text-zinc-950 font-semibold">
                               {pain.bold}
                             </span>
                           )}
@@ -607,17 +582,9 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* FEATURES — White, bento grid                 */}
+      {/* FEATURES — Bento grid                       */}
       {/* ═══════════════════════════════════════════ */}
-      <section id="features" className="py-32 bg-white relative">
-        <div
-          className="absolute inset-0 opacity-[0.3]"
-          style={{
-            backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px)`,
-            backgroundSize: "24px 24px",
-          }}
-        />
-
+      <section id="features" className="py-32 relative z-10">
         <div className="relative mx-auto max-w-7xl px-6">
           <AnimatedSection>
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 mb-16">
@@ -648,7 +615,7 @@ export default function Home() {
               >
                 <div
                   className={cn(
-                    "group relative rounded-2xl border border-zinc-200/80 bg-zinc-50/50 hover:bg-white hover:border-zinc-300 transition-all duration-300 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.1)] h-full",
+                    "group relative rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm hover:bg-white hover:border-zinc-300 transition-all duration-300 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.1)] h-full",
                     feature.size === "large" ? "p-10 lg:p-12" : "p-8"
                   )}
                 >
@@ -701,9 +668,9 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* HOW IT WORKS — Giant numbers, rows            */}
+      {/* HOW IT WORKS — Giant numbers                 */}
       {/* ═══════════════════════════════════════════ */}
-      <section id="how-it-works" className="py-32 bg-zinc-50 relative">
+      <section id="how-it-works" className="py-32 relative z-10">
         <div className="mx-auto max-w-7xl px-6">
           <AnimatedSection>
             <div className="text-center mb-24">
@@ -726,7 +693,7 @@ export default function Home() {
                     index < steps.length - 1 && "border-b border-zinc-200"
                   )}
                 >
-                  <div className="text-[7rem] sm:text-[9rem] lg:text-[12rem] font-semibold leading-none tracking-[-0.05em] text-zinc-200/60 select-none shrink-0 -my-4">
+                  <div className="text-[7rem] sm:text-[9rem] lg:text-[12rem] font-semibold leading-none tracking-[-0.05em] text-zinc-100 select-none shrink-0 -my-4">
                     {step.num}
                   </div>
                   <div className="w-16 h-16 rounded-2xl bg-zinc-950 flex items-center justify-center shrink-0">
@@ -748,9 +715,9 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* PRICING — Split layout                       */}
+      {/* PRICING — Split layout                      */}
       {/* ═══════════════════════════════════════════ */}
-      <section id="pricing" className="py-32 bg-white relative">
+      <section id="pricing" className="py-32 relative z-10">
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid lg:grid-cols-2 gap-16 lg:gap-24 items-center">
             <AnimatedSection>
@@ -862,22 +829,22 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* FAQ — Dark, two-column                       */}
+      {/* FAQ — Two-column                             */}
       {/* ═══════════════════════════════════════════ */}
-      <section id="faq" className="py-32 bg-zinc-950 relative">
+      <section id="faq" className="py-32 relative z-10">
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid lg:grid-cols-[1fr,1.5fr] gap-16 max-w-6xl mx-auto">
             <AnimatedSection>
               <div className="lg:sticky lg:top-32">
-                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-600 font-medium mb-5">
+                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
                   FAQ
                 </div>
-                <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1] text-white">
+                <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.1] text-zinc-950">
                   Questions?
                   <br />
                   We&apos;ve got
                   <br />
-                  answers<span className="text-zinc-700">.</span>
+                  answers<span className="text-zinc-300">.</span>
                 </h2>
                 <p className="mt-6 text-zinc-500 text-lg leading-relaxed">
                   Everything you need to know about getting started with
@@ -898,21 +865,18 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* FINAL CTA — Dark, massive                    */}
+      {/* FINAL CTA                                    */}
       {/* ═══════════════════════════════════════════ */}
-      <section className="py-32 lg:py-44 bg-zinc-950 relative overflow-hidden">
-        {/* Gradient glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[500px] bg-zinc-800/20 rounded-full blur-[150px]" />
-
+      <section className="py-32 lg:py-44 relative z-10 overflow-hidden">
         <div className="relative mx-auto max-w-7xl px-6">
           <AnimatedSection>
             <div className="text-center">
-              <h2 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[8rem] font-semibold tracking-[-0.03em] text-white leading-[0.9]">
+              <h2 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[8rem] font-semibold tracking-[-0.03em] text-zinc-950 leading-[0.9]">
                 Stop wondering
-                <span className="text-zinc-700">.</span>
+                <span className="text-zinc-300">.</span>
                 <br />
                 Start knowing
-                <span className="text-zinc-700">.</span>
+                <span className="text-zinc-300">.</span>
               </h2>
               <p className="mt-10 text-lg lg:text-xl text-zinc-500 max-w-xl mx-auto leading-relaxed">
                 See exactly why deals close and why they don&apos;t — starting
@@ -920,14 +884,14 @@ export default function Home() {
               </p>
               <div className="mt-14">
                 <SignedOut>
-                  <BookDemoButton size="lg" className="bg-white !text-black hover:bg-zinc-200">
+                  <BookDemoButton size="lg">
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
-                    <Button size="lg" className="bg-white text-black hover:bg-zinc-200">
+                    <Button size="lg">
                       Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                     </Button>
@@ -940,9 +904,9 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* FOOTER — Continuous dark                     */}
+      {/* FOOTER                                       */}
       {/* ═══════════════════════════════════════════ */}
-      <footer className="border-t border-white/[0.06] bg-zinc-950">
+      <footer className="border-t border-zinc-200 relative z-10">
         <div className="mx-auto max-w-7xl px-6 py-16">
           <div className="grid md:grid-cols-4 gap-12">
             <div className="md:col-span-2">
@@ -954,7 +918,7 @@ export default function Home() {
             </div>
 
             <div>
-              <h4 className="text-[10px] font-medium tracking-[0.25em] uppercase text-zinc-600 mb-5">
+              <h4 className="text-[10px] font-medium tracking-[0.25em] uppercase text-zinc-400 mb-5">
                 Product
               </h4>
               <ul className="space-y-3 text-sm text-zinc-500">
@@ -962,7 +926,7 @@ export default function Home() {
                   <li key={id}>
                     <button
                       onClick={() => scrollToSection(id)}
-                      className="hover:text-white transition-colors"
+                      className="hover:text-zinc-900 transition-colors"
                     >
                       {id === "how-it-works"
                         ? "How It Works"
@@ -976,26 +940,26 @@ export default function Home() {
             </div>
 
             <div>
-              <h4 className="text-[10px] font-medium tracking-[0.25em] uppercase text-zinc-600 mb-5">
+              <h4 className="text-[10px] font-medium tracking-[0.25em] uppercase text-zinc-400 mb-5">
                 Account
               </h4>
               <ul className="space-y-3 text-sm text-zinc-500">
                 <li>
                   <SignedOut>
                     <SignInButton mode="modal">
-                      <button className="hover:text-white transition-colors">
+                      <button className="hover:text-zinc-900 transition-colors">
                         Log in
                       </button>
                     </SignInButton>
                   </SignedOut>
                   <SignedIn>
-                    <Link href="/dashboard" className="hover:text-white transition-colors">
+                    <Link href="/dashboard" className="hover:text-zinc-900 transition-colors">
                       Dashboard
                     </Link>
                   </SignedIn>
                 </li>
                 <li>
-                  <Link href="/download" className="hover:text-white transition-colors">
+                  <Link href="/download" className="hover:text-zinc-900 transition-colors">
                     Download App
                   </Link>
                 </li>
@@ -1003,15 +967,15 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="border-t border-white/[0.06] mt-16 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <p className="text-xs text-zinc-600">
+          <div className="border-t border-zinc-200 mt-16 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <p className="text-xs text-zinc-400">
               &copy; 2026 Sequ3nce.ai. All rights reserved.
             </p>
-            <div className="flex gap-6 text-xs text-zinc-600">
-              <Link href="/privacy" className="hover:text-white transition-colors">
+            <div className="flex gap-6 text-xs text-zinc-400">
+              <Link href="/privacy" className="hover:text-zinc-900 transition-colors">
                 Privacy Policy
               </Link>
-              <Link href="/terms" className="hover:text-white transition-colors">
+              <Link href="/terms" className="hover:text-zinc-900 transition-colors">
                 Terms of Service
               </Link>
             </div>
