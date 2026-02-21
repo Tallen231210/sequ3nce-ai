@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { useTeam } from "@/hooks/useTeam";
@@ -62,12 +62,35 @@ export default function CallReviewPage({
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoError, setVideoError] = useState(false);
 
+  // Recording URL refresh (Recall.ai signed URLs expire after ~24h)
+  const refreshRecordingUrl = useAction(api.meetingBot.refreshRecordingUrl);
+  const [freshRecordingUrl, setFreshRecordingUrl] = useState<string | null>(null);
+  const [isRefreshingUrl, setIsRefreshingUrl] = useState(false);
+
   // Mark as read by manager when opening the review
   useEffect(() => {
     if (callId) {
       markManagerRead({ callId: callId as Id<"calls"> });
     }
   }, [callId, markManagerRead]);
+
+  // Refresh recording URL on mount (Recall.ai signed URLs expire after ~24h)
+  useEffect(() => {
+    if (!call?.recordingUrl || freshRecordingUrl || isRefreshingUrl) return;
+    setIsRefreshingUrl(true);
+    refreshRecordingUrl({ callId: callId as Id<"calls"> })
+      .then((result) => {
+        if (result.recordingUrl) {
+          setFreshRecordingUrl(result.recordingUrl);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to refresh recording URL:", err);
+        // Fall back to existing URL
+        setFreshRecordingUrl(call.recordingUrl!);
+      })
+      .finally(() => setIsRefreshingUrl(false));
+  }, [call?.recordingUrl, callId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup video on unmount
   useEffect(() => {
@@ -393,20 +416,26 @@ export default function CallReviewPage({
           {/* Video — fixed at top, never scrolls */}
           <div className="shrink-0 p-4">
             {call.recordingUrl && !videoError ? (
-              <VideoReviewPlayer
-                recordingUrl={call.recordingUrl}
-                comments={comments ?? []}
-                currentTime={currentTime}
-                duration={duration}
-                isPlaying={isPlaying}
-                onTimeUpdate={setCurrentTime}
-                onDurationChange={setDuration}
-                onPlayPause={handlePlayPause}
-                onPlayStateChange={setIsPlaying}
-                onSeek={handleSeek}
-                onVideoError={() => setVideoError(true)}
-                videoRef={videoRef}
-              />
+              isRefreshingUrl && !freshRecordingUrl ? (
+                <Card className="flex items-center justify-center h-48 bg-zinc-50">
+                  <p className="text-muted-foreground text-sm animate-pulse">Loading recording...</p>
+                </Card>
+              ) : (
+                <VideoReviewPlayer
+                  recordingUrl={freshRecordingUrl || call.recordingUrl}
+                  comments={comments ?? []}
+                  currentTime={currentTime}
+                  duration={duration}
+                  isPlaying={isPlaying}
+                  onTimeUpdate={setCurrentTime}
+                  onDurationChange={setDuration}
+                  onPlayPause={handlePlayPause}
+                  onPlayStateChange={setIsPlaying}
+                  onSeek={handleSeek}
+                  onVideoError={() => setVideoError(true)}
+                  videoRef={videoRef}
+                />
+              )
             ) : (
               <Card className="flex items-center justify-center h-48 bg-zinc-50">
                 <p className="text-muted-foreground text-sm">

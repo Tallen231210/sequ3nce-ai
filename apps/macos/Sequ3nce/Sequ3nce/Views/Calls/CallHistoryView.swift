@@ -834,14 +834,26 @@ struct CallDetailSheet: View {
         .background(Color.white)
         .preferredColorScheme(.light)
         .onAppear {
-            // Create persistent player
-            if let urlString = call.recordingUrl, let url = URL(string: urlString) {
-                player = AVPlayer(url: url)
-            }
             // Fetch ammo and transcript
             Task {
                 await loadAmmoItems()
                 await loadTranscriptSegments()
+            }
+            // Create persistent player (refresh URL first — Recall.ai signed URLs expire after ~24h)
+            if call.recordingUrl != nil {
+                Task {
+                    var videoUrl = call.recordingUrl
+                    do {
+                        if let freshUrl = try await convexService.refreshRecordingUrl(callId: call.id) {
+                            videoUrl = freshUrl
+                        }
+                    } catch {
+                        print("[CallDetailSheet] Failed to refresh recording URL: \(error)")
+                    }
+                    if let urlString = videoUrl, let url = URL(string: urlString) {
+                        player = AVPlayer(url: url)
+                    }
+                }
             }
         }
         .onDisappear {

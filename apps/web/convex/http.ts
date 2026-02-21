@@ -4891,4 +4891,50 @@ http.route({
   }),
 });
 
+// Refresh recording URL (re-fetch from Recall.ai for expired signed URLs)
+http.route({
+  path: "/refreshRecordingUrl",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId } = body;
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+      const result = await ctx.runAction(api.meetingBot.refreshRecordingUrl, {
+        callId: callId as Id<"calls">,
+      });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in refreshRecordingUrl:", error);
+      return new Response(JSON.stringify({ error: "Failed to refresh recording URL" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/refreshRecordingUrl",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

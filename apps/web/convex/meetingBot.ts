@@ -122,6 +122,70 @@ export const fetchBotRecording = internalAction({
   },
 });
 
+/**
+ * Refresh a recording URL by re-fetching from Recall.ai API.
+ * Recording data is stored permanently on Recall, but download URLs expire after ~24h.
+ * This action fetches a fresh URL and updates the stored records.
+ */
+export const refreshRecordingUrl = action({
+  args: {
+    callId: v.id("calls"),
+  },
+  handler: async (ctx, args): Promise<{ recordingUrl: string | null }> => {
+    const recallApiKey = process.env.RECALL_API_KEY;
+    if (!recallApiKey) {
+      throw new Error("RECALL_API_KEY not configured");
+    }
+
+    // Find the meeting bot linked to this call
+    const bots = await ctx.runQuery(internal.meetingBot.getBotsByCallId, {
+      callId: args.callId,
+    });
+
+    const bot = bots?.[0];
+    if (!bot?.recallBotId) {
+      // No Recall bot — might be a legacy recording or audio-only call
+      const call = await ctx.runQuery(internal.meetingBot.getCallByIdInternal, { callId: args.callId });
+      return { recordingUrl: (call as any)?.recordingUrl ?? null };
+    }
+
+    // Fetch fresh URL from Recall.ai
+    const response: Response = await fetch(
+      `https://us-west-2.recall.ai/api/v1/bot/${bot.recallBotId}/`,
+      {
+        headers: { "Authorization": `Token ${recallApiKey}` },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`[refreshRecordingUrl] Recall API error: ${response.status} for bot ${bot.recallBotId}`);
+      throw new Error(`Failed to fetch recording from Recall.ai (HTTP ${response.status})`);
+    }
+
+    const data: any = await response.json();
+    const recordingUrl: string | undefined = data.recordings?.[0]?.media_shortcuts?.video_mixed?.data?.download_url;
+
+    if (!recordingUrl) {
+      console.error(`[refreshRecordingUrl] No recording URL in Recall response for bot ${bot.recallBotId}`);
+      const call = await ctx.runQuery(internal.meetingBot.getCallByIdInternal, { callId: args.callId });
+      return { recordingUrl: (call as any)?.recordingUrl ?? null };
+    }
+
+    // Update the stored URL on both bot and call records
+    await ctx.runMutation(internal.meetingBot.updateCallRecordingUrl, {
+      callId: args.callId,
+      recordingUrl,
+    });
+
+    await ctx.runMutation(internal.meetingBot.updateBotRecordingUrl, {
+      recallBotId: bot.recallBotId,
+      recordingUrl,
+    });
+
+    return { recordingUrl };
+  },
+});
+
 // Update call recording URL (internal, used by fetchBotRecording)
 export const updateCallRecordingUrl = internalMutation({
   args: {
@@ -1073,6 +1137,31 @@ export const getBotCallId = query({
     if (!call || call.status === "completed") return null;
 
     return { callId: bot.callId.toString() };
+  },
+});
+
+// Get bots by callId (internal, used by refreshRecordingUrl)
+export const getBotsByCallId = internalQuery({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("meetingBots")
+      .filter((q) => q.eq(q.field("callId"), args.callId))
+      .collect();
+  },
+});
+
+// Update bot recording URL (internal, used by refreshRecordingUrl)
+export const updateBotRecordingUrl = internalMutation({
+  args: { recallBotId: v.string(), recordingUrl: v.string() },
+  handler: async (ctx, args) => {
+    const bot = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_recall_bot_id", (q) => q.eq("recallBotId", args.recallBotId))
+      .first();
+    if (bot) {
+      await ctx.db.patch(bot._id, { recordingUrl: args.recordingUrl });
+    }
   },
 });
 

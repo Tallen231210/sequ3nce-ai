@@ -164,6 +164,11 @@ struct UnreadSharedMomentsCountResponse: Codable {
     let count: Int
 }
 
+/// Refresh recording URL response
+struct RefreshRecordingUrlResponse: Codable {
+    let recordingUrl: String?
+}
+
 // MARK: - Calendar Models
 
 /// Calendar connection status
@@ -950,6 +955,32 @@ class ConvexService {
         if httpResponse.statusCode != 200 {
             let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
             throw ConvexError.serverError(errorResponse?.message ?? "Failed to mark shared moments seen")
+        }
+    }
+
+    /// Refresh a recording URL (Recall.ai signed URLs expire after ~24h)
+    func refreshRecordingUrl(callId: String) async throws -> String? {
+        let url = try makeURL(path: "refreshRecordingUrl")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["callId": callId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let result = try JSONDecoder().decode(RefreshRecordingUrlResponse.self, from: data)
+            return result.recordingUrl
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to refresh recording URL (HTTP \(httpResponse.statusCode))")
         }
     }
 

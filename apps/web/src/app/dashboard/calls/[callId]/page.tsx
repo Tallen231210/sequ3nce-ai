@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { Header } from "@/components/dashboard/header";
@@ -1559,6 +1559,24 @@ export default function CallDetailPage() {
   const [isEditSaving, setIsEditSaving] = useState(false);
   const [editSaveSuccess, setEditSaveSuccess] = useState(false);
 
+  // Recording URL refresh (Recall.ai signed URLs expire after ~24h)
+  const refreshRecordingUrl = useAction(api.meetingBot.refreshRecordingUrl);
+  const [freshRecordingUrl, setFreshRecordingUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!call?.recordingUrl || call.recordingType !== "video" || freshRecordingUrl) return;
+    refreshRecordingUrl({ callId: callId as Id<"calls"> })
+      .then((result) => {
+        if (result.recordingUrl) {
+          setFreshRecordingUrl(result.recordingUrl);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to refresh recording URL:", err);
+        setFreshRecordingUrl(call.recordingUrl!);
+      });
+  }, [call?.recordingUrl, call?.recordingType, callId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSegmentClick = useCallback((timestamp: number) => {
     setAudioSeekTime(timestamp);
   }, []);
@@ -1780,7 +1798,7 @@ export default function CallDetailPage() {
               <CardContent className="p-0">
                 <video
                   controls
-                  src={call.recordingUrl}
+                  src={freshRecordingUrl || call.recordingUrl}
                   className="w-full rounded-lg"
                   style={{ maxHeight: "480px" }}
                 />
@@ -1933,7 +1951,7 @@ export default function CallDetailPage() {
                   <Label className="text-sm font-medium">Audio Preview</Label>
                   <div className="mt-2">
                     <SnippetAudioPlayer
-                      src={call.recordingUrl}
+                      src={freshRecordingUrl || call.recordingUrl}
                       startTime={selection.startTimestamp}
                       endTime={selection.endTimestamp}
                     />

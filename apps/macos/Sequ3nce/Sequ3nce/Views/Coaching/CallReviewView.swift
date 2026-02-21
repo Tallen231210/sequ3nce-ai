@@ -651,8 +651,20 @@ struct CallReviewView: View {
                     transcriptText: callData["transcriptText"] as? String
                 )
 
+                // Refresh recording URL (Recall.ai signed URLs expire after ~24h)
+                var videoUrlStr = recordingUrl
+                if recordingUrl != nil {
+                    do {
+                        if let freshUrl = try await convexService.refreshRecordingUrl(callId: callId) {
+                            videoUrlStr = freshUrl
+                        }
+                    } catch {
+                        print("[CallReviewView] Failed to refresh recording URL, using stored: \(error)")
+                    }
+                }
+
                 // Set up player
-                if let urlStr = recordingUrl, let url = URL(string: urlStr) {
+                if let urlStr = videoUrlStr, let url = URL(string: urlStr) {
                     let avPlayer = AVPlayer(url: url)
                     self.player = avPlayer
                     setupTimeObserver(for: avPlayer)
