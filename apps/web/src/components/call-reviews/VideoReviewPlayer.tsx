@@ -30,11 +30,11 @@ export function VideoReviewPlayer({
   onVideoError,
   videoRef,
 }: VideoReviewPlayerProps) {
-  const markerBarRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
 
-  const handleMarkerBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!markerBarRef.current || duration === 0) return;
-    const rect = markerBarRef.current.getBoundingClientRect();
+  const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!trackRef.current || duration === 0) return;
+    const rect = trackRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const fraction = Math.max(0, Math.min(1, x / rect.width));
     onSeek(fraction * duration);
@@ -44,16 +44,18 @@ export function VideoReviewPlayer({
     (c) => c.timestampSeconds !== undefined && c.timestampSeconds !== null
   );
 
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
   return (
-    <div className="relative">
-      {/* Native video player with built-in controls */}
+    <div>
+      {/* Native video player */}
       <video
         ref={videoRef}
         src={recordingUrl}
         controls
         playsInline
         preload="auto"
-        className="w-full rounded-lg"
+        className="w-full rounded-t-lg"
         style={{ maxHeight: "480px" }}
         onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
@@ -62,20 +64,31 @@ export function VideoReviewPlayer({
         onError={() => onVideoError?.()}
       />
 
-      {/* Comment markers overlaid on the progress bar */}
-      {commentMarkers.length > 0 && duration > 0 && (
+      {/* Custom scrubber bar with comment markers */}
+      <div className="relative h-7 bg-zinc-900 rounded-b-lg px-3 flex items-center">
+        {/* Clickable track area — dots and progress are children so they share the same coordinate space */}
         <div
-          ref={markerBarRef}
-          className="absolute left-[60px] right-[136px] bottom-[7px] h-4 cursor-pointer z-10 pointer-events-none"
-          onClick={handleMarkerBarClick}
+          ref={trackRef}
+          className="relative w-full h-full cursor-pointer flex items-center"
+          onClick={handleTrackClick}
         >
+          {/* Track background */}
+          <div className="absolute inset-x-0 h-1 bg-zinc-700 rounded-full">
+            {/* Progress fill */}
+            <div
+              className="absolute inset-y-0 left-0 bg-white/80 rounded-full"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          {/* Comment dots — positioned using the same % as the track */}
           {commentMarkers.map((comment) => {
             const position = ((comment.timestampSeconds ?? 0) / duration) * 100;
             return (
               <button
                 key={comment._id}
-                className="absolute top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-blue-500 border-[1.5px] border-white shadow-sm hover:scale-150 transition-transform z-10 pointer-events-auto"
-                style={{ left: `${position}%`, marginLeft: "-5px" }}
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-2.5 w-2.5 rounded-full bg-blue-500 border-[1.5px] border-white shadow-sm hover:scale-150 transition-transform z-10"
+                style={{ left: `${position}%` }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSeek(comment.timestampSeconds ?? 0);
@@ -85,7 +98,7 @@ export function VideoReviewPlayer({
             );
           })}
         </div>
-      )}
+      </div>
     </div>
   );
 }
