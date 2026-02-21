@@ -213,6 +213,7 @@ class AppState: ObservableObject {
     @Published var selectedSidebarItem: SidebarItem = .dashboard
     @Published var showActiveCallView: Bool = false
     @Published var unreadFeedbackCount: Int = 0
+    @Published var unreadSharedMomentsCount: Int = 0
 
     // Post-call questionnaire state (triggered when bot call ends)
     @Published var showBotPostCallQuestionnaire: Bool = false
@@ -721,16 +722,21 @@ class AppState: ObservableObject {
         feedbackPollingTimer?.invalidate()
         feedbackPollingTimer = nil
         unreadFeedbackCount = 0
+        unreadSharedMomentsCount = 0
         print("[AppState] Stopped feedback polling")
     }
 
-    /// Poll for unread coaching feedback count
+    /// Poll for unread coaching feedback and shared moments counts
     private func pollFeedbackCount() async {
         guard let closer = closerInfo else { return }
 
         do {
-            let count = try await convexService.getUnreadFeedbackCount(closerId: closer.closerId)
-            unreadFeedbackCount = count
+            async let feedbackCount = convexService.getUnreadFeedbackCount(closerId: closer.closerId)
+            async let momentsCount = convexService.getUnreadSharedMomentsCount(closerId: closer.closerId)
+
+            let (feedback, moments) = try await (feedbackCount, momentsCount)
+            unreadFeedbackCount = feedback
+            unreadSharedMomentsCount = moments
         } catch {
             // Silently fail — this is just for badge count
             print("[AppState] Failed to poll feedback count: \(error)")
@@ -1106,7 +1112,7 @@ struct MeetingBotHubView: View {
         case .messages:
             return appState.messagingState.unreadCount
         case .coaching:
-            return appState.unreadFeedbackCount
+            return appState.unreadFeedbackCount + appState.unreadSharedMomentsCount
         default:
             return 0
         }

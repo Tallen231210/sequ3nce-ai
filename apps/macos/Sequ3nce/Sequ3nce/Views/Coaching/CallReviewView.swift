@@ -97,6 +97,7 @@ struct CallReviewView: View {
     @EnvironmentObject var appState: AppState
     let callId: String
     let onBack: () -> Void
+    var sharedMoment: SharedMoment? = nil  // When set, show simplified moment view
 
     @StateObject private var viewModel = CallReviewViewModel()
     @State private var player: AVPlayer?
@@ -111,6 +112,7 @@ struct CallReviewView: View {
     @State private var isLoadingCall = true
 
     private let convexService = ConvexService()
+    private var isMomentView: Bool { sharedMoment != nil }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -130,7 +132,29 @@ struct CallReviewView: View {
                 }
                 .buttonStyle(.plain)
 
-                if let call = callDetail {
+                if let moment = sharedMoment {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(moment.title)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.black)
+                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            if let closerName = moment.closerName {
+                                Text(closerName)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(white: 0.5))
+                            }
+                            if let notes = moment.notes, !notes.isEmpty {
+                                Text("·")
+                                    .foregroundColor(Color(white: 0.5))
+                                Text(notes)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(white: 0.5))
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                } else if let call = callDetail {
                     Text(call.prospectName)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.black)
@@ -162,11 +186,9 @@ struct CallReviewView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // Main content — split layout
-                HStack(spacing: 0) {
-                    // Left: Video + Transcript (65%)
+                if isMomentView {
+                    // Simplified moment view — no comments panel
                     VStack(spacing: 0) {
-                        // Video player
                         if let _ = player {
                             videoPlayerSection
                         } else {
@@ -175,16 +197,32 @@ struct CallReviewView: View {
 
                         Divider()
 
-                        // Transcript
                         transcriptSection
                     }
                     .frame(maxWidth: .infinity)
+                } else {
+                    // Full review — split layout with comments
+                    HStack(spacing: 0) {
+                        // Left: Video + Transcript (65%)
+                        VStack(spacing: 0) {
+                            if let _ = player {
+                                videoPlayerSection
+                            } else {
+                                noVideoPlaceholder
+                            }
 
-                    Divider()
+                            Divider()
 
-                    // Right: Comments (35%)
-                    commentsPanel
-                        .frame(width: 280)
+                            transcriptSection
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        Divider()
+
+                        // Right: Comments (35%)
+                        commentsPanel
+                            .frame(width: 280)
+                    }
                 }
             }
         }
@@ -231,7 +269,7 @@ struct CallReviewView: View {
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundColor(Color(white: 0.6))
 
-                // Scrubber track with comment dots
+                // Scrubber track with comment dots + moment highlight
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         // Track background
@@ -239,26 +277,40 @@ struct CallReviewView: View {
                             .fill(Color.white.opacity(0.2))
                             .frame(height: 3)
 
+                        // Moment highlight range (yellow band on track)
+                        if let moment = sharedMoment, duration > 0 {
+                            let startFrac = moment.startSeconds / duration
+                            let endFrac = moment.endSeconds / duration
+                            let leftOffset = geo.size.width * startFrac
+                            let rangeWidth = geo.size.width * (endFrac - startFrac)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.yellow.opacity(0.5))
+                                .frame(width: max(4, rangeWidth), height: 6)
+                                .position(x: leftOffset + rangeWidth / 2, y: geo.size.height / 2)
+                        }
+
                         // Progress fill
                         Capsule()
                             .fill(Color.white.opacity(0.8))
                             .frame(width: duration > 0 ? geo.size.width * (currentTime / duration) : 0, height: 3)
 
-                        // Comment dots
-                        ForEach(viewModel.comments.filter { $0.timestampSeconds != nil }) { comment in
-                            let x = duration > 0 ? geo.size.width * ((comment.timestampSeconds ?? 0) / duration) : 0
-                            Circle()
-                                .fill(Color.blue)
-                                .frame(width: 8, height: 8)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.white, lineWidth: 1.5)
-                                )
-                                .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
-                                .position(x: x, y: geo.size.height / 2)
-                                .onTapGesture {
-                                    seekTo(comment.timestampSeconds ?? 0)
-                                }
+                        // Comment dots (only in full review mode)
+                        if !isMomentView {
+                            ForEach(viewModel.comments.filter { $0.timestampSeconds != nil }) { comment in
+                                let x = duration > 0 ? geo.size.width * ((comment.timestampSeconds ?? 0) / duration) : 0
+                                Circle()
+                                    .fill(Color.blue)
+                                    .frame(width: 8, height: 8)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white, lineWidth: 1.5)
+                                    )
+                                    .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                                    .position(x: x, y: geo.size.height / 2)
+                                    .onTapGesture {
+                                        seekTo(comment.timestampSeconds ?? 0)
+                                    }
+                            }
                         }
                     }
                     .contentShape(Rectangle())
@@ -609,6 +661,11 @@ struct CallReviewView: View {
                     if let item = avPlayer.currentItem {
                         let dur: CMTime = try await item.asset.load(.duration)
                         self.duration = dur.seconds.isNaN ? 0 : dur.seconds
+                    }
+
+                    // Auto-seek to moment start time
+                    if let moment = sharedMoment {
+                        seekTo(moment.startSeconds)
                     }
                 }
 

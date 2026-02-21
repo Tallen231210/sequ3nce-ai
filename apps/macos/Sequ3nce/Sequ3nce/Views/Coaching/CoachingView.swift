@@ -48,6 +48,14 @@ class CoachingViewModel: ObservableObject {
         }
     }
 
+    func markSharedMomentsSeen(closerId: String) async {
+        do {
+            try await convexService.markSharedMomentsSeen(closerId: closerId)
+        } catch {
+            print("[CoachingVM] Failed to mark shared moments seen: \(error)")
+        }
+    }
+
     func markFeedbackRead(callId: String, closerId: String) async {
         do {
             try await convexService.markFeedbackRead(callId: callId, closerId: closerId)
@@ -68,16 +76,21 @@ struct CoachingView: View {
     @StateObject private var viewModel = CoachingViewModel()
     @State private var selectedTab = 0  // 0 = Your Feedback, 1 = Shared with You
     @State private var selectedCallId: String?
+    @State private var selectedMoment: SharedMoment?
 
     var body: some View {
         Group {
             if appState.closerInfo == nil {
                 notLoggedInView
             } else if let callId = selectedCallId {
-                // Show the full review view for a specific call
+                // Show the review view for a specific call
                 CallReviewView(
                     callId: callId,
-                    onBack: { selectedCallId = nil }
+                    onBack: {
+                        selectedCallId = nil
+                        selectedMoment = nil
+                    },
+                    sharedMoment: selectedMoment
                 )
                 .environmentObject(appState)
             } else {
@@ -125,7 +138,7 @@ struct CoachingView: View {
                 // Segmented control
                 HStack(spacing: 0) {
                     segmentButton("Your Feedback", index: 0, count: viewModel.feedbackCalls.filter { $0.isUnread }.count)
-                    segmentButton("Shared with You", index: 1, count: 0)
+                    segmentButton("Shared with You", index: 1, count: appState.unreadSharedMomentsCount)
                 }
                 .background(Color(white: 0.93))
                 .cornerRadius(8)
@@ -148,7 +161,16 @@ struct CoachingView: View {
     }
 
     private func segmentButton(_ title: String, index: Int, count: Int) -> some View {
-        Button(action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index } }) {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
+            // Mark shared moments as seen when switching to that tab
+            if index == 1, let closerId = appState.closerInfo?.closerId {
+                Task {
+                    await viewModel.markSharedMomentsSeen(closerId: closerId)
+                    appState.unreadSharedMomentsCount = 0
+                }
+            }
+        }) {
             HStack(spacing: 6) {
                 Text(title)
                     .font(.system(size: 13, weight: selectedTab == index ? .semibold : .regular))
@@ -217,7 +239,8 @@ struct CoachingView: View {
                     VStack(spacing: 8) {
                         ForEach(viewModel.sharedMoments) { moment in
                             SharedMomentRow(moment: moment) {
-                                // Navigate to the review view for this call
+                                // Navigate to simplified moment view
+                                selectedMoment = moment
                                 selectedCallId = moment.callId
                             }
                         }

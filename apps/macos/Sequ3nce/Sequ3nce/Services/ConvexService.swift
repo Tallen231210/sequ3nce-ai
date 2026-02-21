@@ -159,6 +159,11 @@ struct UnreadFeedbackCountResponse: Codable {
     let count: Int
 }
 
+/// Unread shared moments count response
+struct UnreadSharedMomentsCountResponse: Codable {
+    let count: Int
+}
+
 // MARK: - Calendar Models
 
 /// Calendar connection status
@@ -896,6 +901,55 @@ class ConvexService {
         if httpResponse.statusCode != 200 {
             let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
             throw ConvexError.serverError(errorResponse?.message ?? "Failed to mark feedback read")
+        }
+    }
+
+    /// Get unread shared moments count for badge
+    func getUnreadSharedMomentsCount(closerId: String) async throws -> Int {
+        let url = try makeURL(path: "getUnreadSharedMomentsCount")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let result = try JSONDecoder().decode(UnreadSharedMomentsCountResponse.self, from: data)
+            return result.count
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to get unread shared moments count (HTTP \(httpResponse.statusCode))")
+        }
+    }
+
+    /// Mark shared moments as seen
+    func markSharedMomentsSeen(closerId: String) async throws {
+        let url = try makeURL(path: "markSharedMomentsSeen")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to mark shared moments seen")
         }
     }
 
