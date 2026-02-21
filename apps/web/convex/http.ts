@@ -4716,7 +4716,7 @@ http.route({
         });
       }
       const result = await ctx.runQuery(api.callReviews.getUnreadSharedMomentsCount, {
-        closerId: closerId as string,
+        closerId: closerId as Id<"closers">,
       });
       return new Response(JSON.stringify(result), {
         status: 200,

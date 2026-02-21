@@ -632,15 +632,10 @@ export const markFeedbackRead = mutation({
  */
 export const getUnreadSharedMomentsCount = query({
   args: {
-    closerId: v.string(),
+    closerId: v.id("closers"),
   },
   handler: async (ctx, args) => {
-    // Find the closer record
-    const closers = await ctx.db
-      .query("closers")
-      .filter((q) => q.eq(q.field("_id"), args.closerId))
-      .collect();
-    const closer = closers[0];
+    const closer = await ctx.db.get(args.closerId);
     if (!closer) return { count: 0 };
 
     const seenAt = closer.sharedMomentsSeenAt ?? 0;
