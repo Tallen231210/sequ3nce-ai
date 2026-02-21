@@ -48,14 +48,14 @@ export function VideoReviewPlayer({
 
   return (
     <div>
-      {/* Native video player */}
+      {/* Native video — timeline hidden via .review-video CSS in globals.css */}
       <video
         ref={videoRef}
         src={recordingUrl}
         controls
         playsInline
         preload="auto"
-        className="w-full rounded-t-lg"
+        className="review-video w-full rounded-t-lg"
         style={{ maxHeight: "480px" }}
         onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
@@ -64,24 +64,22 @@ export function VideoReviewPlayer({
         onError={() => onVideoError?.()}
       />
 
-      {/* Custom scrubber bar with comment markers */}
-      <div className="relative h-7 bg-zinc-900 rounded-b-lg px-3 flex items-center">
-        {/* Clickable track area — dots and progress are children so they share the same coordinate space */}
+      {/* Custom scrubber with progress track + comment dots */}
+      <div className="relative h-5 bg-zinc-900 rounded-b-lg px-3 flex items-center">
         <div
           ref={trackRef}
           className="relative w-full h-full cursor-pointer flex items-center"
           onClick={handleTrackClick}
         >
-          {/* Track background */}
+          {/* Track */}
           <div className="absolute inset-x-0 h-1 bg-zinc-700 rounded-full">
-            {/* Progress fill */}
             <div
-              className="absolute inset-y-0 left-0 bg-white/80 rounded-full"
+              className="absolute inset-y-0 left-0 bg-white/70 rounded-full"
               style={{ width: `${progress}%` }}
             />
           </div>
 
-          {/* Comment dots — positioned using the same % as the track */}
+          {/* Comment dots */}
           {commentMarkers.map((comment) => {
             const position = ((comment.timestampSeconds ?? 0) / duration) * 100;
             return (
@@ -97,6 +95,11 @@ export function VideoReviewPlayer({
               />
             );
           })}
+        </div>
+
+        {/* Time display */}
+        <div className="ml-3 text-[10px] text-zinc-400 font-mono whitespace-nowrap select-none">
+          {formatTime(currentTime)} / {formatTime(duration)}
         </div>
       </div>
     </div>
