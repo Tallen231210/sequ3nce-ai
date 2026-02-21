@@ -322,8 +322,9 @@ export default function CallReviewPage({
       {/* Main content — split layout */}
       <div className="flex-1 flex min-h-0">
         {/* Left: Video + Transcript (~65%) */}
-        <div className="w-[65%] flex flex-col border-r border-border overflow-y-auto">
-          <div className="p-4">
+        <div className="w-[65%] flex flex-col border-r border-border">
+          {/* Video — fixed at top, never scrolls */}
+          <div className="shrink-0 p-4">
             {call.recordingUrl && !videoError ? (
               <VideoReviewPlayer
                 recordingUrl={call.recordingUrl}
@@ -348,9 +349,9 @@ export default function CallReviewPage({
             )}
           </div>
 
-          {/* Transcript */}
-          <div className="flex-1 border-t border-border">
-            <div className="px-4 py-2 border-b border-border">
+          {/* Transcript — fills remaining space, scrolls independently */}
+          <div className="flex-1 flex flex-col min-h-0 border-t border-border">
+            <div className="shrink-0 px-4 py-2 border-b border-border">
               <h3 className="text-sm font-medium">Transcript</h3>
             </div>
             <TranscriptPanel

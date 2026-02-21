@@ -3,7 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { formatTime } from "./utils";
 
 interface TranscriptPanelProps {
@@ -16,23 +16,48 @@ export function TranscriptPanel({ callId, currentTime, onSeek }: TranscriptPanel
   const segments = useQuery(api.calls.getTranscriptSegments, { callId });
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
+  const [userScrolling, setUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastActiveIndex = useRef(-1);
 
-  // Auto-scroll to active segment
+  // Detect manual scroll — pause auto-scroll for 3 seconds after user scrolls
+  const handleScroll = useCallback(() => {
+    setUserScrolling(true);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      setUserScrolling(false);
+    }, 3000);
+  }, []);
+
+  // Find the current active segment
+  const activeIndex = segments
+    ? segments.findLastIndex((s) => s.timestamp <= currentTime)
+    : -1;
+
+  // Auto-scroll only when the active segment changes (not on every time tick)
+  // and only if the user hasn't manually scrolled recently
   useEffect(() => {
+    if (userScrolling) return;
+    if (activeIndex === lastActiveIndex.current) return;
+    lastActiveIndex.current = activeIndex;
+
     if (activeRef.current && containerRef.current) {
       const container = containerRef.current;
       const active = activeRef.current;
       const containerRect = container.getBoundingClientRect();
       const activeRect = active.getBoundingClientRect();
 
+      // Only scroll if the active segment is out of view
       if (
         activeRect.top < containerRect.top ||
         activeRect.bottom > containerRect.bottom
       ) {
-        active.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Use scrollTop instead of scrollIntoView to prevent page-level scroll
+        const offset = active.offsetTop - container.offsetTop - container.clientHeight / 2 + active.clientHeight / 2;
+        container.scrollTo({ top: offset, behavior: "smooth" });
       }
     }
-  }, [currentTime]);
+  }, [activeIndex, userScrolling]);
 
   if (!segments) {
     return (
@@ -46,11 +71,12 @@ export function TranscriptPanel({ callId, currentTime, onSeek }: TranscriptPanel
     );
   }
 
-  // Find the current active segment
-  const activeIndex = segments.findLastIndex((s) => s.timestamp <= currentTime);
-
   return (
-    <div ref={containerRef} className="overflow-y-auto max-h-[300px] p-3 space-y-2">
+    <div
+      ref={containerRef}
+      className="overflow-y-auto flex-1 p-3 space-y-2"
+      onScroll={handleScroll}
+    >
       {segments.map((segment, index) => {
         const isActive = index === activeIndex;
         const isSpeakerCloser = segment.speaker === "closer";

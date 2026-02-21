@@ -4476,7 +4476,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { callId, teamId, authorType, authorId, authorName, content, timestampSeconds } = body;
+      const { callId, teamId, authorType, authorId, authorName, content, timestampSeconds, parentCommentId } = body;
 
       if (!callId || !authorType || !authorId || !authorName || !content) {
         return new Response(JSON.stringify({ error: "callId, authorType, authorId, authorName, and content are required" }), {
@@ -4508,6 +4508,7 @@ http.route({
         authorName,
         content,
         timestampSeconds: typeof timestampSeconds === "number" ? timestampSeconds : undefined,
+        parentCommentId: parentCommentId ? parentCommentId as Id<"callComments"> : undefined,
       });
 
       return new Response(JSON.stringify({ success: true, commentId }), {

@@ -45,7 +45,7 @@ export function VideoReviewPlayer({
   );
 
   return (
-    <div>
+    <div className="relative">
       {/* Native video player with built-in controls */}
       <video
         ref={videoRef}
@@ -62,11 +62,11 @@ export function VideoReviewPlayer({
         onError={() => onVideoError?.()}
       />
 
-      {/* Comment markers bar (below the video) */}
+      {/* Comment markers overlaid just above native controls */}
       {commentMarkers.length > 0 && duration > 0 && (
         <div
           ref={markerBarRef}
-          className="relative h-4 mt-2 cursor-pointer rounded-full bg-zinc-100"
+          className="absolute left-3 right-3 bottom-[46px] h-4 cursor-pointer z-10"
           onClick={handleMarkerBarClick}
         >
           {commentMarkers.map((comment) => {
@@ -74,7 +74,7 @@ export function VideoReviewPlayer({
             return (
               <button
                 key={comment._id}
-                className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-blue-500 border-2 border-white shadow hover:scale-150 transition-transform z-10"
+                className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-blue-500 border-2 border-white shadow-md hover:scale-150 transition-transform z-10"
                 style={{ left: `${position}%`, marginLeft: "-6px" }}
                 onClick={(e) => {
                   e.stopPropagation();

@@ -22,8 +22,8 @@ class CallReviewViewModel: ObservableObject {
     @Published var isLoadingTranscript = true
     @Published var error: String?
     @Published var newCommentText = ""
-    @Published var pinToCurrentTime = true
     @Published var isSendingComment = false
+    @Published var replyingTo: CallComment?  // Comment being replied to
 
     private let convexService = ConvexService()
 
@@ -55,7 +55,9 @@ class CallReviewViewModel: ObservableObject {
         commentError = nil
         defer { isSendingComment = false }
 
-        let timestampSeconds = pinToCurrentTime ? currentTime : nil
+        // If replying, use the parent comment's timestamp; otherwise use current video time
+        let timestampSeconds = replyingTo?.timestampSeconds ?? currentTime
+        let parentId = replyingTo?._id
 
         do {
             try await convexService.addCallComment(
@@ -64,11 +66,13 @@ class CallReviewViewModel: ObservableObject {
                 authorId: closerId,
                 authorName: closerName,
                 content: newCommentText.trimmingCharacters(in: .whitespacesAndNewlines),
-                timestampSeconds: timestampSeconds
+                timestampSeconds: timestampSeconds,
+                parentCommentId: parentId
             )
             // Refresh comments
             comments = try await convexService.getCommentsForCall(callId: callId)
             newCommentText = ""
+            replyingTo = nil
         } catch {
             print("[CallReviewVM] Failed to add comment: \(error)")
             commentError = "Failed to send. Try again."
@@ -414,13 +418,29 @@ struct CallReviewView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
-                VStack(spacing: 8) {
-                    ForEach(viewModel.comments) { comment in
-                        CommentBubble(comment: comment) {
-                            if let ts = comment.timestampSeconds {
-                                seekTo(ts)
-                            }
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.comments.enumerated()), id: \.element.id) { index, comment in
+                        let isReply = comment.parentCommentId != nil
+                        let nextIsReply = index + 1 < viewModel.comments.count &&
+                            viewModel.comments[index + 1].parentCommentId == comment._id
+
+                        VStack(spacing: 0) {
+                            CommentBubble(
+                                comment: comment,
+                                isReply: isReply,
+                                showReplyButton: comment.authorType == "manager" && !isReply,
+                                onTimestampTap: {
+                                    if let ts = comment.timestampSeconds {
+                                        seekTo(ts)
+                                    }
+                                },
+                                onReply: {
+                                    viewModel.replyingTo = comment
+                                }
+                            )
+                            .padding(.leading, isReply ? 24 : 0)
                         }
+                        .padding(.top, isReply ? 4 : (index == 0 ? 0 : 8))
                     }
                 }
                 .padding(10)
@@ -436,8 +456,35 @@ struct CallReviewView: View {
                     .foregroundColor(.red)
             }
 
+            // Replying-to indicator
+            if let replyTarget = viewModel.replyingTo {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrowshape.turn.up.left.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(.orange)
+                    Text("Replying to \(replyTarget.authorName)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(white: 0.4))
+                    Spacer()
+                    Button(action: { viewModel.replyingTo = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Color(white: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.08))
+                .cornerRadius(6)
+            }
+
             HStack(spacing: 8) {
-                TextField("Add a comment...", text: $viewModel.newCommentText, axis: .vertical)
+                TextField(
+                    viewModel.replyingTo != nil ? "Write a reply..." : "Add a comment...",
+                    text: $viewModel.newCommentText,
+                    axis: .vertical
+                )
                     .font(.system(size: 12))
                     .textFieldStyle(.plain)
                     .lineLimit(1...3)
@@ -568,7 +615,10 @@ struct CallReviewView: View {
 
 struct CommentBubble: View {
     let comment: CallComment
+    var isReply: Bool = false
+    var showReplyButton: Bool = false
     let onTimestampTap: () -> Void
+    var onReply: (() -> Void)?
 
     private var isManager: Bool { comment.authorType == "manager" }
     private var authorColor: Color { isManager ? Color.orange : Color.blue }
@@ -579,12 +629,28 @@ struct CommentBubble: View {
         VStack(alignment: .leading, spacing: 4) {
             commentHeader
             commentBody
+
+            if showReplyButton {
+                HStack {
+                    Spacer()
+                    Button(action: { onReply?() }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrowshape.turn.up.left")
+                                .font(.system(size: 9))
+                            Text("Reply")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(Color(white: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
-        .padding(10)
+        .padding(isReply ? 8 : 10)
         .background(bgColor)
-        .cornerRadius(8)
+        .cornerRadius(isReply ? 6 : 8)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: isReply ? 6 : 8)
                 .stroke(borderColor, lineWidth: 1)
         )
         .contentShape(Rectangle())
@@ -595,11 +661,17 @@ struct CommentBubble: View {
 
     private var commentHeader: some View {
         HStack(spacing: 6) {
+            if isReply {
+                Image(systemName: "arrowshape.turn.up.left.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(authorColor.opacity(0.5))
+            }
+
             Text(comment.authorName)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: isReply ? 10 : 11, weight: .semibold))
                 .foregroundColor(authorColor)
 
-            if let ts = comment.timestampSeconds {
+            if let ts = comment.timestampSeconds, !isReply {
                 Button(action: onTimestampTap) {
                     Text(formatTime(ts))
                         .font(.system(size: 10, design: .monospaced))
@@ -612,14 +684,14 @@ struct CommentBubble: View {
             Spacer()
 
             Text(formatRelativeDate(comment.createdAt))
-                .font(.system(size: 10))
+                .font(.system(size: isReply ? 9 : 10))
                 .foregroundColor(Color(white: 0.6))
         }
     }
 
     private var commentBody: some View {
         Text(comment.content)
-            .font(.system(size: 12))
+            .font(.system(size: isReply ? 11 : 12))
             .foregroundColor(Color(white: 0.2))
             .fixedSize(horizontal: false, vertical: true)
     }

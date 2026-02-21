@@ -134,6 +134,7 @@ struct CallComment: Codable, Identifiable {
     let authorName: String
     let content: String
     let timestampSeconds: Double?
+    let parentCommentId: String?
     let createdAt: Double
 
     var id: String { _id }
@@ -733,7 +734,8 @@ class ConvexService {
         authorId: String,
         authorName: String,
         content: String,
-        timestampSeconds: Double?
+        timestampSeconds: Double?,
+        parentCommentId: String? = nil
     ) async throws {
         let url = try makeURL(path: "addCallComment")
 
@@ -751,6 +753,10 @@ class ConvexService {
 
         if let ts = timestampSeconds {
             body["timestampSeconds"] = ts
+        }
+
+        if let parentId = parentCommentId {
+            body["parentCommentId"] = parentId
         }
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

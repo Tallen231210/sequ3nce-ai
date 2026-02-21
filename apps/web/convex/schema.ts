@@ -739,6 +739,7 @@ export default defineSchema({
     authorName: v.string(),          // Display name
     content: v.string(),             // Comment text
     timestampSeconds: v.optional(v.number()), // Video timestamp in seconds (null = general comment)
+    parentCommentId: v.optional(v.id("callComments")), // Reply to another comment
     createdAt: v.number(),
   })
     .index("by_call", ["callId"])

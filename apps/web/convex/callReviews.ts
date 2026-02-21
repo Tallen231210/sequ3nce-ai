@@ -410,6 +410,7 @@ export const addComment = mutation({
     authorName: v.string(),
     content: v.string(),
     timestampSeconds: v.optional(v.number()),
+    parentCommentId: v.optional(v.id("callComments")),
   },
   handler: async (ctx, args) => {
     // Input validation
@@ -434,6 +435,7 @@ export const addComment = mutation({
       authorName: args.authorName,
       content,
       timestampSeconds: args.timestampSeconds,
+      parentCommentId: args.parentCommentId,
       createdAt: now,
     });
 
