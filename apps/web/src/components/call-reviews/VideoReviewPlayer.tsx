@@ -62,11 +62,11 @@ export function VideoReviewPlayer({
         onError={() => onVideoError?.()}
       />
 
-      {/* Comment markers overlaid just above native controls */}
+      {/* Comment markers overlaid on the progress bar */}
       {commentMarkers.length > 0 && duration > 0 && (
         <div
           ref={markerBarRef}
-          className="absolute left-3 right-3 bottom-[46px] h-4 cursor-pointer z-10"
+          className="absolute left-[60px] right-[136px] bottom-[7px] h-4 cursor-pointer z-10 pointer-events-none"
           onClick={handleMarkerBarClick}
         >
           {commentMarkers.map((comment) => {
@@ -74,8 +74,8 @@ export function VideoReviewPlayer({
             return (
               <button
                 key={comment._id}
-                className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-blue-500 border-2 border-white shadow-md hover:scale-150 transition-transform z-10"
-                style={{ left: `${position}%`, marginLeft: "-6px" }}
+                className="absolute top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-blue-500 border-[1.5px] border-white shadow-sm hover:scale-150 transition-transform z-10 pointer-events-auto"
+                style={{ left: `${position}%`, marginLeft: "-5px" }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSeek(comment.timestampSeconds ?? 0);
