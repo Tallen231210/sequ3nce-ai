@@ -14,7 +14,7 @@ import {
   BookMarked,
   TrendingUp,
   FileText,
-  Video,
+  MessageSquareText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
@@ -25,7 +25,7 @@ const navigation = [
   { name: "Live Calls", href: "/dashboard/live", icon: Radio },
   { name: "Schedule", href: "/dashboard/schedule", icon: Calendar },
   { name: "Completed", href: "/dashboard/calls", icon: Phone },
-  { name: "Recordings", href: "/dashboard/recordings", icon: Video },
+  { name: "Call Reviews", href: "/dashboard/call-reviews", icon: MessageSquareText },
   { name: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
   { name: "Playbook", href: "/dashboard/playbook", icon: BookMarked },

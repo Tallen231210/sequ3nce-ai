@@ -4366,4 +4366,420 @@ http.route({
   }),
 });
 
+// ──────────────────────────────────────────────
+// Call Reviews HTTP Endpoints (desktop app)
+// ──────────────────────────────────────────────
+
+// Get calls with manager feedback for a closer (Coaching > Your Feedback)
+http.route({
+  path: "/getFeedbackForCloser",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, limit } = body;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const feedback = await ctx.runQuery(api.callReviews.getFeedbackForCloser, {
+        closerId: closerId as Id<"closers">,
+        limit: typeof limit === "number" ? limit : undefined,
+      });
+
+      return new Response(JSON.stringify({ calls: feedback }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getFeedbackForCloser:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getFeedbackForCloser",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get comments for a specific call
+http.route({
+  path: "/getCommentsForCall",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId } = body;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const comments = await ctx.runQuery(api.callReviews.getCommentsForCall, {
+        callId: callId as Id<"calls">,
+      });
+
+      return new Response(JSON.stringify({ comments }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getCommentsForCall:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCommentsForCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Add a comment to a call
+http.route({
+  path: "/addCallComment",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, teamId, authorType, authorId, authorName, content, timestampSeconds } = body;
+
+      if (!callId || !teamId || !authorType || !authorId || !authorName || !content) {
+        return new Response(JSON.stringify({ error: "callId, teamId, authorType, authorId, authorName, and content are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const commentId = await ctx.runMutation(api.callReviews.addComment, {
+        callId: callId as Id<"calls">,
+        teamId: teamId as Id<"teams">,
+        authorType,
+        authorId,
+        authorName,
+        content,
+        timestampSeconds: typeof timestampSeconds === "number" ? timestampSeconds : undefined,
+      });
+
+      return new Response(JSON.stringify({ success: true, commentId }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in addCallComment:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/addCallComment",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Flag a call for review
+http.route({
+  path: "/flagCallForReview",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId } = body;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      await ctx.runMutation(api.callReviews.flagCallForReview, {
+        callId: callId as Id<"calls">,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in flagCallForReview:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/flagCallForReview",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Unflag a call
+http.route({
+  path: "/unflagCall",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId } = body;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      await ctx.runMutation(api.callReviews.unflagCall, {
+        callId: callId as Id<"calls">,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in unflagCall:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/unflagCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get shared moments for a closer's team (Coaching > Shared with You)
+http.route({
+  path: "/getSharedMoments",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, limit } = body;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      // Look up the closer's team
+      const closer = await ctx.runQuery(api.closers.getCloserById, {
+        closerId: closerId as string,
+      }) as { teamId: string } | null;
+
+      if (!closer) {
+        return new Response(JSON.stringify({ error: "Closer not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const moments = await ctx.runQuery(api.callReviews.getSharedMoments, {
+        teamId: closer.teamId as Id<"teams">,
+        limit: typeof limit === "number" ? limit : undefined,
+      });
+
+      return new Response(JSON.stringify({ moments }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getSharedMoments:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getSharedMoments",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get unread feedback count for a closer (badge count)
+http.route({
+  path: "/getUnreadFeedbackCount",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId } = body;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runQuery(api.callReviews.getUnreadFeedbackCount, {
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getUnreadFeedbackCount:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getUnreadFeedbackCount",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Mark feedback as read for a closer
+http.route({
+  path: "/markFeedbackRead",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId } = body;
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      await ctx.runMutation(api.callReviews.markFeedbackRead, {
+        callId: callId as Id<"calls">,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in markFeedbackRead:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/markFeedbackRead",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

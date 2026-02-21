@@ -291,6 +291,16 @@ export default defineSchema({
       timestamp: v.optional(v.number()),
     }))),
 
+    // Call review fields
+    flaggedForReview: v.optional(v.boolean()),       // Closer flagged this for manager review
+    flaggedAt: v.optional(v.number()),               // When flagged
+    reviewStatus: v.optional(v.string()),            // "pending" | "reviewed"
+    reviewedAt: v.optional(v.number()),              // When manager marked reviewed
+    reviewedBy: v.optional(v.id("users")),           // Which manager reviewed
+    commentCount: v.optional(v.number()),            // Denormalized count for list views
+    lastCommentAt: v.optional(v.number()),           // When the last comment was added
+    feedbackReadAt: v.optional(v.number()),          // When closer last read manager feedback
+
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])
@@ -718,6 +728,36 @@ export default defineSchema({
     .index("by_meeting_baas_id", ["meetingBaasId"])
     .index("by_recall_bot_id", ["recallBotId"])
     .index("by_calendar_event", ["calendarEventId"]),
+
+  // Call Comments (timestamped feedback on call recordings)
+  callComments: defineTable({
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    authorType: v.string(),          // "manager" | "closer"
+    authorId: v.string(),            // clerkUserId or closerId string
+    authorName: v.string(),          // Display name
+    content: v.string(),             // Comment text
+    timestampSeconds: v.optional(v.number()), // Video timestamp in seconds (null = general comment)
+    createdAt: v.number(),
+  })
+    .index("by_call", ["callId"])
+    .index("by_call_and_time", ["callId", "createdAt"]),
+
+  // Shared Moments (video clips shared with the team for training)
+  sharedMoments: defineTable({
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    closerId: v.id("closers"),       // Closer from the call
+    title: v.string(),                // "Great objection handle"
+    notes: v.optional(v.string()),    // Manager description
+    startSeconds: v.number(),         // Clip start time
+    endSeconds: v.number(),           // Clip end time
+    sharedBy: v.id("users"),          // Manager who shared
+    createdAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_call", ["callId"])
+    .index("by_team_recent", ["teamId", "createdAt"]),
 
   // Excluded Calendar Events (events the closer marked as "not a sales call")
   excludedCalendarEvents: defineTable({

@@ -1742,6 +1742,16 @@ export default function CallDetailPage() {
                   </div>
                 )}
 
+                {/* Review Call Button (video recordings only) */}
+                {call.recordingType === "video" && call.recordingUrl && (
+                  <Link href={`/dashboard/call-reviews/${call._id}`}>
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <FileText className="h-4 w-4" />
+                      Review Call
+                    </Button>
+                  </Link>
+                )}
+
                 {/* Edit Button */}
                 <Button
                   variant="outline"

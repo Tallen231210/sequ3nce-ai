@@ -16,6 +16,7 @@ import type * as botAvatar from "../botAvatar.js";
 import type * as calendar from "../calendar.js";
 import type * as calendarOAuth from "../calendarOAuth.js";
 import type * as calendly from "../calendly.js";
+import type * as callReviews from "../callReviews.js";
 import type * as calls from "../calls.js";
 import type * as clientErrors from "../clientErrors.js";
 import type * as closers from "../closers.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   calendar: typeof calendar;
   calendarOAuth: typeof calendarOAuth;
   calendly: typeof calendly;
+  callReviews: typeof callReviews;
   calls: typeof calls;
   clientErrors: typeof clientErrors;
   closers: typeof closers;
