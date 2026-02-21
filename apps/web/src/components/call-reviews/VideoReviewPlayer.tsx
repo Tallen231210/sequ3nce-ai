@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState, useCallback } from "react";
+import { Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
 import { formatTime } from "./utils";
 
 interface VideoReviewPlayerProps {
@@ -23,14 +24,19 @@ export function VideoReviewPlayer({
   comments,
   currentTime,
   duration,
+  isPlaying,
   onTimeUpdate,
   onDurationChange,
+  onPlayPause,
   onPlayStateChange,
   onSeek,
   onVideoError,
   videoRef,
 }: VideoReviewPlayerProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!trackRef.current || duration === 0) return;
@@ -40,6 +46,33 @@ export function VideoReviewPlayer({
     onSeek(fraction * duration);
   };
 
+  const handleToggleMute = useCallback(() => {
+    if (!videoRef.current) return;
+    videoRef.current.muted = !videoRef.current.muted;
+    setIsMuted(!isMuted);
+  }, [isMuted, videoRef]);
+
+  const handleFullscreen = useCallback(() => {
+    if (!videoRef.current) return;
+    if (videoRef.current.requestFullscreen) {
+      videoRef.current.requestFullscreen();
+    }
+  }, [videoRef]);
+
+  const handleMouseMove = useCallback(() => {
+    setShowControls(true);
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    hideTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) setShowControls(false);
+    }, 3000);
+  }, [isPlaying]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (isPlaying) {
+      hideTimeoutRef.current = setTimeout(() => setShowControls(false), 1000);
+    }
+  }, [isPlaying]);
+
   const commentMarkers = comments.filter(
     (c) => c.timestampSeconds !== undefined && c.timestampSeconds !== null
   );
@@ -47,16 +80,20 @@ export function VideoReviewPlayer({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div>
-      {/* Native video — timeline hidden via .review-video CSS in globals.css */}
+    <div
+      className="relative group rounded-lg overflow-hidden bg-black"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Video — no native controls */}
       <video
         ref={videoRef}
         src={recordingUrl}
-        controls
         playsInline
         preload="auto"
-        className="review-video w-full rounded-t-lg"
+        className="w-full cursor-pointer"
         style={{ maxHeight: "480px" }}
+        onClick={onPlayPause}
         onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
         onPlay={() => onPlayStateChange(true)}
@@ -64,42 +101,101 @@ export function VideoReviewPlayer({
         onError={() => onVideoError?.()}
       />
 
-      {/* Custom scrubber with progress track + comment dots */}
-      <div className="relative h-5 bg-zinc-900 rounded-b-lg px-3 flex items-center">
+      {/* Play overlay when paused */}
+      {!isPlaying && duration > 0 && (
+        <button
+          className="absolute inset-0 flex items-center justify-center bg-black/20 cursor-pointer"
+          onClick={onPlayPause}
+        >
+          <div className="w-16 h-16 rounded-full bg-black/60 flex items-center justify-center">
+            <Play className="h-7 w-7 text-white ml-1" fill="white" />
+          </div>
+        </button>
+      )}
+
+      {/* Bottom controls — scrubber + buttons */}
+      <div
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-8 pb-2 px-3 transition-opacity duration-200 ${
+          showControls || !isPlaying ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {/* Scrubber bar with comment dots */}
         <div
           ref={trackRef}
-          className="relative w-full h-full cursor-pointer flex items-center"
+          className="relative h-4 cursor-pointer flex items-center mb-2"
           onClick={handleTrackClick}
         >
-          {/* Track */}
-          <div className="absolute inset-x-0 h-1 bg-zinc-700 rounded-full">
+          {/* Track background */}
+          <div className="absolute inset-x-0 h-1 bg-white/30 rounded-full group-hover:h-1.5 transition-all">
+            {/* Progress fill */}
             <div
-              className="absolute inset-y-0 left-0 bg-white/70 rounded-full"
+              className="absolute inset-y-0 left-0 bg-white rounded-full"
               style={{ width: `${progress}%` }}
             />
           </div>
 
           {/* Comment dots */}
-          {commentMarkers.map((comment) => {
-            const position = ((comment.timestampSeconds ?? 0) / duration) * 100;
-            return (
-              <button
-                key={comment._id}
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-2.5 w-2.5 rounded-full bg-blue-500 border-[1.5px] border-white shadow-sm hover:scale-150 transition-transform z-10"
-                style={{ left: `${position}%` }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSeek(comment.timestampSeconds ?? 0);
-                }}
-                title={`Comment at ${formatTime(comment.timestampSeconds ?? 0)}`}
-              />
-            );
-          })}
+          {duration > 0 &&
+            commentMarkers.map((comment) => {
+              const position =
+                ((comment.timestampSeconds ?? 0) / duration) * 100;
+              return (
+                <button
+                  key={comment._id}
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-3 w-3 rounded-full bg-blue-500 border-2 border-white shadow-md hover:scale-150 transition-transform z-10"
+                  style={{ left: `${position}%` }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSeek(comment.timestampSeconds ?? 0);
+                  }}
+                  title={`Comment at ${formatTime(
+                    comment.timestampSeconds ?? 0
+                  )}`}
+                />
+              );
+            })}
         </div>
 
-        {/* Time display */}
-        <div className="ml-3 text-[10px] text-zinc-400 font-mono whitespace-nowrap select-none">
-          {formatTime(currentTime)} / {formatTime(duration)}
+        {/* Controls row */}
+        <div className="flex items-center gap-3">
+          {/* Play/Pause */}
+          <button
+            onClick={onPlayPause}
+            className="text-white hover:text-white/80 transition-colors"
+          >
+            {isPlaying ? (
+              <Pause className="h-5 w-5" fill="white" />
+            ) : (
+              <Play className="h-5 w-5 ml-0.5" fill="white" />
+            )}
+          </button>
+
+          {/* Time */}
+          <span className="text-xs text-white/80 font-mono select-none">
+            {formatTime(currentTime)} / {formatTime(duration)}
+          </span>
+
+          <div className="flex-1" />
+
+          {/* Volume */}
+          <button
+            onClick={handleToggleMute}
+            className="text-white hover:text-white/80 transition-colors"
+          >
+            {isMuted ? (
+              <VolumeX className="h-4 w-4" />
+            ) : (
+              <Volume2 className="h-4 w-4" />
+            )}
+          </button>
+
+          {/* Fullscreen */}
+          <button
+            onClick={handleFullscreen}
+            className="text-white hover:text-white/80 transition-colors"
+          >
+            <Maximize className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>

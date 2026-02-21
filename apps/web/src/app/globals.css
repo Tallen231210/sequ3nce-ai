@@ -160,14 +160,3 @@ input[type="range"].slider::-moz-range-thumb {
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
-
-/* Hide native video timeline/scrubber on review player — replaced by custom bar */
-.review-video::-webkit-media-controls-timeline {
-  display: none !important;
-}
-.review-video::-webkit-media-controls-current-time-display {
-  display: none !important;
-}
-.review-video::-webkit-media-controls-time-remaining-display {
-  display: none !important;
-}
