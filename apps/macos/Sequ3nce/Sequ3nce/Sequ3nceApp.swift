@@ -164,7 +164,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case roleplay = "Role Play"
     case messages = "Messages"
     case resources = "Resources"
-    case training = "Training"
+    case coaching = "Coaching"
     case settings = "Settings"
 
     var id: String { rawValue }
@@ -178,7 +178,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .roleplay: return "person.2.fill"
         case .messages: return "message.fill"
         case .resources: return "folder.fill"
-        case .training: return "play.rectangle.fill"
+        case .coaching: return "text.bubble.fill"
         case .settings: return "gearshape.fill"
         }
     }
@@ -212,6 +212,7 @@ class AppState: ObservableObject {
     @Published var needsCalendarOnboarding: Bool = false
     @Published var selectedSidebarItem: SidebarItem = .dashboard
     @Published var showActiveCallView: Bool = false
+    @Published var unreadFeedbackCount: Int = 0
 
     // Post-call questionnaire state (triggered when bot call ends)
     @Published var showBotPostCallQuestionnaire: Bool = false
@@ -229,6 +230,9 @@ class AppState: ObservableObject {
 
     // Bot polling timer
     private var botPollingTimer: Timer?
+
+    // Coaching feedback polling timer
+    private var feedbackPollingTimer: Timer?
 
     // Timer for duration tracking
     private var durationTimer: Timer?
@@ -331,6 +335,9 @@ class AppState: ObservableObject {
                 teamId: savedCloser.teamId,
                 closerName: savedCloser.name
             )
+
+            // Start coaching feedback polling for restored session
+            startFeedbackPolling()
         }
     }
 
@@ -382,6 +389,9 @@ class AppState: ObservableObject {
             closerName: closerInfo.name
         )
 
+        // Start coaching feedback polling
+        startFeedbackPolling()
+
         // Check meeting bot status after login
         await checkMeetingBotStatus()
     }
@@ -392,6 +402,9 @@ class AppState: ObservableObject {
 
         // Stop bot polling
         stopBotPolling()
+
+        // Stop feedback polling
+        stopFeedbackPolling()
 
         // Clear diagnostics service user info
         diagnosticsService.closerId = nil
@@ -685,6 +698,43 @@ class AppState: ObservableObject {
         botPollingTimer?.invalidate()
         botPollingTimer = nil
         print("[AppState] Stopped bot polling")
+    }
+
+    /// Start polling for unread coaching feedback every 30 seconds
+    func startFeedbackPolling() {
+        guard feedbackPollingTimer == nil else { return }
+
+        // Poll immediately
+        Task { await pollFeedbackCount() }
+
+        // Then poll every 30 seconds (feedback is not time-critical)
+        feedbackPollingTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.pollFeedbackCount()
+            }
+        }
+        print("[AppState] Started feedback polling")
+    }
+
+    /// Stop feedback polling
+    func stopFeedbackPolling() {
+        feedbackPollingTimer?.invalidate()
+        feedbackPollingTimer = nil
+        unreadFeedbackCount = 0
+        print("[AppState] Stopped feedback polling")
+    }
+
+    /// Poll for unread coaching feedback count
+    private func pollFeedbackCount() async {
+        guard let closer = closerInfo else { return }
+
+        do {
+            let count = try await convexService.getUnreadFeedbackCount(closerId: closer.closerId)
+            unreadFeedbackCount = count
+        } catch {
+            // Silently fail — this is just for badge count
+            print("[AppState] Failed to poll feedback count: \(error)")
+        }
     }
 
     /// Poll for active bot calls and pending questionnaires
@@ -1018,8 +1068,8 @@ struct MeetingBotHubView: View {
                                 InlineMessagesView(messagingState: appState.messagingState)
                             case .resources:
                                 ResourcesView()
-                            case .training:
-                                TrainingView()
+                            case .coaching:
+                                CoachingView()
                             case .settings:
                                 BotSettingsView()
                             }
@@ -1055,6 +1105,8 @@ struct MeetingBotHubView: View {
             return appState.pendingQuestionnaireCount
         case .messages:
             return appState.messagingState.unreadCount
+        case .coaching:
+            return appState.unreadFeedbackCount
         default:
             return 0
         }

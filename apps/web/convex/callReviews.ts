@@ -208,6 +208,7 @@ export const getFeedbackForCloser = query({
 
       enriched.push({
         _id: call._id,
+        callId: call._id, // String alias for desktop Swift model
         prospectName: call.prospectName,
         duration: call.duration,
         recordingUrl: call.recordingUrl,
@@ -215,6 +216,7 @@ export const getFeedbackForCloser = query({
         commentCount: managerComments.length,
         latestCommentPreview: latestComment.content.slice(0, 100),
         latestCommentAt: latestComment.createdAt,
+        lastCommentAt: latestComment.createdAt, // Alias for desktop Swift model
         feedbackReadAt: call.feedbackReadAt,
         isUnread:
           !call.feedbackReadAt ||
@@ -247,23 +249,24 @@ export const getUnreadFeedbackCount = query({
       if (call.status !== "completed" || (call.commentCount ?? 0) === 0)
         continue;
 
-      // Check if there are manager comments newer than feedbackReadAt
-      if (
-        call.lastCommentAt &&
-        (!call.feedbackReadAt || call.lastCommentAt > call.feedbackReadAt)
-      ) {
-        // Verify at least one manager comment exists
-        const comments = await ctx.db
-          .query("callComments")
-          .withIndex("by_call", (q) => q.eq("callId", call._id))
-          .collect();
+      // Get comments and find the latest manager comment
+      const comments = await ctx.db
+        .query("callComments")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .collect();
 
-        const hasManagerComment = comments.some(
-          (c) => c.authorType === "manager"
-        );
-        if (hasManagerComment) {
-          unreadCount++;
-        }
+      const managerComments = comments.filter(
+        (c) => c.authorType === "manager"
+      );
+      if (managerComments.length === 0) continue;
+
+      // Check if latest manager comment is newer than feedbackReadAt
+      const latestManagerComment = managerComments[managerComments.length - 1];
+      if (
+        !call.feedbackReadAt ||
+        latestManagerComment.createdAt > call.feedbackReadAt
+      ) {
+        unreadCount++;
       }
     }
 
@@ -309,6 +312,88 @@ export const getCallForReview = query({
   },
 });
 
+/**
+ * Count flagged (pending review) calls for a team (for sidebar badge).
+ */
+export const getFlaggedCallCount = query({
+  args: {
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    const flaggedCount = calls.filter(
+      (c) =>
+        c.status === "completed" &&
+        c.recordingUrl &&
+        c.flaggedForReview === true &&
+        c.reviewStatus !== "reviewed"
+    ).length;
+
+    return { count: flaggedCount };
+  },
+});
+
+/**
+ * Count calls with unread closer replies for a team (for manager sidebar badge).
+ * A call has an unread reply if the latest closer comment is newer than managerReadAt.
+ */
+export const getUnreadReplyCount = query({
+  args: {
+    teamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    let unreadCount = 0;
+
+    for (const call of calls) {
+      if (call.status !== "completed" || (call.commentCount ?? 0) === 0)
+        continue;
+
+      const comments = await ctx.db
+        .query("callComments")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .collect();
+
+      const closerComments = comments.filter(
+        (c) => c.authorType === "closer"
+      );
+      if (closerComments.length === 0) continue;
+
+      const latestCloserComment = closerComments[closerComments.length - 1];
+      if (
+        !call.managerReadAt ||
+        latestCloserComment.createdAt > call.managerReadAt
+      ) {
+        unreadCount++;
+      }
+    }
+
+    return { count: unreadCount };
+  },
+});
+
+/**
+ * Mark a call's comments as read by the manager.
+ */
+export const markManagerRead = mutation({
+  args: {
+    callId: v.id("calls"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      managerReadAt: Date.now(),
+    });
+  },
+});
+
 // ──────────────────────────────────────────────
 // MUTATIONS
 // ──────────────────────────────────────────────
@@ -320,13 +405,24 @@ export const addComment = mutation({
   args: {
     callId: v.id("calls"),
     teamId: v.id("teams"),
-    authorType: v.string(),
+    authorType: v.union(v.literal("manager"), v.literal("closer")),
     authorId: v.string(),
     authorName: v.string(),
     content: v.string(),
     timestampSeconds: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // Input validation
+    const content = args.content.trim();
+    if (content.length === 0) throw new Error("Comment cannot be empty");
+    if (content.length > 2000) throw new Error("Comment too long (max 2000 characters)");
+    if (args.authorName.length > 100) throw new Error("Author name too long");
+
+    // Verify call exists and belongs to the specified team
+    const call = await ctx.db.get(args.callId);
+    if (!call) throw new Error("Call not found");
+    if (call.teamId !== args.teamId) throw new Error("Call does not belong to this team");
+
     const now = Date.now();
 
     // Insert the comment
@@ -336,19 +432,16 @@ export const addComment = mutation({
       authorType: args.authorType,
       authorId: args.authorId,
       authorName: args.authorName,
-      content: args.content,
+      content,
       timestampSeconds: args.timestampSeconds,
       createdAt: now,
     });
 
     // Update denormalized count and timestamp on the call
-    const call = await ctx.db.get(args.callId);
-    if (call) {
-      await ctx.db.patch(args.callId, {
-        commentCount: (call.commentCount ?? 0) + 1,
-        lastCommentAt: now,
-      });
-    }
+    await ctx.db.patch(args.callId, {
+      commentCount: (call.commentCount ?? 0) + 1,
+      lastCommentAt: now,
+    });
 
     return commentId;
   },
@@ -389,6 +482,8 @@ export const flagCallForReview = mutation({
     callId: v.id("calls"),
   },
   handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) throw new Error("Call not found");
     await ctx.db.patch(args.callId, {
       flaggedForReview: true,
       flaggedAt: Date.now(),
@@ -405,6 +500,8 @@ export const unflagCall = mutation({
     callId: v.id("calls"),
   },
   handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) throw new Error("Call not found");
     await ctx.db.patch(args.callId, {
       flaggedForReview: false,
       flaggedAt: undefined,
@@ -422,6 +519,8 @@ export const markAsReviewed = mutation({
     reviewedBy: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) throw new Error("Call not found");
     await ctx.db.patch(args.callId, {
       reviewStatus: "reviewed",
       reviewedAt: Date.now(),
@@ -445,12 +544,25 @@ export const shareCallMoment = mutation({
     sharedBy: v.id("users"),
   },
   handler: async (ctx, args) => {
+    // Input validation
+    const title = args.title.trim();
+    if (title.length === 0) throw new Error("Title cannot be empty");
+    if (title.length > 200) throw new Error("Title too long (max 200 characters)");
+    if (args.notes && args.notes.length > 1000) throw new Error("Notes too long (max 1000 characters)");
+    if (args.startSeconds >= args.endSeconds) throw new Error("Start must be before end");
+    if (args.startSeconds < 0) throw new Error("Start time cannot be negative");
+
+    // Verify call exists and belongs to team
+    const call = await ctx.db.get(args.callId);
+    if (!call) throw new Error("Call not found");
+    if (call.teamId !== args.teamId) throw new Error("Call does not belong to this team");
+
     const momentId = await ctx.db.insert("sharedMoments", {
       callId: args.callId,
       teamId: args.teamId,
       closerId: args.closerId,
-      title: args.title,
-      notes: args.notes,
+      title,
+      notes: args.notes?.trim() || undefined,
       startSeconds: args.startSeconds,
       endSeconds: args.endSeconds,
       sharedBy: args.sharedBy,

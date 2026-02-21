@@ -111,6 +111,53 @@ struct TrainingPlaylistWithItems: Codable, Identifiable {
     var id: String { _id }
 }
 
+// MARK: - Call Review / Coaching Models
+
+/// A call that has manager feedback (for closer's Coaching > Your Feedback)
+struct FeedbackCall: Codable, Identifiable {
+    let callId: String
+    let prospectName: String
+    let commentCount: Int
+    let lastCommentAt: Double
+    let latestCommentPreview: String?
+    var isUnread: Bool
+
+    var id: String { callId }
+}
+
+/// A comment on a call review
+struct CallComment: Codable, Identifiable {
+    let _id: String
+    let callId: String
+    let authorType: String        // "manager" | "closer"
+    let authorId: String
+    let authorName: String
+    let content: String
+    let timestampSeconds: Double?
+    let createdAt: Double
+
+    var id: String { _id }
+}
+
+/// A shared moment from a call review
+struct SharedMoment: Codable, Identifiable {
+    let _id: String
+    let callId: String
+    let title: String
+    let notes: String?
+    let startSeconds: Double
+    let endSeconds: Double
+    let closerName: String?
+    let createdAt: Double
+
+    var id: String { _id }
+}
+
+/// Unread feedback count response
+struct UnreadFeedbackCountResponse: Codable {
+    let count: Int
+}
+
 // MARK: - Calendar Models
 
 /// Calendar connection status
@@ -599,6 +646,250 @@ class ConvexService {
             return try decoder.decode(TrainingPlaylistWithItems.self, from: data)
         } else {
             return nil
+        }
+    }
+
+    // MARK: - URL Helper
+
+    /// Safely construct a URL from the base URL and a path.
+    /// Throws ConvexError.invalidURL if the string cannot be parsed.
+    private func makeURL(path: String) throws -> URL {
+        guard let url = URL(string: "\(baseURL)/\(path)") else {
+            throw ConvexError.invalidURL
+        }
+        return url
+    }
+
+    // MARK: - Call Reviews / Coaching
+
+    /// Get calls with manager feedback for this closer
+    func getFeedbackForCloser(closerId: String) async throws -> [FeedbackCall] {
+        let url = try makeURL(path: "getFeedbackForCloser")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            // Response is {"calls": [...]}
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let callsData = json["calls"] {
+                let callsJson = try JSONSerialization.data(withJSONObject: callsData)
+                return try JSONDecoder().decode([FeedbackCall].self, from: callsJson)
+            }
+            print("[ConvexService] getFeedbackForCloser: unexpected response structure")
+            return []
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to get feedback (HTTP \(httpResponse.statusCode))")
+        }
+    }
+
+    /// Get comments for a specific call
+    func getCommentsForCall(callId: String) async throws -> [CallComment] {
+        let url = try makeURL(path: "getCommentsForCall")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["callId": callId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            // Response is {"comments": [...]}
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let commentsData = json["comments"] {
+                let commentsJson = try JSONSerialization.data(withJSONObject: commentsData)
+                return try JSONDecoder().decode([CallComment].self, from: commentsJson)
+            }
+            print("[ConvexService] getCommentsForCall: unexpected response structure")
+            return []
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to get comments (HTTP \(httpResponse.statusCode))")
+        }
+    }
+
+    /// Add a comment to a call review
+    func addCallComment(
+        callId: String,
+        authorType: String,
+        authorId: String,
+        authorName: String,
+        content: String,
+        timestampSeconds: Double?
+    ) async throws {
+        let url = try makeURL(path: "addCallComment")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: Any] = [
+            "callId": callId,
+            "authorType": authorType,
+            "authorId": authorId,
+            "authorName": authorName,
+            "content": content
+        ]
+
+        if let ts = timestampSeconds {
+            body["timestampSeconds"] = ts
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to add comment")
+        }
+    }
+
+    /// Flag a call for manager review
+    func flagCallForReview(callId: String, closerId: String) async throws {
+        let url = try makeURL(path: "flagCallForReview")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["callId": callId, "closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to flag call")
+        }
+    }
+
+    /// Unflag a call (remove flag for review)
+    func unflagCall(callId: String, closerId: String) async throws {
+        let url = try makeURL(path: "unflagCall")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["callId": callId, "closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to unflag call")
+        }
+    }
+
+    /// Get team shared moments for this closer
+    func getSharedMoments(closerId: String) async throws -> [SharedMoment] {
+        let url = try makeURL(path: "getSharedMoments")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            // Response is {"moments": [...]}
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let momentsData = json["moments"] {
+                let momentsJson = try JSONSerialization.data(withJSONObject: momentsData)
+                return try JSONDecoder().decode([SharedMoment].self, from: momentsJson)
+            }
+            return []
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to get shared moments (HTTP \(httpResponse.statusCode))")
+        }
+    }
+
+    /// Get unread feedback count for badge
+    func getUnreadFeedbackCount(closerId: String) async throws -> Int {
+        let url = try makeURL(path: "getUnreadFeedbackCount")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 200 {
+            let result = try JSONDecoder().decode(UnreadFeedbackCountResponse.self, from: data)
+            return result.count
+        } else {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to get unread count (HTTP \(httpResponse.statusCode))")
+        }
+    }
+
+    /// Mark feedback as read for a call
+    func markFeedbackRead(callId: String, closerId: String) async throws {
+        let url = try makeURL(path: "markFeedbackRead")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: String] = ["callId": callId, "closerId": closerId]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ConvexError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data)
+            throw ConvexError.serverError(errorResponse?.message ?? "Failed to mark feedback read")
         }
     }
 

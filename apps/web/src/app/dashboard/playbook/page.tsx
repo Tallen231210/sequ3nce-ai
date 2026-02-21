@@ -39,6 +39,9 @@ import {
   User,
   Calendar,
   ListMusic,
+  Video,
+  Clock,
+  Share2,
 } from "lucide-react";
 import Link from "next/link";
 import { PlaylistsView } from "./PlaylistsView";
@@ -475,11 +478,105 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
   );
 }
 
+// Shared Moment Card Component
+function SharedMomentCard({ moment }: { moment: {
+  _id: string;
+  callId: string;
+  title: string;
+  notes?: string;
+  startSeconds: number;
+  endSeconds: number;
+  closerName: string;
+  prospectName?: string;
+  recordingUrl?: string;
+  sharedByName: string;
+  callCreatedAt?: number;
+  createdAt: number;
+}}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-medium text-foreground truncate mb-1">
+              {moment.title}
+            </h3>
+            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">
+              <Video className="h-3 w-3 mr-1" />
+              Video Clip
+            </Badge>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-zinc-400">
+            <Clock className="h-3 w-3" />
+            {formatTimestamp(moment.startSeconds)} — {formatTimestamp(moment.endSeconds)}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-sm text-zinc-500 mb-3">
+          <div className="flex items-center gap-1">
+            <User className="h-3.5 w-3.5" />
+            <span>{moment.closerName}</span>
+          </div>
+          {moment.callCreatedAt && (
+            <div className="flex items-center gap-1">
+              <Calendar className="h-3.5 w-3.5" />
+              <span>{formatDate(moment.callCreatedAt)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Video preview / play link */}
+        {moment.recordingUrl ? (
+          <Link
+            href={`/dashboard/call-reviews/${moment.callId}?t=${moment.startSeconds}`}
+            className="flex items-center gap-3 p-3 bg-zinc-100 rounded-lg hover:bg-zinc-200 transition-colors mb-3"
+          >
+            <div className="h-10 w-10 rounded-full bg-foreground text-background flex items-center justify-center">
+              <Play className="h-4 w-4 ml-0.5" />
+            </div>
+            <div className="text-sm">
+              <p className="font-medium text-foreground">Watch clip</p>
+              <p className="text-zinc-500">
+                {Math.round(moment.endSeconds - moment.startSeconds)}s clip from call with {moment.prospectName || "prospect"}
+              </p>
+            </div>
+          </Link>
+        ) : (
+          <div className="p-3 bg-zinc-50 rounded-lg text-sm text-zinc-400 mb-3">
+            Recording no longer available
+          </div>
+        )}
+
+        {moment.notes && (
+          <div className="mb-3 p-3 bg-zinc-50 rounded-lg border">
+            <p className="text-xs text-zinc-500 mb-1">Notes</p>
+            <p className="text-sm text-foreground">{moment.notes}</p>
+          </div>
+        )}
+
+        <div className="pt-3 border-t border-zinc-100 flex items-center justify-between">
+          <div className="flex items-center gap-1 text-xs text-zinc-400">
+            <Share2 className="h-3 w-3" />
+            Shared by {moment.sharedByName}
+          </div>
+          <Link
+            href={`/dashboard/call-reviews/${moment.callId}`}
+            className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Full Review
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PlaybookPage() {
-  const { clerkId, isLoading: isTeamLoading } = useTeam();
+  const { team, clerkId, isLoading: isTeamLoading } = useTeam();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"highlights" | "playlists">("highlights");
+  const [activeTab, setActiveTab] = useState<"highlights" | "playlists" | "shared">("highlights");
 
   // Filter state
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -503,6 +600,12 @@ export default function PlaybookPage() {
   const closers = useQuery(
     api.highlights.getClosersForFilter,
     clerkId ? { clerkId } : "skip"
+  );
+
+  // Shared moments query
+  const sharedMoments = useQuery(
+    api.callReviews.getSharedMoments,
+    team?._id ? { teamId: team._id } : "skip"
   );
 
   const deleteHighlight = useMutation(api.highlights.deleteHighlight);
@@ -555,6 +658,22 @@ export default function PlaybookPage() {
           >
             <BookMarked className="h-4 w-4" />
             Highlights
+          </button>
+          <button
+            onClick={() => setActiveTab("shared")}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === "shared"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            <Video className="h-4 w-4" />
+            Shared Moments
+            {sharedMoments && sharedMoments.length > 0 && (
+              <span className="ml-1 text-xs bg-zinc-200 text-zinc-600 rounded-full px-1.5 py-0.5">
+                {sharedMoments.length}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab("playlists")}
@@ -643,6 +762,35 @@ export default function PlaybookPage() {
                   </div>
                 )}
               </>
+            )}
+          </>
+        ) : activeTab === "shared" ? (
+          <>
+            {sharedMoments === undefined ? (
+              <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : sharedMoments.length === 0 ? (
+              <Card>
+                <CardContent className="py-16">
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <Video className="h-12 w-12 text-zinc-400 mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No shared moments yet</h3>
+                    <p className="text-zinc-500 text-sm max-w-sm">
+                      Share standout call moments from the Call Reviews page to build your team&apos;s video playbook.
+                    </p>
+                    <Button variant="outline" className="mt-4" asChild>
+                      <Link href="/dashboard/call-reviews">Go to Call Reviews</Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {sharedMoments.map((moment) => (
+                  <SharedMomentCard key={moment._id} moment={moment} />
+                ))}
+              </div>
             )}
           </>
         ) : (

@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import {
   LayoutDashboard,
   Radio,
@@ -37,6 +40,19 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { team } = useTeam();
+
+  const flaggedCount = useQuery(
+    api.callReviews.getFlaggedCallCount,
+    team?._id ? { teamId: team._id } : "skip"
+  );
+
+  const unreadReplyCount = useQuery(
+    api.callReviews.getUnreadReplyCount,
+    team?._id ? { teamId: team._id } : "skip"
+  );
+
+  const callReviewsBadge = (flaggedCount?.count ?? 0) + (unreadReplyCount?.count ?? 0);
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-background">
@@ -53,6 +69,11 @@ export function Sidebar() {
               pathname === item.href ||
               (item.href !== "/dashboard" && pathname.startsWith(item.href));
 
+            const badge =
+              item.name === "Call Reviews" && callReviewsBadge
+                ? callReviewsBadge
+                : 0;
+
             return (
               <Link
                 key={item.name}
@@ -66,6 +87,18 @@ export function Sidebar() {
               >
                 <item.icon className="h-4 w-4" strokeWidth={1.5} />
                 {item.name}
+                {badge > 0 && (
+                  <span
+                    className={cn(
+                      "ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold",
+                      isActive
+                        ? "bg-white/20 text-primary-foreground"
+                        : "bg-orange-100 text-orange-700"
+                    )}
+                  >
+                    {badge}
+                  </span>
+                )}
               </Link>
             );
           })}

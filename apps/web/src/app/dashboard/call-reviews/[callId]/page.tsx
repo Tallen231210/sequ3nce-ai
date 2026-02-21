@@ -7,428 +7,17 @@ import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import {
-  ArrowLeft,
-  Play,
-  Pause,
-  Volume2,
-  VolumeX,
-  CheckCircle2,
-  MessageCircle,
-  Clock,
-  Pin,
-  Send,
-  Trash2,
-  Share2,
-} from "lucide-react";
+import { ArrowLeft, CheckCircle2, MessageCircle, Share2 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 
-// ──────────────────────────────────────────────
-// Utility functions
-// ──────────────────────────────────────────────
+import { VideoReviewPlayer } from "@/components/call-reviews/VideoReviewPlayer";
+import { TranscriptPanel } from "@/components/call-reviews/TranscriptPanel";
+import { CommentsPanel } from "@/components/call-reviews/CommentsPanel";
+import { formatTime, formatCallDate } from "@/components/call-reviews/utils";
 
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
-}
-
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatCallDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
-// ──────────────────────────────────────────────
-// Video Player with Comment Markers
-// ──────────────────────────────────────────────
-
-function VideoReviewPlayer({
-  recordingUrl,
-  comments,
-  currentTime,
-  duration,
-  isPlaying,
-  onTimeUpdate,
-  onDurationChange,
-  onPlayPause,
-  onSeek,
-  videoRef,
-}: {
-  recordingUrl: string;
-  comments: Array<{ timestampSeconds?: number; _id: string }>;
-  currentTime: number;
-  duration: number;
-  isPlaying: boolean;
-  onTimeUpdate: (time: number) => void;
-  onDurationChange: (duration: number) => void;
-  onPlayPause: () => void;
-  onSeek: (time: number) => void;
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-}) {
-  const [isMuted, setIsMuted] = useState(false);
-  const progressRef = useRef<HTMLDivElement>(null);
-
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!progressRef.current || duration === 0) return;
-    const rect = progressRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const fraction = Math.max(0, Math.min(1, x / rect.width));
-    onSeek(fraction * duration);
-  };
-
-  const commentMarkers = comments.filter(
-    (c) => c.timestampSeconds !== undefined && c.timestampSeconds !== null
-  );
-
-  return (
-    <div className="bg-zinc-950 rounded-lg overflow-hidden">
-      {/* Video */}
-      <div className="relative aspect-video bg-black">
-        <video
-          ref={videoRef}
-          src={recordingUrl}
-          className="w-full h-full object-contain"
-          onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
-          onEnded={() => onPlayPause()}
-          muted={isMuted}
-        />
-      </div>
-
-      {/* Controls */}
-      <div className="px-4 py-3 space-y-2">
-        {/* Progress bar with comment markers */}
-        <div
-          ref={progressRef}
-          className="relative h-2 bg-zinc-700 rounded-full cursor-pointer group"
-          onClick={handleProgressClick}
-        >
-          {/* Progress fill */}
-          <div
-            className="absolute inset-y-0 left-0 bg-white rounded-full transition-[width] duration-100"
-            style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : "0%" }}
-          />
-
-          {/* Comment dots */}
-          {commentMarkers.map((comment) => {
-            const position = duration > 0 ? ((comment.timestampSeconds ?? 0) / duration) * 100 : 0;
-            return (
-              <button
-                key={comment._id}
-                className="absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-blue-400 border-2 border-zinc-950 hover:scale-125 transition-transform z-10"
-                style={{ left: `${position}%`, marginLeft: "-6px" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSeek(comment.timestampSeconds ?? 0);
-                }}
-                title={`Comment at ${formatTime(comment.timestampSeconds ?? 0)}`}
-              />
-            );
-          })}
-
-          {/* Hover expand */}
-          <div className="absolute inset-0 -top-1 -bottom-1 group-hover:bg-zinc-600/30 rounded-full" />
-        </div>
-
-        {/* Controls row */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onPlayPause}
-            className="text-white hover:text-zinc-300 transition-colors"
-          >
-            {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-          </button>
-
-          <span className="text-xs text-zinc-400 font-mono tabular-nums">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </span>
-
-          <div className="flex-1" />
-
-          <button
-            onClick={() => {
-              setIsMuted(!isMuted);
-              if (videoRef.current) videoRef.current.muted = !isMuted;
-            }}
-            className="text-zinc-400 hover:text-white transition-colors"
-          >
-            {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────
-// Transcript Panel (synced to video)
-// ──────────────────────────────────────────────
-
-function TranscriptPanel({
-  callId,
-  currentTime,
-  onSeek,
-}: {
-  callId: Id<"calls">;
-  currentTime: number;
-  onSeek: (time: number) => void;
-}) {
-  const segments = useQuery(api.calls.getTranscriptSegments, { callId });
-  const containerRef = useRef<HTMLDivElement>(null);
-  const activeRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to active segment
-  useEffect(() => {
-    if (activeRef.current && containerRef.current) {
-      const container = containerRef.current;
-      const active = activeRef.current;
-      const containerRect = container.getBoundingClientRect();
-      const activeRect = active.getBoundingClientRect();
-
-      if (
-        activeRect.top < containerRect.top ||
-        activeRect.bottom > containerRect.bottom
-      ) {
-        active.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }
-  }, [currentTime]);
-
-  if (!segments) {
-    return (
-      <div className="p-4 text-sm text-muted-foreground">Loading transcript...</div>
-    );
-  }
-
-  if (segments.length === 0) {
-    return (
-      <div className="p-4 text-sm text-muted-foreground">No transcript available</div>
-    );
-  }
-
-  // Find the current active segment
-  const activeIndex = segments.findLastIndex((s) => s.timestamp <= currentTime);
-
-  return (
-    <div ref={containerRef} className="overflow-y-auto max-h-[300px] p-3 space-y-2">
-      {segments.map((segment, index) => {
-        const isActive = index === activeIndex;
-        const isSpeakerCloser = segment.speaker === "closer";
-
-        return (
-          <div
-            key={segment._id}
-            ref={isActive ? activeRef : undefined}
-            className={`
-              p-2 rounded-md cursor-pointer transition-colors text-sm
-              ${isActive ? "bg-zinc-100 ring-1 ring-zinc-200" : "hover:bg-zinc-50"}
-            `}
-            onClick={() => onSeek(segment.timestamp)}
-          >
-            <div className="flex items-center gap-2 mb-0.5">
-              <span
-                className={`text-[10px] font-medium uppercase tracking-wider ${
-                  isSpeakerCloser ? "text-blue-600" : "text-emerald-600"
-                }`}
-              >
-                {isSpeakerCloser ? "Closer" : "Prospect"}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                {formatTime(segment.timestamp)}
-              </span>
-            </div>
-            <p className="text-foreground leading-relaxed">{segment.text}</p>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────
-// Comments Panel
-// ──────────────────────────────────────────────
-
-function CommentsPanel({
-  callId,
-  teamId,
-  currentTime,
-  onSeek,
-  userId,
-  userName,
-}: {
-  callId: Id<"calls">;
-  teamId: Id<"teams">;
-  currentTime: number;
-  onSeek: (time: number) => void;
-  userId: string;
-  userName: string;
-}) {
-  const comments = useQuery(api.callReviews.getCommentsForCall, { callId });
-  const addComment = useMutation(api.callReviews.addComment);
-  const deleteComment = useMutation(api.callReviews.deleteComment);
-
-  const [newComment, setNewComment] = useState("");
-  const [pinToTime, setPinToTime] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const commentsEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom on new comments
-  useEffect(() => {
-    commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [comments?.length]);
-
-  const handleSubmit = async () => {
-    if (!newComment.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await addComment({
-        callId,
-        teamId,
-        authorType: "manager",
-        authorId: userId,
-        authorName: userName,
-        content: newComment.trim(),
-        timestampSeconds: pinToTime ? Math.floor(currentTime) : undefined,
-      });
-      setNewComment("");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (commentId: Id<"callComments">) => {
-    await deleteComment({ commentId, authorId: userId });
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Comments list */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {!comments ? (
-          <p className="text-sm text-muted-foreground">Loading comments...</p>
-        ) : comments.length === 0 ? (
-          <div className="text-center py-8">
-            <MessageCircle className="h-8 w-8 text-zinc-300 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No comments yet</p>
-            <p className="text-xs text-zinc-400 mt-1">
-              Add feedback to help the closer improve
-            </p>
-          </div>
-        ) : (
-          comments.map((comment) => (
-            <div
-              key={comment._id}
-              className="group p-3 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-foreground">
-                    {comment.authorName}
-                  </span>
-                  {comment.timestampSeconds !== undefined && (
-                    <button
-                      className="flex items-center gap-0.5 text-[10px] text-blue-600 hover:text-blue-700 font-mono"
-                      onClick={() => onSeek(comment.timestampSeconds!)}
-                    >
-                      <Clock className="h-3 w-3" />
-                      {formatTime(comment.timestampSeconds)}
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground">
-                    {formatRelativeTime(comment.createdAt)}
-                  </span>
-                  {comment.authorId === userId && (
-                    <button
-                      onClick={() => handleDelete(comment._id)}
-                      className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="text-sm text-foreground leading-relaxed">
-                {comment.content}
-              </p>
-            </div>
-          ))
-        )}
-        <div ref={commentsEndRef} />
-      </div>
-
-      {/* Add comment form */}
-      <div className="border-t border-border p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <button
-            onClick={() => setPinToTime(!pinToTime)}
-            className={`flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors ${
-              pinToTime
-                ? "bg-blue-50 text-blue-600 border border-blue-200"
-                : "text-muted-foreground hover:bg-zinc-100"
-            }`}
-          >
-            <Pin className="h-3 w-3" />
-            {pinToTime ? formatTime(currentTime) : "No timestamp"}
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            placeholder="Add feedback..."
-            className="flex-1 text-sm px-3 py-2 rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <Button
-            size="sm"
-            onClick={handleSubmit}
-            disabled={!newComment.trim() || isSubmitting}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────
-// Main Review Page
-// ──────────────────────────────────────────────
+const MAX_SHARE_TITLE_LENGTH = 200;
+const MAX_SHARE_NOTES_LENGTH = 1000;
 
 export default function CallReviewPage({
   params,
@@ -448,21 +37,53 @@ export default function CallReviewPage({
     callId ? { callId: callId as Id<"calls"> } : "skip"
   );
   const markAsReviewed = useMutation(api.callReviews.markAsReviewed);
+  const shareCallMoment = useMutation(api.callReviews.shareCallMoment);
+  const markManagerRead = useMutation(api.callReviews.markManagerRead);
+
+  // Share moment state
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [shareMomentTitle, setShareMomentTitle] = useState("");
+  const [shareMomentNotes, setShareMomentNotes] = useState("");
+  const [shareStartTime, setShareStartTime] = useState(0);
+  const [shareEndTime, setShareEndTime] = useState(0);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   // Video state
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+
+  // Mark as read by manager when opening the review
+  useEffect(() => {
+    if (callId) {
+      markManagerRead({ callId: callId as Id<"calls"> });
+    }
+  }, [callId, markManagerRead]);
+
+  // Cleanup video on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = "";
+        videoRef.current.load();
+      }
+    };
+  }, []);
 
   const handlePlayPause = useCallback(() => {
     if (!videoRef.current) return;
     if (isPlaying) {
       videoRef.current.pause();
     } else {
-      videoRef.current.play();
+      videoRef.current.play().catch((err) => {
+        console.error("Play failed:", err);
+      });
     }
-    setIsPlaying(!isPlaying);
+    // State syncs via onPlay/onPause video events → onPlayStateChange
   }, [isPlaying]);
 
   const handleSeek = useCallback((time: number) => {
@@ -508,6 +129,51 @@ export default function CallReviewPage({
     });
   };
 
+  const handleOpenShareDialog = () => {
+    const start = Math.max(0, Math.floor(currentTime - 5));
+    const end = Math.min(duration, start + 30);
+    setShareStartTime(start);
+    setShareEndTime(end);
+    setShareMomentTitle("");
+    setShareMomentNotes("");
+    setShareError(null);
+    setShowShareDialog(true);
+  };
+
+  const handleShareMoment = async () => {
+    if (!team || !dbUser || !call || !shareMomentTitle.trim()) return;
+    if (shareStartTime >= shareEndTime) return;
+    if (shareMomentTitle.trim().length > MAX_SHARE_TITLE_LENGTH) {
+      setShareError(`Title too long (max ${MAX_SHARE_TITLE_LENGTH} chars)`);
+      return;
+    }
+    if (shareMomentNotes.trim().length > MAX_SHARE_NOTES_LENGTH) {
+      setShareError(`Notes too long (max ${MAX_SHARE_NOTES_LENGTH} chars)`);
+      return;
+    }
+
+    setIsSharing(true);
+    setShareError(null);
+    try {
+      await shareCallMoment({
+        callId: callId as Id<"calls">,
+        teamId: team._id as Id<"teams">,
+        closerId: call.closerId as Id<"closers">,
+        title: shareMomentTitle.trim(),
+        notes: shareMomentNotes.trim() || undefined,
+        startSeconds: shareStartTime,
+        endSeconds: shareEndTime,
+        sharedBy: dbUser._id as Id<"users">,
+      });
+      setShowShareDialog(false);
+    } catch (error) {
+      console.error("Failed to share moment:", error);
+      setShareError("Failed to share moment. Please try again.");
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   // Loading
   if (!call || !team || !dbUser) {
     return (
@@ -521,7 +187,7 @@ export default function CallReviewPage({
   const isFlagged = call.flaggedForReview && !isReviewed;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-3">
@@ -553,12 +219,18 @@ export default function CallReviewPage({
             <p className="text-sm text-muted-foreground">
               {call.closerName} &middot;{" "}
               {formatCallDate(call.startedAt || call.createdAt)}
-              {call.duration && ` &middot; ${formatTime(call.duration)}`}
+              {call.duration && <> &middot; {formatTime(call.duration)}</>}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {call.recordingUrl && (
+            <Button size="sm" variant="outline" onClick={handleOpenShareDialog}>
+              <Share2 className="h-4 w-4 mr-1" />
+              Share Moment
+            </Button>
+          )}
           {isFlagged && !isReviewed && (
             <Button size="sm" onClick={handleMarkReviewed}>
               <CheckCircle2 className="h-4 w-4 mr-1" />
@@ -568,12 +240,91 @@ export default function CallReviewPage({
         </div>
       </div>
 
+      {/* Share Moment Dialog */}
+      {showShareDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
+            <h2 className="text-lg font-semibold mb-4">Share Moment with Team</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-zinc-700 block mb-1">Title</label>
+                <input
+                  type="text"
+                  value={shareMomentTitle}
+                  onChange={(e) => setShareMomentTitle(e.target.value)}
+                  placeholder="e.g. Great objection handle"
+                  maxLength={MAX_SHARE_TITLE_LENGTH}
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-sm font-medium text-zinc-700 block mb-1">Start (seconds)</label>
+                  <input
+                    type="number"
+                    value={shareStartTime}
+                    onChange={(e) => setShareStartTime(Math.max(0, Number(e.target.value)))}
+                    min={0}
+                    max={duration}
+                    className="w-full px-3 py-2 border rounded-md text-sm"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-sm font-medium text-zinc-700 block mb-1">End (seconds)</label>
+                  <input
+                    type="number"
+                    value={shareEndTime}
+                    onChange={(e) => setShareEndTime(Math.min(duration, Number(e.target.value)))}
+                    min={shareStartTime}
+                    max={duration}
+                    className="w-full px-3 py-2 border rounded-md text-sm"
+                  />
+                </div>
+              </div>
+              <p className={`text-xs ${shareStartTime >= shareEndTime ? "text-red-500" : "text-zinc-500"}`}>
+                {shareStartTime >= shareEndTime
+                  ? "Start time must be before end time"
+                  : `Clip duration: ${Math.round(shareEndTime - shareStartTime)}s (${formatTime(shareStartTime)} — ${formatTime(shareEndTime)})`
+                }
+              </p>
+              <div>
+                <label className="text-sm font-medium text-zinc-700 block mb-1">Notes (optional)</label>
+                <textarea
+                  value={shareMomentNotes}
+                  onChange={(e) => setShareMomentNotes(e.target.value)}
+                  placeholder="Why is this moment worth watching?"
+                  maxLength={MAX_SHARE_NOTES_LENGTH}
+                  rows={2}
+                  className="w-full px-3 py-2 border rounded-md text-sm resize-none"
+                />
+              </div>
+              {shareError && (
+                <p className="text-xs text-red-500">{shareError}</p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => setShowShareDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleShareMoment}
+                  disabled={!shareMomentTitle.trim() || isSharing || shareStartTime >= shareEndTime}
+                >
+                  {isSharing ? "Sharing..." : "Share with Team"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main content — split layout */}
       <div className="flex-1 flex min-h-0">
         {/* Left: Video + Transcript (~65%) */}
         <div className="w-[65%] flex flex-col border-r border-border overflow-y-auto">
           <div className="p-4">
-            {call.recordingUrl ? (
+            {call.recordingUrl && !videoError ? (
               <VideoReviewPlayer
                 recordingUrl={call.recordingUrl}
                 comments={comments ?? []}
@@ -583,13 +334,15 @@ export default function CallReviewPage({
                 onTimeUpdate={setCurrentTime}
                 onDurationChange={setDuration}
                 onPlayPause={handlePlayPause}
+                onPlayStateChange={setIsPlaying}
                 onSeek={handleSeek}
+                onVideoError={() => setVideoError(true)}
                 videoRef={videoRef}
               />
             ) : (
               <Card className="flex items-center justify-center h-48 bg-zinc-50">
                 <p className="text-muted-foreground text-sm">
-                  No recording available
+                  {videoError ? "Failed to load recording" : "No recording available"}
                 </p>
               </Card>
             )}

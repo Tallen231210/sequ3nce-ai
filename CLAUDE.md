@@ -47,6 +47,17 @@ This is a SaaS product with four components:
 
 This project is being built by a non-developer using Claude Code through natural language prompts. All code, architecture decisions, and implementations are generated via AI assistance.
 
+## Code Quality Standards
+
+Every piece of code you write must be production-grade from the start. Do not rush. Do not take shortcuts. Before moving on from any feature or fix, self-review your own work as if you were auditing someone else's code. Specifically:
+
+- **Split large files.** No file should exceed ~300 lines. Extract components, utilities, and logic into focused, single-responsibility files. A 700-line file is a failure of organization.
+- **Validate all inputs.** Every mutation and API endpoint must validate input lengths, required fields, and data relationships (e.g., "does this call belong to this team?"). Never trust the client.
+- **No force unwraps or silent failures.** In Swift, use safe URL construction and proper error propagation — never `!` on network-related code. In TypeScript, never silently swallow errors or return empty defaults when something actually failed.
+- **Verify every build.** After finishing a set of changes, run TypeScript checks (`npx tsc --noEmit`), Next.js build (`npx next build`), Xcode build, and Convex deploy. Do not tell the user "done" until all builds pass clean.
+- **Think about what breaks next week.** Consider concurrent usage, missing data, network failures, and edge cases. Code defensively at system boundaries. If two users can hit the same endpoint simultaneously, make sure that's safe.
+- **Self-review before declaring done.** After writing code, re-read it critically. Look for: files that are too long, missing error handling, hardcoded values that should be constants, duplicated logic, and anything that would make you uncomfortable if you saw it in a code review.
+
 ## Conventions
 
 - **Monorepo structure** — All components live in this single repository

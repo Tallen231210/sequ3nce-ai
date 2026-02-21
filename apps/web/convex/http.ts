@@ -4478,16 +4478,31 @@ http.route({
       const body = await request.json();
       const { callId, teamId, authorType, authorId, authorName, content, timestampSeconds } = body;
 
-      if (!callId || !teamId || !authorType || !authorId || !authorName || !content) {
-        return new Response(JSON.stringify({ error: "callId, teamId, authorType, authorId, authorName, and content are required" }), {
+      if (!callId || !authorType || !authorId || !authorName || !content) {
+        return new Response(JSON.stringify({ error: "callId, authorType, authorId, authorName, and content are required" }), {
           status: 400,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
       }
 
+      // Look up teamId from the call if not provided (desktop app doesn't send it)
+      let resolvedTeamId = teamId;
+      if (!resolvedTeamId) {
+        const call = await ctx.runQuery(api.callReviews.getCallForReview, {
+          callId: callId as Id<"calls">,
+        });
+        if (!call) {
+          return new Response(JSON.stringify({ error: "Call not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        resolvedTeamId = call.teamId;
+      }
+
       const commentId = await ctx.runMutation(api.callReviews.addComment, {
         callId: callId as Id<"calls">,
-        teamId: teamId as Id<"teams">,
+        teamId: resolvedTeamId as Id<"teams">,
         authorType,
         authorId,
         authorName,

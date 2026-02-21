@@ -300,6 +300,7 @@ export default defineSchema({
     commentCount: v.optional(v.number()),            // Denormalized count for list views
     lastCommentAt: v.optional(v.number()),           // When the last comment was added
     feedbackReadAt: v.optional(v.number()),          // When closer last read manager feedback
+    managerReadAt: v.optional(v.number()),           // When manager last read closer replies
 
     createdAt: v.number(),
   })
@@ -733,7 +734,7 @@ export default defineSchema({
   callComments: defineTable({
     callId: v.id("calls"),
     teamId: v.id("teams"),
-    authorType: v.string(),          // "manager" | "closer"
+    authorType: v.union(v.literal("manager"), v.literal("closer")),
     authorId: v.string(),            // clerkUserId or closerId string
     authorName: v.string(),          // Display name
     content: v.string(),             // Comment text

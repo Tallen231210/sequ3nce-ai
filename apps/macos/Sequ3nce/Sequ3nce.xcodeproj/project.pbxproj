@@ -47,6 +47,9 @@
 		E1000A022111111100002004 /* ActiveCallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000A021111111100002003 /* ActiveCallTests.swift */; };
 		E1000A032111111100002006 /* CallHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000A031111111100002005 /* CallHistoryTests.swift */; };
 		E1000A042111111100002008 /* SettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1000A041111111100002007 /* SettingsTests.swift */; };
+		D1000001211111110000000A /* CoachingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000001111111110000000A /* CoachingView.swift */; };
+		D1000002211111110000000A /* CallReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000002111111110000000A /* CallReviewView.swift */; };
+		D1000003211111110000000A /* NativeVideoPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1000003111111110000000A /* NativeVideoPlayer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -102,6 +105,9 @@
 		E1000A021111111100002003 /* ActiveCallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveCallTests.swift; sourceTree = "<group>"; };
 		E1000A031111111100002005 /* CallHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHistoryTests.swift; sourceTree = "<group>"; };
 		E1000A041111111100002007 /* SettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTests.swift; sourceTree = "<group>"; };
+		D1000001111111110000000A /* CoachingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachingView.swift; sourceTree = "<group>"; };
+		D1000002111111110000000A /* CallReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallReviewView.swift; sourceTree = "<group>"; };
+		D1000003111111110000000A /* NativeVideoPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVideoPlayer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -172,13 +178,23 @@
 				A100000F111111110000000A /* MainWindow */,
 				A1000010111111110000000A /* AmmoTrackerPanel */,
 				A1000011111111110000000A /* TrainingWindow */,
+				D1000010111111110000000A /* Coaching */,
 				C1000010111111110000000A /* Dashboard */,
 				C1000011111111110000000A /* ActiveCall */,
 				C1000012111111110000000A /* Calls */,
 				C1000013111111110000000A /* Settings */,
 				C1000014111111110000000A /* Onboarding */,
+				D1000020111111110000000A /* Components */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		D1000020111111110000000A /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				D1000003111111110000000A /* NativeVideoPlayer.swift */,
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 		C1000010111111110000000A /* Dashboard */ = {
@@ -298,6 +314,15 @@
 				E10000041111111100000004 /* TestHelpers.swift */,
 			);
 			path = Helpers;
+			sourceTree = "<group>";
+		};
+		D1000010111111110000000A /* Coaching */ = {
+			isa = PBXGroup;
+			children = (
+				D1000001111111110000000A /* CoachingView.swift */,
+				D1000002111111110000000A /* CallReviewView.swift */,
+			);
+			path = Coaching;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -432,6 +457,9 @@
 				C1000004211111110000000A /* BotSettingsView.swift in Sources */,
 				C1000005211111110000000A /* BotOnboardingView.swift in Sources */,
 				C1000006211111110000000A /* ResourcesView.swift in Sources */,
+				D1000001211111110000000A /* CoachingView.swift in Sources */,
+				D1000002211111110000000A /* CallReviewView.swift in Sources */,
+				D1000003211111110000000A /* NativeVideoPlayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

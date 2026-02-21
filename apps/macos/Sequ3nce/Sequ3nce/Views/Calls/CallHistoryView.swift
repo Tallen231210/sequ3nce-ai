@@ -525,6 +525,10 @@ struct CallDetailSheet: View {
     @State private var isLoadingTranscript = true
     @State private var isTranscriptExpanded = false
 
+    // Flag for review state
+    @State private var isFlagged = false
+    @State private var isFlagging = false
+
     private let convexService = ConvexService()
 
     var body: some View {
@@ -559,6 +563,53 @@ struct CallDetailSheet: View {
 
                 Spacer()
 
+                // Flag for Review button (only for video calls)
+                if call.hasVideo, let closerId = appState.closerInfo?.closerId {
+                    Button(action: {
+                        Task {
+                            isFlagging = true
+                            do {
+                                if isFlagged {
+                                    try await convexService.unflagCall(callId: call.id, closerId: closerId)
+                                    isFlagged = false
+                                } else {
+                                    try await convexService.flagCallForReview(callId: call.id, closerId: closerId)
+                                    isFlagged = true
+                                }
+                            } catch {
+                                print("[CallDetail] Flag error: \(error)")
+                            }
+                            isFlagging = false
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            if isFlagging {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 14, height: 14)
+                            } else {
+                                Image(systemName: isFlagged ? "flag.fill" : "flag")
+                                    .font(.system(size: 12))
+                            }
+                            Text(isFlagged ? "Flagged" : "Flag for Review")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(isFlagged ? .white : Color(white: 0.4))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isFlagged ? Color.blue : Color.clear)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(isFlagged ? Color.blue : Color(white: 0.8), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isFlagging)
+                }
+
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark")
                         .foregroundColor(Color(white: 0.5))
@@ -583,12 +634,12 @@ struct CallDetailSheet: View {
                             sectionHeader("Recording")
 
                             if call.hasVideo {
-                                VideoPlayer(player: player)
+                                NativeVideoPlayer(player: player)
                                     .frame(height: 280)
                                     .cornerRadius(10)
                             } else {
                                 // Audio-only player
-                                VideoPlayer(player: player)
+                                NativeVideoPlayer(player: player)
                                     .frame(height: 60)
                                     .cornerRadius(10)
                             }
