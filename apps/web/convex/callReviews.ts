@@ -53,10 +53,27 @@ export const getCallsForReview = query({
     // Limit results
     filtered = filtered.slice(0, limit);
 
-    // Enrich with closer names
+    // Enrich with closer names and unread reply status
     const enriched = await Promise.all(
       filtered.map(async (call) => {
         const closer = await ctx.db.get(call.closerId);
+
+        // Check if there are closer comments newer than managerReadAt
+        let hasUnreadReplies = false;
+        if (call.commentCount && call.commentCount > 0) {
+          const comments = await ctx.db
+            .query("callComments")
+            .withIndex("by_call", (q) => q.eq("callId", call._id))
+            .collect();
+          const closerComments = comments.filter((c) => c.authorType === "closer");
+          if (closerComments.length > 0) {
+            const latestCloserComment = closerComments.reduce((a, b) =>
+              a.createdAt > b.createdAt ? a : b
+            );
+            hasUnreadReplies = !call.managerReadAt || latestCloserComment.createdAt > call.managerReadAt;
+          }
+        }
+
         return {
           _id: call._id,
           closerId: call.closerId,
@@ -73,6 +90,7 @@ export const getCallsForReview = query({
           reviewedAt: call.reviewedAt,
           commentCount: call.commentCount ?? 0,
           lastCommentAt: call.lastCommentAt,
+          hasUnreadReplies,
           createdAt: call.createdAt,
           startedAt: call.startedAt,
           endedAt: call.endedAt,

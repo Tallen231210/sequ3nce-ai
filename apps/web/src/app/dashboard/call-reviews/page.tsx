@@ -190,6 +190,7 @@ function CallReviewRow({
     flaggedForReview?: boolean;
     reviewStatus?: string;
     commentCount: number;
+    hasUnreadReplies?: boolean;
     summary?: string;
   };
   onClick: () => void;
@@ -214,6 +215,9 @@ function CallReviewRow({
       {/* Call info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
+          {call.hasUnreadReplies && (
+            <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+          )}
           <p className="text-sm font-medium truncate">
             {call.prospectName || "Unknown Prospect"}
           </p>
