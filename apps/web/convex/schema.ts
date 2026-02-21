@@ -156,6 +156,7 @@ export default defineSchema({
     activatedAt: v.optional(v.number()),
     lastLoginAt: v.optional(v.number()), // Track last desktop app login
     lastSeenAt: v.optional(v.number()), // Updated when desktop app polls for messages (for "last active" indicator)
+    sharedMomentsSeenAt: v.optional(v.number()), // When closer last viewed "Shared with You"
   })
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])
@@ -755,6 +756,8 @@ export default defineSchema({
     startSeconds: v.number(),         // Clip start time
     endSeconds: v.number(),           // Clip end time
     sharedBy: v.id("users"),          // Manager who shared
+    sharedWithAll: v.optional(v.boolean()),          // true = entire team, false/undefined = specific closers
+    sharedWithCloserIds: v.optional(v.array(v.string())), // Closer IDs if not shared with all
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])

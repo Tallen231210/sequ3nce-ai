@@ -103,6 +103,7 @@ struct CallReviewView: View {
     @State private var currentTime: Double = 0
     @State private var duration: Double = 0
     @State private var isPlaying = false
+    @State private var isMuted = false
     @State private var timeObserver: Any?
 
     // Call detail loaded from call history
@@ -203,31 +204,45 @@ struct CallReviewView: View {
 
     private var videoPlayerSection: some View {
         VStack(spacing: 0) {
+            // Video — no native controls
             if let avPlayer = player, callDetail?.hasVideo == true {
-                NativeVideoPlayer(player: avPlayer)
+                NativeVideoPlayer(player: avPlayer, showsControls: false)
                     .frame(height: 260)
+                    .onTapGesture { togglePlayPause() }
             } else if let avPlayer = player {
-                // Audio-only
-                NativeVideoPlayer(player: avPlayer)
+                NativeVideoPlayer(player: avPlayer, showsControls: false)
                     .frame(height: 60)
+                    .onTapGesture { togglePlayPause() }
             }
 
-            // Custom controls bar with comment markers
-            VStack(spacing: 4) {
-                // Scrubber with comment dots
+            // Custom controls bar — play/pause + scrubber with dots + time
+            HStack(spacing: 10) {
+                // Play/Pause button
+                Button(action: togglePlayPause) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.plain)
+
+                // Time (current)
+                Text(formatTime(currentTime))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(Color(white: 0.6))
+
+                // Scrubber track with comment dots
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        // Track
-                        Rectangle()
-                            .fill(Color(white: 0.88))
-                            .frame(height: 4)
-                            .cornerRadius(2)
+                        // Track background
+                        Capsule()
+                            .fill(Color.white.opacity(0.2))
+                            .frame(height: 3)
 
-                        // Progress
-                        Rectangle()
-                            .fill(Color.black)
-                            .frame(width: duration > 0 ? geo.size.width * (currentTime / duration) : 0, height: 4)
-                            .cornerRadius(2)
+                        // Progress fill
+                        Capsule()
+                            .fill(Color.white.opacity(0.8))
+                            .frame(width: duration > 0 ? geo.size.width * (currentTime / duration) : 0, height: 3)
 
                         // Comment dots
                         ForEach(viewModel.comments.filter { $0.timestampSeconds != nil }) { comment in
@@ -235,7 +250,12 @@ struct CallReviewView: View {
                             Circle()
                                 .fill(Color.blue)
                                 .frame(width: 8, height: 8)
-                                .offset(x: x - 4, y: -2)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white, lineWidth: 1.5)
+                                )
+                                .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                                .position(x: x, y: geo.size.height / 2)
                                 .onTapGesture {
                                     seekTo(comment.timestampSeconds ?? 0)
                                 }
@@ -243,27 +263,31 @@ struct CallReviewView: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { location in
-                        let fraction = location.x / geo.size.width
+                        let fraction = max(0, min(1, location.x / geo.size.width))
                         seekTo(duration * fraction)
                     }
                 }
-                .frame(height: 8)
+                .frame(height: 14)
 
-                // Time display
-                HStack {
-                    Text(formatTime(currentTime))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Color(white: 0.5))
-                    Spacer()
-                    Text(formatTime(duration))
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Color(white: 0.5))
+                // Time (total)
+                Text(formatTime(duration))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(Color(white: 0.6))
+
+                // Volume toggle
+                Button(action: toggleMute) {
+                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.6))
+                        .frame(width: 20, height: 20)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color(white: 0.97))
+            .background(Color(red: 0.12, green: 0.12, blue: 0.13))
         }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var noVideoPlaceholder: some View {
@@ -419,28 +443,46 @@ struct CallReviewView: View {
         } else {
             ScrollView {
                 VStack(spacing: 0) {
-                    ForEach(Array(viewModel.comments.enumerated()), id: \.element.id) { index, comment in
-                        let isReply = comment.parentCommentId != nil
-                        let nextIsReply = index + 1 < viewModel.comments.count &&
-                            viewModel.comments[index + 1].parentCommentId == comment._id
+                    // Group: top-level comments with their replies nested underneath
+                    let topLevel = viewModel.comments.filter { $0.parentCommentId == nil }
+                    let replyMap = Dictionary(grouping: viewModel.comments.filter { $0.parentCommentId != nil },
+                                              by: { $0.parentCommentId! })
 
-                        VStack(spacing: 0) {
-                            CommentBubble(
-                                comment: comment,
-                                isReply: isReply,
-                                showReplyButton: comment.authorType == "manager" && !isReply,
-                                onTimestampTap: {
-                                    if let ts = comment.timestampSeconds {
-                                        seekTo(ts)
-                                    }
-                                },
-                                onReply: {
-                                    viewModel.replyingTo = comment
+                    ForEach(Array(topLevel.enumerated()), id: \.element.id) { index, comment in
+                        // Parent comment
+                        CommentBubble(
+                            comment: comment,
+                            isReply: false,
+                            showReplyButton: comment.authorType == "manager",
+                            onTimestampTap: {
+                                if let ts = comment.timestampSeconds {
+                                    seekTo(ts)
                                 }
-                            )
-                            .padding(.leading, isReply ? 24 : 0)
+                            },
+                            onReply: {
+                                viewModel.replyingTo = comment
+                            }
+                        )
+                        .padding(.top, index == 0 ? 0 : 8)
+
+                        // Replies to this comment
+                        if let replies = replyMap[comment._id] {
+                            ForEach(replies) { reply in
+                                CommentBubble(
+                                    comment: reply,
+                                    isReply: true,
+                                    showReplyButton: false,
+                                    onTimestampTap: {
+                                        if let ts = reply.timestampSeconds {
+                                            seekTo(ts)
+                                        }
+                                    },
+                                    onReply: nil
+                                )
+                                .padding(.leading, 24)
+                                .padding(.top, 4)
+                            }
                         }
-                        .padding(.top, isReply ? 4 : (index == 0 ? 0 : 8))
                     }
                 }
                 .padding(10)
@@ -587,6 +629,21 @@ struct CallReviewView: View {
                 self.isPlaying = avPlayer.rate > 0
             }
         }
+    }
+
+    private func togglePlayPause() {
+        guard let avPlayer = player else { return }
+        if avPlayer.rate > 0 {
+            avPlayer.pause()
+        } else {
+            avPlayer.play()
+        }
+    }
+
+    private func toggleMute() {
+        guard let avPlayer = player else { return }
+        avPlayer.isMuted.toggle()
+        isMuted = avPlayer.isMuted
     }
 
     private func seekTo(_ seconds: Double) {

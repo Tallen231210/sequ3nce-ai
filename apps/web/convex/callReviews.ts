@@ -127,16 +127,29 @@ export const getCommentsForCall = query({
 export const getSharedMoments = query({
   args: {
     teamId: v.id("teams"),
+    closerId: v.optional(v.string()),  // Filter to moments visible to this closer
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 50;
 
-    const moments = await ctx.db
+    let moments = await ctx.db
       .query("sharedMoments")
       .withIndex("by_team_recent", (q) => q.eq("teamId", args.teamId))
       .order("desc")
-      .take(limit);
+      .collect();
+
+    // Filter by visibility if a specific closer is requesting
+    if (args.closerId) {
+      moments = moments.filter((m) => {
+        // sharedWithAll true or undefined = visible to everyone
+        if (m.sharedWithAll !== false) return true;
+        // Otherwise check if this closer is in the list
+        return m.sharedWithCloserIds?.includes(args.closerId!) ?? false;
+      });
+    }
+
+    moments = moments.slice(0, limit);
 
     // Enrich with call and closer data
     const enriched = await Promise.all(
@@ -562,6 +575,8 @@ export const shareCallMoment = mutation({
     startSeconds: v.number(),
     endSeconds: v.number(),
     sharedBy: v.id("users"),
+    sharedWithAll: v.optional(v.boolean()),
+    sharedWithCloserIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     // Input validation
@@ -577,6 +592,9 @@ export const shareCallMoment = mutation({
     if (!call) throw new Error("Call not found");
     if (call.teamId !== args.teamId) throw new Error("Call does not belong to this team");
 
+    // Default to sharing with all if not specified
+    const sharedWithAll = args.sharedWithAll !== false;
+
     const momentId = await ctx.db.insert("sharedMoments", {
       callId: args.callId,
       teamId: args.teamId,
@@ -586,6 +604,8 @@ export const shareCallMoment = mutation({
       startSeconds: args.startSeconds,
       endSeconds: args.endSeconds,
       sharedBy: args.sharedBy,
+      sharedWithAll,
+      sharedWithCloserIds: sharedWithAll ? undefined : args.sharedWithCloserIds,
       createdAt: Date.now(),
     });
 
@@ -603,6 +623,56 @@ export const markFeedbackRead = mutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.callId, {
       feedbackReadAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Get count of unread shared moments for a closer.
+ */
+export const getUnreadSharedMomentsCount = query({
+  args: {
+    closerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Find the closer record
+    const closers = await ctx.db
+      .query("closers")
+      .filter((q) => q.eq(q.field("_id"), args.closerId))
+      .collect();
+    const closer = closers[0];
+    if (!closer) return { count: 0 };
+
+    const seenAt = closer.sharedMomentsSeenAt ?? 0;
+
+    // Get moments for this closer's team created after seenAt
+    const moments = await ctx.db
+      .query("sharedMoments")
+      .withIndex("by_team_recent", (q) => q.eq("teamId", closer.teamId))
+      .order("desc")
+      .collect();
+
+    const unread = moments.filter((m) => {
+      if (m.createdAt <= seenAt) return false;
+      // Check visibility
+      if (m.sharedWithAll !== false) return true;
+      return m.sharedWithCloserIds?.includes(args.closerId) ?? false;
+    });
+
+    return { count: unread.length };
+  },
+});
+
+/**
+ * Mark shared moments as seen for a closer.
+ */
+export const markSharedMomentsSeen = mutation({
+  args: {
+    closerId: v.id("closers"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.closerId, {
+      sharedMomentsSeenAt: Date.now(),
     });
   },
 });

@@ -39,6 +39,10 @@ export default function CallReviewPage({
   const markAsReviewed = useMutation(api.callReviews.markAsReviewed);
   const shareCallMoment = useMutation(api.callReviews.shareCallMoment);
   const markManagerRead = useMutation(api.callReviews.markManagerRead);
+  const closers = useQuery(
+    api.closers.getClosers,
+    dbUser?.clerkId ? { clerkId: dbUser.clerkId } : "skip"
+  );
 
   // Share moment state
   const [showShareDialog, setShowShareDialog] = useState(false);
@@ -48,6 +52,8 @@ export default function CallReviewPage({
   const [shareEndTime, setShareEndTime] = useState(0);
   const [isSharing, setIsSharing] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [shareWithAll, setShareWithAll] = useState(true);
+  const [selectedCloserIds, setSelectedCloserIds] = useState<Set<string>>(new Set());
 
   // Video state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -137,12 +143,18 @@ export default function CallReviewPage({
     setShareMomentTitle("");
     setShareMomentNotes("");
     setShareError(null);
+    setShareWithAll(true);
+    setSelectedCloserIds(new Set());
     setShowShareDialog(true);
   };
 
   const handleShareMoment = async () => {
     if (!team || !dbUser || !call || !shareMomentTitle.trim()) return;
     if (shareStartTime >= shareEndTime) return;
+    if (!shareWithAll && selectedCloserIds.size === 0) {
+      setShareError("Select at least one closer or share with everyone");
+      return;
+    }
     if (shareMomentTitle.trim().length > MAX_SHARE_TITLE_LENGTH) {
       setShareError(`Title too long (max ${MAX_SHARE_TITLE_LENGTH} chars)`);
       return;
@@ -164,6 +176,8 @@ export default function CallReviewPage({
         startSeconds: shareStartTime,
         endSeconds: shareEndTime,
         sharedBy: dbUser._id as Id<"users">,
+        sharedWithAll: shareWithAll,
+        sharedWithCloserIds: shareWithAll ? undefined : Array.from(selectedCloserIds),
       });
       setShowShareDialog(false);
     } catch (error) {
@@ -298,6 +312,59 @@ export default function CallReviewPage({
                   rows={2}
                   className="w-full px-3 py-2 border rounded-md text-sm resize-none"
                 />
+              </div>
+              {/* Share with picker */}
+              <div>
+                <label className="text-sm font-medium text-zinc-700 block mb-2">Share with</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="shareWith"
+                      checked={shareWithAll}
+                      onChange={() => { setShareWithAll(true); setSelectedCloserIds(new Set()); }}
+                      className="accent-zinc-900"
+                    />
+                    <span className="text-sm">Everyone on the team</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="shareWith"
+                      checked={!shareWithAll}
+                      onChange={() => setShareWithAll(false)}
+                      className="accent-zinc-900"
+                    />
+                    <span className="text-sm">Specific closers</span>
+                  </label>
+                  {!shareWithAll && (
+                    <div className="ml-6 space-y-1.5 max-h-32 overflow-y-auto">
+                      {closers && closers.length > 0 ? (
+                        closers.map((closer) => (
+                          <label key={closer._id} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedCloserIds.has(closer._id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedCloserIds);
+                                if (e.target.checked) {
+                                  next.add(closer._id);
+                                } else {
+                                  next.delete(closer._id);
+                                }
+                                setSelectedCloserIds(next);
+                              }}
+                              className="accent-zinc-900"
+                            />
+                            <span className="text-sm">{closer.name}</span>
+                          </label>
+                        ))
+                      ) : (
+                        <p className="text-xs text-zinc-400">No closers found</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               {shareError && (
                 <p className="text-xs text-red-500">{shareError}</p>
