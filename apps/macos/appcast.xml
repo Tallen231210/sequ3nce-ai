@@ -8,6 +8,32 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 2.1.0</title>
+            <pubDate>Fri, 21 Feb 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>72</sparkle:version>
+            <sparkle:shortVersionString>2.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>Sequ3nce 2.1 — Call Reviews & Coaching</h2>
+                <ul>
+                    <li>New Coaching tab with manager feedback and shared moments</li>
+                    <li>Custom video player with comment markers on scrubber bar</li>
+                    <li>Reply threading — replies appear under parent comments</li>
+                    <li>Shared moments with highlighted clip range and auto-seek</li>
+                    <li>Notification badges for unread feedback and shared moments</li>
+                    <li>Simplified moment viewer for focused coaching clips</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v2.1.0/Sequ3nce.zip"
+                length="2503822"
+                type="application/octet-stream"
+                sparkle:edSignature="A5bRI20NuQBEkW7yqu4HQaB7BYsLjrY0zwVjMRL1hpGq+ZPqgs8aRHPXO4RyAObS48JU0dp41e9/wZ5ygQ4HCg=="
+            />
+        </item>
+
+        <!-- v2.0.0 -->
+        <item>
             <title>Version 2.0.0</title>
             <pubDate>Thu, 20 Feb 2026 12:00:00 +0000</pubDate>
             <sparkle:version>70</sparkle:version>
