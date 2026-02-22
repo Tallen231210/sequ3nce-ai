@@ -203,8 +203,8 @@ export default function SharePage() {
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b border-zinc-200">
         <div className="flex items-center gap-4">
-          <Logo height={18} href="https://sequ3nce.ai" />
-          <div className="h-5 w-px bg-zinc-200" />
+          <Logo height={26} href="https://sequ3nce.ai" />
+          <div className="h-6 w-px bg-zinc-200" />
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-semibold text-zinc-900">
@@ -241,9 +241,9 @@ export default function SharePage() {
       {/* Main content — full height split layout */}
       <div className="flex-1 flex min-h-0">
         {/* Left: Video + Transcript */}
-        <div className={`flex flex-col ${hasComments ? "w-[65%]" : "w-full"} ${hasComments ? "border-r border-zinc-200" : ""}`}>
-          {/* Video — fixed at top */}
-          <div className="shrink-0 p-4">
+        <div className={`flex flex-col flex-1 min-w-0 ${hasComments ? "border-r border-zinc-200" : ""}`}>
+          {/* Video — fixed at top, capped height so transcript gets space */}
+          <div className="shrink-0 p-3">
             {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
                 recordingUrl={call.recordingUrl}
@@ -287,9 +287,9 @@ export default function SharePage() {
           </div>
         </div>
 
-        {/* Right: Comments (if enabled) */}
+        {/* Right: Comments (if enabled) — fixed narrow width */}
         {hasComments && (
-          <div className="w-[35%] flex flex-col">
+          <div className="w-[300px] shrink-0 flex flex-col">
             <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
                 <MessageCircle className="h-3.5 w-3.5" />

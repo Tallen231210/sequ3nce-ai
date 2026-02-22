@@ -128,13 +128,13 @@ export function PublicVideoPlayer({
         </div>
       )}
 
-      {/* Video — no native controls */}
+      {/* Video — no native controls, capped height */}
       <video
         ref={videoRef}
         src={recordingUrl}
         playsInline
         preload="auto"
-        className="w-full cursor-pointer"
+        className="w-full cursor-pointer max-h-[50vh]"
         onClick={onPlayPause}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
