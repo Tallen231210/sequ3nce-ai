@@ -4937,4 +4937,152 @@ http.route({
   }),
 });
 
+// ──────────────────────────────────────────────
+// SHARED LINKS (public share URLs for call recordings)
+// ──────────────────────────────────────────────
+
+// Create a shared link (used by desktop app and web dashboard)
+http.route({
+  path: "/createSharedLink",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, teamId, shareType, startSeconds, endSeconds, includeComments, createdBy, createdByType } = body;
+
+      if (!callId || !teamId) {
+        return new Response(JSON.stringify({ error: "callId and teamId are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runMutation(api.sharedLinks.createSharedLink, {
+        callId: callId as Id<"calls">,
+        teamId: teamId as Id<"teams">,
+        shareType: shareType || "full",
+        startSeconds: startSeconds ?? undefined,
+        endSeconds: endSeconds ?? undefined,
+        includeComments: includeComments ?? false,
+        createdBy: createdBy || "unknown",
+        createdByType: createdByType || "closer",
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error: any) {
+      console.error("[HTTP] Error in createSharedLink:", error);
+      return new Response(JSON.stringify({ error: error?.message || "Failed to create shared link" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/createSharedLink",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get shared link data for the public page (called by fetch() from the public share page)
+http.route({
+  path: "/getSharedLinkData",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { token } = body;
+
+      if (!token || typeof token !== "string") {
+        return new Response(JSON.stringify({ error: "token is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const data = await ctx.runQuery(internal.sharedLinks.getSharedLinkByToken, { token });
+
+      if (!data) {
+        return new Response(JSON.stringify({ error: "Shared link not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      if (data.revoked) {
+        return new Response(JSON.stringify({ error: "This shared link has been revoked" }), {
+          status: 410,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      // At this point data.revoked is false, so call data is present
+      const callData = data.call!;
+
+      // Refresh the recording URL (Recall.ai signed URLs expire after ~24h)
+      let freshRecordingUrl = callData.recordingUrl;
+      if (callData.recordingUrl && data.callId) {
+        try {
+          const refreshResult = await ctx.runAction(api.meetingBot.refreshRecordingUrl, {
+            callId: data.callId as Id<"calls">,
+          });
+          if (refreshResult.recordingUrl) {
+            freshRecordingUrl = refreshResult.recordingUrl;
+          }
+        } catch (err) {
+          console.error("[HTTP] Failed to refresh recording URL for shared link:", err);
+          // Fall back to stored URL
+        }
+      }
+
+      // Strip internal callId from public response
+      const { callId: _callId, ...publicData } = data;
+      return new Response(JSON.stringify({
+        ...publicData,
+        call: {
+          ...callData,
+          recordingUrl: freshRecordingUrl,
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error: any) {
+      console.error("[HTTP] Error in getSharedLinkData:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getSharedLinkData",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 export default http;

@@ -169,6 +169,12 @@ struct RefreshRecordingUrlResponse: Codable {
     let recordingUrl: String?
 }
 
+/// Shared link response
+struct SharedLinkResponse: Codable {
+    let token: String
+    let url: String
+}
+
 // MARK: - Calendar Models
 
 /// Calendar connection status
@@ -1885,5 +1891,35 @@ class ConvexService {
             return calls
         }
         return []
+    }
+
+    /// Create a public shared link for a call recording
+    func createSharedLink(callId: String, closerId: String, teamId: String) async throws -> SharedLinkResponse {
+        let url = URL(string: "\(baseURL)/createSharedLink")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "callId": callId,
+            "teamId": teamId,
+            "shareType": "full",
+            "includeComments": false,
+            "createdBy": closerId,
+            "createdByType": "closer"
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw ConvexError.serverError("Failed to create shared link (status \(statusCode))")
+        }
+
+        let result = try JSONDecoder().decode(SharedLinkResponse.self, from: data)
+        return result
     }
 }

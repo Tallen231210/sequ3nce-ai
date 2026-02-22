@@ -764,6 +764,23 @@ export default defineSchema({
     .index("by_call", ["callId"])
     .index("by_team_recent", ["teamId", "createdAt"]),
 
+  // Shared Links (public URLs for sharing call recordings externally)
+  sharedLinks: defineTable({
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    token: v.string(),                           // Unique URL-safe token (16 chars)
+    shareType: v.string(),                       // "full" | "clip"
+    startSeconds: v.optional(v.number()),        // Clip start (only for shareType "clip")
+    endSeconds: v.optional(v.number()),          // Clip end (only for shareType "clip")
+    includeComments: v.boolean(),                // Whether comments are visible on the public page
+    createdBy: v.string(),                       // clerkUserId or closerId
+    createdByType: v.string(),                   // "manager" | "closer"
+    isActive: v.boolean(),                       // false = revoked
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_call", ["callId"]),
+
   // Excluded Calendar Events (events the closer marked as "not a sales call")
   excludedCalendarEvents: defineTable({
     closerId: v.id("closers"),

@@ -14,10 +14,8 @@ import { useRouter } from "next/navigation";
 import { VideoReviewPlayer } from "@/components/call-reviews/VideoReviewPlayer";
 import { TranscriptPanel } from "@/components/call-reviews/TranscriptPanel";
 import { CommentsPanel } from "@/components/call-reviews/CommentsPanel";
+import { UnifiedShareDialog } from "@/components/call-reviews/UnifiedShareDialog";
 import { formatTime, formatCallDate } from "@/components/call-reviews/utils";
-
-const MAX_SHARE_TITLE_LENGTH = 200;
-const MAX_SHARE_NOTES_LENGTH = 1000;
 
 export default function CallReviewPage({
   params,
@@ -37,23 +35,14 @@ export default function CallReviewPage({
     callId ? { callId: callId as Id<"calls"> } : "skip"
   );
   const markAsReviewed = useMutation(api.callReviews.markAsReviewed);
-  const shareCallMoment = useMutation(api.callReviews.shareCallMoment);
   const markManagerRead = useMutation(api.callReviews.markManagerRead);
   const closers = useQuery(
     api.closers.getClosers,
     dbUser?.clerkId ? { clerkId: dbUser.clerkId } : "skip"
   );
 
-  // Share moment state
+  // Share dialog state
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [shareMomentTitle, setShareMomentTitle] = useState("");
-  const [shareMomentNotes, setShareMomentNotes] = useState("");
-  const [shareStartTime, setShareStartTime] = useState(0);
-  const [shareEndTime, setShareEndTime] = useState(0);
-  const [isSharing, setIsSharing] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
-  const [shareWithAll, setShareWithAll] = useState(true);
-  const [selectedCloserIds, setSelectedCloserIds] = useState<Set<string>>(new Set());
 
   // Video state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -159,56 +148,7 @@ export default function CallReviewPage({
   };
 
   const handleOpenShareDialog = () => {
-    const start = Math.max(0, Math.floor(currentTime - 5));
-    const end = Math.min(duration, start + 30);
-    setShareStartTime(start);
-    setShareEndTime(end);
-    setShareMomentTitle("");
-    setShareMomentNotes("");
-    setShareError(null);
-    setShareWithAll(true);
-    setSelectedCloserIds(new Set());
     setShowShareDialog(true);
-  };
-
-  const handleShareMoment = async () => {
-    if (!team || !dbUser || !call || !shareMomentTitle.trim()) return;
-    if (shareStartTime >= shareEndTime) return;
-    if (!shareWithAll && selectedCloserIds.size === 0) {
-      setShareError("Select at least one closer or share with everyone");
-      return;
-    }
-    if (shareMomentTitle.trim().length > MAX_SHARE_TITLE_LENGTH) {
-      setShareError(`Title too long (max ${MAX_SHARE_TITLE_LENGTH} chars)`);
-      return;
-    }
-    if (shareMomentNotes.trim().length > MAX_SHARE_NOTES_LENGTH) {
-      setShareError(`Notes too long (max ${MAX_SHARE_NOTES_LENGTH} chars)`);
-      return;
-    }
-
-    setIsSharing(true);
-    setShareError(null);
-    try {
-      await shareCallMoment({
-        callId: callId as Id<"calls">,
-        teamId: team._id as Id<"teams">,
-        closerId: call.closerId as Id<"closers">,
-        title: shareMomentTitle.trim(),
-        notes: shareMomentNotes.trim() || undefined,
-        startSeconds: shareStartTime,
-        endSeconds: shareEndTime,
-        sharedBy: dbUser._id as Id<"users">,
-        sharedWithAll: shareWithAll,
-        sharedWithCloserIds: shareWithAll ? undefined : Array.from(selectedCloserIds),
-      });
-      setShowShareDialog(false);
-    } catch (error) {
-      console.error("Failed to share moment:", error);
-      setShareError("Failed to share moment. Please try again.");
-    } finally {
-      setIsSharing(false);
-    }
   };
 
   // Loading
@@ -265,7 +205,7 @@ export default function CallReviewPage({
           {call.recordingUrl && (
             <Button size="sm" variant="outline" onClick={handleOpenShareDialog}>
               <Share2 className="h-4 w-4 mr-1" />
-              Share Moment
+              Share
             </Button>
           )}
           {isFlagged && !isReviewed && (
@@ -277,136 +217,19 @@ export default function CallReviewPage({
         </div>
       </div>
 
-      {/* Share Moment Dialog */}
+      {/* Unified Share Dialog */}
       {showShareDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold mb-4">Share Moment with Team</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-zinc-700 block mb-1">Title</label>
-                <input
-                  type="text"
-                  value={shareMomentTitle}
-                  onChange={(e) => setShareMomentTitle(e.target.value)}
-                  placeholder="e.g. Great objection handle"
-                  maxLength={MAX_SHARE_TITLE_LENGTH}
-                  className="w-full px-3 py-2 border rounded-md text-sm"
-                  autoFocus
-                />
-              </div>
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label className="text-sm font-medium text-zinc-700 block mb-1">Start (seconds)</label>
-                  <input
-                    type="number"
-                    value={shareStartTime}
-                    onChange={(e) => setShareStartTime(Math.max(0, Number(e.target.value)))}
-                    min={0}
-                    max={duration}
-                    className="w-full px-3 py-2 border rounded-md text-sm"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="text-sm font-medium text-zinc-700 block mb-1">End (seconds)</label>
-                  <input
-                    type="number"
-                    value={shareEndTime}
-                    onChange={(e) => setShareEndTime(Math.min(duration, Number(e.target.value)))}
-                    min={shareStartTime}
-                    max={duration}
-                    className="w-full px-3 py-2 border rounded-md text-sm"
-                  />
-                </div>
-              </div>
-              <p className={`text-xs ${shareStartTime >= shareEndTime ? "text-red-500" : "text-zinc-500"}`}>
-                {shareStartTime >= shareEndTime
-                  ? "Start time must be before end time"
-                  : `Clip duration: ${Math.round(shareEndTime - shareStartTime)}s (${formatTime(shareStartTime)} — ${formatTime(shareEndTime)})`
-                }
-              </p>
-              <div>
-                <label className="text-sm font-medium text-zinc-700 block mb-1">Notes (optional)</label>
-                <textarea
-                  value={shareMomentNotes}
-                  onChange={(e) => setShareMomentNotes(e.target.value)}
-                  placeholder="Why is this moment worth watching?"
-                  maxLength={MAX_SHARE_NOTES_LENGTH}
-                  rows={2}
-                  className="w-full px-3 py-2 border rounded-md text-sm resize-none"
-                />
-              </div>
-              {/* Share with picker */}
-              <div>
-                <label className="text-sm font-medium text-zinc-700 block mb-2">Share with</label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="shareWith"
-                      checked={shareWithAll}
-                      onChange={() => { setShareWithAll(true); setSelectedCloserIds(new Set()); }}
-                      className="accent-zinc-900"
-                    />
-                    <span className="text-sm">Everyone on the team</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="shareWith"
-                      checked={!shareWithAll}
-                      onChange={() => setShareWithAll(false)}
-                      className="accent-zinc-900"
-                    />
-                    <span className="text-sm">Specific closers</span>
-                  </label>
-                  {!shareWithAll && (
-                    <div className="ml-6 space-y-1.5 max-h-32 overflow-y-auto">
-                      {closers && closers.length > 0 ? (
-                        closers.map((closer) => (
-                          <label key={closer._id} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={selectedCloserIds.has(closer._id)}
-                              onChange={(e) => {
-                                const next = new Set(selectedCloserIds);
-                                if (e.target.checked) {
-                                  next.add(closer._id);
-                                } else {
-                                  next.delete(closer._id);
-                                }
-                                setSelectedCloserIds(next);
-                              }}
-                              className="accent-zinc-900"
-                            />
-                            <span className="text-sm">{closer.name}</span>
-                          </label>
-                        ))
-                      ) : (
-                        <p className="text-xs text-zinc-400">No closers found</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              {shareError && (
-                <p className="text-xs text-red-500">{shareError}</p>
-              )}
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => setShowShareDialog(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleShareMoment}
-                  disabled={!shareMomentTitle.trim() || isSharing || shareStartTime >= shareEndTime}
-                >
-                  {isSharing ? "Sharing..." : "Share with Team"}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <UnifiedShareDialog
+          callId={callId as Id<"calls">}
+          teamId={team._id as Id<"teams">}
+          closerId={call.closerId as Id<"closers">}
+          userId={dbUser._id as Id<"users">}
+          userClerkId={dbUser.clerkId}
+          currentTime={currentTime}
+          duration={duration}
+          closers={closers}
+          onClose={() => setShowShareDialog(false)}
+        />
       )}
 
       {/* Main content — split layout */}

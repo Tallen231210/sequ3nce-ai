@@ -195,7 +195,10 @@ struct CallHistoryView: View {
         .onAppear {
             loadCalls()
         }
-        .sheet(item: $selectedCall) { call in
+        .sheet(item: $selectedCall, onDismiss: {
+            // Refresh list to reflect any flag/review changes made in the detail sheet
+            loadCalls()
+        }) { call in
             CallDetailSheet(call: call)
                 .environmentObject(appState)
         }
@@ -572,6 +575,11 @@ struct CallDetailSheet: View {
     @State private var isReviewed = false
     @State private var isFlagging = false
 
+    // Share link state
+    @State private var isCreatingShareLink = false
+    @State private var showShareCopied = false
+    @State private var showShareError = false
+
     private let convexService = ConvexService()
 
     private var flagButtonLabel: String {
@@ -676,6 +684,70 @@ struct CallDetailSheet: View {
                         .buttonStyle(.plain)
                         .disabled(isFlagging)
                     }
+                }
+
+                // Share Link button (only for video calls with recordings)
+                if call.hasVideo, call.recordingUrl != nil,
+                   let closerId = appState.closerInfo?.closerId,
+                   let teamId = appState.closerInfo?.teamId {
+                    Button(action: {
+                        Task {
+                            isCreatingShareLink = true
+                            showShareError = false
+                            do {
+                                let result = try await convexService.createSharedLink(
+                                    callId: call.id,
+                                    closerId: closerId,
+                                    teamId: teamId
+                                )
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(result.url, forType: .string)
+                                showShareCopied = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                    showShareCopied = false
+                                }
+                            } catch {
+                                print("[CallDetail] Share link error: \(error)")
+                                showShareError = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                    showShareError = false
+                                }
+                            }
+                            isCreatingShareLink = false
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            if isCreatingShareLink {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 14, height: 14)
+                            } else if showShareCopied {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 12))
+                            } else if showShareError {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.system(size: 12))
+                            } else {
+                                Image(systemName: "link")
+                                    .font(.system(size: 12))
+                            }
+                            Text(showShareCopied ? "Copied!" : showShareError ? "Failed" : "Share Link")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(showShareCopied ? Color(red: 0.09, green: 0.63, blue: 0.22) : showShareError ? .red : Color(white: 0.4))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.clear)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(showShareCopied ? Color(red: 0.09, green: 0.63, blue: 0.22).opacity(0.3) : Color(white: 0.8), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCreatingShareLink)
                 }
 
                 Button(action: { dismiss() }) {
