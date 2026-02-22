@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 
 interface TranscriptSegment {
   speaker: string;
@@ -10,27 +10,62 @@ interface TranscriptSegment {
 
 interface PublicTranscriptProps {
   segments: TranscriptSegment[];
+  currentTime: number;
+  onSeek: (time: number) => void;
   startSeconds?: number;
   endSeconds?: number;
 }
 
 export function PublicTranscript({
   segments,
+  currentTime,
+  onSeek,
   startSeconds,
   endSeconds,
 }: PublicTranscriptProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const clipStartRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
+  const [userScrolling, setUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastActiveIndex = useRef(-1);
 
-  // Scroll to clip start on mount
+  const isClip = startSeconds != null && endSeconds != null;
+
+  // Detect manual scroll — pause auto-scroll for 3 seconds
+  const handleScroll = useCallback(() => {
+    setUserScrolling(true);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    scrollTimeoutRef.current = setTimeout(() => {
+      setUserScrolling(false);
+    }, 3000);
+  }, []);
+
+  // Find the current active segment
+  const activeIndex = segments.findLastIndex((s) => s.timestamp <= currentTime);
+
+  // Auto-scroll when active segment changes
   useEffect(() => {
-    if (startSeconds != null && clipStartRef.current && containerRef.current) {
+    if (userScrolling) return;
+    if (activeIndex === lastActiveIndex.current) return;
+    lastActiveIndex.current = activeIndex;
+
+    if (activeRef.current && containerRef.current) {
       const container = containerRef.current;
-      const target = clipStartRef.current;
-      const offset = target.offsetTop - container.offsetTop - 16;
-      container.scrollTo({ top: offset, behavior: "smooth" });
+      const active = activeRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+
+      // Only scroll if the active segment is out of view
+      if (
+        activeRect.top < containerRect.top ||
+        activeRect.bottom > containerRect.bottom
+      ) {
+        const offset =
+          active.offsetTop - container.offsetTop - container.clientHeight / 2 + active.clientHeight / 2;
+        container.scrollTo({ top: offset, behavior: "smooth" });
+      }
     }
-  }, [startSeconds]);
+  }, [activeIndex, userScrolling]);
 
   if (segments.length === 0) {
     return (
@@ -40,30 +75,30 @@ export function PublicTranscript({
     );
   }
 
-  const isClip = startSeconds != null && endSeconds != null;
-
   return (
-    <div ref={containerRef} className="overflow-y-auto max-h-[500px] p-4 space-y-2">
+    <div
+      ref={containerRef}
+      className="overflow-y-auto flex-1 p-3 space-y-1"
+      onScroll={handleScroll}
+    >
       {segments.map((segment, index) => {
+        const isActive = index === activeIndex;
         const isSpeakerCloser = segment.speaker === "closer";
         const inClipRange =
           isClip &&
           segment.timestamp >= startSeconds! &&
           segment.timestamp <= endSeconds!;
-        const isClipStart =
-          isClip &&
-          segment.timestamp >= startSeconds! &&
-          (index === 0 || segments[index - 1].timestamp < startSeconds!);
 
         return (
           <div
             key={index}
-            ref={isClipStart ? clipStartRef : undefined}
+            ref={isActive ? activeRef : undefined}
             className={`
-              p-2.5 rounded-md text-sm transition-colors
-              ${inClipRange ? "bg-zinc-100 ring-1 ring-zinc-200" : ""}
-              ${isClip && !inClipRange ? "opacity-40" : ""}
+              p-2.5 rounded-md cursor-pointer transition-colors text-sm
+              ${isActive ? "bg-zinc-100 ring-1 ring-zinc-200" : "hover:bg-zinc-50"}
+              ${isClip && !inClipRange ? "opacity-30" : ""}
             `}
+            onClick={() => onSeek(segment.timestamp)}
           >
             <div className="flex items-center gap-2 mb-0.5">
               <span

@@ -1,11 +1,12 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Logo } from "@/components/ui/logo";
 import { PublicVideoPlayer } from "@/components/share/PublicVideoPlayer";
 import { PublicTranscript } from "@/components/share/PublicTranscript";
 import { PublicComments } from "@/components/share/PublicComments";
+import { MessageCircle } from "lucide-react";
 
 // Convex HTTP site URL for fetching shared link data
 const CONVEX_SITE_URL =
@@ -47,6 +48,13 @@ export default function SharePage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Video state
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+
   useEffect(() => {
     if (!token) return;
 
@@ -82,6 +90,63 @@ export default function SharePage() {
 
     fetchData();
   }, [token]);
+
+  // Cleanup video on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = "";
+        videoRef.current.load();
+      }
+    };
+  }, []);
+
+  const handlePlayPause = useCallback(() => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().catch((err) => {
+        console.error("Play failed:", err);
+      });
+    }
+  }, [isPlaying]);
+
+  const handleSeek = useCallback((time: number) => {
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = time;
+    setCurrentTime(time);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
+
+      switch (e.key) {
+        case " ":
+          e.preventDefault();
+          handlePlayPause();
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          handleSeek(Math.max(0, currentTime - 5));
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          handleSeek(Math.min(duration, currentTime + 5));
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handlePlayPause, handleSeek, currentTime, duration]);
 
   // Loading state
   if (isLoading) {
@@ -134,99 +199,113 @@ export default function SharePage() {
   const hasComments = includeComments && comments.length > 0;
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <header className="bg-white border-b border-zinc-200">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Logo height={20} href="https://sequ3nce.ai" />
-          <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
-            Shared Call Recording
-          </span>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
-        {/* Call metadata */}
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold text-zinc-900">
-            {call.prospectName}
-          </h1>
-          <div className="flex items-center gap-3 mt-1.5 text-sm text-zinc-500">
-            <span>{call.closerName}</span>
-            <span className="text-zinc-300">&middot;</span>
-            {call.startedAt && (
-              <>
-                <span>{formatDate(call.startedAt)}</span>
-                <span className="text-zinc-300">&middot;</span>
-              </>
-            )}
-            {call.duration && <span>{formatDuration(call.duration)}</span>}
-            {isClip && (
-              <>
-                <span className="text-zinc-300">&middot;</span>
-                <span className="inline-flex items-center gap-1 text-xs font-medium bg-zinc-200 text-zinc-600 px-2 py-0.5 rounded-full">
+      <div className="shrink-0 flex items-center justify-between px-6 py-3 border-b border-zinc-200">
+        <div className="flex items-center gap-4">
+          <Logo height={18} href="https://sequ3nce.ai" />
+          <div className="h-5 w-px bg-zinc-200" />
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-semibold text-zinc-900">
+                {call.prospectName}
+              </h1>
+              {isClip && (
+                <span className="text-[10px] font-medium bg-zinc-100 text-zinc-500 px-2 py-0.5 rounded-full">
                   Clip
                 </span>
-              </>
-            )}
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <span>{call.closerName}</span>
+              {call.startedAt && (
+                <>
+                  <span>&middot;</span>
+                  <span>{formatDate(call.startedAt)}</span>
+                </>
+              )}
+              {call.duration && (
+                <>
+                  <span>&middot;</span>
+                  <span>{formatDuration(call.duration)}</span>
+                </>
+              )}
+            </div>
           </div>
         </div>
+        <span className="text-[10px] font-medium text-zinc-300 uppercase tracking-widest">
+          Shared Recording
+        </span>
+      </div>
 
-        {/* Video + Comments layout */}
-        <div className={`grid gap-6 ${hasComments ? "lg:grid-cols-[1fr_340px]" : "grid-cols-1"}`}>
-          {/* Left column: Video */}
-          <div>
-            {call.recordingUrl ? (
+      {/* Main content — full height split layout */}
+      <div className="flex-1 flex min-h-0">
+        {/* Left: Video + Transcript */}
+        <div className={`flex flex-col ${hasComments ? "w-[65%]" : "w-full"} ${hasComments ? "border-r border-zinc-200" : ""}`}>
+          {/* Video — fixed at top */}
+          <div className="shrink-0 p-4">
+            {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
                 recordingUrl={call.recordingUrl}
+                comments={hasComments ? comments : []}
+                currentTime={currentTime}
+                duration={duration}
+                isPlaying={isPlaying}
                 startSeconds={isClip ? startSeconds : undefined}
                 endSeconds={isClip ? endSeconds : undefined}
+                onTimeUpdate={setCurrentTime}
+                onDurationChange={setDuration}
+                onPlayPause={handlePlayPause}
+                onPlayStateChange={setIsPlaying}
+                onSeek={handleSeek}
+                onVideoError={() => setVideoError(true)}
+                videoRef={videoRef}
               />
             ) : (
-              <div className="rounded-lg bg-zinc-200 aspect-video flex items-center justify-center">
-                <p className="text-sm text-zinc-500">Recording unavailable</p>
+              <div className="rounded-lg bg-zinc-100 aspect-video flex items-center justify-center">
+                <p className="text-sm text-zinc-400">
+                  {videoError ? "Failed to load recording" : "No recording available"}
+                </p>
               </div>
             )}
           </div>
 
-          {/* Right column: Comments (if enabled) */}
-          {hasComments && (
-            <div className="bg-white rounded-lg border border-zinc-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-zinc-100">
-                <h2 className="text-sm font-semibold text-zinc-700">
-                  Comments ({comments.length})
-                </h2>
-              </div>
-              <div className="max-h-[500px] overflow-y-auto">
-                <PublicComments comments={comments} />
-              </div>
+          {/* Transcript — fills remaining space, scrolls independently */}
+          <div className="flex-1 flex flex-col min-h-0 border-t border-zinc-100">
+            <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
+              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                Transcript
+              </h3>
             </div>
-          )}
-        </div>
-
-        {/* Transcript */}
-        <div className="mt-8 bg-white rounded-lg border border-zinc-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-zinc-100">
-            <h2 className="text-sm font-semibold text-zinc-700">Transcript</h2>
+            <PublicTranscript
+              segments={transcript}
+              currentTime={currentTime}
+              onSeek={handleSeek}
+              startSeconds={isClip ? startSeconds : undefined}
+              endSeconds={isClip ? endSeconds : undefined}
+            />
           </div>
-          <PublicTranscript
-            segments={transcript}
-            startSeconds={isClip ? startSeconds : undefined}
-            endSeconds={isClip ? endSeconds : undefined}
-          />
         </div>
-      </main>
 
-      {/* Footer */}
-      <footer className="border-t border-zinc-200 bg-white mt-12">
-        <div className="max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
-          <Logo height={16} href="https://sequ3nce.ai" />
-          <p className="text-xs text-zinc-400">
-            Powered by Sequ3nce &mdash; Sales Call Intelligence
-          </p>
-        </div>
-      </footer>
+        {/* Right: Comments (if enabled) */}
+        {hasComments && (
+          <div className="w-[35%] flex flex-col">
+            <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
+              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                <MessageCircle className="h-3.5 w-3.5" />
+                Comments
+                <span className="text-[10px] font-medium bg-zinc-100 text-zinc-400 px-1.5 py-0.5 rounded">
+                  {comments.length}
+                </span>
+              </h3>
+            </div>
+            <PublicComments
+              comments={comments}
+              onSeek={handleSeek}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
