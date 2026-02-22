@@ -238,10 +238,10 @@ export default function SharePage() {
         </span>
       </div>
 
-      {/* Main content — three-column layout: Video | Transcript | Comments */}
+      {/* Main content — Video (left half) | Transcript + Comments (right half) */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Video — fixed width column */}
-        <div className="w-[420px] shrink-0 border-r border-zinc-100 flex flex-col">
+        {/* Left half: Video */}
+        <div className="w-1/2 shrink-0 border-r border-zinc-100 flex flex-col">
           <div className="p-3">
             {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
@@ -261,7 +261,7 @@ export default function SharePage() {
                 videoRef={videoRef}
               />
             ) : (
-              <div className="rounded-lg bg-zinc-100 w-[400px] aspect-video flex items-center justify-center">
+              <div className="rounded-lg bg-zinc-100 aspect-video flex items-center justify-center">
                 <p className="text-sm text-zinc-400">
                   {videoError ? "Failed to load recording" : "No recording available"}
                 </p>
@@ -270,40 +270,43 @@ export default function SharePage() {
           </div>
         </div>
 
-        {/* Middle: Transcript — takes remaining space */}
-        <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${hasComments ? "border-r border-zinc-100" : ""}`}>
-          <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
-            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-              Transcript
-            </h3>
-          </div>
-          <PublicTranscript
-            segments={transcript}
-            currentTime={currentTime}
-            onSeek={handleSeek}
-            startSeconds={isClip ? startSeconds : undefined}
-            endSeconds={isClip ? endSeconds : undefined}
-          />
-        </div>
-
-        {/* Right: Comments (if enabled) */}
-        {hasComments && (
-          <div className="w-[280px] shrink-0 flex flex-col">
+        {/* Right half: Transcript + Comments side by side */}
+        <div className="w-1/2 flex min-h-0">
+          {/* Transcript — takes remaining space */}
+          <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${hasComments ? "border-r border-zinc-100" : ""}`}>
             <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                <MessageCircle className="h-3.5 w-3.5" />
-                Comments
-                <span className="text-[10px] font-medium bg-zinc-100 text-zinc-400 px-1.5 py-0.5 rounded">
-                  {comments.length}
-                </span>
+              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                Transcript
               </h3>
             </div>
-            <PublicComments
-              comments={comments}
+            <PublicTranscript
+              segments={transcript}
+              currentTime={currentTime}
               onSeek={handleSeek}
+              startSeconds={isClip ? startSeconds : undefined}
+              endSeconds={isClip ? endSeconds : undefined}
             />
           </div>
-        )}
+
+          {/* Comments (if enabled) */}
+          {hasComments && (
+            <div className="w-[260px] shrink-0 flex flex-col">
+              <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
+                <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Comments
+                  <span className="text-[10px] font-medium bg-zinc-100 text-zinc-400 px-1.5 py-0.5 rounded">
+                    {comments.length}
+                  </span>
+                </h3>
+              </div>
+              <PublicComments
+                comments={comments}
+                onSeek={handleSeek}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
