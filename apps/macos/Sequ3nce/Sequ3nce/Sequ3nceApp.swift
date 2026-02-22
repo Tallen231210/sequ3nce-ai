@@ -730,16 +730,22 @@ class AppState: ObservableObject {
     private func pollFeedbackCount() async {
         guard let closer = closerInfo else { return }
 
+        // Poll independently so one failure doesn't block the other
         do {
-            async let feedbackCount = convexService.getUnreadFeedbackCount(closerId: closer.closerId)
-            async let momentsCount = convexService.getUnreadSharedMomentsCount(closerId: closer.closerId)
-
-            let (feedback, moments) = try await (feedbackCount, momentsCount)
-            unreadFeedbackCount = feedback
-            unreadSharedMomentsCount = moments
+            let count = try await convexService.getUnreadFeedbackCount(closerId: closer.closerId)
+            unreadFeedbackCount = count
         } catch {
-            // Silently fail — this is just for badge count
             print("[AppState] Failed to poll feedback count: \(error)")
+        }
+
+        do {
+            let count = try await convexService.getUnreadSharedMomentsCount(closerId: closer.closerId)
+            if count != unreadSharedMomentsCount {
+                print("[AppState] Shared moments unread count changed: \(unreadSharedMomentsCount) → \(count)")
+            }
+            unreadSharedMomentsCount = count
+        } catch {
+            print("[AppState] Failed to poll shared moments count: \(error)")
         }
     }
 

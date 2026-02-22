@@ -135,9 +135,9 @@ struct CoachingView: View {
                     .buttonStyle(.plain)
                 }
 
-                // Segmented control
+                // Segmented control — badges show unread counts from server polling
                 HStack(spacing: 0) {
-                    segmentButton("Your Feedback", index: 0, count: viewModel.feedbackCalls.filter { $0.isUnread }.count)
+                    segmentButton("Your Feedback", index: 0, count: appState.unreadFeedbackCount)
                     segmentButton("Shared with You", index: 1, count: appState.unreadSharedMomentsCount)
                 }
                 .background(Color(white: 0.93))

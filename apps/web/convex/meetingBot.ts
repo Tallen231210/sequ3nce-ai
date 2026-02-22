@@ -1515,6 +1515,9 @@ export const getCallHistoryForCloser = query({
       prospectTalkTime: call.prospectTalkTime,
       summary: call.summary,
       transcriptText: call.transcriptText,
+      flaggedForReview: call.flaggedForReview,
+      reviewStatus: call.reviewStatus,
+      commentCount: call.commentCount,
     }));
   },
 });

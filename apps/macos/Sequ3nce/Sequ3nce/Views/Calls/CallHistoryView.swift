@@ -24,6 +24,9 @@ struct CallHistoryItem: Identifiable {
     let recordingUrl: String?
     let summary: String?
     let transcriptText: String?
+    let flaggedForReview: Bool
+    let reviewStatus: String?  // "pending" | "reviewed" | nil
+    let commentCount: Int
 }
 
 // MARK: - Call History View
@@ -158,6 +161,8 @@ struct CallHistoryView: View {
                         .frame(width: 60, alignment: .trailing)
                     // Space for video icon
                     Color.clear.frame(width: 30, height: 1)
+                    Text("REVIEW")
+                        .frame(width: 90, alignment: .center)
                 }
                 .font(.system(size: 10, weight: .medium))
                 .tracking(0.5)
@@ -359,6 +364,9 @@ struct CallHistoryView: View {
 
                     let summary = dict["summary"] as? String
                     let transcriptText = dict["transcriptText"] as? String
+                    let flaggedForReview = dict["flaggedForReview"] as? Bool ?? false
+                    let reviewStatus = dict["reviewStatus"] as? String
+                    let commentCount = dict["commentCount"] as? Int ?? 0
 
                     return CallHistoryItem(
                         id: id,
@@ -372,7 +380,10 @@ struct CallHistoryView: View {
                         recordingType: recordingType,
                         recordingUrl: recordingUrl,
                         summary: summary,
-                        transcriptText: transcriptText
+                        transcriptText: transcriptText,
+                        flaggedForReview: flaggedForReview,
+                        reviewStatus: reviewStatus,
+                        commentCount: commentCount
                     )
                 }
 
@@ -483,6 +494,37 @@ struct CallTableRow: View {
             } else {
                 Color.clear.frame(width: 30)
             }
+
+            // Review status badge
+            if call.reviewStatus == "reviewed" {
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10))
+                    Text("Reviewed")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(Color(red: 0.09, green: 0.63, blue: 0.22))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(red: 0.94, green: 0.99, blue: 0.94))
+                .cornerRadius(8)
+                .frame(width: 90, alignment: .center)
+            } else if call.flaggedForReview {
+                HStack(spacing: 3) {
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 10))
+                    Text("Flagged")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(Color(red: 0.9, green: 0.5, blue: 0.0))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(red: 1.0, green: 0.96, blue: 0.9))
+                .cornerRadius(8)
+                .frame(width: 90, alignment: .center)
+            } else {
+                Color.clear.frame(width: 90)
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 10)
@@ -525,11 +567,18 @@ struct CallDetailSheet: View {
     @State private var isLoadingTranscript = true
     @State private var isTranscriptExpanded = false
 
-    // Flag for review state
+    // Flag for review state (initialized from call data)
     @State private var isFlagged = false
+    @State private var isReviewed = false
     @State private var isFlagging = false
 
     private let convexService = ConvexService()
+
+    private var flagButtonLabel: String {
+        if isReviewed { return "Flag Again" }
+        if isFlagged { return "Flagged" }
+        return "Flag for Review"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -563,51 +612,70 @@ struct CallDetailSheet: View {
 
                 Spacer()
 
-                // Flag for Review button (only for video calls)
+                // Review status + Flag button (only for video calls)
                 if call.hasVideo, let closerId = appState.closerInfo?.closerId {
-                    Button(action: {
-                        Task {
-                            isFlagging = true
-                            do {
-                                if isFlagged {
-                                    try await convexService.unflagCall(callId: call.id, closerId: closerId)
-                                    isFlagged = false
-                                } else {
-                                    try await convexService.flagCallForReview(callId: call.id, closerId: closerId)
-                                    isFlagged = true
+                    HStack(spacing: 8) {
+                        // Reviewed badge
+                        if isReviewed {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 11))
+                                Text("Reviewed")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(Color(red: 0.09, green: 0.63, blue: 0.22))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(red: 0.94, green: 0.99, blue: 0.94))
+                            .cornerRadius(6)
+                        }
+
+                        // Flag / Unflag / Flag Again button
+                        Button(action: {
+                            Task {
+                                isFlagging = true
+                                do {
+                                    if isFlagged && !isReviewed {
+                                        try await convexService.unflagCall(callId: call.id, closerId: closerId)
+                                        isFlagged = false
+                                    } else {
+                                        try await convexService.flagCallForReview(callId: call.id, closerId: closerId)
+                                        isFlagged = true
+                                        isReviewed = false
+                                    }
+                                } catch {
+                                    print("[CallDetail] Flag error: \(error)")
                                 }
-                            } catch {
-                                print("[CallDetail] Flag error: \(error)")
+                                isFlagging = false
                             }
-                            isFlagging = false
-                        }
-                    }) {
-                        HStack(spacing: 6) {
-                            if isFlagging {
-                                ProgressView()
-                                    .scaleEffect(0.6)
-                                    .frame(width: 14, height: 14)
-                            } else {
-                                Image(systemName: isFlagged ? "flag.fill" : "flag")
-                                    .font(.system(size: 12))
+                        }) {
+                            HStack(spacing: 6) {
+                                if isFlagging {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                        .frame(width: 14, height: 14)
+                                } else {
+                                    Image(systemName: isFlagged && !isReviewed ? "flag.fill" : "flag")
+                                        .font(.system(size: 12))
+                                }
+                                Text(flagButtonLabel)
+                                    .font(.system(size: 12, weight: .medium))
                             }
-                            Text(isFlagged ? "Flagged" : "Flag for Review")
-                                .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(isFlagged && !isReviewed ? .white : Color(white: 0.4))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(isFlagged && !isReviewed ? Color.blue : Color.clear)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(isFlagged && !isReviewed ? Color.blue : Color(white: 0.8), lineWidth: 1)
+                            )
                         }
-                        .foregroundColor(isFlagged ? .white : Color(white: 0.4))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(isFlagged ? Color.blue : Color.clear)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(isFlagged ? Color.blue : Color(white: 0.8), lineWidth: 1)
-                        )
+                        .buttonStyle(.plain)
+                        .disabled(isFlagging)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isFlagging)
                 }
 
                 Button(action: { dismiss() }) {
@@ -834,6 +902,10 @@ struct CallDetailSheet: View {
         .background(Color.white)
         .preferredColorScheme(.light)
         .onAppear {
+            // Initialize flag/review state from call data
+            isFlagged = call.flaggedForReview
+            isReviewed = call.reviewStatus == "reviewed"
+
             // Fetch ammo and transcript
             Task {
                 await loadAmmoItems()

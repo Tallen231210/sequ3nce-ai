@@ -648,7 +648,10 @@ struct CallReviewView: View {
                     recordingType: recordingType,
                     recordingUrl: recordingUrl,
                     summary: callData["summary"] as? String,
-                    transcriptText: callData["transcriptText"] as? String
+                    transcriptText: callData["transcriptText"] as? String,
+                    flaggedForReview: callData["flaggedForReview"] as? Bool ?? false,
+                    reviewStatus: callData["reviewStatus"] as? String,
+                    commentCount: callData["commentCount"] as? Int ?? 0
                 )
 
                 // Refresh recording URL (Recall.ai signed URLs expire after ~24h)
