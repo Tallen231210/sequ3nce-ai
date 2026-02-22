@@ -240,8 +240,8 @@ export default function SharePage() {
 
       {/* Main content — three-column layout: Video | Transcript | Comments */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Video */}
-        <div className="shrink-0 border-r border-zinc-100 flex flex-col">
+        {/* Left: Video — fixed width column */}
+        <div className="w-[420px] shrink-0 border-r border-zinc-100 flex flex-col">
           <div className="p-3">
             {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
