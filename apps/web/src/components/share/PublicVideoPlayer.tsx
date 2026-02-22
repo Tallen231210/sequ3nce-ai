@@ -117,7 +117,7 @@ export function PublicVideoPlayer({
 
   return (
     <div
-      className="relative group rounded-lg overflow-hidden bg-black mx-auto w-fit"
+      className="relative group rounded-lg overflow-hidden bg-black"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -134,7 +134,7 @@ export function PublicVideoPlayer({
         src={recordingUrl}
         playsInline
         preload="auto"
-        className="max-w-full max-h-[50vh] cursor-pointer"
+        className="w-full cursor-pointer"
         onClick={onPlayPause}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}

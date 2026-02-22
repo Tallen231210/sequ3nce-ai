@@ -238,12 +238,11 @@ export default function SharePage() {
         </span>
       </div>
 
-      {/* Main content — full height split layout */}
+      {/* Main content — three-column layout: Video | Transcript | Comments */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Video + Transcript */}
-        <div className={`flex flex-col flex-1 min-w-0 ${hasComments ? "border-r border-zinc-200" : ""}`}>
-          {/* Video — fixed at top, capped height so transcript gets space */}
-          <div className="shrink-0 p-3">
+        {/* Left: Video */}
+        <div className="shrink-0 border-r border-zinc-100 flex flex-col">
+          <div className="p-3">
             {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
                 recordingUrl={call.recordingUrl}
@@ -262,34 +261,34 @@ export default function SharePage() {
                 videoRef={videoRef}
               />
             ) : (
-              <div className="rounded-lg bg-zinc-100 aspect-video flex items-center justify-center">
+              <div className="rounded-lg bg-zinc-100 w-[400px] aspect-video flex items-center justify-center">
                 <p className="text-sm text-zinc-400">
                   {videoError ? "Failed to load recording" : "No recording available"}
                 </p>
               </div>
             )}
           </div>
-
-          {/* Transcript — fills remaining space, scrolls independently */}
-          <div className="flex-1 flex flex-col min-h-0 border-t border-zinc-100">
-            <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                Transcript
-              </h3>
-            </div>
-            <PublicTranscript
-              segments={transcript}
-              currentTime={currentTime}
-              onSeek={handleSeek}
-              startSeconds={isClip ? startSeconds : undefined}
-              endSeconds={isClip ? endSeconds : undefined}
-            />
-          </div>
         </div>
 
-        {/* Right: Comments (if enabled) — fixed narrow width */}
+        {/* Middle: Transcript — takes remaining space */}
+        <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${hasComments ? "border-r border-zinc-100" : ""}`}>
+          <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
+            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+              Transcript
+            </h3>
+          </div>
+          <PublicTranscript
+            segments={transcript}
+            currentTime={currentTime}
+            onSeek={handleSeek}
+            startSeconds={isClip ? startSeconds : undefined}
+            endSeconds={isClip ? endSeconds : undefined}
+          />
+        </div>
+
+        {/* Right: Comments (if enabled) */}
         {hasComments && (
-          <div className="w-[300px] shrink-0 flex flex-col">
+          <div className="w-[280px] shrink-0 flex flex-col">
             <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
                 <MessageCircle className="h-3.5 w-3.5" />
