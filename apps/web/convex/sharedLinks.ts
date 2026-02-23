@@ -212,20 +212,3 @@ export const getSharedLinkByToken = internalQuery({
   },
 });
 
-/**
- * Helper: get the callId for a shared link by token.
- * Used by the HTTP endpoint to refresh the recording URL.
- */
-export const getSharedLinkCallId = internalQuery({
-  args: {
-    token: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const link = await ctx.db
-      .query("sharedLinks")
-      .withIndex("by_token", (q) => q.eq("token", args.token))
-      .unique();
-    if (!link || !link.isActive) return null;
-    return link.callId;
-  },
-});

@@ -5048,8 +5048,8 @@ http.route({
         }
       }
 
-      // Strip internal callId from public response
-      const { callId: _callId, ...publicData } = data;
+      // Strip internal fields from public response
+      const { callId: _callId, revoked: _revoked, ...publicData } = data;
       return new Response(JSON.stringify({
         ...publicData,
         call: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
 
 interface Comment {
@@ -51,13 +51,13 @@ export function PublicVideoPlayer({
 
   const isClip = startSeconds != null && endSeconds != null;
 
-  const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleTrackClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!trackRef.current || duration === 0) return;
     const rect = trackRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const fraction = Math.max(0, Math.min(1, x / rect.width));
     onSeek(fraction * duration);
-  };
+  }, [duration, onSeek]);
 
   const handleToggleMute = useCallback(() => {
     if (!videoRef.current) return;
@@ -109,8 +109,9 @@ export function PublicVideoPlayer({
     [onDurationChange, startSeconds]
   );
 
-  const commentMarkers = comments.filter(
-    (c) => c.timestampSeconds != null
+  const commentMarkers = useMemo(
+    () => comments.filter((c) => c.timestampSeconds != null),
+    [comments]
   );
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
