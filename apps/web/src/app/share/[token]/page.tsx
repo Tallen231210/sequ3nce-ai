@@ -241,7 +241,7 @@ export default function SharePage() {
       {/* Main content — Video (left half) | Transcript + Comments (right half) */}
       <div className="flex-1 flex min-h-0">
         {/* Left half: Video */}
-        <div className="w-1/2 shrink-0 border-r border-zinc-100 flex flex-col">
+        <div className="w-1/2 shrink-0 border-r border-zinc-100 flex flex-col justify-center">
           <div className="p-3">
             {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
