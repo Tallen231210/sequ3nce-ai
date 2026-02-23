@@ -238,11 +238,12 @@ export default function SharePage() {
         </span>
       </div>
 
-      {/* Main content — Video (left half) | Transcript + Comments (right half) */}
+      {/* Main content — split layout matching internal call review page */}
       <div className="flex-1 flex min-h-0">
-        {/* Left half: Video */}
-        <div className="w-1/2 shrink-0 border-r border-zinc-100 flex flex-col justify-center">
-          <div className="p-3">
+        {/* Left: Video + Transcript (~65%) */}
+        <div className={`${hasComments ? "w-[65%]" : "w-full"} flex flex-col border-r border-zinc-200`}>
+          {/* Video — fixed at top, never scrolls */}
+          <div className="shrink-0 p-4">
             {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
                 recordingUrl={call.recordingUrl}
@@ -261,19 +262,16 @@ export default function SharePage() {
                 videoRef={videoRef}
               />
             ) : (
-              <div className="rounded-lg bg-zinc-100 aspect-video flex items-center justify-center">
+              <div className="rounded-lg bg-zinc-100 flex items-center justify-center h-48">
                 <p className="text-sm text-zinc-400">
                   {videoError ? "Failed to load recording" : "No recording available"}
                 </p>
               </div>
             )}
           </div>
-        </div>
 
-        {/* Right half: Transcript + Comments side by side */}
-        <div className="w-1/2 flex min-h-0">
-          {/* Transcript — takes remaining space */}
-          <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${hasComments ? "border-r border-zinc-100" : ""}`}>
+          {/* Transcript — fills remaining space, scrolls independently */}
+          <div className="flex-1 flex flex-col min-h-0 border-t border-zinc-200">
             <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
               <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
                 Transcript
@@ -287,26 +285,26 @@ export default function SharePage() {
               endSeconds={isClip ? endSeconds : undefined}
             />
           </div>
-
-          {/* Comments (if enabled) */}
-          {hasComments && (
-            <div className="w-[260px] shrink-0 flex flex-col">
-              <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
-                <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  Comments
-                  <span className="text-[10px] font-medium bg-zinc-100 text-zinc-400 px-1.5 py-0.5 rounded">
-                    {comments.length}
-                  </span>
-                </h3>
-              </div>
-              <PublicComments
-                comments={comments}
-                onSeek={handleSeek}
-              />
-            </div>
-          )}
         </div>
+
+        {/* Right: Comments (~35%) */}
+        {hasComments && (
+          <div className="w-[35%] flex flex-col">
+            <div className="shrink-0 px-4 py-2 border-b border-zinc-100 flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+                <MessageCircle className="h-3.5 w-3.5" />
+                Comments
+                <span className="text-[10px] font-medium bg-zinc-100 text-zinc-400 px-1.5 py-0.5 rounded">
+                  {comments.length}
+                </span>
+              </h3>
+            </div>
+            <PublicComments
+              comments={comments}
+              onSeek={handleSeek}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
