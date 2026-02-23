@@ -20,11 +20,13 @@ interface PublicCommentsProps {
 
 export function PublicComments({ comments, onSeek }: PublicCommentsProps) {
   // Group comments: top-level parents + replies nested underneath
+  // Orphaned replies (parent was deleted) are promoted to top-level
   const { topLevel, replyMap } = useMemo(() => {
-    const top = comments.filter((c) => !c.parentCommentId);
+    const commentIds = new Set(comments.map((c) => c.id));
+    const top = comments.filter((c) => !c.parentCommentId || !commentIds.has(c.parentCommentId));
     const replies = new Map<string, Comment[]>();
     for (const c of comments) {
-      if (c.parentCommentId) {
+      if (c.parentCommentId && commentIds.has(c.parentCommentId)) {
         const existing = replies.get(c.parentCommentId) ?? [];
         existing.push(c);
         replies.set(c.parentCommentId, existing);

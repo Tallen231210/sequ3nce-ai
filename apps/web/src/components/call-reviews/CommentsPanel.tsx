@@ -164,10 +164,11 @@ export function CommentsPanel({
   // Group comments: top-level parents + replies nested underneath
   const { topLevel, replyMap } = useMemo(() => {
     if (!comments) return { topLevel: [], replyMap: new Map<string, typeof comments>() };
-    const top = comments.filter((c) => !c.parentCommentId);
+    const commentIds = new Set(comments.map((c) => c._id));
+    const top = comments.filter((c) => !c.parentCommentId || !commentIds.has(c.parentCommentId));
     const replies = new Map<string, typeof comments>();
     for (const c of comments) {
-      if (c.parentCommentId) {
+      if (c.parentCommentId && commentIds.has(c.parentCommentId)) {
         const existing = replies.get(c.parentCommentId) ?? [];
         existing.push(c);
         replies.set(c.parentCommentId, existing);
