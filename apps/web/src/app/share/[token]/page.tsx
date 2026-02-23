@@ -32,10 +32,12 @@ interface SharedLinkData {
     timestamp: number;
   }>;
   comments: Array<{
+    id: string;
     authorName: string;
     authorType: string;
     content: string;
     timestampSeconds?: number;
+    parentCommentId?: string;
     createdAt: number;
   }>;
 }

@@ -5,7 +5,7 @@ import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { MessageCircle, Clock, Pin, Send, Trash2 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { formatTime, formatRelativeTime } from "./utils";
 
 const MAX_COMMENT_LENGTH = 2000;
@@ -17,6 +17,80 @@ interface CommentsPanelProps {
   onSeek: (time: number) => void;
   userId: string;
   userName: string;
+}
+
+function CommentBubble({
+  comment,
+  userId,
+  isDeletingId,
+  onSeek,
+  onDelete,
+  isReply,
+}: {
+  comment: { _id: Id<"callComments">; authorName: string; authorId: string; authorType: string; content: string; timestampSeconds?: number; createdAt: number };
+  userId: string;
+  isDeletingId: string | null;
+  onSeek: (time: number) => void;
+  onDelete: (id: Id<"callComments">) => void;
+  isReply?: boolean;
+}) {
+  return (
+    <div
+      className={`group p-3 rounded-lg transition-colors cursor-pointer ${
+        isReply
+          ? "bg-zinc-50/60 hover:bg-zinc-100/80 border-l-2 border-zinc-200"
+          : "bg-zinc-50 hover:bg-zinc-100"
+      }`}
+      onClick={() => {
+        if (comment.timestampSeconds !== undefined) {
+          onSeek(comment.timestampSeconds);
+        }
+      }}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-foreground">
+            {comment.authorName}
+          </span>
+          <span
+            className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
+              comment.authorType === "manager"
+                ? "bg-blue-50 text-blue-600"
+                : "bg-emerald-50 text-emerald-600"
+            }`}
+          >
+            {comment.authorType}
+          </span>
+          {comment.timestampSeconds !== undefined && (
+            <span className="flex items-center gap-0.5 text-[10px] text-blue-600 font-mono">
+              <Clock className="h-3 w-3" />
+              {formatTime(comment.timestampSeconds)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">
+            {formatRelativeTime(comment.createdAt)}
+          </span>
+          {comment.authorId === userId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(comment._id);
+              }}
+              disabled={isDeletingId === comment._id}
+              className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all disabled:opacity-50"
+            >
+              <Trash2 className={`h-3 w-3 ${isDeletingId === comment._id ? "animate-pulse" : ""}`} />
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="text-sm text-foreground leading-relaxed">
+        {comment.content}
+      </p>
+    </div>
+  );
 }
 
 export function CommentsPanel({
@@ -87,6 +161,21 @@ export function CommentsPanel({
   const charsRemaining = MAX_COMMENT_LENGTH - newComment.trim().length;
   const isNearLimit = charsRemaining < 200 && charsRemaining >= 0;
 
+  // Group comments: top-level parents + replies nested underneath
+  const { topLevel, replyMap } = useMemo(() => {
+    if (!comments) return { topLevel: [], replyMap: new Map<string, typeof comments>() };
+    const top = comments.filter((c) => !c.parentCommentId);
+    const replies = new Map<string, typeof comments>();
+    for (const c of comments) {
+      if (c.parentCommentId) {
+        const existing = replies.get(c.parentCommentId) ?? [];
+        existing.push(c);
+        replies.set(c.parentCommentId, existing);
+      }
+    }
+    return { topLevel: top, replyMap: replies };
+  }, [comments]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Comments list */}
@@ -102,49 +191,29 @@ export function CommentsPanel({
             </p>
           </div>
         ) : (
-          comments.map((comment) => (
-            <div
-              key={comment._id}
-              className="group p-3 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors cursor-pointer"
-              onClick={() => {
-                if (comment.timestampSeconds !== undefined) {
-                  onSeek(comment.timestampSeconds);
-                }
-              }}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-foreground">
-                    {comment.authorName}
-                  </span>
-                  {comment.timestampSeconds !== undefined && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-blue-600 font-mono">
-                      <Clock className="h-3 w-3" />
-                      {formatTime(comment.timestampSeconds)}
-                    </span>
-                  )}
+          topLevel.map((comment) => (
+            <div key={comment._id}>
+              {/* Parent comment */}
+              <CommentBubble
+                comment={comment}
+                userId={userId}
+                isDeletingId={isDeletingId}
+                onSeek={onSeek}
+                onDelete={handleDelete}
+              />
+              {/* Replies nested underneath */}
+              {replyMap.get(comment._id)?.map((reply) => (
+                <div key={reply._id} className="ml-4 mt-1.5">
+                  <CommentBubble
+                    comment={reply}
+                    userId={userId}
+                    isDeletingId={isDeletingId}
+                    onSeek={onSeek}
+                    onDelete={handleDelete}
+                    isReply
+                  />
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground">
-                    {formatRelativeTime(comment.createdAt)}
-                  </span>
-                  {comment.authorId === userId && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(comment._id);
-                      }}
-                      disabled={isDeletingId === comment._id}
-                      className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all disabled:opacity-50"
-                    >
-                      <Trash2 className={`h-3 w-3 ${isDeletingId === comment._id ? "animate-pulse" : ""}`} />
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="text-sm text-foreground leading-relaxed">
-                {comment.content}
-              </p>
+              ))}
             </div>
           ))
         )}

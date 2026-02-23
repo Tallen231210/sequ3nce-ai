@@ -1,12 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
 import { Clock } from "lucide-react";
 
 interface Comment {
+  id: string;
   authorName: string;
   authorType: string;
   content: string;
   timestampSeconds?: number;
+  parentCommentId?: string;
   createdAt: number;
 }
 
@@ -16,6 +19,20 @@ interface PublicCommentsProps {
 }
 
 export function PublicComments({ comments, onSeek }: PublicCommentsProps) {
+  // Group comments: top-level parents + replies nested underneath
+  const { topLevel, replyMap } = useMemo(() => {
+    const top = comments.filter((c) => !c.parentCommentId);
+    const replies = new Map<string, Comment[]>();
+    for (const c of comments) {
+      if (c.parentCommentId) {
+        const existing = replies.get(c.parentCommentId) ?? [];
+        existing.push(c);
+        replies.set(c.parentCommentId, existing);
+      }
+    }
+    return { topLevel: top, replyMap: replies };
+  }, [comments]);
+
   if (comments.length === 0) {
     return (
       <div className="p-4 text-sm text-zinc-400 text-center">
@@ -26,48 +43,72 @@ export function PublicComments({ comments, onSeek }: PublicCommentsProps) {
 
   return (
     <div className="flex-1 overflow-y-auto p-3 space-y-2">
-      {comments.map((comment, index) => (
-        <div
-          key={index}
-          className={`p-3 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors ${
-            comment.timestampSeconds != null ? "cursor-pointer" : ""
-          }`}
-          onClick={() => {
-            if (comment.timestampSeconds != null) {
-              onSeek(comment.timestampSeconds);
-            }
-          }}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-zinc-700">
-                {comment.authorName}
-              </span>
-              <span
-                className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                  comment.authorType === "manager"
-                    ? "bg-blue-50 text-blue-600"
-                    : "bg-emerald-50 text-emerald-600"
-                }`}
-              >
-                {comment.authorType}
-              </span>
-              {comment.timestampSeconds != null && (
-                <span className="flex items-center gap-0.5 text-[10px] text-blue-600 font-mono">
-                  <Clock className="h-3 w-3" />
-                  {formatTime(comment.timestampSeconds)}
-                </span>
-              )}
+      {topLevel.map((comment) => (
+        <div key={comment.id}>
+          <CommentBubble comment={comment} onSeek={onSeek} />
+          {replyMap.get(comment.id)?.map((reply) => (
+            <div key={reply.id} className="ml-4 mt-1.5">
+              <CommentBubble comment={reply} onSeek={onSeek} isReply />
             </div>
-            <span className="text-[10px] text-zinc-300">
-              {formatRelativeTime(comment.createdAt)}
-            </span>
-          </div>
-          <p className="text-sm text-zinc-600 leading-relaxed whitespace-pre-wrap">
-            {comment.content}
-          </p>
+          ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+function CommentBubble({
+  comment,
+  onSeek,
+  isReply,
+}: {
+  comment: Comment;
+  onSeek: (time: number) => void;
+  isReply?: boolean;
+}) {
+  return (
+    <div
+      className={`p-3 rounded-lg transition-colors ${
+        comment.timestampSeconds != null ? "cursor-pointer" : ""
+      } ${
+        isReply
+          ? "bg-zinc-50/60 hover:bg-zinc-100/80 border-l-2 border-zinc-200"
+          : "bg-zinc-50 hover:bg-zinc-100"
+      }`}
+      onClick={() => {
+        if (comment.timestampSeconds != null) {
+          onSeek(comment.timestampSeconds);
+        }
+      }}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-zinc-700">
+            {comment.authorName}
+          </span>
+          <span
+            className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
+              comment.authorType === "manager"
+                ? "bg-blue-50 text-blue-600"
+                : "bg-emerald-50 text-emerald-600"
+            }`}
+          >
+            {comment.authorType}
+          </span>
+          {comment.timestampSeconds != null && (
+            <span className="flex items-center gap-0.5 text-[10px] text-blue-600 font-mono">
+              <Clock className="h-3 w-3" />
+              {formatTime(comment.timestampSeconds)}
+            </span>
+          )}
+        </div>
+        <span className="text-[10px] text-zinc-300">
+          {formatRelativeTime(comment.createdAt)}
+        </span>
+      </div>
+      <p className="text-sm text-zinc-600 leading-relaxed whitespace-pre-wrap">
+        {comment.content}
+      </p>
     </div>
   );
 }

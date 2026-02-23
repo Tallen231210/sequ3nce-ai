@@ -166,10 +166,12 @@ export const getSharedLinkByToken = internalQuery({
 
     // Get comments if enabled
     let comments: Array<{
+      id: string;
       authorName: string;
       authorType: string;
       content: string;
       timestampSeconds: number | undefined;
+      parentCommentId: string | undefined;
       createdAt: number;
     }> = [];
     if (link.includeComments) {
@@ -179,10 +181,12 @@ export const getSharedLinkByToken = internalQuery({
         .order("asc")
         .collect();
       comments = rawComments.map((c) => ({
+        id: c._id,
         authorName: c.authorName,
         authorType: c.authorType,
         content: c.content,
         timestampSeconds: c.timestampSeconds,
+        parentCommentId: c.parentCommentId,
         createdAt: c.createdAt,
       }));
     }

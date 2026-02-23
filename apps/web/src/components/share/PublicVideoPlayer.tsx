@@ -4,10 +4,12 @@ import { useRef, useState, useCallback, useMemo } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
 
 interface Comment {
+  id: string;
   authorName: string;
   authorType: string;
   content: string;
   timestampSeconds?: number;
+  parentCommentId?: string;
   createdAt: number;
 }
 
