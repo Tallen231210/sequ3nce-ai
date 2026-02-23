@@ -8,6 +8,29 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 2.2.0</title>
+            <pubDate>Sat, 22 Feb 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>73</sparkle:version>
+            <sparkle:shortVersionString>2.2.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>Sequ3nce 2.2 — Share Links</h2>
+                <ul>
+                    <li>Share Link — generate a public link for any call recording and copy it to your clipboard</li>
+                    <li>Share with teammates who don't have access to the dashboard</li>
+                    <li>One-tap sharing from the call detail view</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v2.2.0/Sequ3nce.zip"
+                length="2521760"
+                type="application/octet-stream"
+                sparkle:edSignature="iOdlJahqbhB60AT9dOxNg0Zj4Fd0GPJd/+K0WwD1I7qt96BLm/B+YcR9kW2c20B+Xx5IzGyR9aF1oX4swTZxAA=="
+            />
+        </item>
+
+        <!-- v2.1.0 -->
+        <item>
             <title>Version 2.1.0</title>
             <pubDate>Fri, 21 Feb 2026 12:00:00 +0000</pubDate>
             <sparkle:version>72</sparkle:version>
