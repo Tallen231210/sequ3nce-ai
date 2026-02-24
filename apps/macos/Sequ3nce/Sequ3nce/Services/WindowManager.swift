@@ -577,7 +577,7 @@ class WindowManager: ObservableObject {
         let panelX = screenFrame.origin.x + 40
         let panelY = screenFrame.origin.y // Bottom edge of screen
 
-        let panel = NSPanel(
+        let panel = InteractivePanel(
             contentRect: NSRect(x: panelX, y: panelY, width: panelWidth, height: panelHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -590,7 +590,7 @@ class WindowManager: ObservableObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.appearance = NSAppearance(named: .aqua)
         panel.isMovableByWindowBackground = false
-        panel.becomesKeyOnlyIfNeeded = false
+        panel.becomesKeyOnlyIfNeeded = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false // SwiftUI handles the shadow

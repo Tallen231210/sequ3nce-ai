@@ -8,6 +8,28 @@
 
         <!-- Latest Release -->
         <item>
+            <title>Version 2.2.1</title>
+            <pubDate>Sun, 23 Feb 2026 12:00:00 +0000</pubDate>
+            <sparkle:version>76</sparkle:version>
+            <sparkle:shortVersionString>2.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.4</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                <h2>Sequ3nce 2.2.1 — Post-Call Form Fix</h2>
+                <ul>
+                    <li>Fixed objection dropdown not responding to clicks in the post-call form</li>
+                    <li>Fixed notes field not accepting keyboard input in the post-call form</li>
+                </ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/Tallen231210/sequ3nce-releases/releases/download/macos-v2.2.1/Sequ3nce.zip"
+                length="2521832"
+                type="application/octet-stream"
+                sparkle:edSignature="2/vaWmroQEHxu7r4JBN7iNGuSlE6aHxkJjKZmvj3q8j2Pal2zdbHDM3HQHZ87bFE1LDvmI0B1gNkxCKfcO53Ag=="
+            />
+        </item>
+
+        <!-- v2.2.0 -->
+        <item>
             <title>Version 2.2.0</title>
             <pubDate>Sat, 22 Feb 2026 12:00:00 +0000</pubDate>
             <sparkle:version>73</sparkle:version>
