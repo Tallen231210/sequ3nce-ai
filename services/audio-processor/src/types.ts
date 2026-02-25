@@ -5,6 +5,7 @@ export interface CallMetadata {
   visitorId?: string;
   teamId: string;
   closerId: string;
+  closerName?: string; // Closer's display name (for speaker identification in bot calls)
   prospectName?: string;
   sampleRate?: number; // Audio sample rate from desktop (e.g., 48000)
   // Reconnection fields - sent when desktop reconnects after network interruption
@@ -12,27 +13,8 @@ export interface CallMetadata {
   isReconnect?: boolean; // True if this is a reconnection attempt
 }
 
-// Meeting BaaS connection metadata (first message on /meetingbaas path)
-export interface MeetingBaasMetadata {
-  type: "meetingbaas";
-  botId: string;
-  meetingUrl: string;
-  closerId: string;
-  teamId: string;
-  prospectName?: string;
-  sampleRate?: number; // Audio sample rate (may differ from desktop's 48kHz)
-}
-
 // Source type for call handler - determines behavior differences
-export type CallSource = "closer" | "meetingbaas" | "recall";
-
-// Speaker metadata sent by Meeting BaaS as JSON arrays
-export interface MeetingBaasSpeakerEvent {
-  name: string;
-  id: string | number;
-  timestamp?: number;
-  isSpeaking: boolean;
-}
+export type CallSource = "closer" | "recall";
 
 export interface AmmoItem {
   text: string;

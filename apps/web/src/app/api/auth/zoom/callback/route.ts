@@ -14,8 +14,7 @@ const getConvex = () => new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!
  * 3. Zoom redirects here with authorization code and state (closerId)
  * 4. We exchange the code for tokens (access + refresh)
  * 5. Save the tokens on the closer record via Convex mutation
- * 6. Trigger Meeting BaaS registration for Zoom credentials
- * 7. Redirect back to the desktop app or success page
+ * 6. Redirect back to the desktop app or success page
  */
 export async function GET(req: NextRequest) {
   const convex = getConvex();
@@ -120,19 +119,6 @@ export async function GET(req: NextRequest) {
     });
 
     console.log("[Zoom OAuth] Successfully saved Zoom connection for closer:", closerId);
-
-    // Trigger Meeting BaaS registration for Zoom credentials
-    // This is fire-and-forget; we don't wait for it to complete before redirecting
-    try {
-      await convex.action(api.zoomOAuth.registerZoomCredentialsWithMeetingBaas, {
-        closerId,
-      });
-      console.log("[Zoom OAuth] Meeting BaaS Zoom registration triggered for closer:", closerId);
-    } catch (baasError) {
-      // Log but don't fail the OAuth flow if Meeting BaaS registration fails
-      // It can be retried later
-      console.error("[Zoom OAuth] Meeting BaaS registration failed (non-fatal):", baasError);
-    }
 
     // Redirect to success page (which may redirect to desktop app via custom URL scheme)
     return NextResponse.redirect(

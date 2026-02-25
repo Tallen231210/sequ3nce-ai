@@ -177,31 +177,29 @@ export async function updateTalkTime(
   }
 }
 
-// Set a meeting bot's status to "active" when the audio processor connects
-// This is the primary signal that the bot has joined the call, since Meeting BaaS v2
-// does NOT send a "meeting.started" or "bot.in_call" webhook event.
+// Set a meeting bot's status to "active" when the audio processor connects.
+// The WebSocket connection is the primary signal that the bot has joined the call.
 export async function activateBot(botId: string): Promise<void> {
   try {
     await convex.mutation("meetingBot:activateBotFromAudioProcessor" as any, {
       botId,
     });
-    logger.info(`[MeetingBaaS] Bot activated: ${botId}`);
+    logger.info(`[Bot] Bot activated: ${botId}`);
   } catch (error) {
-    logger.error(`[MeetingBaaS] Failed to activate bot: ${error}`);
+    logger.error(`[Bot] Failed to activate bot: ${error}`);
   }
 }
 
 // Mark a meeting bot as "completed" when the audio processor WebSocket closes.
-// This is the primary signal that the bot has left the call, since Meeting BaaS v2
-// webhook (bot.completed) may arrive late or not at all.
+// This immediately triggers the macOS app's post-call questionnaire flow.
 export async function completeBot(botId: string): Promise<void> {
   try {
     await convex.mutation("meetingBot:completeBotFromAudioProcessor" as any, {
       botId,
     });
-    logger.info(`[MeetingBaaS] Bot completed: ${botId}`);
+    logger.info(`[Bot] Bot completed: ${botId}`);
   } catch (error) {
-    logger.error(`[MeetingBaaS] Failed to complete bot: ${error}`);
+    logger.error(`[Bot] Failed to complete bot: ${error}`);
   }
 }
 

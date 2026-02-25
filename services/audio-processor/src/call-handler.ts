@@ -19,7 +19,7 @@ import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
 import { AmmoAnalyzer, type AmmoV2Analysis } from "./ammoAnalyzer.js";
 import { logger } from "./logger.js";
-import type { CallMetadata, CallSession, TranscriptChunk, AmmoConfig, CallSource, MeetingBaasSpeakerEvent } from "./types.js";
+import type { CallMetadata, CallSession, TranscriptChunk, AmmoConfig, CallSource } from "./types.js";
 
 const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
 const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours max call duration
@@ -31,7 +31,7 @@ export type OnAmmoV2AnalysisCallback = (analysis: AmmoV2Analysis) => void;
 export type OnSilenceWarningCallback = (silenceDurationSeconds: number) => void;
 
 export interface CallHandlerOptions {
-  source?: CallSource; // "closer" (default), "meetingbaas" (legacy), or "recall"
+  source?: CallSource; // "closer" (default) or "recall"
   recordingType?: "audio" | "video"; // "audio" (default) or "video" for meeting bot recordings
   skipSpeechmatics?: boolean; // true for Recall.ai (provides its own transcription)
 }
@@ -47,9 +47,8 @@ export class CallHandler {
   private firstSpeaker: string | null = null; // First speaker detected = Closer (fallback heuristic)
   private sampleRate: number; // Audio sample rate from desktop
 
-  // Meeting BaaS speaker mapping: correlate Speechmatics IDs ("S1","S2") to real participant names
-  private speakerNameMap = new Map<string, string>(); // Speechmatics ID → participant name
-  private currentMeetingBaasSpeaker: string | null = null; // Last person Meeting BaaS reported as speaking
+  // Recall.ai participant join order tracking: first non-bot participant = closer
+  private firstParticipantJoined: string | null = null;
   private maxDurationTimeout: NodeJS.Timeout | null = null; // Auto-end after 2 hours
 
   // Ammo V2: Real-time AI analysis
@@ -63,7 +62,7 @@ export class CallHandler {
   // Timestamp offset for reconnection (adds to Speechmatics timestamps to maintain ordering)
   private timestampOffset: number = 0;
 
-  // Source tracking: "closer" (desktop app), "meetingbaas" (legacy), or "recall"
+  // Source tracking: "closer" (desktop app) or "recall"
   private source: CallSource;
   private recordingType: "audio" | "video";
   private skipSpeechmatics: boolean;
@@ -127,7 +126,7 @@ export class CallHandler {
         // Mark the call as active again (in case it was marked as ended)
         await updateCallStatus(this.convexCallId, "on_call", 2);
         logger.info(`[RECONNECT] Call status updated to on_call`);
-      } else if (this.source === "recall" || this.source === "meetingbaas") {
+      } else if (this.source === "recall") {
         // BOT CALL: Check if bot already has a linked call (implicit reconnection)
         // This handles the case where Recall.ai reconnects but doesn't send isReconnect metadata.
         // If the bot already has an active call record, reuse it instead of creating a duplicate.
@@ -164,8 +163,8 @@ export class CallHandler {
       // Initialize Speechmatics connection with speaker diarization
       // Skip for Recall.ai calls (Recall provides its own transcription via WebSocket events)
       if (!this.skipSpeechmatics) {
-        // For meetingbaas/closer: disable silence detection for bot sessions
-        const silenceCallback = (this.source === "meetingbaas" || this.source === "recall")
+        // Disable silence detection for bot sessions (only useful for desktop closer)
+        const silenceCallback = this.source === "recall"
           ? undefined
           : (this.onSilenceWarning ? this.onSilenceWarning : undefined);
         this.speechmatics = await createSpeechmaticsConnection(
@@ -241,44 +240,28 @@ export class CallHandler {
     if (this.speechmatics) {
       let processed: Buffer;
 
-      if (this.source === "meetingbaas") {
-        // Meeting BaaS audio: 24kHz mono 16-bit PCM — pass through directly
-        processed = audioData;
+      // Desktop closer audio: 48kHz stereo interleaved PCM -> mono
+      processed = this.resampleAudio(audioData);
 
-        // Log periodically for Meeting BaaS audio debugging
-        if (this.audioChunkCount % 50 === 1) {
-          const bytesPerSample = 2;
-          let maxSample = 0;
-          for (let i = 0; i < audioData.length - 1; i += bytesPerSample) {
-            const sample = Math.abs(audioData.readInt16LE(i));
-            if (sample > maxSample) maxSample = sample;
-          }
-          logger.info(`[Audio][MeetingBaaS] Chunk #${this.audioChunkCount}: size=${audioData.length}b max=${maxSample} sampleRate=${this.sampleRate}Hz gaps=${this.gapCount} maxGap=${this.maxGapMs}ms`);
+      // Log BOTH input and resampled stats for the SAME chunk (every 50 chunks)
+      if (this.audioChunkCount % 50 === 1) {
+        let inputMaxLeft = 0;
+        let inputMaxRight = 0;
+        for (let i = 0; i < audioData.length - 3; i += 4) {
+          const left = Math.abs(audioData.readInt16LE(i));
+          const right = Math.abs(audioData.readInt16LE(i + 2));
+          if (left > inputMaxLeft) inputMaxLeft = left;
+          if (right > inputMaxRight) inputMaxRight = right;
         }
-      } else {
-        // Desktop closer audio: 48kHz stereo interleaved PCM -> mono
-        processed = this.resampleAudio(audioData);
 
-        // Log BOTH input and resampled stats for the SAME chunk (every 50 chunks)
-        if (this.audioChunkCount % 50 === 1) {
-          let inputMaxLeft = 0;
-          let inputMaxRight = 0;
-          for (let i = 0; i < audioData.length - 3; i += 4) {
-            const left = Math.abs(audioData.readInt16LE(i));
-            const right = Math.abs(audioData.readInt16LE(i + 2));
-            if (left > inputMaxLeft) inputMaxLeft = left;
-            if (right > inputMaxRight) inputMaxRight = right;
-          }
-
-          let resampledMax = 0;
-          for (let i = 0; i < processed.length - 1; i += 2) {
-            const sample = Math.abs(processed.readInt16LE(i));
-            if (sample > resampledMax) resampledMax = sample;
-          }
-
-          const expectedSize = (audioData.length / 4) * 2;
-          logger.info(`[Audio] Chunk #${this.audioChunkCount}: input=${audioData.length}b L=${inputMaxLeft} R=${inputMaxRight} -> mono=${processed.length}b (exp=${expectedSize}) max=${resampledMax}`);
+        let resampledMax = 0;
+        for (let i = 0; i < processed.length - 1; i += 2) {
+          const sample = Math.abs(processed.readInt16LE(i));
+          if (sample > resampledMax) resampledMax = sample;
         }
+
+        const expectedSize = (audioData.length / 4) * 2;
+        logger.info(`[Audio] Chunk #${this.audioChunkCount}: input=${audioData.length}b L=${inputMaxLeft} R=${inputMaxRight} -> mono=${processed.length}b (exp=${expectedSize}) max=${resampledMax}`);
       }
 
       this.speechmatics.sendAudio(processed);
@@ -325,7 +308,6 @@ export class CallHandler {
   /**
    * Normalize audio to 48kHz stereo for live broadcast to web dashboard.
    * - Recall sends 16kHz mono — upsample 3x to 48kHz stereo via linear interpolation.
-   * - Meeting BaaS sends 24kHz mono — upsample 2x to 48kHz stereo (legacy).
    * - Desktop audio is already 48kHz stereo and passes through unchanged.
    */
   normalizeForBroadcast(audioData: Buffer): Buffer {
@@ -333,44 +315,22 @@ export class CallHandler {
       return audioData; // Desktop audio already 48kHz stereo
     }
 
+    // Recall: 16kHz mono → 48kHz stereo via linear interpolation (3x upsample)
     const inputSamples = audioData.length / 2; // 16-bit mono = 2 bytes per sample
-
-    if (this.source === "recall") {
-      // 16kHz mono → 48kHz stereo via linear interpolation (3x upsample)
-      const upsampleFactor = 3;
-      const output = Buffer.alloc(inputSamples * upsampleFactor * 4); // stereo = 4 bytes per frame
-
-      for (let i = 0; i < inputSamples; i++) {
-        const current = audioData.readInt16LE(i * 2);
-        const next = (i + 1 < inputSamples) ? audioData.readInt16LE((i + 1) * 2) : current;
-
-        // Linear interpolation: 3 evenly spaced samples between current and next
-        const diff = next - current;
-        const samples = [
-          current,
-          Math.round(current + diff / 3),
-          Math.round(current + (diff * 2) / 3),
-        ];
-
-        for (let r = 0; r < upsampleFactor; r++) {
-          const outIdx = (i * upsampleFactor + r) * 4;
-          output.writeInt16LE(samples[r], outIdx);     // Left channel
-          output.writeInt16LE(samples[r], outIdx + 2); // Right channel (mono → stereo)
-        }
-      }
-
-      return output;
-    }
-
-    // Meeting BaaS (legacy): 24kHz mono → 48kHz stereo (2x upsample)
-    const upsampleFactor = 2;
-    const output = Buffer.alloc(inputSamples * upsampleFactor * 4);
+    const upsampleFactor = 3;
+    const output = Buffer.alloc(inputSamples * upsampleFactor * 4); // stereo = 4 bytes per frame
 
     for (let i = 0; i < inputSamples; i++) {
       const current = audioData.readInt16LE(i * 2);
       const next = (i + 1 < inputSamples) ? audioData.readInt16LE((i + 1) * 2) : current;
 
-      const samples = [current, Math.round((current + next) / 2)];
+      // Linear interpolation: 3 evenly spaced samples between current and next
+      const diff = next - current;
+      const samples = [
+        current,
+        Math.round(current + diff / 3),
+        Math.round(current + (diff * 2) / 3),
+      ];
 
       for (let r = 0; r < upsampleFactor; r++) {
         const outIdx = (i * upsampleFactor + r) * 4;
@@ -394,9 +354,12 @@ export class CallHandler {
 
     // Add to transcript
     if (chunk.isFinal && chunk.text.trim()) {
-      // Speaker identification: for Meeting BaaS calls, uses participant name mapping
-      // from Meeting BaaS metadata. Falls back to first-speaker heuristic for desktop calls.
-      const isCloser = this.getIsCloser(chunk.speaker);
+      // Speaker identification: for Recall calls, role is pre-determined (prefixed with __recall_).
+      // For desktop calls, uses the first-speaker heuristic.
+      const isRecallPreDetermined = chunk.speaker.startsWith("__recall_");
+      const isCloser = isRecallPreDetermined
+        ? chunk.speaker === "__recall_closer"
+        : this.getIsCloser(chunk.speaker);
       const speakerLabel = isCloser ? "[Closer]" : "[Prospect]";
       const line = `${speakerLabel}: ${chunk.text}`;
       this.session.fullTranscript += line + "\n";
@@ -463,19 +426,23 @@ export class CallHandler {
   }
 
   /**
-   * Process speaker metadata from Meeting BaaS.
-   * Meeting BaaS sends JSON arrays of participant info including who is currently speaking.
-   * We use this to map Speechmatics speaker IDs to real participant names.
+   * Track participant join order from Recall.ai participant_events.join.
+   * The first non-bot participant is the closer (they host the meeting).
    */
-  updateMeetingBaasSpeakers(events: MeetingBaasSpeakerEvent[]): void {
-    for (const event of events) {
-      if (event.isSpeaking && event.name) {
-        // Filter out the bot itself — it doesn't produce meaningful speech
-        if (event.name.toLowerCase() === "sequ3nce.ai") continue;
+  trackParticipantJoin(participantName: string): void {
+    // Skip the bot itself — match against known bot name patterns
+    const botPatterns = ["sequ3nce.ai", "sequ3nce", "notetaker", "note taker", "meeting bot", "recorder"];
+    const nameLower = participantName.toLowerCase();
+    if (botPatterns.some(bp => nameLower.includes(bp))) {
+      logger.info(`[Recall] Skipping bot participant: "${participantName}"`);
+      return;
+    }
 
-        this.currentMeetingBaasSpeaker = event.name;
-        logger.info(`[MeetingBaaS] Speaker active: "${event.name}" (id: ${event.id})`);
-      }
+    if (!this.firstParticipantJoined) {
+      this.firstParticipantJoined = participantName;
+      logger.info(`[Recall] First non-bot participant joined: "${participantName}" (will be treated as Closer)`);
+    } else {
+      logger.info(`[Recall] Additional participant joined: "${participantName}"`);
     }
   }
 
@@ -497,77 +464,97 @@ export class CallHandler {
     const isCloser = this.getIsCloserByName(chunk.speaker);
     const role = isCloser ? "closer" : "prospect";
 
-    // Feed into existing transcript pipeline
+    // Feed into existing transcript pipeline with pre-determined role.
+    // Use a special prefix so handleTranscript knows NOT to re-determine via getIsCloser().
     await this.handleTranscript({
       text: chunk.text,
-      speaker: role, // Pass role directly — handleTranscript's getIsCloser will match "closer" as first speaker
+      speaker: `__recall_${role}`, // Prefixed role — bypasses getIsCloser() in handleTranscript
       timestamp: chunk.timestamp,
       audioTimestamp: chunk.startMs / 1000,
       isFinal: true,
     });
   }
 
+  // Track which participant names we've already logged speaker decisions for (reduce log spam)
+  private loggedSpeakerDecisions = new Set<string>();
+
   /**
    * Determine if a participant is the Closer by their name (used by Recall.ai).
-   * Compares against the known prospectName — if it matches, they're the prospect.
-   * If no prospectName is set, first speaker is assumed to be the Closer.
+   *
+   * Priority chain:
+   * 1. Exact match on closerName → closer
+   * 2. Fuzzy match (contains, min 3 chars) on closerName → closer
+   * 3. Join order: first non-bot participant to join = closer
+   * 4. Exact/fuzzy match on prospectName → prospect (backup)
+   * 5. Default → prospect (safe default: unknown speakers are prospects)
    */
   private getIsCloserByName(participantName: string): boolean {
-    const prospectName = this.session.metadata.prospectName;
-    if (prospectName) {
-      const isProspect = participantName.toLowerCase().trim() === prospectName.toLowerCase().trim();
-      return !isProspect;
+    const name = participantName.toLowerCase().trim();
+    const closerName = this.session.metadata.closerName?.toLowerCase().trim();
+    const prospectName = this.session.metadata.prospectName?.toLowerCase().trim();
+    const shouldLog = !this.loggedSpeakerDecisions.has(name);
+
+    let result: boolean;
+    let reason: string;
+
+    // 1. Exact match on closer name
+    if (closerName && name === closerName) {
+      result = true;
+      reason = `matches closerName exactly → Closer`;
     }
-    // No prospectName — first speaker is Closer
-    if (!this.firstSpeaker) {
-      this.firstSpeaker = participantName;
-      logger.info(`[Recall] First speaker: "${participantName}" → Closer`);
+    // 2. Fuzzy match: either name contains the other (min 3 chars to avoid false positives like "Al" matching "Alyssa")
+    else if (closerName && closerName.length >= 3 && (name.includes(closerName) || closerName.includes(name))) {
+      result = true;
+      reason = `fuzzy-matches closerName "${this.session.metadata.closerName}" → Closer`;
     }
-    return participantName === this.firstSpeaker;
+    // 3. Join order: first non-bot participant is the closer (they host the meeting)
+    else if (this.firstParticipantJoined) {
+      const firstJoined = this.firstParticipantJoined.toLowerCase().trim();
+      if (name === firstJoined) {
+        result = true;
+        reason = `matches first participant joined "${this.firstParticipantJoined}" → Closer`;
+      } else if (firstJoined.length >= 3 && (name.includes(firstJoined) || firstJoined.includes(name))) {
+        result = true;
+        reason = `fuzzy-matches first participant joined "${this.firstParticipantJoined}" → Closer`;
+      } else {
+        result = false;
+        reason = `is NOT first participant "${this.firstParticipantJoined}" → Prospect`;
+      }
+    }
+    // 4. Backup: check against prospect name
+    else if (prospectName) {
+      if (name === prospectName) {
+        result = false;
+        reason = `matches prospectName "${this.session.metadata.prospectName}" → Prospect`;
+      } else if (prospectName.length >= 3 && (name.includes(prospectName) || prospectName.includes(name))) {
+        result = false;
+        reason = `fuzzy-matches prospectName "${this.session.metadata.prospectName}" → Prospect`;
+      } else {
+        result = true;
+        reason = `doesn't match prospectName "${this.session.metadata.prospectName}" → Closer (by elimination)`;
+      }
+    }
+    // 5. No data available — default to prospect
+    else {
+      result = false;
+      reason = `has no matching data — defaulting to Prospect`;
+    }
+
+    // Only log the first time we see each participant (avoids log spam at scale)
+    if (shouldLog) {
+      logger.info(`[Speaker] "${participantName}" ${reason}`);
+      this.loggedSpeakerDecisions.add(name);
+    }
+
+    return result;
   }
 
   /**
-   * Determine if a speaker is the Closer.
-   *
-   * For Meeting BaaS calls: Uses participant name mapping from Meeting BaaS metadata.
-   * When Speechmatics assigns a new speaker ID, we correlate it with the current
-   * Meeting BaaS speaker to build a name map. Then we compare the name against
-   * the known prospectName to determine closer vs prospect.
-   *
-   * For desktop calls: Falls back to first-speaker heuristic (first speaker = Closer).
+   * Determine if a speaker is the Closer (desktop/Speechmatics calls only).
+   * Uses the first-speaker heuristic: first speaker detected = Closer.
+   * Recall calls bypass this entirely via the __recall_ prefix system.
    */
   private getIsCloser(speaker: string): boolean {
-    // For Meeting BaaS calls, try name-based identification
-    if (this.source === "meetingbaas") {
-      // If we haven't mapped this Speechmatics ID yet, try to correlate with Meeting BaaS
-      if (!this.speakerNameMap.has(speaker) && this.currentMeetingBaasSpeaker) {
-        // Check that no other Speechmatics ID is already mapped to this name
-        const alreadyMapped = [...this.speakerNameMap.values()].includes(this.currentMeetingBaasSpeaker);
-        if (!alreadyMapped) {
-          this.speakerNameMap.set(speaker, this.currentMeetingBaasSpeaker);
-          logger.info(`[Speaker Map] Mapped Speechmatics "${speaker}" → "${this.currentMeetingBaasSpeaker}"`);
-        }
-      }
-
-      // If we have a name for this speaker, use it
-      const participantName = this.speakerNameMap.get(speaker);
-      if (participantName) {
-        const prospectName = this.session.metadata.prospectName;
-        if (prospectName) {
-          // Compare names (case-insensitive, trimmed)
-          const isProspect = participantName.toLowerCase().trim() === prospectName.toLowerCase().trim();
-          return !isProspect;
-        }
-        // No prospectName available — first named speaker is closer
-        if (!this.firstSpeaker) {
-          this.firstSpeaker = speaker;
-          logger.info(`[Speaker Map] First named speaker: "${participantName}" (${speaker}) → Closer`);
-        }
-        return speaker === this.firstSpeaker;
-      }
-    }
-
-    // Fallback: first-speaker heuristic (desktop calls, or before mapping is established)
     if (!this.firstSpeaker) {
       this.firstSpeaker = speaker;
       logger.info(`First speaker detected: ${speaker} (will be treated as Closer)`);
@@ -654,8 +641,8 @@ export class CallHandler {
         const combinedBuffer = Buffer.concat(this.session.audioBuffer);
         logger.info(`Recording upload: Combined buffer size = ${combinedBuffer.length} bytes`);
 
-        // Meeting BaaS sends mono (1 channel), desktop sends stereo (2 channels)
-        const numChannels = this.source === "meetingbaas" ? 1 : 2;
+        // Desktop sends stereo (2 channels), Recall sends mono (1 channel)
+        const numChannels = this.source === "recall" ? 1 : 2;
         recordingUrl = await uploadRecording(
           this.session.metadata.teamId,
           this.session.metadata.callId,

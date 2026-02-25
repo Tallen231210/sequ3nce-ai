@@ -78,7 +78,7 @@ export async function uploadRecording(
   callId: string,
   audioBuffer: Buffer,
   sampleRate: number = DEFAULT_SAMPLE_RATE,
-  numChannels: number = 2 // Desktop = 2 (stereo), Meeting BaaS = 1 (mono)
+  numChannels: number = 2 // Desktop = 2 (stereo), Recall = 1 (mono)
 ): Promise<string> {
   // Skip upload if S3 not configured
   if (!isS3Configured || !s3Client) {

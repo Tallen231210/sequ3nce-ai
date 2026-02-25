@@ -8,7 +8,6 @@ import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
 export const scheduleRecordingFetch = internalMutation({
   args: {
     recallBotId: v.optional(v.string()),
-    meetingBaasId: v.optional(v.string()), // Legacy support
     delayMs: v.number(),
   },
   handler: async (ctx, args) => {
@@ -17,9 +16,6 @@ export const scheduleRecordingFetch = internalMutation({
         recallBotId: args.recallBotId,
         attempt: 1,
       });
-    } else if (args.meetingBaasId) {
-      // Legacy: schedule fetch for old Meeting BaaS bots (will fail gracefully since API key removed)
-      console.log(`[scheduleRecordingFetch] Legacy meetingBaasId ${args.meetingBaasId} — skipping`);
     }
   },
 });
@@ -260,19 +256,6 @@ export const insertBot = internalMutation({
   },
 });
 
-// Update a meeting bot with the Meeting BaaS ID (legacy, kept for historical bots)
-export const setBotMeetingBaasId = internalMutation({
-  args: {
-    botId: v.id("meetingBots"),
-    meetingBaasId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.botId, {
-      meetingBaasId: args.meetingBaasId,
-    });
-  },
-});
-
 // Update a meeting bot with the Recall.ai bot UUID
 export const setBotRecallId = internalMutation({
   args: {
@@ -313,7 +296,7 @@ export const markBotCancelled = internalMutation({
 });
 
 // ============================================
-// ACTIONS (have network access for Meeting BaaS API calls)
+// ACTIONS (have network access for Recall.ai API calls)
 // ============================================
 
 // Create a meeting bot for a calendar event (via Recall.ai API)
@@ -347,6 +330,12 @@ export const createBot = action({
 
     const botName = team?.meetingBotName || "Sequ3nce.ai";
 
+    // Look up closer's name for speaker identification in transcripts
+    const closer = await ctx.runQuery(internal.meetingBot.getCloserById, {
+      closerId: args.closerId,
+    });
+    const closerName = closer?.name;
+
     // 3. Call Recall.ai API to create the bot
     const recallApiKey = process.env.RECALL_API_KEY;
     if (!recallApiKey) {
@@ -359,7 +348,7 @@ export const createBot = action({
 
     try {
       // Build WebSocket URL for audio processor (Recall.ai connects to this)
-      const streamingUrl = `wss://amusing-charm-production.up.railway.app/recall?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
+      const streamingUrl = `wss://amusing-charm-production.up.railway.app/recall?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${closerName ? `&closerName=${encodeURIComponent(closerName)}` : ""}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
 
       const requestBody = {
         meeting_url: args.meetingUrl,
@@ -556,6 +545,12 @@ export const createQuickBot = action({
 
     const botName = team?.meetingBotName || "Sequ3nce.ai";
 
+    // Look up closer's name for speaker identification in transcripts
+    const closer = await ctx.runQuery(internal.meetingBot.getCloserById, {
+      closerId: args.closerId,
+    });
+    const closerName = closer?.name;
+
     // 3. Call Recall.ai API to create the bot
     const recallApiKey = process.env.RECALL_API_KEY;
     if (!recallApiKey) {
@@ -568,7 +563,7 @@ export const createQuickBot = action({
 
     try {
       // Build WebSocket URL for audio processor (Recall.ai connects to this)
-      const streamingUrl = `wss://amusing-charm-production.up.railway.app/recall?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
+      const streamingUrl = `wss://amusing-charm-production.up.railway.app/recall?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${closerName ? `&closerName=${encodeURIComponent(closerName)}` : ""}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
 
       const requestBody = {
         meeting_url: args.meetingUrl,
@@ -666,11 +661,10 @@ export const createQuickBot = action({
 // MUTATIONS
 // ============================================
 
-// Update bot status from webhook events (called by webhook route)
+// Update bot status from webhook events (called by Recall.ai webhook route)
 export const updateBotStatus = mutation({
   args: {
-    meetingBaasId: v.optional(v.string()), // Legacy Meeting BaaS lookup
-    recallBotId: v.optional(v.string()),   // Recall.ai lookup
+    recallBotId: v.optional(v.string()),
     status: v.optional(v.string()),
     callId: v.optional(v.id("calls")),
     joinedAt: v.optional(v.number()),
@@ -681,7 +675,6 @@ export const updateBotStatus = mutation({
     questionnaireCompleted: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    // Find bot by recallBotId first, then fall back to meetingBaasId
     let bot = null;
     if (args.recallBotId) {
       bot = await ctx.db
@@ -689,15 +682,9 @@ export const updateBotStatus = mutation({
         .withIndex("by_recall_bot_id", (q) => q.eq("recallBotId", args.recallBotId))
         .first();
     }
-    if (!bot && args.meetingBaasId) {
-      bot = await ctx.db
-        .query("meetingBots")
-        .withIndex("by_meeting_baas_id", (q) => q.eq("meetingBaasId", args.meetingBaasId))
-        .first();
-    }
 
     if (!bot) {
-      console.error(`[updateBotStatus] Bot not found for recallBotId: ${args.recallBotId}, meetingBaasId: ${args.meetingBaasId}`);
+      console.error(`[updateBotStatus] Bot not found for recallBotId: ${args.recallBotId}`);
       return { success: false, error: "Bot not found" };
     }
 
@@ -753,9 +740,8 @@ export const createCallFromBot = mutation({
   },
 });
 
-// Activate a bot from the audio processor — sets status to "active" with joinedAt
-// This is the PRIMARY mechanism for bot activation since Meeting BaaS v2 does NOT
-// send a "meeting.started" or "bot.in_call" webhook event.
+// Activate a bot from the audio processor — sets status to "active" with joinedAt.
+// The WebSocket connection is the primary signal that the bot has joined the call.
 export const activateBotFromAudioProcessor = mutation({
   args: {
     botId: v.string(), // Our internal Convex meetingBots _id
@@ -787,8 +773,7 @@ export const activateBotFromAudioProcessor = mutation({
 });
 
 // Mark a bot as "completed" when the audio processor WebSocket closes.
-// This is the primary signal that a call has ended, since the Meeting BaaS v2
-// webhook (bot.completed) may arrive late or not at all.
+// This immediately triggers the macOS app's post-call questionnaire flow.
 export const completeBotFromAudioProcessor = mutation({
   args: {
     botId: v.string(), // Our internal Convex meetingBots _id
@@ -1106,17 +1091,6 @@ export const getExcludedEvents = query({
       .query("excludedCalendarEvents")
       .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
       .collect();
-  },
-});
-
-// Get a bot by its Meeting BaaS ID (legacy, used by old webhook route)
-export const getBotByMeetingBaasId = query({
-  args: { meetingBaasId: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("meetingBots")
-      .withIndex("by_meeting_baas_id", (q) => q.eq("meetingBaasId", args.meetingBaasId))
-      .first();
   },
 });
 
@@ -1453,7 +1427,7 @@ export const getActiveCallForCloserBot = mutation({
     const bot = validBots.find((b) => b.status === "active") || validBots[0];
     return {
       hasActiveCall: true,
-      botId: bot.recallBotId || bot.meetingBaasId,     // Recall or legacy Meeting BaaS ID
+      botId: bot.recallBotId,
       convexBotId: bot._id,         // Convex ID for internal queries
       callId: bot.callId,
       meetingTitle: bot.meetingTitle,

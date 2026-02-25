@@ -2,7 +2,6 @@
 
 import "dotenv/config";
 import { WebSocketServer, WebSocket } from "ws";
-import * as fs from "fs";
 import { CallHandler } from "./call-handler.js";
 import { logger } from "./logger.js";
 import type { CallMetadata } from "./types.js";
@@ -52,12 +51,6 @@ wss.on("connection", async (ws, req) => {
   // Check if this is a Recall.ai connection (path: /recall)
   if (url.pathname === "/recall") {
     handleRecallConnection(ws, req);
-    return;
-  }
-
-  // Check if this is a Meeting BaaS connection (path: /meetingbaas) — legacy
-  if (url.pathname === "/meetingbaas") {
-    handleMeetingBaasConnection(ws, req);
     return;
   }
 
@@ -239,203 +232,6 @@ wss.on("connection", async (ws, req) => {
 });
 
 // ============================================
-// MEETING BAAS CONNECTION HANDLER
-// ============================================
-
-/**
- * Handle a Meeting BaaS bot connecting to stream audio from a meeting.
- *
- * Meeting BaaS connects to our streaming URL and sends:
- * - Binary messages: raw PCM audio chunks
- * - JSON arrays: speaker metadata ([{ name, id, timestamp, isSpeaking }])
- * - JSON objects: heartbeat/control messages
- *
- * Metadata (botId, closerId, teamId) is extracted from URL query parameters
- * set when creating the bot via the Meeting BaaS API.
- */
-function handleMeetingBaasConnection(ws: WebSocket, req: import("http").IncomingMessage): void {
-  logger.info(`[MeetingBaaS] New bot connection`);
-
-  // Extract metadata from URL query parameters
-  const url = new URL(req.url || "/", `wss://${req.headers.host || "localhost"}`);
-  const botId = url.searchParams.get("botId");
-  const closerId = url.searchParams.get("closerId");
-  const teamId = url.searchParams.get("teamId");
-  const prospectName = url.searchParams.get("prospectName");
-
-  if (!botId || !closerId || !teamId) {
-    logger.error(`[MeetingBaaS] Missing required query params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}`);
-    ws.close();
-    return;
-  }
-
-  logger.info(`[MeetingBaaS] Connection params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}, prospectName: ${prospectName || "unknown"}`);
-
-  // === RAW AUDIO DIAGNOSTIC: Save incoming audio to file for quality analysis ===
-  const rawAudioPath = `/tmp/meetingbaas-raw-${Date.now()}.pcm`;
-  const rawAudioStream = fs.createWriteStream(rawAudioPath);
-  let diagLastChunkTime = Date.now();
-  let diagTotalBytes = 0;
-  let diagChunkCount = 0;
-  let diagGapHistogram: Record<string, number> = {}; // bucket gaps for summary
-  const diagStartTime = Date.now();
-  logger.info(`[MeetingBaaS][DIAG] Saving raw audio to ${rawAudioPath}`);
-  // === END DIAGNOSTIC SETUP ===
-
-  // Create CallHandler immediately with metadata from URL params
-  const callMetadata: CallMetadata = {
-    callId: botId,
-    teamId,
-    closerId,
-    prospectName: prospectName || undefined,
-    sampleRate: 24000, // Meeting BaaS sends 24kHz (default quality; good balance of fidelity and bandwidth)
-  };
-
-  const callHandler = new CallHandler(callMetadata, {
-    source: "meetingbaas",
-    recordingType: "video",
-  });
-
-  activeCalls.set(ws, callHandler);
-  connectionVisitorCallIds.set(ws, botId);
-
-  // Activate the bot immediately — this is the primary signal that the bot is in the call.
-  // Meeting BaaS v2 does NOT send a "meeting.started" webhook, so the audio processor
-  // WebSocket connection is the only signal that the bot has joined.
-  activateBot(botId).catch((err) => {
-    logger.error(`[MeetingBaaS] Failed to activate bot: ${err}`);
-  });
-
-  // Start the call handler (creates Convex call record, connects to Speechmatics, etc.)
-  callHandler.start()
-    .then((convexCallId) => {
-      logger.info(`[MeetingBaaS] Call initialized: botId=${botId}, Convex ID: ${convexCallId}`);
-
-      // Link this call to the meeting bot so the desktop app can find it
-      // The bot record needs callId to return in getActiveCallForCloserBot
-      if (convexCallId) {
-        linkCallToBot(botId, convexCallId).catch((err) => {
-          logger.error(`[MeetingBaaS] Failed to link call to bot: ${err}`);
-        });
-      }
-
-      // Create live stream record if team has live streaming enabled
-      createLiveStream(convexCallId!, botId, teamId, closerId)
-        .then((streamId) => {
-          if (streamId) {
-            logger.info(`[MeetingBaaS] Live stream created for bot ${botId}`);
-          }
-        })
-        .catch((err) => {
-          logger.error(`[MeetingBaaS] Failed to create live stream: ${err}`);
-        });
-    })
-    .catch((err) => {
-      logger.error(`[MeetingBaaS] Failed to start call handler: ${err}`);
-    });
-
-  ws.on("message", async (data, isBinary) => {
-    try {
-      if (isBinary) {
-        // Binary data is raw PCM audio from Meeting BaaS
-        const audioBuffer = Buffer.from(data as Buffer);
-
-        // === RAW AUDIO DIAGNOSTIC: Log chunk timing and save raw audio ===
-        const diagNow = Date.now();
-        const diagGap = diagNow - diagLastChunkTime;
-        diagLastChunkTime = diagNow;
-        diagTotalBytes += audioBuffer.length;
-        diagChunkCount++;
-
-        // Bucket gaps for summary logging
-        const bucket = diagGap < 10 ? "0-9ms" : diagGap < 30 ? "10-29ms" : diagGap < 60 ? "30-59ms" : diagGap < 100 ? "60-99ms" : diagGap < 200 ? "100-199ms" : diagGap < 500 ? "200-499ms" : "500ms+";
-        diagGapHistogram[bucket] = (diagGapHistogram[bucket] || 0) + 1;
-
-        // Log every 100 chunks
-        if (diagChunkCount % 100 === 0) {
-          logger.info(`[MeetingBaaS][DIAG] Chunk #${diagChunkCount}: size=${audioBuffer.length}b, gap=${diagGap}ms, totalBytes=${diagTotalBytes}, histogram=${JSON.stringify(diagGapHistogram)}`);
-        }
-
-        // Save raw audio before any processing
-        rawAudioStream.write(audioBuffer);
-        // === END DIAGNOSTIC ===
-
-        callHandler.processAudio(audioBuffer);
-
-        // Broadcast normalized audio (48kHz stereo) to listeners
-        // Meeting BaaS sends 24kHz mono — upsample to 48kHz stereo for dashboard
-        if (liveRelay.hasListeners(botId)) {
-          const normalized = callHandler.normalizeForBroadcast(audioBuffer);
-          liveRelay.broadcastAudio(botId, normalized);
-        }
-      } else {
-        // Text messages from Meeting BaaS
-        const message = data.toString();
-        try {
-          const parsed = JSON.parse(message);
-
-          if (Array.isArray(parsed)) {
-            // Speaker metadata array: [{ name, id, timestamp, isSpeaking }]
-            // Forward to CallHandler for Speechmatics speaker ID → participant name mapping
-            callHandler.updateMeetingBaasSpeakers(parsed);
-            logger.info(`[MeetingBaaS] Speaker update: ${JSON.stringify(parsed)}`);
-          } else if (parsed.type === "heartbeat" || parsed.type === "ping") {
-            ws.send(JSON.stringify({ type: "heartbeat_ack" }));
-          } else if (parsed.type === "end") {
-            logger.info(`[MeetingBaaS] Received end command`);
-            await callHandler.end();
-            ws.send(JSON.stringify({ status: "ended", stats: callHandler.getStats() }));
-          } else {
-            logger.info(`[MeetingBaaS] Received message: ${message}`);
-          }
-        } catch {
-          // Non-JSON text message - log and ignore
-          logger.info(`[MeetingBaaS] Non-JSON message: ${message}`);
-        }
-      }
-    } catch (error) {
-      logger.error("[MeetingBaaS] Error processing message", error);
-    }
-  });
-
-  ws.on("close", async () => {
-    logger.info("[MeetingBaaS] Bot connection closed (bot left meeting)");
-
-    // === RAW AUDIO DIAGNOSTIC: Close file and log summary ===
-    rawAudioStream.end();
-    const diagDuration = (Date.now() - diagStartTime) / 1000;
-    const expectedBytes = 24000 * 2 * diagDuration; // 24kHz * 16-bit * seconds
-    logger.info(`[MeetingBaaS][DIAG] SUMMARY: duration=${diagDuration.toFixed(1)}s, chunks=${diagChunkCount}, totalBytes=${diagTotalBytes}, expectedBytes=${Math.round(expectedBytes)}, ratio=${(diagTotalBytes / expectedBytes).toFixed(2)}, file=${rawAudioPath}`);
-    logger.info(`[MeetingBaaS][DIAG] Gap histogram: ${JSON.stringify(diagGapHistogram)}`);
-    // === END DIAGNOSTIC ===
-
-    const handler = activeCalls.get(ws);
-    if (handler) {
-      await handler.end();
-      activeCalls.delete(ws);
-    }
-
-    // Mark the bot as "completed" immediately — don't wait for the Meeting BaaS webhook
-    // which may arrive late or not at all. This triggers the macOS app to close the
-    // ammo panel and show the post-call questionnaire.
-    completeBot(botId).catch((err) => {
-      logger.error(`[MeetingBaaS] Failed to complete bot: ${err}`);
-    });
-
-    // End live stream and notify any listeners
-    liveRelay.notifyCallEnded(botId);
-    endLiveStream(botId).catch((err) => {
-      logger.error(`[MeetingBaaS] Failed to end live stream: ${err}`);
-    });
-    connectionVisitorCallIds.delete(ws);
-  });
-
-  ws.on("error", (error) => {
-    logger.error("[MeetingBaaS] WebSocket error", error);
-  });
-}
-
-// ============================================
 // RECALL.AI CONNECTION HANDLER
 // ============================================
 
@@ -459,6 +255,7 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
   const botId = url.searchParams.get("botId");
   const closerId = url.searchParams.get("closerId");
   const teamId = url.searchParams.get("teamId");
+  const closerName = url.searchParams.get("closerName");
   const prospectName = url.searchParams.get("prospectName");
 
   if (!botId || !closerId || !teamId) {
@@ -467,13 +264,14 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
     return;
   }
 
-  logger.info(`[Recall] Connection params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}, prospectName: ${prospectName || "unknown"}`);
+  logger.info(`[Recall] Connection params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}, closerName: ${closerName || "unknown"}, prospectName: ${prospectName || "unknown"}`);
 
   // Create CallHandler with Recall-specific config
   const callMetadata: CallMetadata = {
     callId: botId,
     teamId,
     closerId,
+    closerName: closerName || undefined,
     prospectName: prospectName || undefined,
     sampleRate: 16000, // Recall.ai sends 16kHz mono S16LE PCM
   };
@@ -487,7 +285,7 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
   activeCalls.set(ws, callHandler);
   connectionVisitorCallIds.set(ws, botId);
 
-  // Activate the bot immediately — same as Meeting BaaS flow
+  // Activate the bot immediately — signals the bot has joined the call
   activateBot(botId).catch((err) => {
     logger.error(`[Recall] Failed to activate bot: ${err}`);
   });
@@ -603,6 +401,10 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
         case "participant_events.join": {
           const participant = message.data?.data?.participant || message.data?.participant;
           logger.info(`[Recall] Participant joined: ${participant?.name} (host: ${participant?.is_host})`);
+          // Track participant join order for speaker identification fallback
+          if (participant?.name) {
+            callHandler.trackParticipantJoin(participant.name);
+          }
           break;
         }
 
@@ -774,9 +576,6 @@ logger.info("    2. Send JSON metadata: { callId, teamId, closerId, prospectName
 logger.info("    3. Receive { status: 'ready' } confirmation");
 logger.info("    4. Stream binary audio data (48kHz stereo PCM)");
 logger.info("    5. Send { type: 'end' } when call ends");
-logger.info("  Meeting BaaS (bot):");
-logger.info("    1. Connect via WebSocket to ws://localhost:" + PORT + "/meetingbaas");
-logger.info("    2. Send JSON metadata: { type: 'meetingbaas', botId, meetingUrl, closerId, teamId }");
-logger.info("    3. Receive { status: 'ready' } confirmation");
-logger.info("    4. Stream binary audio data");
-logger.info("    5. Connection close = bot left meeting");
+logger.info("  Recall.ai (bot):");
+logger.info("    1. Connect via WebSocket to ws://localhost:" + PORT + "/recall?botId=...&closerId=...&teamId=...");
+logger.info("    2. Bot streams JSON events (audio, transcript, participant joins)");

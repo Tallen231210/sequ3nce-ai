@@ -18,7 +18,7 @@ interface ListenerInfo {
 const listenerInfo = new Map<WebSocket, ListenerInfo>();
 
 // Jitter buffer: accumulate audio chunks and flush at regular intervals
-// This smooths out variable-timing chunks from Meeting BaaS cross-region WebSocket
+// This smooths out variable-timing chunks from cross-region WebSocket connections
 const JITTER_BUFFER_MS = 400; // Cross-region EU→US needs larger buffer to absorb TCP jitter
 const BROADCAST_SAMPLE_RATE = 48000; // broadcast format is 48kHz stereo
 const BYTES_PER_FRAME = 4; // 16-bit stereo = 4 bytes per frame
