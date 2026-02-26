@@ -366,6 +366,9 @@ export const createBot = action({
         recording_config: {
           retention: { type: "forever" as const },
           transcript: {
+            diarization: {
+              use_separate_streams_when_available: true,
+            },
             provider: {
               recallai_streaming: {
                 language_code: "en",
@@ -581,6 +584,9 @@ export const createQuickBot = action({
         recording_config: {
           retention: { type: "forever" as const },
           transcript: {
+            diarization: {
+              use_separate_streams_when_available: true,
+            },
             provider: {
               recallai_streaming: {
                 language_code: "en",
@@ -861,6 +867,12 @@ export const completeCallFromBot = mutation({
     if (!call) {
       console.error(`[completeCallFromBot] Call not found: ${args.callId}`);
       return { success: false, error: "Call not found" };
+    }
+
+    // Idempotent: skip if already completed (bot.call_ended and bot.done may both call this)
+    if (call.status === "completed") {
+      console.log(`[completeCallFromBot] Call already completed, skipping: ${args.callId}`);
+      return { success: true };
     }
 
     await ctx.db.patch(args.callId, {
@@ -1466,11 +1478,18 @@ export const getCallHistoryForCloser = query({
   handler: async (ctx, args) => {
     const maxResults = args.limit ?? 50;
 
-    const calls = await ctx.db
+    // Over-fetch to account for filtered-out in-progress calls
+    const allCalls = await ctx.db
       .query("calls")
       .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
       .order("desc")
-      .take(maxResults);
+      .take(maxResults + 10);
+
+    // Only show finished calls — exclude active/waiting/scheduled calls
+    // that have no recording, summary, or transcript yet
+    const calls = allCalls
+      .filter((c) => c.status === "completed" || c.status === "no_show")
+      .slice(0, maxResults);
 
     return calls.map((call) => ({
       _id: call._id,

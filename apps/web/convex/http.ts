@@ -3190,39 +3190,69 @@ http.route({
         }
 
         case "bot.call_ended": {
-          // Bot detected call ended, recording being processed
-          console.log(`[recall-webhook] Call ended for bot: ${recallBotId}, waiting for bot.done`);
+          // Immediately mark bot completed so apps detect the call ended
+          // (bot.done fires later after recording processing — could take minutes for long calls)
+          const callEndedAt = Date.now();
+          await ctx.runMutation(api.meetingBot.updateBotStatus, {
+            recallBotId,
+            status: "completed",
+            endedAt: callEndedAt,
+            questionnaireCompleted: false,
+          });
+
+          // Complete linked call if it exists
+          const callEndedBot = await ctx.runQuery(api.meetingBot.getBotByRecallId, {
+            recallBotId,
+          });
+
+          if (callEndedBot?.callId) {
+            await ctx.runMutation(api.meetingBot.completeCallFromBot, {
+              callId: callEndedBot.callId,
+              endedAt: callEndedAt,
+            });
+            console.log(`[recall-webhook] Call completed on call_ended: ${callEndedBot.callId}`);
+          } else {
+            console.log(`[recall-webhook] Call ended but no linked call for bot: ${recallBotId}`);
+          }
           break;
         }
 
         case "bot.done": {
-          // Bot fully done — recording available
-          const endedAt = Date.now();
-          await ctx.runMutation(api.meetingBot.updateBotStatus, {
-            recallBotId,
-            status: "completed",
-            endedAt,
-            questionnaireCompleted: false,
-          });
-
-          // Complete linked call
-          const completedBot = await ctx.runQuery(api.meetingBot.getBotByRecallId, {
+          // Recording is now available — fetch it
+          // bot.call_ended already marked the bot completed and triggered the post-call form.
+          // This handler is a fallback in case bot.call_ended didn't fire, AND ensures the
+          // linked call gets completed even if it wasn't linked at bot.call_ended time.
+          const doneAt = Date.now();
+          const doneBot = await ctx.runQuery(api.meetingBot.getBotByRecallId, {
             recallBotId,
           });
 
-          if (completedBot?.callId) {
-            await ctx.runMutation(api.meetingBot.completeCallFromBot, {
-              callId: completedBot.callId,
-              endedAt,
+          if (doneBot?.status !== "completed") {
+            // bot.call_ended didn't fire — complete bot now as fallback
+            console.log(`[recall-webhook] bot.call_ended missed, completing on bot.done: ${recallBotId}`);
+            await ctx.runMutation(api.meetingBot.updateBotStatus, {
+              recallBotId,
+              status: "completed",
+              endedAt: doneAt,
+              questionnaireCompleted: false,
             });
-            console.log(`[recall-webhook] Completed call: ${completedBot.callId}`);
           }
 
-          // Schedule recording URL fetch (Recall doesn't include it in webhook)
+          // Always try to complete the linked call — it may have been linked AFTER
+          // bot.call_ended fired. completeCallFromBot is idempotent (safe to call twice).
+          if (doneBot?.callId) {
+            await ctx.runMutation(api.meetingBot.completeCallFromBot, {
+              callId: doneBot.callId,
+              endedAt: doneBot.endedAt || doneAt,
+            });
+          }
+
+          // Always schedule recording URL fetch (this is the main purpose of bot.done)
           await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
             recallBotId,
-            delayMs: 3000, // Recall is fast, 3s should be enough
+            delayMs: 3000,
           });
+          console.log(`[recall-webhook] Scheduled recording fetch for bot: ${recallBotId}`);
           break;
         }
 
