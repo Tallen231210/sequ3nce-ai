@@ -231,6 +231,28 @@ export default defineSchema({
     // AI-generated summary
     summary: v.optional(v.string()), // AI summary of the call for quick manager review
 
+    // AI deep analysis (chapters + sales process scoring)
+    callAnalysis: v.optional(v.object({
+      chapters: v.array(v.object({
+        title: v.string(),
+        startTime: v.number(),   // seconds from call start
+        endTime: v.number(),
+        summary: v.string(),
+      })),
+      analysis: v.object({
+        opening: v.object({ score: v.string(), summary: v.string() }),
+        discovery: v.object({ score: v.string(), summary: v.string() }),
+        presentation: v.object({ score: v.string(), summary: v.string() }),
+        objectionHandling: v.object({ score: v.string(), summary: v.string() }),
+        closing: v.object({ score: v.string(), summary: v.string() }),
+      }),
+      callSequence: v.array(v.object({
+        phase: v.string(),
+        description: v.string(),
+      })),
+      analyzedAt: v.number(),
+    })),
+
     // Ammo V2: Real-time AI analysis (replaces traditional ammo extraction)
     ammoAnalysis: v.optional(v.object({
       engagement: v.object({

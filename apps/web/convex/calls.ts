@@ -769,8 +769,22 @@ export const completeCallWithOutcome = mutation({
     prospectWasDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
   },
   handler: async (ctx, args) => {
-    // Get the call to access the transcript
+    // Validate outcome is a known value
+    const validOutcomes = ["closed", "follow_up", "lost", "no_show"];
+    if (!validOutcomes.includes(args.outcome)) {
+      throw new Error(`Invalid outcome: "${args.outcome}". Must be one of: ${validOutcomes.join(", ")}`);
+    }
+
+    // Get the call — verify it exists
     const call = await ctx.db.get(args.callId);
+    if (!call) {
+      throw new Error(`Call not found: ${args.callId}`);
+    }
+
+    // Idempotency: if already completed with same outcome, skip re-processing
+    if (call.status === "completed" && call.outcome === args.outcome) {
+      return { success: true };
+    }
 
     await ctx.db.patch(args.callId, {
       prospectName: args.prospectName,
@@ -791,21 +805,33 @@ export const completeCallWithOutcome = mutation({
     });
 
     // Mark the linked meeting bot's questionnaire as completed (so pending count decreases)
-    if (call?.meetingBotId) {
+    if (call.meetingBotId) {
       const bot = await ctx.db.get(call.meetingBotId);
       if (bot && bot.questionnaireCompleted !== true) {
         await ctx.db.patch(call.meetingBotId, { questionnaireCompleted: true });
       }
     }
 
-    // Schedule AI summary generation (runs async, doesn't block completion)
-    if (call?.transcriptText) {
-      await ctx.scheduler.runAfter(0, api.ai.generateCallSummary, {
-        callId: args.callId,
-        transcript: call.transcriptText,
-        outcome: args.outcome,
-        prospectName: args.prospectName,
-      });
+    // Schedule AI summary + deep analysis (runs async, doesn't block completion)
+    // Skip if already generated (prevents duplicate API calls when bot + questionnaire both trigger)
+    if (call.transcriptText) {
+      if (!call.summary) {
+        await ctx.scheduler.runAfter(0, internal.ai.generateCallSummary, {
+          callId: args.callId,
+          transcript: call.transcriptText,
+          outcome: args.outcome,
+          prospectName: args.prospectName,
+        });
+      }
+      if (!call.callAnalysis) {
+        await ctx.scheduler.runAfter(5000, internal.ai.generateCallAnalysis, {
+          callId: args.callId,
+          transcript: call.transcriptText,
+          outcome: args.outcome,
+          prospectName: args.prospectName,
+          duration: call.duration,
+        });
+      }
     }
 
     return { success: true };
@@ -1508,6 +1534,38 @@ export const updateCallSummary = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.callId, {
       summary: args.summary,
+    });
+  },
+});
+
+// Internal mutation to update call deep analysis (called by AI action)
+export const updateCallAnalysis = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    callAnalysis: v.object({
+      chapters: v.array(v.object({
+        title: v.string(),
+        startTime: v.number(),
+        endTime: v.number(),
+        summary: v.string(),
+      })),
+      analysis: v.object({
+        opening: v.object({ score: v.string(), summary: v.string() }),
+        discovery: v.object({ score: v.string(), summary: v.string() }),
+        presentation: v.object({ score: v.string(), summary: v.string() }),
+        objectionHandling: v.object({ score: v.string(), summary: v.string() }),
+        closing: v.object({ score: v.string(), summary: v.string() }),
+      }),
+      callSequence: v.array(v.object({
+        phase: v.string(),
+        description: v.string(),
+      })),
+      analyzedAt: v.number(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      callAnalysis: args.callAnalysis,
     });
   },
 });

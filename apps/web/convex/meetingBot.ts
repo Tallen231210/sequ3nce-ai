@@ -228,6 +228,41 @@ export const getTeamById = internalQuery({
 // ============================================
 
 // Insert a new meeting bot record (internal, called from createBot action)
+// Check if an active bot already exists for a given meeting URL + closer
+// Used by createBot to prevent duplicate bots when user clicks "Join" multiple times
+export const findActiveBotForMeeting = internalQuery({
+  args: {
+    closerId: v.id("closers"),
+    meetingUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Check "scheduled" bots
+    const scheduledBots = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_closer_and_status", (q) =>
+        q.eq("closerId", args.closerId).eq("status", "scheduled")
+      )
+      .collect();
+
+    const match = scheduledBots.find((b) => b.meetingUrl === args.meetingUrl);
+    if (match) return match;
+
+    // Also check "joining" and "in_call" bots
+    for (const status of ["joining", "in_call"] as const) {
+      const bots = await ctx.db
+        .query("meetingBots")
+        .withIndex("by_closer_and_status", (q) =>
+          q.eq("closerId", args.closerId).eq("status", status)
+        )
+        .collect();
+      const active = bots.find((b) => b.meetingUrl === args.meetingUrl);
+      if (active) return active;
+    }
+
+    return null;
+  },
+});
+
 export const insertBot = internalMutation({
   args: {
     closerId: v.id("closers"),
@@ -311,6 +346,16 @@ export const createBot = action({
     scheduledAt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
+    // 0. Dedup — if an active bot already exists for this meeting URL + closer, return it
+    const existingBot = await ctx.runQuery(internal.meetingBot.findActiveBotForMeeting, {
+      closerId: args.closerId,
+      meetingUrl: args.meetingUrl,
+    });
+    if (existingBot) {
+      console.log(`[createBot] Reusing existing bot ${existingBot._id} (recallBotId: ${existingBot.recallBotId}) for ${args.meetingUrl}`);
+      return { botId: existingBot._id, recallBotId: existingBot.recallBotId || "" };
+    }
+
     // 1. Create the meetingBot record with status "scheduled"
     const botId: Id<"meetingBots"> = await ctx.runMutation(internal.meetingBot.insertBot, {
       closerId: args.closerId,
@@ -854,8 +899,8 @@ export const linkCallToBot = mutation({
   },
 });
 
-// Mark a call as completed when meeting bot finishes
-export const completeCallFromBot = mutation({
+// Mark a call as completed when meeting bot finishes (internal only — called from webhook handler)
+export const completeCallFromBot = internalMutation({
   args: {
     callId: v.id("calls"),
     endedAt: v.number(),
@@ -885,13 +930,21 @@ export const completeCallFromBot = mutation({
     // Schedule AI summary generation with 60s delay to let transcript fully flush
     // (audio processor may still be writing transcript segments when bot completes)
     if (call.transcriptText) {
-      await ctx.scheduler.runAfter(60000, api.ai.generateCallSummary, {
+      await ctx.scheduler.runAfter(60000, internal.ai.generateCallSummary, {
         callId: args.callId,
         transcript: call.transcriptText,
         outcome: call.outcome || "unknown",
         prospectName: call.prospectName || "Prospect",
       });
-      console.log(`[completeCallFromBot] Scheduled AI summary for call ${args.callId}`);
+      // Schedule deep analysis (chapters + sales process scoring)
+      await ctx.scheduler.runAfter(65000, internal.ai.generateCallAnalysis, {
+        callId: args.callId,
+        transcript: call.transcriptText,
+        outcome: call.outcome || "unknown",
+        prospectName: call.prospectName || "Prospect",
+        duration: call.duration,
+      });
+      console.log(`[completeCallFromBot] Scheduled AI summary + analysis for call ${args.callId}`);
     } else {
       // Transcript not ready yet — schedule a retry in 60 seconds
       await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
@@ -923,14 +976,30 @@ export const retrySummaryGeneration = internalAction({
     }
 
     if (call.transcriptText && call.transcriptText.trim().length > 50) {
-      // Transcript is ready — generate summary
-      await ctx.runAction(api.ai.generateCallSummary, {
-        callId: args.callId,
-        transcript: call.transcriptText,
-        outcome: call.outcome || "unknown",
-        prospectName: call.prospectName || "Prospect",
-      });
-      console.log(`[retrySummaryGeneration] Generated summary for call ${args.callId} on attempt ${args.attempt}`);
+      // Transcript is ready — generate summary + deep analysis
+      // Run independently so one failure doesn't block the other
+      try {
+        await ctx.runAction(internal.ai.generateCallSummary, {
+          callId: args.callId,
+          transcript: call.transcriptText,
+          outcome: call.outcome || "unknown",
+          prospectName: call.prospectName || "Prospect",
+        });
+      } catch (e) {
+        console.error(`[retrySummaryGeneration] Summary failed for call ${args.callId}:`, e);
+      }
+      try {
+        await ctx.runAction(internal.ai.generateCallAnalysis, {
+          callId: args.callId,
+          transcript: call.transcriptText,
+          outcome: call.outcome || "unknown",
+          prospectName: call.prospectName || "Prospect",
+          duration: call.duration,
+        });
+      } catch (e) {
+        console.error(`[retrySummaryGeneration] Analysis failed for call ${args.callId}:`, e);
+      }
+      console.log(`[retrySummaryGeneration] Generated summary + analysis for call ${args.callId} on attempt ${args.attempt}`);
     } else if (args.attempt < 3) {
       // Retry again in 60 seconds (max 3 attempts)
       await ctx.runMutation(internal.meetingBot.scheduleRetry, {
@@ -1090,8 +1159,33 @@ export const getPendingQuestionnaires = query({
       )
       .collect();
 
-    // Filter to bots where questionnaire is not completed
-    return completedBots.filter((bot) => bot.questionnaireCompleted !== true);
+    // Filter to bots where questionnaire is not completed AND that have a linked call
+    // Bots without a callId can't have questionnaires filled out
+    return completedBots.filter(
+      (bot) => bot.questionnaireCompleted !== true && bot.callId
+    );
+  },
+});
+
+// Dismiss pending questionnaires for bots that have no linked call record
+export const dismissOrphanedQuestionnaires = mutation({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    const completedBots = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_closer_and_status", (q) =>
+        q.eq("closerId", args.closerId).eq("status", "completed")
+      )
+      .collect();
+
+    let dismissed = 0;
+    for (const bot of completedBots) {
+      if (bot.questionnaireCompleted !== true && !bot.callId) {
+        await ctx.db.patch(bot._id, { questionnaireCompleted: true });
+        dismissed++;
+      }
+    }
+    return { dismissed };
   },
 });
 
@@ -1507,10 +1601,14 @@ export const getCallHistoryForCloser = query({
       closerTalkTime: call.closerTalkTime,
       prospectTalkTime: call.prospectTalkTime,
       summary: call.summary,
-      transcriptText: call.transcriptText,
+      // Only send a short preview — full transcript fetched on demand via getTranscriptSegments
+      transcriptText: call.transcriptText
+        ? call.transcriptText.slice(0, 500) + (call.transcriptText.length > 500 ? "..." : "")
+        : undefined,
       flaggedForReview: call.flaggedForReview,
       reviewStatus: call.reviewStatus,
       commentCount: call.commentCount,
+      callAnalysis: call.callAnalysis,
     }));
   },
 });

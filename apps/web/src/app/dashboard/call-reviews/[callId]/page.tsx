@@ -13,6 +13,8 @@ import { useRouter } from "next/navigation";
 
 import { VideoReviewPlayer } from "@/components/call-reviews/VideoReviewPlayer";
 import { TranscriptPanel } from "@/components/call-reviews/TranscriptPanel";
+import { ChapterStrip } from "@/components/call-reviews/ChapterStrip";
+import { AnalysisPanel } from "@/components/call-reviews/AnalysisPanel";
 import { CommentsPanel } from "@/components/call-reviews/CommentsPanel";
 import { UnifiedShareDialog } from "@/components/call-reviews/UnifiedShareDialog";
 import { formatTime, formatCallDate } from "@/components/call-reviews/utils";
@@ -43,6 +45,9 @@ export default function CallReviewPage({
 
   // Share dialog state
   const [showShareDialog, setShowShareDialog] = useState(false);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"transcript" | "analysis">("transcript");
 
   // Video state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -268,16 +273,47 @@ export default function CallReviewPage({
             )}
           </div>
 
-          {/* Transcript — fills remaining space, scrolls independently */}
+          {/* Chapter Strip — below video */}
+          <ChapterStrip
+            chapters={call.callAnalysis?.chapters}
+            currentTime={currentTime}
+            onSeek={handleSeek}
+            isAnalyzing={!call.callAnalysis && call.status === "completed"}
+          />
+
+          {/* Tab bar + content — fills remaining space */}
           <div className="flex-1 flex flex-col min-h-0 border-t border-border">
-            <div className="shrink-0 px-4 py-2 border-b border-border">
-              <h3 className="text-sm font-medium">Transcript</h3>
+            <div className="shrink-0 px-4 flex gap-4 border-b border-border">
+              <button
+                onClick={() => setActiveTab("transcript")}
+                className={`py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "transcript"
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Transcript
+              </button>
+              <button
+                onClick={() => setActiveTab("analysis")}
+                className={`py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "analysis"
+                    ? "border-foreground text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Analysis
+              </button>
             </div>
-            <TranscriptPanel
-              callId={callId as Id<"calls">}
-              currentTime={currentTime}
-              onSeek={handleSeek}
-            />
+            {activeTab === "transcript" ? (
+              <TranscriptPanel
+                callId={callId as Id<"calls">}
+                currentTime={currentTime}
+                onSeek={handleSeek}
+              />
+            ) : (
+              <AnalysisPanel callAnalysis={call.callAnalysis} />
+            )}
           </div>
         </div>
 

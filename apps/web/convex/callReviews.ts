@@ -336,6 +336,7 @@ export const getCallForReview = query({
       reviewedAt: call.reviewedAt,
       commentCount: call.commentCount ?? 0,
       summary: call.summary,
+      callAnalysis: call.callAnalysis,
       createdAt: call.createdAt,
       startedAt: call.startedAt,
       endedAt: call.endedAt,

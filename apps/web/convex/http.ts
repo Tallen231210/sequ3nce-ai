@@ -3206,7 +3206,7 @@ http.route({
           });
 
           if (callEndedBot?.callId) {
-            await ctx.runMutation(api.meetingBot.completeCallFromBot, {
+            await ctx.runMutation(internal.meetingBot.completeCallFromBot, {
               callId: callEndedBot.callId,
               endedAt: callEndedAt,
             });
@@ -3241,7 +3241,7 @@ http.route({
           // Always try to complete the linked call — it may have been linked AFTER
           // bot.call_ended fired. completeCallFromBot is idempotent (safe to call twice).
           if (doneBot?.callId) {
-            await ctx.runMutation(api.meetingBot.completeCallFromBot, {
+            await ctx.runMutation(internal.meetingBot.completeCallFromBot, {
               callId: doneBot.callId,
               endedAt: doneBot.endedAt || doneAt,
             });
@@ -3495,6 +3495,55 @@ http.route({
 
 http.route({
   path: "/getPendingQuestionnaireCount",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Dismiss orphaned questionnaires (bots without linked call records)
+http.route({
+  path: "/dismissOrphanedQuestionnaires",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const closerId = body.closerId;
+
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runMutation(api.meetingBot.dismissOrphanedQuestionnaires, {
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in dismissOrphanedQuestionnaires:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/dismissOrphanedQuestionnaires",
   method: "OPTIONS",
   handler: httpAction(async () => {
     return new Response(null, {
