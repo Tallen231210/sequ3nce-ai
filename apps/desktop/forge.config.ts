@@ -13,6 +13,9 @@ import { PublisherGithub } from '@electron-forge/publisher-github';
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 
+// Skip code signing on CI (no Developer ID cert available)
+const isCI = !!process.env.CI;
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -24,18 +27,20 @@ const config: ForgeConfig = {
     // Mac: .icns file, Windows: .ico file
     icon: './assets/icon',
     // Code signing configuration (auto-detects Developer ID Application certificate)
-    osxSign: {
-      optionsForFile: () => {
-        return {
-          entitlements: './entitlements.plist',
-          hardenedRuntime: true,
-        };
+    // Disabled on CI — build locally for signed macOS builds
+    ...(isCI ? {} : {
+      osxSign: {
+        optionsForFile: () => {
+          return {
+            entitlements: './entitlements.plist',
+            hardenedRuntime: true,
+          };
+        },
       },
-    },
-    // Notarization configuration (uses keychain profile for credentials)
-    osxNotarize: {
-      keychainProfile: 'sequ3nce-notarize',
-    },
+      osxNotarize: {
+        keychainProfile: 'sequ3nce-notarize',
+      },
+    }),
     // Protocol handler for magic link auth
     protocols: [
       {
