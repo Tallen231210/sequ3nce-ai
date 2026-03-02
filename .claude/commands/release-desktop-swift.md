@@ -32,10 +32,12 @@ Edit `apps/macos/appcast.xml`:
 Run the release script:
 
 ```bash
-cd /Users/tylerallen/Desktop/sequ3nce-ai/apps/macos/Sequ3nce && ./scripts/release.sh X.Y.Z
+cd /Users/tylerallen/Desktop/sequ3nce-ai/apps/macos/Sequ3nce && ../scripts/release.sh X.Y.Z
 ```
 
 Replace `X.Y.Z` with the version number (e.g., `1.4.1`).
+
+> **Note:** The scripts directory is at `apps/macos/scripts/`, not inside the Xcode project folder.
 
 This script:
 1. Cleans and archives the Xcode project
@@ -87,6 +89,24 @@ gh release create macos-vX.Y.Z \
 
 > **Important:** Always upload the DMG alongside the ZIP. The download page serves the DMG to new users (avoids macOS Gatekeeper warnings). The ZIP is used by Sparkle for auto-updates to existing users.
 
+### Step 8: Push appcast.xml to sequ3nce-releases repo (Claude does this)
+
+**CRITICAL:** The app fetches its update feed from `sequ3nce-releases`, NOT from `sequ3nce-ai`. You MUST push the updated appcast.xml to the releases repo or users will never see the update.
+
+```bash
+git clone https://github.com/Tallen231210/sequ3nce-releases.git /tmp/sequ3nce-releases
+cp apps/macos/appcast.xml /tmp/sequ3nce-releases/appcast.xml
+cd /tmp/sequ3nce-releases && git add appcast.xml && git commit -m "Update appcast for vX.Y.Z" && git push origin main
+```
+
+After pushing, verify via GitHub API (raw.githubusercontent.com has CDN cache delay):
+
+```bash
+gh api repos/Tallen231210/sequ3nce-releases/contents/appcast.xml --jq '.content' | base64 --decode | head -15
+```
+
+> **Note:** `raw.githubusercontent.com` has ~5 minute CDN caching. The update will propagate to users after the cache expires.
+
 ## Troubleshooting
 
 ### "Notarization failed"
@@ -100,9 +120,10 @@ Run `xcodebuild clean` and try again, or open in Xcode to see detailed errors.
 
 ## Auto-Update
 
-Once the GitHub release is published and appcast.xml is pushed:
-- Users will see "Update Available" dialog on app launch
+Once the GitHub release is published and appcast.xml is pushed to **sequ3nce-releases** (Step 8):
+- Users will see "Update Available" dialog on app launch (after ~5 min CDN cache)
 - Sparkle handles download and installation automatically
+- The app polls `https://raw.githubusercontent.com/Tallen231210/sequ3nce-releases/main/appcast.xml`
 
 ## Files Reference
 

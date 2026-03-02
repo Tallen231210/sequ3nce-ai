@@ -1570,6 +1570,15 @@ export const updateCallAnalysis = internalMutation({
   },
 });
 
+// Get just the callAnalysis field for a single call (used by Electron app to poll for pending analysis)
+export const getCallAnalysis = query({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    return call?.callAnalysis ?? null;
+  },
+});
+
 // Delete a call and all associated data (for admin use - removes accidental calls from stats)
 export const deleteCall = mutation({
   args: {

@@ -32,7 +32,7 @@ function formatMessageTime(createdAt: number): string {
 // Empty state when not logged in
 function NotLoggedInState() {
   return (
-    <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8 px-4">
+    <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8 px-4">
       <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
       </svg>
@@ -44,12 +44,12 @@ function NotLoggedInState() {
 // Empty state when no messages
 function NoMessagesState() {
   return (
-    <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8 px-4">
+    <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8 px-4">
       <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
       </svg>
-      <p className="text-sm text-gray-500 mb-1">No messages yet</p>
-      <p className="text-xs text-gray-400 text-center">Messages from your manager will appear here</p>
+      <p className="text-sm text-gray-500 dark:text-zinc-400 mb-1">No messages yet</p>
+      <p className="text-xs text-gray-400 dark:text-zinc-500 text-center">Messages from your manager will appear here</p>
     </div>
   );
 }
@@ -61,20 +61,20 @@ function MessageBubble({ message, isFromMe }: { message: ChatMessage; isFromMe: 
       <div className={`max-w-[85%] ${isFromMe ? 'items-end' : 'items-start'}`}>
         {/* Sender name (only for messages from manager) */}
         {!isFromMe && (
-          <p className="text-[10px] text-gray-500 mb-0.5 px-1">{message.senderName}</p>
+          <p className="text-[10px] text-gray-500 dark:text-zinc-400 mb-0.5 px-1">{message.senderName}</p>
         )}
 
         {/* Message bubble */}
         <div className={`px-3 py-2 rounded-xl ${
           isFromMe
             ? 'bg-blue-500 text-white rounded-br-sm'
-            : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+            : 'bg-gray-100 dark:bg-zinc-700 text-gray-800 dark:text-zinc-200 rounded-bl-sm'
         }`}>
           <p className="text-sm leading-snug whitespace-pre-wrap break-words">{message.message}</p>
         </div>
 
         {/* Timestamp */}
-        <p className={`text-[10px] text-gray-400 mt-0.5 px-1 ${isFromMe ? 'text-right' : ''}`}>
+        <p className={`text-[10px] text-gray-400 dark:text-zinc-500 mt-0.5 px-1 ${isFromMe ? 'text-right' : ''}`}>
           {formatMessageTime(message.createdAt)}
         </p>
       </div>
@@ -106,9 +106,9 @@ function ComposeArea({
   const canSend = text.trim().length > 0 && !isSending;
 
   return (
-    <div className="p-2 border-t border-gray-200 bg-white">
+    <div className="p-2 border-t border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900">
       {error && (
-        <p className="text-[11px] text-red-500 mb-1 px-1">{error}</p>
+        <p className="text-[11px] text-red-500 dark:text-red-400 mb-1 px-1">{error}</p>
       )}
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
         <input
@@ -118,7 +118,7 @@ function ComposeArea({
           onChange={(e) => setText(e.target.value)}
           placeholder="Type a reply..."
           disabled={isSending}
-          className="flex-1 px-3 py-2 text-sm bg-gray-100 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150 placeholder-gray-400 disabled:opacity-50"
+          className="flex-1 px-3 py-2 text-sm text-gray-700 dark:text-zinc-300 bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 focus:ring-1 focus:ring-gray-400 dark:focus:ring-zinc-500 transition-all duration-150 placeholder-gray-400 dark:placeholder-zinc-500 disabled:opacity-50"
         />
         <button
           type="submit"
@@ -126,7 +126,7 @@ function ComposeArea({
           className={`p-2 rounded-lg transition-all duration-150 ${
             canSend
               ? 'bg-blue-500 text-white hover:bg-blue-600'
-              : 'bg-gray-100 text-gray-400'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-400 dark:text-zinc-500'
           }`}
         >
           {isSending ? (
@@ -291,8 +291,8 @@ export function ChatPanel({ closerId, teamId, closerName, onUnreadCountChange }:
   // Loading state
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
-        <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin mb-2" />
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
+        <div className="w-5 h-5 border-2 border-gray-200 dark:border-zinc-700 border-t-gray-500 dark:border-t-zinc-400 rounded-full animate-spin mb-2" />
         <p className="text-xs">Loading messages...</p>
       </div>
     );

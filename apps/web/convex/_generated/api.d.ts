@@ -11,6 +11,8 @@
 import type * as admin from "../admin.js";
 import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
+import type * as b2cAuth from "../b2cAuth.js";
+import type * as b2cProfiles from "../b2cProfiles.js";
 import type * as billing from "../billing.js";
 import type * as botAvatar from "../botAvatar.js";
 import type * as calendar from "../calendar.js";
@@ -47,6 +49,8 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   ai: typeof ai;
   analytics: typeof analytics;
+  b2cAuth: typeof b2cAuth;
+  b2cProfiles: typeof b2cProfiles;
   billing: typeof billing;
   botAvatar: typeof botAvatar;
   calendar: typeof calendar;

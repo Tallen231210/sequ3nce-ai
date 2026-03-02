@@ -109,9 +109,6 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       mainConfig,
-      devServer: {
-        port: 3001, // Use different port to avoid conflicts
-      },
       // Allow all connections in dev mode - the default CSP is too restrictive
       devContentSecurityPolicy: "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * ws: wss: https:;",
       renderer: {
@@ -155,6 +152,14 @@ const config: ForgeConfig = {
             name: 'schedule',
             preload: {
               js: './src/schedule-preload.ts',
+            },
+          },
+          {
+            html: './src/post-call.html',
+            js: './src/post-call-renderer.ts',
+            name: 'post_call',
+            preload: {
+              js: './src/post-call-preload.ts',
             },
           },
         ],

@@ -20,17 +20,25 @@ interface CallAnalysis {
 
 interface AnalysisPanelProps {
   callAnalysis: CallAnalysis | undefined;
+  isRecent?: boolean;
 }
 
-export function AnalysisPanel({ callAnalysis }: AnalysisPanelProps) {
+export function AnalysisPanel({ callAnalysis, isRecent }: AnalysisPanelProps) {
   if (!callAnalysis) {
+    if (isRecent) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12 gap-2">
+          <div className="h-5 w-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-muted-foreground">Analysis pending...</span>
+          <span className="text-xs text-muted-foreground">
+            This usually takes a few seconds after the call ends
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-2">
-        <div className="h-5 w-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
-        <span className="text-sm text-muted-foreground">Analysis pending...</span>
-        <span className="text-xs text-muted-foreground">
-          This usually takes a few seconds after the call ends
-        </span>
+        <span className="text-sm text-muted-foreground">Analysis not available for this call</span>
       </div>
     );
   }

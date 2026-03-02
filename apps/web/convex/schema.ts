@@ -30,6 +30,8 @@ export default defineSchema({
     // Meeting Bot feature flag
     meetingBotEnabled: v.optional(v.boolean()), // Enable meeting bot auto-join via Meeting BaaS
     meetingBotName: v.optional(v.string()), // Configurable bot display name (what other participants see)
+    // Team type: "company" (B2B default) or "personal" (B2C workspace)
+    type: v.optional(v.union(v.literal("company"), v.literal("personal"))),
     // Beta features array - for staged rollout of new features
     // e.g., ["liveStreaming", "aiCoaching", "advancedAnalytics"]
     betaFeatures: v.optional(v.array(v.string())),
@@ -152,6 +154,8 @@ export default defineSchema({
     zoomAccessToken: v.optional(v.string()), // Zoom OAuth access token
     zoomRefreshToken: v.optional(v.string()), // Zoom OAuth refresh token
     zoomConnectedAt: v.optional(v.number()), // When Zoom was connected
+    // Phone number for B2B ↔ B2C identity matching
+    phone: v.optional(v.string()),
     invitedAt: v.number(),
     activatedAt: v.optional(v.number()),
     lastLoginAt: v.optional(v.number()), // Track last desktop app login
@@ -813,4 +817,58 @@ export default defineSchema({
   })
     .index("by_closer", ["closerId"])
     .index("by_closer_and_event", ["closerId", "calendarEventId"]),
+
+  // ==================== B2C Tables ====================
+
+  // B2C user accounts (Sequ3nce Personal)
+  b2cUsers: defineTable({
+    email: v.string(),
+    phone: v.string(),                    // SMS-verified, primary identity key
+    phoneVerified: v.boolean(),
+    name: v.string(),
+    passwordHash: v.string(),
+    personalWorkspaceId: v.id("teams"),   // Their "team of one"
+    stripeCustomerId: v.optional(v.string()),
+    subscriptionStatus: v.union(
+      v.literal("active"),
+      v.literal("cancelled"),
+      v.literal("past_due"),
+      v.literal("none"),
+    ),
+    subscriptionId: v.optional(v.string()),
+    profileSlug: v.optional(v.string()),  // URL-safe unique slug
+    linkedCloserIds: v.optional(v.array(v.id("closers"))), // B2B closer IDs matched by phone
+    createdAt: v.number(),
+    lastLoginAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()),
+  })
+    .index("by_email", ["email"])
+    .index("by_phone", ["phone"])
+    .index("by_profile_slug", ["profileSlug"])
+    .index("by_subscription_status", ["subscriptionStatus"])
+    .index("by_stripe_customer", ["stripeCustomerId"]),
+
+  // B2C closer profiles (public-facing profile data)
+  b2cProfiles: defineTable({
+    userId: v.id("b2cUsers"),
+    headline: v.optional(v.string()),
+    bio: v.optional(v.string()),
+    location: v.optional(v.string()),
+    photoStorageId: v.optional(v.string()),
+    industries: v.optional(v.array(v.string())),
+    ticketRange: v.optional(v.string()),
+    skills: v.optional(v.array(v.string())),
+    socialLinks: v.optional(v.object({
+      linkedin: v.optional(v.string()),
+      twitter: v.optional(v.string()),
+      instagram: v.optional(v.string()),
+      website: v.optional(v.string()),
+      calendly: v.optional(v.string()),
+    })),
+    isPublic: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_public", ["isPublic"]),
 });

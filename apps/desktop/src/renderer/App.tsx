@@ -15,9 +15,12 @@ import {
   updateProspectName,
   changePassword,
   logClientError,
+  isMeetingBotEnabled,
   type CloserInfo,
   type ScheduledCallMatch,
 } from './convex';
+import { MeetingBotHub } from './views/MeetingBotHub';
+import { ThemeProvider } from './ThemeContext';
 import logoImage from '../assets/logo.png';
 
 // Storage keys
@@ -143,11 +146,21 @@ interface AuthError {
 }
 
 export function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
   const [authState, setAuthState] = useState<AuthState>('initial_loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [closerInfo, setCloserInfo] = useState<CloserInfo | null>(null);
   const [authError, setAuthError] = useState<AuthError | null>(null);
+  const [isBotMode, setIsBotMode] = useState(false);
+  const [botModeChecked, setBotModeChecked] = useState(false);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -172,6 +185,20 @@ export function App() {
         window.electron.schedule?.setTeamId(info.teamId);
         // Start chat polling for live messages
         window.electron.chat?.startPolling(info.closerId, info.teamId, info.name);
+
+        // Check meeting bot mode
+        isMeetingBotEnabled(info.teamId).then((enabled) => {
+          console.log('[App] Meeting bot enabled:', enabled);
+          setIsBotMode(enabled);
+          setBotModeChecked(true);
+          // Save bot mode so renderer.ts can pre-size the window on next launch
+          localStorage.setItem('sequ3nce_bot_mode', String(enabled));
+          if (enabled) {
+            window.electron.app.setWindowSize?.(1200, 800);
+          }
+        }).catch(() => {
+          setBotModeChecked(true);
+        });
 
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(info.email);
@@ -216,6 +243,19 @@ export function App() {
         // Start chat polling for live messages
         window.electron.chat?.startPolling(result.closer.closerId, result.closer.teamId, result.closer.name);
 
+        // Check meeting bot mode
+        isMeetingBotEnabled(result.closer.teamId).then((enabled) => {
+          console.log('[App] Meeting bot enabled:', enabled);
+          setIsBotMode(enabled);
+          setBotModeChecked(true);
+          localStorage.setItem('sequ3nce_bot_mode', String(enabled));
+          if (enabled) {
+            window.electron.app.setWindowSize?.(1200, 800);
+          }
+        }).catch(() => {
+          setBotModeChecked(true);
+        });
+
         // Send startup diagnostic (helps debug remote issues)
         sendStartupDiagnostic(result.closer.email);
       } else {
@@ -238,6 +278,14 @@ export function App() {
     setEmail('');
     setPassword('');
     setAuthState('login');
+
+    // Reset bot mode and restore window size
+    setBotModeChecked(false);
+    localStorage.removeItem('sequ3nce_bot_mode');
+    if (isBotMode) {
+      setIsBotMode(false);
+      window.electron.app.setWindowSize?.(400, 600);
+    }
 
     // Clear closer ID for the training window
     window.electron.training?.setCloserId(null);
@@ -288,6 +336,24 @@ export function App() {
   }
 
   if (authState === 'authenticated' && closerInfo) {
+    // Wait for bot mode check to complete before rendering to prevent
+    // flash of MainApp (v1 UI) before MeetingBotHub loads
+    if (!botModeChecked) {
+      return (
+        <div className="h-screen flex flex-col bg-white dark:bg-gray-950 text-black dark:text-white items-center justify-center">
+          <div className="titlebar h-8 border-b border-gray-200 dark:border-gray-800 w-full" />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin w-8 h-8 border-2 border-gray-300 dark:border-gray-600 border-t-black dark:border-t-white rounded-full mx-auto mb-4" />
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Loading...</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    if (isBotMode) {
+      return <MeetingBotHub closerInfo={closerInfo} onLogout={handleLogout} />;
+    }
     return <MainApp closerInfo={closerInfo} onLogout={handleLogout} />;
   }
 
@@ -322,7 +388,7 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="mb-8 text-center">
-          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto" />
+          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto dark-invert" />
           <p className="text-gray-500 text-sm mt-4">Sign in to your account</p>
         </div>
 
@@ -386,7 +452,7 @@ function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
 
       <div className="flex-1 flex flex-col items-center justify-center p-6">
         <div className="mb-8 text-center">
-          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto" />
+          <img src={logoImage} alt="Sequ3nce" className="h-14 mx-auto dark-invert" />
         </div>
 
         {/* Error icon */}
@@ -735,6 +801,8 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     notes?: string;
     primaryObjection?: string;
     primaryObjectionOther?: string;
+    objectionsOvercome?: string;
+    objectionsOvercomeOther?: string;
     leadQualityScore?: number;
     prospectWasDecisionMaker?: string;
   }) => {
@@ -776,6 +844,8 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
         notes: finalNotes,
         primaryObjection: data.primaryObjection,
         primaryObjectionOther: data.primaryObjectionOther,
+        objectionsOvercome: data.objectionsOvercome,
+        objectionsOvercomeOther: data.objectionsOvercomeOther,
         leadQualityScore: data.leadQualityScore,
         prospectWasDecisionMaker: data.prospectWasDecisionMaker,
       });
@@ -803,12 +873,8 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
     }
   };
 
-  const handleQuestionnaireCancel = () => {
-    // Allow cancel but warn user - for now just close
-    // In production, you might want to confirm first
-    setShowQuestionnaire(false);
-    setPendingCallId(null);
-  };
+  // Note: handleQuestionnaireCancel removed — form is mandatory (no cancel button)
+  // The only way to dismiss is by submitting the form successfully
 
   // Settings modal handlers
   const openSettingsModal = () => {
@@ -893,7 +959,6 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
           initialProspectName={prospectName || undefined}
           initialNotes={savedNotes || undefined}
           onSubmit={handleQuestionnaireSubmit}
-          onCancel={handleQuestionnaireCancel}
           isSubmitting={isSubmittingQuestionnaire}
         />
       )}
@@ -1026,7 +1091,7 @@ function MainApp({ closerInfo, onLogout }: MainAppProps) {
 
       {/* Logo centered at top */}
       <div className="pt-4 pb-2 flex justify-center">
-        <img src={logoImage} alt="Sequ3nce" className="h-12" />
+        <img src={logoImage} alt="Sequ3nce" className="h-12 dark-invert" />
       </div>
 
       {/* User info */}

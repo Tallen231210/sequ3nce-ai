@@ -3957,6 +3957,55 @@ http.route({
   }),
 });
 
+// Get call analysis for a single call (used by Electron app to poll for pending analysis)
+http.route({
+  path: "/getCallAnalysis",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const callId = url.searchParams.get("callId");
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const call = await ctx.runQuery(api.calls.getCallAnalysis, {
+        callId: callId as Id<"calls">,
+      });
+
+      return new Response(JSON.stringify({ callAnalysis: call }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getCallAnalysis:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCallAnalysis",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 // Create a meeting bot on demand (called when closer clicks "Join & Record")
 http.route({
   path: "/createBotForMeeting",
@@ -4891,6 +4940,318 @@ http.route({
       },
     });
   }),
+});
+
+// ==================== B2C Endpoints ====================
+
+// Helper for consistent B2C CORS + JSON responses
+const b2cJsonResponse = (data: unknown, status = 200, noCache = false) => {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  };
+  if (noCache) {
+    headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+    headers["Pragma"] = "no-cache";
+    headers["Expires"] = "0";
+  }
+  return new Response(JSON.stringify(data), { status, headers });
+};
+
+const b2cCorsPreflightHandler = (methods: string) =>
+  httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": methods,
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  });
+
+// POST endpoint for B2C user signup
+http.route({
+  path: "/b2c/signup",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, phone, password, name } = body;
+
+      // Type validation
+      if (typeof email !== "string" || typeof phone !== "string" ||
+          typeof password !== "string" || typeof name !== "string") {
+        return b2cJsonResponse({ success: false, error: "All fields must be strings" }, 400);
+      }
+
+      if (!email || !phone || !password || !name) {
+        return b2cJsonResponse({ success: false, error: "All fields are required" }, 400);
+      }
+
+      // Length guards
+      if (email.length > 254 || name.length > 100 || phone.length > 20 || password.length > 128) {
+        return b2cJsonResponse({ success: false, error: "Field length exceeds maximum" }, 400);
+      }
+
+      if (password.length < 8) {
+        return b2cJsonResponse({ success: false, error: "Password must be at least 8 characters" }, 400);
+      }
+
+      const result = await ctx.runMutation(api.b2cAuth.signupB2CUser, {
+        email,
+        phone,
+        password,
+        name,
+      });
+
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error in B2C signup:", error);
+      return b2cJsonResponse({ success: false, error: "Signup failed" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/signup",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST endpoint for B2C user login
+http.route({
+  path: "/b2c/login",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, password } = body;
+
+      if (typeof email !== "string" || typeof password !== "string") {
+        return b2cJsonResponse({ success: false, error: "Email and password must be strings" }, 400);
+      }
+
+      if (!email || !password) {
+        return b2cJsonResponse({ success: false, error: "Email and password are required" }, 400);
+      }
+
+      const result = await ctx.runMutation(api.b2cAuth.loginB2CUser, {
+        email,
+        password,
+      });
+
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error in B2C login:", error);
+      return b2cJsonResponse({ success: false, error: "Login failed" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/login",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET endpoint to look up B2C user by email (internal use only)
+http.route({
+  path: "/b2c/user",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const email = url.searchParams.get("email");
+
+    if (!email) {
+      return b2cJsonResponse({ error: "Email is required" }, 400);
+    }
+
+    const user = await ctx.runQuery(internal.b2cAuth.getB2CUserByEmail, { email });
+
+    if (!user) {
+      return b2cJsonResponse({ error: "User not found" }, 404);
+    }
+
+    return b2cJsonResponse(user);
+  }),
+});
+
+http.route({
+  path: "/b2c/user",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ==================== B2C Profile Endpoints ====================
+
+// GET /b2c/profile — Load own profile for editor
+http.route({
+  path: "/b2c/profile",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+      const profile = await ctx.runQuery(api.b2cProfiles.getMyProfile, {
+        userId: userId as any,
+      });
+      return b2cJsonResponse(profile);
+    } catch (error) {
+      console.error("Error getting profile:", error);
+      return b2cJsonResponse({ error: "Failed to load profile" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/profile",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// POST /b2c/profile — Upsert profile fields
+http.route({
+  path: "/b2c/profile",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, ...fields } = body;
+      if (!userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cProfiles.upsertProfile, {
+        userId: userId as any,
+        ...fields,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error upserting profile:", error);
+      const msg = error?.message || "Failed to save profile";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+// POST /b2c/profile/upload-url — Get signed photo upload URL
+http.route({
+  path: "/b2c/profile/upload-url",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+      const result = await ctx.runMutation(
+        api.b2cProfiles.generateProfileUploadUrl,
+        { userId: body.userId as any }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error generating upload URL:", error);
+      return b2cJsonResponse({ error: "Failed to generate upload URL" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/profile/upload-url",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/profile/photo — Save photo storage reference
+http.route({
+  path: "/b2c/profile/photo",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.storageId) {
+        return b2cJsonResponse({ error: "userId and storageId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cProfiles.saveProfilePhoto, {
+        userId: body.userId as any,
+        storageId: body.storageId,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error saving photo:", error);
+      return b2cJsonResponse({ error: "Failed to save photo" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/profile/photo",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/profile/slug — Claim profile URL slug
+http.route({
+  path: "/b2c/profile/slug",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.slug) {
+        return b2cJsonResponse({ error: "userId and slug are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cProfiles.claimProfileSlug, {
+        userId: body.userId as any,
+        slug: body.slug,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error claiming slug:", error);
+      const msg = error?.message || "Failed to claim URL";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/profile/slug",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/public-profile — Public profile + stats by slug (no auth)
+http.route({
+  path: "/b2c/public-profile",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const slug = url.searchParams.get("slug");
+      if (!slug) {
+        return b2cJsonResponse({ error: "slug is required" }, 400);
+      }
+      const profile = await ctx.runQuery(
+        internal.b2cProfiles.getPublicProfile,
+        { slug }
+      );
+      if (!profile) {
+        return b2cJsonResponse({ error: "Profile not found" }, 404);
+      }
+      return b2cJsonResponse(profile);
+    } catch (error) {
+      console.error("Error getting public profile:", error);
+      return b2cJsonResponse({ error: "Failed to load profile" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/public-profile",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
 });
 
 export default http;

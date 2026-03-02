@@ -18,11 +18,27 @@ contextBridge.exposeInMainWorld('ammoTracker', {
   // Close the ammo window
   close: () => ipcRenderer.invoke('ammo:close'),
 
+  // Minimize to small pill
+  minimize: () => ipcRenderer.invoke('ammo:minimize'),
+
+  // Expand back to full panel
+  expand: () => ipcRenderer.invoke('ammo:expand'),
+
   // Save notes to the call
   saveNotes: (callId: string, notes: string) => ipcRenderer.invoke('ammo:save-notes', callId, notes),
 
   // Get notes for a call
   getNotes: (callId: string) => ipcRenderer.invoke('ammo:get-notes', callId),
+
+  // Get current theme synchronously (avoids race with IPC listener)
+  getTheme: () => ipcRenderer.invoke('ammo:get-theme'),
+
+  // Listen for theme changes from main window
+  onThemeChanged: (callback: (theme: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, theme: string) => callback(theme);
+    ipcRenderer.on('theme-changed', handler);
+    return () => ipcRenderer.removeListener('theme-changed', handler);
+  },
 
   // Listen for call ID updates (when a new call starts)
   onCallIdChange: (callback: (callId: string | null) => void) => {

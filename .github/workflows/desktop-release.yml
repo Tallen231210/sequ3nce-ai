@@ -16,39 +16,36 @@ permissions:
   contents: write
 
 jobs:
-  # NOTE: macOS build is disabled until we have Apple Developer code signing.
-  # CI-built unsigned macOS apps show "damaged" error due to Gatekeeper.
-  # For now, build macOS locally and upload manually.
-  # build-mac:
-  #   runs-on: macos-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: '20'
-  #         cache: 'npm'
-  #         cache-dependency-path: apps/desktop/package-lock.json
-  #
-  #     - name: Install dependencies
-  #       working-directory: apps/desktop
-  #       run: npm ci
-  #
-  #     - name: Build macOS app
-  #       working-directory: apps/desktop
-  #       run: npm run make -- --platform darwin
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #
-  #     - name: Upload macOS artifacts
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: mac-build
-  #         path: |
-  #           apps/desktop/out/make/**/*.dmg
-  #           apps/desktop/out/make/**/*.zip
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build macOS app
+        working-directory: apps/desktop
+        run: npm run make -- --platform darwin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-build
+          path: |
+            apps/desktop/out/make/**/*.dmg
+            apps/desktop/out/make/**/*.zip
 
   build-windows:
     runs-on: windows-latest
@@ -116,7 +113,7 @@ jobs:
             apps/desktop/out/make/**/*.rpm
 
   create-release:
-    needs: [build-windows, build-linux]  # macOS is built locally until we have code signing
+    needs: [build-mac, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -162,6 +159,29 @@ jobs:
             cat artifacts/latest.yml
           fi
 
+      - name: Generate macOS update manifest
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          ZIP_FILE=$(find artifacts -name "*.zip" | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            SHA512_BASE64=$(sha512sum "$ZIP_FILE" | awk '{print $1}' | xxd -r -p | base64 -w 0)
+            SIZE=$(stat --format=%s "$ZIP_FILE")
+            ZIP_NAME=$(basename "$ZIP_FILE")
+            RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+            cat > artifacts/latest-mac.yml << EOF
+          version: ${VERSION}
+          files:
+            - url: ${ZIP_NAME}
+              sha512: ${SHA512_BASE64}
+              size: ${SIZE}
+          path: ${ZIP_NAME}
+          sha512: ${SHA512_BASE64}
+          releaseDate: '${RELEASE_DATE}'
+          EOF
+            echo "Generated latest-mac.yml for macOS"
+            cat artifacts/latest-mac.yml
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -176,6 +196,7 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
             artifacts/latest.yml
+            artifacts/latest-mac.yml
           body: |
             ## Sequ3nce Desktop v${{ steps.get_version.outputs.VERSION }}
 

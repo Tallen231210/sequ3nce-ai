@@ -32,6 +32,8 @@ export interface AudioAPI {
 export interface AppAPI {
   getVersion: () => Promise<string>;
   getPlatform: () => Promise<{ platform: string; arch: string; osRelease: string }>;
+  setWindowSize: (width: number, height: number) => Promise<void>;
+  themeChanged: (theme: string) => Promise<void>;
 }
 
 export interface AmmoAPI {
@@ -82,6 +84,30 @@ export interface ChatAPI {
   onNewMessage: (callback: (message: ChatMessage) => void) => () => void;
 }
 
+export interface BotAPI {
+  callStarted: (data: {
+    callId: string;
+    teamId: string;
+    closerId: string;
+    closerName: string;
+    prospectName?: string;
+    meetingTitle?: string;
+    botId?: string;
+  }) => Promise<void>;
+  callEnded: (data: {
+    callId: string;
+    closerId: string;
+    prospectName?: string;
+  }) => Promise<void>;
+  openQuestionnaire: (data: {
+    callId: string;
+    closerId: string;
+    closerName: string;
+    teamId: string;
+    prospectName?: string;
+  }) => Promise<void>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
@@ -91,6 +117,7 @@ export interface ElectronAPI {
   roleplay: RoleplayAPI;
   schedule: ScheduleAPI;
   chat: ChatAPI;
+  bot: BotAPI;
 }
 
 // Expose protected methods to renderer via contextBridge
@@ -148,6 +175,8 @@ contextBridge.exposeInMainWorld('electron', {
   app: {
     getVersion: () => ipcRenderer.invoke('app:get-version'),
     getPlatform: () => ipcRenderer.invoke('app:get-platform'),
+    setWindowSize: (width: number, height: number) => ipcRenderer.invoke('app:set-window-size', width, height),
+    themeChanged: (theme: string) => ipcRenderer.invoke('app:theme-changed', theme),
   },
   ammo: {
     toggle: () => ipcRenderer.invoke('ammo:toggle'),
@@ -197,6 +226,29 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('chat:new-message', handler);
       return () => ipcRenderer.removeListener('chat:new-message', handler);
     },
+  },
+  bot: {
+    callStarted: (data: {
+      callId: string;
+      teamId: string;
+      closerId: string;
+      closerName: string;
+      prospectName?: string;
+      meetingTitle?: string;
+      botId?: string;
+    }) => ipcRenderer.invoke('bot:call-started', data),
+    callEnded: (data: {
+      callId: string;
+      closerId: string;
+      prospectName?: string;
+    }) => ipcRenderer.invoke('bot:call-ended', data),
+    openQuestionnaire: (data: {
+      callId: string;
+      closerId: string;
+      closerName: string;
+      teamId: string;
+      prospectName?: string;
+    }) => ipcRenderer.invoke('bot:open-questionnaire', data),
   },
 } as ElectronAPI);
 

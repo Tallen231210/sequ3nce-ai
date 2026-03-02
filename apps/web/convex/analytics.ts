@@ -2,7 +2,7 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Date range types
-type DateRange = "this_week" | "last_7_days" | "this_month" | "last_30_days" | "last_90_days";
+type DateRange = "today" | "this_week" | "last_7_days" | "this_month" | "last_30_days" | "last_90_days";
 
 // Helper to get date range timestamps
 function getDateRangeTimestamps(range: DateRange): { start: number; end: number; prevStart: number; prevEnd: number } {
@@ -13,6 +13,13 @@ function getDateRangeTimestamps(range: DateRange): { start: number; end: number;
   let prevStart: number;
 
   switch (range) {
+    case "today": {
+      const d = new Date();
+      start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      // Previous period = yesterday
+      prevStart = start - day;
+      break;
+    }
     case "this_week": {
       const dayOfWeek = new Date().getDay();
       const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;

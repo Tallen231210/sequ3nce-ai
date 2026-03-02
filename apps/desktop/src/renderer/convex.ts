@@ -168,9 +168,14 @@ export async function updateProspectName(data: {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Convex] Failed to update prospect name:", errorData);
-      return { success: false, error: errorData.error || "Failed to update prospect name" };
+      try {
+        const errorData = await response.json();
+        console.error("[Convex] Failed to update prospect name:", errorData);
+        return { success: false, error: errorData.error || "Failed to update prospect name" };
+      } catch {
+        console.error("[Convex] Failed to update prospect name: HTTP", response.status);
+        return { success: false, error: "Failed to update prospect name" };
+      }
     }
 
     const result = await response.json();
@@ -193,6 +198,8 @@ export async function completeCallWithOutcome(data: {
   notes?: string;
   primaryObjection?: string;
   primaryObjectionOther?: string;
+  objectionsOvercome?: string;
+  objectionsOvercomeOther?: string;
   leadQualityScore?: number;
   prospectWasDecisionMaker?: string;
 }): Promise<{ success: boolean; error?: string }> {
@@ -208,9 +215,14 @@ export async function completeCallWithOutcome(data: {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Convex] Failed to complete call:", errorData);
-      return { success: false, error: errorData.error || "Failed to complete call" };
+      try {
+        const errorData = await response.json();
+        console.error("[Convex] Failed to complete call:", errorData);
+        return { success: false, error: errorData.error || "Failed to complete call" };
+      } catch {
+        console.error("[Convex] Failed to complete call: HTTP", response.status);
+        return { success: false, error: "Failed to complete call" };
+      }
     }
 
     const result = await response.json();
@@ -225,6 +237,51 @@ export async function completeCallWithOutcome(data: {
   } catch (error) {
     console.error("[Convex] Failed to complete call:", error);
     return { success: false, error: "Network error" };
+  }
+}
+
+// Get pending questionnaire info for a closer
+export async function getPendingQuestionnaireInfo(closerId: string): Promise<{
+  count: number;
+  firstCallId?: string;
+  firstProspectName?: string;
+}> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getPendingQuestionnaireCount`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+
+    if (!response.ok) {
+      return { count: 0 };
+    }
+
+    const data = await response.json();
+    return {
+      count: data.count || 0,
+      firstCallId: data.firstCallId || undefined,
+      firstProspectName: data.firstProspectName || undefined,
+    };
+  } catch (error) {
+    console.error("[Convex] Failed to get pending questionnaires:", error);
+    return { count: 0 };
+  }
+}
+
+// Dismiss orphaned questionnaires (bots without linked call records)
+export async function dismissOrphanedQuestionnaires(closerId: string): Promise<{ dismissed: number }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/dismissOrphanedQuestionnaires`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return { dismissed: 0 };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to dismiss orphaned questionnaires:", error);
+    return { dismissed: 0 };
   }
 }
 
@@ -245,10 +302,17 @@ export async function changePassword(
       body: JSON.stringify({ closerId, currentPassword, newPassword }),
     });
 
-    const result = await response.json();
-    console.log("[Convex] Change password result:", result);
+    if (!response.ok) {
+      try {
+        const errorData = await response.json();
+        return { success: false, error: errorData.error || "Failed to change password" };
+      } catch {
+        return { success: false, error: "Failed to change password" };
+      }
+    }
 
-    if (!response.ok || !result.success) {
+    const result = await response.json();
+    if (!result.success) {
       return { success: false, error: result.error || "Failed to change password" };
     }
 
@@ -296,6 +360,994 @@ export async function logClientError(data: ClientErrorData): Promise<void> {
   }
 }
 
+// ==================== MEETING BOT ====================
+
+// Check if meeting bot is enabled for a team
+export async function isMeetingBotEnabled(teamId: string): Promise<boolean> {
+  try {
+    console.log("[Convex] Checking meeting bot enabled for team:", teamId);
+
+    const response = await fetch(`${CONVEX_SITE_URL}/isMeetingBotEnabled`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ teamId }),
+    });
+
+    if (!response.ok) {
+      console.error("[Convex] Error checking meeting bot:", response.status);
+      return false;
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Meeting bot enabled:", result);
+    return result.enabled === true;
+  } catch (error) {
+    console.error("[Convex] Failed to check meeting bot:", error);
+    return false;
+  }
+}
+
+// Check if closer needs calendar onboarding
+export async function needsCalendarOnboarding(closerId: string): Promise<boolean> {
+  try {
+    console.log("[Convex] Checking calendar onboarding for closer:", closerId);
+
+    const response = await fetch(`${CONVEX_SITE_URL}/needsCalendarOnboarding`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ closerId }),
+    });
+
+    if (!response.ok) {
+      console.error("[Convex] Error checking calendar onboarding:", response.status);
+      return false;
+    }
+
+    const result = await response.json();
+    console.log("[Convex] Needs calendar onboarding:", result);
+    return result.needsOnboarding === true;
+  } catch (error) {
+    console.error("[Convex] Failed to check calendar onboarding:", error);
+    return false;
+  }
+}
+
+// Get active bot call for a closer
+export interface ActiveBotCall {
+  callId: string;
+  visitorCallId: string;
+  meetingTitle: string;
+  prospectName: string | null;
+  startedAt: number;
+  meetingUrl: string;
+}
+
+export async function getActiveCallForCloserBot(closerId: string): Promise<ActiveBotCall | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getActiveCallForCloserBot`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ closerId }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const result = await response.json();
+    if (!result || !result.callId) return null;
+    return result as ActiveBotCall;
+  } catch (error) {
+    // Silently fail — this is polled frequently
+    return null;
+  }
+}
+
+// ==================== BOT MANAGEMENT ====================
+
+// Create bot for a scheduled meeting
+export async function createBotForMeeting(
+  closerId: string,
+  teamId: string,
+  meetingUrl: string,
+  meetingTitle?: string,
+  prospectName?: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/createBotForMeeting`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, teamId, meetingUrl, meetingTitle, prospectName }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to create bot:", error);
+    return false;
+  }
+}
+
+// Create quick bot (ad-hoc meeting)
+export async function createQuickBot(
+  meetingUrl: string,
+  closerId: string,
+  teamId: string,
+  prospectName?: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/createQuickBot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meetingUrl, closerId, teamId, prospectName }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to create quick bot:", error);
+    return false;
+  }
+}
+
+// Cancel/kick bot from meeting
+export async function cancelBot(botId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/cancelBot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to cancel bot:", error);
+    return false;
+  }
+}
+
+// Get upcoming bots for closer
+export async function getUpcomingBotsForCloser(closerId: string): Promise<Record<string, unknown>[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getUpcomingBotsForCloser`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : result.bots || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get upcoming bots:", error);
+    return [];
+  }
+}
+
+// Exclude a calendar event from auto-bot
+export async function excludeCalendarEvent(
+  closerId: string,
+  calendarEventId: string,
+  eventTitle?: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/excludeCalendarEvent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, calendarEventId, eventTitle }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[Convex] Failed to exclude event:", error);
+    return false;
+  }
+}
+
+// Request reinforcement from team
+export async function requestReinforcement(
+  teamId: string,
+  closerId: string,
+  closerName: string,
+  callId?: string,
+  message?: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/requestReinforcement`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamId, closerId, closerName, callId, message }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to request reinforcement:", error);
+    return false;
+  }
+}
+
+// Notify team call is going long
+export async function callGoingLong(
+  teamId: string,
+  closerId: string,
+  callId?: string,
+  estimatedMinutes?: number
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/callGoingLong`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teamId, closerId, callId, estimatedMinutes }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to notify call going long:", error);
+    return false;
+  }
+}
+
+// Get transcript segments for a call
+export interface TranscriptSegment {
+  _id: string;
+  callId?: string;
+  speaker: string;
+  text: string;
+  timestamp: number;
+  createdAt?: number;
+}
+
+export async function getTranscriptSegments(callId: string): Promise<TranscriptSegment[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getTranscriptSegments?callId=${encodeURIComponent(callId)}`);
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.error("[Convex] Failed to get transcript:", error);
+    return [];
+  }
+}
+
+// Ammo V2 analysis
+export interface AmmoV2Analysis {
+  engagement: {
+    level: 'high' | 'medium' | 'low';
+    reason: string;
+  };
+  beliefs: {
+    problem: number;
+    solution: number;
+    vehicle: number;
+    self: number;
+    time: number;
+    money: number;
+    urgency: number;
+  };
+  objectionPrediction: Array<{
+    type: string;
+    probability: number;
+  }>;
+  painPoints: string[];
+  liveSummary?: string;
+  analyzedAt?: number;
+}
+
+export async function getAmmoAnalysis(callId: string): Promise<AmmoV2Analysis | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getAmmoAnalysis?callId=${encodeURIComponent(callId)}`);
+    if (!response.ok) return null;
+    const result = await response.json();
+    if (result && result.engagement) return result;
+    return null;
+  } catch (error) {
+    console.error("[Convex] Failed to get ammo analysis:", error);
+    return null;
+  }
+}
+
+// Check if Ammo V2 is enabled
+export async function isAmmoV2Enabled(teamId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/isAmmoV2Enabled?teamId=${encodeURIComponent(teamId)}`);
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.enabled === true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Update call notes
+export async function updateCallNotes(callId: string, notes: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/updateCallNotes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, notes }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[Convex] Failed to update notes:", error);
+    return false;
+  }
+}
+
+// Get active resources for team
+export interface TeamResource {
+  _id: string;
+  type: 'script' | 'payment_link' | 'document' | 'link';
+  title: string;
+  description?: string;
+  content?: string;
+  url?: string;
+}
+
+export async function getActiveResources(teamId: string): Promise<TeamResource[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getActiveResources?teamId=${encodeURIComponent(teamId)}`);
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.error("[Convex] Failed to get resources:", error);
+    return [];
+  }
+}
+
+// Save meeting platform preference
+export async function saveMeetingPlatform(closerId: string, platform: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/saveMeetingPlatform`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, platform }),
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Mark calendar onboarding as completed
+export async function markOnboardingCompleted(closerId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/markOnboardingCompleted`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Connect calendar with ICS URL
+export async function connectCalendar(
+  email: string,
+  teamId: string,
+  icsUrl: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/connectCalendarByEmail`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, teamId, icsUrl }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[Convex] Failed to connect calendar:", error);
+    return false;
+  }
+}
+
+// Sync calendar events
+export async function syncCalendar(email: string, teamId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/syncCalendarByEmail`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, teamId }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[Convex] Failed to sync calendar:", error);
+    return false;
+  }
+}
+
+// ==================== DASHBOARD + STATS ====================
+
+// Closer dashboard stats (calls, close rate, cash, etc.)
+export interface CloserStats {
+  callsThisPeriod: number;
+  closeRate: number;
+  cashCollected: number;
+  avgCallDuration: number;
+  avgTalkRatio: number;
+  totalContractValue: number;
+  teamSize: number;
+  teamAvgCloseRate: number;
+  teamAvgCash: number;
+  teamAvgCalls: number;
+  teamAvgDuration: number;
+  teamAvgTalkRatio: number;
+}
+
+export async function getCloserStats(closerId: string, period: string): Promise<CloserStats | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getCloserStats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, period }),
+    });
+
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get closer stats:", error);
+    return null;
+  }
+}
+
+// Analytics summary (money overview)
+export interface AnalyticsTrends {
+  pitched: number;
+  closed: number;
+  leftOnTable: number;
+  closeRate: number;
+}
+
+export interface AnalyticsSummary {
+  totalPitched: number;
+  totalClosed: number;
+  leftOnTable: number;
+  closeRate: number;
+  totalCalls: number;
+  closedCalls: number;
+  lostOrFollowUpCalls: number;
+  trends: AnalyticsTrends;
+}
+
+export async function getAnalyticsSummary(closerId: string, teamId: string, period: string): Promise<AnalyticsSummary | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getCloserAnalyticsSummary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, teamId, period }),
+    });
+
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get analytics summary:", error);
+    return null;
+  }
+}
+
+// Lost deals by objection
+export interface ObjectionBreakdown {
+  objection: string;
+  objectionLabel: string;
+  lostAmount: number;
+  dealCount: number;
+  trend: number;
+}
+
+export interface LostDealsData {
+  objections: ObjectionBreakdown[];
+  totalLost: number;
+  totalDeals: number;
+  problemAreas: string[];
+}
+
+export async function getLostDealsByObjection(closerId: string, teamId: string, period: string): Promise<LostDealsData | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getCloserLostDeals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, teamId, period }),
+    });
+
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get lost deals:", error);
+    return null;
+  }
+}
+
+// Objection analysis
+export interface LostObjectionItem {
+  objection: string;
+  objectionLabel: string;
+  count: number;
+  value: number;
+  overcomeRate?: number;
+}
+
+export interface OvercomeObjectionItem {
+  objection: string;
+  objectionLabel: string;
+  count: number;
+  value: number;
+}
+
+export interface ObjectionAnalysisData {
+  lostObjections: LostObjectionItem[];
+  overcomeObjections: OvercomeObjectionItem[];
+  totalLostValue: number;
+  totalClosedValue: number;
+  insights: string[];
+}
+
+export async function getObjectionAnalysis(closerId: string, teamId: string, period: string): Promise<ObjectionAnalysisData | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getCloserObjectionAnalysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, teamId, period }),
+    });
+
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get objection analysis:", error);
+    return null;
+  }
+}
+
+// Calendar events
+export interface CalendarEvent {
+  _id: string;
+  uid: string;
+  title: string;
+  description?: string;
+  startTime: number;
+  endTime: number;
+  location?: string;
+  isAllDay?: boolean;
+  meetingUrl?: string;
+}
+
+export async function getCalendarEvents(
+  email: string,
+  teamId: string,
+  startDate: number,
+  endDate: number
+): Promise<CalendarEvent[]> {
+  try {
+    const params = new URLSearchParams({
+      email,
+      teamId,
+      startDate: String(startDate),
+      endDate: String(endDate),
+    });
+
+    const response = await fetch(`${CONVEX_SITE_URL}/getCloserEventsByEmail?${params}`);
+
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.error("[Convex] Failed to get calendar events:", error);
+    return [];
+  }
+}
+
+// Call analysis types (deep AI analysis with chapters + sales process scoring)
+export interface CallChapter {
+  title: string;
+  startTime: number;  // seconds from call start
+  endTime: number;
+  summary: string;
+}
+
+export interface CallAnalysisDimension {
+  score: string;  // "strong" | "adequate" | "weak"
+  summary: string;
+}
+
+export interface CallAnalysis {
+  chapters: CallChapter[];
+  analysis: {
+    opening: CallAnalysisDimension;
+    discovery: CallAnalysisDimension;
+    presentation: CallAnalysisDimension;
+    objectionHandling: CallAnalysisDimension;
+    closing: CallAnalysisDimension;
+  };
+  callSequence: { phase: string; description: string }[];
+  analyzedAt: number;
+}
+
+// Call history
+export interface CallHistoryItem {
+  _id: string;
+  prospectName: string;
+  duration: number;
+  outcome?: string;
+  startedAt: number;
+  closerName?: string;
+  recordingUrl?: string;
+  recordingType?: string;
+  closerTalkTime?: number;
+  prospectTalkTime?: number;
+  summary?: string;
+  transcriptText?: string;
+  flaggedForReview?: boolean;
+  reviewStatus?: string;
+  commentCount?: number;
+  cashCollected?: number;
+  contractValue?: number;
+  callAnalysis?: CallAnalysis;
+  endedAt?: number;
+}
+
+export async function getCallHistory(closerId: string, limit?: number): Promise<CallHistoryItem[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getCallHistory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, limit: limit || 20 }),
+    });
+
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result.calls) ? result.calls : [];
+  } catch (error) {
+    console.error("[Convex] Failed to get call history:", error);
+    return [];
+  }
+}
+
+// Fetch just the callAnalysis field for a single call (lightweight polling endpoint)
+export async function getCallAnalysis(callId: string): Promise<CallAnalysis | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getCallAnalysis?callId=${encodeURIComponent(callId)}`);
+    if (!response.ok) return null;
+    const result = await response.json();
+    return result.callAnalysis ?? null;
+  } catch (error) {
+    console.error("[Convex] Failed to get call analysis:", error);
+    return null;
+  }
+}
+
+// ==================== SCHEDULE + CALENDAR ====================
+
+// Calendar status
+export interface CalendarStatus {
+  closerId: string;
+  connected: boolean;
+  icsUrl?: string;
+  connectedAt?: number;
+  lastSynced?: number;
+}
+
+export async function getCalendarStatus(email: string, teamId: string): Promise<CalendarStatus | null> {
+  try {
+    const params = new URLSearchParams({ email, teamId });
+    const response = await fetch(`${CONVEX_SITE_URL}/getCloserCalendarStatusByEmail?${params}`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get calendar status:", error);
+    return null;
+  }
+}
+
+export async function disconnectCalendar(email: string, teamId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/disconnectCalendarByEmail`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, teamId }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[Convex] Failed to disconnect calendar:", error);
+    return false;
+  }
+}
+
+// ==================== DIAGNOSTICS ====================
+
+export async function submitDiagnosticReport(data: Record<string, unknown>): Promise<string | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/submitDiagnosticReport`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) return null;
+    const result = await response.json();
+    return result.reportId || null;
+  } catch (error) {
+    console.error("[Convex] Failed to submit diagnostics:", error);
+    return null;
+  }
+}
+
+// ==================== COACHING + FEEDBACK ====================
+
+// Feedback call (call with manager comments)
+export interface FeedbackCall {
+  callId: string;
+  prospectName: string;
+  lastCommentAt: number;
+  commentCount: number;
+  latestCommentPreview?: string;
+  isUnread: boolean;
+}
+
+export async function getFeedbackForCloser(closerId: string): Promise<FeedbackCall[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getFeedbackForCloser`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : result.calls || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get feedback:", error);
+    return [];
+  }
+}
+
+// Call comments
+export interface CallComment {
+  _id: string;
+  content: string;
+  authorType: string;
+  authorName: string;
+  authorId: string;
+  timestampSeconds?: number;
+  createdAt: number;
+  parentCommentId?: string;
+}
+
+export async function getCommentsForCall(callId: string): Promise<CallComment[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getCommentsForCall`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId }),
+    });
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : result.comments || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get comments:", error);
+    return [];
+  }
+}
+
+export async function addCallComment(
+  callId: string,
+  content: string,
+  authorType: string,
+  authorName: string,
+  authorId: string,
+  timestampSeconds?: number,
+  parentCommentId?: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/addCallComment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, content, authorType, authorName, authorId, timestampSeconds, parentCommentId }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to add comment:", error);
+    return false;
+  }
+}
+
+// Shared moments
+export interface SharedMoment {
+  callId: string;
+  title: string;
+  closerName?: string;
+  startSeconds: number;
+  endSeconds: number;
+  notes?: string;
+  createdAt: number;
+}
+
+export async function getSharedMoments(closerId: string): Promise<SharedMoment[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getSharedMoments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : result.moments || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get shared moments:", error);
+    return [];
+  }
+}
+
+// Unread counts
+export async function getUnreadFeedbackCount(closerId: string): Promise<number> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getUnreadFeedbackCount`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return 0;
+    const result = await response.json();
+    return result.count || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+export async function getUnreadSharedMomentsCount(closerId: string): Promise<number> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getUnreadSharedMomentsCount`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return 0;
+    const result = await response.json();
+    return result.count || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+export async function markFeedbackRead(callId: string, closerId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/markFeedbackRead`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, closerId }),
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function markSharedMomentsSeen(closerId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/markSharedMomentsSeen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// ==================== CALL HISTORY + REVIEWS ====================
+
+// Flag call for review
+export async function flagCallForReview(callId: string, closerId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/flagCallForReview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, closerId }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to flag call:", error);
+    return false;
+  }
+}
+
+// Unflag call
+export async function unflagCall(callId: string, closerId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/unflagCall`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, closerId }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to unflag call:", error);
+    return false;
+  }
+}
+
+// Refresh recording URL (Recall.ai URLs expire ~24h)
+export async function refreshRecordingUrl(callId: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/refreshRecordingUrl`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId }),
+    });
+    if (!response.ok) return null;
+    const result = await response.json();
+    return result.recordingUrl || null;
+  } catch (error) {
+    console.error("[Convex] Failed to refresh recording URL:", error);
+    return null;
+  }
+}
+
+// Create shared link for a call
+export interface SharedLinkResult {
+  token: string;
+  url: string;
+}
+
+export async function createSharedLink(
+  callId: string,
+  closerId: string,
+  teamId: string
+): Promise<SharedLinkResult | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/createSharedLink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        callId,
+        teamId,
+        shareType: "full",
+        includeComments: false,
+        createdBy: closerId,
+        createdByType: "closer",
+      }),
+    });
+    if (!response.ok) return null;
+    const result = await response.json();
+    if (result.token && result.url) return result as SharedLinkResult;
+    return null;
+  } catch (error) {
+    console.error("[Convex] Failed to create shared link:", error);
+    return null;
+  }
+}
+
+// Get ammo items for a call (legacy ammo)
+export interface AmmoItem {
+  _id: string;
+  type: string;
+  text: string;
+  createdAt: number;
+}
+
+export async function getAmmoByCall(callId: string): Promise<AmmoItem[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/getAmmoByCall?callId=${encodeURIComponent(callId)}`);
+    if (!response.ok) return [];
+    const result = await response.json();
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    console.error("[Convex] Failed to get ammo items:", error);
+    return [];
+  }
+}
+
 // ==================== ROLE PLAY ROOM ====================
 
 export interface RolePlayRoomResponse {
@@ -323,8 +1375,7 @@ export async function getOrCreateRolePlayRoom(teamId: string): Promise<RolePlayR
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Convex] Failed to get role play room:", errorData);
+      console.error("[Convex] Failed to get role play room: HTTP", response.status);
       return null;
     }
 
@@ -355,9 +1406,12 @@ export async function joinRolePlayRoom(
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Convex] Failed to join role play room:", errorData);
-      return { success: false, error: errorData.error || "Failed to join room" };
+      try {
+        const errorData = await response.json();
+        return { success: false, error: errorData.error || "Failed to join room" };
+      } catch {
+        return { success: false, error: "Failed to join room" };
+      }
     }
 
     const result = await response.json();
@@ -386,9 +1440,12 @@ export async function leaveRolePlayRoom(
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[Convex] Failed to leave role play room:", errorData);
-      return { success: false, error: errorData.error || "Failed to leave room" };
+      try {
+        const errorData = await response.json();
+        return { success: false, error: errorData.error || "Failed to leave room" };
+      } catch {
+        return { success: false, error: "Failed to leave room" };
+      }
     }
 
     const result = await response.json();
@@ -416,5 +1473,82 @@ export async function getRolePlayRoomParticipants(teamId: string): Promise<RoleP
   } catch (error) {
     console.error("[Convex] Failed to get role play room participants:", error);
     return [];
+  }
+}
+
+// ──────────────────────────────────────────────
+// Chat / Messaging
+// ──────────────────────────────────────────────
+
+export interface ChatMessage {
+  _id: string;
+  teamId: string;
+  senderType: 'closer' | 'manager';
+  senderName: string;
+  message: string;
+  createdAt: number;
+  isRead?: boolean;
+}
+
+export async function getMessagesForCloser(closerId: string, limit = 100): Promise<ChatMessage[]> {
+  try {
+    const url = `${CONVEX_SITE_URL}/getMessagesForCloser?closerId=${encodeURIComponent(closerId)}&limit=${limit}`;
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get messages:", error);
+    return [];
+  }
+}
+
+export async function sendMessageFromCloser(
+  teamId: string,
+  closerId: string,
+  closerName: string,
+  message: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        teamId,
+        senderType: "closer",
+        senderCloserId: closerId,
+        senderName: closerName,
+        recipientType: "manager",
+        message,
+      }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[Convex] Failed to send message:", error);
+    return false;
+  }
+}
+
+export async function markAllMessagesRead(closerId: string): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/markAllAsReadForCloser`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+  } catch (error) {
+    console.error("[Convex] Failed to mark messages as read:", error);
+  }
+}
+
+export async function getUnreadMessageCount(closerId: string): Promise<number> {
+  try {
+    const url = `${CONVEX_SITE_URL}/getUnreadCountForCloser?closerId=${encodeURIComponent(closerId)}`;
+    const response = await fetch(url);
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.count || 0;
+  } catch (error) {
+    console.error("[Convex] Failed to get unread message count:", error);
+    return 0;
   }
 }

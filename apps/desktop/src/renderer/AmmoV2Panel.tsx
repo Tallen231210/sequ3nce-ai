@@ -63,9 +63,9 @@ function getBeliefTextColor(pct: number): string {
 
 // Engagement badge colors
 const ENGAGEMENT_COLORS = {
-  high: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200' },
-  medium: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200' },
-  low: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' },
+  high: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', border: 'border-green-200 dark:border-green-700' },
+  medium: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400', border: 'border-yellow-200 dark:border-yellow-700' },
+  low: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-200 dark:border-red-700' },
 };
 
 // Belief Progress Bar Component
@@ -77,10 +77,10 @@ function BeliefBar({ beliefKey, value }: { beliefKey: keyof AmmoV2Analysis['beli
   return (
     <div className="group relative" title={tooltip}>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] font-medium text-gray-600">{label}</span>
+        <span className="text-[11px] font-medium text-gray-600 dark:text-zinc-400">{label}</span>
         <span className={`text-[11px] font-semibold ${textColorClass}`}>{value}%</span>
       </div>
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div className="h-2 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
         <div
           className={`h-full ${colorClass} transition-all duration-500 ease-out rounded-full`}
           style={{ width: `${value}%` }}
@@ -93,12 +93,12 @@ function BeliefBar({ beliefKey, value }: { beliefKey: keyof AmmoV2Analysis['beli
 // Get likelihood label based on probability
 function getLikelihoodLabel(probability: number): { text: string; bgColor: string; textColor: string } {
   if (probability >= 60) {
-    return { text: 'Very Likely', bgColor: 'bg-red-100', textColor: 'text-red-700' };
+    return { text: 'Very Likely', bgColor: 'bg-red-100 dark:bg-red-900/30', textColor: 'text-red-700 dark:text-red-400' };
   }
   if (probability >= 30) {
-    return { text: 'Likely', bgColor: 'bg-yellow-100', textColor: 'text-yellow-700' };
+    return { text: 'Likely', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', textColor: 'text-yellow-700 dark:text-yellow-400' };
   }
-  return { text: 'Less Likely', bgColor: 'bg-gray-100', textColor: 'text-gray-600' };
+  return { text: 'Less Likely', bgColor: 'bg-gray-100 dark:bg-zinc-700', textColor: 'text-gray-600 dark:text-zinc-400' };
 }
 
 // Objection Prediction Card
@@ -107,8 +107,8 @@ function ObjectionCard({ type, probability }: { type: string; probability: numbe
   const likelihood = getLikelihoodLabel(probability);
 
   return (
-    <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-200">
-      <span className="text-[12px] font-medium text-gray-700">{label}</span>
+    <div className="flex items-center justify-between p-2 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+      <span className="text-[12px] font-medium text-gray-700 dark:text-white">{label}</span>
       <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${likelihood.bgColor} ${likelihood.textColor}`}>
         {likelihood.text}
       </span>
@@ -129,18 +129,18 @@ function PainPointQuote({ quote, onCopy }: { quote: string; onCopy: (text: strin
   return (
     <div
       onClick={handleClick}
-      className="relative p-2 bg-white rounded-lg border border-gray-200 hover:border-gray-300 cursor-pointer transition-all duration-150 group"
+      className="relative p-2 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600 cursor-pointer transition-all duration-150 group"
     >
-      <p className="text-[12px] text-gray-700 leading-snug">"{quote}"</p>
-      <div className={`absolute inset-0 rounded-lg flex items-center justify-center bg-white/95 transition-opacity duration-150 ${copied ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <div className="flex items-center gap-1 text-green-600">
+      <p className="text-[12px] text-gray-700 dark:text-white leading-snug">"{quote}"</p>
+      <div className={`absolute inset-0 rounded-lg flex items-center justify-center bg-white/95 dark:bg-zinc-900/95 transition-opacity duration-150 ${copied ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
           <span className="text-[11px] font-medium">Copied!</span>
         </div>
       </div>
-      <div className="absolute bottom-1 right-2 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute bottom-1 right-2 text-[9px] text-gray-400 dark:text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity">
         click to copy
       </div>
     </div>
@@ -150,9 +150,9 @@ function PainPointQuote({ quote, onCopy }: { quote: string; onCopy: (text: strin
 // Objection Loading State Component
 function ObjectionLoadingState() {
   return (
-    <div className="flex items-center justify-center py-4 text-gray-400">
+    <div className="flex items-center justify-center py-4 text-gray-400 dark:text-zinc-500">
       <div className="flex items-center gap-2">
-        <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+        <div className="w-4 h-4 border-2 border-gray-300 dark:border-zinc-600 border-t-gray-500 dark:border-t-zinc-400 rounded-full animate-spin" />
         <p className="text-xs">Analyzing for potential objections...</p>
       </div>
     </div>
@@ -162,7 +162,7 @@ function ObjectionLoadingState() {
 // No Call State
 function NoCallState() {
   return (
-    <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+    <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-zinc-500">
       <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
@@ -209,27 +209,27 @@ export function AmmoV2Panel({
   return (
     <div className="flex flex-col h-full p-2 space-y-3 overflow-y-auto">
       {/* Engagement Section */}
-      <div className="p-3 bg-white rounded-lg border border-gray-200">
+      <div className="p-3 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Engagement</h3>
+          <h3 className="text-[11px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wide">Engagement</h3>
           <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${engagementColor.bg} ${engagementColor.text} ${engagementColor.border}`}>
             {displayAnalysis.engagement.level.toUpperCase()}
           </span>
         </div>
-        <p className="text-[11px] text-gray-600 leading-relaxed">{displayAnalysis.engagement.reason}</p>
+        <p className="text-[11px] text-gray-600 dark:text-zinc-400 leading-relaxed">{displayAnalysis.engagement.reason}</p>
       </div>
 
       {/* Live Summary Section */}
-      <div className="p-3 bg-white rounded-lg border border-gray-200">
-        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Call Summary</h3>
-        <p className="text-[12px] text-gray-700 leading-relaxed">
+      <div className="p-3 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+        <h3 className="text-[11px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-2">Call Summary</h3>
+        <p className="text-[12px] text-gray-700 dark:text-white leading-relaxed">
           {displayAnalysis.liveSummary || (hasRealData ? 'Building summary...' : 'Waiting for conversation data...')}
         </p>
       </div>
 
       {/* Buying Beliefs Section */}
-      <div className="p-3 bg-white rounded-lg border border-gray-200">
-        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Buying Beliefs</h3>
+      <div className="p-3 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+        <h3 className="text-[11px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-3">Buying Beliefs</h3>
         <div className="space-y-2.5">
           {(Object.keys(BELIEF_LABELS) as Array<keyof AmmoV2Analysis['beliefs']>).map((key) => (
             <BeliefBar key={key} beliefKey={key} value={displayAnalysis.beliefs[key]} />
@@ -238,8 +238,8 @@ export function AmmoV2Panel({
       </div>
 
       {/* Objection Prediction Section */}
-      <div className="p-3 bg-white rounded-lg border border-gray-200">
-        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Likely Objections</h3>
+      <div className="p-3 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+        <h3 className="text-[11px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-2">Likely Objections</h3>
         {!hasRealData ? (
           <ObjectionLoadingState />
         ) : displayAnalysis.objectionPrediction.length > 0 ? (
@@ -249,13 +249,13 @@ export function AmmoV2Panel({
             ))}
           </div>
         ) : (
-          <p className="text-[11px] text-gray-400 text-center py-2">No objections predicted yet</p>
+          <p className="text-[11px] text-gray-400 dark:text-zinc-500 text-center py-2">No objections predicted yet</p>
         )}
       </div>
 
       {/* Pain Points Section */}
-      <div className="p-3 bg-white rounded-lg border border-gray-200">
-        <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Pain Points</h3>
+      <div className="p-3 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700">
+        <h3 className="text-[11px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-2">Pain Points</h3>
         {displayAnalysis.painPoints.length > 0 ? (
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {displayAnalysis.painPoints.map((quote, idx) => (
@@ -263,7 +263,7 @@ export function AmmoV2Panel({
             ))}
           </div>
         ) : (
-          <p className="text-[11px] text-gray-400 text-center py-2">
+          <p className="text-[11px] text-gray-400 dark:text-zinc-500 text-center py-2">
             {hasRealData ? 'No pain points captured yet' : 'Listening for pain points...'}
           </p>
         )}
@@ -271,7 +271,7 @@ export function AmmoV2Panel({
 
       {/* Last Updated */}
       {displayAnalysis.analyzedAt && (
-        <p className="text-[10px] text-gray-400 text-center">
+        <p className="text-[10px] text-gray-400 dark:text-zinc-500 text-center">
           Last updated: {new Date(displayAnalysis.analyzedAt).toLocaleTimeString()}
         </p>
       )}

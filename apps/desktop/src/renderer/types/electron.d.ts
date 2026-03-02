@@ -29,6 +29,8 @@ export interface AudioAPI {
 export interface AppAPI {
   getVersion: () => Promise<string>;
   getPlatform: () => Promise<{ platform: string; arch: string; osRelease: string }>;
+  setWindowSize: (width: number, height: number) => Promise<void>;
+  themeChanged: (theme: string) => Promise<void>;
 }
 
 export interface AmmoAPI {
@@ -80,6 +82,30 @@ export interface ChatAPI {
   onNewMessage: (callback: (message: ChatMessage) => void) => () => void;
 }
 
+export interface BotAPI {
+  callStarted: (data: {
+    callId: string;
+    teamId: string;
+    closerId: string;
+    closerName: string;
+    prospectName?: string;
+    meetingTitle?: string;
+    botId?: string;
+  }) => Promise<void>;
+  callEnded: (data: {
+    callId: string;
+    closerId: string;
+    prospectName?: string;
+  }) => Promise<void>;
+  openQuestionnaire: (data: {
+    callId: string;
+    closerId: string;
+    closerName: string;
+    teamId: string;
+    prospectName?: string;
+  }) => Promise<void>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
@@ -89,6 +115,7 @@ export interface ElectronAPI {
   roleplay: RoleplayAPI;
   schedule: ScheduleAPI;
   chat: ChatAPI;
+  bot: BotAPI;
 }
 
 // Ammo item type
@@ -135,11 +162,15 @@ export interface Nudge {
 export interface AmmoTrackerAPI {
   getCallId: () => Promise<string | null>;
   getTeamId: () => Promise<string | null>;
+  getTheme: () => Promise<string>;
   copyToClipboard: (text: string) => Promise<void>;
   openExternal: (url: string) => Promise<void>;
   close: () => Promise<void>;
+  minimize: () => Promise<void>;
+  expand: () => Promise<void>;
   saveNotes: (callId: string, notes: string) => Promise<{ success: boolean }>;
   getNotes: (callId: string) => Promise<string | null>;
+  onThemeChanged: (callback: (theme: string) => void) => () => void;
   onCallIdChange: (callback: (callId: string | null) => void) => () => void;
   onNewAmmo: (callback: (ammo: AmmoItem) => void) => () => void;
   onNewTranscript: (callback: (segment: TranscriptSegment) => void) => () => void;

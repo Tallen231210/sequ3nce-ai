@@ -1,5 +1,5 @@
 // Main process entry point
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, desktopCapturer, session, systemPreferences, shell, globalShortcut, clipboard, dialog, Notification } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, desktopCapturer, session, systemPreferences, shell, globalShortcut, clipboard, dialog, Notification, screen } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import WebSocket from 'ws';
 import * as os from 'os';
@@ -92,6 +92,8 @@ declare const ROLEPLAY_WEBPACK_ENTRY: string;
 declare const ROLEPLAY_PRELOAD_WEBPACK_ENTRY: string;
 declare const SCHEDULE_WEBPACK_ENTRY: string;
 declare const SCHEDULE_PRELOAD_WEBPACK_ENTRY: string;
+declare const POST_CALL_WEBPACK_ENTRY: string;
+declare const POST_CALL_PRELOAD_WEBPACK_ENTRY: string;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -112,6 +114,7 @@ interface AudioCaptureConfig {
 
 let mainWindow: BrowserWindow | null = null;
 let ammoTrackerWindow: BrowserWindow | null = null;
+let postCallWindow: BrowserWindow | null = null;
 let trainingWindow: BrowserWindow | null = null;
 let roleplayWindow: BrowserWindow | null = null;
 let scheduleWindow: BrowserWindow | null = null;
@@ -143,6 +146,10 @@ let chatCloserName: string | null = null;
 
 // Ammo tracker window state
 let ammoTrackerVisible = false;
+let ammoTrackerPreMinimizeBounds: Electron.Rectangle | null = null; // Store bounds before minimize
+
+// Post-call window state
+let postCallData: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string } | null = null;
 
 // Current logged-in closer ID (for training window)
 let currentCloserId: string | null = null;
@@ -158,6 +165,9 @@ let roleplayUserInfo: { teamId: string; closerId: string; userName: string } | n
 
 // Current team ID (for resources in ammo tracker)
 let currentTeamId: string | null = null;
+
+// Current theme (synced from main window, sent to floating windows on creation)
+let currentTheme: string = 'light';
 
 // Audio service URL - Production Railway deployment
 const AUDIO_SERVICE_URL = process.env.AUDIO_SERVICE_URL || 'wss://amusing-charm-production.up.railway.app';
@@ -187,8 +197,6 @@ const createWindow = (): void => {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
       contextIsolation: true,
-      // Allow loading external scripts (needed for Clerk auth)
-      webSecurity: false,
     },
   });
 
@@ -214,7 +222,18 @@ const createWindow = (): void => {
   // Load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Show window when ready
+  // Open window.open / <a target="_blank"> links in the system browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(url);
+      }
+    } catch { /* ignore invalid URLs */ }
+    return { action: 'deny' };
+  });
+
+  // Show window when ready — renderer sets correct size synchronously before paint
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
@@ -241,18 +260,23 @@ const createAmmoTrackerWindow = (): void => {
     return;
   }
 
-  // Get the main window bounds to position ammo tracker
-  const mainBounds = mainWindow?.getBounds();
-  const x = mainBounds ? mainBounds.x + mainBounds.width + 20 : 100;
-  const y = mainBounds ? mainBounds.y : 100;
+  // Position ammo tracker on right side of screen (matching Swift app)
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workArea = primaryDisplay.workAreaSize;
+  const panelWidth = 360;
+  const panelHeight = 520;
+
+  // Right side of screen with 10px margin, vertically centered
+  const x = workArea.width - panelWidth - 10;
+  const y = Math.round((workArea.height - panelHeight) / 2);
 
   ammoTrackerWindow = new BrowserWindow({
-    width: 280,
-    height: 400,
-    minWidth: 240,
-    minHeight: 300,
-    maxWidth: 400,
-    maxHeight: 600,
+    width: panelWidth,
+    height: panelHeight,
+    minWidth: 320,
+    minHeight: 400,
+    maxWidth: 500,
+    maxHeight: 700,
     x,
     y,
     frame: false,
@@ -277,6 +301,9 @@ const createAmmoTrackerWindow = (): void => {
   ammoTrackerWindow.once('ready-to-show', () => {
     ammoTrackerWindow?.showInactive(); // Show without focusing
     ammoTrackerVisible = true;
+
+    // Send current theme immediately so floating window matches main window
+    ammoTrackerWindow?.webContents.send('theme-changed', currentTheme);
 
     // Send current call ID to the ammo tracker
     if (currentCallId) {
@@ -316,11 +343,90 @@ const toggleAmmoTracker = (): void => {
   } else {
     ammoTrackerWindow.showInactive();
     ammoTrackerVisible = true;
-    // Send current call ID when showing (in case it changed while hidden)
+    // Send current theme and call ID when showing (in case they changed while hidden)
+    ammoTrackerWindow.webContents.send('theme-changed', currentTheme);
     if (currentCallId) {
       ammoTrackerWindow.webContents.send('ammo:call-id-changed', currentCallId);
     }
   }
+};
+
+// Create the floating post-call questionnaire window (bottom of screen)
+const createPostCallWindow = (data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string }): void => {
+  // If post-call window already exists for this call, just focus it
+  if (postCallWindow && !postCallWindow.isDestroyed() && postCallData?.callId === data.callId) {
+    postCallWindow.focus();
+    return;
+  }
+  // Close existing post-call window if it's for a different call
+  if (postCallWindow && !postCallWindow.isDestroyed()) {
+    postCallWindow.close();
+    postCallWindow = null;
+  }
+
+  // Store call data for the window to retrieve
+  postCallData = data;
+
+  // Position at bottom of primary display, full width minus 80px padding
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  const windowWidth = screenWidth - 80;
+  const windowHeight = 320;
+  const x = 40; // 40px padding on left
+  const y = screenHeight - windowHeight; // Bottom of screen
+
+  postCallWindow = new BrowserWindow({
+    width: windowWidth,
+    height: windowHeight,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: true,
+    backgroundColor: '#00000000',
+    show: false,
+    focusable: true,
+    webPreferences: {
+      preload: POST_CALL_PRELOAD_WEBPACK_ENTRY,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  postCallWindow.loadURL(POST_CALL_WEBPACK_ENTRY);
+
+  // Show window when ready and send call data
+  postCallWindow.once('ready-to-show', () => {
+    postCallWindow?.show();
+    postCallWindow?.focus();
+
+    // Send current theme immediately so floating window matches main window
+    postCallWindow?.webContents.send('theme-changed', currentTheme);
+
+    // Send call data to the renderer
+    if (postCallData) {
+      postCallWindow?.webContents.send('post-call:call-data', postCallData);
+    }
+  });
+
+  // Handle window close
+  postCallWindow.on('closed', () => {
+    postCallWindow = null;
+    postCallData = null;
+  });
+
+  // Prevent closing via Cmd+W — must submit the form
+  postCallWindow.on('close', (event) => {
+    if (!isQuitting && postCallData) {
+      event.preventDefault();
+      // Flash the window to indicate they must submit
+      postCallWindow?.flashFrame(true);
+      setTimeout(() => postCallWindow?.flashFrame(false), 1000);
+    }
+  });
 };
 
 // Create the training window
@@ -1010,6 +1116,9 @@ const setupIpcHandlers = (): void => {
       return { success: false, error: 'Failed to connect to audio service' };
     }
 
+    // Auto-show ammo tracker when recording starts
+    createAmmoTrackerWindow();
+
     // Notify ammo tracker of new call (use currentCallId which has the Convex ID)
     if (ammoTrackerWindow) {
       ammoTrackerWindow.webContents.send('ammo:call-id-changed', currentCallId);
@@ -1048,9 +1157,11 @@ const setupIpcHandlers = (): void => {
     currentCallId = null;
     updateStatus('idle');
 
-    // Notify ammo tracker that call ended
+    // Notify ammo tracker that call ended and hide it
     if (ammoTrackerWindow) {
       ammoTrackerWindow.webContents.send('ammo:call-id-changed', null);
+      ammoTrackerWindow.hide();
+      ammoTrackerVisible = false;
     }
 
     return { success: true };
@@ -1070,6 +1181,19 @@ const setupIpcHandlers = (): void => {
       arch: process.arch,
       osRelease: os.release(), // Darwin version (e.g., "24.1.0" for Sequoia)
     };
+  });
+
+  // Resize main window (used when switching between legacy and hub mode)
+  ipcMain.handle('app:set-window-size', (_event, width: number, height: number) => {
+    if (mainWindow) {
+      mainWindow.setMinimumSize(
+        width >= 900 ? 900 : 350,
+        width >= 900 ? 600 : 500
+      );
+      mainWindow.setSize(width, height);
+      mainWindow.center();
+      console.log(`[Main] Window resized to ${width}x${height}`);
+    }
   });
 
   // Get audio service URL (for debugging)
@@ -1096,14 +1220,29 @@ const setupIpcHandlers = (): void => {
   });
 
   // Open URL in external browser (for resources)
+  // Only allow http/https protocols to prevent shell command injection
   ipcMain.handle('ammo:open-external', (_event, url: string) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(url);
+      } else {
+        console.warn('[Main] Blocked openExternal with non-http protocol:', parsed.protocol);
+      }
+    } catch {
+      console.warn('[Main] Blocked openExternal with invalid URL:', url);
+    }
   });
 
   // Copy text to clipboard (from ammo tracker)
   ipcMain.handle('ammo:copy-to-clipboard', (_event, text: string) => {
     clipboard.writeText(text);
     console.log('[Main] Copied to clipboard:', text.slice(0, 50) + '...');
+  });
+
+  // Get current theme for ammo tracker (avoids race with IPC listener on mount)
+  ipcMain.handle('ammo:get-theme', () => {
+    return currentTheme;
   });
 
   // Close ammo tracker window
@@ -1123,6 +1262,54 @@ const setupIpcHandlers = (): void => {
   // Get ammo tracker visibility status
   ipcMain.handle('ammo:is-visible', () => {
     return ammoTrackerVisible;
+  });
+
+  // Minimize ammo panel to small pill on right edge
+  ipcMain.handle('ammo:minimize', () => {
+    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
+      // Store current bounds so we can restore them on expand
+      ammoTrackerPreMinimizeBounds = ammoTrackerWindow.getBounds();
+
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const workArea = primaryDisplay.workAreaSize;
+      const pillWidth = 48;
+      const pillHeight = 80;
+      // Remove min size constraints so the window can shrink to pill size
+      ammoTrackerWindow.setMinimumSize(pillWidth, pillHeight);
+      // Flush against right edge, vertically centered
+      // NOTE: animate: false to prevent rendering artifacts with transparent windows
+      ammoTrackerWindow.setBounds({
+        x: workArea.width - pillWidth,
+        y: Math.round((workArea.height - pillHeight) / 2),
+        width: pillWidth,
+        height: pillHeight,
+      }, false);
+    }
+  });
+
+  // Expand ammo panel back to full size (restores previous user-resized bounds)
+  ipcMain.handle('ammo:expand', () => {
+    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
+      // Restore min size constraints for normal panel mode
+      ammoTrackerWindow.setMinimumSize(320, 400);
+      if (ammoTrackerPreMinimizeBounds) {
+        // Restore the exact bounds the user had before minimizing
+        ammoTrackerWindow.setBounds(ammoTrackerPreMinimizeBounds, false);
+        ammoTrackerPreMinimizeBounds = null;
+      } else {
+        // Fallback to default position
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const workArea = primaryDisplay.workAreaSize;
+        const panelWidth = 360;
+        const panelHeight = 520;
+        ammoTrackerWindow.setBounds({
+          x: workArea.width - panelWidth - 10,
+          y: Math.round((workArea.height - panelHeight) / 2),
+          width: panelWidth,
+          height: panelHeight,
+        }, false);
+      }
+    }
   });
 
   // Save notes to a call (via Convex HTTP endpoint)
@@ -1161,6 +1348,81 @@ const setupIpcHandlers = (): void => {
     } catch (error) {
       console.error('[Main] Error getting notes:', error);
       return null;
+    }
+  });
+
+  // ---- Bot Call IPC Handlers (floating windows for meeting bot flow) ----
+
+  ipcMain.handle('bot:call-started', async (_event, data: { callId: string; teamId: string; closerId: string; closerName: string; prospectName?: string; meetingTitle?: string; botId?: string }) => {
+    console.log('[Main] Bot call started:', data.callId);
+    // Store call context (same vars used by ammo tracker)
+    currentCallId = data.callId;
+    currentTeamId = data.teamId;
+    chatCloserId = data.closerId;
+    chatCloserName = data.closerName;
+    // Open floating ammo panel
+    createAmmoTrackerWindow();
+    // Send call data to ammo tracker (guard against mid-destruction)
+    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
+      ammoTrackerWindow.webContents.send('ammo:call-id-changed', data.callId);
+      ammoTrackerWindow.webContents.send('team-id-changed', data.teamId);
+    }
+  });
+
+  ipcMain.handle('bot:call-ended', async (_event, data: { callId: string; closerId: string; closerName?: string; teamId?: string; prospectName?: string }) => {
+    console.log('[Main] Bot call ended:', data.callId);
+    // Clear current call FIRST so poll doesn't fire another callEnded
+    currentCallId = null;
+    // Hide ammo panel immediately, then destroy after a tick (prevents blank flash)
+    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
+      ammoTrackerWindow.hide();
+      // Remove close handler that would preventDefault, then destroy cleanly
+      ammoTrackerWindow.removeAllListeners('close');
+      ammoTrackerWindow.destroy();
+      ammoTrackerWindow = null;
+      ammoTrackerVisible = false;
+    }
+    // Open floating post-call questionnaire
+    createPostCallWindow({
+      callId: data.callId,
+      closerId: data.closerId,
+      closerName: data.closerName || chatCloserName || '',
+      teamId: data.teamId || currentTeamId || '',
+      prospectName: data.prospectName,
+    });
+  });
+
+  ipcMain.handle('bot:open-questionnaire', async (_event, data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string }) => {
+    console.log('[Main] Opening post-call questionnaire for:', data.callId);
+    createPostCallWindow(data);
+  });
+
+  // ---- Post-Call Window IPC Handlers ----
+
+  ipcMain.handle('post-call:get-data', () => {
+    return postCallData;
+  });
+
+  ipcMain.handle('post-call:submitted', () => {
+    console.log('[Main] Post-call questionnaire submitted');
+    if (postCallWindow && !postCallWindow.isDestroyed()) {
+      postCallData = null; // Clear data so close handler allows it
+      postCallWindow.close();
+      postCallWindow = null;
+    }
+  });
+
+  // ---- Theme Sync IPC Handler ----
+
+  ipcMain.handle('app:theme-changed', (_event, theme: string) => {
+    // Store current theme so we can send it to newly created floating windows
+    currentTheme = theme;
+    // Broadcast theme to all floating windows (guard against mid-destruction)
+    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
+      ammoTrackerWindow.webContents.send('theme-changed', theme);
+    }
+    if (postCallWindow && !postCallWindow.isDestroyed()) {
+      postCallWindow.webContents.send('theme-changed', theme);
     }
   });
 

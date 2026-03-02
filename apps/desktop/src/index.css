@@ -1,11 +1,20 @@
 @import "tailwindcss";
 
+/* Use class-based dark mode (html.dark) instead of system preference */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Custom styles */
 body {
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
+}
+
+/* Default light mode body colors */
+body {
+  background-color: #ffffff;
+  color: #000000;
 }
 
 /* Draggable title bar area */
@@ -73,4 +82,469 @@ body {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+
+/* ============================================================
+   DARK MODE OVERRIDES
+   Applied when <html> has class="dark"
+   ============================================================ */
+
+.dark {
+  color-scheme: dark;
+}
+
+/* --- Body --- */
+.dark body {
+  background-color: #0a0a0a !important;
+  color: #f0f0f0 !important;
+}
+
+/* --- Scrollbar (dark) --- */
+.dark ::-webkit-scrollbar-thumb {
+  background: #333333;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+/* --- Logo inversion --- */
+.dark .dark-invert {
+  filter: brightness(0) invert(1);
+}
+
+
+/* ===================
+   BACKGROUND COLORS
+   =================== */
+
+/* White backgrounds → near-black */
+.dark .bg-white {
+  background-color: #0a0a0a !important;
+}
+.dark .bg-white\/20 {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+.dark .bg-white\/95 {
+  background-color: rgba(10, 10, 10, 0.95) !important;
+}
+
+/* Gray-50 variants → very dark */
+.dark .bg-gray-50 {
+  background-color: #0f0f0f !important;
+}
+.dark .bg-gray-50\/30 {
+  background-color: rgba(15, 15, 15, 0.3) !important;
+}
+.dark .bg-gray-50\/50 {
+  background-color: rgba(15, 15, 15, 0.5) !important;
+}
+.dark .bg-gray-50\/80 {
+  background-color: rgba(15, 15, 15, 0.8) !important;
+}
+
+/* Hardcoded light grays → dark equivalents */
+.dark .bg-\[\#fafafa\] {
+  background-color: #131313 !important;
+}
+.dark .bg-\[\#fcfcfc\] {
+  background-color: #111111 !important;
+}
+
+/* Gray-100 → dark surface */
+.dark .bg-gray-100 {
+  background-color: #1a1a1a !important;
+}
+.dark .bg-gray-100\/80 {
+  background-color: rgba(26, 26, 26, 0.8) !important;
+}
+
+/* Gray-200 variants → dark interactive */
+.dark .bg-gray-200 {
+  background-color: #222222 !important;
+}
+.dark .bg-gray-200\/60 {
+  background-color: rgba(34, 34, 34, 0.6) !important;
+}
+.dark .bg-gray-200\/70 {
+  background-color: rgba(34, 34, 34, 0.7) !important;
+}
+
+/* Gray-300+ → invert direction */
+.dark .bg-gray-300 {
+  background-color: #2a2a2a !important;
+}
+.dark .bg-gray-400 {
+  background-color: #3a3a3a !important;
+}
+.dark .bg-gray-500 {
+  background-color: #4a4a4a !important;
+}
+
+/* Gray-600/700/800 → lighter in dark mode (inverted scale) */
+.dark .bg-gray-600 {
+  background-color: #666666 !important;
+}
+.dark .bg-gray-700 {
+  background-color: #888888 !important;
+}
+.dark .bg-gray-800 {
+  background-color: #aaaaaa !important;
+}
+.dark .bg-gray-900 {
+  background-color: #cccccc !important;
+}
+
+/* Black backgrounds → white (for inverted elements like active nav) */
+.dark .bg-black {
+  background-color: #f0f0f0 !important;
+}
+
+/* Black overlays — keep dark, no change needed */
+/* bg-black/40, bg-black/50, bg-black/70 stay as-is */
+
+/* Transparent — no change */
+/* bg-transparent stays */
+
+
+/* --- Semantic tint backgrounds (make darker for dark mode) --- */
+
+/* Red tints */
+.dark .bg-red-50 {
+  background-color: rgba(220, 38, 38, 0.12) !important;
+}
+.dark .bg-red-50\/30 {
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+.dark .bg-red-100 {
+  background-color: rgba(220, 38, 38, 0.18) !important;
+}
+
+/* Green tints */
+.dark .bg-green-50 {
+  background-color: rgba(22, 163, 74, 0.12) !important;
+}
+.dark .bg-green-50\/50 {
+  background-color: rgba(22, 163, 74, 0.08) !important;
+}
+.dark .bg-green-100 {
+  background-color: rgba(22, 163, 74, 0.18) !important;
+}
+
+/* Blue tints */
+.dark .bg-blue-50 {
+  background-color: rgba(37, 99, 235, 0.12) !important;
+}
+.dark .bg-blue-100 {
+  background-color: rgba(37, 99, 235, 0.18) !important;
+}
+
+/* Yellow tints */
+.dark .bg-yellow-50 {
+  background-color: rgba(202, 138, 4, 0.12) !important;
+}
+.dark .bg-yellow-50\/30 {
+  background-color: rgba(202, 138, 4, 0.08) !important;
+}
+.dark .bg-yellow-100 {
+  background-color: rgba(202, 138, 4, 0.18) !important;
+}
+.dark .bg-yellow-200 {
+  background-color: rgba(202, 138, 4, 0.25) !important;
+}
+
+/* Orange tints */
+.dark .bg-orange-50 {
+  background-color: rgba(234, 88, 12, 0.12) !important;
+}
+.dark .bg-orange-100 {
+  background-color: rgba(234, 88, 12, 0.18) !important;
+}
+
+/* Amber tints */
+.dark .bg-amber-50 {
+  background-color: rgba(217, 119, 6, 0.12) !important;
+}
+.dark .bg-amber-100 {
+  background-color: rgba(217, 119, 6, 0.18) !important;
+}
+
+/* Purple tints */
+.dark .bg-purple-50 {
+  background-color: rgba(147, 51, 234, 0.12) !important;
+}
+.dark .bg-purple-100 {
+  background-color: rgba(147, 51, 234, 0.18) !important;
+}
+
+
+/* ===================
+   TEXT COLORS
+   =================== */
+
+/* Grayscale text — invert */
+.dark .text-black {
+  color: #f0f0f0 !important;
+}
+.dark .text-gray-900 {
+  color: #e5e5e5 !important;
+}
+.dark .text-gray-800 {
+  color: #d4d4d4 !important;
+}
+.dark .text-gray-700 {
+  color: #c0c0c0 !important;
+}
+.dark .text-gray-600 {
+  color: #a0a0a0 !important;
+}
+.dark .text-gray-500 {
+  color: #888888 !important;
+}
+.dark .text-gray-400 {
+  color: #777777 !important;
+}
+.dark .text-gray-300 {
+  color: #666666 !important;
+}
+
+/* White text — only invert when paired with bg-black (buttons, active nav, selected tabs).
+   This keeps text-white visible on semantic colored backgrounds (bg-red-500, bg-blue-500, etc.) */
+.dark .bg-black.text-white {
+  color: #111111 !important;
+}
+/* Also handle disabled variant: bg-gray-300 with text-white stays readable */
+
+/* Semantic text — lighten darker variants for readability on dark bg */
+.dark .text-red-700 {
+  color: #f87171 !important;
+}
+.dark .text-green-700 {
+  color: #4ade80 !important;
+}
+.dark .text-green-800 {
+  color: #86efac !important;
+}
+.dark .text-blue-700 {
+  color: #60a5fa !important;
+}
+.dark .text-blue-800 {
+  color: #93c5fd !important;
+}
+.dark .text-yellow-700 {
+  color: #fbbf24 !important;
+}
+.dark .text-orange-700 {
+  color: #fb923c !important;
+}
+.dark .text-amber-700 {
+  color: #fbbf24 !important;
+}
+.dark .text-purple-700 {
+  color: #c084fc !important;
+}
+
+/* Placeholder text */
+.dark .placeholder-gray-400::placeholder {
+  color: #666666 !important;
+}
+
+
+/* ===================
+   BORDER COLORS
+   =================== */
+
+/* Grayscale borders — darken */
+.dark .border-gray-100 {
+  border-color: #1a1a1a !important;
+}
+.dark .border-gray-200 {
+  border-color: #222222 !important;
+}
+.dark .border-gray-200\/60 {
+  border-color: rgba(34, 34, 34, 0.6) !important;
+}
+.dark .border-gray-300 {
+  border-color: #2a2a2a !important;
+}
+.dark .border-gray-400 {
+  border-color: #3a3a3a !important;
+}
+.dark .border-gray-600 {
+  border-color: #4a4a4a !important;
+}
+.dark .border-gray-900 {
+  border-color: #e5e5e5 !important;
+}
+
+/* Black border — invert */
+.dark .border-black {
+  border-color: #f0f0f0 !important;
+}
+
+/* Spinner: border-t-black → light spinner indicator on dark ring */
+.dark .border-t-black {
+  border-top-color: #f0f0f0 !important;
+}
+/* Note: border-t-white and border-white are NOT overridden —
+   they're used on spinners and should keep their light appearance */
+
+/* Semantic borders — darken tints */
+.dark .border-red-200 {
+  border-color: rgba(220, 38, 38, 0.3) !important;
+}
+.dark .border-red-300 {
+  border-color: rgba(220, 38, 38, 0.4) !important;
+}
+.dark .border-red-400 {
+  border-color: rgba(220, 38, 38, 0.5) !important;
+}
+.dark .border-green-200 {
+  border-color: rgba(22, 163, 74, 0.3) !important;
+}
+.dark .border-green-300 {
+  border-color: rgba(22, 163, 74, 0.4) !important;
+}
+.dark .border-green-500 {
+  border-color: rgba(22, 163, 74, 0.6) !important;
+}
+.dark .border-blue-200 {
+  border-color: rgba(37, 99, 235, 0.3) !important;
+}
+.dark .border-blue-400 {
+  border-color: rgba(37, 99, 235, 0.5) !important;
+}
+.dark .border-yellow-200 {
+  border-color: rgba(202, 138, 4, 0.3) !important;
+}
+.dark .border-yellow-300 {
+  border-color: rgba(202, 138, 4, 0.4) !important;
+}
+.dark .border-yellow-500 {
+  border-color: rgba(202, 138, 4, 0.6) !important;
+}
+.dark .border-orange-200 {
+  border-color: rgba(234, 88, 12, 0.3) !important;
+}
+.dark .border-orange-400 {
+  border-color: rgba(234, 88, 12, 0.5) !important;
+}
+.dark .border-amber-200 {
+  border-color: rgba(217, 119, 6, 0.3) !important;
+}
+.dark .border-amber-300 {
+  border-color: rgba(217, 119, 6, 0.4) !important;
+}
+.dark .border-amber-400 {
+  border-color: rgba(217, 119, 6, 0.5) !important;
+}
+.dark .border-purple-200 {
+  border-color: rgba(147, 51, 234, 0.3) !important;
+}
+
+
+/* ===================
+   RING & FOCUS
+   =================== */
+
+.dark .ring-black {
+  --tw-ring-color: #f0f0f0 !important;
+}
+.dark .ring-black\/10 {
+  --tw-ring-color: rgba(240, 240, 240, 0.1) !important;
+}
+.dark .ring-gray-400 {
+  --tw-ring-color: #666666 !important;
+}
+.dark .ring-offset-white {
+  --tw-ring-offset-color: #0a0a0a !important;
+}
+
+
+/* ===================
+   SHADOWS
+   =================== */
+
+/* Shadows are invisible on dark backgrounds — add subtle glow instead */
+.dark .shadow-sm {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+.dark .shadow-lg {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+}
+.dark .shadow-xl {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7) !important;
+}
+.dark .shadow-2xl {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8) !important;
+}
+
+
+/* ===================
+   HOVER STATES
+   =================== */
+
+/* Common hover patterns */
+.dark .hover\:bg-gray-50:hover {
+  background-color: #161616 !important;
+}
+.dark .hover\:bg-gray-100:hover {
+  background-color: #222222 !important;
+}
+.dark .hover\:bg-gray-200:hover {
+  background-color: #2a2a2a !important;
+}
+.dark .hover\:bg-gray-200\/70:hover {
+  background-color: rgba(42, 42, 42, 0.7) !important;
+}
+.dark .hover\:bg-gray-800:hover {
+  background-color: #dddddd !important;
+}
+.dark .hover\:text-gray-600:hover {
+  color: #aaaaaa !important;
+}
+.dark .hover\:text-gray-700:hover {
+  color: #c0c0c0 !important;
+}
+.dark .hover\:text-gray-800:hover {
+  color: #d4d4d4 !important;
+}
+.dark .hover\:border-gray-200:hover {
+  border-color: #2a2a2a !important;
+}
+.dark .hover\:border-gray-300:hover {
+  border-color: #333333 !important;
+}
+.dark .hover\:bg-blue-50:hover {
+  background-color: rgba(37, 99, 235, 0.15) !important;
+}
+.dark .hover\:bg-red-50:hover {
+  background-color: rgba(220, 38, 38, 0.15) !important;
+}
+
+
+/* ===================
+   DISABLED STATES
+   =================== */
+
+/* Disabled buttons with bg-gray-300: override the bg-black !important */
+.dark .disabled\:bg-gray-300:disabled {
+  background-color: #2a2a2a !important;
+  color: #666666 !important;
+}
+
+
+/* ===================
+   FOCUS STATES
+   =================== */
+
+.dark .focus\:border-gray-400:focus {
+  border-color: #666666 !important;
+}
+.dark .focus\:ring-gray-400:focus {
+  --tw-ring-color: #666666 !important;
+}
+.dark .focus\:ring-black:focus {
+  --tw-ring-color: #f0f0f0 !important;
 }

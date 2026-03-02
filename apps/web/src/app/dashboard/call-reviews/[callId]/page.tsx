@@ -19,6 +19,10 @@ import { CommentsPanel } from "@/components/call-reviews/CommentsPanel";
 import { UnifiedShareDialog } from "@/components/call-reviews/UnifiedShareDialog";
 import { formatTime, formatCallDate } from "@/components/call-reviews/utils";
 
+function isRecentCall(timestamp: number): boolean {
+  return Date.now() - timestamp < 5 * 60 * 1000; // 5 minutes
+}
+
 export default function CallReviewPage({
   params,
 }: {
@@ -278,7 +282,7 @@ export default function CallReviewPage({
             chapters={call.callAnalysis?.chapters}
             currentTime={currentTime}
             onSeek={handleSeek}
-            isAnalyzing={!call.callAnalysis && call.status === "completed"}
+            isAnalyzing={!call.callAnalysis && call.status === "completed" && isRecentCall(call.endedAt || call.startedAt || call.createdAt)}
           />
 
           {/* Tab bar + content — fills remaining space */}
@@ -312,7 +316,10 @@ export default function CallReviewPage({
                 onSeek={handleSeek}
               />
             ) : (
-              <AnalysisPanel callAnalysis={call.callAnalysis} />
+              <AnalysisPanel
+                callAnalysis={call.callAnalysis}
+                isRecent={isRecentCall(call.endedAt || call.startedAt || call.createdAt)}
+              />
             )}
           </div>
         </div>

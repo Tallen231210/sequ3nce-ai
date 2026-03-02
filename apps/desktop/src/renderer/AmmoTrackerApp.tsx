@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { AmmoItem, TranscriptSegment } from './types/electron';
 import { AmmoV2Panel, type AmmoV2Analysis } from './AmmoV2Panel';
 import { ChatPanel } from './components/ChatPanel';
+import { callGoingLong, requestReinforcement } from './convex';
+import appIcon from '../assets/icon.png';
 
 const CONVEX_SITE_URL = 'https://ideal-ram-982.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds
@@ -23,7 +25,7 @@ interface Resource {
 // Tab Icon Components
 function AmmoIcon({ active }: { active: boolean }) {
   return (
-    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className={`w-4 h-4 ${active ? 'text-black dark:text-white' : 'text-gray-400 dark:text-zinc-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
     </svg>
   );
@@ -31,7 +33,7 @@ function AmmoIcon({ active }: { active: boolean }) {
 
 function TranscriptIcon({ active }: { active: boolean }) {
   return (
-    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className={`w-4 h-4 ${active ? 'text-black dark:text-white' : 'text-gray-400 dark:text-zinc-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
     </svg>
   );
@@ -39,7 +41,7 @@ function TranscriptIcon({ active }: { active: boolean }) {
 
 function NotesIcon({ active }: { active: boolean }) {
   return (
-    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className={`w-4 h-4 ${active ? 'text-black dark:text-white' : 'text-gray-400 dark:text-zinc-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
     </svg>
   );
@@ -47,7 +49,7 @@ function NotesIcon({ active }: { active: boolean }) {
 
 function ResourcesIcon({ active }: { active: boolean }) {
   return (
-    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className={`w-4 h-4 ${active ? 'text-black dark:text-white' : 'text-gray-400 dark:text-zinc-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
     </svg>
   );
@@ -55,7 +57,7 @@ function ResourcesIcon({ active }: { active: boolean }) {
 
 function ChatIcon({ active }: { active: boolean }) {
   return (
-    <svg className={`w-4 h-4 ${active ? 'text-black' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className={`w-4 h-4 ${active ? 'text-black dark:text-white' : 'text-gray-400 dark:text-zinc-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
     </svg>
   );
@@ -63,12 +65,12 @@ function ChatIcon({ active }: { active: boolean }) {
 
 // Ammo type configuration for styling
 const AMMO_TYPE_CONFIG: Record<string, { label: string; bgColor: string; textColor: string; borderColor: string }> = {
-  emotional: { label: 'Emotional', bgColor: 'bg-purple-50', textColor: 'text-purple-600', borderColor: 'border-purple-200' },
-  urgency: { label: 'Urgency', bgColor: 'bg-orange-50', textColor: 'text-orange-600', borderColor: 'border-orange-200' },
-  budget: { label: 'Budget', bgColor: 'bg-green-50', textColor: 'text-green-600', borderColor: 'border-green-200' },
-  commitment: { label: 'Commitment', bgColor: 'bg-blue-50', textColor: 'text-blue-600', borderColor: 'border-blue-200' },
-  objection_preview: { label: 'Objection', bgColor: 'bg-red-50', textColor: 'text-red-600', borderColor: 'border-red-200' },
-  pain_point: { label: 'Pain Point', bgColor: 'bg-yellow-50', textColor: 'text-yellow-700', borderColor: 'border-yellow-200' },
+  emotional: { label: 'Emotional', bgColor: 'bg-purple-50 dark:bg-purple-900/30', textColor: 'text-purple-600 dark:text-purple-400', borderColor: 'border-purple-200 dark:border-purple-700' },
+  urgency: { label: 'Urgency', bgColor: 'bg-orange-50 dark:bg-orange-900/30', textColor: 'text-orange-600 dark:text-orange-400', borderColor: 'border-orange-200 dark:border-orange-700' },
+  budget: { label: 'Budget', bgColor: 'bg-green-50 dark:bg-green-900/30', textColor: 'text-green-600 dark:text-green-400', borderColor: 'border-green-200 dark:border-green-700' },
+  commitment: { label: 'Commitment', bgColor: 'bg-blue-50 dark:bg-blue-900/30', textColor: 'text-blue-600 dark:text-blue-400', borderColor: 'border-blue-200 dark:border-blue-700' },
+  objection_preview: { label: 'Objection', bgColor: 'bg-red-50 dark:bg-red-900/30', textColor: 'text-red-600 dark:text-red-400', borderColor: 'border-red-200 dark:border-red-700' },
+  pain_point: { label: 'Pain Point', bgColor: 'bg-yellow-50 dark:bg-yellow-900/30', textColor: 'text-yellow-700 dark:text-yellow-400', borderColor: 'border-yellow-200 dark:border-yellow-700' },
 };
 
 // Format timestamp to relative time
@@ -104,24 +106,24 @@ function AmmoCard({ item, onCopy }: { item: AmmoItem; onCopy: (text: string) => 
   return (
     <div
       onClick={handleClick}
-      className="group relative p-3 rounded-lg bg-white border border-gray-200 hover:border-gray-300 hover:shadow-sm cursor-pointer transition-all duration-150 animate-fade-in"
+      className="group relative p-3 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600 hover:shadow-sm cursor-pointer transition-all duration-150 animate-fade-in"
     >
       <div className="flex items-center justify-between mb-1.5">
         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${config.bgColor} ${config.textColor} ${config.borderColor}`}>
           {config.label}
         </span>
-        <span className="text-[10px] text-gray-400">{formatRelativeTime(item.createdAt)}</span>
+        <span className="text-[10px] text-gray-400 dark:text-zinc-500">{formatRelativeTime(item.createdAt)}</span>
       </div>
-      <p className="text-sm text-gray-700 leading-snug line-clamp-3">"{item.text}"</p>
-      <div className={`absolute inset-0 rounded-lg flex items-center justify-center bg-white/95 transition-opacity duration-150 ${copied ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <div className="flex items-center gap-1.5 text-green-600">
+      <p className="text-sm text-gray-700 dark:text-white leading-snug line-clamp-3">"{item.text}"</p>
+      <div className={`absolute inset-0 rounded-lg flex items-center justify-center bg-white/95 dark:bg-zinc-900/95 transition-opacity duration-150 ${copied ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
           <span className="text-sm font-medium">Copied!</span>
         </div>
       </div>
-      <div className="absolute bottom-1 right-2 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      <div className="absolute bottom-1 right-2 text-[9px] text-gray-400 dark:text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         click to copy
       </div>
     </div>
@@ -160,13 +162,13 @@ function FilterChip({
       onClick={onClick}
       className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-all duration-150 ${
         active
-          ? 'bg-black text-white'
-          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          ? 'bg-black dark:bg-white text-white dark:text-black'
+          : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-600'
       }`}
     >
       <span>{label}</span>
       {count !== undefined && count > 0 && (
-        <span className={`text-[9px] px-1 py-0.5 rounded-full ${active ? 'bg-white/20' : 'bg-gray-200'}`}>
+        <span className={`text-[9px] px-1 py-0.5 rounded-full ${active ? 'bg-white/20 dark:bg-black/20' : 'bg-gray-200 dark:bg-zinc-600'}`}>
           {count}
         </span>
       )}
@@ -215,7 +217,7 @@ function AmmoTab({
 
   if (!callId) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
         <AmmoIcon active={false} />
         <p className="text-xs text-center px-4 mt-2">Start a call to see ammo appear here</p>
       </div>
@@ -224,16 +226,16 @@ function AmmoTab({
 
   if (ammoItems.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
         <div className="relative mb-4">
-          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-700 flex items-center justify-center">
             <AmmoIcon active={false} />
           </div>
           {/* Pulsing ring */}
-          <div className="absolute inset-0 rounded-full border-2 border-gray-300 animate-ping opacity-30" />
+          <div className="absolute inset-0 rounded-full border-2 border-gray-300 dark:border-zinc-600 animate-ping opacity-30" />
         </div>
-        <p className="text-sm text-gray-500 mb-1">Listening...</p>
-        <p className="text-xs text-gray-400">Key quotes will appear here</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-400 mb-1">Listening...</p>
+        <p className="text-xs text-gray-400 dark:text-zinc-500">Key quotes will appear here</p>
       </div>
     );
   }
@@ -260,7 +262,7 @@ function AmmoTab({
       {/* Ammo cards */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {filteredAmmoItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-gray-400 py-8">
+          <div className="flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
             <p className="text-xs text-center">No {AMMO_FILTER_OPTIONS.find(f => f.value === selectedFilter)?.label} ammo yet</p>
           </div>
         ) : (
@@ -321,7 +323,7 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
 
   if (!callId) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
         <TranscriptIcon active={false} />
         <p className="text-xs text-center px-4 mt-2">Start a call to see the transcript here</p>
       </div>
@@ -330,7 +332,7 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
 
   if (segments.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
         <svg className="w-8 h-8 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
         </svg>
@@ -343,8 +345,8 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
     <div className="relative h-full flex flex-col">
       {/* Search bar */}
       <div className="px-2 pt-2 pb-1 shrink-0">
-        <div className={`relative flex items-center bg-white border rounded-lg transition-all duration-150 ${isSearchFocused ? 'border-gray-400 ring-1 ring-gray-400' : 'border-gray-200'}`}>
-          <svg className="w-3.5 h-3.5 ml-2.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className={`relative flex items-center bg-white dark:bg-zinc-800 border rounded-lg transition-all duration-150 ${isSearchFocused ? 'border-gray-400 dark:border-zinc-500 ring-1 ring-gray-400 dark:ring-zinc-500' : 'border-gray-200 dark:border-zinc-700'}`}>
+          <svg className="w-3.5 h-3.5 ml-2.5 text-gray-400 dark:text-zinc-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -355,16 +357,16 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
             placeholder="Search transcript..."
-            className="flex-1 px-2 py-1.5 text-[12px] text-gray-700 bg-transparent focus:outline-none placeholder-gray-400"
+            className="flex-1 px-2 py-1.5 text-[12px] text-gray-700 dark:text-white bg-transparent focus:outline-none placeholder-gray-400 dark:placeholder-zinc-500"
           />
           {searchQuery && (
             <>
-              <span className="text-[10px] text-gray-400 mr-1">
+              <span className="text-[10px] text-gray-400 dark:text-zinc-500 mr-1">
                 {matchCount} {matchCount === 1 ? 'match' : 'matches'}
               </span>
               <button
                 onClick={clearSearch}
-                className="p-1 mr-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors duration-150"
+                className="p-1 mr-1 rounded hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors duration-150"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -378,7 +380,7 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
       {/* Transcript content */}
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
         {filteredSegments.length === 0 && searchQuery ? (
-          <div className="flex flex-col items-center justify-center text-gray-400 py-8">
+          <div className="flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
             <p className="text-xs text-center px-4">No matches for "{searchQuery}"</p>
           </div>
         ) : (
@@ -392,7 +394,7 @@ function TranscriptTab({ callId, segments }: { callId: string | null; segments: 
       {!autoScroll && !searchQuery && (
         <button
           onClick={jumpToLatest}
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black text-white text-[11px] font-medium rounded-full shadow-lg hover:bg-gray-800 transition-colors duration-150"
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 bg-black dark:bg-white text-white dark:text-black text-[11px] font-medium rounded-full shadow-lg hover:bg-gray-800 dark:hover:bg-zinc-200 transition-colors duration-150"
         >
           Jump to latest
         </button>
@@ -421,14 +423,14 @@ function TranscriptLine({ segment, searchQuery }: { segment: TranscriptSegment; 
   };
 
   return (
-    <div className={`p-2 rounded-lg ${isCloser ? 'bg-gray-50' : 'bg-white border border-gray-100'} ${searchQuery ? 'border-yellow-300 bg-yellow-50/30' : ''} animate-fade-in`}>
+    <div className={`p-2 rounded-lg ${isCloser ? 'bg-gray-50 dark:bg-zinc-800' : 'bg-white dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700'} ${searchQuery ? 'border-yellow-300 dark:border-yellow-600 bg-yellow-50/30 dark:bg-yellow-900/20' : ''} animate-fade-in`}>
       <div className="flex items-center gap-2 mb-0.5">
-        <span className={`text-[10px] font-medium ${isCloser ? 'text-gray-500' : 'text-blue-600'}`}>
+        <span className={`text-[10px] font-medium ${isCloser ? 'text-gray-500 dark:text-zinc-400' : 'text-blue-600 dark:text-blue-400'}`}>
           {isCloser ? 'You' : 'Prospect'}
         </span>
-        <span className="text-[10px] text-gray-400">{formatTimestamp(segment.timestamp)}</span>
+        <span className="text-[10px] text-gray-400 dark:text-zinc-500">{formatTimestamp(segment.timestamp)}</span>
       </div>
-      <p className="text-sm text-gray-700 leading-snug">
+      <p className="text-sm text-gray-700 dark:text-white leading-snug">
         {searchQuery ? highlightText(segment.text, searchQuery) : segment.text}
       </p>
     </div>
@@ -447,7 +449,7 @@ function NotesTab({ callId, notes, onNotesChange, isSaving, lastSaved }: {
 }) {
   if (!callId) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
         <NotesIcon active={false} />
         <p className="text-xs text-center px-4 mt-2">Start a call to take notes</p>
       </div>
@@ -460,11 +462,11 @@ function NotesTab({ callId, notes, onNotesChange, isSaving, lastSaved }: {
         value={notes}
         onChange={(e) => onNotesChange(e.target.value)}
         placeholder="Jot down notes during the call..."
-        className="flex-1 w-full p-3 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg resize-none focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150 placeholder-gray-400"
+        className="flex-1 w-full p-3 text-sm text-gray-700 dark:text-white bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg resize-none focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 focus:ring-1 focus:ring-gray-400 dark:focus:ring-zinc-500 transition-all duration-150 placeholder-gray-400 dark:placeholder-zinc-500"
       />
       <div className="flex items-center justify-between mt-2 px-1">
-        <span className="text-[10px] text-gray-400">{notes.length} characters</span>
-        <span className="text-[10px] text-gray-400">{isSaving ? 'Saving...' : lastSaved ? 'Saved' : ''}</span>
+        <span className="text-[10px] text-gray-400 dark:text-zinc-500">{notes.length} characters</span>
+        <span className="text-[10px] text-gray-400 dark:text-zinc-500">{isSaving ? 'Saving...' : lastSaved ? 'Saved' : ''}</span>
       </div>
     </div>
   );
@@ -498,8 +500,8 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
 
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
-        <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin mb-2" />
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
+        <div className="w-5 h-5 border-2 border-gray-200 dark:border-zinc-700 border-t-gray-500 dark:border-t-zinc-400 rounded-full animate-spin mb-2" />
         <p className="text-xs">Loading resources...</p>
       </div>
     );
@@ -507,10 +509,10 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
 
   if (resources.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 py-8">
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-zinc-500 py-8">
         <ResourcesIcon active={false} />
-        <p className="text-sm text-gray-500 mt-2 mb-1">No resources yet</p>
-        <p className="text-xs text-gray-400 text-center px-4">Your manager can add sales scripts, payment links, and other resources.</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-400 mt-2 mb-1">No resources yet</p>
+        <p className="text-xs text-gray-400 dark:text-zinc-500 text-center px-4">Your manager can add sales scripts, payment links, and other resources.</p>
       </div>
     );
   }
@@ -519,13 +521,13 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
   const getTypeConfig = (type: string) => {
     switch (type) {
       case 'script':
-        return { label: 'Script', bgColor: 'bg-blue-50', textColor: 'text-blue-600', borderColor: 'border-blue-200' };
+        return { label: 'Script', bgColor: 'bg-blue-50 dark:bg-blue-900/30', textColor: 'text-blue-600 dark:text-blue-400', borderColor: 'border-blue-200 dark:border-blue-700' };
       case 'payment_link':
-        return { label: 'Payment', bgColor: 'bg-green-50', textColor: 'text-green-600', borderColor: 'border-green-200' };
+        return { label: 'Payment', bgColor: 'bg-green-50 dark:bg-green-900/30', textColor: 'text-green-600 dark:text-green-400', borderColor: 'border-green-200 dark:border-green-700' };
       case 'document':
-        return { label: 'Document', bgColor: 'bg-purple-50', textColor: 'text-purple-600', borderColor: 'border-purple-200' };
+        return { label: 'Document', bgColor: 'bg-purple-50 dark:bg-purple-900/30', textColor: 'text-purple-600 dark:text-purple-400', borderColor: 'border-purple-200 dark:border-purple-700' };
       default:
-        return { label: 'Link', bgColor: 'bg-orange-50', textColor: 'text-orange-600', borderColor: 'border-orange-200' };
+        return { label: 'Link', bgColor: 'bg-orange-50 dark:bg-orange-900/30', textColor: 'text-orange-600 dark:text-orange-400', borderColor: 'border-orange-200 dark:border-orange-700' };
     }
   };
 
@@ -539,7 +541,7 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
         return (
           <div
             key={resource._id}
-            className="p-3 rounded-lg bg-white border border-gray-200 hover:border-gray-300 transition-all duration-150"
+            className="p-3 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600 transition-all duration-150"
           >
             {/* Header */}
             <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -549,9 +551,9 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
                     {config.label}
                   </span>
                 </div>
-                <h3 className="text-sm font-medium text-gray-800 truncate">{resource.title}</h3>
+                <h3 className="text-sm font-medium text-gray-800 dark:text-white truncate">{resource.title}</h3>
                 {resource.description && (
-                  <p className="text-xs text-gray-500 mt-0.5">{resource.description}</p>
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">{resource.description}</p>
                 )}
               </div>
             </div>
@@ -561,7 +563,7 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
               <div className="flex items-center gap-2 mt-2">
                 <button
                   onClick={() => handleCopy(resource)}
-                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors duration-150"
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-600 transition-colors duration-150"
                 >
                   {isCopied ? (
                     <>
@@ -581,7 +583,7 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
                 </button>
                 <button
                   onClick={() => handleOpenLink(resource)}
-                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded bg-black text-white hover:bg-gray-800 transition-colors duration-150"
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-zinc-200 transition-colors duration-150"
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -596,13 +598,13 @@ function ResourcesTab({ resources, isLoading, onCopyUrl, onOpenUrl }: {
               <div className="mt-2">
                 <button
                   onClick={() => setExpandedScriptId(isScriptExpanded ? null : resource._id)}
-                  className="text-[11px] text-blue-600 hover:text-blue-800 font-medium transition-colors duration-150"
+                  className="text-[11px] text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium transition-colors duration-150"
                 >
                   {isScriptExpanded ? 'Hide Script' : 'View Script'}
                 </button>
                 {isScriptExpanded && (
-                  <div className="mt-2 p-2 bg-gray-50 rounded-lg border border-gray-200 max-h-48 overflow-y-auto">
-                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{resource.content}</p>
+                  <div className="mt-2 p-2 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-zinc-700 max-h-48 overflow-y-auto">
+                    <p className="text-xs text-gray-700 dark:text-white whitespace-pre-wrap leading-relaxed">{resource.content}</p>
                   </div>
                 )}
               </div>
@@ -627,20 +629,158 @@ function TabButton({ active, onClick, icon, label, badge }: {
   return (
     <button
       onClick={onClick}
-      className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 ${
+      title={label}
+      className={`relative flex items-center justify-center p-1.5 rounded-md text-[11px] font-medium transition-all duration-150 ${
         active
-          ? 'bg-white text-black shadow-sm border border-gray-200'
-          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+          ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-gray-200 dark:border-zinc-600'
+          : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700'
       }`}
     >
       {icon}
-      <span>{label}</span>
+      {/* Show label only on active tab to save space */}
+      {active && <span className="ml-1">{label}</span>}
       {badge !== undefined && badge > 0 && (
-        <span className="absolute -top-1 -right-1 w-4 h-4 bg-black text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+        <span className="absolute -top-1 -right-1 w-4 h-4 bg-black dark:bg-white text-white dark:text-black text-[9px] font-bold rounded-full flex items-center justify-center">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
     </button>
+  );
+}
+
+// ============================================
+// ACTION BUTTONS ROW (Going Long + Request Reinforcements)
+// ============================================
+function ActionButtonsRow({
+  callId,
+  teamId,
+  closerId,
+  closerName,
+}: {
+  callId: string;
+  teamId: string | null;
+  closerId: string | null;
+  closerName: string | null;
+}) {
+  const [goingLongOpen, setGoingLongOpen] = useState(false);
+  const [reinforcementsOpen, setReinforcementsOpen] = useState(false);
+  const [reinforcementText, setReinforcementText] = useState('');
+  const [goingLongCooldown, setGoingLongCooldown] = useState(false);
+  const [reinforcementsCooldown, setReinforcementsCooldown] = useState(false);
+  const [goingLongStatus, setGoingLongStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [reinforcementsStatus, setReinforcementsStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+
+  const handleGoingLong = async (minutes: number) => {
+    if (!teamId || !closerId || goingLongCooldown) return;
+    setGoingLongStatus('sending');
+    const success = await callGoingLong(teamId, closerId, callId, minutes);
+    if (success) {
+      setGoingLongStatus('sent');
+      setGoingLongOpen(false);
+      setGoingLongCooldown(true);
+      setTimeout(() => {
+        setGoingLongCooldown(false);
+        setGoingLongStatus('idle');
+      }, 30000);
+    } else {
+      setGoingLongStatus('idle');
+    }
+  };
+
+  const handleReinforcements = async () => {
+    if (!teamId || !closerId || !closerName || reinforcementsCooldown) return;
+    setReinforcementsStatus('sending');
+    const success = await requestReinforcement(teamId, closerId, closerName, callId, reinforcementText.trim() || undefined);
+    if (success) {
+      setReinforcementsStatus('sent');
+      setReinforcementsOpen(false);
+      setReinforcementText('');
+      setReinforcementsCooldown(true);
+      setTimeout(() => {
+        setReinforcementsCooldown(false);
+        setReinforcementsStatus('idle');
+      }, 30000);
+    } else {
+      setReinforcementsStatus('idle');
+    }
+  };
+
+  return (
+    <div className="px-2 py-1.5 border-b border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shrink-0 space-y-1">
+      <div className="flex gap-1.5">
+        {/* Going Long button */}
+        <button
+          onClick={() => { setGoingLongOpen(!goingLongOpen); setReinforcementsOpen(false); }}
+          disabled={goingLongCooldown}
+          className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 ${
+            goingLongCooldown
+              ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-700'
+              : goingLongOpen
+                ? 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-700'
+                : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/40 border border-orange-200 dark:border-orange-800'
+          }`}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {goingLongCooldown ? 'Sent!' : 'Going Long'}
+        </button>
+
+        {/* Request Reinforcements button */}
+        <button
+          onClick={() => { setReinforcementsOpen(!reinforcementsOpen); setGoingLongOpen(false); }}
+          disabled={reinforcementsCooldown}
+          className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 ${
+            reinforcementsCooldown
+              ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-700'
+              : reinforcementsOpen
+                ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700'
+                : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800'
+          }`}
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+          </svg>
+          {reinforcementsCooldown ? 'Sent!' : 'Reinforcements'}
+        </button>
+      </div>
+
+      {/* Going Long time selector */}
+      {goingLongOpen && !goingLongCooldown && (
+        <div className="flex gap-1">
+          {[15, 30, 45, 60].map((mins) => (
+            <button
+              key={mins}
+              onClick={() => handleGoingLong(mins)}
+              disabled={goingLongStatus === 'sending'}
+              className="flex-1 py-1.5 text-[10px] font-medium rounded-md bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/50 border border-orange-200 dark:border-orange-700 transition-colors duration-150 disabled:opacity-50"
+            >
+              {goingLongStatus === 'sending' ? '...' : mins === 60 ? '1hr' : `${mins}m`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Reinforcements text input */}
+      {reinforcementsOpen && !reinforcementsCooldown && (
+        <div className="flex gap-1">
+          <input
+            value={reinforcementText}
+            onChange={(e) => setReinforcementText(e.target.value)}
+            placeholder="Context (optional)..."
+            className="flex-1 px-2 py-1.5 text-[11px] bg-gray-50 dark:bg-zinc-800 text-gray-700 dark:text-white border border-gray-200 dark:border-zinc-700 rounded-md focus:outline-none focus:border-blue-300 dark:focus:border-blue-500 placeholder-gray-400 dark:placeholder-zinc-500"
+            onKeyDown={(e) => { if (e.key === 'Enter') handleReinforcements(); }}
+          />
+          <button
+            onClick={handleReinforcements}
+            disabled={reinforcementsStatus === 'sending'}
+            className="px-3 py-1.5 text-[10px] font-medium rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors duration-150 disabled:opacity-50"
+          >
+            {reinforcementsStatus === 'sending' ? '...' : 'Send'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -661,14 +801,42 @@ export function AmmoTrackerApp() {
   const [teamId, setTeamId] = useState<string | null>(null);
   const [ammoV2Analysis, setAmmoV2Analysis] = useState<AmmoV2Analysis | null>(null);
   const [isAmmoV2Enabled, setIsAmmoV2Enabled] = useState(false);
-  // Chat state
   const [closerId, setCloserId] = useState<string | null>(null);
   const [closerName, setCloserName] = useState<string | null>(null);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   const seenAmmoIds = useRef<Set<string>>(new Set());
   const seenSegmentIds = useRef<Set<string>>(new Set());
   const notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync dark mode via IPC from main window
+  // NOTE: Each BrowserWindow has its own localStorage, so we can't rely on it.
+  // Theme is fetched on mount, then kept in sync via IPC listener.
+  useEffect(() => {
+    const applyTheme = (theme: string) => {
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+    };
+
+    // Fetch current theme immediately (avoids race with ready-to-show IPC)
+    if (window.ammoTracker?.getTheme) {
+      window.ammoTracker.getTheme().then((theme: string) => {
+        if (theme) applyTheme(theme);
+      });
+    }
+
+    // Listen for subsequent theme changes from main process
+    let cleanup: (() => void) | undefined;
+    if (window.ammoTracker?.onThemeChanged) {
+      cleanup = window.ammoTracker.onThemeChanged((theme: string) => {
+        applyTheme(theme);
+      });
+    }
+
+    return () => {
+      cleanup?.();
+    };
+  }, []);
 
   // Fetch ammo from Convex
   const fetchAmmo = useCallback(async (currentCallId: string) => {
@@ -959,19 +1127,52 @@ export function AmmoTrackerApp() {
     return unsubscribe;
   }, []);
 
+  const handleMinimize = useCallback(() => {
+    setIsMinimized(true);
+    window.ammoTracker?.minimize();
+  }, []);
+
+  const handleExpand = useCallback(() => {
+    setIsMinimized(false);
+    window.ammoTracker?.expand();
+  }, []);
+
   if (isLoading) {
     return (
-      <div className="h-screen w-screen bg-white text-gray-900 flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-gray-200 border-t-gray-500 rounded-full animate-spin" />
+      <div className="h-screen w-screen bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-gray-200 dark:border-zinc-700 border-t-gray-500 dark:border-t-zinc-400 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Minimized pill view — small vertical tab on screen edge
+  if (isMinimized) {
+    return (
+      <div
+        className="h-screen w-screen flex items-center justify-center cursor-pointer"
+        onClick={handleExpand}
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
+        <div
+          className="flex flex-col items-center justify-center gap-2 w-full h-full bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 hover:brightness-105 dark:hover:brightness-125 transition-all"
+          style={{ borderTopLeftRadius: 10, borderBottomLeftRadius: 10, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {/* Status dot — solid green when on call, gray when idle */}
+          <span className={`w-1.5 h-1.5 rounded-full ${callId ? 'bg-green-500' : 'bg-gray-400 dark:bg-zinc-600'}`} />
+          {/* Sequ3nce icon — inverted in dark mode */}
+          <img src={appIcon} alt="" className="w-6 h-6 rounded opacity-90 dark:invert" />
+          {/* Expand chevron */}
+          <span className="text-[14px] leading-none text-black/30 dark:text-white/30">{'\u2039'}</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-screen bg-white text-gray-900 overflow-hidden flex flex-col shadow-xl rounded-lg">
+    <div className="h-screen w-screen bg-white dark:bg-zinc-900 text-gray-900 dark:text-zinc-100 overflow-hidden flex flex-col shadow-xl rounded-lg">
       {/* Header with tabs */}
       <div
-        className="h-10 flex items-center justify-between px-2 border-b border-gray-200 shrink-0 bg-gray-50/50"
+        className="h-10 flex items-center justify-between px-2 border-b border-gray-200 dark:border-zinc-700 shrink-0 bg-gray-50 dark:bg-zinc-800/50"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -1009,11 +1210,12 @@ export function AmmoTrackerApp() {
           />
         </div>
 
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <span className={`w-2 h-2 rounded-full transition-colors duration-150 ${callId ? 'bg-green-500' : 'bg-gray-300'}`} />
+        <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <span className={`w-2 h-2 rounded-full transition-colors duration-150 ${callId ? 'bg-green-500' : 'bg-gray-300 dark:bg-zinc-600'}`} />
           <button
-            onClick={() => window.ammoTracker?.close()}
-            className="w-5 h-5 rounded hover:bg-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors duration-150"
+            onClick={handleMinimize}
+            className="w-6 h-6 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center text-gray-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors duration-150"
+            title="Minimize panel"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1022,8 +1224,13 @@ export function AmmoTrackerApp() {
         </div>
       </div>
 
+      {/* Action buttons — shown during active calls */}
+      {callId && (
+        <ActionButtonsRow callId={callId} teamId={teamId} closerId={closerId} closerName={closerName} />
+      )}
+
       {/* Content area */}
-      <div className="flex-1 overflow-hidden bg-gray-50/30">
+      <div className="flex-1 overflow-hidden bg-white dark:bg-zinc-900/50">
         {activeTab === 'ammo' && (
           <div className="h-full overflow-y-auto scrollbar-thin">
             {/* Show Ammo V2 panel if team has V2 enabled, otherwise show classic ammo */}

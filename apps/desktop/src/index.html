@@ -3,13 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * ws: wss:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://ideal-ram-982.convex.site wss://amusing-charm-production.up.railway.app; img-src 'self' data: blob:; media-src 'self' https:;" />
     <title>Sequ3nce</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-white text-black font-sans antialiased">
+  <body class="font-sans antialiased">
+    <script>
+      // Prevent flash of wrong theme on load
+      if (localStorage.getItem('sequ3nce_theme') === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+      // Hide content until React mounts to prevent flash of stale cached UI during hot reload
+      document.getElementById('root')?.setAttribute('style', 'visibility:hidden');
+      window.__showRoot = function() { document.getElementById('root')?.removeAttribute('style'); };
+    </script>
     <div id="root"></div>
   </body>
 </html>

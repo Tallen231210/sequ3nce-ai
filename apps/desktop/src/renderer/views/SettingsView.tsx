@@ -1,0 +1,339 @@
+import React, { useEffect, useState, useRef } from 'react';
+import type { CloserInfo, CalendarStatus } from '../convex';
+import {
+  getCalendarStatus,
+  connectCalendar,
+  syncCalendar,
+  disconnectCalendar,
+  changePassword,
+  submitDiagnosticReport,
+} from '../convex';
+
+interface SettingsViewProps {
+  closerInfo: CloserInfo;
+  onLogout: () => void;
+}
+
+export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
+  // Calendar
+  const [calStatus, setCalStatus] = useState<CalendarStatus | null>(null);
+  const [isLoadingCal, setIsLoadingCal] = useState(true);
+  const [icsUrl, setIcsUrl] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  // Password
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // Diagnostics
+  const [diagDescription, setDiagDescription] = useState('');
+  const [isSendingDiag, setIsSendingDiag] = useState(false);
+  const [diagReportId, setDiagReportId] = useState<string | null>(null);
+  const [diagError, setDiagError] = useState<string | null>(null);
+
+  // Cleanup refs
+  const mountedRef = useRef(true);
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      timeoutsRef.current.forEach(clearTimeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    setIsLoadingCal(true);
+    getCalendarStatus(closerInfo.email, closerInfo.teamId).then((s) => {
+      setCalStatus(s);
+      setIsLoadingCal(false);
+    });
+  }, [closerInfo.email, closerInfo.teamId]);
+
+  async function handleConnectCalendar() {
+    if (!icsUrl.trim()) return;
+    setIsConnecting(true);
+    const ok = await connectCalendar(closerInfo.email, closerInfo.teamId, icsUrl.trim());
+    if (ok) {
+      await syncCalendar(closerInfo.email, closerInfo.teamId);
+      const s = await getCalendarStatus(closerInfo.email, closerInfo.teamId);
+      setCalStatus(s);
+      setIcsUrl('');
+    }
+    setIsConnecting(false);
+  }
+
+  async function handleDisconnectCalendar() {
+    setIsDisconnecting(true);
+    await disconnectCalendar(closerInfo.email, closerInfo.teamId);
+    setCalStatus(null);
+    setIsDisconnecting(false);
+  }
+
+  async function handleChangePassword() {
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters.');
+      return;
+    }
+    setIsChangingPassword(true);
+    setPasswordError(null);
+    const result = await changePassword(closerInfo.closerId, currentPassword, newPassword);
+    setIsChangingPassword(false);
+    if (result.success) {
+      setPasswordSuccess(true);
+      setShowPasswordForm(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      const t = setTimeout(() => { if (mountedRef.current) setPasswordSuccess(false); }, 3000);
+      timeoutsRef.current.push(t);
+    } else {
+      setPasswordError(result.error || 'Failed to change password.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+  }
+
+  async function handleSendDiagnostics() {
+    setIsSendingDiag(true);
+    setDiagError(null);
+    setDiagReportId(null);
+
+    const reportId = generateReportId();
+    const result = await submitDiagnosticReport({
+      reportId,
+      closerId: closerInfo.closerId,
+      teamId: closerInfo.teamId,
+      closerEmail: closerInfo.email,
+      userDescription: diagDescription.trim() || undefined,
+      system: {
+        platform: 'electron-windows',
+        appVersion: '2.0.0',
+      },
+      createdAt: Date.now(),
+    });
+
+    setIsSendingDiag(false);
+    if (result) {
+      setDiagReportId(result);
+      setDiagDescription('');
+    } else {
+      setDiagError('Failed to send diagnostics. Please try again.');
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-6 pt-5 pb-3 shrink-0">
+        <h1 className="text-2xl font-bold text-black">Settings</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-6">
+        {/* Account Section */}
+        <SettingsSection title="Account">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white text-[14px] font-bold">
+              {closerInfo.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <p className="text-[14px] font-semibold text-black">{closerInfo.name}</p>
+              <p className="text-[12px] text-gray-500">{closerInfo.email}</p>
+              {closerInfo.teamName && (
+                <p className="text-[11px] text-gray-400">{closerInfo.teamName}</p>
+              )}
+            </div>
+          </div>
+
+          {passwordSuccess && (
+            <div className="flex items-center gap-1.5 p-2 mb-3 bg-green-50 border border-green-200 rounded-lg text-[12px] text-green-700">
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+              Password changed successfully!
+            </div>
+          )}
+
+          {!showPasswordForm ? (
+            <button
+              onClick={() => setShowPasswordForm(true)}
+              className="text-[13px] font-medium text-blue-600 hover:text-blue-700"
+            >
+              Change Password
+            </button>
+          ) : (
+            <div className="space-y-2 max-w-xs">
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Current password"
+                className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password"
+                className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+              />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+              />
+              {passwordError && (
+                <p className="text-[12px] text-red-600">{passwordError}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleChangePassword}
+                  disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword}
+                  className="px-4 py-2 text-[12px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isChangingPassword ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setShowPasswordForm(false); setPasswordError(null); }}
+                  className="px-4 py-2 text-[12px] font-medium text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </SettingsSection>
+
+        {/* Calendar Section */}
+        <SettingsSection title="Calendar Connection">
+          {isLoadingCal ? (
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <span className="text-[13px] text-gray-500">Loading...</span>
+            </div>
+          ) : calStatus?.connected ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[13px]">
+                <span className="w-2 h-2 bg-green-500 rounded-full" />
+                <span className="text-green-700 font-medium">Connected</span>
+                {calStatus.lastSynced && (
+                  <span className="text-gray-400 text-[11px]">
+                    Last synced {new Date(calStatus.lastSynced).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={handleDisconnectCalendar}
+                disabled={isDisconnecting}
+                className="text-[12px] font-medium text-red-600 hover:text-red-700"
+              >
+                {isDisconnecting ? 'Disconnecting...' : 'Disconnect Calendar'}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2 max-w-md">
+              <p className="text-[13px] text-gray-500">Not connected. Paste your ICS feed URL to connect.</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={icsUrl}
+                  onChange={(e) => setIcsUrl(e.target.value)}
+                  placeholder="ICS feed URL..."
+                  className="flex-1 px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+                />
+                <button
+                  onClick={handleConnectCalendar}
+                  disabled={!icsUrl.trim() || isConnecting}
+                  className="px-4 py-2 text-[12px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isConnecting ? 'Connecting...' : 'Connect'}
+                </button>
+              </div>
+            </div>
+          )}
+        </SettingsSection>
+
+        {/* Diagnostics Section */}
+        <SettingsSection title="Support & Diagnostics">
+          <p className="text-[13px] text-gray-500 mb-3">
+            Send a diagnostic report to help our team troubleshoot issues.
+          </p>
+          <div className="max-w-md space-y-2">
+            <textarea
+              value={diagDescription}
+              onChange={(e) => setDiagDescription(e.target.value)}
+              placeholder="Describe the issue (optional)..."
+              rows={3}
+              className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg resize-none focus:outline-none focus:border-gray-400"
+            />
+            {diagError && (
+              <p className="text-[12px] text-red-600">{diagError}</p>
+            )}
+            {diagReportId && (
+              <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                <svg className="w-3.5 h-3.5 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                <span className="text-[12px] text-green-700">
+                  Report sent! ID: <button onClick={() => navigator.clipboard.writeText(diagReportId)} className="font-mono font-bold underline">{diagReportId}</button>
+                </span>
+              </div>
+            )}
+            <button
+              onClick={handleSendDiagnostics}
+              disabled={isSendingDiag}
+              className="px-4 py-2 text-[12px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            >
+              {isSendingDiag ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Sending...
+                </span>
+              ) : (
+                'Send Diagnostics'
+              )}
+            </button>
+          </div>
+        </SettingsSection>
+
+        {/* Sign Out */}
+        <SettingsSection title="Sign Out">
+          <button
+            onClick={onLogout}
+            className="px-4 py-2 text-[12px] font-semibold text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            Sign Out
+          </button>
+        </SettingsSection>
+      </div>
+    </div>
+  );
+}
+
+function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-3">{title}</h3>
+      <div className="p-4 bg-white rounded-lg border border-gray-100">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function generateReportId(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let id = '';
+  for (let i = 0; i < 6; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return id;
+}
