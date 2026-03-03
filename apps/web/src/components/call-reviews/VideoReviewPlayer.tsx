@@ -96,7 +96,7 @@ export function VideoReviewPlayer({
 
   return (
     <div
-      className="relative group rounded-lg overflow-hidden bg-gray-950"
+      className="relative group rounded-lg overflow-hidden bg-gray-950 aspect-video max-h-[480px] mx-auto"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -106,7 +106,7 @@ export function VideoReviewPlayer({
         src={recordingUrl}
         playsInline
         preload="auto"
-        className="w-full max-h-[480px] object-contain cursor-pointer"
+        className="w-full h-full cursor-pointer"
         onClick={onPlayPause}
         onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
