@@ -246,8 +246,8 @@ export function CallDetailSheet({
                   lastTimeUpdateRef.current = now;
                   if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
                 }}
-                className="w-full aspect-video"
-                style={{ backgroundColor: '#111' }}
+                className="w-full object-contain"
+                style={{ backgroundColor: '#111', maxHeight: 280 }}
               />
             ) : (
               <div className="flex items-center justify-center h-[60px] bg-gray-50 text-[13px] text-gray-500">

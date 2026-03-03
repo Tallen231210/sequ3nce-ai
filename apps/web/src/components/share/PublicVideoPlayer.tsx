@@ -152,7 +152,7 @@ export function PublicVideoPlayer({
         src={recordingUrl}
         playsInline
         preload="auto"
-        className="w-full aspect-video cursor-pointer"
+        className="w-full max-h-[480px] object-contain cursor-pointer"
         onClick={onPlayPause}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}

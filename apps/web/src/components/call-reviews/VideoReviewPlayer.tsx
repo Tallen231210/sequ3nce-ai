@@ -106,7 +106,7 @@ export function VideoReviewPlayer({
         src={recordingUrl}
         playsInline
         preload="auto"
-        className="w-full aspect-video cursor-pointer"
+        className="w-full max-h-[480px] object-contain cursor-pointer"
         onClick={onPlayPause}
         onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
