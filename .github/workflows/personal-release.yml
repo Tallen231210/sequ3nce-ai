@@ -1,0 +1,214 @@
+name: Build and Release Personal App
+
+on:
+  push:
+    tags:
+      - 'personal-v*'
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/personal/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/personal
+        run: npm ci
+
+      - name: Build macOS app
+        working-directory: apps/personal
+        run: npm run make -- --platform darwin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-mac-build
+          path: |
+            apps/personal/out/make/**/*.dmg
+            apps/personal/out/make/**/*.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/personal/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/personal
+        run: npm ci
+
+      - name: Build Windows app
+        working-directory: apps/personal
+        run: npm run make -- --platform win32
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-windows-build
+          path: |
+            apps/personal/out/make/**/*.exe
+            apps/personal/out/make/**/*.nupkg
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/personal/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/personal
+        run: npm ci
+
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build Linux app
+        working-directory: apps/personal
+        run: npm run make -- --platform linux
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-linux-build
+          path: |
+            apps/personal/out/make/**/*.deb
+            apps/personal/out/make/**/*.rpm
+
+  create-release:
+    needs: [build-mac, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION=${TAG#personal-v}
+            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Windows update manifest
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          EXE_FILE=$(find artifacts -name "*.exe" ! -name "*.nupkg" | head -1)
+          if [ -n "$EXE_FILE" ]; then
+            SHA512_BASE64=$(sha512sum "$EXE_FILE" | awk '{print $1}' | xxd -r -p | base64 -w 0)
+            SIZE=$(stat --format=%s "$EXE_FILE")
+            EXE_NAME=$(basename "$EXE_FILE")
+            RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+            cat > artifacts/latest-personal.yml << EOF
+          version: ${VERSION}
+          files:
+            - url: ${EXE_NAME}
+              sha512: ${SHA512_BASE64}
+              size: ${SIZE}
+          path: ${EXE_NAME}
+          sha512: ${SHA512_BASE64}
+          releaseDate: '${RELEASE_DATE}'
+          EOF
+            echo "Generated latest-personal.yml for Windows"
+            cat artifacts/latest-personal.yml
+          fi
+
+      - name: Generate macOS update manifest
+        run: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+          ZIP_FILE=$(find artifacts -name "*.zip" | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            SHA512_BASE64=$(sha512sum "$ZIP_FILE" | awk '{print $1}' | xxd -r -p | base64 -w 0)
+            SIZE=$(stat --format=%s "$ZIP_FILE")
+            ZIP_NAME=$(basename "$ZIP_FILE")
+            RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+            cat > artifacts/latest-personal-mac.yml << EOF
+          version: ${VERSION}
+          files:
+            - url: ${ZIP_NAME}
+              sha512: ${SHA512_BASE64}
+              size: ${SIZE}
+          path: ${ZIP_NAME}
+          sha512: ${SHA512_BASE64}
+          releaseDate: '${RELEASE_DATE}'
+          EOF
+            echo "Generated latest-personal-mac.yml for macOS"
+            cat artifacts/latest-personal-mac.yml
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Sequ3nce Personal v${{ steps.get_version.outputs.VERSION }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('personal-v{0}', github.event.inputs.version) || github.ref_name }}
+          draft: true
+          prerelease: false
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.exe
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/latest-personal.yml
+            artifacts/latest-personal-mac.yml
+          body: |
+            ## Sequ3nce Personal v${{ steps.get_version.outputs.VERSION }}
+
+            ### Downloads
+            - **macOS**: Download the `.dmg` file and drag to Applications
+            - **Windows**: Download the `.exe` installer and run it
+            - **Linux**: Download `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL)
+
+            ### What's New
+            - [Add release notes here]
+
+            ### Requirements
+            - macOS 10.15 or later
+            - Windows 10 or later
+            - Linux: Ubuntu 18.04+ or equivalent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

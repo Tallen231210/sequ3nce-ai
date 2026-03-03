@@ -1,0 +1,184 @@
+// Schedule utility functions and types
+// Shared across all schedule components
+
+import type { CalendarEvent } from '../../convex';
+
+// ==================== Types ====================
+
+export type ViewMode = 'list' | 'week';
+
+export type EventUrgency = 'now' | 'soon' | 'today' | 'upcoming' | 'ended';
+
+export interface UrgencyBadgeConfig {
+  label: string;
+  bgColor: string;
+  textColor: string;
+}
+
+export interface PlatformInfo {
+  label: string;
+  bg: string;
+  text: string;
+}
+
+// ==================== Urgency ====================
+
+export function getEventUrgency(event: CalendarEvent, now: number): EventUrgency {
+  const startDiffMin = (event.startTime - now) / 60000;
+  const endDiffMin = (event.endTime - now) / 60000;
+
+  if (endDiffMin < 0) return 'ended';
+  if (startDiffMin < 0 && endDiffMin >= 0) return 'now';
+  if (startDiffMin <= 5) return 'now';
+  if (startDiffMin <= 60) return 'soon';
+
+  const eventDate = new Date(event.startTime);
+  const nowDate = new Date(now);
+  if (eventDate.toDateString() === nowDate.toDateString()) return 'today';
+  return 'upcoming';
+}
+
+export function getUrgencyBadgeConfig(urgency: EventUrgency): UrgencyBadgeConfig {
+  switch (urgency) {
+    case 'now': return { label: 'STARTING NOW', bgColor: '#F23333', textColor: '#FFFFFF' };
+    case 'soon': return { label: 'SOON', bgColor: '#FFCC4D', textColor: '#805206' };
+    case 'today': return { label: 'TODAY', bgColor: '#E6F1E6', textColor: '#338C4D' };
+    case 'upcoming': return { label: 'UPCOMING', bgColor: '#EDEDED', textColor: '#737373' };
+    case 'ended': return { label: 'ENDED', bgColor: '#EDEDED', textColor: '#8C8C8C' };
+  }
+}
+
+/** Color for week grid event blocks */
+export function getUrgencyBlockColor(urgency: EventUrgency): string {
+  switch (urgency) {
+    case 'now': return '#E63E3E';
+    case 'soon': return '#D9A616';
+    case 'today': return '#34A653';
+    case 'upcoming': return '#4D80D9';
+    case 'ended': return '#999999';
+  }
+}
+
+// ==================== Platform Detection ====================
+
+export function detectPlatform(url?: string): PlatformInfo | null {
+  if (!url) return null;
+  if (url.includes('zoom.us') || url.includes('zoom.com'))
+    return { label: 'Zoom', bg: 'bg-blue-100', text: 'text-blue-700' };
+  if (url.includes('meet.google.com'))
+    return { label: 'Google Meet', bg: 'bg-green-100', text: 'text-green-700' };
+  if (url.includes('teams.microsoft.com'))
+    return { label: 'Teams', bg: 'bg-purple-100', text: 'text-purple-700' };
+  return { label: 'Meeting', bg: 'bg-gray-100', text: 'text-gray-600' };
+}
+
+// ==================== Date / Time Formatting ====================
+
+export function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+export function formatRelative(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export function formatHourLabel(hour: number): string {
+  if (hour === 0) return '12 AM';
+  if (hour < 12) return `${hour} AM`;
+  if (hour === 12) return '12 PM';
+  return `${hour - 12} PM`;
+}
+
+export function formatDateHeader(dateKey: string): string {
+  const date = new Date(dateKey + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (date.getTime() === today.getTime()) return 'Today';
+  if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
+  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+export function formatWeekLabel(dates: Date[]): string {
+  if (dates.length < 7) return '';
+  const start = dates[0];
+  const end = dates[6];
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const startStr = start.toLocaleDateString('en-US', opts);
+  const endStr = end.toLocaleDateString('en-US', { ...opts, year: 'numeric' });
+  return `${startStr} – ${endStr}`;
+}
+
+// ==================== Week Date Calculations ====================
+
+export function getWeekDates(weekOffset: number): Date[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const weekday = today.getDay(); // 0=Sun, 1=Mon...
+  const daysToMonday = weekday === 0 ? -6 : 1 - weekday;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + daysToMonday + weekOffset * 7);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+}
+
+// ==================== Event Grouping ====================
+
+export function groupEventsByDate(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
+  const groups = new Map<string, CalendarEvent[]>();
+  for (const event of events) {
+    const d = new Date(event.startTime);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const existing = groups.get(key) || [];
+    existing.push(event);
+    groups.set(key, existing);
+  }
+  return groups;
+}
+
+export function getEventsForDate(events: CalendarEvent[], date: Date): CalendarEvent[] {
+  return events.filter((e) => {
+    const d = new Date(e.startTime);
+    return d.getDate() === date.getDate() &&
+           d.getMonth() === date.getMonth() &&
+           d.getFullYear() === date.getFullYear();
+  });
+}
+
+// ==================== Week Grid Positioning ====================
+
+export const HOUR_HEIGHT = 60;
+export const GRID_START_HOUR = 6;
+export const GRID_END_HOUR = 22;
+export const TIME_COLUMN_WIDTH = 52;
+
+export function eventYOffset(event: CalendarEvent): number {
+  const date = new Date(event.startTime);
+  const hour = Math.max(date.getHours(), GRID_START_HOUR);
+  const minute = date.getHours() < GRID_START_HOUR ? 0 : date.getMinutes();
+  return (hour - GRID_START_HOUR) * HOUR_HEIGHT + (minute / 60) * HOUR_HEIGHT;
+}
+
+export function eventBlockHeight(event: CalendarEvent): number {
+  const durationMin = (event.endTime - event.startTime) / 60000;
+  return Math.max((durationMin / 60) * HOUR_HEIGHT, 18);
+}
+
+export function currentTimeYOffset(now: Date): number {
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  if (hour < GRID_START_HOUR) return 0;
+  if (hour >= GRID_END_HOUR) return (GRID_END_HOUR - GRID_START_HOUR) * HOUR_HEIGHT;
+  return (hour - GRID_START_HOUR) * HOUR_HEIGHT + (minute / 60) * HOUR_HEIGHT;
+}
