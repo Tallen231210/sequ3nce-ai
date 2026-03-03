@@ -15,17 +15,7 @@ interface Release {
 }
 
 interface ReleasesResponse {
-  swift: Release | null;
   electron: Release | null;
-  // Backwards compatible fields from electron release
-  tag_name?: string;
-  name?: string;
-  published_at?: string;
-  assets?: Array<{
-    name: string;
-    browser_download_url: string;
-    size: number;
-  }>;
 }
 
 type Platform = "mac" | "windows";
@@ -54,35 +44,28 @@ export default function DownloadPage() {
   }, []);
 
   const getDownloadUrl = (platformType: Platform): string | null => {
-    if (!releases) return null;
+    if (!releases?.electron) return null;
+    const electronRelease = releases.electron;
 
-    // For macOS, use Swift release — prefer DMG over ZIP (DMG avoids Gatekeeper warnings)
     if (platformType === "mac") {
-      if (releases.swift) {
-        const dmgAsset = releases.swift.assets.find((a) =>
-          a.name.toLowerCase().endsWith(".dmg")
-        );
-        const zipAsset = releases.swift.assets.find((a) =>
-          a.name.toLowerCase().endsWith(".zip")
-        );
-        const swiftAsset = dmgAsset || zipAsset;
-        if (swiftAsset) {
-          return `/api/releases/download?asset=${encodeURIComponent(swiftAsset.name)}&release=${releases.swift.tag_name}`;
-        }
-      }
-      return null;
+      // Prefer DMG over ZIP for macOS
+      const dmgAsset = electronRelease.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".dmg")
+      );
+      const zipAsset = electronRelease.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".zip")
+      );
+      const asset = dmgAsset || zipAsset;
+      return asset
+        ? `/api/releases/download?asset=${encodeURIComponent(asset.name)}&release=${electronRelease.tag_name}`
+        : null;
     }
 
-    // Windows uses Electron release
     if (platformType === "windows") {
-      const electronRelease = releases.electron;
-      if (!electronRelease?.assets) return null;
-
       const asset = electronRelease.assets.find((a) => {
         const name = a.name.toLowerCase();
         return name.endsWith(".exe") && !name.includes("nupkg");
       });
-
       return asset
         ? `/api/releases/download?asset=${encodeURIComponent(asset.name)}&release=${electronRelease.tag_name}`
         : null;
@@ -97,52 +80,35 @@ export default function DownloadPage() {
   };
 
   const getAssetSize = (platformType: Platform): string => {
-    if (!releases) return "";
+    if (!releases?.electron) return "";
+    const electronRelease = releases.electron;
 
-    // For macOS, check Swift release — prefer DMG over ZIP
     if (platformType === "mac") {
-      if (releases.swift) {
-        const dmgAsset = releases.swift.assets.find((a) =>
-          a.name.toLowerCase().endsWith(".dmg")
-        );
-        const zipAsset = releases.swift.assets.find((a) =>
-          a.name.toLowerCase().endsWith(".zip")
-        );
-        const swiftAsset = dmgAsset || zipAsset;
-        if (swiftAsset) return formatSize(swiftAsset.size);
-      }
-      return "";
+      const dmgAsset = electronRelease.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".dmg")
+      );
+      const zipAsset = electronRelease.assets.find((a) =>
+        a.name.toLowerCase().endsWith(".zip")
+      );
+      const asset = dmgAsset || zipAsset;
+      return asset ? formatSize(asset.size) : "";
     }
 
-    // Windows uses Electron
     if (platformType === "windows") {
-      const electronRelease = releases.electron;
-      if (!electronRelease?.assets) return "";
-
       const asset = electronRelease.assets.find((a) => {
         const name = a.name.toLowerCase();
         return name.endsWith(".exe") && !name.includes("nupkg");
       });
-
       return asset ? formatSize(asset.size) : "";
     }
 
     return "";
   };
 
-  // Get version string for a platform
-  const getVersion = (platformType: Platform): string => {
-    if (!releases) return "";
-
-    if (platformType === "mac" && releases.swift) {
-      return releases.swift.tag_name.replace("macos-v", "");
-    }
-
-    if (releases.electron) {
-      return releases.electron.tag_name.replace("desktop-v", "");
-    }
-
-    return "";
+  // Get version string — both platforms use the same Electron release
+  const getVersion = (): string => {
+    if (!releases?.electron) return "";
+    return releases.electron.tag_name.replace("desktop-v", "").replace(/^v/, "");
   };
 
   const platformInfo = {
@@ -155,7 +121,7 @@ export default function DownloadPage() {
       ),
       extension: ".dmg",
       instructions: "Open the DMG and drag Sequ3nce to Applications.",
-      requirement: "Requires macOS 14.4 (Sonoma) or later",
+      requirement: "Requires macOS 10.15 (Catalina) or later",
     },
     windows: {
       name: "Windows",
@@ -186,8 +152,8 @@ export default function DownloadPage() {
             Download Sequ3nce for Desktop
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Get real-time ammo during your sales calls. The desktop app captures
-            audio and delivers instant insights to help you close more deals.
+            Get real-time ammo during your sales calls. Add a meeting bot to any
+            call and get instant insights to help you close more deals.
           </p>
         </div>
 
@@ -210,7 +176,7 @@ export default function DownloadPage() {
                 </h2>
                 {releases && (
                   <p className="text-gray-500 mb-4">
-                    Version {getVersion(p)}
+                    Version {getVersion()}
                     {getAssetSize(p) && ` • ${getAssetSize(p)}`}
                   </p>
                 )}
@@ -266,7 +232,7 @@ export default function DownloadPage() {
                 3
               </span>
               <span>
-                Grant microphone permission when prompted
+                Add your meeting bot to any Zoom, Google Meet, or Teams call
               </span>
             </li>
             <li className="flex items-start">
@@ -274,7 +240,7 @@ export default function DownloadPage() {
                 4
               </span>
               <span>
-                Start your call, click record, and watch the ammo appear
+                Get real-time ammo and AI analysis as your call progresses
               </span>
             </li>
           </ol>

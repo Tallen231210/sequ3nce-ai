@@ -54,28 +54,13 @@ export async function GET() {
       Accept: "application/vnd.github.v3+json",
     };
 
-    // Fetch from both repos in parallel:
-    // - sequ3nce-releases: public repo for Swift macOS releases (macos-v*)
-    // - sequ3nce-ai: private repo for Electron/Windows releases (desktop-v*)
-    const [swiftResponse, electronResponse] = await Promise.all([
-      fetch(
-        "https://api.github.com/repos/Tallen231210/sequ3nce-releases/releases",
-        { headers, cache: "no-store" }
-      ),
-      fetch(
-        "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases?per_page=100",
-        { headers, cache: "no-store" }
-      ),
-    ]);
+    // Fetch Electron desktop releases from sequ3nce-ai repo
+    // (Both macOS and Windows are now served from the Electron app)
+    const electronResponse = await fetch(
+      "https://api.github.com/repos/Tallen231210/sequ3nce-ai/releases?per_page=100",
+      { headers, cache: "no-store" }
+    );
 
-    // Find latest Swift macOS release from sequ3nce-releases repo
-    let swiftRelease: GithubRelease | undefined;
-    if (swiftResponse.ok) {
-      const swiftReleases: GithubRelease[] = await swiftResponse.json();
-      swiftRelease = swiftReleases.find((r) => r.tag_name.startsWith("macos-v"));
-    }
-
-    // Find latest Electron desktop release from sequ3nce-ai repo
     let electronRelease: GithubRelease | undefined;
     if (electronResponse.ok) {
       const electronReleases: GithubRelease[] = await electronResponse.json();
@@ -86,37 +71,22 @@ export async function GET() {
       );
     }
 
-    if (!swiftRelease && !electronRelease) {
+    if (!electronRelease) {
       return NextResponse.json(
         { error: "No releases found" },
         { status: 404 }
       );
     }
 
-    // Return both releases with clear labels
-    // Also include backwards-compatible top-level fields (from electron release)
-    const result: {
-      swift: FormattedRelease | null;
-      electron: FormattedRelease | null;
-      tag_name?: string;
-      name?: string;
-      published_at?: string;
-      assets?: Array<{ name: string; browser_download_url: string; size: number }>;
-    } = {
-      swift: swiftRelease ? formatRelease(swiftRelease) : null,
-      electron: electronRelease ? formatRelease(electronRelease) : null,
-    };
-
-    // For backwards compatibility, also include electron release at top level
-    if (electronRelease) {
-      const formatted = formatRelease(electronRelease);
-      result.tag_name = formatted.tag_name;
-      result.name = formatted.name;
-      result.published_at = formatted.published_at;
-      result.assets = formatted.assets;
-    }
-
-    return NextResponse.json(result);
+    const formatted = formatRelease(electronRelease);
+    return NextResponse.json({
+      swift: null,
+      electron: formatted,
+      tag_name: formatted.tag_name,
+      name: formatted.name,
+      published_at: formatted.published_at,
+      assets: formatted.assets,
+    });
   } catch (error) {
     console.error("Failed to fetch releases:", error);
     return NextResponse.json(
