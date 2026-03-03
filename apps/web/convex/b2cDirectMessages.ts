@@ -1,0 +1,325 @@
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+
+// ==================== Constants ====================
+
+const MAX_DM_BODY = 2000;
+const PAGE_SIZE = 30;
+const MAX_PAGE_SIZE = 50;
+
+// ==================== Helpers ====================
+
+function makeParticipantKey(a: string, b: string): string {
+  return [a, b].sort().join("_");
+}
+
+async function resolvePhotoUrl(
+  ctx: { storage: { getUrl: (id: string) => Promise<string | null> } },
+  storageId: string | undefined | null
+): Promise<string | null> {
+  if (!storageId) return null;
+  return await ctx.storage.getUrl(storageId);
+}
+
+// ==================== Queries ====================
+
+// List all DM threads for a user, with other participant's info and unread counts
+export const listThreads = query({
+  args: {
+    userId: v.id("b2cUsers"),
+    cursor: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
+
+    // Get threads where user is participant1
+    const threads1 = await ctx.db
+      .query("b2cDirectMessageThreads")
+      .withIndex("by_participant1", (q) => q.eq("participant1Id", args.userId))
+      .collect();
+
+    // Get threads where user is participant2
+    const threads2 = await ctx.db
+      .query("b2cDirectMessageThreads")
+      .withIndex("by_participant2", (q) => q.eq("participant2Id", args.userId))
+      .collect();
+
+    // Merge and sort by lastMessageAt desc
+    let allThreads = [...threads1, ...threads2];
+    allThreads.sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt));
+
+    // Apply cursor
+    if (args.cursor) {
+      allThreads = allThreads.filter(
+        (t) => (t.lastMessageAt ?? t.createdAt) < args.cursor!
+      );
+    }
+
+    const page = allThreads.slice(0, limit + 1);
+    const hasMore = page.length > limit;
+    const results = page.slice(0, limit);
+
+    // Enrich with other user's info + unread count
+    const enriched = await Promise.all(
+      results.map(async (thread) => {
+        const otherId =
+          thread.participant1Id === args.userId
+            ? thread.participant2Id
+            : thread.participant1Id;
+
+        const otherUser = await ctx.db.get(otherId);
+        const profile = otherUser
+          ? await ctx.db
+              .query("b2cProfiles")
+              .withIndex("by_user", (q) => q.eq("userId", otherId))
+              .first()
+          : null;
+
+        const photoUrl = await resolvePhotoUrl(ctx, profile?.photoStorageId);
+
+        // Count unread messages in this thread (sent by other user, not read)
+        const unreadMessages = await ctx.db
+          .query("b2cDirectMessages")
+          .withIndex("by_recipient_unread", (q) =>
+            q.eq("threadId", thread._id).eq("isRead", false)
+          )
+          .collect();
+        const unreadCount = unreadMessages.filter(
+          (m) => m.senderId !== args.userId && !m.isDeleted
+        ).length;
+
+        return {
+          _id: thread._id,
+          otherUserId: otherId,
+          otherUserName: otherUser?.name ?? "Unknown",
+          otherUserPhotoUrl: photoUrl,
+          lastMessageAt: thread.lastMessageAt ?? thread.createdAt,
+          lastMessagePreview: thread.lastMessagePreview ?? null,
+          unreadCount,
+          createdAt: thread.createdAt,
+        };
+      })
+    );
+
+    return {
+      threads: enriched,
+      nextCursor: hasMore
+        ? (results[results.length - 1].lastMessageAt ?? results[results.length - 1].createdAt)
+        : null,
+    };
+  },
+});
+
+// Get messages in a thread (paginated, chronological)
+export const getMessages = query({
+  args: {
+    userId: v.id("b2cUsers"),
+    threadId: v.id("b2cDirectMessageThreads"),
+    cursor: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Validate user is a participant
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) throw new Error("Thread not found");
+    if (thread.participant1Id !== args.userId && thread.participant2Id !== args.userId) {
+      throw new Error("Not authorized");
+    }
+
+    const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
+
+    // Fetch messages newest-first for pagination
+    const messages = await ctx.db
+      .query("b2cDirectMessages")
+      .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+      .order("desc")
+      .collect();
+
+    // Apply cursor (messages older than cursor)
+    let filtered = messages;
+    if (args.cursor) {
+      filtered = messages.filter((m) => m.createdAt < args.cursor!);
+    }
+
+    const page = filtered.slice(0, limit + 1);
+    const hasMore = page.length > limit;
+    const results = page.slice(0, limit);
+
+    // Reverse for chronological display
+    results.reverse();
+
+    return {
+      messages: results.map((m) => ({
+        _id: m._id,
+        threadId: m.threadId,
+        senderId: m.senderId,
+        body: m.isDeleted ? "" : m.body,
+        isRead: m.isRead,
+        isDeleted: m.isDeleted,
+        createdAt: m.createdAt,
+      })),
+      nextCursor: hasMore ? page[limit].createdAt : null,
+    };
+  },
+});
+
+// Total unread count across all threads (for sidebar badge)
+export const getUnreadCount = query({
+  args: {
+    userId: v.id("b2cUsers"),
+  },
+  handler: async (ctx, args) => {
+    // Get all threads for user
+    const threads1 = await ctx.db
+      .query("b2cDirectMessageThreads")
+      .withIndex("by_participant1", (q) => q.eq("participant1Id", args.userId))
+      .collect();
+    const threads2 = await ctx.db
+      .query("b2cDirectMessageThreads")
+      .withIndex("by_participant2", (q) => q.eq("participant2Id", args.userId))
+      .collect();
+
+    const allThreads = [...threads1, ...threads2];
+    let total = 0;
+
+    for (const thread of allThreads) {
+      const unread = await ctx.db
+        .query("b2cDirectMessages")
+        .withIndex("by_recipient_unread", (q) =>
+          q.eq("threadId", thread._id).eq("isRead", false)
+        )
+        .collect();
+      total += unread.filter(
+        (m) => m.senderId !== args.userId && !m.isDeleted
+      ).length;
+    }
+
+    return { count: total };
+  },
+});
+
+// ==================== Mutations ====================
+
+// Send a DM — creates thread if needed
+export const sendMessage = mutation({
+  args: {
+    senderId: v.id("b2cUsers"),
+    recipientId: v.id("b2cUsers"),
+    body: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Validate sender
+    const sender = await ctx.db.get(args.senderId);
+    if (!sender) throw new Error("Sender not found");
+    if (sender.subscriptionStatus !== "active") {
+      throw new Error("Active subscription required");
+    }
+
+    // Validate recipient
+    const recipient = await ctx.db.get(args.recipientId);
+    if (!recipient) throw new Error("Recipient not found");
+
+    // Cannot message self
+    if (args.senderId === args.recipientId) {
+      throw new Error("Cannot message yourself");
+    }
+
+    // Validate body
+    const body = args.body.trim();
+    if (body.length === 0) throw new Error("Message cannot be empty");
+    if (body.length > MAX_DM_BODY) {
+      throw new Error(`Message must be ${MAX_DM_BODY} characters or less`);
+    }
+
+    const now = Date.now();
+    const participantKey = makeParticipantKey(args.senderId, args.recipientId);
+
+    // Get or create thread
+    let thread = await ctx.db
+      .query("b2cDirectMessageThreads")
+      .withIndex("by_participant_key", (q) => q.eq("participantKey", participantKey))
+      .first();
+
+    if (!thread) {
+      // Create thread with sorted participants
+      const sorted = [args.senderId, args.recipientId].sort();
+      const threadId = await ctx.db.insert("b2cDirectMessageThreads", {
+        participantKey,
+        participant1Id: sorted[0] as any,
+        participant2Id: sorted[1] as any,
+        lastMessageAt: now,
+        lastMessagePreview: body.slice(0, 100),
+        createdAt: now,
+      });
+      thread = await ctx.db.get(threadId);
+    } else {
+      // Update thread metadata
+      await ctx.db.patch(thread._id, {
+        lastMessageAt: now,
+        lastMessagePreview: body.slice(0, 100),
+      });
+    }
+
+    // Insert message
+    const messageId = await ctx.db.insert("b2cDirectMessages", {
+      threadId: thread!._id,
+      senderId: args.senderId,
+      body,
+      isRead: false,
+      isDeleted: false,
+      createdAt: now,
+    });
+
+    return { messageId, threadId: thread!._id };
+  },
+});
+
+// Mark all unread messages in a thread as read
+export const markThreadRead = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    threadId: v.id("b2cDirectMessageThreads"),
+  },
+  handler: async (ctx, args) => {
+    // Validate participant
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) throw new Error("Thread not found");
+    if (thread.participant1Id !== args.userId && thread.participant2Id !== args.userId) {
+      throw new Error("Not authorized");
+    }
+
+    const now = Date.now();
+
+    // Get unread messages from other user
+    const unread = await ctx.db
+      .query("b2cDirectMessages")
+      .withIndex("by_recipient_unread", (q) =>
+        q.eq("threadId", args.threadId).eq("isRead", false)
+      )
+      .collect();
+
+    const toMark = unread.filter((m) => m.senderId !== args.userId);
+    for (const msg of toMark) {
+      await ctx.db.patch(msg._id, { isRead: true, readAt: now });
+    }
+
+    return { marked: toMark.length };
+  },
+});
+
+// Soft-delete a message (sender only)
+export const deleteMessage = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    messageId: v.id("b2cDirectMessages"),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error("Message not found");
+    if (message.senderId !== args.userId) throw new Error("Not authorized");
+
+    await ctx.db.patch(args.messageId, { isDeleted: true });
+    return { success: true };
+  },
+});

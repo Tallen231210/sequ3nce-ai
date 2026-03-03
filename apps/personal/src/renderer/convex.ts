@@ -1657,3 +1657,507 @@ export async function claimProfileSlug(
     return { success: false, error: "Network error. Please check your connection." };
   }
 }
+
+// ==================== B2C Community API ====================
+
+export interface CommunityChannel {
+  _id: string;
+  slug: string;
+  name: string;
+  description: string;
+  icon?: string;
+  order: number;
+  postCount: number;
+  lastActivityAt?: number;
+}
+
+export interface CommunityPost {
+  _id: string;
+  channelId: string;
+  authorId: string;
+  authorName: string;
+  authorPhotoUrl: string | null;
+  body: string;
+  likeCount: number;
+  commentCount: number;
+  isPinned: boolean;
+  isLikedByMe: boolean;
+  channelName?: string;
+  channelSlug?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CommunityComment {
+  _id: string;
+  postId: string;
+  authorId: string;
+  authorName: string;
+  authorPhotoUrl: string | null;
+  body: string;
+  likeCount: number;
+  isLikedByMe: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CommunityMember {
+  userId: string;
+  name: string;
+  profileSlug: string | null;
+  headline: string | null;
+  location: string | null;
+  industries: string[];
+  photoUrl: string | null;
+  createdAt: number;
+}
+
+// ==================== Training Types ====================
+
+export interface TrainingModule {
+  _id: string;
+  title: string;
+  description?: string;
+  thumbnailUrl: string | null;
+  order: number;
+  lessonCount: number;
+  isPublished: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TrainingLesson {
+  _id: string;
+  moduleId: string;
+  title: string;
+  description?: string;
+  videoUrl: string;
+  durationSeconds?: number;
+  order: number;
+  isPublished: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ==================== Training API ====================
+
+export async function getTrainingModules(): Promise<TrainingModule[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/training/modules?_=${Date.now()}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get training modules:", error);
+    return [];
+  }
+}
+
+export async function getTrainingLessons(moduleId: string): Promise<TrainingLesson[]> {
+  try {
+    const params = new URLSearchParams({ moduleId });
+    params.set("_", String(Date.now()));
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/training/lessons?${params}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get training lessons:", error);
+    return [];
+  }
+}
+
+// ==================== Community API ====================
+
+export async function getCommunityChannels(): Promise<CommunityChannel[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/channels?_=${Date.now()}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get channels:", error);
+    return [];
+  }
+}
+
+export async function getFeedPosts(
+  userId?: string,
+  limit?: number,
+  cursor?: number
+): Promise<{ posts: CommunityPost[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams();
+    if (userId) params.set("userId", userId);
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+    params.set("_", String(Date.now()));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/feed?${params}`);
+    if (!response.ok) return { posts: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get feed:", error);
+    return { posts: [], nextCursor: null };
+  }
+}
+
+export async function getChannelPosts(
+  channelId: string,
+  userId?: string,
+  limit?: number,
+  cursor?: number
+): Promise<{ posts: CommunityPost[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams({ channelId });
+    if (userId) params.set("userId", userId);
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+    params.set("_", String(Date.now()));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/posts?${params}`);
+    if (!response.ok) return { posts: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get channel posts:", error);
+    return { posts: [], nextCursor: null };
+  }
+}
+
+export async function getNewPostCount(since: number): Promise<number> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/community/new-count?since=${since}&_=${Date.now()}`
+    );
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.count || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+export async function createCommunityPost(
+  userId: string,
+  channelId: string,
+  body: string
+): Promise<{ postId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/posts?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, channelId, body }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to create post" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to create post:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function editCommunityPost(
+  userId: string,
+  postId: string,
+  body: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/post/edit?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, postId, body }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to edit post" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to edit post:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function deleteCommunityPost(
+  userId: string,
+  postId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/post/delete?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, postId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to delete post" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to delete post:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function togglePostLike(
+  userId: string,
+  postId: string
+): Promise<{ liked?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/post/like?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, postId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to toggle like" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to toggle like:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function getPostComments(
+  postId: string,
+  userId?: string,
+  cursor?: number,
+  limit?: number
+): Promise<{ comments: CommunityComment[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams({ postId });
+    if (userId) params.set("userId", userId);
+    if (cursor) params.set("cursor", String(cursor));
+    if (limit) params.set("limit", String(limit));
+    params.set("_", String(Date.now()));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/comments?${params}`);
+    if (!response.ok) return { comments: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get comments:", error);
+    return { comments: [], nextCursor: null };
+  }
+}
+
+export async function createPostComment(
+  userId: string,
+  postId: string,
+  body: string
+): Promise<{ commentId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/comments?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, postId, body }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to create comment" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to create comment:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function editPostComment(
+  userId: string,
+  commentId: string,
+  body: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/comment/edit?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, commentId, body }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to edit comment" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to edit comment:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function deletePostComment(
+  userId: string,
+  commentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/comment/delete?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, commentId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to delete comment" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to delete comment:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function toggleCommentLike(
+  userId: string,
+  commentId: string
+): Promise<{ liked?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/comment/like?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, commentId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to toggle like" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to toggle like:", error);
+    return { error: "Network error" };
+  }
+}
+
+// ==================== Direct Messages ====================
+
+export interface DMThread {
+  _id: string;
+  otherUserId: string;
+  otherUserName: string;
+  otherUserPhotoUrl: string | null;
+  lastMessageAt: number;
+  lastMessagePreview: string | null;
+  unreadCount: number;
+  createdAt: number;
+}
+
+export interface DMMessage {
+  _id: string;
+  threadId: string;
+  senderId: string;
+  body: string;
+  isRead: boolean;
+  isDeleted: boolean;
+  createdAt: number;
+}
+
+export async function getDMThreads(
+  userId: string,
+  limit?: number,
+  cursor?: number
+): Promise<{ threads: DMThread[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams({ userId, _: String(Date.now()) });
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/dm/threads?${params}`);
+    if (!response.ok) return { threads: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get DM threads:", error);
+    return { threads: [], nextCursor: null };
+  }
+}
+
+export async function getDMMessages(
+  userId: string,
+  threadId: string,
+  limit?: number,
+  cursor?: number
+): Promise<{ messages: DMMessage[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams({ userId, threadId, _: String(Date.now()) });
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/dm/messages?${params}`);
+    if (!response.ok) return { messages: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get DM messages:", error);
+    return { messages: [], nextCursor: null };
+  }
+}
+
+export async function getDMUnreadCount(userId: string): Promise<number> {
+  try {
+    const params = new URLSearchParams({ userId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/dm/unread-count?${params}`);
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.count ?? 0;
+  } catch (error) {
+    console.error("[Convex] Failed to get DM unread count:", error);
+    return 0;
+  }
+}
+
+export async function sendDM(
+  senderId: string,
+  recipientId: string,
+  body: string
+): Promise<{ messageId?: string; threadId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/dm/send?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ senderId, recipientId, body }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to send message" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to send DM:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function markDMThreadRead(
+  userId: string,
+  threadId: string
+): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/b2c/dm/mark-read?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, threadId }),
+    });
+  } catch (error) {
+    console.error("[Convex] Failed to mark thread read:", error);
+  }
+}
+
+export async function deleteDMMessage(
+  userId: string,
+  messageId: string
+): Promise<{ error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/dm/delete?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, messageId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to delete message" };
+    return {};
+  } catch (error) {
+    console.error("[Convex] Failed to delete DM:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function getCommunityMembers(
+  limit?: number,
+  search?: string,
+  cursor?: number
+): Promise<{ members: CommunityMember[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams();
+    if (limit) params.set("limit", String(limit));
+    if (search) params.set("search", search);
+    if (cursor) params.set("cursor", String(cursor));
+    params.set("_", String(Date.now()));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/members?${params}`);
+    if (!response.ok) return { members: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get members:", error);
+    return { members: [], nextCursor: null };
+  }
+}

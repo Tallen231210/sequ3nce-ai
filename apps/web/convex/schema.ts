@@ -848,6 +848,150 @@ export default defineSchema({
     .index("by_subscription_status", ["subscriptionStatus"])
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
+  // ==================== B2C Community Tables (Phase A) ====================
+
+  // Community channels (pre-seeded topic discussions)
+  b2cCommunityChannels: defineTable({
+    slug: v.string(),
+    name: v.string(),
+    description: v.string(),
+    icon: v.optional(v.string()),
+    order: v.number(),
+    isDefault: v.boolean(),
+    isArchived: v.boolean(),
+    postCount: v.number(),
+    lastActivityAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_order", ["order"]),
+
+  // Community posts within channels
+  b2cCommunityPosts: defineTable({
+    channelId: v.id("b2cCommunityChannels"),
+    authorId: v.id("b2cUsers"),
+    authorName: v.string(),
+    authorPhotoStorageId: v.optional(v.string()),
+    body: v.string(),
+    likeCount: v.number(),
+    commentCount: v.number(),
+    isPinned: v.boolean(),
+    isDeleted: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_channel", ["channelId", "createdAt"])
+    .index("by_author", ["authorId", "createdAt"])
+    .index("by_channel_pinned", ["channelId", "isPinned"])
+    .index("by_created", ["createdAt"]),
+
+  // Post likes (separate table for uniqueness enforcement)
+  b2cCommunityPostLikes: defineTable({
+    postId: v.id("b2cCommunityPosts"),
+    userId: v.id("b2cUsers"),
+    createdAt: v.number(),
+  })
+    .index("by_post_user", ["postId", "userId"])
+    .index("by_user", ["userId"]),
+
+  // Comments on posts (flat, no nesting)
+  b2cCommunityComments: defineTable({
+    postId: v.id("b2cCommunityPosts"),
+    channelId: v.id("b2cCommunityChannels"),
+    authorId: v.id("b2cUsers"),
+    authorName: v.string(),
+    authorPhotoStorageId: v.optional(v.string()),
+    body: v.string(),
+    likeCount: v.number(),
+    isDeleted: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_post", ["postId", "createdAt"])
+    .index("by_author", ["authorId", "createdAt"]),
+
+  // Comment likes
+  b2cCommunityCommentLikes: defineTable({
+    commentId: v.id("b2cCommunityComments"),
+    userId: v.id("b2cUsers"),
+    createdAt: v.number(),
+  })
+    .index("by_comment_user", ["commentId", "userId"])
+    .index("by_user", ["userId"]),
+
+  // ==================== B2C Community Tables (Phase B — schema only) ====================
+
+  // Training modules (admin-curated courses)
+  b2cTrainingModules: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+    thumbnailStorageId: v.optional(v.string()),
+    order: v.number(),
+    lessonCount: v.number(),
+    isPublished: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_published", ["isPublished", "order"]),
+
+  // Individual video lessons within a module
+  b2cTrainingLessons: defineTable({
+    moduleId: v.id("b2cTrainingModules"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    videoUrl: v.string(),
+    durationSeconds: v.optional(v.number()),
+    order: v.number(),
+    isPublished: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_module", ["moduleId", "order"]),
+
+  // ==================== B2C Community Tables (Phase C — schema only) ====================
+
+  // DM threads between two users
+  b2cDirectMessageThreads: defineTable({
+    participantKey: v.string(),
+    participant1Id: v.id("b2cUsers"),
+    participant2Id: v.id("b2cUsers"),
+    lastMessageAt: v.optional(v.number()),
+    lastMessagePreview: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_participant_key", ["participantKey"])
+    .index("by_participant1", ["participant1Id", "lastMessageAt"])
+    .index("by_participant2", ["participant2Id", "lastMessageAt"]),
+
+  // Individual DM messages
+  b2cDirectMessages: defineTable({
+    threadId: v.id("b2cDirectMessageThreads"),
+    senderId: v.id("b2cUsers"),
+    body: v.string(),
+    isRead: v.boolean(),
+    readAt: v.optional(v.number()),
+    isDeleted: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_thread", ["threadId", "createdAt"])
+    .index("by_recipient_unread", ["threadId", "isRead"]),
+
+  // ==================== B2C Community Tables (Phase D — schema only) ====================
+
+  // Friend connections between community members
+  b2cFriendships: defineTable({
+    requesterId: v.id("b2cUsers"),
+    recipientId: v.id("b2cUsers"),
+    friendshipKey: v.string(),
+    status: v.string(),
+    acceptedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_friendship_key", ["friendshipKey"])
+    .index("by_requester", ["requesterId", "status"])
+    .index("by_recipient", ["recipientId", "status"])
+    .index("by_accepted", ["status", "acceptedAt"]),
+
   // B2C closer profiles (public-facing profile data)
   b2cProfiles: defineTable({
     userId: v.id("b2cUsers"),

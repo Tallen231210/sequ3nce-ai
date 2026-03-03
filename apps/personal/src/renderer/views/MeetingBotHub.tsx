@@ -4,6 +4,7 @@ import {
   needsCalendarOnboarding,
   getActiveCallForCloserBot,
   getPendingQuestionnaireInfo,
+  getDMUnreadCount,
 } from '../convex';
 import { useTheme } from '../ThemeContext';
 import logoImage from '../../assets/logo.png';
@@ -16,6 +17,8 @@ import { ScheduleView } from './schedule/ScheduleView';
 import { ResourcesView } from './ResourcesView';
 import { SettingsView } from './SettingsView';
 import { ProfileView } from './ProfileView';
+import { CommunityView } from './CommunityView';
+import { DirectMessagesView } from './DirectMessagesView';
 
 // Sidebar navigation items for Sequ3nce Personal (B2C)
 type SidebarItem =
@@ -26,6 +29,7 @@ type SidebarItem =
   | 'resources'
   | 'jobboard'
   | 'profile'
+  | 'messages'
   | 'community'
   | 'settings';
 
@@ -101,6 +105,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    id: 'messages',
+    label: 'Messages',
+    icon: (
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+        <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
+      </svg>
+    ),
+  },
+  {
     id: 'community',
     label: 'Community',
     icon: (
@@ -149,6 +163,14 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Sidebar badge counts
   const [callsPendingCount, setCallsPendingCount] = useState(0);
+  const [dmUnreadCount, setDmUnreadCount] = useState(0);
+
+  // DM navigation state (for cross-view "Message" entry points)
+  const [startDMWith, setStartDMWith] = useState<{
+    userId: string;
+    name: string;
+    photoUrl: string | null;
+  } | null>(null);
 
   // Check calendar onboarding on mount
   useEffect(() => {
@@ -169,6 +191,17 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
     const interval = setInterval(poll, 10000);
     return () => clearInterval(interval);
   }, [closerInfo.closerId]);
+
+  // Poll DM unread count for Messages badge
+  useEffect(() => {
+    if (!closerInfo.b2cUserId) return;
+    const poll = () => {
+      getDMUnreadCount(closerInfo.b2cUserId!).then(setDmUnreadCount).catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 10000);
+    return () => clearInterval(interval);
+  }, [closerInfo.b2cUserId]);
 
   // Theme sync to floating windows is now handled by ThemeContext.tsx
 
@@ -269,7 +302,7 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
         {/* Nav items */}
         <nav className="flex-1 px-2 pt-2 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
-            const badge = item.id === 'calls' ? callsPendingCount : 0;
+            const badge = item.id === 'calls' ? callsPendingCount : item.id === 'messages' ? dmUnreadCount : 0;
             return (
               <button
                 key={item.id}
@@ -355,7 +388,10 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {renderContent(selectedItem, closerInfo, setSelectedItem, onLogout, handleOpenQuestionnaire)}
+          {renderContent(selectedItem, closerInfo, setSelectedItem, onLogout, handleOpenQuestionnaire, startDMWith, () => setStartDMWith(null), (userId, name, photoUrl) => {
+            setStartDMWith({ userId, name, photoUrl });
+            setSelectedItem('messages');
+          })}
         </div>
       </div>
     </div>
@@ -368,7 +404,10 @@ function renderContent(
   closerInfo: CloserInfo,
   onNavigate: (item: SidebarItem) => void,
   onLogout: () => void,
-  onOpenQuestionnaire?: (callId: string, prospectName?: string) => void
+  onOpenQuestionnaire?: (callId: string, prospectName?: string) => void,
+  startDMWith?: { userId: string; name: string; photoUrl: string | null } | null,
+  onDMRecipientConsumed?: () => void,
+  onStartDM?: (userId: string, name: string, photoUrl: string | null) => void
 ): React.ReactNode {
   switch (item) {
     case 'dashboard':
@@ -385,8 +424,19 @@ function renderContent(
       return <SettingsView closerInfo={closerInfo} onLogout={onLogout} />;
     case 'profile':
       return <ProfileView closerInfo={closerInfo} />;
-    case 'jobboard':
+    case 'messages':
+      return (
+        <DirectMessagesView
+          closerInfo={closerInfo}
+          initialRecipientId={startDMWith?.userId}
+          initialRecipientName={startDMWith?.name}
+          initialRecipientPhotoUrl={startDMWith?.photoUrl}
+          onRecipientConsumed={onDMRecipientConsumed}
+        />
+      );
     case 'community':
+      return <CommunityView closerInfo={closerInfo} onStartDM={onStartDM} />;
+    case 'jobboard':
       return <PlaceholderView name={NAV_ITEMS.find((i) => i.id === item)?.label || item} />;
     default:
       return <PlaceholderView name={NAV_ITEMS.find((i) => i.id === item)?.label || item} />;

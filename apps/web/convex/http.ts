@@ -5222,6 +5222,440 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ==================== B2C Community Endpoints ====================
+
+// GET /b2c/community/channels — List all channels
+http.route({
+  path: "/b2c/community/channels",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const channels = await ctx.runQuery(api.b2cCommunity.listChannels, {});
+      return b2cJsonResponse(channels);
+    } catch (error) {
+      console.error("Error listing channels:", error);
+      return b2cJsonResponse({ error: "Failed to load channels" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/channels",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/community/feed — Aggregated feed
+http.route({
+  path: "/b2c/community/feed",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const userId = url.searchParams.get("userId");
+      const result = await ctx.runQuery(api.b2cCommunity.getFeed, {
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        userId: userId ? (userId as any) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting feed:", error);
+      return b2cJsonResponse({ error: "Failed to load feed" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/feed",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/community/posts — Channel posts
+http.route({
+  path: "/b2c/community/posts",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const channelId = url.searchParams.get("channelId");
+      if (!channelId) return b2cJsonResponse({ error: "channelId is required" }, 400);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const userId = url.searchParams.get("userId");
+      const result = await ctx.runQuery(api.b2cCommunity.listPosts, {
+        channelId: channelId as any,
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        userId: userId ? (userId as any) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error listing posts:", error);
+      return b2cJsonResponse({ error: "Failed to load posts" }, 500);
+    }
+  }),
+});
+
+// POST /b2c/community/posts — Create post
+http.route({
+  path: "/b2c/community/posts",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.channelId || !body.body) {
+        return b2cJsonResponse({ error: "userId, channelId, and body are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.createPost, {
+        userId: body.userId as any,
+        channelId: body.channelId as any,
+        body: body.body,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error creating post:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to create post" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/posts",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// POST /b2c/community/post/edit — Edit post
+http.route({
+  path: "/b2c/community/post/edit",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.postId || !body.body) {
+        return b2cJsonResponse({ error: "userId, postId, and body are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.editPost, {
+        userId: body.userId as any,
+        postId: body.postId as any,
+        body: body.body,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error editing post:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to edit post" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/post/edit",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/community/post/delete — Soft-delete post
+http.route({
+  path: "/b2c/community/post/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.postId) {
+        return b2cJsonResponse({ error: "userId and postId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.deletePost, {
+        userId: body.userId as any,
+        postId: body.postId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error deleting post:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to delete post" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/post/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/community/post/like — Toggle post like
+http.route({
+  path: "/b2c/community/post/like",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.postId) {
+        return b2cJsonResponse({ error: "userId and postId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.togglePostLike, {
+        userId: body.userId as any,
+        postId: body.postId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error toggling post like:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to toggle like" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/post/like",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/community/comments — Post comments
+http.route({
+  path: "/b2c/community/comments",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const postId = url.searchParams.get("postId");
+      if (!postId) return b2cJsonResponse({ error: "postId is required" }, 400);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const userId = url.searchParams.get("userId");
+      const result = await ctx.runQuery(api.b2cCommunity.listComments, {
+        postId: postId as any,
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        userId: userId ? (userId as any) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error listing comments:", error);
+      return b2cJsonResponse({ error: "Failed to load comments" }, 500);
+    }
+  }),
+});
+
+// POST /b2c/community/comments — Create comment
+http.route({
+  path: "/b2c/community/comments",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.postId || !body.body) {
+        return b2cJsonResponse({ error: "userId, postId, and body are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.createComment, {
+        userId: body.userId as any,
+        postId: body.postId as any,
+        body: body.body,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error creating comment:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to create comment" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/comments",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// POST /b2c/community/comment/edit — Edit comment
+http.route({
+  path: "/b2c/community/comment/edit",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.commentId || !body.body) {
+        return b2cJsonResponse({ error: "userId, commentId, and body are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.editComment, {
+        userId: body.userId as any,
+        commentId: body.commentId as any,
+        body: body.body,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error editing comment:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to edit comment" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/comment/edit",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/community/comment/delete — Soft-delete comment
+http.route({
+  path: "/b2c/community/comment/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.commentId) {
+        return b2cJsonResponse({ error: "userId and commentId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.deleteComment, {
+        userId: body.userId as any,
+        commentId: body.commentId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error deleting comment:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to delete comment" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/comment/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/community/comment/like — Toggle comment like
+http.route({
+  path: "/b2c/community/comment/like",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.commentId) {
+        return b2cJsonResponse({ error: "userId and commentId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.toggleCommentLike, {
+        userId: body.userId as any,
+        commentId: body.commentId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error toggling comment like:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to toggle like" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/comment/like",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/community/members — Member directory
+http.route({
+  path: "/b2c/community/members",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const search = url.searchParams.get("search");
+      const result = await ctx.runQuery(api.b2cCommunity.listMembers, {
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        search: search || undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error listing members:", error);
+      return b2cJsonResponse({ error: "Failed to load members" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/members",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/community/new-count — New post count since timestamp
+http.route({
+  path: "/b2c/community/new-count",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const since = url.searchParams.get("since");
+      if (!since) return b2cJsonResponse({ error: "since is required" }, 400);
+      const count = await ctx.runQuery(api.b2cCommunity.getNewPostCount, {
+        since: Number(since),
+      });
+      return b2cJsonResponse({ count });
+    } catch (error) {
+      console.error("Error getting new post count:", error);
+      return b2cJsonResponse({ error: "Failed to get count" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/new-count",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/training/modules — List published training modules
+http.route({
+  path: "/b2c/training/modules",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const modules = await ctx.runQuery(api.b2cTraining.listPublishedModules, {});
+      return b2cJsonResponse(modules);
+    } catch (error) {
+      console.error("Error listing training modules:", error);
+      return b2cJsonResponse({ error: "Failed to load modules" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/training/modules",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/training/lessons — Lessons for a module
+http.route({
+  path: "/b2c/training/lessons",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const moduleId = url.searchParams.get("moduleId");
+      if (!moduleId) return b2cJsonResponse({ error: "moduleId is required" }, 400);
+      const lessons = await ctx.runQuery(api.b2cTraining.listModuleLessons, {
+        moduleId: moduleId as any,
+      });
+      return b2cJsonResponse(lessons);
+    } catch (error) {
+      console.error("Error listing training lessons:", error);
+      return b2cJsonResponse({ error: "Failed to load lessons" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/training/lessons",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
 // GET /b2c/public-profile — Public profile + stats by slug (no auth)
 http.route({
   path: "/b2c/public-profile",
@@ -5252,6 +5686,185 @@ http.route({
   path: "/b2c/public-profile",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ==================== B2C Direct Message Endpoints ====================
+
+// GET /b2c/dm/threads — List DM threads for a user
+http.route({
+  path: "/b2c/dm/threads",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const result = await ctx.runQuery(api.b2cDirectMessages.listThreads, {
+        userId: userId as any,
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error listing DM threads:", error);
+      return b2cJsonResponse({ error: "Failed to load threads" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/dm/threads",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/dm/messages — Get messages in a thread
+http.route({
+  path: "/b2c/dm/messages",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const threadId = url.searchParams.get("threadId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      if (!threadId) return b2cJsonResponse({ error: "threadId is required" }, 400);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const result = await ctx.runQuery(api.b2cDirectMessages.getMessages, {
+        userId: userId as any,
+        threadId: threadId as any,
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting DM messages:", error);
+      return b2cJsonResponse({ error: "Failed to load messages" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/dm/messages",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/dm/unread-count — Total unread DM count for sidebar badge
+http.route({
+  path: "/b2c/dm/unread-count",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cDirectMessages.getUnreadCount, {
+        userId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting DM unread count:", error);
+      return b2cJsonResponse({ error: "Failed to get unread count" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/dm/unread-count",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/dm/send — Send a direct message
+http.route({
+  path: "/b2c/dm/send",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { senderId, recipientId, body: msgBody } = body;
+      if (!senderId || !recipientId || !msgBody) {
+        return b2cJsonResponse({ error: "senderId, recipientId, and body are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cDirectMessages.sendMessage, {
+        senderId: senderId as any,
+        recipientId: recipientId as any,
+        body: msgBody,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      console.error("Error sending DM:", error);
+      return b2cJsonResponse({ error: error.message || "Failed to send message" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/dm/send",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/dm/mark-read — Mark a thread as read
+http.route({
+  path: "/b2c/dm/mark-read",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, threadId } = body;
+      if (!userId || !threadId) {
+        return b2cJsonResponse({ error: "userId and threadId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cDirectMessages.markThreadRead, {
+        userId: userId as any,
+        threadId: threadId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error marking DM thread read:", error);
+      return b2cJsonResponse({ error: "Failed to mark thread read" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/dm/mark-read",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/dm/delete — Soft-delete a message
+http.route({
+  path: "/b2c/dm/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, messageId } = body;
+      if (!userId || !messageId) {
+        return b2cJsonResponse({ error: "userId and messageId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cDirectMessages.deleteMessage, {
+        userId: userId as any,
+        messageId: messageId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error deleting DM:", error);
+      return b2cJsonResponse({ error: "Failed to delete message" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/dm/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
 export default http;

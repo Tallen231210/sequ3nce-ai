@@ -226,3 +226,22 @@ export const getB2CUserByEmail = internalQuery({
     };
   },
 });
+
+// Admin: update subscription status (for testing / Stripe webhook handler)
+export const updateSubscriptionStatus = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    status: v.union(
+      v.literal("active"),
+      v.literal("cancelled"),
+      v.literal("past_due"),
+      v.literal("none"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+    await ctx.db.patch(args.userId, { subscriptionStatus: args.status });
+    return { success: true };
+  },
+});
