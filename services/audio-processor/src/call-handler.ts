@@ -463,6 +463,7 @@ export class CallHandler {
     // Determine closer vs prospect from participant name
     const isCloser = this.getIsCloserByName(chunk.speaker);
     const role = isCloser ? "closer" : "prospect";
+    this.speakerSegmentCounts[role]++;
 
     // Feed into existing transcript pipeline with pre-determined role.
     // Use a special prefix so handleTranscript knows NOT to re-determine via getIsCloser().
@@ -477,6 +478,8 @@ export class CallHandler {
 
   // Track which participant names we've already logged speaker decisions for (reduce log spam)
   private loggedSpeakerDecisions = new Set<string>();
+  // Diagnostic counters for speaker balance
+  private speakerSegmentCounts = { closer: 0, prospect: 0 };
 
   /**
    * Determine if a participant is the Closer by their name (used by Recall.ai).
@@ -530,8 +533,8 @@ export class CallHandler {
         result = false;
         reason = `fuzzy-matches prospectName "${this.session.metadata.prospectName}" → Prospect`;
       } else {
-        result = true;
-        reason = `doesn't match prospectName "${this.session.metadata.prospectName}" → Closer (by elimination)`;
+        result = false;
+        reason = `doesn't match prospectName "${this.session.metadata.prospectName}" → Prospect (safe default)`;
       }
     }
     // 5. No data available — default to prospect
@@ -619,6 +622,17 @@ export class CallHandler {
       const prospectSecs = Math.round(this.session.prospectTalkTimeMs / 1000);
       await updateTalkTime(this.convexCallId, closerSecs, prospectSecs);
       logger.info(`Final talk time: closer=${closerSecs}s, prospect=${prospectSecs}s`);
+    }
+
+    // Speaker balance diagnostic (Recall.ai calls only)
+    const { closer: closerSegs, prospect: prospectSegs } = this.speakerSegmentCounts;
+    const totalSegs = closerSegs + prospectSegs;
+    if (totalSegs > 0) {
+      const closerPct = Math.round((closerSegs / totalSegs) * 100);
+      logger.info(`[Speaker Balance] ${closerSegs} closer / ${prospectSegs} prospect segments (${closerPct}% closer)`);
+      if (closerPct > 90 && totalSegs > 5) {
+        logger.warn(`[Speaker Balance] WARNING: ${closerPct}% of ${totalSegs} segments labeled as closer — possible diarization failure. closerName: "${this.session.metadata.closerName}", firstParticipantJoined: "${this.firstParticipantJoined}", unique speakers: [${Array.from(this.loggedSpeakerDecisions).join(', ')}]`);
+      }
     }
 
     // Calculate duration

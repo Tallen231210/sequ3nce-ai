@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
 import { formatTime } from "./utils";
 
@@ -36,7 +36,22 @@ export function VideoReviewPlayer({
   const trackRef = useRef<HTMLDivElement>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const PLAYBACK_RATES = [1, 1.25, 1.5, 2];
+
+  const handleCycleSpeed = useCallback(() => {
+    const currentIndex = PLAYBACK_RATES.indexOf(playbackRate);
+    const nextRate = PLAYBACK_RATES[(currentIndex + 1) % PLAYBACK_RATES.length];
+    setPlaybackRate(nextRate);
+  }, [playbackRate]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate, videoRef]);
 
   const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!trackRef.current || duration === 0) return;
@@ -81,7 +96,7 @@ export function VideoReviewPlayer({
 
   return (
     <div
-      className="relative group rounded-lg overflow-hidden bg-black"
+      className="relative group rounded-lg overflow-hidden bg-gray-950"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -91,8 +106,7 @@ export function VideoReviewPlayer({
         src={recordingUrl}
         playsInline
         preload="auto"
-        className="w-full cursor-pointer"
-        style={{ maxHeight: "480px" }}
+        className="w-full aspect-video cursor-pointer"
         onClick={onPlayPause}
         onTimeUpdate={(e) => onTimeUpdate(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration)}
@@ -176,6 +190,15 @@ export function VideoReviewPlayer({
           </span>
 
           <div className="flex-1" />
+
+          {/* Playback Speed */}
+          <button
+            onClick={handleCycleSpeed}
+            className="text-white hover:text-white/80 transition-colors text-xs font-medium min-w-[2.5rem]"
+            title="Playback speed"
+          >
+            {playbackRate}x
+          </button>
 
           {/* Volume */}
           <button
