@@ -744,12 +744,16 @@ export default function SettingsPage() {
   // GHL states
   const [ghlExpanded, setGhlExpanded] = useState(false);
   const [ghlApiKey, setGhlApiKey] = useState("");
-  const [ghlLocationId, setGhlLocationId] = useState("");
   const [ghlCreateContacts, setGhlCreateContacts] = useState(true);
   const [ghlAddNotes, setGhlAddNotes] = useState(true);
   const [savingGhl, setSavingGhl] = useState(false);
   const [testingGhl, setTestingGhl] = useState(false);
-  const [ghlTestResult, setGhlTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [ghlTestResult, setGhlTestResult] = useState<{
+    success: boolean;
+    error?: string;
+    locationId?: string;
+    locationName?: string;
+  } | null>(null);
 
   // Meeting Bot states
   const [savingMeetingBot, setSavingMeetingBot] = useState(false);
@@ -1227,18 +1231,18 @@ export default function SettingsPage() {
     }
   };
 
-  // Handle GHL config save
+  // Handle GHL config save — uses locationId from test result
   const handleSaveGhl = async (enabled: boolean) => {
     setSavingGhl(true);
     try {
       await updateGhlConfig({
         apiKey: ghlApiKey || undefined,
-        locationId: ghlLocationId || undefined,
+        locationId: ghlTestResult?.locationId || undefined,
         enabled,
         createContacts: ghlCreateContacts,
         addNotes: ghlAddNotes,
       });
-      setGhlTestResult(null);
+      if (!enabled) setGhlTestResult(null);
     } catch (error) {
       console.error("Failed to save GHL config:", error);
     } finally {
@@ -1246,15 +1250,14 @@ export default function SettingsPage() {
     }
   };
 
-  // Handle GHL connection test
+  // Handle GHL connection test — auto-detects location ID
   const handleTestGhl = async () => {
-    if (!ghlApiKey.trim() || !ghlLocationId.trim()) return;
+    if (!ghlApiKey.trim()) return;
     setTestingGhl(true);
     setGhlTestResult(null);
     try {
       const result = await testGhlConnection({
         apiKey: ghlApiKey.trim(),
-        locationId: ghlLocationId.trim(),
       });
       setGhlTestResult(result);
     } catch {
@@ -2069,18 +2072,6 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <div>
-                    <Label htmlFor="ghl-location-id">Location ID</Label>
-                    <Input
-                      id="ghl-location-id"
-                      type="text"
-                      placeholder="Enter your GHL Location / Sub-Account ID"
-                      value={ghlLocationId}
-                      onChange={(e) => setGhlLocationId(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 text-sm">
                       <input
@@ -2107,7 +2098,7 @@ export default function SettingsPage() {
                       size="sm"
                       variant="outline"
                       onClick={handleTestGhl}
-                      disabled={testingGhl || !ghlApiKey.trim() || !ghlLocationId.trim()}
+                      disabled={testingGhl || !ghlApiKey.trim()}
                     >
                       {testingGhl ? (
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -2119,7 +2110,7 @@ export default function SettingsPage() {
                     <Button
                       size="sm"
                       onClick={() => handleSaveGhl(true)}
-                      disabled={savingGhl || !ghlApiKey.trim() || !ghlLocationId.trim()}
+                      disabled={savingGhl || !ghlTestResult?.success}
                     >
                       {savingGhl ? (
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -2143,19 +2134,22 @@ export default function SettingsPage() {
 
                   {ghlTestResult && (
                     <div className={`p-2 rounded text-sm ${ghlTestResult.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                      {ghlTestResult.success ? "Connection successful! Your credentials are valid." : ghlTestResult.error || "Connection failed"}
+                      {ghlTestResult.success
+                        ? `Connected to "${ghlTestResult.locationName}". Click Save & Enable to activate.`
+                        : ghlTestResult.error || "Connection failed"}
                     </div>
                   )}
                 </div>
 
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-                  <p className="font-medium mb-2">How to get your GHL credentials:</p>
+                  <p className="font-medium mb-2">How to get your GHL API key:</p>
                   <ol className="list-decimal list-inside space-y-1">
                     <li>Log in to <strong>app.gohighlevel.com</strong></li>
-                    <li>Go to <strong>Settings</strong> &rarr; <strong>Business Profile</strong></li>
-                    <li>Copy your <strong>API Key</strong> (Private Integration Token)</li>
-                    <li>Copy your <strong>Location ID</strong> from the URL or Business Info</li>
+                    <li>Go to <strong>Settings</strong> &rarr; <strong>Integrations</strong> &rarr; <strong>Private Integrations</strong></li>
+                    <li>Create a new integration (or use an existing one)</li>
+                    <li>Copy the <strong>Private Integration Token</strong> and paste it above</li>
                   </ol>
+                  <p className="mt-2 text-blue-600">Your sub-account is detected automatically from the API key.</p>
                 </div>
 
                 <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-zinc-600">

@@ -186,39 +186,59 @@ export const updateGhlConfig = action({
 export const testGhlConnection = action({
   args: {
     apiKey: v.string(),
-    locationId: v.string(),
   },
-  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ success: boolean; error?: string; locationId?: string; locationName?: string }> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { success: false, error: "Not authenticated" };
 
     try {
-      const response = await makeGhlRequest(
-        `/locations/${args.locationId}/customFields`,
+      // Auto-detect location ID from the API key
+      const locResponse = await makeGhlRequest("/locations/search", args.apiKey);
+
+      if (locResponse.status === 401 || locResponse.status === 403) {
+        return {
+          success: false,
+          error: "Invalid API key. Check your GHL Private Integration Token.",
+        };
+      }
+      if (!locResponse.ok) {
+        const errorText = await locResponse.text();
+        return {
+          success: false,
+          error: `GHL API error: ${locResponse.status}${errorText ? ` - ${errorText}` : ""}`,
+        };
+      }
+
+      const locData = await locResponse.json();
+      const locations = locData.locations;
+
+      if (!locations || locations.length === 0) {
+        return {
+          success: false,
+          error: "No sub-account found for this API key. Make sure the token has 'locations.readonly' permission.",
+        };
+      }
+
+      const locationId = locations[0].id;
+      const locationName = locations[0].name;
+
+      // Verify we can actually read contacts for this location
+      const verifyResponse = await makeGhlRequest(
+        `/locations/${locationId}/customFields`,
         args.apiKey
       );
 
-      if (response.status === 401 || response.status === 403) {
+      if (!verifyResponse.ok) {
         return {
           success: false,
-          error: "Invalid API key. Check your GHL settings.",
-        };
-      }
-      if (response.status === 404) {
-        return {
-          success: false,
-          error: "Location not found. Check your Location ID.",
-        };
-      }
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          error: `GHL API error: ${response.status}${errorText ? ` - ${errorText}` : ""}`,
+          error: `Connected but cannot access location data. Check API key permissions.`,
         };
       }
 
-      return { success: true };
+      return { success: true, locationId, locationName };
     } catch (error) {
       return { success: false, error: `Connection failed: ${String(error)}` };
     }
