@@ -18,12 +18,13 @@ import {
   TrendingUp,
   FileText,
   MessageSquareText,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
 import { Logo } from "@/components/ui/logo";
 
-const navigation = [
+const baseNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Live Calls", href: "/dashboard/live", icon: Radio },
   { name: "Schedule", href: "/dashboard/schedule", icon: Calendar },
@@ -53,6 +54,15 @@ export function Sidebar() {
   );
 
   const callReviewsBadge = (flaggedCount?.count ?? 0) + (unreadReplyCount?.count ?? 0);
+
+  // Build navigation dynamically — add Hyros Sync before Billing when enabled
+  const navigation = team?.hyrosEnabled
+    ? [
+        ...baseNavigation.slice(0, 10), // Dashboard through Team
+        { name: "Hyros Sync", href: "/dashboard/hyros-sync", icon: Zap },
+        ...baseNavigation.slice(10), // Billing, Settings
+      ]
+    : baseNavigation;
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-background">

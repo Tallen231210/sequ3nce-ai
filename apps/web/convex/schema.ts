@@ -115,6 +115,10 @@ export default defineSchema({
       })),
     })),
     discordConnectedAt: v.optional(v.number()),
+    // Hyros ad attribution integration
+    hyrosApiKey: v.optional(v.string()),
+    hyrosEnabled: v.optional(v.boolean()),
+    hyrosConnectedAt: v.optional(v.number()),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -335,6 +339,10 @@ export default defineSchema({
     lastCommentAt: v.optional(v.number()),           // When the last comment was added
     feedbackReadAt: v.optional(v.number()),          // When closer last read manager feedback
     managerReadAt: v.optional(v.number()),           // When manager last read closer replies
+
+    // Hyros sync tracking
+    hyrosSyncedAt: v.optional(v.number()),
+    hyrosSyncError: v.optional(v.string()),
 
     createdAt: v.number(),
   })

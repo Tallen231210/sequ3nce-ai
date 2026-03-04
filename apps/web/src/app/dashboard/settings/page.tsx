@@ -671,6 +671,11 @@ export default function SettingsPage() {
   const updateDiscordNotificationChannel = useMutation(api.teams.updateDiscordNotificationChannel);
   const testDiscordWebhook = useAction(api.discord.testDiscordWebhook);
 
+  // Hyros
+  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, clerkId ? { clerkId } : "skip");
+  const updateHyrosConfig = useMutation(api.hyros.updateHyrosConfig);
+  const testHyrosConnection = useAction(api.hyros.testHyrosConnection);
+
   // Meeting Bot
   const updateMeetingBotEnabled = useMutation(api.teams.updateMeetingBotEnabled);
   const updateMeetingBotName = useMutation(api.teams.updateMeetingBotName);
@@ -720,6 +725,13 @@ export default function SettingsPage() {
   const [savingDiscordChannel, setSavingDiscordChannel] = useState<string | null>(null);
   const [testingDiscordWebhook, setTestingDiscordWebhook] = useState<string | null>(null);
   const [discordTestResults, setDiscordTestResults] = useState<{ [key: string]: { success: boolean; error?: string } | null }>({});
+
+  // Hyros states
+  const [hyrosExpanded, setHyrosExpanded] = useState(false);
+  const [hyrosApiKey, setHyrosApiKey] = useState("");
+  const [savingHyros, setSavingHyros] = useState(false);
+  const [testingHyros, setTestingHyros] = useState(false);
+  const [hyrosTestResult, setHyrosTestResult] = useState<{ success: boolean; error?: string } | null>(null);
 
   // Meeting Bot states
   const [savingMeetingBot, setSavingMeetingBot] = useState(false);
@@ -1162,6 +1174,39 @@ export default function SettingsPage() {
       setDiscordTestResults((prev) => ({ ...prev, [notificationType]: { success: false, error: "Failed to test webhook" } }));
     } finally {
       setTestingDiscordWebhook(null);
+    }
+  };
+
+  // Handle Hyros config save
+  const handleSaveHyros = async (enabled: boolean) => {
+    if (!clerkId) return;
+    setSavingHyros(true);
+    try {
+      await updateHyrosConfig({
+        clerkId,
+        apiKey: hyrosApiKey || undefined,
+        enabled,
+      });
+      setHyrosTestResult(null);
+    } catch (error) {
+      console.error("Failed to save Hyros config:", error);
+    } finally {
+      setSavingHyros(false);
+    }
+  };
+
+  // Handle Hyros connection test
+  const handleTestHyros = async () => {
+    if (!clerkId || !hyrosApiKey.trim()) return;
+    setTestingHyros(true);
+    setHyrosTestResult(null);
+    try {
+      const result = await testHyrosConnection({ clerkId, apiKey: hyrosApiKey.trim() });
+      setHyrosTestResult(result);
+    } catch (error) {
+      setHyrosTestResult({ success: false, error: "Failed to test connection" });
+    } finally {
+      setTestingHyros(false);
     }
   };
 
@@ -1802,6 +1847,124 @@ export default function SettingsPage() {
                   </ol>
                   <p className="mt-2 text-blue-500">
                     Tip: You can use the same webhook URL for all notification types, or create separate webhooks for different channels.
+                  </p>
+                </div>
+              </div>
+              )}
+            </div>
+
+            {/* Hyros Ad Attribution Integration */}
+            <div className="border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setHyrosExpanded(!hyrosExpanded)}
+                className="w-full flex items-center justify-between p-4 hover:bg-zinc-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${hyrosConfig?.enabled ? "bg-orange-50" : "bg-zinc-100"}`}>
+                    <Tags className={`h-5 w-5 ${hyrosConfig?.enabled ? "text-orange-600" : "text-zinc-600"}`} />
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">Hyros</p>
+                      {hyrosConfig?.enabled && hyrosConfig?.hasApiKey && (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">Connected</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Push call intelligence to Hyros for ad attribution
+                    </p>
+                  </div>
+                </div>
+                {hyrosExpanded ? (
+                  <ChevronUp className="h-5 w-5 text-zinc-400" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-zinc-400" />
+                )}
+              </button>
+
+              {hyrosExpanded && (
+              <div className="px-4 pb-4 space-y-4 border-t pt-4">
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="hyros-api-key">API Key</Label>
+                    <Input
+                      id="hyros-api-key"
+                      type="password"
+                      placeholder="Enter your Hyros API key"
+                      value={hyrosApiKey}
+                      onChange={(e) => setHyrosApiKey(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleTestHyros}
+                      disabled={testingHyros || !hyrosApiKey.trim()}
+                    >
+                      {testingHyros ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                      )}
+                      Test Connection
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleSaveHyros(true)}
+                      disabled={savingHyros || !hyrosApiKey.trim()}
+                    >
+                      {savingHyros ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      Save & Enable
+                    </Button>
+                    {hyrosConfig?.enabled && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSaveHyros(false)}
+                        disabled={savingHyros}
+                        className="text-zinc-500"
+                      >
+                        Disable
+                      </Button>
+                    )}
+                  </div>
+
+                  {hyrosTestResult && (
+                    <div className={`p-2 rounded text-sm ${hyrosTestResult.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                      {hyrosTestResult.success ? "Connection successful! Your API key is valid." : hyrosTestResult.error || "Connection failed"}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  <p className="font-medium mb-2">How to get your Hyros API key:</p>
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li>Log in to <strong>app.hyros.com</strong></li>
+                    <li>Go to <strong>Settings</strong> &rarr; <strong>API</strong></li>
+                    <li>Copy your API key and paste it above</li>
+                  </ol>
+                  <p className="mt-2 text-blue-500">
+                    Once enabled, go to <strong>Hyros Sync</strong> in the sidebar to review and push call data.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-zinc-600">
+                  <p className="font-medium mb-1">What gets pushed to Hyros:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>Lead profiles with rich tags (outcome, objections, engagement, belief scores)</li>
+                    <li>Call records (qualified/unqualified)</li>
+                    <li>Sales data (cash collected for closed deals)</li>
+                    <li>Custom events (call completed, no-show, follow-up)</li>
+                  </ul>
+                  <p className="mt-2 text-zinc-500">
+                    All data is reviewed by a manager before being pushed — nothing is sent automatically.
                   </p>
                 </div>
               </div>
