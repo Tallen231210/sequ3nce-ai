@@ -1512,20 +1512,6 @@ export default function SettingsPage() {
             />
             */}
 
-            <IntegrationCard
-              name="Google Calendar"
-              description="Sync scheduled calls from Google Calendar"
-              icon={<Calendar className="h-5 w-5 text-zinc-600" />}
-              comingSoon
-            />
-
-            <IntegrationCard
-              name="Calendly"
-              description="Sync scheduled calls from Calendly"
-              icon={<Calendar className="h-5 w-5 text-zinc-600" />}
-              comingSoon
-            />
-
             {/* Slack OAuth Integration */}
             <div className="p-4 border rounded-lg space-y-4">
               <button
