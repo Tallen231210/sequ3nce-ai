@@ -55,12 +55,9 @@ const OUTCOME_STYLES: Record<string, { label: string; className: string }> = {
 };
 
 export default function HyrosSyncPage() {
-  const { team, clerkId, isLoading: isTeamLoading } = useTeam();
+  const { team, isLoading: isTeamLoading } = useTeam();
 
-  const hyrosConfig = useQuery(
-    api.hyros.getHyrosConfig,
-    clerkId ? { clerkId } : "skip"
-  );
+  const hyrosConfig = useQuery(api.hyros.getHyrosConfig);
 
   const pendingCalls = useQuery(
     api.hyros.getPendingHyrosCalls,
@@ -72,8 +69,8 @@ export default function HyrosSyncPage() {
     team?._id ? { teamId: team._id, limit: 20 } : "skip"
   );
 
-  const pushCallToHyros = useAction(api.hyros.pushCallToHyros);
-  const batchPushToHyros = useAction(api.hyros.batchPushToHyros);
+  const pushCallToHyros = useAction(api.hyrosActions.pushCallToHyros);
+  const batchPushToHyros = useAction(api.hyrosActions.batchPushToHyros);
 
   const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set());
   const [pushingCall, setPushingCall] = useState<string | null>(null);
@@ -152,10 +149,9 @@ export default function HyrosSyncPage() {
   };
 
   const handlePushSingle = async (callId: Id<"calls">) => {
-    if (!clerkId) return;
     setPushingCall(callId);
     try {
-      const result = await pushCallToHyros({ clerkId, callId });
+      const result = await pushCallToHyros({ callId });
       setPushResults((prev) => ({ ...prev, [callId]: result }));
       if (result.success) {
         setSelectedCalls((prev) => {
@@ -172,11 +168,10 @@ export default function HyrosSyncPage() {
   };
 
   const handleBatchPush = async () => {
-    if (!clerkId || selectedPushable.length === 0) return;
+    if (selectedPushable.length === 0) return;
     setBatchPushing(true);
     try {
       const result = await batchPushToHyros({
-        clerkId,
         callIds: selectedPushable as Id<"calls">[],
       });
 

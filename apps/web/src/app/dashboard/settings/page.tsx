@@ -401,7 +401,7 @@ interface DiscordNotificationConfigProps {
   type: string;
   label: string;
   description: string;
-  config?: { enabled: boolean; webhookUrl?: string; channelName?: string };
+  config?: { enabled?: boolean; channelName?: string; hasWebhookUrl?: boolean };
   onUpdate: (enabled: boolean, webhookUrl?: string, channelName?: string) => Promise<void>;
   onTest: (webhookUrl: string, channelName?: string) => Promise<void>;
   saving: boolean;
@@ -420,23 +420,26 @@ function DiscordNotificationConfig({
   testing,
   testResult,
 }: DiscordNotificationConfigProps) {
-  const [webhookUrl, setWebhookUrl] = useState(config?.webhookUrl || "");
+  const [webhookUrl, setWebhookUrl] = useState("");
   const [channelName, setChannelName] = useState(config?.channelName || "");
   const isEnabled = config?.enabled ?? false;
-  const hasWebhook = !!webhookUrl.trim();
+  // URL field has a value typed by the user, or an existing one is saved on the server
+  const hasWebhook = !!webhookUrl.trim() || !!config?.hasWebhookUrl;
 
-  // Sync local state when config changes
+  // Sync channel name when config changes (webhook URL is redacted — never pre-filled)
   useEffect(() => {
-    setWebhookUrl(config?.webhookUrl || "");
     setChannelName(config?.channelName || "");
-  }, [config?.webhookUrl, config?.channelName]);
+  }, [config?.channelName]);
 
   const handleSave = async () => {
-    await onUpdate(isEnabled, webhookUrl.trim() || undefined, channelName.trim() || undefined);
+    // Only send webhook URL if user entered a new one (URL is redacted from server)
+    const urlToSend = webhookUrl.trim() || undefined;
+    await onUpdate(isEnabled, urlToSend, channelName.trim() || undefined);
   };
 
   const handleToggle = async (enabled: boolean) => {
-    await onUpdate(enabled, webhookUrl.trim() || undefined, channelName.trim() || undefined);
+    const urlToSend = webhookUrl.trim() || undefined;
+    await onUpdate(enabled, urlToSend, channelName.trim() || undefined);
   };
 
   return (
@@ -478,7 +481,7 @@ function DiscordNotificationConfig({
             <Input
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="Discord webhook URL"
+              placeholder={config?.hasWebhookUrl ? "Webhook URL saved (enter new URL to change)" : "Discord webhook URL"}
               type="text"
               className="flex-1 text-sm"
             />
@@ -671,15 +674,15 @@ export default function SettingsPage() {
   const updateDiscordNotificationChannel = useMutation(api.teams.updateDiscordNotificationChannel);
   const testDiscordWebhook = useAction(api.discord.testDiscordWebhook);
 
-  // Hyros
-  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, clerkId ? { clerkId } : "skip");
-  const updateHyrosConfig = useMutation(api.hyros.updateHyrosConfig);
-  const testHyrosConnection = useAction(api.hyros.testHyrosConnection);
+  // Hyros (auth context — no clerkId needed)
+  const hyrosConfig = useQuery(api.hyros.getHyrosConfig);
+  const updateHyrosConfig = useAction(api.hyrosActions.updateHyrosConfig);
+  const testHyrosConnection = useAction(api.hyrosActions.testHyrosConnection);
 
-  // GHL
-  const ghlConfig = useQuery(api.ghl.getGhlConfig, clerkId ? { clerkId } : "skip");
-  const updateGhlConfig = useMutation(api.ghl.updateGhlConfig);
-  const testGhlConnection = useAction(api.ghl.testGhlConnection);
+  // GHL (auth context — no clerkId needed)
+  const ghlConfig = useQuery(api.ghl.getGhlConfig);
+  const updateGhlConfig = useAction(api.ghlActions.updateGhlConfig);
+  const testGhlConnection = useAction(api.ghlActions.testGhlConnection);
 
   // Meeting Bot
   const updateMeetingBotEnabled = useMutation(api.teams.updateMeetingBotEnabled);
@@ -820,7 +823,8 @@ export default function SettingsPage() {
       setTimezone(settings.team?.timezone || "America/New_York");
       setCustomOutcomes(settings.team?.customOutcomes || []);
       setCustomCategories(settings.team?.customPlaybookCategories || []);
-      setSlackWebhookUrl(settings.team?.slackWebhookUrl || "");
+      // Webhook URL is redacted — don't pre-fill. Only hasSlackWebhookUrl boolean is available.
+      setSlackWebhookUrl("");
       setMeetingBotName(settings.team?.meetingBotName || "Sequ3nce.ai");
     }
   }, [settings]);
@@ -1194,11 +1198,9 @@ export default function SettingsPage() {
 
   // Handle Hyros config save
   const handleSaveHyros = async (enabled: boolean) => {
-    if (!clerkId) return;
     setSavingHyros(true);
     try {
       await updateHyrosConfig({
-        clerkId,
         apiKey: hyrosApiKey || undefined,
         enabled,
       });
@@ -1212,11 +1214,11 @@ export default function SettingsPage() {
 
   // Handle Hyros connection test
   const handleTestHyros = async () => {
-    if (!clerkId || !hyrosApiKey.trim()) return;
+    if (!hyrosApiKey.trim()) return;
     setTestingHyros(true);
     setHyrosTestResult(null);
     try {
-      const result = await testHyrosConnection({ clerkId, apiKey: hyrosApiKey.trim() });
+      const result = await testHyrosConnection({ apiKey: hyrosApiKey.trim() });
       setHyrosTestResult(result);
     } catch (error) {
       setHyrosTestResult({ success: false, error: "Failed to test connection" });
@@ -1227,11 +1229,9 @@ export default function SettingsPage() {
 
   // Handle GHL config save
   const handleSaveGhl = async (enabled: boolean) => {
-    if (!clerkId) return;
     setSavingGhl(true);
     try {
       await updateGhlConfig({
-        clerkId,
         apiKey: ghlApiKey || undefined,
         locationId: ghlLocationId || undefined,
         enabled,
@@ -1248,12 +1248,11 @@ export default function SettingsPage() {
 
   // Handle GHL connection test
   const handleTestGhl = async () => {
-    if (!clerkId || !ghlApiKey.trim() || !ghlLocationId.trim()) return;
+    if (!ghlApiKey.trim() || !ghlLocationId.trim()) return;
     setTestingGhl(true);
     setGhlTestResult(null);
     try {
       const result = await testGhlConnection({
-        clerkId,
         apiKey: ghlApiKey.trim(),
         locationId: ghlLocationId.trim(),
       });

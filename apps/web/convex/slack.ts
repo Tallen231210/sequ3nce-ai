@@ -1512,7 +1512,7 @@ export const sendCallCompletedNotification = internalAction({
 
       // Also sync to GHL (if configured) — auto-sync, no manual review needed
       try {
-        await ctx.runAction(internal.ghl.syncCallToGhl, {
+        await ctx.runAction(internal.ghlActions.syncCallToGhl, {
           callId: args.callId,
         });
       } catch (ghlError) {

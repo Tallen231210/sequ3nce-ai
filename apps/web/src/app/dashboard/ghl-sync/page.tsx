@@ -42,11 +42,8 @@ const outcomeBadgeColors: Record<string, string> = {
 };
 
 export default function GhlSyncPage() {
-  const { team, clerkId } = useTeam();
-  const ghlConfig = useQuery(
-    api.ghl.getGhlConfig,
-    clerkId ? { clerkId } : "skip"
-  );
+  const { team } = useTeam();
+  const ghlConfig = useQuery(api.ghl.getGhlConfig);
   const syncHistory = useQuery(
     api.ghl.getGhlSyncHistory,
     team?._id ? { teamId: team._id, limit: 50 } : "skip"
@@ -55,7 +52,7 @@ export default function GhlSyncPage() {
     api.ghl.getGhlSyncStats,
     team?._id ? { teamId: team._id } : "skip"
   );
-  const retrySync = useAction(api.ghl.retryGhlSync);
+  const retrySync = useAction(api.ghlActions.retryGhlSync);
 
   const [retryingCall, setRetryingCall] = useState<string | null>(null);
   const [retryResults, setRetryResults] = useState<
@@ -63,10 +60,9 @@ export default function GhlSyncPage() {
   >({});
 
   const handleRetry = async (callId: Id<"calls">) => {
-    if (!clerkId) return;
     setRetryingCall(callId);
     try {
-      const result = await retrySync({ clerkId, callId });
+      const result = await retrySync({ callId });
       setRetryResults((prev) => ({ ...prev, [callId]: result }));
     } catch {
       setRetryResults((prev) => ({

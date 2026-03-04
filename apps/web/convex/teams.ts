@@ -305,11 +305,13 @@ export const updateDiscordNotificationChannel = mutation({
       throw new Error("Invalid notification type");
     }
 
+    // Preserve existing webhookUrl if not provided (frontend no longer receives URLs)
+    const existingConfig = (currentChannels as Record<string, { webhookUrl?: string }>)[args.notificationType];
     const updatedChannels = {
       ...currentChannels,
       [args.notificationType]: {
         enabled: args.enabled,
-        webhookUrl: args.webhookUrl,
+        webhookUrl: args.webhookUrl !== undefined ? args.webhookUrl : existingConfig?.webhookUrl,
         channelName: args.channelName,
       },
     };
@@ -424,6 +426,24 @@ export const getSettings = query({
       discordChannels?.callSummary?.webhookUrl ||
       discordChannels?.callGoingLong?.webhookUrl;
 
+    // Redact webhook URLs — never expose full URLs to the frontend.
+    // Return channel name + enabled status + boolean hasWebhookUrl instead.
+    const redactDiscordChannels = (channels: typeof discordChannels) => {
+      if (!channels) return undefined;
+      const redacted: Record<string, { enabled?: boolean; channelName?: string; hasWebhookUrl: boolean }> = {};
+      for (const [key, config] of Object.entries(channels)) {
+        if (config && typeof config === "object") {
+          const c = config as { enabled?: boolean; webhookUrl?: string; channelName?: string };
+          redacted[key] = {
+            enabled: c.enabled,
+            channelName: c.channelName,
+            hasWebhookUrl: !!c.webhookUrl,
+          };
+        }
+      }
+      return redacted;
+    };
+
     return {
       user: {
         _id: user._id,
@@ -445,18 +465,18 @@ export const getSettings = query({
         calendlyConnected: !!team.calendlyAccessToken,
         calendlyConnectedEmail: team.calendlyConnectedEmail,
         calendlyLastSyncAt: team.calendlyLastSyncAt,
-        // Slack integration (legacy webhook)
-        slackWebhookUrl: team.slackWebhookUrl,
+        // Slack integration — URL redacted, only boolean returned
+        hasSlackWebhookUrl: !!team.slackWebhookUrl,
         // Slack OAuth integration
         slackConnected: !!(team.slackAccessToken || team.slackWebhookUrl),
         slackChannelName: team.slackChannelName,
         slackTeamName: team.slackTeamName,
         slackConnectedAt: team.slackConnectedAt,
         slackNotificationChannels: team.slackNotificationChannels,
-        // Discord webhook integration
+        // Discord webhook integration — URLs redacted
         discordConnected: !!hasAnyDiscordWebhook,
         discordConnectedAt: team.discordConnectedAt,
-        discordNotificationChannels: team.discordNotificationChannels,
+        discordNotificationChannels: redactDiscordChannels(discordChannels),
         // Meeting Bot
         meetingBotEnabled: team.meetingBotEnabled,
         meetingBotName: team.meetingBotName,
