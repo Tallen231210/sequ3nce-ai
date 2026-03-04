@@ -182,18 +182,18 @@ function AppContent() {
     setCloserInfo(info);
     setAuthState('authenticated');
 
-    window.electron.training?.setCloserId(info.closerId);
-    window.electron.ammo?.setTeamId(info.teamId);
-    window.electron.schedule?.setCloserEmail(info.email);
-    window.electron.schedule?.setTeamId(info.teamId);
-    window.electron.chat?.startPolling(info.closerId, info.teamId, info.name);
+    window.electron?.training?.setCloserId(info.closerId);
+    window.electron?.ammo?.setTeamId(info.teamId);
+    window.electron?.schedule?.setCloserEmail(info.email);
+    window.electron?.schedule?.setTeamId(info.teamId);
+    window.electron?.chat?.startPolling(info.closerId, info.teamId, info.name);
 
     isMeetingBotEnabled(info.teamId).then((enabled) => {
       setIsBotMode(enabled);
       setBotModeChecked(true);
       localStorage.setItem('sequ3nce_personal_bot_mode', String(enabled));
       if (enabled) {
-        window.electron.app.setWindowSize?.(1200, 800);
+        window.electron?.app.setWindowSize?.(1200, 800);
       }
     }).catch(() => {
       setBotModeChecked(true);
@@ -352,13 +352,13 @@ function AppContent() {
     localStorage.removeItem('sequ3nce_personal_bot_mode');
     if (isBotMode) {
       setIsBotMode(false);
-      window.electron.app.setWindowSize?.(400, 600);
+      window.electron?.app.setWindowSize?.(400, 600);
     }
 
     // Clear closer ID for the training window
-    window.electron.training?.setCloserId(null);
+    window.electron?.training?.setCloserId(null);
     // Stop chat polling
-    window.electron.chat?.stopPolling();
+    window.electron?.chat?.stopPolling();
   };
 
   const handleRetry = () => {

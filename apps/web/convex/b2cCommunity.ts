@@ -49,17 +49,58 @@ export const getFeed = query({
     cursor: v.optional(v.number()),
     limit: v.optional(v.number()),
     userId: v.optional(v.id("b2cUsers")),
+    friendsOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? FEED_PAGE_SIZE, MAX_PAGE_SIZE);
+
+    // Build friend set for visibility filtering
+    let friendIdSet: Set<string> | null = null;
+    if (args.userId) {
+      const asRequester = await ctx.db
+        .query("b2cFriendships")
+        .withIndex("by_requester", (q) =>
+          q.eq("requesterId", args.userId!).eq("status", "accepted")
+        )
+        .collect();
+      const asRecipient = await ctx.db
+        .query("b2cFriendships")
+        .withIndex("by_recipient", (q) =>
+          q.eq("recipientId", args.userId!).eq("status", "accepted")
+        )
+        .collect();
+      friendIdSet = new Set<string>();
+      for (const f of asRequester) friendIdSet.add(f.recipientId);
+      for (const f of asRecipient) friendIdSet.add(f.requesterId);
+    }
+
     const posts = await ctx.db
       .query("b2cCommunityPosts")
       .withIndex("by_created")
       .order("desc")
       .collect();
 
-    // Filter deleted and apply cursor
-    let filtered = posts.filter((p) => !p.isDeleted);
+    // Filter deleted, apply visibility, and apply cursor
+    let filtered = posts.filter((p) => {
+      if (p.isDeleted) return false;
+
+      // Friends-only filter: show only posts from friends
+      if (args.friendsOnly && friendIdSet) {
+        return (
+          friendIdSet.has(p.authorId) || p.authorId === args.userId
+        );
+      }
+
+      // Visibility filtering: hide friends-only posts from non-friends
+      if (p.visibility === "friends") {
+        if (!args.userId) return false;
+        if (p.authorId === args.userId) return true;
+        return friendIdSet?.has(p.authorId) ?? false;
+      }
+
+      return true;
+    });
+
     if (args.cursor) {
       filtered = filtered.filter((p) => p.createdAt < args.cursor!);
     }
@@ -110,13 +151,44 @@ export const listPosts = query({
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
+
+    // Build friend set for visibility filtering
+    let friendIdSet: Set<string> | null = null;
+    if (args.userId) {
+      const asRequester = await ctx.db
+        .query("b2cFriendships")
+        .withIndex("by_requester", (q) =>
+          q.eq("requesterId", args.userId!).eq("status", "accepted")
+        )
+        .collect();
+      const asRecipient = await ctx.db
+        .query("b2cFriendships")
+        .withIndex("by_recipient", (q) =>
+          q.eq("recipientId", args.userId!).eq("status", "accepted")
+        )
+        .collect();
+      friendIdSet = new Set<string>();
+      for (const f of asRequester) friendIdSet.add(f.recipientId);
+      for (const f of asRecipient) friendIdSet.add(f.requesterId);
+    }
+
     const posts = await ctx.db
       .query("b2cCommunityPosts")
       .withIndex("by_channel", (q) => q.eq("channelId", args.channelId))
       .order("desc")
       .collect();
 
-    let filtered = posts.filter((p) => !p.isDeleted);
+    let filtered = posts.filter((p) => {
+      if (p.isDeleted) return false;
+      // Hide friends-only posts from non-friends
+      if (p.visibility === "friends") {
+        if (!args.userId) return false;
+        if (p.authorId === args.userId) return true;
+        return friendIdSet?.has(p.authorId) ?? false;
+      }
+      return true;
+    });
+
     if (args.cursor) {
       filtered = filtered.filter((p) => p.createdAt < args.cursor!);
     }
@@ -320,6 +392,7 @@ export const createPost = mutation({
     userId: v.id("b2cUsers"),
     channelId: v.id("b2cCommunityChannels"),
     body: v.string(),
+    visibility: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Validate user
@@ -340,6 +413,12 @@ export const createPost = mutation({
       throw new Error(`Post must be ${MAX_POST_BODY} characters or less`);
     }
 
+    // Validate visibility
+    const visibility = args.visibility ?? "everyone";
+    if (visibility !== "everyone" && visibility !== "friends") {
+      throw new Error("Visibility must be 'everyone' or 'friends'");
+    }
+
     // Get author profile photo
     const profile = await ctx.db
       .query("b2cProfiles")
@@ -353,6 +432,7 @@ export const createPost = mutation({
       authorName: user.name,
       authorPhotoStorageId: profile?.photoStorageId,
       body,
+      visibility: visibility === "friends" ? "friends" : undefined,
       likeCount: 0,
       commentCount: 0,
       isPinned: false,
@@ -394,7 +474,7 @@ export const editPost = mutation({
   },
 });
 
-// Soft-delete a post (author only)
+// Soft-delete a post (author or admin)
 export const deletePost = mutation({
   args: {
     userId: v.id("b2cUsers"),
@@ -403,7 +483,10 @@ export const deletePost = mutation({
   handler: async (ctx, args) => {
     const post = await ctx.db.get(args.postId);
     if (!post || post.isDeleted) throw new Error("Post not found");
-    if (post.authorId !== args.userId) throw new Error("Not authorized");
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+    const isAdmin = user.role === "admin";
+    if (post.authorId !== args.userId && !isAdmin) throw new Error("Not authorized");
 
     await ctx.db.patch(args.postId, { isDeleted: true, updatedAt: Date.now() });
 
@@ -500,7 +583,7 @@ export const editComment = mutation({
   },
 });
 
-// Soft-delete a comment (author only)
+// Soft-delete a comment (author or admin)
 export const deleteComment = mutation({
   args: {
     userId: v.id("b2cUsers"),
@@ -509,7 +592,10 @@ export const deleteComment = mutation({
   handler: async (ctx, args) => {
     const comment = await ctx.db.get(args.commentId);
     if (!comment || comment.isDeleted) throw new Error("Comment not found");
-    if (comment.authorId !== args.userId) throw new Error("Not authorized");
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+    const isAdmin = user.role === "admin";
+    if (comment.authorId !== args.userId && !isAdmin) throw new Error("Not authorized");
 
     await ctx.db.patch(args.commentId, { isDeleted: true, updatedAt: Date.now() });
 

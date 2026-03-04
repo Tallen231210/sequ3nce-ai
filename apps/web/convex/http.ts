@@ -4798,14 +4798,14 @@ http.route({
 // SHARED LINKS (public share URLs for call recordings)
 // ──────────────────────────────────────────────
 
-// Create a shared link (used by desktop app and web dashboard)
+// Create a shared link (used by desktop app, personal app, and web dashboard)
 http.route({
   path: "/createSharedLink",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { callId, teamId, shareType, startSeconds, endSeconds, includeComments, createdBy, createdByType } = body;
+      const { callId, teamId, shareType, startSeconds, endSeconds, includeComments, createdBy, createdByType, accessType, password } = body;
 
       if (!callId || !teamId) {
         return new Response(JSON.stringify({ error: "callId and teamId are required" }), {
@@ -4823,7 +4823,28 @@ http.route({
         includeComments: includeComments ?? false,
         createdBy: createdBy || "unknown",
         createdByType: createdByType || "closer",
+        accessType: accessType ?? undefined,
+        password: password ?? undefined,
       });
+
+      // If compliance link, run AI redaction synchronously
+      if (accessType === "compliance" && result.linkId) {
+        try {
+          const segments = await ctx.runQuery(internal.sharedLinks.getTranscriptForRedaction, {
+            callId: callId as Id<"calls">,
+          });
+          if (segments.length > 0) {
+            const redacted = await ctx.runAction(internal.ai.redactTranscript, { segments });
+            await ctx.runMutation(internal.sharedLinks.storeRedactedTranscript, {
+              linkId: result.linkId,
+              redactedTranscript: redacted,
+            });
+          }
+        } catch (redactErr) {
+          console.error("[HTTP] Redaction failed (link still created):", redactErr);
+          // Link is still usable — will fall back to full transcript
+        }
+      }
 
       return new Response(JSON.stringify(result), {
         status: 200,
@@ -4861,7 +4882,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { token } = body;
+      const { token, password } = body;
 
       if (!token || typeof token !== "string") {
         return new Response(JSON.stringify({ error: "token is required" }), {
@@ -4886,6 +4907,33 @@ http.route({
         });
       }
 
+      // Password protection check
+      if (data.hasPassword) {
+        if (!password) {
+          return new Response(JSON.stringify({ passwordRequired: true }), {
+            status: 401,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        // Hash the provided password and verify against stored hash
+        const encoder = new TextEncoder();
+        const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(password));
+        const passwordHash = Array.from(new Uint8Array(hashBuffer))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
+        const verified = await ctx.runQuery(internal.sharedLinks.verifySharedLinkPassword, {
+          token,
+          passwordHash,
+        });
+        if (!verified.valid) {
+          return new Response(JSON.stringify({ passwordRequired: true, passwordIncorrect: true }), {
+            status: 401,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+      }
+
       // At this point data.revoked is false, so call data is present
       const callData = data.call!;
 
@@ -4906,7 +4954,7 @@ http.route({
       }
 
       // Strip internal fields from public response
-      const { callId: _callId, revoked: _revoked, ...publicData } = data;
+      const { callId: _callId, revoked: _revoked, hasPassword: _hasPassword, ...publicData } = data;
       return new Response(JSON.stringify({
         ...publicData,
         call: {
@@ -4929,6 +4977,105 @@ http.route({
 
 http.route({
   path: "/getSharedLinkData",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Get all shared links for a call (used by share modal to list existing links)
+http.route({
+  path: "/getSharedLinksForCall",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const callId = url.searchParams.get("callId");
+
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const links = await ctx.runQuery(api.sharedLinks.getSharedLinksForCall, {
+        callId: callId as Id<"calls">,
+      });
+
+      return new Response(JSON.stringify(links), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error: any) {
+      console.error("[HTTP] Error in getSharedLinksForCall:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getSharedLinksForCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Revoke a shared link
+http.route({
+  path: "/revokeSharedLink",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { linkId } = body;
+
+      if (!linkId) {
+        return new Response(JSON.stringify({ error: "linkId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      await ctx.runMutation(api.sharedLinks.toggleSharedLink, {
+        linkId: linkId as Id<"sharedLinks">,
+        isActive: false,
+      });
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error: any) {
+      console.error("[HTTP] Error in revokeSharedLink:", error);
+      return new Response(JSON.stringify({ error: error?.message || "Failed to revoke link" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/revokeSharedLink",
   method: "OPTIONS",
   handler: httpAction(async () => {
     return new Response(null, {
@@ -5255,10 +5402,12 @@ http.route({
       const cursor = url.searchParams.get("cursor");
       const limit = url.searchParams.get("limit");
       const userId = url.searchParams.get("userId");
+      const friendsOnly = url.searchParams.get("friendsOnly");
       const result = await ctx.runQuery(api.b2cCommunity.getFeed, {
         cursor: cursor ? Number(cursor) : undefined,
         limit: limit ? Number(limit) : undefined,
         userId: userId ? (userId as any) : undefined,
+        friendsOnly: friendsOnly === "true" ? true : undefined,
       });
       return b2cJsonResponse(result);
     } catch (error) {
@@ -5314,6 +5463,7 @@ http.route({
         userId: body.userId as any,
         channelId: body.channelId as any,
         body: body.body,
+        visibility: body.visibility || undefined,
       });
       return b2cJsonResponse(result, 200, true);
     } catch (error: any) {
@@ -5863,6 +6013,361 @@ http.route({
 
 http.route({
   path: "/b2c/dm/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ==================== B2C Friendship Endpoints ====================
+
+// GET /b2c/friends — List accepted friends
+http.route({
+  path: "/b2c/friends",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const result = await ctx.runQuery(api.b2cFriendships.listFriends, {
+        userId: userId as any,
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error listing friends:", error);
+      return b2cJsonResponse({ error: "Failed to load friends" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/friends/requests — Incoming friend requests
+http.route({
+  path: "/b2c/friends/requests",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cFriendships.listIncomingRequests, {
+        userId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error listing friend requests:", error);
+      return b2cJsonResponse({ error: "Failed to load requests" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends/requests",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/friends/request-count — Pending request count for badge
+http.route({
+  path: "/b2c/friends/request-count",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cFriendships.getPendingRequestCount, {
+        userId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting request count:", error);
+      return b2cJsonResponse({ error: "Failed to get count" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends/request-count",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/friends/status — Friendship status between two users
+http.route({
+  path: "/b2c/friends/status",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const otherUserId = url.searchParams.get("otherUserId");
+      if (!userId || !otherUserId) {
+        return b2cJsonResponse({ error: "userId and otherUserId are required" }, 400);
+      }
+      const result = await ctx.runQuery(api.b2cFriendships.getFriendshipStatus, {
+        userId: userId as any,
+        otherUserId: otherUserId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting friendship status:", error);
+      return b2cJsonResponse({ error: "Failed to get status" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends/status",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/friends/request — Send a friend request
+http.route({
+  path: "/b2c/friends/request",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { requesterId, recipientId } = body;
+      if (!requesterId || !recipientId) {
+        return b2cJsonResponse({ error: "requesterId and recipientId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFriendships.sendRequest, {
+        requesterId: requesterId as any,
+        recipientId: recipientId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error sending friend request:", error);
+      return b2cJsonResponse({ error: "Failed to send request" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends/request",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/friends/accept — Accept a friend request
+http.route({
+  path: "/b2c/friends/accept",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, requesterId } = body;
+      if (!userId || !requesterId) {
+        return b2cJsonResponse({ error: "userId and requesterId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFriendships.acceptRequest, {
+        userId: userId as any,
+        requesterId: requesterId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+      return b2cJsonResponse({ error: "Failed to accept request" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends/accept",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/friends/decline — Decline a friend request
+http.route({
+  path: "/b2c/friends/decline",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, requesterId } = body;
+      if (!userId || !requesterId) {
+        return b2cJsonResponse({ error: "userId and requesterId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFriendships.declineRequest, {
+        userId: userId as any,
+        requesterId: requesterId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error declining friend request:", error);
+      return b2cJsonResponse({ error: "Failed to decline request" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends/decline",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/friends/remove — Remove a friend
+http.route({
+  path: "/b2c/friends/remove",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, friendId } = body;
+      if (!userId || !friendId) {
+        return b2cJsonResponse({ error: "userId and friendId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFriendships.removeFriend, {
+        userId: userId as any,
+        friendId: friendId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error removing friend:", error);
+      return b2cJsonResponse({ error: "Failed to remove friend" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/friends/remove",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ==================== B2C Resource Endpoints ====================
+
+// POST /b2c/resources — Create a resource
+http.route({
+  path: "/b2c/resources",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+      if (!body.type || !body.title) {
+        return b2cJsonResponse({ error: "type and title are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cResources.addResource, {
+        userId: body.userId as any,
+        type: body.type,
+        title: body.title,
+        description: body.description,
+        content: body.content,
+        url: body.url,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error creating resource:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to create resource" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/resources",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, PATCH, DELETE, OPTIONS"),
+});
+
+// PATCH /b2c/resources — Update a resource
+http.route({
+  path: "/b2c/resources/update",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.resourceId) {
+        return b2cJsonResponse({ error: "userId and resourceId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cResources.updateResource, {
+        userId: body.userId as any,
+        resourceId: body.resourceId as any,
+        title: body.title,
+        description: body.description,
+        content: body.content,
+        url: body.url,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error updating resource:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to update resource" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/resources/update",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/resources/delete — Delete a resource
+http.route({
+  path: "/b2c/resources/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.resourceId) {
+        return b2cJsonResponse({ error: "userId and resourceId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cResources.deleteResource, {
+        userId: body.userId as any,
+        resourceId: body.resourceId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error deleting resource:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to delete resource" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/resources/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/resources/reorder — Reorder resources
+http.route({
+  path: "/b2c/resources/reorder",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.resourceIds) {
+        return b2cJsonResponse({ error: "userId and resourceIds are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cResources.reorderResources, {
+        userId: body.userId as any,
+        resourceIds: body.resourceIds,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error reordering resources:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to reorder resources" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/resources/reorder",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });

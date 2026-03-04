@@ -56,6 +56,17 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
     });
   }, [closerInfo.email, closerInfo.teamId]);
 
+  // Refresh calendar status when Google Calendar is connected via OAuth deep link
+  useEffect(() => {
+    function handleCalendarConnected() {
+      getCalendarStatus(closerInfo.email, closerInfo.teamId).then((s) => {
+        setCalStatus(s);
+      });
+    }
+    window.addEventListener('calendar:connected', handleCalendarConnected);
+    return () => window.removeEventListener('calendar:connected', handleCalendarConnected);
+  }, [closerInfo.email, closerInfo.teamId]);
+
   async function handleConnectCalendar() {
     if (!icsUrl.trim()) return;
     setIsConnecting(true);
@@ -225,7 +236,9 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-[13px]">
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
-                <span className="text-green-700 font-medium">Connected</span>
+                <span className="text-green-700 font-medium">
+                  Connected{calStatus.provider === 'google' ? ' via Google Calendar' : calStatus.provider === 'ics' ? ' via ICS Feed' : ''}
+                </span>
                 {calStatus.lastSynced && (
                   <span className="text-gray-400 text-[11px]">
                     Last synced {new Date(calStatus.lastSynced).toLocaleString()}
@@ -241,23 +254,41 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
               </button>
             </div>
           ) : (
-            <div className="space-y-2 max-w-md">
-              <p className="text-[13px] text-gray-500">Not connected. Paste your ICS feed URL to connect.</p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={icsUrl}
-                  onChange={(e) => setIcsUrl(e.target.value)}
-                  placeholder="ICS feed URL..."
-                  className="flex-1 px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
-                />
-                <button
-                  onClick={handleConnectCalendar}
-                  disabled={!icsUrl.trim() || isConnecting}
-                  className="px-4 py-2 text-[12px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isConnecting ? 'Connecting...' : 'Connect'}
-                </button>
+            <div className="space-y-3 max-w-md">
+              <p className="text-[13px] text-gray-500">Not connected. Connect your Google Calendar to automatically detect calls.</p>
+              <button
+                onClick={() => {
+                  const authUrl = `https://sequ3nce.ai/api/auth/google/authorize?closerId=${closerInfo.closerId}`;
+                  window.open(authUrl, '_blank');
+                }}
+                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 text-[13px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 transition-colors"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                </svg>
+                Connect with Google Calendar
+              </button>
+              <div className="border-t border-gray-100 pt-3">
+                <p className="text-[11px] text-gray-400 mb-2">Or connect manually with an ICS feed URL:</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={icsUrl}
+                    onChange={(e) => setIcsUrl(e.target.value)}
+                    placeholder="ICS feed URL..."
+                    className="flex-1 px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+                  />
+                  <button
+                    onClick={handleConnectCalendar}
+                    disabled={!icsUrl.trim() || isConnecting}
+                    className="px-4 py-2 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isConnecting ? 'Connecting...' : 'Connect'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

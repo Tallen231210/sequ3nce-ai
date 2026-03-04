@@ -12,13 +12,13 @@ import {
   flagCallForReview,
   unflagCall,
   refreshRecordingUrl,
-  createSharedLink,
   getCallAnalysis,
 } from '../convex';
 import { CallDetailChapters } from './CallDetailChapters';
 import { CallDetailOverviewTab } from './CallDetailOverviewTab';
 import { CallDetailAnalysisTab } from './CallDetailAnalysisTab';
 import { CallDetailTranscriptTab } from './CallDetailTranscriptTab';
+import { ShareModal } from './ShareModal';
 
 type TabId = 'overview' | 'analysis' | 'transcript';
 
@@ -52,10 +52,8 @@ export function CallDetailSheet({
   const [reviewStatus, setReviewStatus] = useState(call.reviewStatus || null);
   const [isFlagging, setIsFlagging] = useState(false);
 
-  // Share link state
-  const [isCreatingLink, setIsCreatingLink] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
-  const [shareError, setShareError] = useState(false);
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const mountedRef = useRef(true);
@@ -152,24 +150,6 @@ export function CallDetailSheet({
     setIsFlagging(false);
   }
 
-  async function handleShareLink() {
-    setIsCreatingLink(true);
-    setShareError(false);
-    const result = await createSharedLink(call._id, closerInfo.closerId, closerInfo.teamId);
-    setIsCreatingLink(false);
-
-    if (result) {
-      try { await navigator.clipboard.writeText(result.url); } catch { /* clipboard may not be available */ }
-      setShareCopied(true);
-      const t = setTimeout(() => { if (mountedRef.current) setShareCopied(false); }, 2000);
-      timeoutsRef.current.push(t);
-    } else {
-      setShareError(true);
-      const t = setTimeout(() => { if (mountedRef.current) setShareError(false); }, 3000);
-      timeoutsRef.current.push(t);
-    }
-  }
-
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'analysis', label: 'Analysis' },
@@ -210,14 +190,17 @@ export function CallDetailSheet({
             </button>
           )}
 
-          {/* Share Link button */}
+          {/* Share button */}
           {hasVideo && (
-            <ShareButton
-              isCreatingLink={isCreatingLink}
-              shareCopied={shareCopied}
-              shareError={shareError}
-              onClick={handleShareLink}
-            />
+            <button
+              onClick={() => setShowShareModal(true)}
+              className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              Share
+            </button>
           )}
 
           {/* Close */}
@@ -312,52 +295,20 @@ export function CallDetailSheet({
           </div>
         )}
       </div>
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <ShareModal
+          callId={call._id}
+          closerInfo={closerInfo}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
     </div>
   );
 }
 
 // --- Sub-components ---
-
-function ShareButton({
-  isCreatingLink,
-  shareCopied,
-  shareError,
-  onClick,
-}: {
-  isCreatingLink: boolean;
-  shareCopied: boolean;
-  shareError: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={isCreatingLink}
-      className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-    >
-      {isCreatingLink ? (
-        <span className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-      ) : shareCopied ? (
-        <>
-          <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-          <span className="text-green-600">Copied!</span>
-        </>
-      ) : shareError ? (
-        <>
-          <svg className="w-3 h-3 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-          <span className="text-red-500">Failed</span>
-        </>
-      ) : (
-        <>
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-          Share Link
-        </>
-      )}
-    </button>
-  );
-}
 
 function OutcomeBadge({ outcome }: { outcome?: string }) {
   if (!outcome) return null;

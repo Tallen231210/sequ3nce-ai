@@ -166,11 +166,11 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_clerk_id", ["clerkId"]),
 
-  // Calendar events (synced from closer ICS feeds)
+  // Calendar events (synced from closer ICS feeds or Google Calendar API)
   calendarEvents: defineTable({
     closerId: v.id("closers"),
     teamId: v.id("teams"),
-    uid: v.string(), // ICS UID for deduplication
+    uid: v.string(), // ICS UID or Google Calendar event ID for deduplication
     title: v.string(),
     description: v.optional(v.string()),
     startTime: v.number(), // Unix timestamp
@@ -179,6 +179,12 @@ export default defineSchema({
     isAllDay: v.optional(v.boolean()),
     meetingUrl: v.optional(v.string()), // Extracted Zoom/Meet/Teams URL for one-click join
     fetchedAt: v.number(), // When this event was last synced
+    // Attendee data (populated by Google Calendar API, not available from ICS feeds)
+    attendees: v.optional(v.array(v.object({
+      email: v.string(),
+      name: v.optional(v.string()),
+      isOrganizer: v.optional(v.boolean()),
+    }))),
   })
     .index("by_closer", ["closerId"])
     .index("by_team_and_time", ["teamId", "startTime"])
@@ -319,6 +325,7 @@ export default defineSchema({
     }))),
 
     // Call review fields
+    calendarEventId: v.optional(v.id("calendarEvents")), // Link to Google Calendar event (for prospect email)
     flaggedForReview: v.optional(v.boolean()),       // Closer flagged this for manager review
     flaggedAt: v.optional(v.number()),               // When flagged
     reviewStatus: v.optional(v.string()),            // "pending" | "reviewed"
@@ -803,6 +810,13 @@ export default defineSchema({
     createdByType: v.string(),                   // "manager" | "closer"
     isActive: v.boolean(),                       // false = revoked
     createdAt: v.number(),
+    accessType: v.optional(v.string()),          // "full_access" | "compliance" (undefined = full_access for B2B compat)
+    passwordHash: v.optional(v.string()),        // SHA-256 hash if password-protected
+    redactedTranscript: v.optional(v.array(v.object({
+      speaker: v.string(),
+      text: v.string(),
+      timestamp: v.number(),
+    }))),                                        // AI-redacted version for compliance links
   })
     .index("by_token", ["token"])
     .index("by_call", ["callId"]),
@@ -841,6 +855,7 @@ export default defineSchema({
     createdAt: v.number(),
     lastLoginAt: v.optional(v.number()),
     cancelledAt: v.optional(v.number()),
+    role: v.optional(v.string()),           // "admin" | "user" (undefined = "user")
   })
     .index("by_email", ["email"])
     .index("by_phone", ["phone"])
@@ -873,6 +888,7 @@ export default defineSchema({
     authorName: v.string(),
     authorPhotoStorageId: v.optional(v.string()),
     body: v.string(),
+    visibility: v.optional(v.string()), // "everyone" (default) | "friends"
     likeCount: v.number(),
     commentCount: v.number(),
     isPinned: v.boolean(),

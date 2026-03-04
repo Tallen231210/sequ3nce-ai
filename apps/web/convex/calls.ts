@@ -1411,28 +1411,89 @@ export const findMatchingScheduledCall = query({
       (call) => call.closerId === args.closerId || !call.closerId
     );
 
-    if (matchingCalls.length === 0) {
-      return null;
+    if (matchingCalls.length > 0) {
+      // If multiple matches, pick the one closest to current time
+      const sortedByProximity = matchingCalls.sort((a, b) => {
+        const diffA = Math.abs(a.scheduledAt - now);
+        const diffB = Math.abs(b.scheduledAt - now);
+        return diffA - diffB;
+      });
+
+      const bestMatch = sortedByProximity[0];
+
+      return {
+        scheduledCallId: bestMatch._id,
+        prospectName: bestMatch.prospectName || null,
+        prospectEmail: bestMatch.prospectEmail || null,
+        scheduledAt: bestMatch.scheduledAt,
+        source: bestMatch.source || "manual",
+      };
     }
 
-    // If multiple matches, pick the one closest to current time
-    const sortedByProximity = matchingCalls.sort((a, b) => {
-      const diffA = Math.abs(a.scheduledAt - now);
-      const diffB = Math.abs(b.scheduledAt - now);
-      return diffA - diffB;
-    });
+    // Fallback: Check Google Calendar events for attendee data
+    const calendarEvents = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
 
-    const bestMatch = sortedByProximity[0];
+    // Find calendar event within the time window that has attendees
+    const matchingEvent = calendarEvents
+      .filter(
+        (e) =>
+          e.startTime >= windowStart &&
+          e.startTime <= windowEnd &&
+          e.attendees &&
+          e.attendees.length > 0
+      )
+      .sort((a, b) => Math.abs(a.startTime - now) - Math.abs(b.startTime - now))[0];
 
-    return {
-      scheduledCallId: bestMatch._id,
-      prospectName: bestMatch.prospectName || null,
-      prospectEmail: bestMatch.prospectEmail || null,
-      scheduledAt: bestMatch.scheduledAt,
-      source: bestMatch.source || "manual",
-    };
+    if (matchingEvent && matchingEvent.attendees) {
+      // Get closer info to filter out their email
+      const closer = await ctx.db.get(args.closerId);
+      const prospect = identifyProspect(
+        matchingEvent.attendees,
+        closer?.email || ""
+      );
+
+      return {
+        calendarEventId: matchingEvent._id,
+        prospectName: prospect?.name || null,
+        prospectEmail: prospect?.email || null,
+        scheduledAt: matchingEvent.startTime,
+        source: "google_calendar" as const,
+      };
+    }
+
+    return null;
   },
 });
+
+/**
+ * Identify the prospect from a list of calendar event attendees.
+ * Filters out the closer and same-domain team members.
+ */
+function identifyProspect(
+  attendees: Array<{ email: string; name?: string; isOrganizer?: boolean }>,
+  closerEmail: string
+): { email: string; name?: string } | null {
+  const closerDomain = closerEmail.split("@")[1]?.toLowerCase();
+  const commonDomains = [
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com",
+    "yahoo.com", "icloud.com", "me.com", "aol.com", "protonmail.com",
+    "live.com", "msn.com",
+  ];
+
+  const prospects = attendees.filter((a) => {
+    if (a.email.toLowerCase() === closerEmail.toLowerCase()) return false;
+    const domain = a.email.split("@")[1]?.toLowerCase();
+    if (commonDomains.includes(domain)) return true;
+    return domain !== closerDomain;
+  });
+
+  // Prefer non-organizer attendees (organizer is usually the closer)
+  const nonOrganizer = prospects.find((p) => !p.isOrganizer);
+  return nonOrganizer || prospects[0] || null;
+}
 
 // Update call notes (from desktop app during call)
 export const updateCallNotes = mutation({

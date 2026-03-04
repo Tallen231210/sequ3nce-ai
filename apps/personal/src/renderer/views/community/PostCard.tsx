@@ -7,6 +7,7 @@ interface PostCardProps {
   post: CommunityPost;
   userId: string;
   showChannelLabel?: boolean;
+  isAdmin?: boolean;
   onLike: (postId: string) => void;
   onEdit?: (postId: string, body: string) => void;
   onDelete?: (postId: string) => void;
@@ -17,6 +18,7 @@ export function PostCard({
   post,
   userId,
   showChannelLabel = false,
+  isAdmin,
   onLike,
   onEdit,
   onDelete,
@@ -76,14 +78,22 @@ export function PostCard({
             <span className="text-xs text-gray-400 dark:text-zinc-500">
               {formatRelativeTime(post.createdAt)}
             </span>
+            {post.visibility === 'friends' && (
+              <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400" title="Friends only">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                </svg>
+                Friends
+              </span>
+            )}
             {isEdited && (
               <span className="text-xs text-gray-400 dark:text-zinc-500 italic">(edited)</span>
             )}
           </div>
         </div>
 
-        {/* Menu for author actions */}
-        {isAuthor && (
+        {/* Menu for author/admin actions */}
+        {(isAuthor || isAdmin) && (
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
@@ -97,12 +107,14 @@ export function PostCard({
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
                 <div className="absolute right-0 top-6 z-20 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[120px]">
-                  <button
-                    onClick={() => { setIsEditing(true); setShowMenu(false); }}
-                    className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-600"
-                  >
-                    Edit
-                  </button>
+                  {isAuthor && (
+                    <button
+                      onClick={() => { setIsEditing(true); setShowMenu(false); }}
+                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-600"
+                    >
+                      Edit
+                    </button>
+                  )}
                   <button
                     onClick={() => { onDelete?.(post._id); setShowMenu(false); }}
                     className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-zinc-600"
@@ -177,7 +189,7 @@ export function PostCard({
       {/* Comment thread (expandable) */}
       {showComments && (
         <div className="mt-3 ml-12">
-          <CommentThread postId={post._id} userId={userId} />
+          <CommentThread postId={post._id} userId={userId} isAdmin={isAdmin} />
         </div>
       )}
     </div>

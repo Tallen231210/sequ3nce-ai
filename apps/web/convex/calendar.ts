@@ -15,7 +15,8 @@ export const getCloserCalendarStatus = query({
     if (!closer) return null;
 
     return {
-      connected: !!closer.icsUrl,
+      connected: !!closer.icsUrl || !!closer.googleCalendarRefreshToken,
+      provider: closer.calendarProvider || (closer.icsUrl ? "ics" : null),
       icsUrl: closer.icsUrl,
       connectedAt: closer.calendarConnectedAt,
       lastSynced: closer.calendarLastSyncAt,
@@ -39,7 +40,8 @@ export const getCloserCalendarStatusByEmail = query({
 
     return {
       closerId: closer._id,
-      connected: !!closer.icsUrl,
+      connected: !!closer.icsUrl || !!closer.googleCalendarRefreshToken,
+      provider: closer.calendarProvider || (closer.icsUrl ? "ics" : null),
       icsUrl: closer.icsUrl,
       connectedAt: closer.calendarConnectedAt,
       lastSynced: closer.calendarLastSyncAt,
@@ -198,7 +200,8 @@ export const getTeamCalendarStatus = query({
       closerId: closer._id,
       name: closer.name,
       email: closer.email,
-      connected: !!closer.icsUrl,
+      connected: !!closer.icsUrl || !!closer.googleCalendarRefreshToken,
+      provider: closer.calendarProvider || (closer.icsUrl ? "ics" : null),
       lastSynced: closer.calendarLastSyncAt,
     }));
   },
@@ -434,6 +437,93 @@ export const upsertCalendarEvents = internalMutation({
       calendarLastSyncAt: now,
     });
 
+    return { success: true, upserted: args.events.length };
+  },
+});
+
+// Internal: Upsert calendar events with attendees (for Google Calendar API sync)
+export const upsertCalendarEventsWithAttendees = internalMutation({
+  args: {
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    events: v.array(
+      v.object({
+        uid: v.string(),
+        title: v.string(),
+        description: v.optional(v.string()),
+        startTime: v.number(),
+        endTime: v.number(),
+        location: v.optional(v.string()),
+        isAllDay: v.optional(v.boolean()),
+        meetingUrl: v.optional(v.string()),
+        attendees: v.optional(v.array(v.object({
+          email: v.string(),
+          name: v.optional(v.string()),
+          isOrganizer: v.optional(v.boolean()),
+        }))),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // Get existing events for this closer
+    const existingEvents = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+
+    const existingByUid = new Map(existingEvents.map((e) => [e.uid, e]));
+    const matchedExistingIds = new Set<string>();
+    const processedUids = new Set<string>();
+
+    for (const event of args.events) {
+      if (processedUids.has(event.uid)) continue;
+      processedUids.add(event.uid);
+
+      const existing = existingByUid.get(event.uid);
+
+      if (existing) {
+        matchedExistingIds.add(existing._id);
+        await ctx.db.patch(existing._id, {
+          uid: event.uid,
+          title: event.title,
+          description: event.description,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          location: event.location,
+          isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
+          attendees: event.attendees,
+          fetchedAt: now,
+        });
+      } else {
+        await ctx.db.insert("calendarEvents", {
+          closerId: args.closerId,
+          teamId: args.teamId,
+          uid: event.uid,
+          title: event.title,
+          description: event.description,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          location: event.location,
+          isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
+          attendees: event.attendees,
+          fetchedAt: now,
+        });
+      }
+    }
+
+    // Delete future events no longer in Google Calendar
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    for (const existing of existingEvents) {
+      if (!matchedExistingIds.has(existing._id) && existing.startTime > oneDayAgo) {
+        await ctx.db.delete(existing._id);
+      }
+    }
+
+    await ctx.db.patch(args.closerId, { calendarLastSyncAt: now });
     return { success: true, upserted: args.events.length };
   },
 });
@@ -876,14 +966,15 @@ type SyncResult = {
   syncedEvents?: number;
 };
 
-// Sync all calendars (called by cron job)
+// Sync all calendars (called by cron job) — supports both ICS feeds and Google Calendar API
 export const syncAllCalendars = action({
   args: {},
   handler: async (ctx): Promise<{ synced: number; failed: number; results: SyncResult[] }> => {
-    const closers = await ctx.runQuery(internal.calendar.getClosersWithIcsUrl, {});
-
     const results: SyncResult[] = [];
-    for (const closer of closers) {
+
+    // 1. Sync ICS-connected closers (existing behavior)
+    const icsClosers = await ctx.runQuery(internal.calendar.getClosersWithIcsUrl, {});
+    for (const closer of icsClosers) {
       const result: { success: boolean; error?: string; syncedEvents?: number } =
         await ctx.runAction(api.calendar.syncCloserCalendar, {
           closerId: closer._id,
@@ -893,6 +984,33 @@ export const syncAllCalendars = action({
         email: closer.email,
         ...result,
       });
+    }
+
+    // 2. Sync Google Calendar-connected closers
+    const googleClosers = await ctx.runQuery(
+      internal.googleCalendar.getClosersWithGoogleCalendar,
+      {}
+    );
+    for (const closer of googleClosers) {
+      try {
+        const result = await ctx.runAction(
+          internal.googleCalendar.fetchGoogleCalendarEvents,
+          { closerId: closer._id }
+        );
+        results.push({
+          closerId: closer._id,
+          email: closer.email,
+          ...result,
+        });
+      } catch (error) {
+        console.error(`Google Calendar sync failed for ${closer.email}:`, error);
+        results.push({
+          closerId: closer._id,
+          email: closer.email,
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
     }
 
     return {

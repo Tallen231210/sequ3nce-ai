@@ -14,17 +14,19 @@ import { NewPostForm } from './NewPostForm';
 interface FeedProps {
   userId: string;
   channels: CommunityChannel[];
+  isAdmin?: boolean;
   onMessageAuthor?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
 const POLL_INTERVAL = 10_000;
 
-export function Feed({ userId, channels, onMessageAuthor }: FeedProps) {
+export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [newPostCount, setNewPostCount] = useState(0);
+  const [friendsOnly, setFriendsOnly] = useState(false);
   const lastFetchedRef = useRef(Date.now());
   const mountedRef = useRef(true);
 
@@ -44,9 +46,10 @@ export function Feed({ userId, channels, onMessageAuthor }: FeedProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const loadPosts = async () => {
+  const loadPosts = async (filterFriendsOnly?: boolean) => {
+    const useFriendsOnly = filterFriendsOnly ?? friendsOnly;
     setLoading(true);
-    const result = await getFeedPosts(userId);
+    const result = await getFeedPosts(userId, undefined, undefined, useFriendsOnly);
     if (mountedRef.current) {
       setPosts(result.posts);
       setNextCursor(result.nextCursor);
@@ -59,7 +62,7 @@ export function Feed({ userId, channels, onMessageAuthor }: FeedProps) {
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
-    const result = await getFeedPosts(userId, undefined, nextCursor);
+    const result = await getFeedPosts(userId, undefined, nextCursor, friendsOnly);
     if (mountedRef.current) {
       setPosts((prev) => [...prev, ...result.posts]);
       setNextCursor(result.nextCursor);
@@ -69,17 +72,21 @@ export function Feed({ userId, channels, onMessageAuthor }: FeedProps) {
 
   const handleLoadNew = async () => {
     await loadPosts();
-    // Scroll to top
     const el = document.querySelector('[data-feed-scroll]');
     el?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleCreatePost = useCallback(async (channelId: string, body: string) => {
-    const result = await createCommunityPost(userId, channelId, body);
+  const handleToggleFriendsOnly = (value: boolean) => {
+    setFriendsOnly(value);
+    loadPosts(value);
+  };
+
+  const handleCreatePost = useCallback(async (channelId: string, body: string, visibility?: string) => {
+    const result = await createCommunityPost(userId, channelId, body, visibility);
     if (!result.error) {
       await loadPosts();
     }
-  }, [userId]);
+  }, [userId, friendsOnly]);
 
   const handleLike = useCallback(async (postId: string) => {
     // Optimistic update
@@ -121,6 +128,30 @@ export function Feed({ userId, channels, onMessageAuthor }: FeedProps) {
       {/* New post form */}
       <NewPostForm channels={channels} onSubmit={handleCreatePost} />
 
+      {/* Feed filter */}
+      <div className="flex gap-1">
+        <button
+          onClick={() => handleToggleFriendsOnly(false)}
+          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            !friendsOnly
+              ? 'bg-black text-white dark:bg-white dark:text-black'
+              : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
+          }`}
+        >
+          All Posts
+        </button>
+        <button
+          onClick={() => handleToggleFriendsOnly(true)}
+          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            friendsOnly
+              ? 'bg-black text-white dark:bg-white dark:text-black'
+              : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
+          }`}
+        >
+          Friends Only
+        </button>
+      </div>
+
       {/* "New posts available" banner */}
       {newPostCount > 0 && (
         <button
@@ -147,6 +178,7 @@ export function Feed({ userId, channels, onMessageAuthor }: FeedProps) {
                 post={post}
                 userId={userId}
                 showChannelLabel
+                isAdmin={isAdmin}
                 onLike={handleLike}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

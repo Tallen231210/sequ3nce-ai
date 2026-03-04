@@ -1028,6 +1028,7 @@ export async function getCallAnalysis(callId: string): Promise<CallAnalysis | nu
 export interface CalendarStatus {
   closerId: string;
   connected: boolean;
+  provider?: string | null; // "google" | "ics" | null
   icsUrl?: string;
   connectedAt?: number;
   lastSynced?: number;

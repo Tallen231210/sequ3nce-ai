@@ -14,12 +14,13 @@ import { NewPostForm } from './NewPostForm';
 interface ChannelsProps {
   userId: string;
   channels: CommunityChannel[];
+  isAdmin?: boolean;
   onMessageAuthor?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
 const POLL_INTERVAL = 10_000;
 
-export function Channels({ userId, channels, onMessageAuthor }: ChannelsProps) {
+export function Channels({ userId, channels, isAdmin, onMessageAuthor }: ChannelsProps) {
   const [selectedChannel, setSelectedChannel] = useState<CommunityChannel | null>(
     channels[0] ?? null
   );
@@ -82,8 +83,8 @@ export function Channels({ userId, channels, onMessageAuthor }: ChannelsProps) {
     }
   };
 
-  const handleCreatePost = useCallback(async (channelId: string, body: string) => {
-    const result = await createCommunityPost(userId, channelId, body);
+  const handleCreatePost = useCallback(async (channelId: string, body: string, visibility?: string) => {
+    const result = await createCommunityPost(userId, channelId, body, visibility);
     if (!result.error && selectedChannel) {
       await loadPosts(selectedChannel._id);
     }
@@ -195,6 +196,7 @@ export function Channels({ userId, channels, onMessageAuthor }: ChannelsProps) {
                       key={post._id}
                       post={post}
                       userId={userId}
+                      isAdmin={isAdmin}
                       onLike={handleLike}
                       onEdit={handleEdit}
                       onDelete={handleDelete}

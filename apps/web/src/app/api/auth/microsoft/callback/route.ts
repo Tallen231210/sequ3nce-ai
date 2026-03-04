@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
     const redirectUri =
       process.env.MICROSOFT_REDIRECT_URI ||
-      `${process.env.NEXT_PUBLIC_APP_URL || "https://app.sequ3nce.ai"}/api/auth/microsoft/callback`;
+      `${process.env.NEXT_PUBLIC_APP_URL || "https://sequ3nce.ai"}/api/auth/microsoft/callback`;
 
     if (!clientId || !clientSecret) {
       console.error("[Microsoft OAuth] Missing MICROSOFT_CLIENT_ID or MICROSOFT_CLIENT_SECRET");

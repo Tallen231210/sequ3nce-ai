@@ -6,9 +6,10 @@ import { getPostComments, createPostComment, toggleCommentLike, editPostComment,
 interface CommentThreadProps {
   postId: string;
   userId: string;
+  isAdmin?: boolean;
 }
 
-export function CommentThread({ postId, userId }: CommentThreadProps) {
+export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
   const [comments, setComments] = useState<CommunityComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
@@ -92,6 +93,7 @@ export function CommentThread({ postId, userId }: CommentThreadProps) {
           key={comment._id}
           comment={comment}
           userId={userId}
+          isAdmin={isAdmin}
           onLike={handleLike}
           onEdit={handleEdit}
           onDelete={handleDelete}
@@ -130,12 +132,14 @@ export function CommentThread({ postId, userId }: CommentThreadProps) {
 function CommentItem({
   comment,
   userId,
+  isAdmin,
   onLike,
   onEdit,
   onDelete,
 }: {
   comment: CommunityComment;
   userId: string;
+  isAdmin?: boolean;
   onLike: (id: string) => void;
   onEdit: (id: string, body: string) => void;
   onDelete: (id: string) => void;
@@ -207,10 +211,10 @@ function CommentItem({
           </button>
 
           {isAuthor && !isEditing && (
-            <>
-              <button onClick={() => setIsEditing(true)} className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600">Edit</button>
-              <button onClick={() => onDelete(comment._id)} className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-red-500">Delete</button>
-            </>
+            <button onClick={() => setIsEditing(true)} className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600">Edit</button>
+          )}
+          {(isAuthor || isAdmin) && !isEditing && (
+            <button onClick={() => onDelete(comment._id)} className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-red-500">Delete</button>
           )}
         </div>
       </div>

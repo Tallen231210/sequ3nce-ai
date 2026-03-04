@@ -410,6 +410,8 @@ export const createBot = action({
         },
         recording_config: {
           retention: { type: "forever" as const },
+          video_mixed_layout: "gallery_view_v2",
+          video_mixed_participant_video_when_screenshare: "beside",
           transcript: {
             diarization: {
               use_separate_streams_when_available: true,
@@ -628,6 +630,8 @@ export const createQuickBot = action({
         },
         recording_config: {
           retention: { type: "forever" as const },
+          video_mixed_layout: "gallery_view_v2",
+          video_mixed_participant_video_when_screenshare: "beside",
           transcript: {
             diarization: {
               use_separate_streams_when_available: true,
@@ -1478,6 +1482,7 @@ export const needsCalendarOnboarding = query({
     // Skip onboarding if already completed OR if calendar is already connected
     if (closer.calendarOnboardingCompleted === true) return false;
     if (closer.icsUrl) return false;
+    if (closer.googleCalendarRefreshToken) return false;
 
     return true;
   },

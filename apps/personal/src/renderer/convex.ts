@@ -12,6 +12,7 @@ export interface CloserInfo {
   status: string;
   subscriptionStatus?: string; // "active" | "cancelled" | "past_due" | "none"
   b2cUserId?: string;
+  role?: string;
 }
 
 export interface LoginResult {
@@ -683,6 +684,101 @@ export async function getActiveResources(teamId: string): Promise<TeamResource[]
   }
 }
 
+// ==================== B2C RESOURCE MANAGEMENT ====================
+
+// Add a new resource
+export async function addResource(
+  userId: string,
+  type: string,
+  title: string,
+  description?: string,
+  content?: string,
+  url?: string
+): Promise<{ resourceId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/resources?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, type, title, description, content, url }),
+    });
+    if (!response.ok) {
+      const data = await safeJsonParse(response, "Failed to add resource");
+      return { error: data.error as string || "Failed to add resource" };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to add resource:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+// Update an existing resource
+export async function updateResource(
+  userId: string,
+  resourceId: string,
+  updates: Partial<{ title: string; description: string; content: string; url: string }>
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/resources/update?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, resourceId, ...updates }),
+    });
+    if (!response.ok) {
+      const data = await safeJsonParse(response, "Failed to update resource");
+      return { error: data.error as string || "Failed to update resource" };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to update resource:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+// Delete a resource
+export async function deleteResource(
+  userId: string,
+  resourceId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/resources/delete?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, resourceId }),
+    });
+    if (!response.ok) {
+      const data = await safeJsonParse(response, "Failed to delete resource");
+      return { error: data.error as string || "Failed to delete resource" };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to delete resource:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+// Reorder resources
+export async function reorderResources(
+  userId: string,
+  resourceIds: string[]
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/resources/reorder?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, resourceIds }),
+    });
+    if (!response.ok) {
+      const data = await safeJsonParse(response, "Failed to reorder resources");
+      return { error: data.error as string || "Failed to reorder resources" };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to reorder resources:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
 // Save meeting platform preference
 export async function saveMeetingPlatform(closerId: string, platform: string): Promise<boolean> {
   try {
@@ -1279,12 +1375,14 @@ export async function refreshRecordingUrl(callId: string): Promise<string | null
 export interface SharedLinkResult {
   token: string;
   url: string;
+  linkId: string;
 }
 
 export async function createSharedLink(
   callId: string,
   closerId: string,
-  teamId: string
+  teamId: string,
+  options?: { accessType?: "full_access" | "compliance"; password?: string }
 ): Promise<SharedLinkResult | null> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/createSharedLink`, {
@@ -1297,6 +1395,8 @@ export async function createSharedLink(
         includeComments: false,
         createdBy: closerId,
         createdByType: "closer",
+        accessType: options?.accessType,
+        password: options?.password,
       }),
     });
     if (!response.ok) return null;
@@ -1306,6 +1406,47 @@ export async function createSharedLink(
   } catch (error) {
     console.error("[Convex] Failed to create shared link:", error);
     return null;
+  }
+}
+
+// Get all shared links for a call
+export interface SharedLinkInfo {
+  _id: string;
+  token: string;
+  shareType: string;
+  includeComments: boolean;
+  isActive: boolean;
+  createdAt: number;
+  accessType: string;
+  hasPassword: boolean;
+  url: string;
+}
+
+export async function getSharedLinksForCall(callId: string): Promise<SharedLinkInfo[]> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/getSharedLinksForCall?callId=${encodeURIComponent(callId)}`
+    );
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get shared links:", error);
+    return [];
+  }
+}
+
+// Revoke a shared link
+export async function revokeSharedLink(linkId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/revokeSharedLink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ linkId }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[Convex] Failed to revoke shared link:", error);
+    return false;
   }
 }
 
@@ -1678,6 +1819,7 @@ export interface CommunityPost {
   authorName: string;
   authorPhotoUrl: string | null;
   body: string;
+  visibility?: string; // "everyone" (default) | "friends"
   likeCount: number;
   commentCount: number;
   isPinned: boolean;
@@ -1711,6 +1853,29 @@ export interface CommunityMember {
   photoUrl: string | null;
   createdAt: number;
 }
+
+// ==================== Friendship Types ====================
+
+export interface FriendItem {
+  friendshipId: string;
+  userId: string;
+  name: string;
+  headline: string | null;
+  location: string | null;
+  photoUrl: string | null;
+  acceptedAt: number;
+}
+
+export interface FriendRequest {
+  friendshipId: string;
+  requesterId: string;
+  name: string;
+  headline: string | null;
+  photoUrl: string | null;
+  createdAt: number;
+}
+
+export type FriendshipStatus = "none" | "pending_sent" | "pending_received" | "accepted";
 
 // ==================== Training Types ====================
 
@@ -1781,13 +1946,15 @@ export async function getCommunityChannels(): Promise<CommunityChannel[]> {
 export async function getFeedPosts(
   userId?: string,
   limit?: number,
-  cursor?: number
+  cursor?: number,
+  friendsOnly?: boolean
 ): Promise<{ posts: CommunityPost[]; nextCursor: number | null }> {
   try {
     const params = new URLSearchParams();
     if (userId) params.set("userId", userId);
     if (limit) params.set("limit", String(limit));
     if (cursor) params.set("cursor", String(cursor));
+    if (friendsOnly) params.set("friendsOnly", "true");
     params.set("_", String(Date.now()));
 
     const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/feed?${params}`);
@@ -1837,13 +2004,14 @@ export async function getNewPostCount(since: number): Promise<number> {
 export async function createCommunityPost(
   userId: string,
   channelId: string,
-  body: string
+  body: string,
+  visibility?: string
 ): Promise<{ postId?: string; error?: string }> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/posts?_=${Date.now()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, channelId, body }),
+      body: JSON.stringify({ userId, channelId, body, visibility }),
     });
     const data = await response.json();
     if (!response.ok) return { error: data.error || "Failed to create post" };
@@ -2159,5 +2327,146 @@ export async function getCommunityMembers(
   } catch (error) {
     console.error("[Convex] Failed to get members:", error);
     return { members: [], nextCursor: null };
+  }
+}
+
+// ==================== Friendship Functions ====================
+
+export async function getFriends(
+  userId: string,
+  limit?: number,
+  cursor?: number
+): Promise<{ friends: FriendItem[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams({ userId });
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+    params.set("_", String(Date.now()));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends?${params}`);
+    if (!response.ok) return { friends: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get friends:", error);
+    return { friends: [], nextCursor: null };
+  }
+}
+
+export async function getIncomingFriendRequests(
+  userId: string
+): Promise<{ requests: FriendRequest[] }> {
+  try {
+    const params = new URLSearchParams({ userId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends/requests?${params}`);
+    if (!response.ok) return { requests: [] };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get friend requests:", error);
+    return { requests: [] };
+  }
+}
+
+export async function getPendingFriendRequestCount(
+  userId: string
+): Promise<number> {
+  try {
+    const params = new URLSearchParams({ userId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends/request-count?${params}`);
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.count || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+export async function getFriendshipStatus(
+  userId: string,
+  otherUserId: string
+): Promise<FriendshipStatus> {
+  try {
+    const params = new URLSearchParams({ userId, otherUserId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends/status?${params}`);
+    if (!response.ok) return "none";
+    const data = await response.json();
+    return data.status || "none";
+  } catch (error) {
+    return "none";
+  }
+}
+
+export async function sendFriendRequest(
+  requesterId: string,
+  recipientId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends/request?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requesterId, recipientId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to send request" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to send friend request:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function acceptFriendRequest(
+  userId: string,
+  requesterId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends/accept?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, requesterId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to accept" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to accept friend request:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function declineFriendRequest(
+  userId: string,
+  requesterId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends/decline?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, requesterId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to decline" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to decline friend request:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function removeFriend(
+  userId: string,
+  friendId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/friends/remove?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, friendId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to remove" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to remove friend:", error);
+    return { success: false, error: "Network error" };
   }
 }

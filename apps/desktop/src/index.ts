@@ -979,6 +979,24 @@ function handleAuthCallback(url: string): void {
   }
 }
 
+/**
+ * Handle sequ3nce://calendar-connected deep link.
+ * Sent from the OAuth success page after Google Calendar authorization.
+ */
+function handleCalendarConnected(url: string): void {
+  console.log('[Calendar] Handling calendar-connected callback:', url);
+  try {
+    const parsedUrl = new URL(url);
+    const closerId = parsedUrl.searchParams.get('closerId');
+    if (closerId) {
+      mainWindow?.webContents.send('calendar:connected', { closerId });
+      console.log('[Calendar] Google Calendar connected for closer:', closerId);
+    }
+  } catch (error) {
+    console.error('[Calendar] Error parsing callback URL:', error);
+  }
+}
+
 // ==================== IPC Handlers ====================
 
 // Set up IPC handlers
@@ -2014,6 +2032,8 @@ app.on('open-url', (event, url) => {
 
   if (url.startsWith(`${PROTOCOL_NAME}://auth-callback`)) {
     handleAuthCallback(url);
+  } else if (url.startsWith(`${PROTOCOL_NAME}://calendar-connected`)) {
+    handleCalendarConnected(url);
   }
 
   // Focus the main window
@@ -2042,6 +2062,8 @@ if (!gotTheLock) {
       console.log('[Main] Received protocol URL from second instance:', url);
       if (url.startsWith(`${PROTOCOL_NAME}://auth-callback`)) {
         handleAuthCallback(url);
+      } else if (url.startsWith(`${PROTOCOL_NAME}://calendar-connected`)) {
+        handleCalendarConnected(url);
       }
     }
   });

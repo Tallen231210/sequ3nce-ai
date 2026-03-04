@@ -6,7 +6,7 @@ import { Logo } from "@/components/ui/logo";
 import { PublicVideoPlayer } from "@/components/share/PublicVideoPlayer";
 import { PublicTranscript } from "@/components/share/PublicTranscript";
 import { PublicComments } from "@/components/share/PublicComments";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Lock, Shield } from "lucide-react";
 
 // Convex HTTP site URL for fetching shared link data
 const CONVEX_SITE_URL =
@@ -18,6 +18,7 @@ interface SharedLinkData {
   startSeconds?: number;
   endSeconds?: number;
   includeComments: boolean;
+  accessType?: string; // "full_access" | "compliance"
   call: {
     prospectName: string;
     closerName: string;
@@ -50,6 +51,12 @@ export default function SharePage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Password gate state
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const [isUnlocking, setIsUnlocking] = useState(false);
+
   // Video state
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -57,41 +64,56 @@ export default function SharePage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoError, setVideoError] = useState(false);
 
+  const fetchSharedData = useCallback(async (password?: string) => {
+    try {
+      const response = await fetch(`${CONVEX_SITE_URL}/getSharedLinkData`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+
+      if (response.status === 401) {
+        const body = await response.json();
+        setNeedsPassword(true);
+        if (body.passwordIncorrect) setPasswordError(true);
+        return;
+      }
+      if (response.status === 404) {
+        setError("This shared link was not found.");
+        return;
+      }
+      if (response.status === 410) {
+        setError("This shared link has been revoked and is no longer available.");
+        return;
+      }
+      if (!response.ok) {
+        setError("Something went wrong loading this recording.");
+        return;
+      }
+
+      const result = await response.json();
+      setNeedsPassword(false);
+      setData(result);
+    } catch {
+      setError("Failed to load the shared recording. Please try again.");
+    } finally {
+      setIsLoading(false);
+      setIsUnlocking(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
+    fetchSharedData();
+  }, [token, fetchSharedData]);
 
-    async function fetchData() {
-      try {
-        const response = await fetch(`${CONVEX_SITE_URL}/getSharedLinkData`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        });
-
-        if (response.status === 404) {
-          setError("This shared link was not found.");
-          return;
-        }
-        if (response.status === 410) {
-          setError("This shared link has been revoked and is no longer available.");
-          return;
-        }
-        if (!response.ok) {
-          setError("Something went wrong loading this recording.");
-          return;
-        }
-
-        const result = await response.json();
-        setData(result);
-      } catch {
-        setError("Failed to load the shared recording. Please try again.");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    fetchData();
-  }, [token]);
+  function handlePasswordSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!passwordInput.trim()) return;
+    setPasswordError(false);
+    setIsUnlocking(true);
+    fetchSharedData(passwordInput);
+  }
 
   // Cleanup video on unmount
   useEffect(() => {
@@ -150,6 +172,54 @@ export default function SharePage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handlePlayPause, handleSeek, currentTime, duration]);
 
+  // Password gate
+  if (needsPassword && !data) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center space-y-5 max-w-sm px-6">
+          <div className="w-14 h-14 rounded-full bg-zinc-100 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6 text-zinc-400" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold text-zinc-900">
+              Password Protected
+            </h1>
+            <p className="text-sm text-zinc-500 mt-1">
+              This recording requires a password to view.
+            </p>
+          </div>
+          <form onSubmit={handlePasswordSubmit} className="space-y-3">
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+              placeholder="Enter password"
+              autoFocus
+              className={`w-full px-3 py-2 text-sm border rounded-lg outline-none transition-colors ${
+                passwordError
+                  ? "border-red-300 focus:border-red-400"
+                  : "border-zinc-200 focus:border-zinc-400"
+              }`}
+            />
+            {passwordError && (
+              <p className="text-xs text-red-500">Incorrect password. Please try again.</p>
+            )}
+            <button
+              type="submit"
+              disabled={isUnlocking || !passwordInput.trim()}
+              className="w-full px-4 py-2 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isUnlocking ? "Unlocking..." : "Unlock Recording"}
+            </button>
+          </form>
+          <div className="pt-2">
+            <Logo height={20} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Loading state
   if (isLoading) {
     return (
@@ -196,8 +266,9 @@ export default function SharePage() {
     );
   }
 
-  const { call, transcript, comments, shareType, startSeconds, endSeconds, includeComments } = data;
+  const { call, transcript, comments, shareType, startSeconds, endSeconds, includeComments, accessType } = data;
   const isClip = shareType === "clip" && startSeconds != null && endSeconds != null;
+  const isCompliance = accessType === "compliance";
   const hasComments = includeComments && comments.length > 0;
 
   return (
@@ -215,6 +286,12 @@ export default function SharePage() {
               {isClip && (
                 <span className="text-[10px] font-medium bg-zinc-100 text-zinc-500 px-2 py-0.5 rounded-full">
                   Clip
+                </span>
+              )}
+              {isCompliance && (
+                <span className="text-[10px] font-medium bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  Compliance Safe
                 </span>
               )}
             </div>
@@ -236,7 +313,7 @@ export default function SharePage() {
           </div>
         </div>
         <span className="text-[10px] font-medium text-zinc-300 uppercase tracking-widest">
-          Shared Recording
+          {isCompliance ? "Compliance Recording" : "Shared Recording"}
         </span>
       </div>
 

@@ -265,3 +265,8 @@ ipcRenderer.on('tray:stop-recording', () => {
 ipcRenderer.on('auth:callback', (_event, data: { token?: string; error?: string }) => {
   window.dispatchEvent(new CustomEvent('auth:callback', { detail: data }));
 });
+
+// Google Calendar connected callback from deep link
+ipcRenderer.on('calendar:connected', (_event, data: { closerId: string }) => {
+  window.dispatchEvent(new CustomEvent('calendar:connected', { detail: data }));
+});

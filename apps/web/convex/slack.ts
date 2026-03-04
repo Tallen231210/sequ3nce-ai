@@ -522,7 +522,7 @@ export function buildReinforcementBlocks(
               text: "Open Dashboard",
               emoji: true,
             },
-            url: "https://app.sequ3nce.ai/dashboard",
+            url: "https://sequ3nce.ai/dashboard",
             action_id: "open_dashboard",
           },
         ],
@@ -551,8 +551,8 @@ export function buildCallStartedBlocks(
 ) {
   const timestamp = Math.floor(Date.now() / 1000);
   const dashboardUrl = callId
-    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://app.sequ3nce.ai/dashboard";
+    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://sequ3nce.ai/dashboard";
 
   return {
     blocks: [
@@ -618,8 +618,8 @@ export function buildCallSummaryBlocks(
   milestone: "30" | "60" = "30"
 ) {
   const dashboardUrl = callId
-    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://app.sequ3nce.ai/dashboard";
+    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://sequ3nce.ai/dashboard";
 
   return {
     blocks: [
@@ -771,7 +771,7 @@ export function buildCallGoingLongBlocks(
             text: "Open Dashboard",
             emoji: true,
           },
-          url: "https://app.sequ3nce.ai/dashboard",
+          url: "https://sequ3nce.ai/dashboard",
           action_id: "open_dashboard",
         },
       ],
@@ -805,8 +805,8 @@ export function buildCallCompletedBlocks(
                       outcome === "no_show" ? "No Show" : outcome;
 
   const dashboardUrl = callId
-    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://app.sequ3nce.ai/dashboard";
+    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://sequ3nce.ai/dashboard";
 
   // Format duration nicely
   const durationText =

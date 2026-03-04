@@ -88,7 +88,7 @@ export function buildReinforcementEmbed(
     color: DISCORD_COLORS.reinforcement,
     timestamp: new Date(createdAt || Date.now()).toISOString(),
     footer: { text: "Sequ3nce.ai" },
-    url: "https://app.sequ3nce.ai/dashboard",
+    url: "https://sequ3nce.ai/dashboard",
   };
 
   return {
@@ -106,8 +106,8 @@ export function buildCallStartedEmbed(
   callId?: string
 ): { content: string; embeds: DiscordEmbed[] } {
   const dashboardUrl = callId
-    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://app.sequ3nce.ai/dashboard";
+    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://sequ3nce.ai/dashboard";
 
   const embed: DiscordEmbed = {
     title: "Call Started",
@@ -139,8 +139,8 @@ export function buildCallSummaryEmbed(
   milestone: "30" | "60" = "30"
 ): { content: string; embeds: DiscordEmbed[] } {
   const dashboardUrl = callId
-    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://app.sequ3nce.ai/dashboard";
+    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://sequ3nce.ai/dashboard";
 
   const embed: DiscordEmbed = {
     title: `${milestone}-Minute Call Summary`,
@@ -210,7 +210,7 @@ export function buildCallGoingLongEmbed(
     fields,
     timestamp: new Date().toISOString(),
     footer: { text: "Sequ3nce.ai" },
-    url: "https://app.sequ3nce.ai/dashboard",
+    url: "https://sequ3nce.ai/dashboard",
   };
 
   return {
@@ -233,8 +233,8 @@ export function buildCallCompletedEmbed(
   callId?: string
 ): { content: string; embeds: DiscordEmbed[] } {
   const dashboardUrl = callId
-    ? `https://app.sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://app.sequ3nce.ai/dashboard";
+    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+    : "https://sequ3nce.ai/dashboard";
 
   // Color based on outcome: Green for closed, Yellow for follow-up, Red for lost/no-show
   const color = outcome === "closed" ? 3066993 : outcome === "follow_up" ? 15844367 : 15158332;

@@ -19,6 +19,7 @@ export interface CommunityPost {
   authorName: string;
   authorPhotoUrl: string | null;
   body: string;
+  visibility?: string; // "everyone" (default) | "friends"
   likeCount: number;
   commentCount: number;
   isPinned: boolean;

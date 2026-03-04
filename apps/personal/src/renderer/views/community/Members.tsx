@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { getCommunityMembers } from '../../convex';
+import { getCommunityMembers, getFriendshipStatus, sendFriendRequest, acceptFriendRequest } from '../../convex';
+import type { FriendshipStatus } from '../../convex';
 import type { CommunityMember } from './types';
 import { MemberCard } from './MemberCard';
 
@@ -14,6 +15,7 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
   const [search, setSearch] = useState('');
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [friendStatusMap, setFriendStatusMap] = useState<Map<string, FriendshipStatus>>(new Map());
   const mountedRef = useRef(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined as any);
 
@@ -30,6 +32,27 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
       setMembers(result.members);
       setNextCursor(result.nextCursor);
       setLoading(false);
+      if (currentUserId) {
+        fetchFriendStatuses(result.members);
+      }
+    }
+  };
+
+  const fetchFriendStatuses = async (memberList: CommunityMember[]) => {
+    if (!currentUserId) return;
+    const otherMembers = memberList.filter((m) => m.userId !== currentUserId);
+    const statuses = await Promise.all(
+      otherMembers.map(async (m) => {
+        const status = await getFriendshipStatus(currentUserId, m.userId);
+        return [m.userId, status] as [string, FriendshipStatus];
+      })
+    );
+    if (mountedRef.current) {
+      setFriendStatusMap((prev) => {
+        const next = new Map(prev);
+        for (const [id, status] of statuses) next.set(id, status);
+        return next;
+      });
     }
   };
 
@@ -41,6 +64,9 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
       setMembers((prev) => [...prev, ...result.members]);
       setNextCursor(result.nextCursor);
       setLoadingMore(false);
+      if (currentUserId) {
+        fetchFriendStatuses(result.members);
+      }
     }
   };
 
@@ -51,6 +77,42 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
       loadMembers(value || undefined);
     }, 300);
   }, []);
+
+  const handleAddFriend = useCallback(async (recipientId: string) => {
+    if (!currentUserId) return;
+    // Optimistic update
+    setFriendStatusMap((prev) => {
+      const next = new Map(prev);
+      next.set(recipientId, 'pending_sent');
+      return next;
+    });
+    const result = await sendFriendRequest(currentUserId, recipientId);
+    if (result.error && mountedRef.current) {
+      // Revert on error
+      setFriendStatusMap((prev) => {
+        const next = new Map(prev);
+        next.set(recipientId, 'none');
+        return next;
+      });
+    }
+  }, [currentUserId]);
+
+  const handleAcceptFriend = useCallback(async (requesterId: string) => {
+    if (!currentUserId) return;
+    setFriendStatusMap((prev) => {
+      const next = new Map(prev);
+      next.set(requesterId, 'accepted');
+      return next;
+    });
+    const result = await acceptFriendRequest(currentUserId, requesterId);
+    if (result.error && mountedRef.current) {
+      setFriendStatusMap((prev) => {
+        const next = new Map(prev);
+        next.set(requesterId, 'pending_received');
+        return next;
+      });
+    }
+  }, [currentUserId]);
 
   return (
     <div className="space-y-4">
@@ -83,7 +145,10 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
                 key={member.userId}
                 member={member}
                 isCurrentUser={member.userId === currentUserId}
+                friendshipStatus={friendStatusMap.get(member.userId)}
                 onMessage={onStartDM ? (userId, name, photoUrl) => onStartDM(userId, name, photoUrl) : undefined}
+                onAddFriend={handleAddFriend}
+                onAcceptFriend={handleAcceptFriend}
               />
             ))}
           </div>

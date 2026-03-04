@@ -193,6 +193,7 @@ export const loginB2CUser = mutation({
         status: closer.status,
         subscriptionStatus: user.subscriptionStatus,
         b2cUserId: user._id,
+        role: user.role || "user",
       },
     };
   },
@@ -224,6 +225,20 @@ export const getB2CUserByEmail = internalQuery({
       profileSlug: user.profileSlug,
       createdAt: user.createdAt,
     };
+  },
+});
+
+// Set admin role on a B2C user (run via CLI: npx convex run b2cAuth:setAdminRole '{"userId":"..."}' --prod)
+export const setAdminRole = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    role: v.optional(v.string()), // "admin" to grant, undefined/null to revoke
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+    await ctx.db.patch(args.userId, { role: args.role || undefined });
+    return { success: true, role: args.role || "user" };
   },
 });
 

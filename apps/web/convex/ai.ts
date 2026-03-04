@@ -10,6 +10,28 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
+const REDACTION_PROMPT = `You are a compliance redaction engine for sales call transcripts. Your job is to replace sensitive information with [REDACTED] while preserving the conversation flow.
+
+REDACT (replace with [REDACTED]):
+- Prospect/client names (first, last, full)
+- Credit card numbers, bank account info, SSNs
+- Company names and business entities
+- Specific dollar amounts, deal values, pricing ("$5,000" → "[REDACTED]")
+- Product/service names being sold
+- Email addresses, phone numbers, physical addresses
+- Personal details (age, family info, medical info, employment history)
+
+PRESERVE (do NOT redact):
+- The closer/salesperson's name
+- Generic sales language ("let me walk you through", "does that make sense")
+- Time references ("next Tuesday", "in 30 days")
+- Generic roles ("the prospect", "my manager")
+- Conversational fillers and greetings
+
+Return a JSON array where each element has: { "text": "redacted text here" }
+The array must have exactly the same number of elements as the input, in the same order.
+Only return the JSON array, nothing else.`;
+
 const SUMMARY_PROMPT = `You are analyzing a completed sales call transcript to create a bullet-point summary for a sales manager.
 
 Generate exactly these bullet points (use • character):
@@ -346,6 +368,64 @@ export const generateCallAnalysis = internalAction({
     } catch (error) {
       console.error(`[CallAnalysis] Failed for call ${callId}:`, error);
       return null;
+    }
+  },
+});
+
+// ──────────────────────────────────────────────
+// TRANSCRIPT REDACTION (for compliance-safe share links)
+// ──────────────────────────────────────────────
+
+export const redactTranscript = internalAction({
+  args: {
+    segments: v.array(v.object({
+      speaker: v.string(),
+      text: v.string(),
+      timestamp: v.number(),
+    })),
+  },
+  handler: async (_ctx, args) => {
+    const { segments } = args;
+
+    if (segments.length === 0) return segments;
+
+    // Build numbered input for Claude (just the text portions)
+    const numberedTexts = segments.map((s, i) => `${i}: ${s.text}`).join("\n");
+
+    try {
+      const response = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 8192,
+        messages: [
+          {
+            role: "user",
+            content: `Here are ${segments.length} transcript segments to redact:\n\n${numberedTexts}`,
+          },
+        ],
+        system: REDACTION_PROMPT,
+      });
+
+      const content = response.content[0];
+      if (content.type !== "text") {
+        console.error("[Redaction] Unexpected response type:", content.type);
+        return segments;
+      }
+
+      const parsed = JSON.parse(content.text);
+      if (!Array.isArray(parsed) || parsed.length !== segments.length) {
+        console.error(`[Redaction] Array length mismatch: got ${parsed.length}, expected ${segments.length}`);
+        return segments;
+      }
+
+      // Merge: use AI-provided text but preserve original speaker + timestamp
+      return segments.map((s, i) => ({
+        speaker: s.speaker,
+        text: typeof parsed[i]?.text === "string" ? parsed[i].text : s.text,
+        timestamp: s.timestamp,
+      }));
+    } catch (error) {
+      console.error("[Redaction] Failed, returning original transcript:", error);
+      return segments;
     }
   },
 });
