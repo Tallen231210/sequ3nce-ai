@@ -6,11 +6,12 @@ import { ScheduleEventCard } from './ScheduleEventCard';
 interface ScheduleListViewProps {
   events: CalendarEvent[];
   now: number;
+  closerEmail?: string;
   onExclude: (event: CalendarEvent) => void;
   onJoinRequest: (event: CalendarEvent) => void;
 }
 
-export function ScheduleListView({ events, now, onExclude, onJoinRequest }: ScheduleListViewProps) {
+export function ScheduleListView({ events, now, closerEmail, onExclude, onJoinRequest }: ScheduleListViewProps) {
   const grouped = groupEventsByDate(events);
   const sortedKeys = Array.from(grouped.keys()).sort();
 
@@ -41,6 +42,7 @@ export function ScheduleListView({ events, now, onExclude, onJoinRequest }: Sche
                   key={event._id}
                   event={event}
                   now={now}
+                  closerEmail={closerEmail}
                   onExclude={onExclude}
                   onJoinRequest={onJoinRequest}
                 />

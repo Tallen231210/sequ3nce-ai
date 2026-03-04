@@ -28,7 +28,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [now, setNow] = useState(Date.now());
 
   // View mode
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekOffset, setWeekOffset] = useState(0);
 
   // Connection form
@@ -249,6 +249,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
         <ScheduleListView
           events={events}
           now={now}
+          closerEmail={closerInfo.email}
           onExclude={handleExclude}
           onJoinRequest={setSelectedEvent}
         />
@@ -257,6 +258,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           events={events}
           weekDates={weekDates}
           now={now}
+          closerEmail={closerInfo.email}
           onEventClick={setSelectedEvent}
         />
       )}

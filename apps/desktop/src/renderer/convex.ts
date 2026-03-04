@@ -916,6 +916,7 @@ export interface CalendarEvent {
   location?: string;
   isAllDay?: boolean;
   meetingUrl?: string;
+  attendees?: Array<{ email: string; name?: string; isOrganizer?: boolean }>;
 }
 
 export async function getCalendarEvents(
