@@ -675,12 +675,12 @@ export default function SettingsPage() {
   const testDiscordWebhook = useAction(api.discord.testDiscordWebhook);
 
   // Hyros (auth context — no clerkId needed)
-  const hyrosConfig = useQuery(api.hyros.getHyrosConfig);
+  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, {});
   const updateHyrosConfig = useAction(api.hyrosActions.updateHyrosConfig);
   const testHyrosConnection = useAction(api.hyrosActions.testHyrosConnection);
 
   // GHL (auth context — no clerkId needed)
-  const ghlConfig = useQuery(api.ghl.getGhlConfig);
+  const ghlConfig = useQuery(api.ghl.getGhlConfig, {});
   const updateGhlConfig = useAction(api.ghlActions.updateGhlConfig);
   const testGhlConnection = useAction(api.ghlActions.testGhlConnection);
 

@@ -43,7 +43,7 @@ const outcomeBadgeColors: Record<string, string> = {
 
 export default function GhlSyncPage() {
   const { team } = useTeam();
-  const ghlConfig = useQuery(api.ghl.getGhlConfig);
+  const ghlConfig = useQuery(api.ghl.getGhlConfig, {});
   const syncHistory = useQuery(
     api.ghl.getGhlSyncHistory,
     team?._id ? { teamId: team._id, limit: 50 } : "skip"

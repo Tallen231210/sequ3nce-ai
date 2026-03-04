@@ -57,7 +57,7 @@ const OUTCOME_STYLES: Record<string, { label: string; className: string }> = {
 export default function HyrosSyncPage() {
   const { team, isLoading: isTeamLoading } = useTeam();
 
-  const hyrosConfig = useQuery(api.hyros.getHyrosConfig);
+  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, {});
 
   const pendingCalls = useQuery(
     api.hyros.getPendingHyrosCalls,
