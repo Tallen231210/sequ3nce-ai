@@ -754,18 +754,25 @@ export default function Home() {
                   <span className="text-zinc-700 font-medium">close</span>.
                 </p>
 
-                <div className="flex gap-6 mb-8 py-6 px-8 rounded-xl bg-zinc-950 text-white">
+                <div className="flex items-center justify-center gap-8 mb-8 py-6 px-8 rounded-xl bg-zinc-950 text-white">
                   <div className="text-center">
                     <div className="text-2xl font-semibold">25%</div>
                     <div className="text-[10px] text-zinc-400 uppercase tracking-widest mt-1">
                       Lower CPA
                     </div>
                   </div>
-                  <div className="w-px bg-zinc-800" />
+                  <div className="w-px h-10 bg-zinc-800" />
                   <div className="text-center">
                     <div className="text-2xl font-semibold">20%</div>
                     <div className="text-[10px] text-zinc-400 uppercase tracking-widest mt-1">
                       Less wasted spend
+                    </div>
+                  </div>
+                  <div className="w-px h-10 bg-zinc-800" />
+                  <div className="text-center">
+                    <div className="text-2xl font-semibold">15-25%</div>
+                    <div className="text-[10px] text-zinc-400 uppercase tracking-widest mt-1">
+                      Better ROAS
                     </div>
                   </div>
                 </div>
