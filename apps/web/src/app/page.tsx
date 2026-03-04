@@ -24,6 +24,8 @@ import {
   Eye,
   ArrowUpRight,
   Video,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -276,7 +278,7 @@ export default function Home() {
     { question: "How does the meeting bot work?", answer: "Closers connect their Google Calendar once. Our bot automatically detects upcoming calls and joins them to record, transcribe, and provide live coaching — completely hands-free." },
     { question: "Is my call data secure?", answer: "Yes, all calls are encrypted in transit and at rest. You own your data, and we never share it with third parties." },
     { question: "What if my closers aren't tech-savvy?", answer: "The setup is dead simple. Download the app, log in, connect your Google Calendar. After that, everything is automatic — no buttons to press, no recording to start." },
-    { question: "Do you integrate with my CRM?", answer: "CRM integrations (GoHighLevel, Close) are coming soon. Let us know what you need and we'll prioritize accordingly." },
+    { question: "Do you integrate with my CRM?", answer: "Yes — we integrate with GoHighLevel (GHL) and Hyros. Call outcomes, lead quality scores, objections, and AI summaries sync automatically to your GHL contacts after every call. For Hyros, we push call intelligence data so your ad platforms can optimize for leads that actually close, not just leads that book calls." },
   ];
 
   return (
@@ -315,7 +317,7 @@ export default function Home() {
           )}>
             <Logo href="/" height={28} />
             <nav className="hidden md:flex items-center gap-8">
-              {["features", "how-it-works", "pricing"].map((id) => (
+              {["features", "integrations", "how-it-works", "pricing"].map((id) => (
                 <button
                   key={id}
                   onClick={() => scrollToSection(id)}
@@ -323,7 +325,9 @@ export default function Home() {
                 >
                   {id === "how-it-works"
                     ? "How It Works"
-                    : id.charAt(0).toUpperCase() + id.slice(1)}
+                    : id === "integrations"
+                      ? "Integrations"
+                      : id.charAt(0).toUpperCase() + id.slice(1)}
                 </button>
               ))}
             </nav>
@@ -480,6 +484,8 @@ export default function Home() {
                 },
                 { icon: <Users className="h-4 w-4" strokeWidth={1.5} />, name: "Teams" },
                 { icon: <Calendar className="h-4 w-4" strokeWidth={1.5} />, name: "Google Calendar" },
+                { icon: <TrendingUp className="h-4 w-4" strokeWidth={1.5} />, name: "Hyros" },
+                { icon: <Zap className="h-4 w-4" strokeWidth={1.5} />, name: "GoHighLevel" },
               ].map((p, i) => (
                 <div key={i} className="flex items-center gap-2 text-zinc-400">
                   {p.icon}
@@ -688,6 +694,144 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
+      {/* INTEGRATIONS                                  */}
+      {/* ═══════════════════════════════════════════ */}
+      <section id="integrations" className="py-32 relative z-10">
+        <div className="mx-auto max-w-7xl px-6">
+          <AnimatedSection>
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
+                Integrations
+              </div>
+              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
+                Close the loop between
+                <br />
+                sales and marketing<span className="text-zinc-300">.</span>
+              </h2>
+              <p className="mt-6 text-zinc-500 text-lg leading-relaxed">
+                Sequ3nce doesn&apos;t just record calls — it feeds real
+                conversation intelligence back into the tools your team already
+                uses.
+              </p>
+            </div>
+          </AnimatedSection>
+
+          <div className="grid lg:grid-cols-12 gap-4">
+            {/* Hyros — Primary emphasis */}
+            <AnimatedSection delay={100} className="lg:col-span-7">
+              <div className="relative p-10 lg:p-14 rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm h-full group hover:border-zinc-300 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.08)] transition-all">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="w-11 h-11 rounded-xl bg-zinc-950 flex items-center justify-center">
+                    <TrendingUp
+                      className="h-5 w-5 text-white"
+                      strokeWidth={1.5}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold">Hyros</h3>
+                    <p className="text-xs text-zinc-400">Ad Attribution</p>
+                  </div>
+                </div>
+
+                <p className="text-2xl lg:text-3xl font-medium leading-snug text-zinc-700 mb-8 max-w-lg">
+                  Your ad platforms are{" "}
+                  <span className="text-zinc-950 font-semibold">guessing</span>{" "}
+                  which leads are worth pursuing.
+                </p>
+
+                <p className="text-zinc-500 leading-relaxed mb-6">
+                  Hyros tracks which ad brought the lead — but treats the sales
+                  call as a black box. Campaign A closed at 20% while Campaign B
+                  closed at 6%. Was it bad leads, or a bad closer? Without
+                  Sequ3nce, you&apos;re guessing.
+                </p>
+
+                <p className="text-zinc-500 leading-relaxed mb-8">
+                  Sequ3nce pushes call quality scores, lead qualification data,
+                  and objection patterns directly into Hyros. Facebook and
+                  Google&apos;s algorithms learn to find more of your best leads
+                  — not just leads that book calls, but leads that actually{" "}
+                  <span className="text-zinc-700 font-medium">close</span>.
+                </p>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {[
+                    "Call quality scores → ad optimization",
+                    "Lead qualification from real conversations",
+                    "Objection patterns by traffic source",
+                    "Rep performance by ad campaign",
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-zinc-950 flex items-center justify-center shrink-0 mt-0.5">
+                        <Check
+                          className="h-3 w-3 text-white"
+                          strokeWidth={2.5}
+                        />
+                      </div>
+                      <span className="text-sm text-zinc-600">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </AnimatedSection>
+
+            {/* GoHighLevel — Secondary */}
+            <AnimatedSection delay={200} className="lg:col-span-5">
+              <div className="relative p-10 lg:p-14 rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm h-full group hover:border-zinc-300 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.08)] transition-all">
+                <div className="flex items-center gap-3 mb-8">
+                  <div className="w-11 h-11 rounded-xl bg-zinc-950 flex items-center justify-center">
+                    <Zap
+                      className="h-5 w-5 text-white"
+                      strokeWidth={1.5}
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold">GoHighLevel</h3>
+                    <p className="text-xs text-zinc-400">CRM Automation</p>
+                  </div>
+                </div>
+
+                <p className="text-xl font-medium leading-snug text-zinc-700 mb-6">
+                  Your CRM, updated{" "}
+                  <span className="text-zinc-950 font-semibold">
+                    automatically
+                  </span>
+                  .
+                </p>
+
+                <p className="text-zinc-500 leading-relaxed mb-8">
+                  Stop manually updating contacts after every call. Sequ3nce
+                  auto-syncs call outcomes, lead quality scores, objections, and
+                  AI summaries directly into your GHL contacts — triggering your
+                  follow-up automations with real context instead of blind
+                  guesswork.
+                </p>
+
+                <div className="space-y-4">
+                  {[
+                    "Auto-sync after every call",
+                    "Custom fields & tags on contacts",
+                    "AI call summaries as notes",
+                    "Trigger automations with context",
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-zinc-950 flex items-center justify-center shrink-0 mt-0.5">
+                        <Check
+                          className="h-3 w-3 text-white"
+                          strokeWidth={2.5}
+                        />
+                      </div>
+                      <span className="text-sm text-zinc-600">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </AnimatedSection>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════ */}
       {/* HOW IT WORKS — Giant numbers                 */}
       {/* ═══════════════════════════════════════════ */}
       <section id="how-it-works" className="py-32 relative z-10">
@@ -817,6 +961,7 @@ export default function Home() {
                       "Closer stats & analytics",
                       "Call recordings & playback",
                       "Automatic meeting bot",
+                      "Hyros & GHL integrations",
                     ].map((f, i) => (
                       <div key={i} className="flex items-center gap-3">
                         <div className="w-5 h-5 rounded-full bg-zinc-950 flex items-center justify-center shrink-0">
