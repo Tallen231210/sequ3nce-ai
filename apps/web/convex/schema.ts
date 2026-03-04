@@ -119,6 +119,13 @@ export default defineSchema({
     hyrosApiKey: v.optional(v.string()),
     hyrosEnabled: v.optional(v.boolean()),
     hyrosConnectedAt: v.optional(v.number()),
+    // GoHighLevel CRM integration
+    ghlApiKey: v.optional(v.string()),
+    ghlEnabled: v.optional(v.boolean()),
+    ghlConnectedAt: v.optional(v.number()),
+    ghlLocationId: v.optional(v.string()),
+    ghlCreateContacts: v.optional(v.boolean()),
+    ghlAddNotes: v.optional(v.boolean()),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -343,6 +350,11 @@ export default defineSchema({
     // Hyros sync tracking
     hyrosSyncedAt: v.optional(v.number()),
     hyrosSyncError: v.optional(v.string()),
+
+    // GHL sync tracking
+    ghlSyncedAt: v.optional(v.number()),
+    ghlSyncError: v.optional(v.string()),
+    ghlContactId: v.optional(v.string()),
 
     createdAt: v.number(),
   })

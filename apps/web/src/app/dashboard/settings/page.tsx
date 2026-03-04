@@ -676,6 +676,11 @@ export default function SettingsPage() {
   const updateHyrosConfig = useMutation(api.hyros.updateHyrosConfig);
   const testHyrosConnection = useAction(api.hyros.testHyrosConnection);
 
+  // GHL
+  const ghlConfig = useQuery(api.ghl.getGhlConfig, clerkId ? { clerkId } : "skip");
+  const updateGhlConfig = useMutation(api.ghl.updateGhlConfig);
+  const testGhlConnection = useAction(api.ghl.testGhlConnection);
+
   // Meeting Bot
   const updateMeetingBotEnabled = useMutation(api.teams.updateMeetingBotEnabled);
   const updateMeetingBotName = useMutation(api.teams.updateMeetingBotName);
@@ -732,6 +737,16 @@ export default function SettingsPage() {
   const [savingHyros, setSavingHyros] = useState(false);
   const [testingHyros, setTestingHyros] = useState(false);
   const [hyrosTestResult, setHyrosTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+
+  // GHL states
+  const [ghlExpanded, setGhlExpanded] = useState(false);
+  const [ghlApiKey, setGhlApiKey] = useState("");
+  const [ghlLocationId, setGhlLocationId] = useState("");
+  const [ghlCreateContacts, setGhlCreateContacts] = useState(true);
+  const [ghlAddNotes, setGhlAddNotes] = useState(true);
+  const [savingGhl, setSavingGhl] = useState(false);
+  const [testingGhl, setTestingGhl] = useState(false);
+  const [ghlTestResult, setGhlTestResult] = useState<{ success: boolean; error?: string } | null>(null);
 
   // Meeting Bot states
   const [savingMeetingBot, setSavingMeetingBot] = useState(false);
@@ -1207,6 +1222,46 @@ export default function SettingsPage() {
       setHyrosTestResult({ success: false, error: "Failed to test connection" });
     } finally {
       setTestingHyros(false);
+    }
+  };
+
+  // Handle GHL config save
+  const handleSaveGhl = async (enabled: boolean) => {
+    if (!clerkId) return;
+    setSavingGhl(true);
+    try {
+      await updateGhlConfig({
+        clerkId,
+        apiKey: ghlApiKey || undefined,
+        locationId: ghlLocationId || undefined,
+        enabled,
+        createContacts: ghlCreateContacts,
+        addNotes: ghlAddNotes,
+      });
+      setGhlTestResult(null);
+    } catch (error) {
+      console.error("Failed to save GHL config:", error);
+    } finally {
+      setSavingGhl(false);
+    }
+  };
+
+  // Handle GHL connection test
+  const handleTestGhl = async () => {
+    if (!clerkId || !ghlApiKey.trim() || !ghlLocationId.trim()) return;
+    setTestingGhl(true);
+    setGhlTestResult(null);
+    try {
+      const result = await testGhlConnection({
+        clerkId,
+        apiKey: ghlApiKey.trim(),
+        locationId: ghlLocationId.trim(),
+      });
+      setGhlTestResult(result);
+    } catch {
+      setGhlTestResult({ success: false, error: "Failed to test connection" });
+    } finally {
+      setTestingGhl(false);
     }
   };
 
@@ -1971,12 +2026,153 @@ export default function SettingsPage() {
               )}
             </div>
 
-            <IntegrationCard
-              name="GoHighLevel"
-              description="Sync contacts and deal information"
-              icon={<Zap className="h-5 w-5 text-zinc-600" />}
-              comingSoon
-            />
+            {/* GoHighLevel CRM Integration */}
+            <div className="border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setGhlExpanded(!ghlExpanded)}
+                className="w-full flex items-center justify-between p-4 hover:bg-zinc-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${ghlConfig?.enabled ? "bg-green-50" : "bg-zinc-100"}`}>
+                    <Zap className={`h-5 w-5 ${ghlConfig?.enabled ? "text-green-600" : "text-zinc-600"}`} />
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">GoHighLevel</p>
+                      {ghlConfig?.enabled && ghlConfig?.hasApiKey && (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">Connected</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Auto-sync call data to GHL contacts for CRM automations
+                    </p>
+                  </div>
+                </div>
+                {ghlExpanded ? (
+                  <ChevronUp className="h-5 w-5 text-zinc-400" />
+                ) : (
+                  <ChevronDown className="h-5 w-5 text-zinc-400" />
+                )}
+              </button>
+
+              {ghlExpanded && (
+              <div className="px-4 pb-4 space-y-4 border-t pt-4">
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="ghl-api-key">API Key</Label>
+                    <Input
+                      id="ghl-api-key"
+                      type="password"
+                      placeholder="Enter your GHL Private Integration Token"
+                      value={ghlApiKey}
+                      onChange={(e) => setGhlApiKey(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ghl-location-id">Location ID</Label>
+                    <Input
+                      id="ghl-location-id"
+                      type="text"
+                      placeholder="Enter your GHL Location / Sub-Account ID"
+                      value={ghlLocationId}
+                      onChange={(e) => setGhlLocationId(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={ghlCreateContacts}
+                        onChange={(e) => setGhlCreateContacts(e.target.checked)}
+                        className="rounded border-zinc-300"
+                      />
+                      Create new contacts in GHL if not found
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={ghlAddNotes}
+                        onChange={(e) => setGhlAddNotes(e.target.checked)}
+                        className="rounded border-zinc-300"
+                      />
+                      Add call summary notes to GHL contacts
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleTestGhl}
+                      disabled={testingGhl || !ghlApiKey.trim() || !ghlLocationId.trim()}
+                    >
+                      {testingGhl ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                      )}
+                      Test Connection
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleSaveGhl(true)}
+                      disabled={savingGhl || !ghlApiKey.trim() || !ghlLocationId.trim()}
+                    >
+                      {savingGhl ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      Save & Enable
+                    </Button>
+                    {ghlConfig?.enabled && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleSaveGhl(false)}
+                        disabled={savingGhl}
+                        className="text-zinc-500"
+                      >
+                        Disable
+                      </Button>
+                    )}
+                  </div>
+
+                  {ghlTestResult && (
+                    <div className={`p-2 rounded text-sm ${ghlTestResult.success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                      {ghlTestResult.success ? "Connection successful! Your credentials are valid." : ghlTestResult.error || "Connection failed"}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  <p className="font-medium mb-2">How to get your GHL credentials:</p>
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li>Log in to <strong>app.gohighlevel.com</strong></li>
+                    <li>Go to <strong>Settings</strong> &rarr; <strong>Business Profile</strong></li>
+                    <li>Copy your <strong>API Key</strong> (Private Integration Token)</li>
+                    <li>Copy your <strong>Location ID</strong> from the URL or Business Info</li>
+                  </ol>
+                </div>
+
+                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-zinc-600">
+                  <p className="font-medium mb-1">What gets synced to GHL:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    <li>Contact custom fields (outcome, lead quality, objection, deal value, summary)</li>
+                    <li>Tags for automation triggers (outcome, qualification, objection type)</li>
+                    <li>Call summary notes with recording link</li>
+                  </ul>
+                  <p className="mt-2 text-zinc-500">
+                    Data is synced automatically after each call — no manual review needed.
+                  </p>
+                </div>
+              </div>
+              )}
+            </div>
 
             <IntegrationCard
               name="Close CRM"

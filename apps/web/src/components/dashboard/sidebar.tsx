@@ -55,11 +55,18 @@ export function Sidebar() {
 
   const callReviewsBadge = (flaggedCount?.count ?? 0) + (unreadReplyCount?.count ?? 0);
 
-  // Build navigation dynamically — add Hyros Sync before Billing when enabled
-  const navigation = team?.hyrosEnabled
+  // Build navigation dynamically — add integration sync pages before Billing when enabled
+  const integrationItems: typeof baseNavigation = [];
+  if (team?.hyrosEnabled) {
+    integrationItems.push({ name: "Hyros Sync", href: "/dashboard/hyros-sync", icon: Zap });
+  }
+  if (team?.ghlEnabled) {
+    integrationItems.push({ name: "GHL Sync", href: "/dashboard/ghl-sync", icon: Zap });
+  }
+  const navigation = integrationItems.length > 0
     ? [
         ...baseNavigation.slice(0, 10), // Dashboard through Team
-        { name: "Hyros Sync", href: "/dashboard/hyros-sync", icon: Zap },
+        ...integrationItems,
         ...baseNavigation.slice(10), // Billing, Settings
       ]
     : baseNavigation;

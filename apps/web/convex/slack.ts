@@ -1510,6 +1510,15 @@ export const sendCallCompletedNotification = internalAction({
         console.error("[Discord] Call completed notification failed:", discordError);
       }
 
+      // Also sync to GHL (if configured) — auto-sync, no manual review needed
+      try {
+        await ctx.runAction(internal.ghl.syncCallToGhl, {
+          callId: args.callId,
+        });
+      } catch (ghlError) {
+        console.error("[GHL] Auto-sync failed:", ghlError);
+      }
+
       console.log("[Slack] Call completed notification sent for call:", args.callId);
       return result;
     } catch (error) {

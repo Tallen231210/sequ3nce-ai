@@ -30,6 +30,7 @@ import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
 import type * as diagnostics from "../diagnostics.js";
 import type * as discord from "../discord.js";
+import type * as ghl from "../ghl.js";
 import type * as googleCalendar from "../googleCalendar.js";
 import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   diagnostics: typeof diagnostics;
   discord: typeof discord;
+  ghl: typeof ghl;
   googleCalendar: typeof googleCalendar;
   highlights: typeof highlights;
   http: typeof http;
