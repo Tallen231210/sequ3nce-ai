@@ -33,6 +33,7 @@ import type * as discord from "../discord.js";
 import type * as googleCalendar from "../googleCalendar.js";
 import type * as highlights from "../highlights.js";
 import type * as http from "../http.js";
+import type * as hyros from "../hyros.js";
 import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
 import type * as meetingBot from "../meetingBot.js";
@@ -77,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   googleCalendar: typeof googleCalendar;
   highlights: typeof highlights;
   http: typeof http;
+  hyros: typeof hyros;
   liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
   meetingBot: typeof meetingBot;
