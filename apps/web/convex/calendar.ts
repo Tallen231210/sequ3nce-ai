@@ -269,11 +269,15 @@ export const connectCalendarByEmail = mutation({
 export const disconnectCalendar = mutation({
   args: { closerId: v.id("closers") },
   handler: async (ctx, args) => {
-    // Clear ICS URL from closer
+    // Clear all calendar fields (ICS + Google/Microsoft OAuth)
     await ctx.db.patch(args.closerId, {
       icsUrl: undefined,
       calendarConnectedAt: undefined,
       calendarLastSyncAt: undefined,
+      googleCalendarRefreshToken: undefined,
+      microsoftCalendarRefreshToken: undefined,
+      calendarProvider: undefined,
+      calendarOnboardingCompleted: undefined,
     });
 
     // Delete all calendar events for this closer
@@ -306,10 +310,15 @@ export const disconnectCalendarByEmail = mutation({
       throw new Error("Closer not found for this team");
     }
 
+    // Clear all calendar fields (ICS + Google/Microsoft OAuth)
     await ctx.db.patch(closer._id, {
       icsUrl: undefined,
       calendarConnectedAt: undefined,
       calendarLastSyncAt: undefined,
+      googleCalendarRefreshToken: undefined,
+      microsoftCalendarRefreshToken: undefined,
+      calendarProvider: undefined,
+      calendarOnboardingCompleted: undefined,
     });
 
     const events = await ctx.db
