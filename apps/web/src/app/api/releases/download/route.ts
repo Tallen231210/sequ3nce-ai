@@ -84,34 +84,44 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Download the asset using the GitHub API (with auth)
-    // Use the asset's url (not browser_download_url) with octet-stream accept header
+    // Request the asset with octet-stream accept header.
+    // GitHub responds with a 302 redirect to a signed, time-limited URL
+    // that doesn't require auth. We redirect the user there directly
+    // instead of proxying the file through Vercel (which has body size limits).
     const downloadResponse = await fetch(matchingAsset.url, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/octet-stream",
       },
+      redirect: "manual",
     });
 
-    if (!downloadResponse.ok) {
-      throw new Error(`Download failed: ${downloadResponse.status}`);
+    // GitHub returns 302 with a signed S3 URL in the Location header
+    if (downloadResponse.status === 302 || downloadResponse.status === 301) {
+      const redirectUrl = downloadResponse.headers.get("Location");
+      if (redirectUrl) {
+        return NextResponse.redirect(redirectUrl);
+      }
     }
 
-    // Stream the response back to the user
-    // Use RFC 5987 encoding for filename to handle special characters safely
-    const safeFilename = encodeURIComponent(matchingAsset.name).replace(/'/g, "%27");
-    const headers = new Headers();
-    headers.set("Content-Type", "application/octet-stream");
-    headers.set(
-      "Content-Disposition",
-      `attachment; filename*=UTF-8''${safeFilename}`
-    );
-    headers.set("Content-Length", matchingAsset.size.toString());
+    // Fallback: if no redirect, try streaming (works for small files)
+    if (downloadResponse.ok) {
+      const safeFilename = encodeURIComponent(matchingAsset.name).replace(/'/g, "%27");
+      const responseHeaders = new Headers();
+      responseHeaders.set("Content-Type", "application/octet-stream");
+      responseHeaders.set(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${safeFilename}`
+      );
+      responseHeaders.set("Content-Length", matchingAsset.size.toString());
 
-    return new NextResponse(downloadResponse.body, {
-      status: 200,
-      headers,
-    });
+      return new NextResponse(downloadResponse.body, {
+        status: 200,
+        headers: responseHeaders,
+      });
+    }
+
+    throw new Error(`Download failed: ${downloadResponse.status}`);
   } catch (error) {
     console.error("Failed to download asset:", error);
     return NextResponse.json(
