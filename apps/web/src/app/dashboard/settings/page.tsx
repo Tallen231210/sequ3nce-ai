@@ -674,8 +674,8 @@ export default function SettingsPage() {
   const updateDiscordNotificationChannel = useMutation(api.teams.updateDiscordNotificationChannel);
   const testDiscordWebhook = useAction(api.discord.testDiscordWebhook);
 
-  // Hyros (auth context — no clerkId needed)
-  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, {});
+  // Hyros
+  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, clerkId ? { clerkId } : "skip");
   const updateHyrosConfig = useAction(api.hyrosActions.updateHyrosConfig);
   const testHyrosConnection = useAction(api.hyrosActions.testHyrosConnection);
 
@@ -1202,9 +1202,11 @@ export default function SettingsPage() {
 
   // Handle Hyros config save
   const handleSaveHyros = async (enabled: boolean) => {
+    if (!clerkId) return;
     setSavingHyros(true);
     try {
       await updateHyrosConfig({
+        clerkId,
         apiKey: hyrosApiKey || undefined,
         enabled,
       });
@@ -1218,11 +1220,11 @@ export default function SettingsPage() {
 
   // Handle Hyros connection test
   const handleTestHyros = async () => {
-    if (!hyrosApiKey.trim()) return;
+    if (!hyrosApiKey.trim() || !clerkId) return;
     setTestingHyros(true);
     setHyrosTestResult(null);
     try {
-      const result = await testHyrosConnection({ apiKey: hyrosApiKey.trim() });
+      const result = await testHyrosConnection({ clerkId, apiKey: hyrosApiKey.trim() });
       setHyrosTestResult(result);
     } catch (error) {
       setHyrosTestResult({ success: false, error: "Failed to test connection" });

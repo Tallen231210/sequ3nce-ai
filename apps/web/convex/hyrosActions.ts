@@ -121,15 +121,13 @@ function buildHyrosTags(
  */
 export const updateHyrosConfig = action({
   args: {
+    clerkId: v.string(),
     apiKey: v.optional(v.string()),
     enabled: v.boolean(),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-
     const user = await ctx.runQuery(api.teams.getMyUser, {
-      clerkId: identity.subject,
+      clerkId: args.clerkId,
     });
     if (!user) throw new Error("User not found");
 
@@ -138,32 +136,27 @@ export const updateHyrosConfig = action({
     });
     if (!team) throw new Error("Team not found");
 
-    const patch: Record<string, unknown> = {
+    const savePatch: {
+      hyrosEnabled: boolean;
+      hyrosApiKey?: string;
+      hyrosConnectedAt?: number;
+    } = {
       hyrosEnabled: args.enabled,
     };
 
     // Encrypt API key before storing
     if (args.apiKey !== undefined) {
-      patch.hyrosApiKey = args.apiKey ? encryptApiKey(args.apiKey) : "";
+      savePatch.hyrosApiKey = args.apiKey ? encryptApiKey(args.apiKey) : "";
     }
 
     // Set connectedAt when first enabling with a key
     if (args.enabled && (args.apiKey || team.hyrosApiKey) && !team.hyrosConnectedAt) {
-      patch.hyrosConnectedAt = Date.now();
-    }
-
-    // Clear connectedAt if disabling and removing key
-    if (!args.enabled && args.apiKey === "") {
-      patch.hyrosConnectedAt = undefined;
+      savePatch.hyrosConnectedAt = Date.now();
     }
 
     await ctx.runMutation(internal.hyros.saveHyrosConfigInternal, {
       teamId: user.teamId,
-      patch: {
-        hyrosEnabled: patch.hyrosEnabled as boolean,
-        hyrosApiKey: patch.hyrosApiKey as string | undefined,
-        hyrosConnectedAt: patch.hyrosConnectedAt as number | undefined,
-      },
+      patch: savePatch,
     });
 
     return { success: true };
@@ -176,20 +169,42 @@ export const updateHyrosConfig = action({
  */
 export const testHyrosConnection = action({
   args: {
+    clerkId: v.string(),
     apiKey: v.string(),
   },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return { success: false, error: "Not authenticated" };
 
     try {
-      const response = await fetch(`${HYROS_API_BASE}/v1/leads?limit=1`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${args.apiKey}`,
-          "Content-Type": "application/json",
-        },
+      // Try both auth header styles — official docs say Bearer, but some
+      // Hyros accounts use a custom API-Key header instead
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // First try Bearer token (official docs)
+      headers["Authorization"] = `Bearer ${args.apiKey}`;
+      let response = await fetch(`${HYROS_API_BASE}/v1/leads`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          email: "test@sequ3nce.ai",
+          tags: ["sequ3nce_connection_test"],
+        }),
       });
+
+      // If Bearer fails with 401/403, try API-Key header
+      if (response.status === 401 || response.status === 403) {
+        delete headers["Authorization"];
+        headers["API-Key"] = args.apiKey;
+        response = await fetch(`${HYROS_API_BASE}/v1/leads`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            email: "test@sequ3nce.ai",
+            tags: ["sequ3nce_connection_test"],
+          }),
+        });
+      }
 
       if (response.status === 401 || response.status === 403) {
         return { success: false, error: "Invalid API key. Check your Hyros API settings." };
@@ -216,15 +231,13 @@ export const testHyrosConnection = action({
  */
 export const pushCallToHyros = action({
   args: {
+    clerkId: v.string(),
     callId: v.id("calls"),
   },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return { success: false, error: "Not authenticated" };
-
     try {
       const data = await ctx.runQuery(internal.hyros.getHyrosPushData, {
-        clerkId: identity.subject,
+        clerkId: args.clerkId,
         callId: args.callId,
       });
 
@@ -260,7 +273,8 @@ export const pushCallToHyros = action({
 
       // Decrypt API key (handles both encrypted and plaintext for backward-compat)
       const apiKey = decryptApiKey(team.hyrosApiKey);
-      const headers = {
+      // Try Bearer first; fall back to API-Key header if 401/403
+      const headers: Record<string, string> = {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       };
@@ -278,17 +292,28 @@ export const pushCallToHyros = action({
 
       // 1. Upsert lead
       try {
-        const leadResponse = await fetch(`${HYROS_API_BASE}/v1/leads`, {
+        const leadBody = JSON.stringify({
+          email: prospectEmail,
+          firstName,
+          lastName,
+          tags,
+          source: "sequ3nce",
+        });
+        let leadResponse = await fetch(`${HYROS_API_BASE}/v1/leads`, {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            email: prospectEmail,
-            firstName,
-            lastName,
-            tags,
-            source: "sequ3nce",
-          }),
+          body: leadBody,
         });
+        // If Bearer auth fails, switch to API-Key header for all remaining calls
+        if (leadResponse.status === 401 || leadResponse.status === 403) {
+          delete headers["Authorization"];
+          headers["API-Key"] = apiKey;
+          leadResponse = await fetch(`${HYROS_API_BASE}/v1/leads`, {
+            method: "POST",
+            headers,
+            body: leadBody,
+          });
+        }
         if (!leadResponse.ok) {
           const text = await leadResponse.text();
           errors.push(`Lead upsert failed: ${leadResponse.status} ${text}`);
@@ -397,14 +422,13 @@ export const pushCallToHyros = action({
  */
 export const batchPushToHyros = action({
   args: {
+    clerkId: v.string(),
     callIds: v.array(v.id("calls")),
   },
   handler: async (
     ctx,
     args
   ): Promise<{ pushed: number; failed: number; errors: string[] }> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
 
     let pushed = 0;
     let failed = 0;
@@ -412,6 +436,7 @@ export const batchPushToHyros = action({
 
     for (const callId of args.callIds) {
       const result = await ctx.runAction(api.hyrosActions.pushCallToHyros, {
+        clerkId: args.clerkId,
         callId,
       });
 

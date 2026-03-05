@@ -55,7 +55,7 @@ const OUTCOME_STYLES: Record<string, { label: string; className: string }> = {
 };
 
 export default function HyrosSyncPage() {
-  const { team, isLoading: isTeamLoading } = useTeam();
+  const { team, clerkId, isLoading: isTeamLoading } = useTeam();
 
   const hyrosConfig = useQuery(api.hyros.getHyrosConfig, {});
 
@@ -151,7 +151,7 @@ export default function HyrosSyncPage() {
   const handlePushSingle = async (callId: Id<"calls">) => {
     setPushingCall(callId);
     try {
-      const result = await pushCallToHyros({ callId });
+      const result = await pushCallToHyros({ clerkId, callId });
       setPushResults((prev) => ({ ...prev, [callId]: result }));
       if (result.success) {
         setSelectedCalls((prev) => {
@@ -172,6 +172,7 @@ export default function HyrosSyncPage() {
     setBatchPushing(true);
     try {
       const result = await batchPushToHyros({
+        clerkId,
         callIds: selectedPushable as Id<"calls">[],
       });
 

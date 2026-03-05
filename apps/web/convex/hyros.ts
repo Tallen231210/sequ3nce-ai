@@ -113,15 +113,17 @@ function buildHyrosTags(
 // ============================================
 
 /**
- * Get Hyros config for the authenticated user's team.
+ * Get Hyros config for the user's team.
  */
 export const getHyrosConfig = query({
   args: {
-    // Deprecated — kept for backward compat with old frontend deploys
-    clerkId: v.optional(v.string()),
+    clerkId: v.string(),
   },
-  handler: async (ctx) => {
-    const user = await resolveAuthUser(ctx);
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", args.clerkId))
+      .first();
     if (!user) return null;
 
     const team = await ctx.db.get(user.teamId as Id<"teams">);
