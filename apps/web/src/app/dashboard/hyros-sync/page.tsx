@@ -57,7 +57,7 @@ const OUTCOME_STYLES: Record<string, { label: string; className: string }> = {
 export default function HyrosSyncPage() {
   const { team, clerkId, isLoading: isTeamLoading } = useTeam();
 
-  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, {});
+  const hyrosConfig = useQuery(api.hyros.getHyrosConfig, clerkId ? { clerkId } : "skip");
 
   const pendingCalls = useQuery(
     api.hyros.getPendingHyrosCalls,
