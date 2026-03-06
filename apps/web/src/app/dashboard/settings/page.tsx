@@ -664,6 +664,7 @@ export default function SettingsPage() {
   const disconnectSlack = useMutation(api.slack.disconnectSlack);
   const testSlackConnection = useAction(api.slack.testSlackConnection);
   const getSlackChannels = useAction(api.slack.getSlackChannels);
+  const joinSlackChannel = useAction(api.slack.joinSlackChannel);
   const updateSlackNotificationChannel = useMutation(api.teams.updateSlackNotificationChannel);
 
   // Legacy Slack webhook (for migration period)
@@ -1120,6 +1121,14 @@ export default function SettingsPage() {
     if (!clerkId) return;
     setSavingNotificationChannel(notificationType);
     try {
+      // Auto-join the bot to the channel if one is selected
+      if (channelId && enabled) {
+        const joinResult = await joinSlackChannel({ clerkId, channelId });
+        if (!joinResult.success && joinResult.error) {
+          console.warn("[Slack] Auto-join failed:", joinResult.error);
+          // Don't block — private channels need manual invite but we still save the config
+        }
+      }
       await updateSlackNotificationChannel({
         clerkId,
         notificationType,

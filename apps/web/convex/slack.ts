@@ -156,21 +156,63 @@ export const getSlackChannels = action({
         return { error: data.error };
       }
 
-      // Filter to channels where the bot is a member
+      // Return all channels — bot will auto-join when a channel is selected
       const channels = (data.channels || [])
-        .filter((ch: any) => ch.is_member)
         .map((ch: any) => ({
           id: ch.id,
           name: ch.name,
+          isMember: ch.is_member || false,
         }))
         .sort((a: any, b: any) => a.name.localeCompare(b.name));
 
-      console.log("[Slack] Returning channels:", channels.map((c: any) => c.name));
+      console.log("[Slack] Returning channels:", channels.length, "total,", channels.filter((c: any) => c.isMember).length, "joined");
 
       return { channels };
     } catch (error) {
       console.error("[Slack] Error fetching channels:", error);
       return { error: String(error) };
+    }
+  },
+});
+
+/**
+ * Auto-join the bot to a Slack channel when selected for notifications.
+ * Uses conversations.join (only works for public channels — private channels
+ * still need a manual /invite).
+ */
+export const joinSlackChannel = action({
+  args: {
+    clerkId: v.string(),
+    channelId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+    const user = await ctx.runQuery(api.teams.getMyUser, { clerkId: args.clerkId }) as { teamId: string } | null;
+    if (!user) return { success: false, error: "User not found" };
+
+    const team = await ctx.runQuery(api.teams.getTeamById, { teamId: user.teamId as any }) as { slackAccessToken?: string } | null;
+    if (!team?.slackAccessToken) return { success: false, error: "Slack not connected" };
+
+    try {
+      const response = await fetch("https://slack.com/api/conversations.join", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${team.slackAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ channel: args.channelId }),
+      });
+
+      const data = await response.json();
+      if (!data.ok && data.error !== "already_in_channel") {
+        // "method_not_supported_for_channel_type" means it's a private channel
+        if (data.error === "method_not_supported_for_channel_type") {
+          return { success: false, error: "Private channels require a manual /invite @Sequ3nce in Slack" };
+        }
+        return { success: false, error: data.error };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
   },
 });
