@@ -156,16 +156,16 @@ export const getSlackChannels = action({
         return { error: data.error };
       }
 
-      // Return all channels — bot will auto-join when a channel is selected
+      // Only return channels where the bot has been invited
       const channels = (data.channels || [])
+        .filter((ch: any) => ch.is_member)
         .map((ch: any) => ({
           id: ch.id,
           name: ch.name,
-          isMember: ch.is_member || false,
         }))
         .sort((a: any, b: any) => a.name.localeCompare(b.name));
 
-      console.log("[Slack] Returning channels:", channels.length, "total,", channels.filter((c: any) => c.isMember).length, "joined");
+      console.log("[Slack] Returning channels:", channels.length, "where bot is a member");
 
       return { channels };
     } catch (error) {
