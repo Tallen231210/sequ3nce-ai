@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
@@ -786,39 +786,30 @@ export default function SettingsPage() {
     }
   }, []);
 
+  // Fetch Slack channels — extracted so it can be called from useEffect and refresh button
+  const fetchSlackChannels = useCallback(async () => {
+    if (!slackStatus?.connected || slackStatus.method !== "oauth" || !clerkId) {
+      return;
+    }
+    setLoadingSlackChannels(true);
+    try {
+      const result = await getSlackChannels({ clerkId });
+      if ("channels" in result) {
+        setSlackChannels(result.channels);
+      } else if ("error" in result) {
+        console.error("[Slack] Channel fetch error:", result.error);
+      }
+    } catch (error) {
+      console.error("[Slack] Failed to fetch channels:", error);
+    } finally {
+      setLoadingSlackChannels(false);
+    }
+  }, [slackStatus?.connected, slackStatus?.method, clerkId, getSlackChannels]);
+
   // Load Slack channels when connected via OAuth
   useEffect(() => {
-    const fetchChannels = async () => {
-      console.log("[Slack Debug] Checking conditions:", {
-        connected: slackStatus?.connected,
-        method: slackStatus?.method,
-        clerkId: clerkId ? "present" : "missing",
-      });
-
-      if (slackStatus?.connected && slackStatus.method === "oauth" && clerkId) {
-        console.log("[Slack Debug] Fetching channels...");
-        setLoadingSlackChannels(true);
-        try {
-          const result = await getSlackChannels({ clerkId });
-          console.log("[Slack Debug] API result:", result);
-          if ("channels" in result) {
-            console.log("[Slack Debug] Setting channels:", result.channels);
-            setSlackChannels(result.channels);
-          } else if ("error" in result) {
-            console.error("[Slack Debug] API returned error:", result.error);
-          }
-        } catch (error) {
-          console.error("[Slack Debug] Failed to fetch Slack channels:", error);
-        } finally {
-          setLoadingSlackChannels(false);
-        }
-      } else {
-        console.log("[Slack Debug] Conditions not met, skipping fetch");
-      }
-    };
-    fetchChannels();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slackStatus?.connected, slackStatus?.method, clerkId]);
+    fetchSlackChannels();
+  }, [fetchSlackChannels]);
 
   // Initialize form values when settings load
   useEffect(() => {
@@ -1600,12 +1591,23 @@ export default function SettingsPage() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium">Configure Notifications</p>
-                      {loadingSlackChannels && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          Loading channels...
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {loadingSlackChannels && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Loading channels...
+                          </span>
+                        )}
+                        {!loadingSlackChannels && (
+                          <button
+                            onClick={fetchSlackChannels}
+                            className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            Refresh
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <NotificationChannelConfig
@@ -1679,31 +1681,18 @@ export default function SettingsPage() {
                           ? "bg-amber-50 border-amber-200"
                           : "bg-blue-50 border-blue-200"
                       }`}>
-                        <p className={`font-medium mb-2 ${
+                        <p className={`font-medium mb-1 ${
                           slackChannels.length === 0 ? "text-amber-700" : "text-blue-700"
                         }`}>
                           {slackChannels.length === 0
-                            ? "No channels available yet"
+                            ? "No channels found"
                             : `${slackChannels.length} channel${slackChannels.length === 1 ? "" : "s"} available`}
                         </p>
-                        <div className={slackChannels.length === 0 ? "text-amber-600" : "text-blue-600"}>
-                          <p className="mb-2">
-                            The Sequ3nce bot can only send notifications to channels it has been invited to.
-                            To add a channel:
-                          </p>
-                          <ol className="list-decimal list-inside space-y-1 ml-1">
-                            <li>Open Slack and go to the channel you want notifications in</li>
-                            <li>Type <code className={`px-1 rounded ${
-                              slackChannels.length === 0 ? "bg-amber-100" : "bg-blue-100"
-                            }`}>/invite @Sequ3nce</code> and press Enter</li>
-                            <li>Refresh this page to see the channel in the dropdowns above</li>
-                          </ol>
-                          {slackChannels.length > 0 && (
-                            <p className="mt-2 text-blue-500">
-                              Tip: Add the bot to more channels to route different notification types to different places.
-                            </p>
-                          )}
-                        </div>
+                        <p className={slackChannels.length === 0 ? "text-amber-600" : "text-blue-600"}>
+                          {slackChannels.length === 0
+                            ? "Try disconnecting and reconnecting Slack, then click Refresh above."
+                            : "Select a channel for each notification type. The bot will automatically join the channel you pick."}
+                        </p>
                       </div>
                     )}
                   </div>
