@@ -129,46 +129,47 @@ export const getSlackChannels = action({
     }
 
     try {
-      // Fetch all channels (public and private) where the bot is a member
-      const url = new URL("https://slack.com/api/conversations.list");
-      url.searchParams.set("types", "public_channel,private_channel");
-      url.searchParams.set("exclude_archived", "true");
-      url.searchParams.set("limit", "200");
+      // Paginate through all channels — Slack defaults to a small page size
+      const allChannels: { id: string; name: string }[] = [];
+      let cursor: string | undefined;
 
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${team.slackAccessToken}`,
-        },
-      });
+      do {
+        const url = new URL("https://slack.com/api/conversations.list");
+        url.searchParams.set("types", "public_channel,private_channel");
+        url.searchParams.set("exclude_archived", "true");
+        url.searchParams.set("limit", "1000");
+        if (cursor) {
+          url.searchParams.set("cursor", cursor);
+        }
 
-      const data = await response.json();
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${team.slackAccessToken}`,
+          },
+        });
 
-      console.log("[Slack] conversations.list response:", {
-        ok: data.ok,
-        error: data.error,
-        channelCount: data.channels?.length || 0,
-        memberChannels: data.channels?.filter((ch: any) => ch.is_member)?.length || 0,
-      });
+        const data = await response.json();
 
-      if (!data.ok) {
-        console.error("[Slack] Failed to fetch channels:", data.error);
-        return { error: data.error };
-      }
+        if (!data.ok) {
+          console.error("[Slack] Failed to fetch channels:", data.error);
+          return { error: data.error };
+        }
 
-      // Return all non-archived channels — the bot will auto-join via
-      // conversations.join when the user selects one for notifications.
-      // (Requires channels:join scope on the bot token.)
-      const channels = (data.channels || [])
-        .map((ch: any) => ({
-          id: ch.id,
-          name: ch.name,
-        }))
-        .sort((a: any, b: any) => a.name.localeCompare(b.name));
+        // Only include channels where the bot has been invited
+        for (const ch of data.channels || []) {
+          if (ch.is_member) {
+            allChannels.push({ id: ch.id, name: ch.name });
+          }
+        }
 
-      console.log("[Slack] Returning channels:", channels.length, "total");
+        cursor = data.response_metadata?.next_cursor || undefined;
+      } while (cursor);
 
-      return { channels };
+      allChannels.sort((a, b) => a.name.localeCompare(b.name));
+      console.log("[Slack] Returning channels:", allChannels.length, "where bot is a member");
+
+      return { channels: allChannels };
     } catch (error) {
       console.error("[Slack] Error fetching channels:", error);
       return { error: String(error) };
