@@ -62,6 +62,8 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
       getCalendarStatus(closerInfo.email, closerInfo.teamId).then((s) => {
         setCalStatus(s);
       });
+      // Trigger immediate sync so events appear right away
+      syncCalendar(closerInfo.email, closerInfo.teamId);
     }
     window.addEventListener('calendar:connected', handleCalendarConnected);
     return () => window.removeEventListener('calendar:connected', handleCalendarConnected);

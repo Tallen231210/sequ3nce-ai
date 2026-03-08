@@ -954,15 +954,24 @@ export const syncCalendarByEmail = action({
       return { success: false, error: "Closer not found for this team" };
     }
 
-    if (!closer.icsUrl) {
-      return { success: false, error: "No ICS URL configured for this closer" };
+    // Google Calendar: sync via Google Calendar API
+    if (closer.googleCalendarRefreshToken && closer.calendarProvider === "google") {
+      const result = await ctx.runAction(
+        internal.googleCalendar.fetchGoogleCalendarEvents,
+        { closerId: closer._id }
+      );
+      return result;
     }
 
-    // Use the main sync action
-    const result = await ctx.runAction(api.calendar.syncCloserCalendar, {
-      closerId: closer._id,
-    });
-    return result;
+    // ICS feed: sync via existing ICS logic
+    if (closer.icsUrl) {
+      const result = await ctx.runAction(api.calendar.syncCloserCalendar, {
+        closerId: closer._id,
+      });
+      return result;
+    }
+
+    return { success: false, error: "No calendar connection found" };
   },
 });
 
