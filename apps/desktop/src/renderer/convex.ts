@@ -1063,19 +1063,23 @@ export async function disconnectCalendar(email: string, teamId: string): Promise
 
 // ==================== DIAGNOSTICS ====================
 
-export async function submitDiagnosticReport(data: Record<string, unknown>): Promise<string | null> {
+export async function submitDiagnosticReport(data: Record<string, unknown>): Promise<{ success: boolean; reportId?: string; error?: string }> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/submitDiagnosticReport`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error("[Convex] Diagnostic report rejected:", response.status, errorBody);
+      return { success: false, error: `Server error (${response.status})` };
+    }
     const result = await response.json();
-    return result.reportId || null;
+    return { success: true, reportId: result.reportId };
   } catch (error) {
     console.error("[Convex] Failed to submit diagnostics:", error);
-    return null;
+    return { success: false, error: "Network error" };
   }
 }
 

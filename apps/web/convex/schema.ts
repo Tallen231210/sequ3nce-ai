@@ -642,100 +642,144 @@ export default defineSchema({
     .index("by_team_status", ["teamId", "status"])
     .index("by_closer", ["closerId"]),
 
-  // Diagnostic Reports (for debugging user-specific issues from macOS app)
+  // Diagnostic Reports (for debugging user-specific issues)
   diagnosticReports: defineTable({
     reportId: v.string(), // Short memorable ID like "ABC123"
-    closerId: v.optional(v.string()), // Closer ID as string (may not match ID in DB)
-    teamId: v.optional(v.string()), // Team ID as string
-    closerEmail: v.optional(v.string()), // Email for lookup
-    userDescription: v.optional(v.string()), // User's description of the issue
+    appType: v.optional(v.string()), // "b2b" or "b2c"
+    closerId: v.optional(v.string()),
+    teamId: v.optional(v.string()),
+    closerEmail: v.optional(v.string()),
+    userDescription: v.optional(v.string()),
 
-    // System diagnostics
-    system: v.object({
-      macOSVersion: v.string(),
-      macOSBuild: v.string(),
-      hardwareModel: v.string(),
-      chipType: v.string(),
-      ramTotal: v.number(),
-      ramAvailable: v.number(),
-      appVersion: v.string(),
-      appBuild: v.string(),
-    }),
+    // System diagnostics (all fields optional for cross-platform compatibility)
+    system: v.optional(v.object({
+      platform: v.optional(v.string()), // "win32", "darwin", "electron-windows"
+      arch: v.optional(v.string()),
+      osRelease: v.optional(v.string()),
+      osVersion: v.optional(v.string()),
+      osBuild: v.optional(v.string()),
+      macOSVersion: v.optional(v.string()),
+      macOSBuild: v.optional(v.string()),
+      hardwareModel: v.optional(v.string()),
+      chipType: v.optional(v.string()),
+      cpuModel: v.optional(v.string()),
+      ramTotal: v.optional(v.number()),
+      ramAvailable: v.optional(v.number()),
+      ramTotalGB: v.optional(v.number()),
+      ramAvailableGB: v.optional(v.number()),
+      appVersion: v.optional(v.string()),
+      appBuild: v.optional(v.string()),
+      appUptime: v.optional(v.number()),
+      userAgent: v.optional(v.string()),
+    })),
 
     // Audio diagnostics
-    audio: v.object({
+    audio: v.optional(v.object({
       defaultInputDeviceName: v.optional(v.string()),
       defaultInputDeviceUID: v.optional(v.string()),
-      systemAudioCaptureStatus: v.string(),
-      micLevel: v.number(),
-      systemLevel: v.number(),
-      silenceDetectionActive: v.boolean(),
-      lastMicCallbackSecondsAgo: v.number(),
-      totalChunksSent: v.number(),
-      isCapturing: v.boolean(),
-    }),
+      systemAudioCaptureStatus: v.optional(v.string()),
+      captureStatus: v.optional(v.string()),
+      micLevel: v.optional(v.number()),
+      systemLevel: v.optional(v.number()),
+      silenceDetectionActive: v.optional(v.boolean()),
+      lastMicCallbackSecondsAgo: v.optional(v.number()),
+      totalChunksSent: v.optional(v.number()),
+      isCapturing: v.optional(v.boolean()),
+      currentCallId: v.optional(v.string()),
+      hasActiveConnection: v.optional(v.boolean()),
+      audioDevices: v.optional(v.array(v.object({
+        kind: v.optional(v.string()),
+        label: v.optional(v.string()),
+      }))),
+    })),
 
     // WebSocket diagnostics
-    websocket: v.object({
-      connectionState: v.string(),
-      reconnectionCountThisSession: v.number(),
-      lastHeartbeatAckSecondsAgo: v.number(),
-      missedHeartbeatCount: v.number(),
-      reconnectionHistory: v.array(v.object({
-        timestamp: v.string(), // ISO timestamp
-        reason: v.string(),
-      })),
-    }),
+    websocket: v.optional(v.object({
+      connectionState: v.optional(v.string()),
+      reconnectionCountThisSession: v.optional(v.number()),
+      reconnectAttempt: v.optional(v.number()),
+      isReconnecting: v.optional(v.boolean()),
+      lastHeartbeatAckSecondsAgo: v.optional(v.number()),
+      lastPongSecondsAgo: v.optional(v.number()),
+      missedHeartbeatCount: v.optional(v.number()),
+      reconnectionHistory: v.optional(v.array(v.object({
+        timestamp: v.optional(v.string()),
+        reason: v.optional(v.string()),
+      }))),
+    })),
 
     // Call diagnostics
-    call: v.object({
+    call: v.optional(v.object({
       currentCallId: v.optional(v.string()),
       convexCallId: v.optional(v.string()),
       closerId: v.optional(v.string()),
       teamId: v.optional(v.string()),
-      recordingState: v.string(),
-      recordingDuration: v.number(),
+      recordingState: v.optional(v.string()),
+      recordingDuration: v.optional(v.number()),
       timeSinceRecordingStarted: v.optional(v.number()),
-    }),
+    })),
 
     // Permission diagnostics
-    permissions: v.object({
-      microphonePermission: v.string(),
-      screenRecordingPermission: v.string(),
-    }),
+    permissions: v.optional(v.object({
+      microphonePermission: v.optional(v.string()),
+      screenRecordingPermission: v.optional(v.string()),
+    })),
 
     // Log diagnostics
-    logs: v.object({
-      recentLogs: v.array(v.object({
-        timestamp: v.string(), // ISO timestamp
-        level: v.string(),
-        category: v.string(),
-        message: v.string(),
-      })),
-      errorCountLastHour: v.number(),
+    logs: v.optional(v.object({
+      recentLogs: v.optional(v.array(v.object({
+        timestamp: v.optional(v.string()),
+        level: v.optional(v.string()),
+        category: v.optional(v.string()),
+        message: v.optional(v.string()),
+      }))),
+      errorCountLastHour: v.optional(v.number()),
       lastErrorMessage: v.optional(v.string()),
       lastErrorTimestamp: v.optional(v.string()),
-    }),
+    })),
 
-    // Meeting bot diagnostics (optional - only present when meetingBotEnabled)
+    // Meeting bot diagnostics
     meetingBot: v.optional(v.object({
-      meetingBotEnabled: v.boolean(),
-      botCallActive: v.boolean(),
+      meetingBotEnabled: v.optional(v.boolean()),
+      botCallActive: v.optional(v.boolean()),
       activeBotCallId: v.optional(v.string()),
       activeBotId: v.optional(v.string()),
       activeBotMeetingTitle: v.optional(v.string()),
       activeBotProspectName: v.optional(v.string()),
-      pendingQuestionnaireCount: v.number(),
-      showingPostCallQuestionnaire: v.boolean(),
-      calendarConnected: v.boolean(),
+      pendingQuestionnaireCount: v.optional(v.number()),
+      showingPostCallQuestionnaire: v.optional(v.boolean()),
+      calendarConnected: v.optional(v.boolean()),
+      calendarProvider: v.optional(v.string()),
       meetingPlatform: v.optional(v.string()),
-      appMode: v.string(),
+      appMode: v.optional(v.string()),
       currentSidebarItem: v.optional(v.string()),
-      pollBotStatusActive: v.boolean(),
-      ammoPanelVisible: v.boolean(),
-      questionnairePanelVisible: v.boolean(),
+      pollBotStatusActive: v.optional(v.boolean()),
+      ammoPanelVisible: v.optional(v.boolean()),
+      questionnairePanelVisible: v.optional(v.boolean()),
       firstPendingCallId: v.optional(v.string()),
       firstPendingProspectName: v.optional(v.string()),
+      botStatus: v.optional(v.string()),
+      botIsScheduled: v.optional(v.boolean()),
+      botActiveSeconds: v.optional(v.number()),
+      lastBotError: v.optional(v.string()),
+      lastBotErrorAt: v.optional(v.string()),
+    })),
+
+    // Ammo panel diagnostics
+    ammoPanel: v.optional(v.object({
+      ammoItemCount: v.optional(v.number()),
+      transcriptSegmentCount: v.optional(v.number()),
+      isPolling: v.optional(v.boolean()),
+      trackedCallId: v.optional(v.string()),
+      isAmmoV2Enabled: v.optional(v.boolean()),
+    })),
+
+    // API error diagnostics
+    api: v.optional(v.object({
+      lastApiError: v.optional(v.string()),
+      lastApiErrorEndpoint: v.optional(v.string()),
+      lastApiErrorAt: v.optional(v.string()),
+      apiErrorCountLastHour: v.optional(v.number()),
     })),
 
     createdAt: v.number(),
@@ -913,6 +957,7 @@ export default defineSchema({
     commentCount: v.number(),
     isPinned: v.boolean(),
     isDeleted: v.boolean(),
+    reactionCounts: v.optional(v.any()), // { thumbsup: 3, fire: 1 }
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -938,8 +983,10 @@ export default defineSchema({
     authorName: v.string(),
     authorPhotoStorageId: v.optional(v.string()),
     body: v.string(),
+    parentCommentId: v.optional(v.id("b2cCommunityComments")),
     likeCount: v.number(),
     isDeleted: v.boolean(),
+    reactionCounts: v.optional(v.any()), // { thumbsup: 3, fire: 1 }
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -1028,6 +1075,39 @@ export default defineSchema({
     .index("by_recipient", ["recipientId", "status"])
     .index("by_accepted", ["status", "acceptedAt"]),
 
+  // ==================== B2C Community Tables (Phase E — Discord overhaul) ====================
+
+  // Emoji reactions on posts and comments (new system alongside old likes)
+  b2cCommunityReactions: defineTable({
+    targetType: v.string(), // "post" | "comment"
+    targetId: v.string(), // post or comment _id
+    userId: v.id("b2cUsers"),
+    emoji: v.string(), // "thumbsup"|"fire"|"hundred"|"clap"|"laugh"|"heart"|"eyes"|"mindblown"
+    createdAt: v.number(),
+  })
+    .index("by_target", ["targetType", "targetId", "emoji"])
+    .index("by_target_user", ["targetType", "targetId", "userId"])
+    .index("by_user", ["userId"]),
+
+  // Per-user per-channel read state for unread indicators
+  b2cChannelReadState: defineTable({
+    userId: v.id("b2cUsers"),
+    channelId: v.id("b2cCommunityChannels"),
+    lastReadAt: v.number(),
+  })
+    .index("by_user_channel", ["userId", "channelId"])
+    .index("by_user", ["userId"]),
+
+  // Short-lived typing indicators for DMs (5s TTL)
+  b2cTypingIndicators: defineTable({
+    threadId: v.id("b2cDirectMessageThreads"),
+    userId: v.id("b2cUsers"),
+    userName: v.string(),
+    expiresAt: v.number(),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_expires", ["expiresAt"]),
+
   // B2C closer profiles (public-facing profile data)
   b2cProfiles: defineTable({
     userId: v.id("b2cUsers"),
@@ -1046,9 +1126,28 @@ export default defineSchema({
       calendly: v.optional(v.string()),
     })),
     isPublic: v.boolean(),
+    isAvailable: v.optional(v.boolean()),
+    introVideoUrl: v.optional(v.string()),
+    highlightReelUrl: v.optional(v.string()),
+    whatsappNumber: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_public", ["isPublic"]),
+
+  // B2C Highlight Clips — call clips showcased on public profiles
+  b2cHighlightClips: defineTable({
+    userId: v.id("b2cUsers"),
+    callId: v.id("calls"),
+    label: v.string(),
+    startTime: v.number(),
+    endTime: v.number(),
+    isFullCall: v.boolean(),
+    blurRegion: v.string(), // "left" | "right" | "none"
+    sortOrder: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId", "sortOrder"])
+    .index("by_call", ["callId"]),
 });

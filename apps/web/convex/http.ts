@@ -2925,98 +2925,151 @@ http.route({
   }),
 });
 
-// POST endpoint to submit diagnostic report from macOS app
+// POST endpoint to submit diagnostic report
 http.route({
   path: "/submitDiagnosticReport",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const corsHeaders = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    };
     try {
       const body = await request.json();
 
-      // Validate required fields
       if (!body.reportId) {
         return new Response(JSON.stringify({ error: "reportId is required" }), {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
+          status: 400, headers: corsHeaders,
         });
       }
 
-      // Transform the report for storage
-      // Convert Date objects to ISO strings for nested objects
-      const transformedReport = {
-        reportId: body.reportId,
-        closerId: body.closerId || undefined,
-        teamId: body.teamId || undefined,
-        closerEmail: body.closerEmail || undefined,
-        userDescription: body.userDescription || undefined,
-        system: body.system,
-        audio: body.audio,
-        websocket: {
-          ...body.websocket,
-          reconnectionHistory: (body.websocket?.reconnectionHistory || []).map((event: { timestamp: string; reason: string }) => ({
-            timestamp: typeof event.timestamp === 'string' ? event.timestamp : new Date(event.timestamp).toISOString(),
-            reason: event.reason,
-          })),
-        },
-        call: body.call,
-        meetingBot: body.meetingBot ? {
-          ...body.meetingBot,
-          lastBotErrorAt: body.meetingBot.lastBotErrorAt
-            ? (typeof body.meetingBot.lastBotErrorAt === 'string'
-                ? body.meetingBot.lastBotErrorAt
-                : new Date(body.meetingBot.lastBotErrorAt).toISOString())
-            : undefined,
-        } : undefined,
-        ammoPanel: body.ammoPanel || undefined,
-        api: body.api ? {
-          ...body.api,
-          lastApiErrorAt: body.api.lastApiErrorAt
-            ? (typeof body.api.lastApiErrorAt === 'string'
-                ? body.api.lastApiErrorAt
-                : new Date(body.api.lastApiErrorAt).toISOString())
-            : undefined,
-        } : undefined,
-        permissions: body.permissions,
-        logs: {
-          ...body.logs,
-          recentLogs: (body.logs?.recentLogs || []).map((log: { timestamp: string; level: string; category: string; message: string }) => ({
-            timestamp: typeof log.timestamp === 'string' ? log.timestamp : new Date(log.timestamp).toISOString(),
-            level: log.level,
-            category: log.category,
-            message: log.message,
-          })),
-          lastErrorTimestamp: body.logs?.lastErrorTimestamp
-            ? (typeof body.logs.lastErrorTimestamp === 'string'
-                ? body.logs.lastErrorTimestamp
-                : new Date(body.logs.lastErrorTimestamp).toISOString())
-            : undefined,
-        },
+      // Build report with only present sections (per-section try/catch)
+      const report = {
+        reportId: body.reportId as string,
+        appType: (body.appType || undefined) as string | undefined,
+        closerId: (body.closerId || undefined) as string | undefined,
+        teamId: (body.teamId || undefined) as string | undefined,
+        closerEmail: (body.closerEmail || undefined) as string | undefined,
+        userDescription: (body.userDescription || undefined) as string | undefined,
         createdAt: Date.now(),
-      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any;
 
-      // Store the diagnostic report
-      await ctx.runMutation(internal.diagnostics.storeDiagnosticReport, transformedReport);
+      // System — pass through as-is (all fields optional)
+      if (body.system) {
+        try { report.system = body.system; } catch (e) {
+          console.error("[HTTP] Error transforming system diagnostics:", e);
+        }
+      }
 
-      console.log(`[HTTP] Diagnostic report stored: ${body.reportId} from closer ${body.closerId || 'unknown'}`);
+      // Audio — pass through as-is
+      if (body.audio) {
+        try { report.audio = body.audio; } catch (e) {
+          console.error("[HTTP] Error transforming audio diagnostics:", e);
+        }
+      }
+
+      // WebSocket — normalize reconnectionHistory timestamps
+      if (body.websocket) {
+        try {
+          const ws = { ...body.websocket };
+          if (ws.reconnectionHistory) {
+            ws.reconnectionHistory = ws.reconnectionHistory.map(
+              (event: { timestamp: string | number; reason: string }) => ({
+                timestamp: typeof event.timestamp === 'string'
+                  ? event.timestamp : new Date(event.timestamp).toISOString(),
+                reason: event.reason,
+              })
+            );
+          }
+          report.websocket = ws;
+        } catch (e) {
+          console.error("[HTTP] Error transforming websocket diagnostics:", e);
+        }
+      }
+
+      // Call — pass through
+      if (body.call) {
+        try { report.call = body.call; } catch (e) {
+          console.error("[HTTP] Error transforming call diagnostics:", e);
+        }
+      }
+
+      // Permissions — pass through
+      if (body.permissions) {
+        try { report.permissions = body.permissions; } catch (e) {
+          console.error("[HTTP] Error transforming permissions diagnostics:", e);
+        }
+      }
+
+      // Logs — normalize timestamps
+      if (body.logs) {
+        try {
+          const logs = { ...body.logs };
+          if (logs.recentLogs) {
+            logs.recentLogs = logs.recentLogs.map(
+              (log: { timestamp: string | number; level: string; category: string; message: string }) => ({
+                timestamp: typeof log.timestamp === 'string'
+                  ? log.timestamp : new Date(log.timestamp).toISOString(),
+                level: log.level,
+                category: log.category,
+                message: log.message,
+              })
+            );
+          }
+          if (logs.lastErrorTimestamp && typeof logs.lastErrorTimestamp !== 'string') {
+            logs.lastErrorTimestamp = new Date(logs.lastErrorTimestamp).toISOString();
+          }
+          report.logs = logs;
+        } catch (e) {
+          console.error("[HTTP] Error transforming logs diagnostics:", e);
+        }
+      }
+
+      // Meeting bot — normalize timestamps
+      if (body.meetingBot) {
+        try {
+          const mb = { ...body.meetingBot };
+          if (mb.lastBotErrorAt && typeof mb.lastBotErrorAt !== 'string') {
+            mb.lastBotErrorAt = new Date(mb.lastBotErrorAt).toISOString();
+          }
+          report.meetingBot = mb;
+        } catch (e) {
+          console.error("[HTTP] Error transforming meetingBot diagnostics:", e);
+        }
+      }
+
+      // Ammo panel — pass through
+      if (body.ammoPanel) {
+        try { report.ammoPanel = body.ammoPanel; } catch (e) {
+          console.error("[HTTP] Error transforming ammoPanel diagnostics:", e);
+        }
+      }
+
+      // API errors — normalize timestamps
+      if (body.api) {
+        try {
+          const api = { ...body.api };
+          if (api.lastApiErrorAt && typeof api.lastApiErrorAt !== 'string') {
+            api.lastApiErrorAt = new Date(api.lastApiErrorAt).toISOString();
+          }
+          report.api = api;
+        } catch (e) {
+          console.error("[HTTP] Error transforming api diagnostics:", e);
+        }
+      }
+
+      await ctx.runMutation(internal.diagnostics.storeDiagnosticReport, report);
+      console.log(`[HTTP] Diagnostic report stored: ${body.reportId} from ${body.appType || 'unknown'} closer ${body.closerId || 'unknown'}`);
 
       return new Response(JSON.stringify({ success: true, reportId: body.reportId }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
+        status: 200, headers: corsHeaders,
       });
     } catch (error) {
-      console.error("[HTTP] Error storing diagnostic report:", error);
-      return new Response(JSON.stringify({ error: "Failed to store diagnostic report" }), {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[HTTP] Error storing diagnostic report:", errorMessage);
+      return new Response(JSON.stringify({ error: "Failed to store diagnostic report", detail: errorMessage }), {
+        status: 500, headers: corsHeaders,
       });
     }
   }),
@@ -5604,6 +5657,7 @@ http.route({
         userId: body.userId as any,
         postId: body.postId as any,
         body: body.body,
+        parentCommentId: body.parentCommentId ? (body.parentCommentId as any) : undefined,
       });
       return b2cJsonResponse(result, 200, true);
     } catch (error: any) {
@@ -5757,6 +5811,269 @@ http.route({
   path: "/b2c/community/new-count",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ==================== B2C Community Reactions ====================
+
+// POST /b2c/community/reaction/add — Add emoji reaction
+http.route({
+  path: "/b2c/community/reaction/add",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.targetType || !body.targetId || !body.emoji) {
+        return b2cJsonResponse({ error: "userId, targetType, targetId, and emoji are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunityReactions.addReaction, {
+        userId: body.userId as any,
+        targetType: body.targetType,
+        targetId: body.targetId,
+        emoji: body.emoji,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error adding reaction:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to add reaction" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/reaction/add",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/community/reaction/remove — Remove emoji reaction
+http.route({
+  path: "/b2c/community/reaction/remove",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.targetType || !body.targetId || !body.emoji) {
+        return b2cJsonResponse({ error: "userId, targetType, targetId, and emoji are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunityReactions.removeReaction, {
+        userId: body.userId as any,
+        targetType: body.targetType,
+        targetId: body.targetId,
+        emoji: body.emoji,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error removing reaction:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to remove reaction" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/reaction/remove",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ==================== B2C Channel Read State ====================
+
+// POST /b2c/community/channel/mark-read — Mark channel as read
+http.route({
+  path: "/b2c/community/channel/mark-read",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.channelId) {
+        return b2cJsonResponse({ error: "userId and channelId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.markChannelRead, {
+        userId: body.userId as any,
+        channelId: body.channelId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error marking channel read:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to mark channel read" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/channel/mark-read",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/community/channel/unread — Get unread channel IDs
+http.route({
+  path: "/b2c/community/channel/unread",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cCommunity.getUnreadChannels, {
+        userId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting unread channels:", error);
+      return b2cJsonResponse({ error: "Failed to get unread channels" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/channel/unread",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ==================== B2C Pin / Unpin Posts ====================
+
+// POST /b2c/community/post/pin — Pin a post (admin only)
+http.route({
+  path: "/b2c/community/post/pin",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.postId) {
+        return b2cJsonResponse({ error: "userId and postId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.pinPost, {
+        userId: body.userId as any,
+        postId: body.postId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error pinning post:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to pin post" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/post/pin",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/community/post/unpin — Unpin a post (admin only)
+http.route({
+  path: "/b2c/community/post/unpin",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.postId) {
+        return b2cJsonResponse({ error: "userId and postId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCommunity.unpinPost, {
+        userId: body.userId as any,
+        postId: body.postId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error unpinning post:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to unpin post" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/post/unpin",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ==================== B2C Community Search ====================
+
+// GET /b2c/community/search — Search posts by text
+http.route({
+  path: "/b2c/community/search",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const q = url.searchParams.get("q");
+      if (!q) return b2cJsonResponse({ error: "q (search query) is required" }, 400);
+      const channelId = url.searchParams.get("channelId");
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const result = await ctx.runQuery(api.b2cCommunity.searchPosts, {
+        query: q,
+        channelId: channelId ? (channelId as any) : undefined,
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error searching posts:", error);
+      return b2cJsonResponse({ error: "Failed to search posts" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/community/search",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ==================== B2C DM Typing Indicators ====================
+
+// POST /b2c/dm/typing — Set typing indicator
+http.route({
+  path: "/b2c/dm/typing",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.threadId) {
+        return b2cJsonResponse({ error: "userId and threadId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cDirectMessages.setTyping, {
+        userId: body.userId as any,
+        threadId: body.threadId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error setting typing indicator:", error);
+      return b2cJsonResponse({ error: error?.message || "Failed to set typing" }, 400);
+    }
+  }),
+});
+
+// GET /b2c/dm/typing — Get typing users
+http.route({
+  path: "/b2c/dm/typing",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const threadId = url.searchParams.get("threadId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      if (!threadId) return b2cJsonResponse({ error: "threadId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cDirectMessages.getTypingUsers, {
+        userId: userId as any,
+        threadId: threadId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting typing users:", error);
+      return b2cJsonResponse({ error: "Failed to get typing users" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/dm/typing",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
 });
 
 // GET /b2c/training/modules — List published training modules
@@ -6342,6 +6659,253 @@ http.route({
   path: "/b2c/resources/delete",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ==================== B2C Highlight Clip Endpoints ====================
+
+// GET /b2c/highlight-clips — Get user's clips
+http.route({
+  path: "/b2c/highlight-clips",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const clips = await ctx.runQuery(
+        internal.b2cHighlightClips.getClipsByUser,
+        { userId: userId as Id<"b2cUsers"> }
+      );
+      return b2cJsonResponse(clips);
+    } catch (error) {
+      console.error("Error getting highlight clips:", error);
+      return b2cJsonResponse({ error: "Failed to load clips" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-clips",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// GET /b2c/highlight-clips/by-call — Get clips for a call
+http.route({
+  path: "/b2c/highlight-clips/by-call",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const callId = url.searchParams.get("callId");
+      if (!callId) return b2cJsonResponse({ error: "callId is required" }, 400);
+      const clips = await ctx.runQuery(
+        internal.b2cHighlightClips.getClipsByCall,
+        { callId: callId as Id<"calls"> }
+      );
+      return b2cJsonResponse(clips);
+    } catch (error) {
+      console.error("Error getting clips by call:", error);
+      return b2cJsonResponse({ error: "Failed to load clips" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-clips/by-call",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/highlight-clips — Add a clip
+http.route({
+  path: "/b2c/highlight-clips",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, callId, label, startTime, endTime, isFullCall, blurRegion } = body;
+      if (!userId || !callId || !label || startTime === undefined || endTime === undefined || isFullCall === undefined || !blurRegion) {
+        return b2cJsonResponse({ error: "Missing required fields" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cHighlightClips.addClip, {
+        userId: userId as Id<"b2cUsers">,
+        callId: callId as Id<"calls">,
+        label: String(label),
+        startTime: Number(startTime),
+        endTime: Number(endTime),
+        isFullCall: Boolean(isFullCall),
+        blurRegion: String(blurRegion),
+      });
+      return b2cJsonResponse({ success: true, clipId: result.clipId });
+    } catch (error: any) {
+      console.error("Error adding highlight clip:", error);
+      return b2cJsonResponse({ error: error.message || "Failed to add clip" }, 400);
+    }
+  }),
+});
+
+// POST /b2c/highlight-clips/update — Update a clip
+http.route({
+  path: "/b2c/highlight-clips/update",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { clipId, userId, ...updates } = body;
+      if (!clipId || !userId) {
+        return b2cJsonResponse({ error: "clipId and userId are required" }, 400);
+      }
+      const args: Record<string, unknown> = {
+        clipId: clipId as Id<"b2cHighlightClips">,
+        userId: userId as Id<"b2cUsers">,
+      };
+      if (updates.label !== undefined) args.label = String(updates.label);
+      if (updates.startTime !== undefined) args.startTime = Number(updates.startTime);
+      if (updates.endTime !== undefined) args.endTime = Number(updates.endTime);
+      if (updates.isFullCall !== undefined) args.isFullCall = Boolean(updates.isFullCall);
+      if (updates.blurRegion !== undefined) args.blurRegion = String(updates.blurRegion);
+
+      const result = await ctx.runMutation(api.b2cHighlightClips.updateClip, args as any);
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      console.error("Error updating highlight clip:", error);
+      return b2cJsonResponse({ error: error.message || "Failed to update clip" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-clips/update",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/highlight-clips/delete — Delete a clip
+http.route({
+  path: "/b2c/highlight-clips/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { clipId, userId } = body;
+      if (!clipId || !userId) {
+        return b2cJsonResponse({ error: "clipId and userId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cHighlightClips.deleteClip, {
+        clipId: clipId as Id<"b2cHighlightClips">,
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      console.error("Error deleting highlight clip:", error);
+      return b2cJsonResponse({ error: error.message || "Failed to delete clip" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-clips/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/highlight-clips/reorder — Reorder clips
+http.route({
+  path: "/b2c/highlight-clips/reorder",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, clipIds } = body;
+      if (!userId || !Array.isArray(clipIds)) {
+        return b2cJsonResponse({ error: "userId and clipIds array are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cHighlightClips.reorderClips, {
+        userId: userId as Id<"b2cUsers">,
+        clipIds: clipIds as Id<"b2cHighlightClips">[],
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      console.error("Error reordering highlight clips:", error);
+      return b2cJsonResponse({ error: error.message || "Failed to reorder clips" }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-clips/reorder",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/highlight-clips/public — Public clips by slug with fresh recording URLs
+http.route({
+  path: "/b2c/highlight-clips/public",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const slug = url.searchParams.get("slug");
+      if (!slug) return b2cJsonResponse({ error: "slug is required" }, 400);
+
+      // Look up user by slug
+      const user = await ctx.runQuery(
+        internal.b2cHighlightClips.getUserBySlug,
+        { slug }
+      );
+      if (!user) return b2cJsonResponse({ error: "Profile not found" }, 404);
+
+      // Verify profile is public
+      const profile = await ctx.runQuery(
+        internal.b2cProfiles.getPublicProfile,
+        { slug }
+      );
+      if (!profile) return b2cJsonResponse({ error: "Profile not found" }, 404);
+
+      // Get clips
+      const clips = await ctx.runQuery(
+        internal.b2cHighlightClips.getPublicClips,
+        { userId: user._id }
+      );
+
+      if (clips.length === 0) return b2cJsonResponse([]);
+
+      // Refresh recording URLs for each unique callId
+      const uniqueCallIds = [...new Set(clips.map((c: { callId: string }) => c.callId))];
+      const urlMap: Record<string, string> = {};
+
+      for (const callId of uniqueCallIds) {
+        try {
+          const result = await ctx.runAction(api.meetingBot.refreshRecordingUrl, {
+            callId: callId as Id<"calls">,
+          });
+          if (result.recordingUrl) {
+            urlMap[callId] = result.recordingUrl;
+          }
+        } catch {
+          // Skip — clip will have no URL
+        }
+      }
+
+      // Enrich clips with fresh URLs
+      const enriched = clips.map((clip: { callId: string; [key: string]: unknown }) => ({
+        ...clip,
+        recordingUrl: urlMap[clip.callId] || null,
+      }));
+
+      return b2cJsonResponse(enriched);
+    } catch (error) {
+      console.error("Error getting public highlight clips:", error);
+      return b2cJsonResponse({ error: "Failed to load clips" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-clips/public",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
 });
 
 // POST /b2c/resources/reorder — Reorder resources

@@ -124,25 +124,61 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
     setDiagReportId(null);
 
     const reportId = generateReportId();
-    const result = await submitDiagnosticReport({
+
+    // 1. Main process diagnostics (system, websocket, audio state)
+    let mainData: { system: Record<string, unknown>; websocket: Record<string, unknown>; audio: Record<string, unknown> } = { system: {}, websocket: {}, audio: {} };
+    try { mainData = await window.electron.diagnostics.collect(); } catch { /* ignore */ }
+
+    // 2. Renderer-side data collection (each wrapped independently)
+    let micPermission = 'unknown';
+    try { micPermission = await window.electron.audio.checkMicrophonePermission(); } catch { /* ignore */ }
+
+    let screenPermission = false;
+    try { screenPermission = await window.electron.audio.checkPermissions(); } catch { /* ignore */ }
+
+    let audioStatusStr = 'unknown';
+    try { audioStatusStr = await window.electron.audio.getStatus(); } catch { /* ignore */ }
+
+    let audioDevices: Array<{ kind: string; label: string }> = [];
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      audioDevices = devices.filter(d => d.kind === 'audioinput').map(d => ({
+        kind: d.kind, label: d.label || 'unlabeled',
+      }));
+    } catch { /* ignore */ }
+
+    // 3. Build report
+    const report = {
       reportId,
+      appType: 'b2b',
       closerId: closerInfo.closerId,
       teamId: closerInfo.teamId,
       closerEmail: closerInfo.email,
       userDescription: diagDescription.trim() || undefined,
       system: {
-        platform: 'electron-windows',
-        appVersion: '2.0.0',
+        ...mainData.system,
+        userAgent: navigator.userAgent,
+      },
+      audio: {
+        ...mainData.audio,
+        systemAudioCaptureStatus: audioStatusStr,
+        audioDevices,
+      },
+      websocket: mainData.websocket,
+      permissions: {
+        microphonePermission: micPermission,
+        screenRecordingPermission: screenPermission ? 'granted' : 'denied',
       },
       createdAt: Date.now(),
-    });
+    };
 
+    const result = await submitDiagnosticReport(report);
     setIsSendingDiag(false);
-    if (result) {
-      setDiagReportId(result);
+    if (result.success) {
+      setDiagReportId(result.reportId!);
       setDiagDescription('');
     } else {
-      setDiagError('Failed to send diagnostics. Please try again.');
+      setDiagError(result.error || 'Failed to send diagnostics.');
     }
   }
 

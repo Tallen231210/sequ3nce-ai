@@ -1201,6 +1201,60 @@ const setupIpcHandlers = (): void => {
     };
   });
 
+  // Collect diagnostics from main process for diagnostic reports
+  ipcMain.handle('diagnostics:collect', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require('../package.json');
+
+    // System info
+    let hardwareModel = 'unknown';
+    try {
+      if (process.platform === 'darwin') {
+        hardwareModel = require('child_process').execSync('sysctl -n hw.model', { timeout: 3000 }).toString().trim();
+      } else if (process.platform === 'win32') {
+        const wmicOutput = require('child_process').execSync('wmic computersystem get model', { timeout: 3000 }).toString();
+        hardwareModel = wmicOutput.split('\n')[1]?.trim() || 'unknown';
+      }
+    } catch { /* ignore */ }
+
+    let osVersion = '';
+    try {
+      osVersion = typeof os.version === 'function' ? os.version() : '';
+    } catch { /* ignore */ }
+
+    const system = {
+      platform: process.platform,
+      arch: process.arch,
+      osRelease: os.release(),
+      osVersion,
+      hardwareModel,
+      cpuModel: os.cpus()[0]?.model || 'unknown',
+      ramTotalGB: +(os.totalmem() / (1024 ** 3)).toFixed(1),
+      ramAvailableGB: +(os.freemem() / (1024 ** 3)).toFixed(1),
+      appVersion: pkg.version,
+      appUptime: Math.round(process.uptime()),
+    };
+
+    // WebSocket state
+    const websocket = {
+      connectionState: wsConnection
+        ? (['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][wsConnection.readyState] || 'unknown')
+        : 'none',
+      reconnectAttempt,
+      isReconnecting,
+      lastPongSecondsAgo: Math.round((Date.now() - lastPongTime) / 1000),
+    };
+
+    // Audio state
+    const audio = {
+      captureStatus: audioStatus,
+      currentCallId,
+      hasActiveConnection: !!wsConnection,
+    };
+
+    return { system, websocket, audio };
+  });
+
   // Resize main window (used when switching between legacy and hub mode)
   ipcMain.handle('app:set-window-size', (_event, width: number, height: number) => {
     if (mainWindow) {
