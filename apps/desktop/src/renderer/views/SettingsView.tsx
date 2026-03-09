@@ -125,9 +125,9 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
 
     const reportId = generateReportId();
 
-    // 1. Main process diagnostics (system, websocket, audio state)
-    let mainData: { system: Record<string, unknown>; websocket: Record<string, unknown>; audio: Record<string, unknown> } = { system: {}, websocket: {}, audio: {} };
-    try { mainData = await window.electron.diagnostics.collect(); } catch { /* ignore */ }
+    // 1. Main process diagnostics (system, websocket, audio, call, context)
+    let mainData: Record<string, Record<string, unknown>> = { system: {}, websocket: {}, audio: {}, call: {}, context: {} };
+    try { mainData = await window.electron.diagnostics.collect() as Record<string, Record<string, unknown>>; } catch { /* ignore */ }
 
     // 2. Renderer-side data collection (each wrapped independently)
     let micPermission = 'unknown';
@@ -142,9 +142,9 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
     let audioDevices: Array<{ kind: string; label: string }> = [];
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      audioDevices = devices.filter(d => d.kind === 'audioinput').map(d => ({
-        kind: d.kind, label: d.label || 'unlabeled',
-      }));
+      audioDevices = devices
+        .filter(d => d.kind === 'audioinput' || d.kind === 'audiooutput')
+        .map(d => ({ kind: d.kind, label: d.label || 'unlabeled' }));
     } catch { /* ignore */ }
 
     // 3. Build report
@@ -165,6 +165,15 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
         audioDevices,
       },
       websocket: mainData.websocket,
+      call: mainData.call || undefined,
+      meetingBot: {
+        meetingBotEnabled: localStorage.getItem('sequ3nce_bot_mode') === 'true',
+        calendarConnected: calStatus?.connected || false,
+        calendarProvider: calStatus?.provider || undefined,
+        ammoPanelVisible: mainData.context?.ammoTrackerVisible as boolean || false,
+        questionnairePanelVisible: mainData.context?.postCallPending as boolean || false,
+        appMode: localStorage.getItem('sequ3nce_bot_mode') === 'true' ? 'hub' : 'legacy',
+      },
       permissions: {
         microphonePermission: micPermission,
         screenRecordingPermission: screenPermission ? 'granted' : 'denied',

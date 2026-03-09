@@ -130,6 +130,7 @@ let currentCallId: string | null = null;
 let wsConnectionParams: (AudioCaptureConfig & { callId: string }) | null = null;
 let wsConvexCallId: string | null = null;  // Store Convex ID for reconnection
 let reconnectAttempt = 0;
+let totalReconnectsThisSession = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 let reconnectTimeoutId: NodeJS.Timeout | null = null;
 let heartbeatIntervalId: NodeJS.Timeout | null = null;
@@ -865,6 +866,7 @@ const attemptReconnect = async () => {
       if (success) {
         console.log('[Main] Reconnected successfully');
         reconnectAttempt = 0;
+        totalReconnectsThisSession++;
         isReconnecting = false;
         updateStatus('capturing');
         mainWindow?.webContents.send('audio:reconnected');
@@ -1227,12 +1229,18 @@ const setupIpcHandlers = (): void => {
       arch: process.arch,
       osRelease: os.release(),
       osVersion,
+      macOSVersion: macOSInfo ? `${macOSInfo.name} ${macOSInfo.version}` : undefined,
+      chipType: process.arch === 'arm64' ? 'Apple Silicon' : 'Intel',
       hardwareModel,
       cpuModel: os.cpus()[0]?.model || 'unknown',
       ramTotalGB: +(os.totalmem() / (1024 ** 3)).toFixed(1),
       ramAvailableGB: +(os.freemem() / (1024 ** 3)).toFixed(1),
       appVersion: pkg.version,
       appUptime: Math.round(process.uptime()),
+      electronVersion: process.versions.electron,
+      chromeVersion: process.versions.chrome,
+      openWindowCount: [mainWindow, ammoTrackerWindow, postCallWindow, trainingWindow, roleplayWindow, scheduleWindow]
+        .filter(w => w && !w.isDestroyed()).length,
     };
 
     // WebSocket state
@@ -1243,16 +1251,37 @@ const setupIpcHandlers = (): void => {
       reconnectAttempt,
       isReconnecting,
       lastPongSecondsAgo: Math.round((Date.now() - lastPongTime) / 1000),
+      reconnectionCountThisSession: totalReconnectsThisSession,
+      audioServiceUrl: AUDIO_SERVICE_URL,
     };
 
     // Audio state
     const audio = {
       captureStatus: audioStatus,
-      currentCallId,
+      currentCallId: currentCallId || undefined,
       hasActiveConnection: !!wsConnection,
+      isCapturing: audioStatus === 'capturing',
+      useCoreAudioTap,
     };
 
-    return { system, websocket, audio };
+    // Call state
+    const call = {
+      currentCallId: currentCallId || undefined,
+      convexCallId: wsConvexCallId || undefined,
+      recordingState: audioStatus,
+      closerId: wsConnectionParams?.closerId || currentCloserId || undefined,
+      teamId: wsConnectionParams?.teamId || currentTeamId || undefined,
+    };
+
+    // Context
+    const context = {
+      theme: currentTheme,
+      ammoTrackerVisible,
+      postCallPending: !!postCallData,
+      chatPollingActive: !!chatPollingInterval,
+    };
+
+    return { system, websocket, audio, call, context };
   });
 
   // Resize main window (used when switching between legacy and hub mode)

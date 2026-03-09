@@ -130,6 +130,7 @@ let currentCallId: string | null = null;
 let wsConnectionParams: (AudioCaptureConfig & { callId: string }) | null = null;
 let wsConvexCallId: string | null = null;  // Store Convex ID for reconnection
 let reconnectAttempt = 0;
+let totalReconnectsThisSession = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 let reconnectTimeoutId: NodeJS.Timeout | null = null;
 let heartbeatIntervalId: NodeJS.Timeout | null = null;
@@ -865,6 +866,7 @@ const attemptReconnect = async () => {
       if (success) {
         console.log('[Main] Reconnected successfully');
         reconnectAttempt = 0;
+        totalReconnectsThisSession++;
         isReconnecting = false;
         updateStatus('capturing');
         mainWindow?.webContents.send('audio:reconnected');
@@ -976,6 +978,23 @@ function handleAuthCallback(url: string): void {
   } catch (error) {
     console.error('[Auth] Error parsing callback URL:', error);
     mainWindow?.webContents.send('auth:callback', { error: 'Invalid callback. Please try again.' });
+  }
+}
+
+/**
+ * Handle sequ3nce-personal://calendar-connected deep link.
+ * Sent from the OAuth success page after Google Calendar authorization.
+ */
+function handleCalendarConnected(url: string): void {
+  console.log('[Calendar] Handling calendar-connected callback:', url);
+  try {
+    const parsedUrl = new URL(url);
+    const closerId = parsedUrl.searchParams.get('closerId');
+    if (closerId) {
+      mainWindow?.webContents.send('calendar:connected', { closerId });
+    }
+  } catch (error) {
+    console.error('[Calendar] Error parsing calendar-connected URL:', error);
   }
 }
 
@@ -1181,6 +1200,87 @@ const setupIpcHandlers = (): void => {
       arch: process.arch,
       osRelease: os.release(), // Darwin version (e.g., "24.1.0" for Sequoia)
     };
+  });
+
+  // Collect diagnostics from main process for diagnostic reports
+  ipcMain.handle('diagnostics:collect', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require('../package.json');
+
+    // System info
+    let hardwareModel = 'unknown';
+    try {
+      if (process.platform === 'darwin') {
+        hardwareModel = require('child_process').execSync('sysctl -n hw.model', { timeout: 3000 }).toString().trim();
+      } else if (process.platform === 'win32') {
+        const wmicOutput = require('child_process').execSync('wmic computersystem get model', { timeout: 3000 }).toString();
+        hardwareModel = wmicOutput.split('\n')[1]?.trim() || 'unknown';
+      }
+    } catch { /* ignore */ }
+
+    let osVersion = '';
+    try {
+      osVersion = typeof os.version === 'function' ? os.version() : '';
+    } catch { /* ignore */ }
+
+    const system = {
+      platform: process.platform,
+      arch: process.arch,
+      osRelease: os.release(),
+      osVersion,
+      macOSVersion: macOSInfo ? `${macOSInfo.name} ${macOSInfo.version}` : undefined,
+      chipType: process.arch === 'arm64' ? 'Apple Silicon' : 'Intel',
+      hardwareModel,
+      cpuModel: os.cpus()[0]?.model || 'unknown',
+      ramTotalGB: +(os.totalmem() / (1024 ** 3)).toFixed(1),
+      ramAvailableGB: +(os.freemem() / (1024 ** 3)).toFixed(1),
+      appVersion: pkg.version,
+      appUptime: Math.round(process.uptime()),
+      electronVersion: process.versions.electron,
+      chromeVersion: process.versions.chrome,
+      openWindowCount: [mainWindow, ammoTrackerWindow, postCallWindow, trainingWindow, roleplayWindow, scheduleWindow]
+        .filter(w => w && !w.isDestroyed()).length,
+    };
+
+    // WebSocket state
+    const websocket = {
+      connectionState: wsConnection
+        ? (['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][wsConnection.readyState] || 'unknown')
+        : 'none',
+      reconnectAttempt,
+      isReconnecting,
+      lastPongSecondsAgo: Math.round((Date.now() - lastPongTime) / 1000),
+      reconnectionCountThisSession: totalReconnectsThisSession,
+      audioServiceUrl: AUDIO_SERVICE_URL,
+    };
+
+    // Audio state
+    const audio = {
+      captureStatus: audioStatus,
+      currentCallId: currentCallId || undefined,
+      hasActiveConnection: !!wsConnection,
+      isCapturing: audioStatus === 'capturing',
+      useCoreAudioTap,
+    };
+
+    // Call state
+    const call = {
+      currentCallId: currentCallId || undefined,
+      convexCallId: wsConvexCallId || undefined,
+      recordingState: audioStatus,
+      closerId: wsConnectionParams?.closerId || currentCloserId || undefined,
+      teamId: wsConnectionParams?.teamId || currentTeamId || undefined,
+    };
+
+    // Context
+    const context = {
+      theme: currentTheme,
+      ammoTrackerVisible,
+      postCallPending: !!postCallData,
+      chatPollingActive: !!chatPollingInterval,
+    };
+
+    return { system, websocket, audio, call, context };
   });
 
   // Resize main window (used when switching between legacy and hub mode)
@@ -2014,6 +2114,8 @@ app.on('open-url', (event, url) => {
 
   if (url.startsWith(`${PROTOCOL_NAME}://auth-callback`)) {
     handleAuthCallback(url);
+  } else if (url.startsWith(`${PROTOCOL_NAME}://calendar-connected`)) {
+    handleCalendarConnected(url);
   }
 
   // Focus the main window
@@ -2042,6 +2144,8 @@ if (!gotTheLock) {
       console.log('[Main] Received protocol URL from second instance:', url);
       if (url.startsWith(`${PROTOCOL_NAME}://auth-callback`)) {
         handleAuthCallback(url);
+      } else if (url.startsWith(`${PROTOCOL_NAME}://calendar-connected`)) {
+        handleCalendarConnected(url);
       }
     }
   });

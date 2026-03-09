@@ -671,6 +671,9 @@ export default defineSchema({
       appBuild: v.optional(v.string()),
       appUptime: v.optional(v.number()),
       userAgent: v.optional(v.string()),
+      electronVersion: v.optional(v.string()),
+      chromeVersion: v.optional(v.string()),
+      openWindowCount: v.optional(v.number()),
     })),
 
     // Audio diagnostics
@@ -687,6 +690,7 @@ export default defineSchema({
       isCapturing: v.optional(v.boolean()),
       currentCallId: v.optional(v.string()),
       hasActiveConnection: v.optional(v.boolean()),
+      useCoreAudioTap: v.optional(v.boolean()),
       audioDevices: v.optional(v.array(v.object({
         kind: v.optional(v.string()),
         label: v.optional(v.string()),
@@ -702,6 +706,7 @@ export default defineSchema({
       lastHeartbeatAckSecondsAgo: v.optional(v.number()),
       lastPongSecondsAgo: v.optional(v.number()),
       missedHeartbeatCount: v.optional(v.number()),
+      audioServiceUrl: v.optional(v.string()),
       reconnectionHistory: v.optional(v.array(v.object({
         timestamp: v.optional(v.string()),
         reason: v.optional(v.string()),

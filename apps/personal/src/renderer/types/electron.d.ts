@@ -111,6 +111,8 @@ export interface DiagnosticsAPI {
     system: Record<string, unknown>;
     websocket: Record<string, unknown>;
     audio: Record<string, unknown>;
+    call: Record<string, unknown>;
+    context: Record<string, unknown>;
   }>;
 }
 
