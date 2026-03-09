@@ -108,6 +108,14 @@ export interface BotAPI {
   }) => Promise<void>;
 }
 
+export interface DiagnosticsAPI {
+  collect: () => Promise<{
+    system: Record<string, unknown>;
+    websocket: Record<string, unknown>;
+    audio: Record<string, unknown>;
+  }>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
@@ -118,6 +126,7 @@ export interface ElectronAPI {
   schedule: ScheduleAPI;
   chat: ChatAPI;
   bot: BotAPI;
+  diagnostics: DiagnosticsAPI;
 }
 
 // Expose protected methods to renderer via contextBridge
@@ -250,6 +259,9 @@ contextBridge.exposeInMainWorld('electron', {
       prospectName?: string;
     }) => ipcRenderer.invoke('bot:open-questionnaire', data),
   },
+  diagnostics: {
+    collect: () => ipcRenderer.invoke('diagnostics:collect'),
+  },
 } as ElectronAPI);
 
 // Also expose for tray menu actions
@@ -264,4 +276,9 @@ ipcRenderer.on('tray:stop-recording', () => {
 // Auth callback from deep link
 ipcRenderer.on('auth:callback', (_event, data: { token?: string; error?: string }) => {
   window.dispatchEvent(new CustomEvent('auth:callback', { detail: data }));
+});
+
+// Google Calendar connected callback from deep link
+ipcRenderer.on('calendar:connected', (_event, data: { closerId: string }) => {
+  window.dispatchEvent(new CustomEvent('calendar:connected', { detail: data }));
 });

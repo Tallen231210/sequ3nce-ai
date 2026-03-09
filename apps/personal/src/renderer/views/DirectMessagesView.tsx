@@ -6,8 +6,11 @@ import {
   sendDM,
   markDMThreadRead,
   deleteDMMessage,
+  setDMTyping,
+  getDMTypingUsers,
 } from '../convex';
 import { formatRelativeTime, getInitials, getAvatarGradient } from './community/types';
+import { TypingIndicator } from './community/TypingIndicator';
 
 const MAX_DM_BODY = 2000;
 const POLL_INTERVAL = 3000;
@@ -50,10 +53,15 @@ export function DirectMessagesView({
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
 
+  // Typing indicator state
+  const [typingNames, setTypingNames] = useState<string[]>([]);
+  const lastTypingSentRef = useRef(0);
+
   const mountedRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const threadPollRef = useRef<ReturnType<typeof setInterval>>(undefined as any);
   const messagePollRef = useRef<ReturnType<typeof setInterval>>(undefined as any);
+  const typingPollRef = useRef<ReturnType<typeof setInterval>>(undefined as any);
   const initialRecipientHandled = useRef(false);
 
   // Load threads
@@ -99,6 +107,23 @@ export function DirectMessagesView({
       if (messagePollRef.current) clearInterval(messagePollRef.current);
     };
   }, [activeThread?._id, loadMessages]);
+
+  // Typing indicator polling for active thread
+  useEffect(() => {
+    if (typingPollRef.current) clearInterval(typingPollRef.current);
+    setTypingNames([]);
+    if (activeThread && userId) {
+      const pollTyping = async () => {
+        const result = await getDMTypingUsers(userId, activeThread._id);
+        if (mountedRef.current) setTypingNames((result.users || []).map(u => u.userName));
+      };
+      pollTyping();
+      typingPollRef.current = setInterval(pollTyping, 3000);
+    }
+    return () => {
+      if (typingPollRef.current) clearInterval(typingPollRef.current);
+    };
+  }, [activeThread?._id, userId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -198,10 +223,21 @@ export function DirectMessagesView({
     if (activeThread) loadMessages(activeThread._id);
   }, [userId, activeThread, loadMessages]);
 
+  const handleTyping = useCallback(() => {
+    const now = Date.now();
+    const threadId = activeThread?._id;
+    if (now - lastTypingSentRef.current > 3000 && threadId && userId) {
+      lastTypingSentRef.current = now;
+      setDMTyping(userId, threadId);
+    }
+  }, [activeThread?._id, userId]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    } else {
+      handleTyping();
     }
   };
 
@@ -299,6 +335,9 @@ export function DirectMessagesView({
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {/* Typing indicator */}
+            <TypingIndicator names={typingNames} />
 
             {/* Input bar */}
             <div className="px-4 py-3 border-t border-gray-200 dark:border-zinc-700">

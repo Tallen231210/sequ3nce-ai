@@ -36,7 +36,8 @@ export function TagInput({ label, tags, onChange, maxTags, suggestions, placehol
     if (!trimmed || tags.includes(trimmed) || tags.length >= maxTags) return;
     onChange([...tags, trimmed]);
     setInput('');
-    setShowSuggestions(false);
+    setShowSuggestions(true);
+    inputRef.current?.focus();
   };
 
   const removeTag = (index: number) => {

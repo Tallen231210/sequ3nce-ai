@@ -366,7 +366,15 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Draggable titlebar region across content with Quick Bot button */}
-        <div className="titlebar h-14 border-b border-gray-100" />
+        <div className="titlebar h-14 border-b border-gray-100 flex items-center justify-end px-5">
+          <button onClick={() => setShowQuickBot(true)}
+            className="no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Quick Bot
+          </button>
+        </div>
 
         {/* Active Call Banner */}
         {activeCall && (

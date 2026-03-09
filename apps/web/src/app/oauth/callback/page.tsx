@@ -10,6 +10,9 @@ function CallbackContent() {
   const provider = searchParams.get("provider") || "google";
   const closerId = searchParams.get("closerId");
   const error = searchParams.get("error");
+  const app = searchParams.get("app");
+
+  const protocol = app === "personal" ? "sequ3nce-personal" : "sequ3nce";
 
   const [deepLinkAttempted, setDeepLinkAttempted] = useState(false);
 
@@ -18,11 +21,11 @@ function CallbackContent() {
     if (success && closerId && !deepLinkAttempted) {
       setDeepLinkAttempted(true);
       const timeout = setTimeout(() => {
-        window.location.href = `sequ3nce://calendar-connected?closerId=${closerId}`;
+        window.location.href = `${protocol}://calendar-connected?closerId=${closerId}`;
       }, 1000);
       return () => clearTimeout(timeout);
     }
-  }, [success, closerId, deepLinkAttempted]);
+  }, [success, closerId, deepLinkAttempted, protocol]);
 
   const providerName = provider === "microsoft" ? "Microsoft Calendar" : "Google Calendar";
 
@@ -58,11 +61,11 @@ function CallbackContent() {
           </div>
           <button
             onClick={() => {
-              window.location.href = `sequ3nce://calendar-connected?closerId=${closerId}`;
+              window.location.href = `${protocol}://calendar-connected?closerId=${closerId}`;
             }}
             className="w-full px-4 py-2.5 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 transition-colors"
           >
-            Return to Sequ3nce
+            {app === "personal" ? "Return to Sequ3nce Personal" : "Return to Sequ3nce"}
           </button>
           <p className="text-xs text-zinc-400">
             If the app didn&apos;t open automatically, click the button above.
@@ -103,7 +106,7 @@ function CallbackContent() {
         </div>
         {closerId && (
           <a
-            href={`/api/auth/google/authorize?closerId=${closerId}`}
+            href={`/api/auth/google/authorize?closerId=${closerId}${app ? `&app=${app}` : ""}`}
             className="block w-full px-4 py-2.5 text-sm font-medium text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 transition-colors text-center"
           >
             Try Again

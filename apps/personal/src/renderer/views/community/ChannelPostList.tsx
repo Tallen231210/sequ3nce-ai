@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  getFeedPosts,
+  getChannelPosts,
   getNewPostCount,
   createCommunityPost,
   togglePostLike,
@@ -15,7 +15,8 @@ import type { CommunityChannel, CommunityPost } from './types';
 import { PostCard } from './PostCard';
 import { NewPostForm } from './NewPostForm';
 
-interface FeedProps {
+interface ChannelPostListProps {
+  channelId: string;
   userId: string;
   channels: CommunityChannel[];
   isAdmin?: boolean;
@@ -24,21 +25,30 @@ interface FeedProps {
 
 const POLL_INTERVAL = 10_000;
 
-export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) {
+export function ChannelPostList({
+  channelId,
+  userId,
+  channels,
+  isAdmin,
+  onMessageAuthor,
+}: ChannelPostListProps) {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [newPostCount, setNewPostCount] = useState(0);
-  const [friendsOnly, setFriendsOnly] = useState(false);
   const lastFetchedRef = useRef(Date.now());
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
-    loadPosts();
     return () => { mountedRef.current = false; };
   }, []);
+
+  // Load posts when channel changes
+  useEffect(() => {
+    loadPosts(channelId);
+  }, [channelId]);
 
   // Poll for new posts
   useEffect(() => {
@@ -50,10 +60,9 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
     return () => clearInterval(interval);
   }, []);
 
-  const loadPosts = async (filterFriendsOnly?: boolean) => {
-    const useFriendsOnly = filterFriendsOnly ?? friendsOnly;
+  const loadPosts = async (chId: string) => {
     setLoading(true);
-    const result = await getFeedPosts(userId, undefined, undefined, useFriendsOnly);
+    const result = await getChannelPosts(chId, userId);
     if (mountedRef.current) {
       setPosts(result.posts);
       setNextCursor(result.nextCursor);
@@ -66,7 +75,7 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
-    const result = await getFeedPosts(userId, undefined, nextCursor, friendsOnly);
+    const result = await getChannelPosts(channelId, userId, undefined, nextCursor);
     if (mountedRef.current) {
       setPosts((prev) => [...prev, ...result.posts]);
       setNextCursor(result.nextCursor);
@@ -75,25 +84,17 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
   };
 
   const handleLoadNew = async () => {
-    await loadPosts();
-    const el = document.querySelector('[data-feed-scroll]');
-    el?.scrollTo({ top: 0, behavior: 'smooth' });
+    await loadPosts(channelId);
   };
 
-  const handleToggleFriendsOnly = (value: boolean) => {
-    setFriendsOnly(value);
-    loadPosts(value);
-  };
-
-  const handleCreatePost = useCallback(async (channelId: string, body: string, visibility?: string) => {
-    const result = await createCommunityPost(userId, channelId, body, visibility);
+  const handleCreatePost = useCallback(async (chId: string, body: string, visibility?: string) => {
+    const result = await createCommunityPost(userId, chId, body, visibility);
     if (!result.error) {
-      await loadPosts();
+      await loadPosts(channelId);
     }
-  }, [userId, friendsOnly]);
+  }, [userId, channelId]);
 
   const handleLike = useCallback(async (postId: string) => {
-    // Optimistic update
     setPosts((prev) =>
       prev.map((p) =>
         p._id === postId
@@ -107,9 +108,9 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
     );
     const result = await togglePostLike(userId, postId);
     if (result.error && mountedRef.current) {
-      await loadPosts();
+      await loadPosts(channelId);
     }
-  }, [userId]);
+  }, [userId, channelId]);
 
   const handleEdit = useCallback(async (postId: string, body: string) => {
     const result = await editCommunityPost(userId, postId, body);
@@ -162,8 +163,8 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
     }
   }, [userId]);
 
-  // Compute message grouping: same author within 5 minutes
-  const isGrouped = (index: number): boolean => {
+  // Compute message grouping
+  const isGroupedAt = (index: number): boolean => {
     if (index === 0) return false;
     const current = posts[index];
     const prev = posts[index - 1];
@@ -171,63 +172,78 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
     return (prev.createdAt - current.createdAt) < 5 * 60 * 1000;
   };
 
+  const channel = channels.find((c) => c._id === channelId);
+
+  // Separate pinned and regular posts
+  const pinnedPosts = posts.filter((p) => p.isPinned);
+  const regularPosts = posts.filter((p) => !p.isPinned);
+
   return (
-    <div className="space-y-4" data-feed-scroll>
+    <div className="space-y-4">
       {/* New post form */}
-      <NewPostForm channels={channels} onSubmit={handleCreatePost} />
+      <NewPostForm
+        channels={channels}
+        selectedChannelId={channelId}
+        onSubmit={handleCreatePost}
+      />
 
-      {/* Feed filter */}
-      <div className="flex gap-1">
-        <button
-          onClick={() => handleToggleFriendsOnly(false)}
-          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-            !friendsOnly
-              ? 'bg-black text-white dark:bg-white dark:text-black'
-              : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
-          }`}
-        >
-          All Posts
-        </button>
-        <button
-          onClick={() => handleToggleFriendsOnly(true)}
-          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-            friendsOnly
-              ? 'bg-black text-white dark:bg-white dark:text-black'
-              : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
-          }`}
-        >
-          Friends Only
-        </button>
-      </div>
-
-      {/* "New posts available" banner */}
+      {/* New posts banner */}
       {newPostCount > 0 && (
         <button
           onClick={handleLoadNew}
           className="w-full py-2 px-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
         >
-          {newPostCount} new {newPostCount === 1 ? 'post' : 'posts'} available — Load new posts
+          {newPostCount} new {newPostCount === 1 ? 'post' : 'posts'} — Load new posts
         </button>
       )}
 
-      {/* Posts */}
+      {/* Posts list */}
       {loading ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">Loading feed...</div>
+        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">Loading posts...</div>
       ) : posts.length === 0 ? (
         <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
-          No posts yet. Be the first to share something!
+          No posts yet. Be the first to post in #{channel?.slug || 'this channel'}!
         </div>
       ) : (
         <>
+          {/* Pinned posts section */}
+          {pinnedPosts.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-zinc-500 font-medium mb-2">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                </svg>
+                PINNED
+              </div>
+              {pinnedPosts.map((post) => (
+                <PostCard
+                  key={post._id}
+                  post={post}
+                  userId={userId}
+                  isAdmin={isAdmin}
+                  onLike={handleLike}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onReact={handleReact}
+                  onUnreact={handleUnreact}
+                  onPin={handlePin}
+                  onUnpin={handleUnpin}
+                  onMessageAuthor={onMessageAuthor}
+                />
+              ))}
+              <div className="border-t border-gray-100 dark:border-zinc-700 my-3" />
+            </div>
+          )}
+
+          {/* Regular posts */}
           <div className="space-y-1">
-            {posts.map((post, index) => (
+            {regularPosts.map((post, index) => (
               <PostCard
                 key={post._id}
                 post={post}
                 userId={userId}
-                showChannelLabel
                 isAdmin={isAdmin}
-                isGrouped={isGrouped(index)}
+                isGrouped={isGroupedAt(posts.indexOf(post))}
                 onLike={handleLike}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

@@ -5,19 +5,22 @@ import {
   getUrgencyBadgeConfig,
   detectPlatform,
   formatTime,
+  getProspectAttendee,
 } from './scheduleUtils';
 
 interface ScheduleEventCardProps {
   event: CalendarEvent;
   now: number;
+  closerEmail?: string;
   onExclude: (event: CalendarEvent) => void;
   onJoinRequest: (event: CalendarEvent) => void;
 }
 
-export function ScheduleEventCard({ event, now, onExclude, onJoinRequest }: ScheduleEventCardProps) {
+export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRequest }: ScheduleEventCardProps) {
   const urgency = getEventUrgency(event, now);
   const badge = getUrgencyBadgeConfig(urgency);
   const platform = detectPlatform(event.meetingUrl);
+  const prospect = getProspectAttendee(event, closerEmail);
   const isPast = urgency === 'ended';
 
   return (
@@ -47,6 +50,18 @@ export function ScheduleEventCard({ event, now, onExclude, onJoinRequest }: Sche
       <h4 className="text-[15px] font-semibold text-black dark:text-white mb-1.5 line-clamp-2">
         {event.title}
       </h4>
+
+      {/* Prospect attendee */}
+      {prospect && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <svg className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
+          </svg>
+          <span className="text-[12px] text-gray-600 dark:text-gray-400">
+            {prospect.name || prospect.email}
+          </span>
+        </div>
+      )}
 
       {/* Platform badge */}
       {platform && (

@@ -10,6 +10,8 @@ import {
   INDUSTRY_SUGGESTIONS,
   SKILL_SUGGESTIONS,
 } from './ProfileFormSections';
+import { ProfileVideoInputs } from './ProfileVideoInputs';
+import { HighlightReelEditor } from './HighlightReelEditor';
 
 interface ProfileViewProps {
   closerInfo: CloserInfo;
@@ -32,6 +34,8 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
   const [skills, setSkills] = useState<string[]>([]);
   const [socialLinks, setSocialLinks] = useState<NonNullable<B2CProfile['socialLinks']>>({});
   const [isPublic, setIsPublic] = useState(false);
+  const [introVideoUrl, setIntroVideoUrl] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
 
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
@@ -56,6 +60,9 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         setSkills(profile.skills || []);
         setSocialLinks(profile.socialLinks || {});
         setIsPublic(profile.isPublic);
+        setIntroVideoUrl(profile.introVideoUrl || '');
+
+        setWhatsappNumber(profile.whatsappNumber || '');
       }
       setIsLoading(false);
     }).catch(() => {
@@ -81,6 +88,10 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         skills: skills.length > 0 ? skills : undefined,
         socialLinks,
         isPublic,
+        isAvailable: isPublic,
+        introVideoUrl: introVideoUrl || undefined,
+        highlightReelUrl: undefined,
+        whatsappNumber: whatsappNumber || undefined,
       };
 
       const result = await upsertProfile(args);
@@ -271,6 +282,39 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         <section className="space-y-4">
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Social & Links</h2>
           <SocialLinksSection links={socialLinks} onChange={setSocialLinks} />
+        </section>
+
+        {/* Videos & Contact */}
+        <section className="space-y-4">
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Videos & Contact</h2>
+          <ProfileVideoInputs
+            introVideoUrl={introVideoUrl}
+            onIntroChange={setIntroVideoUrl}
+          />
+          <div>
+            <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">
+              WhatsApp Number <span className="text-gray-300 dark:text-zinc-600">(with country code)</span>
+            </label>
+            <input
+              type="tel"
+              value={whatsappNumber}
+              onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
+              placeholder="15551234567"
+              className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+            />
+            <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-1">
+              Adds a &quot;Message Me&quot; button to your profile that opens WhatsApp
+            </p>
+          </div>
+        </section>
+
+        {/* Highlight Reel */}
+        <section className="space-y-4">
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Highlight Reel</h2>
+          <p className="text-[12px] text-gray-500 dark:text-zinc-400">
+            Showcase your best sales call moments on your public profile. Add clips from your Calls tab.
+          </p>
+          <HighlightReelEditor userId={closerInfo.b2cUserId!} />
         </section>
 
         {/* Visibility */}

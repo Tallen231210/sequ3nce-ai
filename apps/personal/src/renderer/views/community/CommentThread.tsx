@@ -14,6 +14,8 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [replyingToName, setReplyingToName] = useState('');
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -35,10 +37,12 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
     const body = replyText.trim();
     if (!body || submitting) return;
     setSubmitting(true);
-    const result = await createPostComment(userId, postId, body);
+    const result = await createPostComment(userId, postId, body, replyingToId || undefined);
     if (mountedRef.current) {
       if (!result.error) {
         setReplyText('');
+        setReplyingToId(null);
+        setReplyingToName('');
         await loadComments();
       }
       setSubmitting(false);
@@ -46,7 +50,6 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
   };
 
   const handleLike = async (commentId: string) => {
-    // Optimistic update
     setComments((prev) =>
       prev.map((c) =>
         c._id === commentId
@@ -74,38 +77,94 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
   const handleDelete = async (commentId: string) => {
     const result = await deletePostComment(userId, commentId);
     if (result.success && mountedRef.current) {
-      setComments((prev) => prev.filter((c) => c._id !== commentId));
+      setComments((prev) => prev.filter((c) => c._id !== commentId && c.parentCommentId !== commentId));
     }
+  };
+
+  const handleReply = (commentId: string, authorName: string) => {
+    setReplyingToId(commentId);
+    setReplyingToName(authorName);
+  };
+
+  const cancelReply = () => {
+    setReplyingToId(null);
+    setReplyingToName('');
   };
 
   if (loading) {
     return <div className="text-xs text-gray-400 dark:text-zinc-500 py-2">Loading comments...</div>;
   }
 
+  // Group comments: top-level and replies
+  const topLevel = comments.filter((c) => !c.parentCommentId);
+  const repliesByParent = new Map<string, CommunityComment[]>();
+  for (const c of comments) {
+    if (c.parentCommentId) {
+      const existing = repliesByParent.get(c.parentCommentId) || [];
+      existing.push(c);
+      repliesByParent.set(c.parentCommentId, existing);
+    }
+  }
+
   return (
     <div className="space-y-3">
-      {comments.length === 0 && (
+      {topLevel.length === 0 && (
         <div className="text-xs text-gray-400 dark:text-zinc-500 py-1">No comments yet. Be the first to reply.</div>
       )}
 
-      {comments.map((comment) => (
-        <CommentItem
-          key={comment._id}
-          comment={comment}
-          userId={userId}
-          isAdmin={isAdmin}
-          onLike={handleLike}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-        />
+      {topLevel.map((comment) => (
+        <div key={comment._id}>
+          <CommentItem
+            comment={comment}
+            userId={userId}
+            isAdmin={isAdmin}
+            onLike={handleLike}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onReply={handleReply}
+            isReply={false}
+          />
+          {/* Threaded replies */}
+          {repliesByParent.has(comment._id) && (
+            <div className="ml-6 mt-2 space-y-2 border-l-2 border-gray-200 dark:border-zinc-600 pl-3">
+              {repliesByParent.get(comment._id)!.map((reply) => (
+                <CommentItem
+                  key={reply._id}
+                  comment={reply}
+                  userId={userId}
+                  isAdmin={isAdmin}
+                  onLike={handleLike}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  isReply={true}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       ))}
+
+      {/* Reply indicator */}
+      {replyingToId && (
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800/50 rounded px-2 py-1">
+          <span>Replying to <span className="font-semibold">@{replyingToName}</span></span>
+          <button
+            onClick={cancelReply}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Reply form */}
       <div className="flex gap-2 pt-1">
         <textarea
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
-          placeholder="Write a reply..."
+          placeholder={replyingToId ? `Reply to @${replyingToName}...` : 'Write a reply...'}
           className="flex-1 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-zinc-900 text-gray-900 dark:text-white resize-none placeholder:text-gray-400"
           rows={1}
           maxLength={2000}
@@ -136,6 +195,8 @@ function CommentItem({
   onLike,
   onEdit,
   onDelete,
+  onReply,
+  isReply,
 }: {
   comment: CommunityComment;
   userId: string;
@@ -143,6 +204,8 @@ function CommentItem({
   onLike: (id: string) => void;
   onEdit: (id: string, body: string) => void;
   onDelete: (id: string) => void;
+  onReply?: (id: string, name: string) => void;
+  isReply: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
@@ -209,6 +272,16 @@ function CommentItem({
             </svg>
             {comment.likeCount > 0 && <span>{comment.likeCount}</span>}
           </button>
+
+          {/* Reply button — only on top-level comments */}
+          {!isReply && onReply && (
+            <button
+              onClick={() => onReply(comment._id, comment.authorName)}
+              className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300"
+            >
+              Reply
+            </button>
+          )}
 
           {isAuthor && !isEditing && (
             <button onClick={() => setIsEditing(true)} className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600">Edit</button>

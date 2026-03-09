@@ -1,35 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { CloserInfo } from '../convex';
-import { getCommunityChannels, getPendingFriendRequestCount } from '../convex';
+import { getCommunityChannels, getPendingFriendRequestCount, getUnreadChannels, markChannelRead } from '../convex';
 import type { CommunityChannel } from './community/types';
+import { ChannelSidebar } from './community/ChannelSidebar';
+import { CommunityHeader } from './community/CommunityHeader';
+import { MembersPanel } from './community/MembersPanel';
 import { Feed } from './community/Feed';
-import { Channels } from './community/Channels';
-import { Members } from './community/Members';
+import { ChannelPostList } from './community/ChannelPostList';
 import { Training } from './community/Training';
-import { Friends } from './community/Friends';
-
-type CommunityTab = 'feed' | 'channels' | 'training' | 'members' | 'friends';
+import { WelcomeBanner } from './community/WelcomeBanner';
+import { PostSearch } from './community/PostSearch';
 
 interface CommunityViewProps {
   closerInfo: CloserInfo;
   onStartDM?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
-const TABS: { id: CommunityTab; label: string }[] = [
-  { id: 'feed', label: 'Feed' },
-  { id: 'channels', label: 'Channels' },
-  { id: 'training', label: 'Training' },
-  { id: 'members', label: 'Members' },
-  { id: 'friends', label: 'Friends' },
-];
-
 const REQUEST_COUNT_POLL = 30_000;
+const UNREAD_POLL_INTERVAL = 15_000;
 
 export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
-  const [activeTab, setActiveTab] = useState<CommunityTab>('feed');
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
+  const [selectedView, setSelectedView] = useState<string>('feed');
+  const [showPanel, setShowPanel] = useState(false);
+  const [panelMode, setPanelMode] = useState<'members' | 'friends'>('members');
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  const [unreadChannelIds, setUnreadChannelIds] = useState<Set<string>>(new Set());
+  const [showSearch, setShowSearch] = useState(false);
   const mountedRef = useRef(true);
 
   const userId = closerInfo.b2cUserId || '';
@@ -38,7 +36,10 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
   useEffect(() => {
     mountedRef.current = true;
     loadChannels();
-    if (userId) loadRequestCount();
+    if (userId) {
+      loadRequestCount();
+      loadUnreadChannels();
+    }
     return () => { mountedRef.current = false; };
   }, []);
 
@@ -50,6 +51,15 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
       const count = await getPendingFriendRequestCount(userId);
       if (mountedRef.current) setPendingRequestCount(count);
     }, REQUEST_COUNT_POLL);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  // Poll for unread channels
+  useEffect(() => {
+    if (!userId) return;
+    const interval = setInterval(() => {
+      if (mountedRef.current) loadUnreadChannels();
+    }, UNREAD_POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [userId]);
 
@@ -66,57 +76,130 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
     if (mountedRef.current) setPendingRequestCount(count);
   };
 
+  const loadUnreadChannels = async () => {
+    if (!userId) return;
+    const result = await getUnreadChannels(userId);
+    if (mountedRef.current) setUnreadChannelIds(new Set(result.unreadChannelIds));
+  };
+
+  // Determine if the selected view is a channel ID
+  const isChannelView = selectedView !== 'feed' && selectedView !== 'training';
+
+  // Build header title + description
+  const getHeaderInfo = () => {
+    if (selectedView === 'feed') return { title: 'Feed', description: 'All posts across channels' };
+    if (selectedView === 'training') return { title: 'Training', description: 'Courses and modules' };
+    const channel = channels.find((c) => c._id === selectedView);
+    if (channel) return { title: `# ${channel.slug}`, description: channel.description };
+    return { title: 'Community' };
+  };
+
+  const headerInfo = getHeaderInfo();
+
+  const handleSelectView = (view: string) => {
+    setSelectedView(view);
+    setShowSearch(false);
+    // Mark channel as read when selecting it
+    const isChannel = view !== 'feed' && view !== 'training';
+    if (isChannel && userId) {
+      markChannelRead(userId, view);
+      setUnreadChannelIds((prev) => {
+        const next = new Set(prev);
+        next.delete(view);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleMembers = () => {
+    if (showPanel && panelMode === 'members') {
+      setShowPanel(false);
+    } else {
+      setPanelMode('members');
+      setShowPanel(true);
+    }
+  };
+
+  const handleToggleFriends = () => {
+    if (showPanel && panelMode === 'friends') {
+      setShowPanel(false);
+    } else {
+      setPanelMode('friends');
+      setShowPanel(true);
+    }
+  };
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Community</h1>
-        <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">
-          Connect with other closers
-        </p>
-      </div>
+    <div className="flex h-full">
+      {/* Left sidebar */}
+      <ChannelSidebar
+        channels={channels}
+        selectedView={selectedView}
+        onSelect={handleSelectView}
+        unreadChannelIds={unreadChannelIds}
+        pendingRequestCount={pendingRequestCount}
+        onToggleMembers={handleToggleMembers}
+        onToggleFriends={handleToggleFriends}
+      />
 
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id);
-              // Refresh count when leaving friends tab
-              if (tab.id !== 'friends' && activeTab === 'friends' && userId) {
-                loadRequestCount();
-              }
-            }}
-            className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === tab.id
-                ? 'bg-black text-white dark:bg-white dark:text-black'
-                : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
-            }`}
-          >
-            {tab.label}
-            {tab.id === 'friends' && pendingRequestCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[10px] font-bold bg-red-500 text-white rounded-full">
-                {pendingRequestCount > 9 ? '9+' : pendingRequestCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <CommunityHeader
+          title={headerInfo.title}
+          description={headerInfo.description}
+          onSearchToggle={() => setShowSearch(!showSearch)}
+          onMembersToggle={handleToggleMembers}
+          showPinFilter={isChannelView}
+        />
 
-      {/* Content */}
-      {loadingChannels && activeTab !== 'members' && activeTab !== 'training' && activeTab !== 'friends' ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
-          Loading community...
+        <div className="flex-1 overflow-y-auto p-6">
+          {showSearch ? (
+            <PostSearch
+              channelId={isChannelView ? selectedView : undefined}
+              userId={userId}
+              isAdmin={isAdmin}
+              onClose={() => setShowSearch(false)}
+              onMessageAuthor={onStartDM}
+            />
+          ) : loadingChannels && selectedView !== 'training' ? (
+            <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+              Loading community...
+            </div>
+          ) : (
+            <>
+              {selectedView === 'feed' && (
+                <WelcomeBanner onGoToGeneral={() => {
+                  const general = channels.find(c => c.slug === 'general');
+                  if (general) handleSelectView(general._id);
+                }} />
+              )}
+              {selectedView === 'feed' && (
+                <Feed userId={userId} channels={channels} isAdmin={isAdmin} onMessageAuthor={onStartDM} />
+              )}
+              {selectedView === 'training' && <Training />}
+              {isChannelView && (
+                <ChannelPostList
+                  channelId={selectedView}
+                  userId={userId}
+                  channels={channels}
+                  isAdmin={isAdmin}
+                  onMessageAuthor={onStartDM}
+                />
+              )}
+            </>
+          )}
         </div>
-      ) : (
-        <>
-          {activeTab === 'feed' && <Feed userId={userId} channels={channels} isAdmin={isAdmin} onMessageAuthor={onStartDM} />}
-          {activeTab === 'channels' && <Channels userId={userId} channels={channels} isAdmin={isAdmin} onMessageAuthor={onStartDM} />}
-          {activeTab === 'training' && <Training />}
-          {activeTab === 'members' && <Members currentUserId={userId} onStartDM={onStartDM} />}
-          {activeTab === 'friends' && <Friends userId={userId} onStartDM={onStartDM} />}
-        </>
+      </div>
+
+      {/* Right panel (Members/Friends) - toggled */}
+      {showPanel && (
+        <MembersPanel
+          mode={panelMode}
+          onModeChange={setPanelMode}
+          currentUserId={userId}
+          onStartDM={onStartDM}
+          onClose={() => setShowPanel(false)}
+        />
       )}
     </div>
   );

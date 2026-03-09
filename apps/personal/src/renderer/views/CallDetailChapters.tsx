@@ -6,6 +6,8 @@ interface CallDetailChaptersProps {
   currentTime: number;
   onSeek: (time: number) => void;
   isAnalyzing?: boolean;
+  onAddToReel?: (chapter: CallChapter) => void;
+  existingClipChapters?: string[];
 }
 
 export function CallDetailChapters({
@@ -13,6 +15,8 @@ export function CallDetailChapters({
   currentTime,
   onSeek,
   isAnalyzing,
+  onAddToReel,
+  existingClipChapters,
 }: CallDetailChaptersProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
@@ -62,22 +66,41 @@ export function CallDetailChapters({
     >
       {chapters.map((chapter, i) => {
         const isActive = i === activeIndex;
+        const isClipped = existingClipChapters?.includes(chapter.title);
         return (
-          <button
-            key={i}
-            ref={isActive ? activeRef : undefined}
-            onClick={() => onSeek(chapter.startTime)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors ${
-              isActive
-                ? 'bg-black text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
-            }`}
-          >
-            <span className="font-mono text-[10px] opacity-70">
-              {formatChapterTime(chapter.startTime)}
-            </span>
-            <span>{chapter.title}</span>
-          </button>
+          <div key={i} className="flex items-center gap-0.5 shrink-0 group">
+            <button
+              ref={isActive ? activeRef : undefined}
+              onClick={() => onSeek(chapter.startTime)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
+                isActive
+                  ? 'bg-black text-white'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              <span className="font-mono text-[10px] opacity-70">
+                {formatChapterTime(chapter.startTime)}
+              </span>
+              <span>{chapter.title}</span>
+              {isClipped && (
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title="In highlight reel" />
+              )}
+            </button>
+            {onAddToReel && !isClipped && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToReel(chapter);
+                }}
+                className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
+                title="Add to highlight reel"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </button>
+            )}
+          </div>
         );
       })}
     </div>

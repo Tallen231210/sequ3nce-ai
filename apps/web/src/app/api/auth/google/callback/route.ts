@@ -46,8 +46,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // The state contains the closerId
-    const closerId = state as Id<"closers">;
+    // State may be "closerId" or "closerId::app" (e.g. "closerId::personal")
+    const [closerId, app] = (state || "").split("::");
+    const typedCloserId = closerId as Id<"closers">;
 
     // Exchange authorization code for tokens
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -124,17 +125,18 @@ export async function GET(req: NextRequest) {
 
     // Save the refresh token on the closer record
     await convex.mutation(api.calendarOAuth.saveGoogleCalendarConnection, {
-      closerId,
+      closerId: typedCloserId,
       refreshToken,
       email,
     });
 
-    console.log("[Google OAuth] Successfully saved Google Calendar connection for closer:", closerId);
+    console.log("[Google OAuth] Successfully saved Google Calendar connection for closer:", typedCloserId);
 
     // Redirect to success page (which may redirect to desktop app via custom URL scheme)
+    const appParam = app ? `&app=${encodeURIComponent(app)}` : "";
     return NextResponse.redirect(
       new URL(
-        `/oauth/callback?success=true&provider=google&closerId=${closerId}`,
+        `/oauth/callback?success=true&provider=google&closerId=${typedCloserId}${appParam}`,
         req.url
       )
     );

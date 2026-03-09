@@ -2,15 +2,21 @@ import React, { useState } from 'react';
 import type { CommunityPost } from './types';
 import { formatRelativeTime, getInitials, getAvatarGradient } from './types';
 import { CommentThread } from './CommentThread';
+import { ReactionPills } from './ReactionPills';
 
 interface PostCardProps {
   post: CommunityPost;
   userId: string;
   showChannelLabel?: boolean;
   isAdmin?: boolean;
+  isGrouped?: boolean;
   onLike: (postId: string) => void;
   onEdit?: (postId: string, body: string) => void;
   onDelete?: (postId: string) => void;
+  onReact?: (postId: string, emoji: string) => void;
+  onUnreact?: (postId: string, emoji: string) => void;
+  onPin?: (postId: string) => void;
+  onUnpin?: (postId: string) => void;
   onMessageAuthor?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
@@ -19,9 +25,14 @@ export function PostCard({
   userId,
   showChannelLabel = false,
   isAdmin,
+  isGrouped = false,
   onLike,
   onEdit,
   onDelete,
+  onReact,
+  onUnreact,
+  onPin,
+  onUnpin,
   onMessageAuthor,
 }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
@@ -42,62 +53,45 @@ export function PostCard({
     }
   };
 
+  // Build reaction counts with legacy like fallback
+  const effectiveReactionCounts = { ...(post.reactionCounts ?? {}) };
+  if (Object.keys(effectiveReactionCounts).length === 0 && post.likeCount > 0) {
+    effectiveReactionCounts.heart = post.likeCount;
+  }
+  const effectiveMyReactions = [...(post.myReactions ?? [])];
+  if (effectiveMyReactions.length === 0 && post.isLikedByMe && post.likeCount > 0 && !post.reactionCounts) {
+    effectiveMyReactions.push('heart');
+  }
+
   return (
-    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-xl p-4">
-      {/* Header: Avatar + Name + Channel + Time */}
-      <div className="flex items-start gap-3">
-        {post.authorPhotoUrl ? (
-          <img
-            src={post.authorPhotoUrl}
-            alt={post.authorName}
-            className={`w-9 h-9 rounded-full object-cover flex-shrink-0 ${canMessage ? 'cursor-pointer hover:ring-2 hover:ring-black/20 dark:hover:ring-white/20 transition-shadow' : ''}`}
-            onClick={canMessage ? () => onMessageAuthor!(post.authorId, post.authorName, post.authorPhotoUrl) : undefined}
-          />
-        ) : (
-          <div
-            className={`w-9 h-9 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-semibold text-xs flex-shrink-0 ${canMessage ? 'cursor-pointer hover:ring-2 hover:ring-black/20 dark:hover:ring-white/20 transition-shadow' : ''}`}
-            onClick={canMessage ? () => onMessageAuthor!(post.authorId, post.authorName, post.authorPhotoUrl) : undefined}
-          >
-            {initials}
-          </div>
-        )}
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={`font-semibold text-sm text-gray-900 dark:text-white ${canMessage ? 'cursor-pointer hover:underline' : ''}`}
-              onClick={canMessage ? () => onMessageAuthor!(post.authorId, post.authorName, post.authorPhotoUrl) : undefined}
-            >
-              {post.authorName}
-            </span>
-            {showChannelLabel && post.channelName && (
-              <span className="text-xs text-gray-400 dark:text-zinc-500">
-                in <span className="text-gray-600 dark:text-zinc-300 font-medium">#{post.channelSlug || post.channelName}</span>
-              </span>
-            )}
-            <span className="text-xs text-gray-400 dark:text-zinc-500">
-              {formatRelativeTime(post.createdAt)}
-            </span>
-            {post.visibility === 'friends' && (
-              <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400" title="Friends only">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-                </svg>
-                Friends
-              </span>
-            )}
-            {isEdited && (
-              <span className="text-xs text-gray-400 dark:text-zinc-500 italic">(edited)</span>
-            )}
-          </div>
+    <div className={`group relative bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-xl hover:border-gray-300 dark:hover:border-zinc-600 transition-colors ${isGrouped ? 'py-1 px-4 border-0 rounded-none bg-transparent dark:bg-transparent' : 'p-4'}`}>
+      {/* Pin indicator */}
+      {post.isPinned && !isGrouped && (
+        <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mb-2">
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+          </svg>
+          Pinned
         </div>
+      )}
 
-        {/* Menu for author/admin actions */}
+      {/* Hover toolbar */}
+      <div className="absolute -top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-0.5 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg shadow-sm px-1 py-0.5">
+        <button
+          onClick={() => setShowComments(!showComments)}
+          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 rounded"
+          title="Comment"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z" />
+          </svg>
+        </button>
         {(isAuthor || isAdmin) && (
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 rounded"
+              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 rounded"
+              title="More"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -106,13 +100,21 @@ export function PostCard({
             {showMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                <div className="absolute right-0 top-6 z-20 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[120px]">
+                <div className="absolute right-0 top-8 z-20 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[120px]">
                   {isAuthor && (
                     <button
                       onClick={() => { setIsEditing(true); setShowMenu(false); }}
                       className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-600"
                     >
                       Edit
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={() => { post.isPinned ? onUnpin?.(post._id) : onPin?.(post._id); setShowMenu(false); }}
+                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-600"
+                    >
+                      {post.isPinned ? 'Unpin' : 'Pin'}
                     </button>
                   )}
                   <button
@@ -128,9 +130,60 @@ export function PostCard({
         )}
       </div>
 
+      {/* Header: Avatar + Name + Channel + Time (hidden when grouped) */}
+      {!isGrouped && (
+        <div className="flex items-start gap-3">
+          {post.authorPhotoUrl ? (
+            <img
+              src={post.authorPhotoUrl}
+              alt={post.authorName}
+              className={`w-9 h-9 rounded-full object-cover flex-shrink-0 ${canMessage ? 'cursor-pointer hover:ring-2 hover:ring-black/20 dark:hover:ring-white/20 transition-shadow' : ''}`}
+              onClick={canMessage ? () => onMessageAuthor!(post.authorId, post.authorName, post.authorPhotoUrl) : undefined}
+            />
+          ) : (
+            <div
+              className={`w-9 h-9 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-semibold text-xs flex-shrink-0 ${canMessage ? 'cursor-pointer hover:ring-2 hover:ring-black/20 dark:hover:ring-white/20 transition-shadow' : ''}`}
+              onClick={canMessage ? () => onMessageAuthor!(post.authorId, post.authorName, post.authorPhotoUrl) : undefined}
+            >
+              {initials}
+            </div>
+          )}
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={`font-semibold text-sm text-gray-900 dark:text-white ${canMessage ? 'cursor-pointer hover:underline' : ''}`}
+                onClick={canMessage ? () => onMessageAuthor!(post.authorId, post.authorName, post.authorPhotoUrl) : undefined}
+              >
+                {post.authorName}
+              </span>
+              {showChannelLabel && post.channelName && (
+                <span className="text-xs text-gray-400 dark:text-zinc-500">
+                  in <span className="text-gray-600 dark:text-zinc-300 font-medium">#{post.channelSlug || post.channelName}</span>
+                </span>
+              )}
+              <span className="text-xs text-gray-400 dark:text-zinc-500">
+                {formatRelativeTime(post.createdAt)}
+              </span>
+              {post.visibility === 'friends' && (
+                <span className="inline-flex items-center gap-0.5 text-xs text-amber-600 dark:text-amber-400" title="Friends only">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                  </svg>
+                  Friends
+                </span>
+              )}
+              {isEdited && (
+                <span className="text-xs text-gray-400 dark:text-zinc-500 italic">(edited)</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Body */}
       {isEditing ? (
-        <div className="mt-3">
+        <div className={isGrouped ? '' : 'mt-3'}>
           <textarea
             value={editBody}
             onChange={(e) => setEditBody(e.target.value)}
@@ -154,37 +207,40 @@ export function PostCard({
           </div>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-gray-800 dark:text-zinc-200 whitespace-pre-wrap break-words ml-12">
+        <p className={`text-sm text-gray-800 dark:text-zinc-200 whitespace-pre-wrap break-words ${isGrouped ? 'ml-12' : 'mt-2 ml-12'}`}>
           {post.body}
+          {isGrouped && (
+            <span className="ml-2 text-[10px] text-gray-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
+              {formatRelativeTime(post.createdAt)}
+            </span>
+          )}
         </p>
       )}
 
-      {/* Actions: Like + Comment */}
-      <div className="flex items-center gap-4 mt-3 ml-12">
-        <button
-          onClick={() => onLike(post._id)}
-          className={`flex items-center gap-1 text-xs transition-colors ${
-            post.isLikedByMe
-              ? 'text-red-500'
-              : 'text-gray-400 dark:text-zinc-500 hover:text-red-500'
-          }`}
-        >
-          <svg className="w-4 h-4" fill={post.isLikedByMe ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={post.isLikedByMe ? 0 : 2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-          </svg>
-          {post.likeCount > 0 && <span>{post.likeCount}</span>}
-        </button>
+      {/* Reaction pills */}
+      {!isEditing && (
+        <div className="mt-2 ml-12">
+          <ReactionPills
+            reactionCounts={effectiveReactionCounts}
+            myReactions={effectiveMyReactions}
+            onReact={(emoji) => onReact?.(post._id, emoji)}
+            onUnreact={(emoji) => onUnreact?.(post._id, emoji)}
+          />
+        </div>
+      )}
 
+      {/* Comment count indicator */}
+      {!showComments && post.commentCount > 0 && !isGrouped && (
         <button
-          onClick={() => setShowComments(!showComments)}
-          className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+          onClick={() => setShowComments(true)}
+          className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors mt-2 ml-12"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z" />
           </svg>
-          {post.commentCount > 0 && <span>{post.commentCount}</span>}
+          {post.commentCount} {post.commentCount === 1 ? 'reply' : 'replies'}
         </button>
-      </div>
+      )}
 
       {/* Comment thread (expandable) */}
       {showComments && (

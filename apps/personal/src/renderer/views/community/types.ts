@@ -24,6 +24,8 @@ export interface CommunityPost {
   commentCount: number;
   isPinned: boolean;
   isLikedByMe: boolean;
+  reactionCounts: Record<string, number>;
+  myReactions: string[];
   channelName?: string;
   channelSlug?: string;
   createdAt: number;
@@ -37,8 +39,11 @@ export interface CommunityComment {
   authorName: string;
   authorPhotoUrl: string | null;
   body: string;
+  parentCommentId?: string;
   likeCount: number;
   isLikedByMe: boolean;
+  reactionCounts: Record<string, number>;
+  myReactions: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -79,20 +84,36 @@ export interface TrainingLesson {
   updatedAt: number;
 }
 
-// Utility: format relative time
+// Utility: format relative time with Discord-style formatting
 export function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diff = now - timestamp;
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
 
-  if (seconds < 60) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString();
+  if (seconds < 60) return 'Just now';
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+
+  const date = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  if (date.toDateString() === today.toDateString()) return `Today at ${timeStr}`;
+  if (date.toDateString() === yesterday.toDateString()) return `Yesterday at ${timeStr}`;
+
+  // This week (within 7 days)
+  const daysDiff = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (daysDiff < 7) {
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+    return `${dayName} at ${timeStr}`;
+  }
+
+  // Older
+  const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${dateStr} at ${timeStr}`;
 }
 
 // Utility: get initials from name
