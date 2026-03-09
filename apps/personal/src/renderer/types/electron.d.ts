@@ -106,6 +106,14 @@ export interface BotAPI {
   }) => Promise<void>;
 }
 
+export interface DiagnosticsAPI {
+  collect: () => Promise<{
+    system: Record<string, unknown>;
+    websocket: Record<string, unknown>;
+    audio: Record<string, unknown>;
+  }>;
+}
+
 export interface ElectronAPI {
   audio: AudioAPI;
   app: AppAPI;
@@ -116,6 +124,7 @@ export interface ElectronAPI {
   schedule: ScheduleAPI;
   chat: ChatAPI;
   bot: BotAPI;
+  diagnostics: DiagnosticsAPI;
 }
 
 // Ammo item type
