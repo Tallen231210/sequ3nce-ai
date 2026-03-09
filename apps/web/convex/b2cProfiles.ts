@@ -9,6 +9,9 @@ const MAX_LOCATION = 100;
 const MAX_INDUSTRIES = 10;
 const MAX_SKILLS = 20;
 const MAX_TAG_LENGTH = 50;
+const MAX_VIDEO_URL = 500;
+const MAX_WHATSAPP = 15;
+const MIN_WHATSAPP = 7;
 const SLUG_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const MIN_SLUG = 3;
 const MAX_SLUG = 40;
@@ -56,6 +59,10 @@ export const getMyProfile = query({
       skills: profile?.skills ?? [],
       socialLinks: profile?.socialLinks ?? null,
       isPublic: profile?.isPublic ?? false,
+      isAvailable: profile?.isAvailable ?? false,
+      introVideoUrl: profile?.introVideoUrl ?? null,
+      highlightReelUrl: profile?.highlightReelUrl ?? null,
+      whatsappNumber: profile?.whatsappNumber ?? null,
       createdAt: profile?.createdAt ?? null,
       updatedAt: profile?.updatedAt ?? null,
     };
@@ -161,6 +168,10 @@ export const getPublicProfile = internalQuery({
       ticketRange: profile.ticketRange ?? null,
       skills: profile.skills ?? [],
       socialLinks: profile.socialLinks ?? null,
+      isAvailable: profile.isAvailable ?? false,
+      introVideoUrl: profile.introVideoUrl ?? null,
+      highlightReelUrl: profile.highlightReelUrl ?? null,
+      whatsappNumber: profile.whatsappNumber ?? null,
       stats,
     };
   },
@@ -186,6 +197,10 @@ export const upsertProfile = mutation({
       calendly: v.optional(v.string()),
     })),
     isPublic: v.optional(v.boolean()),
+    isAvailable: v.optional(v.boolean()),
+    introVideoUrl: v.optional(v.string()),
+    highlightReelUrl: v.optional(v.string()),
+    whatsappNumber: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
@@ -238,6 +253,32 @@ export const upsertProfile = mutation({
       }
     }
 
+    // Validate video URLs
+    if (args.introVideoUrl && args.introVideoUrl.length > 0) {
+      if (args.introVideoUrl.length > MAX_VIDEO_URL) {
+        throw new Error(`Video URL must be ${MAX_VIDEO_URL} characters or less`);
+      }
+      if (!args.introVideoUrl.startsWith("https://")) {
+        throw new Error("Intro video URL must start with https://");
+      }
+    }
+    if (args.highlightReelUrl && args.highlightReelUrl.length > 0) {
+      if (args.highlightReelUrl.length > MAX_VIDEO_URL) {
+        throw new Error(`Video URL must be ${MAX_VIDEO_URL} characters or less`);
+      }
+      if (!args.highlightReelUrl.startsWith("https://")) {
+        throw new Error("Highlight reel URL must start with https://");
+      }
+    }
+
+    // Validate WhatsApp number (digits only, 7-15 chars)
+    if (args.whatsappNumber && args.whatsappNumber.length > 0) {
+      const digits = args.whatsappNumber.replace(/\D/g, "");
+      if (digits.length < MIN_WHATSAPP || digits.length > MAX_WHATSAPP) {
+        throw new Error(`WhatsApp number must be ${MIN_WHATSAPP}-${MAX_WHATSAPP} digits`);
+      }
+    }
+
     // If subscription cancelled, force isPublic false
     let isPublic = args.isPublic;
     if (user.subscriptionStatus === "cancelled") {
@@ -259,6 +300,12 @@ export const upsertProfile = mutation({
       skills: args.skills,
       socialLinks: args.socialLinks,
       ...(isPublic !== undefined && { isPublic }),
+      ...(args.isAvailable !== undefined && { isAvailable: args.isAvailable }),
+      introVideoUrl: args.introVideoUrl || undefined,
+      highlightReelUrl: args.highlightReelUrl || undefined,
+      whatsappNumber: args.whatsappNumber
+        ? args.whatsappNumber.replace(/\D/g, "") || undefined
+        : undefined,
       updatedAt: now,
     };
 
@@ -276,6 +323,12 @@ export const upsertProfile = mutation({
         skills: args.skills,
         socialLinks: args.socialLinks,
         isPublic: isPublic ?? false,
+        isAvailable: args.isAvailable ?? false,
+        introVideoUrl: args.introVideoUrl || undefined,
+        highlightReelUrl: args.highlightReelUrl || undefined,
+        whatsappNumber: args.whatsappNumber
+          ? args.whatsappNumber.replace(/\D/g, "") || undefined
+          : undefined,
         createdAt: now,
         updatedAt: now,
       });

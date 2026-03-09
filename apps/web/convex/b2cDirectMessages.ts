@@ -323,3 +323,68 @@ export const deleteMessage = mutation({
     return { success: true };
   },
 });
+
+// ==================== Typing Indicators ====================
+
+// Set typing indicator (upsert with 5s TTL)
+export const setTyping = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    threadId: v.id("b2cDirectMessageThreads"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread) throw new Error("Thread not found");
+    if (thread.participant1Id !== args.userId && thread.participant2Id !== args.userId) {
+      throw new Error("Not authorized");
+    }
+
+    // Upsert typing indicator
+    const existing = await ctx.db
+      .query("b2cTypingIndicators")
+      .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+      .collect();
+
+    const myIndicator = existing.find((t) => t.userId === args.userId);
+    const expiresAt = Date.now() + 5000;
+
+    if (myIndicator) {
+      await ctx.db.patch(myIndicator._id, { expiresAt });
+    } else {
+      await ctx.db.insert("b2cTypingIndicators", {
+        threadId: args.threadId,
+        userId: args.userId,
+        userName: user.name,
+        expiresAt,
+      });
+    }
+
+    return { success: true };
+  },
+});
+
+// Get typing users for a thread (excluding requesting user)
+export const getTypingUsers = query({
+  args: {
+    userId: v.id("b2cUsers"),
+    threadId: v.id("b2cDirectMessageThreads"),
+  },
+  handler: async (ctx, args) => {
+    const indicators = await ctx.db
+      .query("b2cTypingIndicators")
+      .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+      .collect();
+
+    const now = Date.now();
+    const active = indicators.filter(
+      (t) => t.expiresAt > now && t.userId !== args.userId
+    );
+
+    return {
+      users: active.map((t) => ({ userId: t.userId, userName: t.userName })),
+    };
+  },
+});
