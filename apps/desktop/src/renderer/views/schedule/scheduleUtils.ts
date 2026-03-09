@@ -206,3 +206,23 @@ export function getProspectAttendee(
 
   return null;
 }
+
+/** Extract prospect name from attendees or event title */
+export function extractProspectName(
+  event: CalendarEvent,
+  closerEmail?: string
+): string | undefined {
+  // 1. Try attendee name first (most reliable when available)
+  const prospect = getProspectAttendee(event, closerEmail);
+  if (prospect?.name) return prospect.name;
+
+  // 2. Try parsing from event title (e.g., "Strategy Call: John Smith")
+  if (event.title?.includes(':')) {
+    const afterColon = event.title.split(':').pop()?.trim();
+    if (afterColon && afterColon.length >= 2 && afterColon.length <= 60) {
+      return afterColon;
+    }
+  }
+
+  return undefined;
+}

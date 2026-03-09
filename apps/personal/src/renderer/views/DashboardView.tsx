@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem } from '../convex';
 import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting } from '../convex';
+import { extractProspectName } from './schedule/scheduleUtils';
 import { ScheduleMeetingModal } from './schedule/ScheduleMeetingModal';
 
 interface DashboardViewProps {
@@ -61,7 +62,8 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
 
   async function handleJoinConfirm(event: CalendarEvent) {
     if (!event.meetingUrl) return;
-    await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, undefined);
+    const prospectName = extractProspectName(event, closerInfo.email);
+    await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, prospectName);
     window.open(event.meetingUrl, '_blank');
     setSelectedEvent(null);
   }

@@ -182,3 +182,47 @@ export function currentTimeYOffset(now: Date): number {
   if (hour >= GRID_END_HOUR) return (GRID_END_HOUR - GRID_START_HOUR) * HOUR_HEIGHT;
   return (hour - GRID_START_HOUR) * HOUR_HEIGHT + (minute / 60) * HOUR_HEIGHT;
 }
+
+// ==================== Prospect Attendee ====================
+
+/** Returns the first non-organizer attendee from the event, or null if none */
+export function getProspectAttendee(
+  event: CalendarEvent,
+  closerEmail?: string
+): { email: string; name?: string } | null {
+  if (!event.attendees?.length) return null;
+
+  // Prefer filtering by isOrganizer flag
+  const nonOrganizer = event.attendees.find((a) => a.isOrganizer === false);
+  if (nonOrganizer) return nonOrganizer;
+
+  // Fall back to filtering out the closer's own email
+  if (closerEmail) {
+    const other = event.attendees.find(
+      (a) => a.email.toLowerCase() !== closerEmail.toLowerCase()
+    );
+    if (other) return other;
+  }
+
+  return null;
+}
+
+/** Extract prospect name from attendees or event title */
+export function extractProspectName(
+  event: CalendarEvent,
+  closerEmail?: string
+): string | undefined {
+  // 1. Try attendee name first (most reliable when available)
+  const prospect = getProspectAttendee(event, closerEmail);
+  if (prospect?.name) return prospect.name;
+
+  // 2. Try parsing from event title (e.g., "Strategy Call: John Smith")
+  if (event.title?.includes(':')) {
+    const afterColon = event.title.split(':').pop()?.trim();
+    if (afterColon && afterColon.length >= 2 && afterColon.length <= 60) {
+      return afterColon;
+    }
+  }
+
+  return undefined;
+}

@@ -10,7 +10,7 @@ import {
   createBotForMeeting,
   type CalendarStatus,
 } from '../../convex';
-import { type ViewMode, formatRelative, formatWeekLabel, getWeekDates } from './scheduleUtils';
+import { type ViewMode, formatRelative, formatWeekLabel, getWeekDates, extractProspectName } from './scheduleUtils';
 import { ScheduleConnectForm } from './ScheduleConnectForm';
 import { ScheduleListView } from './ScheduleListView';
 import { ScheduleWeekView } from './ScheduleWeekView';
@@ -117,7 +117,8 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
 
   async function handleJoinConfirm(event: CalendarEvent) {
     if (!event.meetingUrl) return;
-    await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, undefined);
+    const prospectName = extractProspectName(event, closerInfo.email);
+    await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, prospectName);
     window.open(event.meetingUrl, '_blank');
     setSelectedEvent(null);
     await loadData();

@@ -10,7 +10,7 @@ import {
   createBotForMeeting,
   type CalendarStatus,
 } from '../../convex';
-import { type ViewMode, formatRelative, formatWeekLabel, getWeekDates } from './scheduleUtils';
+import { type ViewMode, formatRelative, formatWeekLabel, getWeekDates, extractProspectName } from './scheduleUtils';
 import { ScheduleConnectForm } from './ScheduleConnectForm';
 import { ScheduleListView } from './ScheduleListView';
 import { ScheduleWeekView } from './ScheduleWeekView';
@@ -28,7 +28,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [now, setNow] = useState(Date.now());
 
   // View mode
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekOffset, setWeekOffset] = useState(0);
 
   // Connection form
@@ -117,7 +117,8 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
 
   async function handleJoinConfirm(event: CalendarEvent) {
     if (!event.meetingUrl) return;
-    await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, undefined);
+    const prospectName = extractProspectName(event, closerInfo.email);
+    await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, prospectName);
     window.open(event.meetingUrl, '_blank');
     setSelectedEvent(null);
     await loadData();
@@ -249,6 +250,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
         <ScheduleListView
           events={events}
           now={now}
+          closerEmail={closerInfo.email}
           onExclude={handleExclude}
           onJoinRequest={setSelectedEvent}
         />
@@ -257,6 +259,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           events={events}
           weekDates={weekDates}
           now={now}
+          closerEmail={closerInfo.email}
           onEventClick={setSelectedEvent}
         />
       )}

@@ -993,6 +993,7 @@ export interface CalendarEvent {
   location?: string;
   isAllDay?: boolean;
   meetingUrl?: string;
+  attendees?: Array<{ email: string; name?: string; isOrganizer?: boolean }>;
 }
 
 export async function getCalendarEvents(
@@ -1696,6 +1697,10 @@ export interface B2CProfile {
     calendly?: string;
   } | null;
   isPublic: boolean;
+  isAvailable: boolean;
+  introVideoUrl: string | null;
+  highlightReelUrl: string | null;
+  whatsappNumber: string | null;
   createdAt: number | null;
   updatedAt: number | null;
 }
@@ -1716,6 +1721,10 @@ export interface ProfileUpdateArgs {
     calendly?: string;
   };
   isPublic?: boolean;
+  isAvailable?: boolean;
+  introVideoUrl?: string;
+  highlightReelUrl?: string;
+  whatsappNumber?: string;
 }
 
 export async function getMyProfile(userId: string): Promise<B2CProfile | null> {
@@ -1799,6 +1808,133 @@ export async function claimProfileSlug(
   }
 }
 
+// ==================== B2C Highlight Clips API ====================
+
+export interface HighlightClip {
+  _id: string;
+  userId: string;
+  callId: string;
+  label: string;
+  startTime: number;
+  endTime: number;
+  isFullCall: boolean;
+  blurRegion: string; // "left" | "right" | "none"
+  sortOrder: number;
+  createdAt: number;
+}
+
+export async function getHighlightClips(userId: string): Promise<HighlightClip[]> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/highlight-clips?userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get highlight clips:", error);
+    return [];
+  }
+}
+
+export async function getHighlightClipsByCall(callId: string): Promise<HighlightClip[]> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/highlight-clips/by-call?callId=${encodeURIComponent(callId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get clips by call:", error);
+    return [];
+  }
+}
+
+export async function addHighlightClip(args: {
+  userId: string;
+  callId: string;
+  label: string;
+  startTime: number;
+  endTime: number;
+  isFullCall: boolean;
+  blurRegion: string;
+}): Promise<{ success: boolean; clipId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/highlight-clips?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to add clip" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to add highlight clip:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function updateHighlightClip(args: {
+  clipId: string;
+  userId: string;
+  label?: string;
+  startTime?: number;
+  endTime?: number;
+  isFullCall?: boolean;
+  blurRegion?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/highlight-clips/update?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to update clip" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to update highlight clip:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function deleteHighlightClip(
+  clipId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/highlight-clips/delete?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clipId, userId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to delete clip" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to delete highlight clip:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function reorderHighlightClips(
+  userId: string,
+  clipIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/highlight-clips/reorder?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, clipIds }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to reorder clips" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to reorder highlight clips:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
 // ==================== B2C Community API ====================
 
 export interface CommunityChannel {
@@ -1824,6 +1960,8 @@ export interface CommunityPost {
   commentCount: number;
   isPinned: boolean;
   isLikedByMe: boolean;
+  reactionCounts: Record<string, number>;
+  myReactions: string[];
   channelName?: string;
   channelSlug?: string;
   createdAt: number;
@@ -1837,8 +1975,11 @@ export interface CommunityComment {
   authorName: string;
   authorPhotoUrl: string | null;
   body: string;
+  parentCommentId?: string;
   likeCount: number;
   isLikedByMe: boolean;
+  reactionCounts: Record<string, number>;
+  myReactions: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -2105,13 +2246,16 @@ export async function getPostComments(
 export async function createPostComment(
   userId: string,
   postId: string,
-  body: string
+  body: string,
+  parentCommentId?: string
 ): Promise<{ commentId?: string; error?: string }> {
   try {
+    const payload: Record<string, string> = { userId, postId, body };
+    if (parentCommentId) payload.parentCommentId = parentCommentId;
     const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/comments?_=${Date.now()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, postId, body }),
+      body: JSON.stringify(payload),
     });
     const data = await response.json();
     if (!response.ok) return { error: data.error || "Failed to create comment" };
@@ -2327,6 +2471,183 @@ export async function getCommunityMembers(
   } catch (error) {
     console.error("[Convex] Failed to get members:", error);
     return { members: [], nextCursor: null };
+  }
+}
+
+// ==================== Reaction Functions ====================
+
+export async function addReaction(
+  userId: string,
+  targetType: string,
+  targetId: string,
+  emoji: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/reaction/add?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, targetType, targetId, emoji }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to add reaction" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to add reaction:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function removeReaction(
+  userId: string,
+  targetType: string,
+  targetId: string,
+  emoji: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/reaction/remove?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, targetType, targetId, emoji }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to remove reaction" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to remove reaction:", error);
+    return { error: "Network error" };
+  }
+}
+
+// ==================== Channel Read State Functions ====================
+
+export async function markChannelRead(
+  userId: string,
+  channelId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/channel/mark-read?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, channelId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to mark channel read" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to mark channel read:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function getUnreadChannels(
+  userId: string
+): Promise<{ unreadChannelIds: string[] }> {
+  try {
+    const params = new URLSearchParams({ userId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/channel/unread?${params}`);
+    if (!response.ok) return { unreadChannelIds: [] };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get unread channels:", error);
+    return { unreadChannelIds: [] };
+  }
+}
+
+// ==================== Pin Functions ====================
+
+export async function pinCommunityPost(
+  userId: string,
+  postId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/post/pin?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, postId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to pin post" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to pin post:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function unpinCommunityPost(
+  userId: string,
+  postId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/post/unpin?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, postId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to unpin post" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to unpin post:", error);
+    return { error: "Network error" };
+  }
+}
+
+// ==================== Search Functions ====================
+
+export async function searchCommunityPosts(
+  query: string,
+  channelId?: string,
+  cursor?: number,
+  limit?: number
+): Promise<{ posts: CommunityPost[]; nextCursor: number | null }> {
+  try {
+    const params = new URLSearchParams({ q: query, _: String(Date.now()) });
+    if (channelId) params.set("channelId", channelId);
+    if (cursor) params.set("cursor", String(cursor));
+    if (limit) params.set("limit", String(limit));
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/community/search?${params}`);
+    if (!response.ok) return { posts: [], nextCursor: null };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to search posts:", error);
+    return { posts: [], nextCursor: null };
+  }
+}
+
+// ==================== DM Typing Functions ====================
+
+export async function setDMTyping(
+  userId: string,
+  threadId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/dm/typing?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, threadId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to set typing" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to set typing:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function getDMTypingUsers(
+  userId: string,
+  threadId: string
+): Promise<{ users: { userId: string; userName: string }[] }> {
+  try {
+    const params = new URLSearchParams({ userId, threadId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/dm/typing?${params}`);
+    if (!response.ok) return { users: [] };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get typing users:", error);
+    return { users: [] };
   }
 }
 

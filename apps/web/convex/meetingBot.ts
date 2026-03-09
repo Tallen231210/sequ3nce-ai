@@ -1216,11 +1216,25 @@ export const getBotCallId = query({
     const bot = await ctx.db.get(botDocId);
     if (!bot || !bot.callId) return null;
 
-    // Verify the linked call exists and is not already completed
     const call = await ctx.db.get(bot.callId);
-    if (!call || call.status === "completed") return null;
+    if (!call) return null;
 
-    return { callId: bot.callId.toString() };
+    // Active call — return it (existing behavior)
+    if (call.status !== "completed") {
+      return { callId: bot.callId.toString() };
+    }
+
+    // Recently auto-completed call (race condition from WebSocket reconnection).
+    // When a bot reconnects, createCall's safety guard may auto-complete the existing
+    // call before getBotCallId runs. Detect this by checking for the auto-complete
+    // marker note (set in calls:createCall) within a 2-minute window.
+    const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+    const wasAutoCompleted = call.notes?.includes("[Auto-completed: new call started]");
+    if (wasAutoCompleted && call.endedAt && call.endedAt > twoMinutesAgo) {
+      return { callId: bot.callId.toString(), wasAutoCompleted: true };
+    }
+
+    return null;
   },
 });
 

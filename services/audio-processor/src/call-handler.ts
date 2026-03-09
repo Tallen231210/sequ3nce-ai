@@ -130,10 +130,10 @@ export class CallHandler {
         // BOT CALL: Check if bot already has a linked call (implicit reconnection)
         // This handles the case where Recall.ai reconnects but doesn't send isReconnect metadata.
         // If the bot already has an active call record, reuse it instead of creating a duplicate.
-        const existingCallId = await getBotExistingCallId(this.session.metadata.callId);
-        if (existingCallId) {
-          this.convexCallId = existingCallId;
-          logger.info(`[BOT RECONNECT] Bot ${this.session.metadata.callId} already has call ${existingCallId} — resuming`);
+        const existingCallResult = await getBotExistingCallId(this.session.metadata.callId);
+        if (existingCallResult) {
+          this.convexCallId = existingCallResult;
+          logger.info(`[BOT RECONNECT] Bot ${this.session.metadata.callId} already has call ${existingCallResult} — resuming`);
 
           const lastTimestamp = await getLastTranscriptTimestamp(this.convexCallId);
           this.timestampOffset = lastTimestamp + 1;
