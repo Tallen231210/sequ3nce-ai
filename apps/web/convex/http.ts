@@ -2934,8 +2934,28 @@ http.route({
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
     };
+    // Convex v.optional() accepts undefined but NOT null.
+    // JSON from Electron serializes null values, so strip them recursively.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function stripNulls(obj: any): any {
+      if (obj === null || obj === undefined) return undefined;
+      if (Array.isArray(obj)) return obj.map(stripNulls);
+      if (typeof obj === 'object') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cleaned: Record<string, any> = {};
+        for (const [key, value] of Object.entries(obj)) {
+          if (value !== null && value !== undefined) {
+            cleaned[key] = stripNulls(value);
+          }
+        }
+        return cleaned;
+      }
+      return obj;
+    }
+
     try {
-      const body = await request.json();
+      const rawBody = await request.json();
+      const body = stripNulls(rawBody);
 
       if (!body.reportId) {
         return new Response(JSON.stringify({ error: "reportId is required" }), {
