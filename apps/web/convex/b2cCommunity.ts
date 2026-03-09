@@ -130,9 +130,24 @@ export const getFeed = query({
           channelName: channel?.name ?? "Unknown",
           channelSlug: channel?.slug ?? "",
           isLikedByMe,
+          reactionCounts: (post as any).reactionCounts ?? {},
+          myReactions: [] as string[],
         };
       })
     );
+
+    // Populate myReactions for the current user
+    if (args.userId) {
+      for (const post of enriched) {
+        const reactions = await ctx.db
+          .query("b2cCommunityReactions")
+          .withIndex("by_target_user", (q) =>
+            q.eq("targetType", "post").eq("targetId", post._id).eq("userId", args.userId!)
+          )
+          .collect();
+        (post as any).myReactions = reactions.map((r) => r.emoji);
+      }
+    }
 
     return {
       posts: enriched,
@@ -210,9 +225,28 @@ export const listPosts = query({
             .first();
           isLikedByMe = !!like;
         }
-        return { ...post, authorPhotoUrl: photoUrl, isLikedByMe };
+        return {
+          ...post,
+          authorPhotoUrl: photoUrl,
+          isLikedByMe,
+          reactionCounts: (post as any).reactionCounts ?? {},
+          myReactions: [] as string[],
+        };
       })
     );
+
+    // Populate myReactions for the current user
+    if (args.userId) {
+      for (const post of enriched) {
+        const reactions = await ctx.db
+          .query("b2cCommunityReactions")
+          .withIndex("by_target_user", (q) =>
+            q.eq("targetType", "post").eq("targetId", post._id).eq("userId", args.userId!)
+          )
+          .collect();
+        (post as any).myReactions = reactions.map((r) => r.emoji);
+      }
+    }
 
     return {
       posts: enriched,
@@ -292,9 +326,29 @@ export const listComments = query({
             .first();
           isLikedByMe = !!like;
         }
-        return { ...comment, authorPhotoUrl: photoUrl, isLikedByMe };
+        return {
+          ...comment,
+          authorPhotoUrl: photoUrl,
+          isLikedByMe,
+          parentCommentId: (comment as any).parentCommentId ?? undefined,
+          reactionCounts: (comment as any).reactionCounts ?? {},
+          myReactions: [] as string[],
+        };
       })
     );
+
+    // Populate myReactions for the current user
+    if (args.userId) {
+      for (const comment of enriched) {
+        const reactions = await ctx.db
+          .query("b2cCommunityReactions")
+          .withIndex("by_target_user", (q) =>
+            q.eq("targetType", "comment").eq("targetId", comment._id).eq("userId", args.userId!)
+          )
+          .collect();
+        (comment as any).myReactions = reactions.map((r) => r.emoji);
+      }
+    }
 
     return {
       comments: enriched,
@@ -508,6 +562,7 @@ export const createComment = mutation({
     userId: v.id("b2cUsers"),
     postId: v.id("b2cCommunityPosts"),
     body: v.string(),
+    parentCommentId: v.optional(v.id("b2cCommunityComments")),
   },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
@@ -525,6 +580,20 @@ export const createComment = mutation({
       throw new Error(`Comment must be ${MAX_COMMENT_BODY} characters or less`);
     }
 
+    // Validate parentCommentId if provided (1-level nesting only)
+    if (args.parentCommentId) {
+      const parentComment = await ctx.db.get(args.parentCommentId);
+      if (!parentComment || parentComment.isDeleted) {
+        throw new Error("Parent comment not found");
+      }
+      if (parentComment.postId !== args.postId) {
+        throw new Error("Parent comment belongs to a different post");
+      }
+      if ((parentComment as any).parentCommentId) {
+        throw new Error("Cannot nest replies more than 1 level deep");
+      }
+    }
+
     const profile = await ctx.db
       .query("b2cProfiles")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -538,6 +607,7 @@ export const createComment = mutation({
       authorName: user.name,
       authorPhotoStorageId: profile?.photoStorageId,
       body,
+      parentCommentId: args.parentCommentId,
       likeCount: 0,
       isDeleted: false,
       createdAt: now,
@@ -722,5 +792,170 @@ export const seedDefaultChannels = mutation({
     }
 
     return { seeded: true, count: DEFAULT_CHANNELS.length };
+  },
+});
+
+// Archive a channel (admin-only, soft delete)
+export const archiveChannel = mutation({
+  args: { channelId: v.id("b2cCommunityChannels") },
+  handler: async (ctx, args) => {
+    const channel = await ctx.db.get(args.channelId);
+    if (!channel) throw new Error("Channel not found");
+    await ctx.db.patch(args.channelId, { isArchived: true });
+    return { archived: true, slug: channel.slug };
+  },
+});
+
+// ==================== Channel Read State ====================
+
+// Mark a channel as read (upsert last-read timestamp)
+export const markChannelRead = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    channelId: v.id("b2cCommunityChannels"),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("b2cChannelReadState")
+      .withIndex("by_user_channel", (q) =>
+        q.eq("userId", args.userId).eq("channelId", args.channelId)
+      )
+      .first();
+
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, { lastReadAt: now });
+    } else {
+      await ctx.db.insert("b2cChannelReadState", {
+        userId: args.userId,
+        channelId: args.channelId,
+        lastReadAt: now,
+      });
+    }
+    return { success: true };
+  },
+});
+
+// Get channel IDs that have unread activity for a user
+export const getUnreadChannels = query({
+  args: { userId: v.id("b2cUsers") },
+  handler: async (ctx, args) => {
+    const channels = await ctx.db
+      .query("b2cCommunityChannels")
+      .withIndex("by_order")
+      .collect();
+    const activeChannels = channels.filter((c) => !c.isArchived);
+
+    const readStates = await ctx.db
+      .query("b2cChannelReadState")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const readMap = new Map(readStates.map((r) => [r.channelId, r.lastReadAt]));
+
+    const unreadIds: string[] = [];
+    for (const ch of activeChannels) {
+      const lastRead = readMap.get(ch._id) ?? 0;
+      if (ch.lastActivityAt && ch.lastActivityAt > lastRead) {
+        unreadIds.push(ch._id);
+      }
+    }
+
+    return { unreadChannelIds: unreadIds };
+  },
+});
+
+// ==================== Pin / Unpin (Admin Only) ====================
+
+export const pinPost = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    postId: v.id("b2cCommunityPosts"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.role !== "admin") throw new Error("Admin access required");
+    const post = await ctx.db.get(args.postId);
+    if (!post || post.isDeleted) throw new Error("Post not found");
+    await ctx.db.patch(args.postId, { isPinned: true, updatedAt: Date.now() });
+    return { success: true };
+  },
+});
+
+export const unpinPost = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    postId: v.id("b2cCommunityPosts"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user || user.role !== "admin") throw new Error("Admin access required");
+    const post = await ctx.db.get(args.postId);
+    if (!post || post.isDeleted) throw new Error("Post not found");
+    await ctx.db.patch(args.postId, { isPinned: false, updatedAt: Date.now() });
+    return { success: true };
+  },
+});
+
+// ==================== Search ====================
+
+export const searchPosts = query({
+  args: {
+    query: v.string(),
+    channelId: v.optional(v.id("b2cCommunityChannels")),
+    cursor: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
+    const searchTerm = args.query.trim().toLowerCase();
+    if (searchTerm.length === 0) return { posts: [], nextCursor: null };
+
+    let posts;
+    if (args.channelId) {
+      posts = await ctx.db
+        .query("b2cCommunityPosts")
+        .withIndex("by_channel", (q) => q.eq("channelId", args.channelId!))
+        .order("desc")
+        .collect();
+    } else {
+      posts = await ctx.db
+        .query("b2cCommunityPosts")
+        .withIndex("by_created")
+        .order("desc")
+        .collect();
+    }
+
+    let filtered = posts.filter(
+      (p) => !p.isDeleted && p.body.toLowerCase().includes(searchTerm)
+    );
+    if (args.cursor) {
+      filtered = filtered.filter((p) => p.createdAt < args.cursor!);
+    }
+
+    const page = filtered.slice(0, limit + 1);
+    const hasMore = page.length > limit;
+    const results = page.slice(0, limit);
+
+    const enriched = await Promise.all(
+      results.map(async (post) => {
+        const photoUrl = await resolvePhotoUrl(ctx, post.authorPhotoStorageId);
+        const channel = await ctx.db.get(post.channelId);
+        return {
+          ...post,
+          authorPhotoUrl: photoUrl,
+          channelName: channel?.name ?? "Unknown",
+          channelSlug: channel?.slug ?? "",
+          isLikedByMe: false,
+          reactionCounts: (post as any).reactionCounts ?? {},
+          myReactions: [] as string[],
+        };
+      })
+    );
+
+    return {
+      posts: enriched,
+      nextCursor: hasMore ? results[results.length - 1].createdAt : null,
+    };
   },
 });
