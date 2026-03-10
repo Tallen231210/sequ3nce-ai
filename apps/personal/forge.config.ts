@@ -65,7 +65,7 @@ const config: ForgeConfig = {
   makers: [
     // Windows installer
     new MakerSquirrel({
-      name: 'Sequ3nce Personal',
+      name: 'Sequ3ncePersonal',
       setupIcon: './assets/icon.ico',
       // The ICO file to use as the icon for the generated Setup.exe
       iconUrl: 'https://raw.githubusercontent.com/Tallen231210/sequ3nce-ai/main/apps/personal/assets/icon.ico',
