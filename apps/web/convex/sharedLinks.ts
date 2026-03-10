@@ -327,6 +327,7 @@ export const getSharedLinkByToken = internalQuery({
         recordingUrl: call.recordingUrl,
         recordingType: call.recordingType ?? "audio",
       },
+      chapters: call.callAnalysis?.chapters ?? undefined,
       transcript,
       comments,
     };

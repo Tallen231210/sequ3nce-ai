@@ -7,6 +7,7 @@ import { PublicVideoPlayer } from "@/components/share/PublicVideoPlayer";
 import { PublicTranscript } from "@/components/share/PublicTranscript";
 import { PublicComments } from "@/components/share/PublicComments";
 import { MessageCircle, Lock, Shield } from "lucide-react";
+import { ChapterStrip } from "@/components/call-reviews/ChapterStrip";
 
 // Convex HTTP site URL for fetching shared link data
 const CONVEX_SITE_URL =
@@ -31,6 +32,12 @@ interface SharedLinkData {
     speaker: string;
     text: string;
     timestamp: number;
+  }>;
+  chapters?: Array<{
+    title: string;
+    startTime: number;
+    endTime: number;
+    summary: string;
   }>;
   comments: Array<{
     id: string;
@@ -348,6 +355,17 @@ export default function SharePage() {
               </div>
             )}
           </div>
+
+          {/* Chapter strip — between video and transcript */}
+          {data.chapters && data.chapters.length > 0 && (
+            <div className="shrink-0">
+              <ChapterStrip
+                chapters={data.chapters}
+                currentTime={currentTime}
+                onSeek={handleSeek}
+              />
+            </div>
+          )}
 
           {/* Transcript — fills remaining space, scrolls independently */}
           <div className="flex-1 flex flex-col min-h-0 border-t border-zinc-200">
