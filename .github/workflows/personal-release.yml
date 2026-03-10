@@ -141,7 +141,8 @@ jobs:
           if [ -n "$EXE_FILE" ]; then
             SHA512_BASE64=$(sha512sum "$EXE_FILE" | awk '{print $1}' | xxd -r -p | base64 -w 0)
             SIZE=$(stat --format=%s "$EXE_FILE")
-            EXE_NAME=$(basename "$EXE_FILE")
+            # GitHub replaces spaces with dots in release asset names
+            EXE_NAME=$(basename "$EXE_FILE" | sed 's/ /./g')
             RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
             cat > artifacts/latest-personal.yml << EOF
           version: ${VERSION}
@@ -164,7 +165,8 @@ jobs:
           if [ -n "$ZIP_FILE" ]; then
             SHA512_BASE64=$(sha512sum "$ZIP_FILE" | awk '{print $1}' | xxd -r -p | base64 -w 0)
             SIZE=$(stat --format=%s "$ZIP_FILE")
-            ZIP_NAME=$(basename "$ZIP_FILE")
+            # GitHub replaces spaces with dots in release asset names
+            ZIP_NAME=$(basename "$ZIP_FILE" | sed 's/ /./g')
             RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
             cat > artifacts/latest-personal-mac.yml << EOF
           version: ${VERSION}
