@@ -1135,6 +1135,17 @@ export default defineSchema({
     introVideoUrl: v.optional(v.string()),
     highlightReelUrl: v.optional(v.string()),
     whatsappNumber: v.optional(v.string()),
+    // Manual stats + verification system
+    manualStats: v.optional(v.object({
+      callsCompleted: v.optional(v.number()),
+      closeRate: v.optional(v.number()),
+      cashCollected: v.optional(v.number()),
+      avgDealSize: v.optional(v.number()),
+      avgDuration: v.optional(v.number()),
+      talkRatio: v.optional(v.number()),
+    })),
+    statsSource: v.optional(v.string()),        // "auto" | "manual"
+    isManuallyVerified: v.optional(v.boolean()), // set by admin after pay stub review
     createdAt: v.number(),
     updatedAt: v.number(),
   })

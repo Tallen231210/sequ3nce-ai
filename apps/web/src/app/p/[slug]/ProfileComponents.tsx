@@ -33,6 +33,8 @@ export interface ProfileData {
     avgDuration: number | null;
     talkRatio: number | null;
   } | null;
+  isVerified?: boolean;
+  statsSource?: string;
 }
 
 // ==================== Utilities ====================
@@ -114,6 +116,17 @@ export function VerifiedBadge() {
   );
 }
 
+export function SelfReportedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500 bg-zinc-50 border border-zinc-200 rounded-full">
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+      </svg>
+      Self-Reported
+    </span>
+  );
+}
+
 export function AvailableBadge() {
   return (
     <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">
@@ -169,7 +182,7 @@ export function SocialIcons({ links }: { links: NonNullable<ProfileData["socialL
 
 // ==================== Featured Stat ====================
 
-export function FeaturedStat({ amount }: { amount: number }) {
+export function FeaturedStat({ amount, isVerified = true }: { amount: number; isVerified?: boolean }) {
   if (amount <= 0) return null;
   return (
     <div className="text-center py-8">
@@ -180,8 +193,14 @@ export function FeaturedStat({ amount }: { amount: number }) {
         {formatCurrency(amount)}
       </p>
       <div className="flex items-center justify-center gap-1 mt-2">
-        <VerifiedIcon className="w-4 h-4 text-emerald-500" />
-        <span className="text-[12px] text-zinc-400 font-medium">Verified by Sequ3nce</span>
+        {isVerified ? (
+          <>
+            <VerifiedIcon className="w-4 h-4 text-emerald-500" />
+            <span className="text-[12px] text-zinc-400 font-medium">Verified by Sequ3nce</span>
+          </>
+        ) : (
+          <span className="text-[12px] text-zinc-400 font-medium">Self-Reported</span>
+        )}
       </div>
     </div>
   );
@@ -189,7 +208,7 @@ export function FeaturedStat({ amount }: { amount: number }) {
 
 // ==================== Stats Grid ====================
 
-export function StatsGrid({ stats }: { stats: ProfileData["stats"] }) {
+export function StatsGrid({ stats, isVerified = true }: { stats: ProfileData["stats"]; isVerified?: boolean }) {
   if (!stats) {
     return (
       <div className="py-10 px-6 text-center bg-zinc-50 border border-zinc-200 rounded-2xl">
@@ -204,8 +223,8 @@ export function StatsGrid({ stats }: { stats: ProfileData["stats"] }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
-        <SectionHeading>Verified Stats</SectionHeading>
-        <VerifiedBadge />
+        <SectionHeading>{isVerified ? "Verified Stats" : "Performance Stats"}</SectionHeading>
+        {isVerified ? <VerifiedBadge /> : <SelfReportedBadge />}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Close Rate with progress bar */}
@@ -428,20 +447,35 @@ export function WhatsAppCTA({ number, name }: { number: string; name: string }) 
 
 // ==================== Verified Explanation ====================
 
-export function VerifiedExplanation() {
+export function VerifiedExplanation({ isVerified = true }: { isVerified?: boolean }) {
   return (
     <section className="mt-16 py-8 border-t border-zinc-100">
       <div className="flex flex-col items-center text-center max-w-md mx-auto">
-        <div className="flex items-center gap-2 mb-3">
-          <VerifiedIcon className="w-6 h-6 text-emerald-500" />
-          <span className="text-[16px] font-bold text-zinc-900">Verified by</span>
-          <Logo height={28} href="https://sequ3nce.ai" />
-        </div>
-        <p className="text-[13px] text-zinc-500 leading-relaxed">
-          All statistics on this profile are computed from actual recorded sales calls.
-          Close rates, cash collected, and performance metrics are verified by
-          Sequ3nce&apos;s call intelligence platform — not self-reported.
-        </p>
+        {isVerified ? (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <VerifiedIcon className="w-6 h-6 text-emerald-500" />
+              <span className="text-[16px] font-bold text-zinc-900">Verified by</span>
+              <Logo height={28} href="https://sequ3nce.ai" />
+            </div>
+            <p className="text-[13px] text-zinc-500 leading-relaxed">
+              All statistics on this profile are computed from actual recorded sales calls.
+              Close rates, cash collected, and performance metrics are verified by
+              Sequ3nce&apos;s call intelligence platform — not self-reported.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[16px] font-bold text-zinc-900">About These Stats</span>
+            </div>
+            <p className="text-[13px] text-zinc-500 leading-relaxed">
+              Performance stats on this profile are self-reported by the closer.
+              Closers can earn the &quot;Verified by Sequ3nce&quot; badge by recording
+              calls through our platform or submitting proof of their track record.
+            </p>
+          </>
+        )}
       </div>
     </section>
   );

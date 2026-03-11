@@ -1,5 +1,7 @@
 import { v } from "convex/values";
-import { mutation, query, internalQuery } from "./_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 // ==================== Validation Constants ====================
 
@@ -27,6 +29,64 @@ const VALID_TICKET_RANGES = [
   "$1k-$3k", "$3k-$10k", "$10k-$25k", "$25k-$50k", "$50k+",
 ];
 
+// ==================== Shared Helpers ====================
+
+async function computeAutoStats(ctx: QueryCtx, userId: Id<"b2cUsers">) {
+  const user = await ctx.db.get(userId);
+  if (!user?.personalWorkspaceId) return null;
+
+  const closer = await ctx.db
+    .query("closers")
+    .withIndex("by_team", (q) => q.eq("teamId", user.personalWorkspaceId))
+    .first();
+
+  if (!closer) return null;
+
+  const calls = await ctx.db
+    .query("calls")
+    .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
+    .collect();
+
+  const completed = calls.filter((c) => c.status === "completed");
+  if (completed.length === 0) return null;
+
+  const withOutcome = completed.filter(
+    (c) => c.outcome && c.outcome !== "no_show"
+  );
+  const closed = completed.filter((c) => c.outcome === "closed");
+  const totalCash = completed.reduce(
+    (sum, c) => sum + (c.cashCollected ?? 0), 0
+  );
+  const durations = completed
+    .filter((c) => c.duration && c.duration > 0)
+    .map((c) => c.duration as number);
+  const talkRatios = completed
+    .filter((c) => c.closerTalkTime && c.prospectTalkTime)
+    .map((c) => {
+      const total = (c.closerTalkTime ?? 0) + (c.prospectTalkTime ?? 0);
+      return total > 0 ? (c.closerTalkTime ?? 0) / total : 0;
+    });
+
+  return {
+    callsCompleted: completed.length,
+    closeRate: withOutcome.length > 0
+      ? Math.round((closed.length / withOutcome.length) * 100)
+      : null,
+    cashCollected: totalCash,
+    avgDealSize: closed.length > 0
+      ? Math.round(totalCash / closed.length)
+      : null,
+    avgDuration: durations.length > 0
+      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+      : null,
+    talkRatio: talkRatios.length > 0
+      ? Math.round(
+          (talkRatios.reduce((a, b) => a + b, 0) / talkRatios.length) * 100
+        )
+      : null,
+  };
+}
+
 // ==================== Queries ====================
 
 // Load profile for the editor (used by the personal app)
@@ -46,6 +106,8 @@ export const getMyProfile = query({
       photoUrl = await ctx.storage.getUrl(profile.photoStorageId);
     }
 
+    const autoStats = await computeAutoStats(ctx, args.userId);
+
     return {
       profileSlug: user.profileSlug ?? null,
       name: user.name,
@@ -63,6 +125,10 @@ export const getMyProfile = query({
       introVideoUrl: profile?.introVideoUrl ?? null,
       highlightReelUrl: profile?.highlightReelUrl ?? null,
       whatsappNumber: profile?.whatsappNumber ?? null,
+      autoStats,
+      manualStats: profile?.manualStats ?? null,
+      statsSource: (profile?.statsSource as "auto" | "manual" | "combined") ?? "auto",
+      isManuallyVerified: profile?.isManuallyVerified ?? false,
       createdAt: profile?.createdAt ?? null,
       updatedAt: profile?.updatedAt ?? null,
     };
@@ -101,61 +167,77 @@ export const getPublicProfile = internalQuery({
       photoUrl = await ctx.storage.getUrl(profile.photoStorageId);
     }
 
-    // Find the closer record in their personal workspace
-    const closer = await ctx.db
-      .query("closers")
-      .withIndex("by_team", (q) => q.eq("teamId", user.personalWorkspaceId))
-      .first();
-
-    // Compute verified stats from calls
+    // Determine stats source and compute accordingly
+    const statsSource = (profile.statsSource as "auto" | "manual" | "combined") ?? "auto";
     let stats = null;
-    if (closer) {
-      const calls = await ctx.db
-        .query("calls")
-        .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
-        .collect();
+    let isVerified = false;
+    const autoStats = await computeAutoStats(ctx, user._id);
 
-      const completed = calls.filter((c) => c.status === "completed");
-      if (completed.length > 0) {
-        const withOutcome = completed.filter(
-          (c) => c.outcome && c.outcome !== "no_show"
-        );
-        const closed = completed.filter((c) => c.outcome === "closed");
-        const totalCash = completed.reduce(
-          (sum, c) => sum + (c.cashCollected ?? 0), 0
-        );
-        const durations = completed
-          .filter((c) => c.duration && c.duration > 0)
-          .map((c) => c.duration as number);
-        const talkRatios = completed
-          .filter((c) => c.closerTalkTime && c.prospectTalkTime)
-          .map((c) => {
-            const total = (c.closerTalkTime ?? 0) + (c.prospectTalkTime ?? 0);
-            return total > 0 ? (c.closerTalkTime ?? 0) / total : 0;
-          });
+    if (statsSource === "combined" && profile.manualStats && autoStats) {
+      // Combined: manual baseline + auto stats on top
+      const ms = profile.manualStats;
+      const manualCalls = ms.callsCompleted ?? 0;
+      const manualCash = ms.cashCollected ?? 0;
+      const manualCloseRate = ms.closeRate ?? 0;
+      const manualClosed = Math.round(manualCalls * (manualCloseRate / 100));
 
-        stats = {
-          callsCompleted: completed.length,
-          closeRate: withOutcome.length > 0
-            ? Math.round((closed.length / withOutcome.length) * 100)
-            : null,
-          cashCollected: totalCash,
-          avgDealSize: closed.length > 0
-            ? Math.round(totalCash / closed.length)
-            : null,
-          avgDuration: durations.length > 0
-            ? Math.round(
-                durations.reduce((a, b) => a + b, 0) / durations.length
-              )
-            : null,
-          talkRatio: talkRatios.length > 0
-            ? Math.round(
-                (talkRatios.reduce((a, b) => a + b, 0) / talkRatios.length) *
-                  100
-              )
-            : null,
-        };
-      }
+      const autoCalls = autoStats.callsCompleted;
+      const autoCash = autoStats.cashCollected;
+      const autoCloseRate = autoStats.closeRate ?? 0;
+      const autoWithOutcome = autoCalls; // auto stats already exclude no-shows in close rate calc
+      const autoClosed = autoCloseRate > 0 ? Math.round(autoWithOutcome * (autoCloseRate / 100)) : 0;
+
+      const totalCalls = manualCalls + autoCalls;
+      const totalCash = manualCash + autoCash;
+      const totalClosed = manualClosed + autoClosed;
+      const totalWithOutcome = manualCalls + autoWithOutcome;
+
+      stats = {
+        callsCompleted: totalCalls,
+        cashCollected: totalCash,
+        closeRate: totalWithOutcome > 0
+          ? Math.round((totalClosed / totalWithOutcome) * 100)
+          : ms.closeRate ?? null,
+        avgDealSize: totalClosed > 0
+          ? Math.round(totalCash / totalClosed)
+          : ms.avgDealSize ?? null,
+        avgDuration: manualCalls > 0 && autoStats.avgDuration !== null
+          ? Math.round(
+              ((ms.avgDuration ?? 0) * manualCalls + autoStats.avgDuration * autoCalls) / totalCalls
+            )
+          : autoStats.avgDuration ?? ms.avgDuration ?? null,
+        talkRatio: manualCalls > 0 && autoStats.talkRatio !== null
+          ? Math.round(
+              ((ms.talkRatio ?? 0) * manualCalls + autoStats.talkRatio * autoCalls) / totalCalls
+            )
+          : autoStats.talkRatio ?? ms.talkRatio ?? null,
+      };
+      // Combined is verified if manual baseline was verified (auto is always verified)
+      isVerified = profile.isManuallyVerified ?? false;
+    } else if (statsSource === "combined" && profile.manualStats && !autoStats) {
+      // Combined but no auto stats yet — fall back to manual
+      stats = {
+        callsCompleted: profile.manualStats.callsCompleted ?? 0,
+        closeRate: profile.manualStats.closeRate ?? null,
+        cashCollected: profile.manualStats.cashCollected ?? 0,
+        avgDealSize: profile.manualStats.avgDealSize ?? null,
+        avgDuration: profile.manualStats.avgDuration ?? null,
+        talkRatio: profile.manualStats.talkRatio ?? null,
+      };
+      isVerified = profile.isManuallyVerified ?? false;
+    } else if (statsSource === "manual" && profile.manualStats) {
+      stats = {
+        callsCompleted: profile.manualStats.callsCompleted ?? 0,
+        closeRate: profile.manualStats.closeRate ?? null,
+        cashCollected: profile.manualStats.cashCollected ?? 0,
+        avgDealSize: profile.manualStats.avgDealSize ?? null,
+        avgDuration: profile.manualStats.avgDuration ?? null,
+        talkRatio: profile.manualStats.talkRatio ?? null,
+      };
+      isVerified = profile.isManuallyVerified ?? false;
+    } else {
+      stats = autoStats;
+      isVerified = stats !== null;
     }
 
     return {
@@ -173,6 +255,8 @@ export const getPublicProfile = internalQuery({
       highlightReelUrl: profile.highlightReelUrl ?? null,
       whatsappNumber: profile.whatsappNumber ?? null,
       stats,
+      isVerified,
+      statsSource,
     };
   },
 });
@@ -201,10 +285,47 @@ export const upsertProfile = mutation({
     introVideoUrl: v.optional(v.string()),
     highlightReelUrl: v.optional(v.string()),
     whatsappNumber: v.optional(v.string()),
+    manualStats: v.optional(v.object({
+      callsCompleted: v.optional(v.number()),
+      closeRate: v.optional(v.number()),
+      cashCollected: v.optional(v.number()),
+      avgDealSize: v.optional(v.number()),
+      avgDuration: v.optional(v.number()),
+      talkRatio: v.optional(v.number()),
+    })),
+    statsSource: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
     if (!user) throw new Error("User not found");
+
+    // Validate statsSource
+    if (args.statsSource && !["auto", "manual", "combined"].includes(args.statsSource)) {
+      throw new Error("statsSource must be 'auto', 'manual', or 'combined'");
+    }
+
+    // Validate manualStats ranges
+    if (args.manualStats) {
+      const ms = args.manualStats;
+      if (ms.closeRate !== undefined && (ms.closeRate < 0 || ms.closeRate > 100)) {
+        throw new Error("Close rate must be 0-100");
+      }
+      if (ms.talkRatio !== undefined && (ms.talkRatio < 0 || ms.talkRatio > 100)) {
+        throw new Error("Talk ratio must be 0-100");
+      }
+      if (ms.cashCollected !== undefined && ms.cashCollected < 0) {
+        throw new Error("Cash collected cannot be negative");
+      }
+      if (ms.callsCompleted !== undefined && (ms.callsCompleted < 0 || !Number.isInteger(ms.callsCompleted))) {
+        throw new Error("Calls completed must be a non-negative integer");
+      }
+      if (ms.avgDealSize !== undefined && ms.avgDealSize < 0) {
+        throw new Error("Avg deal size cannot be negative");
+      }
+      if (ms.avgDuration !== undefined && ms.avgDuration < 0) {
+        throw new Error("Avg duration cannot be negative");
+      }
+    }
 
     // Validate lengths
     if (args.headline && args.headline.length > MAX_HEADLINE) {
@@ -291,7 +412,19 @@ export const upsertProfile = mutation({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .first();
 
-    const fields = {
+    // If manual stats are being updated and profile was previously verified,
+    // clear verification (new numbers need re-review)
+    let clearVerification = false;
+    if (args.manualStats && existing?.isManuallyVerified) {
+      const oldStats = existing.manualStats;
+      const newStats = args.manualStats;
+      const statsChanged = JSON.stringify(oldStats) !== JSON.stringify(newStats);
+      if (statsChanged) {
+        clearVerification = true;
+      }
+    }
+
+    const fields: Record<string, unknown> = {
       headline: args.headline,
       bio: args.bio,
       location: args.location,
@@ -306,6 +439,9 @@ export const upsertProfile = mutation({
       whatsappNumber: args.whatsappNumber
         ? args.whatsappNumber.replace(/\D/g, "") || undefined
         : undefined,
+      ...(args.manualStats !== undefined && { manualStats: args.manualStats }),
+      ...(args.statsSource !== undefined && { statsSource: args.statsSource }),
+      ...(clearVerification && { isManuallyVerified: false }),
       updatedAt: now,
     };
 
@@ -439,5 +575,30 @@ export const claimProfileSlug = mutation({
     await ctx.db.patch(args.userId, { profileSlug: slug });
 
     return { success: true, slug };
+  },
+});
+
+// ==================== Admin ====================
+
+// Admin-only: set manual verification status after pay stub review
+export const adminSetVerification = internalMutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    isVerified: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const profile = await ctx.db
+      .query("b2cProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!profile) throw new Error("Profile not found");
+
+    await ctx.db.patch(profile._id, {
+      isManuallyVerified: args.isVerified,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
   },
 });

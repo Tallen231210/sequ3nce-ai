@@ -182,11 +182,11 @@ export default function PublicProfilePage() {
 
         {/* Featured Stat — Cash Collected */}
         {profile.stats && profile.stats.cashCollected > 0 && (
-          <FeaturedStat amount={profile.stats.cashCollected} />
+          <FeaturedStat amount={profile.stats.cashCollected} isVerified={profile.isVerified !== false} />
         )}
 
         {/* Stats Grid */}
-        <StatsGrid stats={profile.stats} />
+        <StatsGrid stats={profile.stats} isVerified={profile.isVerified !== false} />
 
         {/* Intro Video */}
         {profile.introVideoUrl && (
@@ -220,7 +220,7 @@ export default function PublicProfilePage() {
         />
 
         {/* Verified by Sequ3nce */}
-        <VerifiedExplanation />
+        <VerifiedExplanation isVerified={profile.isVerified !== false} />
 
         {/* Footer */}
         <ProfileFooter />

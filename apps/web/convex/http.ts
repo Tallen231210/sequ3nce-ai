@@ -6175,6 +6175,45 @@ http.route({
   handler: b2cCorsPreflightHandler("GET, OPTIONS"),
 });
 
+// ==================== B2C Admin Endpoints ====================
+
+// POST /b2c/admin/verify-profile — Admin-only: set manual verification after pay stub review
+http.route({
+  path: "/b2c/admin/verify-profile",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, isVerified, adminKey } = body;
+
+      // Check admin secret
+      const secret = process.env.ADMIN_SECRET;
+      if (!secret || adminKey !== secret) {
+        return b2cJsonResponse({ error: "Unauthorized" }, 401);
+      }
+
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+
+      await ctx.runMutation(internal.b2cProfiles.adminSetVerification, {
+        userId: userId as any,
+        isVerified: isVerified ?? true,
+      });
+
+      return b2cJsonResponse({ success: true });
+    } catch (error: any) {
+      console.error("Error verifying profile:", error);
+      const msg = error?.message || "Failed to verify profile";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/admin/verify-profile",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // ==================== B2C Direct Message Endpoints ====================
 
 // GET /b2c/dm/threads — List DM threads for a user
