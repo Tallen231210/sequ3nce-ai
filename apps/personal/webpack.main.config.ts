@@ -17,4 +17,9 @@ export const mainConfig: Configuration = {
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
+  // electron-updater must be loaded at runtime (not bundled by webpack)
+  // because it uses dynamic requires, lazy-val, and native fs/https operations
+  externals: {
+    'electron-updater': 'commonjs2 electron-updater',
+  },
 };
