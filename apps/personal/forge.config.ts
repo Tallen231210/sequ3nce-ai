@@ -9,6 +9,7 @@ import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { PublisherGithub } from '@electron-forge/publisher-github';
+import ForgeExternalsPlugin from '@timfish/forge-externals-plugin';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
@@ -163,6 +164,12 @@ const config: ForgeConfig = {
           },
         ],
       },
+    }),
+    // Copies webpack externals (electron-updater) into packaged node_modules
+    // so runtime require() can find them after Electron Packager prunes node_modules
+    new ForgeExternalsPlugin({
+      externals: ['electron-updater'],
+      includeDeps: true,
     }),
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application
