@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 const GITHUB_OWNER = "Tallen231210";
 const GITHUB_REPO = "sequ3nce-ai";
 const TAG_PREFIX = "personal-v";
@@ -18,7 +20,7 @@ async function getLatestPersonalRelease() {
     `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=20`,
     {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "sequ3nce-updater" },
-      next: { revalidate: 300 },
+      cache: "no-store",
     }
   );
 
