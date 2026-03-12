@@ -37,34 +37,89 @@ git push origin desktop-vX.Y.Z
 ```
 
 This triggers the CI workflow (`.github/workflows/desktop-release.yml`) which:
-1. Builds the macOS `.dmg` and `.zip` on `macos-latest`
-2. Builds the Windows `.exe` installer on `windows-latest`
-3. Builds Linux `.deb` and `.rpm` packages on `ubuntu-latest`
+1. Builds the Windows `.exe` installer on `windows-latest`
+2. Builds Linux `.deb` and `.rpm` packages on `ubuntu-latest`
+3. Builds an **unsigned** macOS `.dmg` and `.zip` on `macos-latest` (placeholder — will be replaced in Step 5)
 4. Generates `latest.yml` (Windows auto-update manifest) and `latest-mac.yml` (macOS auto-update manifest)
 5. Creates a **draft** GitHub release with all artifacts attached
 
-### Step 4: Publish the Release
+### Step 4: Wait for CI and Publish the Draft Release
 
-The CI creates a draft release. Publish it:
+Wait for CI to complete:
+```bash
+gh run list --repo Tallen231210/sequ3nce-ai --limit 3
+```
 
+Then publish the draft release:
 ```bash
 gh release edit desktop-vX.Y.Z --repo Tallen231210/sequ3nce-ai --draft=false
 ```
 
-Or publish from the GitHub Releases web UI.
+### Step 5: Build Signed macOS App Locally
 
-### Step 5: Verify Release
+**CRITICAL:** CI macOS builds are unsigned. Auto-update will silently fail on macOS with unsigned builds. You MUST build locally where the Developer ID certificate and `sequ3nce-notarize` keychain profile exist.
 
-Check that the release was created correctly:
+```bash
+cd /Users/tylerallen/Desktop/sequ3nce-ai/apps/desktop
+npm run make -- --platform darwin
+```
+
+This builds a **signed and notarized** `.dmg` and `.zip` using the local Keychain credentials.
+
+### Step 6: Replace macOS Assets on the Release
+
+Remove the unsigned CI-built macOS artifacts and upload the signed local builds:
+
+```bash
+# Remove unsigned CI builds
+gh release delete-asset desktop-vX.Y.Z Sequ3nce.dmg --repo Tallen231210/sequ3nce-ai --yes
+gh release delete-asset desktop-vX.Y.Z Sequ3nce-darwin-arm64-X.Y.Z.zip --repo Tallen231210/sequ3nce-ai --yes
+
+# Upload signed local builds
+gh release upload desktop-vX.Y.Z \
+  "apps/desktop/out/make/Sequ3nce.dmg" \
+  "apps/desktop/out/make/zip/darwin/arm64/Sequ3nce-darwin-arm64-X.Y.Z.zip" \
+  --repo Tallen231210/sequ3nce-ai
+```
+
+### Step 7: Update the macOS Auto-Update Manifest
+
+The `latest-mac.yml` manifest must match the signed ZIP's SHA512 hash and file size. Generate and upload the corrected manifest:
+
+```bash
+# Get SHA512 of signed ZIP
+SHA512=$(shasum -a 512 "apps/desktop/out/make/zip/darwin/arm64/Sequ3nce-darwin-arm64-X.Y.Z.zip" | awk '{print $1}' | xxd -r -p | base64)
+
+# Get file size
+SIZE=$(stat -f%z "apps/desktop/out/make/zip/darwin/arm64/Sequ3nce-darwin-arm64-X.Y.Z.zip")
+
+# Create manifest
+cat > /tmp/latest-mac.yml << MANIFEST
+version: X.Y.Z
+files:
+  - url: Sequ3nce-darwin-arm64-X.Y.Z.zip
+    sha512: ${SHA512}
+    size: ${SIZE}
+path: Sequ3nce-darwin-arm64-X.Y.Z.zip
+sha512: ${SHA512}
+releaseDate: '$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'
+MANIFEST
+
+# Replace manifest on release
+gh release delete-asset desktop-vX.Y.Z latest-mac.yml --repo Tallen231210/sequ3nce-ai --yes
+gh release upload desktop-vX.Y.Z /tmp/latest-mac.yml --repo Tallen231210/sequ3nce-ai
+```
+
+### Step 8: Verify Final Release
 
 ```bash
 gh release view desktop-vX.Y.Z --repo Tallen231210/sequ3nce-ai --json assets --jq '.assets[].name'
 ```
 
 Expected files:
-- `Sequ3nce.dmg` — macOS installer
-- `Sequ3nce-darwin-*.zip` — macOS auto-update archive
-- `latest-mac.yml` — macOS auto-update manifest
+- `Sequ3nce.dmg` — macOS installer (SIGNED)
+- `Sequ3nce-darwin-arm64-X.Y.Z.zip` — macOS auto-update archive (SIGNED)
+- `latest-mac.yml` — macOS auto-update manifest (matches signed ZIP)
 - `Sequ3nce-X.Y.Z.Setup.exe` — Windows installer
 - `latest.yml` — Windows auto-update manifest
 - `sequ3nce_X.Y.Z_amd64.deb` — Linux Debian package
@@ -85,24 +140,22 @@ gh run list --repo Tallen231210/sequ3nce-ai --limit 5
 gh run view <run-id> --repo Tallen231210/sequ3nce-ai --log-failed
 ```
 
+### Auto-update not working on macOS
+1. Verify the `.dmg` and `.zip` on the release are signed (built locally, not CI):
+```bash
+# Download and check
+gh release download desktop-vX.Y.Z --pattern '*.zip' --dir /tmp/update-check --repo Tallen231210/sequ3nce-ai
+unzip -q /tmp/update-check/Sequ3nce-darwin-arm64-X.Y.Z.zip -d /tmp/update-check/
+codesign -v --deep /tmp/update-check/Sequ3nce.app
+```
+2. Verify the `latest-mac.yml` SHA512 matches the signed ZIP (not the unsigned CI build).
+
 ### macOS app shows "damaged" warning (Gatekeeper)
-The CI-built macOS app is unsigned. Users need to right-click → Open to bypass Gatekeeper on first launch. To avoid this, build macOS locally where your Keychain has the Developer ID cert:
-```bash
-cd apps/desktop && npm run build:mac
-```
-Then manually attach the signed `.dmg` and `.zip` to the GitHub release.
-
-### Auto-update not working
-Verify the update manifests are attached to the release:
-```bash
-gh release view desktop-vX.Y.Z --repo Tallen231210/sequ3nce-ai --json assets --jq '.assets[] | select(.name | test("latest"))'
-```
-
-The manifests must contain the correct version, SHA512 hash, and file size for `electron-updater` to find the update.
+This means the `.dmg` is unsigned (CI-built). Re-do Steps 5-7 to replace with signed builds.
 
 ## Auto-Update
 
-Once published:
+Once published with signed macOS builds:
 - **Windows** users receive updates via `electron-updater` using `latest.yml`
 - **macOS** users receive updates via `electron-updater` using `latest-mac.yml`
 - The app checks on startup (5-second delay) and every 4 hours
@@ -117,3 +170,5 @@ The download page at `/download` automatically picks up the latest release. No m
 - Forge config: `apps/desktop/forge.config.ts`
 - CI workflow: `.github/workflows/desktop-release.yml`
 - Build output: `apps/desktop/out/make/`
+- Signing config: `forge.config.ts` → `osxSign` + `osxNotarize` (local only, skipped on CI)
+- Entitlements: `apps/desktop/entitlements.plist`

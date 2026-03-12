@@ -19,6 +19,7 @@ import {
   FileText,
   MessageSquareText,
   Zap,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
@@ -34,6 +35,7 @@ const baseNavigation = [
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
   { name: "Playbook", href: "/dashboard/playbook", icon: BookMarked },
   { name: "Resources", href: "/dashboard/resources", icon: FileText },
+  { name: "Recruiting", href: "/dashboard/recruiting", icon: Briefcase },
   { name: "Team", href: "/dashboard/team", icon: Users },
   { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },

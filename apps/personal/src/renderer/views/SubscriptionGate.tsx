@@ -154,7 +154,7 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
         {/* Price card */}
         <div className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl p-6 mb-6 text-center">
           <div className="mb-4">
-            <span className="text-3xl font-bold text-gray-900">$99</span>
+            <span className="text-3xl font-bold text-gray-900">$129.99</span>
             <span className="text-gray-500 text-sm">/month</span>
           </div>
 

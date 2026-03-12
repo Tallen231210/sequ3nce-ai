@@ -15,6 +15,8 @@ import {
   findMatchingScheduledCall,
   updateProspectName,
   changePassword,
+  requestPasswordReset,
+  resetPasswordWithCode,
   logClientError,
   isMeetingBotEnabled,
   type CloserInfo,
@@ -142,6 +144,7 @@ type AuthState =
   | 'logging_in'         // Attempting login
   | 'signup'             // Showing signup form
   | 'signing_up'         // Attempting signup
+  | 'forgot_password'    // Showing forgot password flow
   | 'authenticated'      // Fully logged in
   | 'error';             // Error state
 
@@ -393,8 +396,13 @@ function AppContent() {
         onSubmit={handleLogin}
         isLoading={authState === 'logging_in'}
         onSwitchToSignup={() => setAuthState('signup')}
+        onForgotPassword={() => setAuthState('forgot_password')}
       />
     );
+  }
+
+  if (authState === 'forgot_password') {
+    return <ForgotPasswordScreen onBack={() => setAuthState('login')} />;
   }
 
   if (authState === 'signup' || authState === 'signing_up') {
@@ -474,6 +482,7 @@ function AppContent() {
       onSubmit={handleLogin}
       isLoading={false}
       onSwitchToSignup={() => setAuthState('signup')}
+      onForgotPassword={() => setAuthState('forgot_password')}
     />
   );
 }
@@ -488,9 +497,10 @@ interface LoginScreenProps {
   onSubmit: (e: React.FormEvent) => void;
   isLoading: boolean;
   onSwitchToSignup: () => void;
+  onForgotPassword: () => void;
 }
 
-function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoading, onSwitchToSignup }: LoginScreenProps) {
+function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoading, onSwitchToSignup, onForgotPassword }: LoginScreenProps) {
   return (
     <div className="h-screen flex flex-col bg-white text-black">
       <div className="titlebar h-8 border-b border-gray-200" />
@@ -523,6 +533,15 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
               disabled={isLoading}
             />
+            <div className="mt-1 text-right">
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                className="text-xs text-gray-400 hover:text-black transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
           </div>
 
           <button
@@ -551,6 +570,219 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
             Sign up
           </button>
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ==================== Forgot Password Screen ====================
+
+interface ForgotPasswordScreenProps {
+  onBack: () => void;
+}
+
+function ForgotPasswordScreen({ onBack }: ForgotPasswordScreenProps) {
+  const [step, setStep] = useState<'email' | 'code' | 'success'>('email');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  async function sendResetCode() {
+    if (!email.trim() || isLoading) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    const result = await requestPasswordReset(email);
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error || 'Failed to send reset code');
+      return;
+    }
+
+    setSuccessMessage('If an account exists with this email, a reset code has been sent.');
+    setStep('code');
+  }
+
+  function handleRequestCode(e: React.FormEvent) {
+    e.preventDefault();
+    sendResetCode();
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!code.trim() || !newPassword || !confirmPassword || isLoading) return;
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    const result = await resetPasswordWithCode(email, code, newPassword);
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error || 'Failed to reset password');
+      return;
+    }
+
+    setStep('success');
+  }
+
+  return (
+    <div className="h-screen flex flex-col bg-white text-black">
+      <div className="titlebar h-8 border-b border-gray-200" />
+
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="mb-8 text-center">
+          <img src={logoImage} alt="Sequ3nce Personal" className="h-14 mx-auto dark-invert" />
+          <p className="text-gray-500 text-sm mt-4">
+            {step === 'email' && 'Reset your password'}
+            {step === 'code' && 'Enter your reset code'}
+            {step === 'success' && 'Password reset successful'}
+          </p>
+        </div>
+
+        {step === 'email' && (
+          <form onSubmit={handleRequestCode} className="w-full max-w-xs space-y-4">
+            <p className="text-xs text-gray-500 text-center">
+              Enter your email address and we'll send you a 6-digit code to reset your password.
+            </p>
+
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+              disabled={isLoading}
+              autoFocus
+            />
+
+            {error && <p className="text-xs text-red-600 text-center">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={isLoading || !email.trim()}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
+                  Sending...
+                </>
+              ) : (
+                'Send Reset Code'
+              )}
+            </button>
+          </form>
+        )}
+
+        {step === 'code' && (
+          <form onSubmit={handleResetPassword} className="w-full max-w-xs space-y-4">
+            {successMessage && (
+              <p className="text-xs text-green-600 text-center">{successMessage}</p>
+            )}
+
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="6-digit code"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150 text-center text-lg tracking-widest"
+              disabled={isLoading}
+              autoFocus
+              maxLength={6}
+              inputMode="numeric"
+            />
+
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="New password"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+              disabled={isLoading}
+            />
+
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm new password"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+              disabled={isLoading}
+            />
+
+            {error && <p className="text-xs text-red-600 text-center">{error}</p>}
+
+            <button
+              type="submit"
+              disabled={isLoading || code.length !== 6 || !newPassword || !confirmPassword}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
+                  Resetting...
+                </>
+              ) : (
+                'Reset Password'
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={sendResetCode}
+              disabled={isLoading}
+              className="w-full text-xs text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Resend code
+            </button>
+          </form>
+        )}
+
+        {step === 'success' && (
+          <div className="w-full max-w-xs text-center space-y-4">
+            <div className="w-12 h-12 mx-auto bg-green-100 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-600">Your password has been reset. You can now sign in with your new password.</p>
+            <button
+              onClick={onBack}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150"
+            >
+              Back to Sign In
+            </button>
+          </div>
+        )}
+
+        {step !== 'success' && (
+          <p className="mt-8 text-xs text-gray-400 text-center">
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-black font-medium hover:underline"
+            >
+              Back to Sign In
+            </button>
+          </p>
+        )}
       </div>
     </div>
   );

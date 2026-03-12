@@ -267,6 +267,52 @@ export async function dismissOrphanedQuestionnaires(closerId: string): Promise<{
   }
 }
 
+// Request password reset (sends 6-digit code via email)
+export async function requestPasswordReset(
+  email: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/forgot-password?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      return { success: false, error: data.error || "Failed to send reset code" };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to request password reset:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+// Verify reset code and set new password
+export async function resetPasswordWithCode(
+  email: string,
+  code: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/reset-password?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, code, newPassword }),
+    });
+
+    const data = await response.json();
+    if (!data.success) {
+      return { success: false, error: data.error || "Failed to reset password" };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to reset password:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
 // Change closer password
 export async function changePassword(
   closerId: string,
@@ -2974,7 +3020,7 @@ export async function toggleAvailability(
 // Next.js API base URL (not Convex HTTP — these routes need Stripe SDK)
 const NEXT_API_URL = "https://sequ3nce.ai";
 
-/** Create a Stripe Checkout session for B2C $99/mo subscription */
+/** Create a Stripe Checkout session for B2C $129.99/mo subscription */
 export async function createB2CCheckout(
   email: string,
   b2cUserId: string

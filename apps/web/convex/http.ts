@@ -5275,6 +5275,78 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// POST endpoint for B2C forgot password (request reset code)
+http.route({
+  path: "/b2c/forgot-password",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email } = body;
+
+      if (typeof email !== "string" || !email.trim()) {
+        return b2cJsonResponse({ success: false, error: "Email is required" }, 400);
+      }
+
+      if (email.length > 254) {
+        return b2cJsonResponse({ success: false, error: "Invalid email" }, 400);
+      }
+
+      const result = await ctx.runAction(api.b2cAuth.requestPasswordReset, {
+        email,
+      });
+
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error in forgot password:", error);
+      return b2cJsonResponse({ success: false, error: "Failed to process request" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/forgot-password",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST endpoint for B2C reset password (verify code + set new password)
+http.route({
+  path: "/b2c/reset-password",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, code, newPassword } = body;
+
+      if (typeof email !== "string" || typeof code !== "string" || typeof newPassword !== "string") {
+        return b2cJsonResponse({ success: false, error: "All fields must be strings" }, 400);
+      }
+
+      if (!email.trim() || !code.trim() || !newPassword) {
+        return b2cJsonResponse({ success: false, error: "All fields are required" }, 400);
+      }
+
+      const result = await ctx.runMutation(api.b2cAuth.resetPassword, {
+        email,
+        code,
+        newPassword,
+      });
+
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error in reset password:", error);
+      return b2cJsonResponse({ success: false, error: "Failed to reset password" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/reset-password",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // GET endpoint to look up B2C user by email (internal use only)
 http.route({
   path: "/b2c/user",

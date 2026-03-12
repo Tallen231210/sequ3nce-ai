@@ -319,7 +319,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
             <div className="flex items-center gap-2 mb-3">
               <span className="w-2 h-2 bg-green-500 rounded-full" />
               <span className="text-[13px] text-green-700 font-medium">Active</span>
-              <span className="text-[11px] text-gray-400">$99/month</span>
+              <span className="text-[11px] text-gray-400">$129.99/month</span>
             </div>
             <button
               onClick={async () => {

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, internalQuery } from "./_generated/server";
+import { mutation, internalQuery, action, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // Password hashing using Web Crypto API (same pattern as closers.ts)
 async function hashPassword(password: string): Promise<string> {
@@ -239,6 +240,181 @@ export const setAdminRole = mutation({
     if (!user) throw new Error("User not found");
     await ctx.db.patch(args.userId, { role: args.role || undefined });
     return { success: true, role: args.role || "user" };
+  },
+});
+
+// ==================== Password Reset ====================
+
+const RESET_CODE_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
+
+/** Generate a 6-digit reset code and store its hash on the user record */
+export const generatePasswordResetCode = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
+      .first();
+
+    if (!user) {
+      // Don't reveal whether email exists
+      return { success: true, code: null };
+    }
+
+    // Generate 6-digit code
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const codeHash = await hashPassword(code);
+
+    await ctx.db.patch(user._id, {
+      passwordResetCode: codeHash,
+      passwordResetExpiry: Date.now() + RESET_CODE_EXPIRY_MS,
+    });
+
+    return { success: true, code, userName: user.name };
+  },
+});
+
+/** Request a password reset — generates code and sends email via Resend */
+export const requestPasswordReset = action({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      return { success: false, error: "Invalid email format" };
+    }
+
+    // Generate the reset code
+    const result = await ctx.runMutation(internal.b2cAuth.generatePasswordResetCode, {
+      email: normalizedEmail,
+    });
+
+    // Always return success to prevent email enumeration
+    if (!result.code) {
+      return { success: true };
+    }
+
+    // Send email via Resend
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+      console.error("RESEND_API_KEY not configured");
+      return { success: false, error: "Email service not configured" };
+    }
+
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Sequ3nce <noreply@noreply.sequ3nce.ai>",
+          to: [normalizedEmail],
+          subject: "Your Sequ3nce Password Reset Code",
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+              <h2 style="color: #111; margin-bottom: 8px;">Password Reset</h2>
+              <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
+                Hi ${result.userName || "there"}, use the code below to reset your password. This code expires in 15 minutes.
+              </p>
+              <div style="background: #f5f5f5; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #111;">${result.code}</span>
+              </div>
+              <p style="color: #999; font-size: 12px;">
+                If you didn't request this reset, you can safely ignore this email.
+              </p>
+            </div>
+          `,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Resend API error:", response.status, errorText);
+        return { success: false, error: "Failed to send reset email" };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("Error sending reset email:", error);
+      return { success: false, error: "Failed to send reset email" };
+    }
+  },
+});
+
+/** Verify reset code and set new password */
+export const resetPassword = mutation({
+  args: {
+    email: v.string(),
+    code: v.string(),
+    newPassword: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const code = args.code.trim();
+
+    if (!EMAIL_REGEX.test(email)) {
+      return { success: false, error: "Invalid email format" };
+    }
+
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+      return { success: false, error: "Invalid reset code" };
+    }
+
+    if (args.newPassword.length < MIN_PASSWORD_LENGTH) {
+      return { success: false, error: "Password must be at least 8 characters" };
+    }
+
+    if (args.newPassword.length > MAX_PASSWORD_LENGTH) {
+      return { success: false, error: "Password is too long" };
+    }
+
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+
+    if (!user || !user.passwordResetCode || !user.passwordResetExpiry) {
+      return { success: false, error: "Invalid or expired reset code" };
+    }
+
+    // Check expiry
+    if (Date.now() > user.passwordResetExpiry) {
+      // Clear expired code
+      await ctx.db.patch(user._id, {
+        passwordResetCode: undefined,
+        passwordResetExpiry: undefined,
+      });
+      return { success: false, error: "Reset code has expired. Please request a new one." };
+    }
+
+    // Verify code (constant-time comparison)
+    const codeValid = await verifyPassword(code, user.passwordResetCode);
+    if (!codeValid) {
+      return { success: false, error: "Invalid reset code" };
+    }
+
+    // Hash new password and update both b2cUsers and closers records
+    const newPasswordHash = await hashPassword(args.newPassword);
+    await ctx.db.patch(user._id, {
+      passwordHash: newPasswordHash,
+      passwordResetCode: undefined,
+      passwordResetExpiry: undefined,
+    });
+
+    // Also update the closer record's password hash
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", user.personalWorkspaceId))
+      .first();
+
+    if (closer) {
+      await ctx.db.patch(closer._id, { passwordHash: newPasswordHash });
+    }
+
+    return { success: true };
   },
 });
 

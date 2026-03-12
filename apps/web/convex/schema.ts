@@ -925,6 +925,8 @@ export default defineSchema({
     lastLoginAt: v.optional(v.number()),
     cancelledAt: v.optional(v.number()),
     role: v.optional(v.string()),           // "admin" | "user" (undefined = "user")
+    passwordResetCode: v.optional(v.string()),  // 6-digit reset code (hashed)
+    passwordResetExpiry: v.optional(v.number()), // Expiry timestamp for reset code
   })
     .index("by_email", ["email"])
     .index("by_phone", ["phone"])
