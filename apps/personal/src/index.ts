@@ -1924,11 +1924,12 @@ app.on('before-quit', async () => {
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
-// Set the GitHub release feed
+// Use generic provider with our own update server to avoid
+// "Latest" release collision between B2B and B2C apps in the same repo.
+// The /api/updates/personal endpoint finds the latest personal-v* release.
 autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'Tallen231210',
-  repo: 'sequ3nce-ai',
+  provider: 'generic',
+  url: 'https://sequ3nce.ai/api/updates/personal',
 });
 autoUpdater.channel = 'personal';
 
