@@ -36,7 +36,7 @@ export function ReactionPills({ reactionCounts, myReactions, onReact, onUnreact 
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
               isMine
                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
-                : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 border border-transparent hover:border-gray-300 dark:hover:border-zinc-500'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-transparent hover:border-gray-300 dark:hover:border-gray-500'
             }`}
           >
             <span>{symbol}</span>
@@ -49,7 +49,7 @@ export function ReactionPills({ reactionCounts, myReactions, onReact, onUnreact 
       <div className="relative">
         <button
           onClick={() => setShowPicker(!showPicker)}
-          className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 dark:bg-zinc-700 text-gray-400 dark:text-zinc-500 hover:bg-gray-200 dark:hover:bg-zinc-600 transition-colors text-xs"
+          className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-xs"
         >
           +
         </button>

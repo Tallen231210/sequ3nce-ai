@@ -27,24 +27,24 @@ export function NewPostForm({ channels, selectedChannelId, onSubmit }: NewPostFo
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-xl p-4">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         placeholder="What's on your mind?"
-        className="w-full border-0 bg-transparent text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-500 resize-none focus:outline-none"
+        className="w-full border-0 bg-transparent text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 resize-none focus:outline-none"
         rows={2}
         maxLength={5000}
       />
 
-      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-zinc-700">
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
         <div className="flex items-center gap-2">
           {/* Channel selector (only show when not in a specific channel view) */}
           {!selectedChannelId && channels.length > 0 && (
             <select
               value={channelId}
               onChange={(e) => setChannelId(e.target.value)}
-              className="text-xs border border-gray-200 dark:border-zinc-600 rounded-md px-2 py-1 bg-white dark:bg-zinc-900 text-gray-700 dark:text-zinc-300"
+              className="text-xs border border-gray-200 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300"
             >
               {channels.map((ch) => (
                 <option key={ch._id} value={ch._id}>
@@ -61,7 +61,7 @@ export function NewPostForm({ channels, selectedChannelId, onSubmit }: NewPostFo
             className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors ${
               visibility === 'friends'
                 ? 'border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
-                : 'border-gray-200 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-gray-500 dark:text-zinc-400'
+                : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400'
             }`}
             title={visibility === 'everyone' ? 'Visible to everyone' : 'Visible to friends only'}
           >
@@ -79,7 +79,7 @@ export function NewPostForm({ channels, selectedChannelId, onSubmit }: NewPostFo
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-400 dark:text-zinc-500">
+          <span className="text-[10px] text-gray-400 dark:text-gray-500">
             {body.length}/5000
           </span>
           <button

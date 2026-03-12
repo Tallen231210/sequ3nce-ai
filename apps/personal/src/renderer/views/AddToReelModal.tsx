@@ -123,15 +123,15 @@ export function AddToReelModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="w-[480px] bg-white dark:bg-zinc-900 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-[480px] bg-white dark:bg-gray-900 rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800">
           <h3 className="text-[15px] font-bold text-black dark:text-white">
             Add to Highlight Reel
           </h3>
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -166,9 +166,9 @@ export function AddToReelModal({
                   setEndStr(formatTimeInput(call.duration || 0));
                 }
               }}
-              className="w-4 h-4 rounded border-gray-300 dark:border-zinc-600 text-black dark:text-white focus:ring-0"
+              className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-black dark:text-white focus:ring-0"
             />
-            <span className="text-[13px] font-medium text-gray-900 dark:text-zinc-100">
+            <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100">
               Full Call
             </span>
           </label>
@@ -176,46 +176,46 @@ export function AddToReelModal({
           {/* Start / End time inputs */}
           <div className="flex gap-4">
             <div className="flex-1">
-              <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">Start</label>
+              <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">Start</label>
               <input
                 type="text"
                 value={startStr}
                 onChange={(e) => setStartStr(e.target.value)}
                 disabled={isFullCall}
                 placeholder="0:00"
-                className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 disabled:opacity-50 font-mono"
+                className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 disabled:opacity-50 font-mono"
               />
             </div>
             <div className="flex-1">
-              <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">End</label>
+              <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">End</label>
               <input
                 type="text"
                 value={endStr}
                 onChange={(e) => setEndStr(e.target.value)}
                 disabled={isFullCall}
                 placeholder="5:00"
-                className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 disabled:opacity-50 font-mono"
+                className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 disabled:opacity-50 font-mono"
               />
             </div>
           </div>
 
           {/* Label */}
           <div>
-            <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">
-              Label <span className="text-gray-300 dark:text-zinc-600">({label.length}/100)</span>
+            <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">
+              Label <span className="text-gray-300 dark:text-gray-600">({label.length}/100)</span>
             </label>
             <input
               type="text"
               value={label}
               onChange={(e) => setLabel(e.target.value.slice(0, 100))}
               placeholder="Handles price objection"
-              className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500"
+              className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500"
             />
           </div>
 
           {/* Blur region */}
           <div>
-            <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-2">
+            <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-2">
               Which side is the prospect?
             </label>
             <div className="flex gap-2">
@@ -227,14 +227,14 @@ export function AddToReelModal({
                   className={`flex-1 px-3 py-2 text-[13px] font-medium rounded-lg border transition-colors ${
                     blurRegion === opt.value
                       ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
-                      : 'bg-white dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-750'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750'
                   }`}
                 >
                   {opt.label}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-1">
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
               The prospect&apos;s side will be blurred on your public profile
             </p>
           </div>
@@ -246,10 +246,10 @@ export function AddToReelModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-200 dark:border-zinc-800">
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-200 dark:border-gray-800">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-[13px] font-medium text-gray-600 dark:text-zinc-400 hover:text-gray-800 dark:hover:text-zinc-200 transition-colors"
+            className="px-4 py-2 text-[13px] font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           >
             Cancel
           </button>

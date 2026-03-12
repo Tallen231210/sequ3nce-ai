@@ -53,13 +53,7 @@ const config: ForgeConfig = {
       './assets',
       './app-update.yml',
     ],
-    // macOS Info.plist additions for privacy permissions
-    extendInfo: {
-      NSMicrophoneUsageDescription: 'Sequ3nce Personal needs microphone access to record sales calls and provide real-time transcription.',
-      NSCameraUsageDescription: 'Sequ3nce Personal needs camera access for video calls in the Role Play Room.',
-      NSAppleEventsUsageDescription: 'Sequ3nce Personal needs to control system audio for call recording.',
-      NSScreenCaptureUsageDescription: 'Sequ3nce Personal needs screen recording access to capture system audio from your sales calls.',
-    },
+    // B2C Personal app doesn't need audio/camera/screen permissions (uses server-side meeting bots)
   },
   rebuildConfig: {},
   makers: [

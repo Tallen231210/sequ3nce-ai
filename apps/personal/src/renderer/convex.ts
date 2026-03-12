@@ -1705,6 +1705,24 @@ export interface B2CProfile {
   introVideoUrl: string | null;
   highlightReelUrl: string | null;
   whatsappNumber: string | null;
+  autoStats: {
+    callsCompleted: number;
+    closeRate: number | null;
+    cashCollected: number;
+    avgDealSize: number | null;
+    avgDuration: number | null;
+    talkRatio: number | null;
+  } | null;
+  manualStats: {
+    callsCompleted?: number;
+    closeRate?: number;
+    cashCollected?: number;
+    avgDealSize?: number;
+    avgDuration?: number;
+    talkRatio?: number;
+  } | null;
+  statsSource: "auto" | "manual" | "combined";
+  isManuallyVerified: boolean;
   createdAt: number | null;
   updatedAt: number | null;
 }
@@ -1729,6 +1747,15 @@ export interface ProfileUpdateArgs {
   introVideoUrl?: string;
   highlightReelUrl?: string;
   whatsappNumber?: string;
+  manualStats?: {
+    callsCompleted?: number;
+    closeRate?: number;
+    cashCollected?: number;
+    avgDealSize?: number;
+    avgDuration?: number;
+    talkRatio?: number;
+  };
+  statsSource?: "auto" | "manual" | "combined";
 }
 
 export async function getMyProfile(userId: string): Promise<B2CProfile | null> {
@@ -2793,5 +2820,212 @@ export async function removeFriend(
   } catch (error) {
     console.error("[Convex] Failed to remove friend:", error);
     return { success: false, error: "Network error" };
+  }
+}
+
+// ==================== Job Board ====================
+
+export interface JobPosting {
+  _id: string;
+  teamId: string;
+  teamName?: string;
+  title: string;
+  description: string;
+  industry?: string;
+  ticketRange?: string;
+  ote?: string;
+  requiredSkills?: string[];
+  contactEmail?: string;
+  contactUrl?: string;
+  status: string;
+  interestCount: number;
+  createdAt: number;
+}
+
+export interface JobInterest {
+  _id: string;
+  jobPostingId: string;
+  posting?: JobPosting;
+  createdAt: number;
+}
+
+export async function getOpenJobPostings(filters?: {
+  industry?: string;
+  ticketRange?: string;
+  limit?: number;
+}): Promise<JobPosting[]> {
+  try {
+    const params = new URLSearchParams();
+    if (filters?.industry) params.set("industry", filters.industry);
+    if (filters?.ticketRange) params.set("ticketRange", filters.ticketRange);
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    params.set("_", String(Date.now()));
+
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/jobs/open?${params}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to load job postings:", error);
+    return [];
+  }
+}
+
+export async function getJobPosting(postingId: string): Promise<JobPosting | null> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/jobs/posting?postingId=${encodeURIComponent(postingId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to load job posting:", error);
+    return null;
+  }
+}
+
+export async function getInterestStatus(
+  postingId: string,
+  userId: string
+): Promise<{ interested: boolean }> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/jobs/interest-status?postingId=${encodeURIComponent(postingId)}&userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return { interested: false };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to check interest status:", error);
+    return { interested: false };
+  }
+}
+
+export async function getMyJobInterests(userId: string): Promise<JobInterest[]> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/jobs/my-interests?userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to load interests:", error);
+    return [];
+  }
+}
+
+export async function expressJobInterest(
+  postingId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/jobs/express-interest?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postingId, userId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to express interest" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to express interest:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function withdrawJobInterest(
+  postingId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/jobs/withdraw-interest?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postingId, userId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to withdraw" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to withdraw interest:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function toggleAvailability(
+  userId: string,
+  isAvailable: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/profile/toggle-availability?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, isAvailable }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to toggle" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to toggle availability:", error);
+    return { success: false, error: "Network error" };
+  }
+}
+
+// ==================== B2C Billing / Stripe ====================
+
+// Next.js API base URL (not Convex HTTP — these routes need Stripe SDK)
+const NEXT_API_URL = "https://sequ3nce.ai";
+
+/** Create a Stripe Checkout session for B2C $99/mo subscription */
+export async function createB2CCheckout(
+  email: string,
+  b2cUserId: string
+): Promise<{ url?: string; error?: string }> {
+  try {
+    const response = await fetch(`${NEXT_API_URL}/api/stripe/b2c-create-checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, b2cUserId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to create checkout" };
+    return { url: data.url };
+  } catch (error) {
+    console.error("[Convex] Failed to create B2C checkout:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+/** Create a Stripe Customer Portal session for subscription management */
+export async function createB2CPortal(
+  b2cUserId: string
+): Promise<{ url?: string; error?: string }> {
+  try {
+    const response = await fetch(`${NEXT_API_URL}/api/stripe/b2c-create-portal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ b2cUserId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to create portal" };
+    return { url: data.url };
+  } catch (error) {
+    console.error("[Convex] Failed to create B2C portal:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+/** Poll subscription status (used after checkout to detect activation) */
+export async function getSubscriptionStatus(
+  userId: string
+): Promise<{ subscriptionStatus: string; stripeCustomerId?: string; error?: string }> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/subscription-status?userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    const data = await response.json();
+    if (!response.ok) return { subscriptionStatus: "none", error: data.error };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to get subscription status:", error);
+    return { subscriptionStatus: "none", error: "Network error" };
   }
 }

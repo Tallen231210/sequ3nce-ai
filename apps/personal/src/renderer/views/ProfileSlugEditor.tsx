@@ -51,11 +51,11 @@ export function ProfileSlugEditor({ userId, currentSlug, name, onSlugClaimed }: 
 
   return (
     <div className="space-y-2">
-      <label className="block text-[13px] font-medium text-gray-700 dark:text-zinc-300">
+      <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300">
         Profile URL
       </label>
       <div className="flex items-center gap-2">
-        <span className="text-[13px] text-gray-400 dark:text-zinc-500 whitespace-nowrap shrink-0">
+        <span className="text-[13px] text-gray-400 dark:text-gray-500 whitespace-nowrap shrink-0">
           sequ3nce.ai/p/
         </span>
         <input
@@ -68,7 +68,7 @@ export function ProfileSlugEditor({ userId, currentSlug, name, onSlugClaimed }: 
           }}
           maxLength={40}
           placeholder="your-name"
-          className="flex-1 min-w-0 px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+          className="flex-1 min-w-0 px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
         />
         <button
           type="button"
@@ -87,7 +87,7 @@ export function ProfileSlugEditor({ userId, currentSlug, name, onSlugClaimed }: 
         <p className="text-[12px] text-green-600 dark:text-green-400">URL claimed successfully!</p>
       )}
       {currentSlug && (
-        <p className="text-[12px] text-gray-400 dark:text-zinc-500">
+        <p className="text-[12px] text-gray-400 dark:text-gray-500">
           Your public profile: sequ3nce.ai/p/{currentSlug}
         </p>
       )}

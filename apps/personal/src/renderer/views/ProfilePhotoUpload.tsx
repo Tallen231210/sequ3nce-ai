@@ -81,13 +81,13 @@ export function ProfilePhotoUpload({ userId, photoUrl, name, onPhotoUpdated }: P
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={isUploading}
-        className="relative group w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 dark:border-zinc-700 hover:border-gray-400 dark:hover:border-zinc-500 transition-colors"
+        className="relative group w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
       >
         {photoUrl ? (
           <img src={photoUrl} alt={name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 dark:from-zinc-600 dark:to-zinc-700 flex items-center justify-center">
-            <span className="text-2xl font-semibold text-gray-500 dark:text-zinc-300">
+          <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-600 dark:to-gray-700 flex items-center justify-center">
+            <span className="text-2xl font-semibold text-gray-500 dark:text-gray-300">
               {getInitials(name)}
             </span>
           </div>
@@ -114,7 +114,7 @@ export function ProfilePhotoUpload({ userId, photoUrl, name, onPhotoUpdated }: P
         className="hidden"
       />
 
-      <span className="text-[11px] text-gray-400 dark:text-zinc-500">
+      <span className="text-[11px] text-gray-400 dark:text-gray-500">
         Click to upload photo
       </span>
 

@@ -199,9 +199,9 @@ export function ChannelPostList({
 
       {/* Posts list */}
       {loading ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">Loading posts...</div>
+        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading posts...</div>
       ) : posts.length === 0 ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
           No posts yet. Be the first to post in #{channel?.slug || 'this channel'}!
         </div>
       ) : (
@@ -209,7 +209,7 @@ export function ChannelPostList({
           {/* Pinned posts section */}
           {pinnedPosts.length > 0 && (
             <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-zinc-500 font-medium mb-2">
+              <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 font-medium mb-2">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
                 </svg>
@@ -231,7 +231,7 @@ export function ChannelPostList({
                   onMessageAuthor={onMessageAuthor}
                 />
               ))}
-              <div className="border-t border-gray-100 dark:border-zinc-700 my-3" />
+              <div className="border-t border-gray-100 dark:border-gray-700 my-3" />
             </div>
           )}
 
@@ -261,7 +261,7 @@ export function ChannelPostList({
               <button
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200"
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 {loadingMore ? 'Loading...' : 'Load older posts'}
               </button>

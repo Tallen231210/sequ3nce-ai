@@ -34,6 +34,7 @@ export interface AppAPI {
   getPlatform: () => Promise<{ platform: string; arch: string; osRelease: string }>;
   setWindowSize: (width: number, height: number) => Promise<void>;
   themeChanged: (theme: string) => Promise<void>;
+  setBadgeCount: (count: number) => Promise<void>;
 }
 
 export interface AmmoAPI {
@@ -186,6 +187,7 @@ contextBridge.exposeInMainWorld('electron', {
     getPlatform: () => ipcRenderer.invoke('app:get-platform'),
     setWindowSize: (width: number, height: number) => ipcRenderer.invoke('app:set-window-size', width, height),
     themeChanged: (theme: string) => ipcRenderer.invoke('app:theme-changed', theme),
+    setBadgeCount: (count: number) => ipcRenderer.invoke('app:set-badge-count', count),
   },
   ammo: {
     toggle: () => ipcRenderer.invoke('ammo:toggle'),

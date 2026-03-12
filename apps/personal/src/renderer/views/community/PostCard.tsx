@@ -64,7 +64,7 @@ export function PostCard({
   }
 
   return (
-    <div className={`group relative bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-xl hover:border-gray-300 dark:hover:border-zinc-600 transition-colors ${isGrouped ? 'py-1 px-4 border-0 rounded-none bg-transparent dark:bg-transparent' : 'p-4'}`}>
+    <div className={`group relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-gray-300 dark:hover:border-gray-600 transition-colors ${isGrouped ? 'py-1 px-4 border-0 rounded-none bg-transparent dark:bg-transparent' : 'p-4'}`}>
       {/* Pin indicator */}
       {post.isPinned && !isGrouped && (
         <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mb-2">
@@ -76,10 +76,10 @@ export function PostCard({
       )}
 
       {/* Hover toolbar */}
-      <div className="absolute -top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-0.5 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg shadow-sm px-1 py-0.5">
+      <div className="absolute -top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-sm px-1 py-0.5">
         <button
           onClick={() => setShowComments(!showComments)}
-          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 rounded"
+          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
           title="Comment"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -90,7 +90,7 @@ export function PostCard({
           <div className="relative">
             <button
               onClick={() => setShowMenu(!showMenu)}
-              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 rounded"
+              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
               title="More"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -100,11 +100,11 @@ export function PostCard({
             {showMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                <div className="absolute right-0 top-8 z-20 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg shadow-lg py-1 min-w-[120px]">
+                <div className="absolute right-0 top-8 z-20 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg py-1 min-w-[120px]">
                   {isAuthor && (
                     <button
                       onClick={() => { setIsEditing(true); setShowMenu(false); }}
-                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-600"
+                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
                     >
                       Edit
                     </button>
@@ -112,14 +112,14 @@ export function PostCard({
                   {isAdmin && (
                     <button
                       onClick={() => { post.isPinned ? onUnpin?.(post._id) : onPin?.(post._id); setShowMenu(false); }}
-                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-600"
+                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
                     >
                       {post.isPinned ? 'Unpin' : 'Pin'}
                     </button>
                   )}
                   <button
                     onClick={() => { onDelete?.(post._id); setShowMenu(false); }}
-                    className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-zinc-600"
+                    className="w-full text-left px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-600"
                   >
                     Delete
                   </button>
@@ -158,11 +158,11 @@ export function PostCard({
                 {post.authorName}
               </span>
               {showChannelLabel && post.channelName && (
-                <span className="text-xs text-gray-400 dark:text-zinc-500">
-                  in <span className="text-gray-600 dark:text-zinc-300 font-medium">#{post.channelSlug || post.channelName}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  in <span className="text-gray-600 dark:text-gray-300 font-medium">#{post.channelSlug || post.channelName}</span>
                 </span>
               )}
-              <span className="text-xs text-gray-400 dark:text-zinc-500">
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 {formatRelativeTime(post.createdAt)}
               </span>
               {post.visibility === 'friends' && (
@@ -174,7 +174,7 @@ export function PostCard({
                 </span>
               )}
               {isEdited && (
-                <span className="text-xs text-gray-400 dark:text-zinc-500 italic">(edited)</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500 italic">(edited)</span>
               )}
             </div>
           </div>
@@ -187,7 +187,7 @@ export function PostCard({
           <textarea
             value={editBody}
             onChange={(e) => setEditBody(e.target.value)}
-            className="w-full border border-gray-300 dark:border-zinc-600 rounded-lg p-2 text-sm bg-white dark:bg-zinc-900 text-gray-900 dark:text-white resize-none"
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg p-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white resize-none"
             rows={3}
             maxLength={5000}
           />
@@ -200,17 +200,17 @@ export function PostCard({
             </button>
             <button
               onClick={() => { setIsEditing(false); setEditBody(post.body); }}
-              className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-zinc-400"
+              className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400"
             >
               Cancel
             </button>
           </div>
         </div>
       ) : (
-        <p className={`text-sm text-gray-800 dark:text-zinc-200 whitespace-pre-wrap break-words ${isGrouped ? 'ml-12' : 'mt-2 ml-12'}`}>
+        <p className={`text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words ${isGrouped ? 'ml-12' : 'mt-2 ml-12'}`}>
           {post.body}
           {isGrouped && (
-            <span className="ml-2 text-[10px] text-gray-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="ml-2 text-[10px] text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity">
               {formatRelativeTime(post.createdAt)}
             </span>
           )}
@@ -233,7 +233,7 @@ export function PostCard({
       {!showComments && post.commentCount > 0 && !isGrouped && (
         <button
           onClick={() => setShowComments(true)}
-          className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors mt-2 ml-12"
+          className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors mt-2 ml-12"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z" />

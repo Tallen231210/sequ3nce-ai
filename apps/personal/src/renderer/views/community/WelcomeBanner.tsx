@@ -19,22 +19,22 @@ export function WelcomeBanner({ onGoToGeneral }: WelcomeBannerProps) {
   };
 
   return (
-    <div className="relative mb-4 p-4 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+    <div className="relative mb-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
       <button
         onClick={handleDismiss}
-        className="absolute top-2 right-2 p-1 text-white/70 hover:text-white transition-colors"
+        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
-      <h3 className="font-bold text-lg">Welcome to the Sequ3nce Community!</h3>
-      <p className="text-sm text-white/80 mt-1">
+      <h3 className="font-bold text-lg text-gray-900 dark:text-white">Welcome to the Sequ3nce Community!</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
         Connect with other closers, share wins, and sharpen your skills together.
       </p>
       <button
         onClick={() => { onGoToGeneral(); handleDismiss(); }}
-        className="mt-3 px-4 py-1.5 text-sm font-medium bg-white text-blue-600 rounded-lg hover:bg-white/90 transition-colors"
+        className="mt-3 px-4 py-1.5 text-sm font-medium bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
       >
         Introduce yourself in #general
       </button>

@@ -21,6 +21,7 @@ import {
   type ScheduledCallMatch,
 } from './convex';
 import { MeetingBotHub } from './views/MeetingBotHub';
+import { SubscriptionGate } from './views/SubscriptionGate';
 import { ThemeProvider } from './ThemeContext';
 import logoImage from '../assets/logo.png';
 
@@ -441,6 +442,22 @@ function AppContent() {
         </div>
       );
     }
+
+    // Subscription paywall — block access unless subscription is active
+    if (closerInfo.subscriptionStatus !== 'active') {
+      return (
+        <SubscriptionGate
+          closerInfo={closerInfo}
+          onSubscribed={(updatedInfo) => {
+            // Update session with active subscription
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedInfo));
+            setCloserInfo(updatedInfo);
+          }}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
     if (isBotMode) {
       return <MeetingBotHub closerInfo={closerInfo} onLogout={handleLogout} />;
     }

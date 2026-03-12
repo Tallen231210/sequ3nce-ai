@@ -135,14 +135,14 @@ export function Channels({ userId, channels, isAdmin, onMessageAuthor }: Channel
             className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
               selectedChannel?._id === ch._id
                 ? 'bg-black text-white dark:bg-white dark:text-black'
-                : 'text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
           >
             <div className="font-medium truncate">#{ch.slug}</div>
             <div className={`text-[10px] truncate mt-0.5 ${
               selectedChannel?._id === ch._id
                 ? 'text-white/70 dark:text-black/60'
-                : 'text-gray-400 dark:text-zinc-500'
+                : 'text-gray-400 dark:text-gray-500'
             }`}>
               {ch.postCount} {ch.postCount === 1 ? 'post' : 'posts'}
             </div>
@@ -155,11 +155,11 @@ export function Channels({ userId, channels, isAdmin, onMessageAuthor }: Channel
         {selectedChannel && (
           <>
             {/* Channel header */}
-            <div className="pb-2 border-b border-gray-100 dark:border-zinc-700">
+            <div className="pb-2 border-b border-gray-100 dark:border-gray-700">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 #{selectedChannel.slug}
               </h3>
-              <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {selectedChannel.description}
               </p>
             </div>
@@ -183,9 +183,9 @@ export function Channels({ userId, channels, isAdmin, onMessageAuthor }: Channel
 
             {/* Posts list */}
             {loading ? (
-              <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">Loading posts...</div>
+              <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading posts...</div>
             ) : posts.length === 0 ? (
-              <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+              <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
                 No posts yet. Be the first to post in #{selectedChannel.slug}!
               </div>
             ) : (
@@ -210,7 +210,7 @@ export function Channels({ userId, channels, isAdmin, onMessageAuthor }: Channel
                     <button
                       onClick={loadMore}
                       disabled={loadingMore}
-                      className="text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200"
+                      className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                     >
                       {loadingMore ? 'Loading...' : 'Load older posts'}
                     </button>

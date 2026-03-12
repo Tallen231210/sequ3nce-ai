@@ -183,7 +183,7 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
           className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
             !friendsOnly
               ? 'bg-black text-white dark:bg-white dark:text-black'
-              : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
+              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           All Posts
@@ -193,7 +193,7 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
           className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
             friendsOnly
               ? 'bg-black text-white dark:bg-white dark:text-black'
-              : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700'
+              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           Friends Only
@@ -212,9 +212,9 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
 
       {/* Posts */}
       {loading ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">Loading feed...</div>
+        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading feed...</div>
       ) : posts.length === 0 ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
           No posts yet. Be the first to share something!
         </div>
       ) : (
@@ -245,7 +245,7 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
               <button
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200"
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 {loadingMore ? 'Loading...' : 'Load older posts'}
               </button>

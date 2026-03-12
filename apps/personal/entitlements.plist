@@ -16,16 +16,6 @@
 	<key>com.apple.security.network.server</key>
 	<true/>
 	
-	<!-- Audio recording permission - BOTH are required for microphone -->
-	<key>com.apple.security.device.audio-input</key>
-	<true/>
-	<key>com.apple.security.device.microphone</key>
-	<true/>
-
-	<!-- Camera permission for Role Play Room video calls -->
-	<key>com.apple.security.device.camera</key>
-	<true/>
-	
 	<!-- File access -->
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>

@@ -126,20 +126,20 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder="Search members..."
-          className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-zinc-700 rounded-lg text-sm bg-white dark:bg-zinc-800 text-gray-900 dark:text-white placeholder:text-gray-400"
+          className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400"
         />
       </div>
 
-      {/* Grid */}
+      {/* List */}
       {loading ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">Loading members...</div>
+        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading members...</div>
       ) : members.length === 0 ? (
-        <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+        <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
           {search ? 'No members found' : 'No members yet'}
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="space-y-1">
             {members.map((member) => (
               <MemberCard
                 key={member.userId}
@@ -158,7 +158,7 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
               <button
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="text-xs text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200"
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 {loadingMore ? 'Loading...' : 'Load more members'}
               </button>

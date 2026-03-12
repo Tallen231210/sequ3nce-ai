@@ -128,13 +128,13 @@ export function PostCallQuestionnaire({
   const showDecisionMaker = outcome === 'closed' || outcome === 'lost' || outcome === 'follow_up';
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-zinc-900">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
       {/* Compact header */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200/60 dark:border-zinc-700 shrink-0">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200/60 dark:border-gray-700 shrink-0">
         <img src={logoImage} alt="" className="h-7" />
         <div>
           <h2 className="text-[14px] font-semibold text-black dark:text-white">Post-Call Summary</h2>
-          <p className="text-[11px] text-gray-500 dark:text-zinc-400">Complete the questionnaire to log this call</p>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Complete the questionnaire to log this call</p>
         </div>
       </div>
 
@@ -144,21 +144,21 @@ export function PostCallQuestionnaire({
         <div className="flex items-start gap-3">
           {/* Prospect name */}
           <div className="w-[180px] shrink-0">
-            <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Prospect</label>
+            <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Prospect</label>
             <input
               value={prospectName}
               onChange={(e) => setProspectName(e.target.value)}
               placeholder="Name..."
-              className="w-full px-2.5 py-2 text-[13px] bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-400"
+              className="w-full px-2.5 py-2 text-[13px] bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-400"
             />
           </div>
 
           {/* Divider */}
-          <div className="w-px h-[52px] bg-gray-200 dark:bg-zinc-700 self-end mb-0" />
+          <div className="w-px h-[52px] bg-gray-200 dark:bg-gray-700 self-end mb-0" />
 
           {/* Outcome buttons */}
           <div className="flex-1">
-            <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Outcome</label>
+            <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Outcome</label>
             <div className="flex gap-1.5">
               {OUTCOMES.map((o) => (
                 <button
@@ -171,7 +171,7 @@ export function PostCallQuestionnaire({
                   className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-colors ${
                     outcome === o.value
                       ? `${o.color} text-white`
-                      : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                   }`}
                 >
                   {o.label}
@@ -183,13 +183,13 @@ export function PostCallQuestionnaire({
           {/* Objection dropdown — conditional */}
           {showObjection && (
             <>
-              <div className="w-px h-[52px] bg-gray-200 dark:bg-zinc-700 self-end mb-0" />
+              <div className="w-px h-[52px] bg-gray-200 dark:bg-gray-700 self-end mb-0" />
               <div className="w-[160px] shrink-0">
-                <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Objection</label>
+                <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Objection</label>
                 <select
                   value={primaryObjection || ''}
                   onChange={(e) => setPrimaryObjection(e.target.value || null)}
-                  className="w-full px-2 py-2 text-[12px] bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-400 appearance-none"
+                  className="w-full px-2 py-2 text-[12px] bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-400 appearance-none"
                 >
                   <option value="">Select...</option>
                   {OBJECTION_OPTIONS.map((o) => (
@@ -202,13 +202,13 @@ export function PostCallQuestionnaire({
 
           {showOvercome && (
             <>
-              <div className="w-px h-[52px] bg-gray-200 dark:bg-zinc-700 self-end mb-0" />
+              <div className="w-px h-[52px] bg-gray-200 dark:bg-gray-700 self-end mb-0" />
               <div className="w-[160px] shrink-0">
-                <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Overcome</label>
+                <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Overcome</label>
                 <select
                   value={objectionsOvercome || ''}
                   onChange={(e) => setObjectionsOvercome(e.target.value || null)}
-                  className="w-full px-2 py-2 text-[12px] bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-400 appearance-none"
+                  className="w-full px-2 py-2 text-[12px] bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-400 appearance-none"
                 >
                   <option value="">Select...</option>
                   {OVERCOME_OPTIONS.map((o) => (
@@ -226,7 +226,7 @@ export function PostCallQuestionnaire({
             value={primaryObjectionOther}
             onChange={(e) => setPrimaryObjectionOther(e.target.value)}
             placeholder="Describe the objection..."
-            className="w-full px-2.5 py-2 text-[12px] bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-400"
+            className="w-full px-2.5 py-2 text-[12px] bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-400"
           />
         )}
         {showOvercome && objectionsOvercome === 'other' && (
@@ -234,7 +234,7 @@ export function PostCallQuestionnaire({
             value={objectionsOvercomeOther}
             onChange={(e) => setObjectionsOvercomeOther(e.target.value)}
             placeholder="Describe the objection overcome..."
-            className="w-full px-2.5 py-2 text-[12px] bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-400"
+            className="w-full px-2.5 py-2 text-[12px] bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-400"
           />
         )}
 
@@ -244,7 +244,7 @@ export function PostCallQuestionnaire({
             {/* Decision Maker (lost/follow_up only) */}
             {showDecisionMaker && (
               <div className="shrink-0">
-                <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Decision Maker?</label>
+                <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Decision Maker?</label>
                 <div className="flex gap-1">
                   {[
                     { value: 'yes', label: 'Yes' },
@@ -257,7 +257,7 @@ export function PostCallQuestionnaire({
                       className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
                         prospectWasDecisionMaker === dm.value
                           ? 'bg-black dark:bg-white text-white dark:text-black'
-                          : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
                     >
                       {dm.label}
@@ -269,11 +269,11 @@ export function PostCallQuestionnaire({
 
             {/* Lead Quality 1-10 */}
             <div className="shrink-0">
-              <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Lead Quality</label>
+              <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Lead Quality</label>
               <div className="flex gap-0.5">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
                   const isSelected = leadQualityScore === n;
-                  let bgColor = 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-600';
+                  let bgColor = 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600';
                   if (isSelected) {
                     if (n <= 3) bgColor = 'bg-red-500 text-white';
                     else if (n <= 6) bgColor = 'bg-amber-500 text-white';
@@ -292,7 +292,7 @@ export function PostCallQuestionnaire({
               </div>
             </div>
 
-            <div className="w-px h-[52px] bg-gray-200 dark:bg-zinc-700 self-end mb-0" />
+            <div className="w-px h-[52px] bg-gray-200 dark:bg-gray-700 self-end mb-0" />
 
             {/* Cash Collected + Contract Value (closed) */}
             {showClosedValues && (
@@ -322,16 +322,16 @@ export function PostCallQuestionnaire({
               />
             )}
 
-            <div className="w-px h-[52px] bg-gray-200 dark:bg-zinc-700 self-end mb-0" />
+            <div className="w-px h-[52px] bg-gray-200 dark:bg-gray-700 self-end mb-0" />
 
             {/* Notes */}
             <div className="flex-1 min-w-[120px]">
-              <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">Notes</label>
+              <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Notes</label>
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Quick notes..."
-                className="w-full px-2.5 py-2 text-[12px] bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-400"
+                className="w-full px-2.5 py-2 text-[12px] bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-400"
               />
             </div>
           </div>
@@ -344,14 +344,14 @@ export function PostCallQuestionnaire({
       </div>
 
       {/* Submit bar */}
-      <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-gray-200/60 dark:border-zinc-700 shrink-0">
+      <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-gray-200/60 dark:border-gray-700 shrink-0">
         <button
           onClick={handleSubmit}
           disabled={!isValid || isSubmitting}
           className={`flex items-center gap-2 px-6 py-2.5 text-[13px] font-semibold rounded-lg transition-colors ${
             isValid && !isSubmitting
-              ? 'bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200'
-              : 'bg-gray-300 dark:bg-zinc-600 text-white dark:text-zinc-400 cursor-not-allowed'
+              ? 'bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200'
+              : 'bg-gray-300 dark:bg-gray-600 text-white dark:text-gray-400 cursor-not-allowed'
           }`}
         >
           {isSubmitting ? (
@@ -382,7 +382,7 @@ function ValueField({
 }) {
   return (
     <div className="shrink-0">
-      <label className="block text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">{label}</label>
+      <label className="block text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">{label}</label>
       <div className="flex items-center gap-1">
         {presets.map((p) => {
           const display = p >= 1000 ? `$${p / 1000}k` : `$${p}`;
@@ -394,7 +394,7 @@ function ValueField({
               className={`px-2 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
                 isSelected
                   ? 'bg-black dark:bg-white text-white dark:text-black'
-                  : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
             >
               {display}
@@ -402,12 +402,12 @@ function ValueField({
           );
         })}
         <div className="flex items-center gap-0.5 ml-0.5">
-          <span className="text-[12px] text-gray-400 dark:text-zinc-500">$</span>
+          <span className="text-[12px] text-gray-400 dark:text-gray-500">$</span>
           <input
             value={presets.includes(parseInt(value)) ? '' : value}
             onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder="Custom"
-            className="w-[60px] px-1.5 py-1.5 text-[11px] bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-600 rounded-md focus:outline-none focus:border-gray-400 dark:focus:border-zinc-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500"
+            className="w-[60px] px-1.5 py-1.5 text-[11px] bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md focus:outline-none focus:border-gray-400 dark:focus:border-gray-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
           />
         </div>
       </div>

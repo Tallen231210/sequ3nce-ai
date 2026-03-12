@@ -92,7 +92,7 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
   };
 
   if (loading) {
-    return <div className="text-xs text-gray-400 dark:text-zinc-500 py-2">Loading comments...</div>;
+    return <div className="text-xs text-gray-400 dark:text-gray-500 py-2">Loading comments...</div>;
   }
 
   // Group comments: top-level and replies
@@ -109,7 +109,7 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
   return (
     <div className="space-y-3">
       {topLevel.length === 0 && (
-        <div className="text-xs text-gray-400 dark:text-zinc-500 py-1">No comments yet. Be the first to reply.</div>
+        <div className="text-xs text-gray-400 dark:text-gray-500 py-1">No comments yet. Be the first to reply.</div>
       )}
 
       {topLevel.map((comment) => (
@@ -126,7 +126,7 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
           />
           {/* Threaded replies */}
           {repliesByParent.has(comment._id) && (
-            <div className="ml-6 mt-2 space-y-2 border-l-2 border-gray-200 dark:border-zinc-600 pl-3">
+            <div className="ml-6 mt-2 space-y-2 border-l-2 border-gray-200 dark:border-gray-600 pl-3">
               {repliesByParent.get(comment._id)!.map((reply) => (
                 <CommentItem
                   key={reply._id}
@@ -146,11 +146,11 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
 
       {/* Reply indicator */}
       {replyingToId && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-800/50 rounded px-2 py-1">
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded px-2 py-1">
           <span>Replying to <span className="font-semibold">@{replyingToName}</span></span>
           <button
             onClick={cancelReply}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -165,7 +165,7 @@ export function CommentThread({ postId, userId, isAdmin }: CommentThreadProps) {
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
           placeholder={replyingToId ? `Reply to @${replyingToName}...` : 'Write a reply...'}
-          className="flex-1 border border-gray-200 dark:border-zinc-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-zinc-900 text-gray-900 dark:text-white resize-none placeholder:text-gray-400"
+          className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-white resize-none placeholder:text-gray-400"
           rows={1}
           maxLength={2000}
           onKeyDown={(e) => {
@@ -227,8 +227,8 @@ function CommentItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-semibold text-gray-900 dark:text-white">{comment.authorName}</span>
-          <span className="text-[10px] text-gray-400 dark:text-zinc-500">{formatRelativeTime(comment.createdAt)}</span>
-          {isEdited && <span className="text-[10px] text-gray-400 dark:text-zinc-500 italic">(edited)</span>}
+          <span className="text-[10px] text-gray-400 dark:text-gray-500">{formatRelativeTime(comment.createdAt)}</span>
+          {isEdited && <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">(edited)</span>}
         </div>
 
         {isEditing ? (
@@ -236,7 +236,7 @@ function CommentItem({
             <textarea
               value={editBody}
               onChange={(e) => setEditBody(e.target.value)}
-              className="w-full border border-gray-200 dark:border-zinc-600 rounded px-2 py-1 text-xs bg-white dark:bg-zinc-900 text-gray-900 dark:text-white resize-none"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-900 text-gray-900 dark:text-white resize-none"
               rows={2}
               maxLength={2000}
             />
@@ -256,7 +256,7 @@ function CommentItem({
             </div>
           </div>
         ) : (
-          <p className="text-xs text-gray-700 dark:text-zinc-300 mt-0.5 whitespace-pre-wrap break-words">{comment.body}</p>
+          <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 whitespace-pre-wrap break-words">{comment.body}</p>
         )}
 
         {/* Actions */}
@@ -264,7 +264,7 @@ function CommentItem({
           <button
             onClick={() => onLike(comment._id)}
             className={`flex items-center gap-0.5 text-[10px] transition-colors ${
-              comment.isLikedByMe ? 'text-red-500' : 'text-gray-400 dark:text-zinc-500 hover:text-red-500'
+              comment.isLikedByMe ? 'text-red-500' : 'text-gray-400 dark:text-gray-500 hover:text-red-500'
             }`}
           >
             <svg className="w-3 h-3" fill={comment.isLikedByMe ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={comment.isLikedByMe ? 0 : 2}>
@@ -277,17 +277,17 @@ function CommentItem({
           {!isReply && onReply && (
             <button
               onClick={() => onReply(comment._id, comment.authorName)}
-              className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300"
+              className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
             >
               Reply
             </button>
           )}
 
           {isAuthor && !isEditing && (
-            <button onClick={() => setIsEditing(true)} className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600">Edit</button>
+            <button onClick={() => setIsEditing(true)} className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-gray-600">Edit</button>
           )}
           {(isAuthor || isAdmin) && !isEditing && (
-            <button onClick={() => onDelete(comment._id)} className="text-[10px] text-gray-400 dark:text-zinc-500 hover:text-red-500">Delete</button>
+            <button onClick={() => onDelete(comment._id)} className="text-[10px] text-gray-400 dark:text-gray-500 hover:text-red-500">Delete</button>
           )}
         </div>
       </div>

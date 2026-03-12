@@ -18,14 +18,14 @@ export function CommunityHeader({
   onPinFilterToggle,
 }: CommunityHeaderProps) {
   return (
-    <div className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-gray-200 dark:border-zinc-700">
+    <div className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700">
       {/* Left: title + description */}
       <div className="min-w-0">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
           {title}
         </h2>
         {description && (
-          <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
             {description}
           </p>
         )}
@@ -37,7 +37,7 @@ export function CommunityHeader({
         {showPinFilter && onPinFilterToggle && (
           <button
             onClick={onPinFilterToggle}
-            className="p-2 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+            className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             title="Filter pinned posts"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -49,7 +49,7 @@ export function CommunityHeader({
         {/* Search */}
         <button
           onClick={onSearchToggle}
-          className="p-2 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+          className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           title="Search"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -60,7 +60,7 @@ export function CommunityHeader({
         {/* Members */}
         <button
           onClick={onMembersToggle}
-          className="p-2 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+          className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           title="Toggle members panel"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

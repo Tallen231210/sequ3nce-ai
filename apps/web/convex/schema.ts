@@ -1166,4 +1166,35 @@ export default defineSchema({
   })
     .index("by_user", ["userId", "sortOrder"])
     .index("by_call", ["callId"]),
+
+  // B2C Job Postings — created by B2B teams, browsed by B2C closers
+  b2cJobPostings: defineTable({
+    teamId: v.id("teams"),
+    createdBy: v.string(),              // Clerk userId of the poster
+    title: v.string(),
+    description: v.string(),
+    industry: v.optional(v.string()),
+    ticketRange: v.optional(v.string()),
+    ote: v.optional(v.string()),        // e.g. "150k-250k OTE"
+    requiredSkills: v.optional(v.array(v.string())),
+    contactEmail: v.optional(v.string()),
+    contactUrl: v.optional(v.string()),
+    status: v.string(),                 // "open" | "closed"
+    interestCount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId", "status", "createdAt"])
+    .index("by_status", ["status", "createdAt"])
+    .index("by_status_industry", ["status", "industry", "createdAt"]),
+
+  // B2C Job Interests — closer expressed interest in a job posting
+  b2cJobInterests: defineTable({
+    jobPostingId: v.id("b2cJobPostings"),
+    b2cUserId: v.id("b2cUsers"),
+    createdAt: v.number(),
+  })
+    .index("by_job", ["jobPostingId", "createdAt"])
+    .index("by_user", ["b2cUserId", "createdAt"])
+    .index("by_job_user", ["jobPostingId", "b2cUserId"]),
 });

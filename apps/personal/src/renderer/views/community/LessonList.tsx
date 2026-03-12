@@ -52,7 +52,7 @@ export function LessonList({ moduleId }: LessonListProps) {
 
   if (loading) {
     return (
-      <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+      <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
         Loading lessons...
       </div>
     );
@@ -60,7 +60,7 @@ export function LessonList({ moduleId }: LessonListProps) {
 
   if (lessons.length === 0) {
     return (
-      <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+      <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
         No lessons available yet.
       </div>
     );
@@ -84,7 +84,7 @@ export function LessonList({ moduleId }: LessonListProps) {
             {activeLesson.title}
           </h3>
           {activeLesson.description && (
-            <p className="text-sm text-gray-500 dark:text-zinc-400 mt-1">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {activeLesson.description}
             </p>
           )}
@@ -102,12 +102,12 @@ export function LessonList({ moduleId }: LessonListProps) {
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                 isActive
                   ? 'bg-black text-white dark:bg-white dark:text-black'
-                  : 'hover:bg-gray-100 dark:hover:bg-zinc-800'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
             >
               {/* Order number */}
               <span className={`text-xs font-mono w-5 text-center flex-shrink-0 ${
-                isActive ? 'text-white/70 dark:text-black/70' : 'text-gray-400 dark:text-zinc-500'
+                isActive ? 'text-white/70 dark:text-black/70' : 'text-gray-400 dark:text-gray-500'
               }`}>
                 {lesson.order}
               </span>
@@ -122,7 +122,7 @@ export function LessonList({ moduleId }: LessonListProps) {
               {/* Duration badge */}
               {lesson.durationSeconds && (
                 <span className={`text-xs flex-shrink-0 ${
-                  isActive ? 'text-white/60 dark:text-black/60' : 'text-gray-400 dark:text-zinc-500'
+                  isActive ? 'text-white/60 dark:text-black/60' : 'text-gray-400 dark:text-gray-500'
                 }`}>
                   {formatDuration(lesson.durationSeconds)}
                 </span>
@@ -131,7 +131,7 @@ export function LessonList({ moduleId }: LessonListProps) {
               {/* Play icon */}
               <svg
                 className={`w-4 h-4 flex-shrink-0 ${
-                  isActive ? 'text-white/70 dark:text-black/70' : 'text-gray-300 dark:text-zinc-600'
+                  isActive ? 'text-white/70 dark:text-black/70' : 'text-gray-300 dark:text-gray-600'
                 }`}
                 fill="currentColor"
                 viewBox="0 0 24 24"

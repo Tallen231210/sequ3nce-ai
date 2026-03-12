@@ -7,6 +7,7 @@ import {
   TagInput,
   SocialLinksSection,
   TicketRangeSelector,
+  StatsSection,
   INDUSTRY_SUGGESTIONS,
   SKILL_SUGGESTIONS,
 } from './ProfileFormSections';
@@ -36,6 +37,10 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
   const [isPublic, setIsPublic] = useState(false);
   const [introVideoUrl, setIntroVideoUrl] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [autoStats, setAutoStats] = useState<B2CProfile['autoStats']>(null);
+  const [manualStats, setManualStats] = useState<B2CProfile['manualStats']>(null);
+  const [statsSource, setStatsSource] = useState<"auto" | "manual" | "combined">("auto");
+  const [isManuallyVerified, setIsManuallyVerified] = useState(false);
 
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
@@ -63,6 +68,10 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         setIntroVideoUrl(profile.introVideoUrl || '');
 
         setWhatsappNumber(profile.whatsappNumber || '');
+        setAutoStats(profile.autoStats);
+        setManualStats(profile.manualStats);
+        setStatsSource(profile.statsSource || 'auto');
+        setIsManuallyVerified(profile.isManuallyVerified || false);
       }
       setIsLoading(false);
     }).catch(() => {
@@ -92,6 +101,8 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         introVideoUrl: introVideoUrl || undefined,
         highlightReelUrl: undefined,
         whatsappNumber: whatsappNumber || undefined,
+        statsSource,
+        ...((statsSource === 'manual' || statsSource === 'combined') && manualStats ? { manualStats } : {}),
       };
 
       const result = await upsertProfile(args);
@@ -123,7 +134,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
   if (!closerInfo.b2cUserId) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center p-8">
-        <p className="text-gray-500 dark:text-zinc-400 text-[14px]">
+        <p className="text-gray-500 dark:text-gray-400 text-[14px]">
           Please log out and log back in to access your profile.
         </p>
       </div>
@@ -133,8 +144,8 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
-        <span className="w-6 h-6 border-2 border-gray-400 dark:border-zinc-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <span className="text-[14px] text-gray-500 dark:text-zinc-400">Loading profile...</span>
+        <span className="w-6 h-6 border-2 border-gray-400 dark:border-gray-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <span className="text-[14px] text-gray-500 dark:text-gray-400">Loading profile...</span>
       </div>
     );
   }
@@ -142,10 +153,10 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-zinc-800">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
         <div>
           <h1 className="text-xl font-bold text-black dark:text-white">Your Profile</h1>
-          <p className="text-[13px] text-gray-500 dark:text-zinc-400 mt-0.5">
+          <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">
             Build your public closer profile
           </p>
         </div>
@@ -154,7 +165,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             href={`https://sequ3nce.ai/p/${profileSlug}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-4 py-2 text-[13px] font-medium text-gray-600 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            className="px-4 py-2 text-[13px] font-medium text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             View Public Profile
           </a>
@@ -165,16 +176,16 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
         {/* Completeness bar */}
         {completionPct < 100 && (
-          <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-200 dark:border-zinc-700">
+          <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[13px] font-medium text-gray-700 dark:text-zinc-300">
+              <span className="text-[13px] font-medium text-gray-700 dark:text-gray-300">
                 Profile completeness
               </span>
               <span className="text-[13px] font-semibold text-gray-900 dark:text-white">
                 {completionPct}%
               </span>
             </div>
-            <div className="w-full h-2 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
                 className="h-full bg-black dark:bg-white rounded-full transition-all duration-500"
                 style={{ width: `${completionPct}%` }}
@@ -197,31 +208,31 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             />
             <div className="flex-1 space-y-3">
               <div>
-                <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">Name</label>
+                <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">Name</label>
                 <p className="text-[14px] font-medium text-gray-900 dark:text-white">
                   {closerInfo.name}
                 </p>
               </div>
               <div>
-                <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">
-                  Headline <span className="text-gray-300 dark:text-zinc-600">({headline.length}/120)</span>
+                <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">
+                  Headline <span className="text-gray-300 dark:text-gray-600">({headline.length}/120)</span>
                 </label>
                 <input
                   type="text"
                   value={headline}
                   onChange={(e) => setHeadline(e.target.value.slice(0, 120))}
                   placeholder="High-Ticket Coaching Closer"
-                  className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+                  className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
                 />
               </div>
               <div>
-                <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">Location</label>
+                <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">Location</label>
                 <input
                   type="text"
                   value={location}
                   onChange={(e) => setLocation(e.target.value.slice(0, 100))}
                   placeholder="Austin, TX"
-                  className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+                  className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
                 />
               </div>
             </div>
@@ -243,15 +254,15 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         <section className="space-y-4">
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">About</h2>
           <div>
-            <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">
-              Bio <span className="text-gray-300 dark:text-zinc-600">({bio.length}/2000)</span>
+            <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">
+              Bio <span className="text-gray-300 dark:text-gray-600">({bio.length}/2000)</span>
             </label>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value.slice(0, 2000))}
               placeholder="Tell potential employers about your sales experience, closing style, and what makes you stand out..."
               rows={5}
-              className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500 resize-none"
+              className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500 resize-none"
             />
           </div>
         </section>
@@ -292,17 +303,17 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             onIntroChange={setIntroVideoUrl}
           />
           <div>
-            <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">
-              WhatsApp Number <span className="text-gray-300 dark:text-zinc-600">(with country code)</span>
+            <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">
+              WhatsApp Number <span className="text-gray-300 dark:text-gray-600">(with country code)</span>
             </label>
             <input
               type="tel"
               value={whatsappNumber}
               onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
               placeholder="15551234567"
-              className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+              className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
             />
-            <p className="text-[11px] text-gray-400 dark:text-zinc-500 mt-1">
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
               Adds a &quot;Message Me&quot; button to your profile that opens WhatsApp
             </p>
           </div>
@@ -311,10 +322,23 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         {/* Highlight Reel */}
         <section className="space-y-4">
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Highlight Reel</h2>
-          <p className="text-[12px] text-gray-500 dark:text-zinc-400">
+          <p className="text-[12px] text-gray-500 dark:text-gray-400">
             Showcase your best sales call moments on your public profile. Add clips from your Calls tab.
           </p>
           <HighlightReelEditor userId={closerInfo.b2cUserId!} />
+        </section>
+
+        {/* Performance Stats */}
+        <section className="space-y-4">
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Performance Stats</h2>
+          <StatsSection
+            autoStats={autoStats}
+            manualStats={manualStats}
+            statsSource={statsSource}
+            isManuallyVerified={isManuallyVerified}
+            onStatsSourceChange={setStatsSource}
+            onManualStatsChange={setManualStats}
+          />
         </section>
 
         {/* Visibility */}
@@ -325,7 +349,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
               type="button"
               onClick={() => setIsPublic(!isPublic)}
               className={`relative w-11 h-6 rounded-full transition-colors ${
-                isPublic ? 'bg-green-500' : 'bg-gray-300 dark:bg-zinc-600'
+                isPublic ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
               }`}
             >
               <span
@@ -338,7 +362,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
               <span className="text-[13px] font-medium text-gray-900 dark:text-white">
                 Make profile public
               </span>
-              <p className="text-[12px] text-gray-500 dark:text-zinc-400">
+              <p className="text-[12px] text-gray-500 dark:text-gray-400">
                 {isPublic
                   ? 'Your profile is visible at sequ3nce.ai/p/' + (profileSlug || 'your-slug')
                   : 'Your profile is hidden from public view'}
@@ -352,7 +376,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
       </div>
 
       {/* Sticky save bar */}
-      <div className="sticky bottom-0 px-6 py-4 bg-white dark:bg-zinc-900 border-t border-gray-200 dark:border-zinc-800">
+      <div className="sticky bottom-0 px-6 py-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
         <div className="flex items-center justify-between">
           <div>
             {error && <span className="text-[13px] text-red-500 dark:text-red-400">{error}</span>}

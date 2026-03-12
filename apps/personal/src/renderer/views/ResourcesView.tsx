@@ -236,7 +236,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
         <span className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mb-3" />
-        <span className="text-[14px] text-gray-500 dark:text-zinc-400">Loading resources...</span>
+        <span className="text-[14px] text-gray-500 dark:text-gray-400">Loading resources...</span>
       </div>
     );
   }
@@ -244,8 +244,8 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
   // --- Form modal ---
   const formModal = showForm && (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <div className="px-5 pt-5 pb-3 border-b border-gray-100 dark:border-zinc-800">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="px-5 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             {editingId ? 'Edit Resource' : 'Add Resource'}
           </h2>
@@ -261,7 +261,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
           {/* Type selector — only for new resources */}
           {!editingId && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5">Type</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Type</label>
               <div className="grid grid-cols-2 gap-2">
                 {TYPE_OPTIONS.map((opt) => {
                   const tc = TYPE_CONFIG[opt.value];
@@ -274,7 +274,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
                         selected
                           ? `${tc.bg} ${tc.darkBg} ${tc.text} border-current`
-                          : 'border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                     >
                       {tc.icon}
@@ -288,7 +288,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Title <span className="text-red-500">*</span>
             </label>
             <input
@@ -297,34 +297,34 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="e.g. Stripe Payment Link"
               maxLength={200}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5">Description</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Description</label>
             <input
               type="text"
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="Optional short description"
               maxLength={500}
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none"
+              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none"
             />
           </div>
 
           {/* URL field (for payment_link, document, link) */}
           {showsUrlField(form.type) && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5">URL</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">URL</label>
               <input
                 type="url"
                 value={form.url}
                 onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
                 placeholder="https://..."
                 maxLength={2000}
-                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none"
               />
             </div>
           )}
@@ -332,32 +332,32 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
           {/* Content textarea (for scripts) */}
           {showsContentField(form.type) && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5">Script Content</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Script Content</label>
               <textarea
                 value={form.content}
                 onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
                 placeholder="Paste your script here..."
                 rows={6}
                 maxLength={10000}
-                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-zinc-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none resize-none"
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-black/10 dark:focus:ring-white/10 focus:outline-none resize-none"
               />
-              <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{form.content.length}/10,000</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{form.content.length}/10,000</p>
             </div>
           )}
         </div>
 
-        <div className="px-5 py-4 border-t border-gray-100 dark:border-zinc-800 flex justify-end gap-2">
+        <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
           <button
             onClick={closeForm}
             disabled={isSaving}
-            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={isSaving || !form.title.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-black dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-zinc-200 transition-colors disabled:opacity-40"
+            className="px-4 py-2 text-sm font-medium text-white bg-black dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors disabled:opacity-40"
           >
             {isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Resource'}
           </button>
@@ -371,18 +371,18 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-8">
         {formModal}
-        <div className="w-16 h-16 bg-gray-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4">
-          <svg className="w-7 h-7 text-gray-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+          <svg className="w-7 h-7 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
           </svg>
         </div>
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">No Resources Yet</h2>
-        <p className="text-[14px] text-gray-500 dark:text-zinc-400 max-w-sm mb-4">
+        <p className="text-[14px] text-gray-500 dark:text-gray-400 max-w-sm mb-4">
           Add your payment links, scripts, and other resources. They'll appear in your ammo panel during live calls.
         </p>
         <button
           onClick={openAddForm}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-black dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-zinc-200 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-black dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -401,11 +401,11 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
       <div className="px-6 pt-5 pb-3 shrink-0 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-black dark:text-white">Resources</h1>
-          <p className="text-[14px] text-gray-500 dark:text-zinc-400 mt-1">Manage your sales resources.</p>
+          <p className="text-[14px] text-gray-500 dark:text-gray-400 mt-1">Manage your sales resources.</p>
         </div>
         <button
           onClick={openAddForm}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-black dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-zinc-200 transition-colors shrink-0"
+          className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-black dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors shrink-0"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -424,7 +424,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
           return (
             <div
               key={resource._id}
-              className={`flex items-start gap-3 p-4 bg-white dark:bg-zinc-800 rounded-lg border border-gray-100 dark:border-zinc-700 hover:border-gray-200 dark:hover:border-zinc-600 transition-colors ${isDeleting ? 'opacity-50' : ''}`}
+              className={`flex items-start gap-3 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-gray-200 dark:hover:border-gray-600 transition-colors ${isDeleting ? 'opacity-50' : ''}`}
             >
               {/* Icon */}
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${tc.bg} ${tc.darkBg} ${tc.text}`}>
@@ -440,10 +440,10 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
                   </span>
                 </div>
                 {resource.description && (
-                  <p className="text-[12px] text-gray-500 dark:text-zinc-400 mb-1">{resource.description}</p>
+                  <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-1">{resource.description}</p>
                 )}
                 {resource.type === 'script' && resource.content && (
-                  <p className="text-[12px] text-gray-400 dark:text-zinc-500 line-clamp-2 italic">{resource.content}</p>
+                  <p className="text-[12px] text-gray-400 dark:text-gray-500 line-clamp-2 italic">{resource.content}</p>
                 )}
               </div>
 
@@ -454,7 +454,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
                   <button
                     onClick={() => handleMoveUp(index)}
                     disabled={index === 0}
-                    className="p-0.5 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 disabled:opacity-20 transition-colors"
+                    className="p-0.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-20 transition-colors"
                     title="Move up"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -464,7 +464,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
                   <button
                     onClick={() => handleMoveDown(index)}
                     disabled={index >= resources.length - 1}
-                    className="p-0.5 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 disabled:opacity-20 transition-colors"
+                    className="p-0.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-20 transition-colors"
                     title="Move down"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -477,7 +477,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
                 {urlOrContent && (
                   <button
                     onClick={() => handleCopy(resource)}
-                    className="flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium text-gray-600 dark:text-zinc-400 border border-gray-200 dark:border-zinc-700 rounded-md hover:bg-gray-50 dark:hover:bg-zinc-700 transition-colors"
+                    className="flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     title="Copy"
                   >
                     {isCopied ? (
@@ -506,7 +506,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
                 {/* Edit */}
                 <button
                   onClick={() => openEditForm(resource)}
-                  className="p-1.5 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+                  className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
                   title="Edit"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -518,7 +518,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
                 <button
                   onClick={() => handleDelete(resource._id)}
                   disabled={isDeleting}
-                  className="p-1.5 text-gray-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                  className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
                   title="Delete"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

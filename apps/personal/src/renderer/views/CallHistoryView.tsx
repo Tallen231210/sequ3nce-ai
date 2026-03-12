@@ -76,8 +76,8 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
-        <span className="w-6 h-6 border-2 border-gray-400 dark:border-zinc-500 border-t-transparent rounded-full animate-spin mb-3" />
-        <span className="text-[14px] text-gray-500 dark:text-zinc-400">Loading calls...</span>
+        <span className="w-6 h-6 border-2 border-gray-400 dark:border-gray-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <span className="text-[14px] text-gray-500 dark:text-gray-400">Loading calls...</span>
       </div>
     );
   }
@@ -98,7 +98,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
       <div className="flex items-center justify-between px-6 pt-5 pb-3 shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-black dark:text-white">Calls</h1>
-          <p className="text-[13px] text-gray-500 dark:text-zinc-400">{filteredCalls.length} calls</p>
+          <p className="text-[13px] text-gray-500 dark:text-gray-400">{filteredCalls.length} calls</p>
         </div>
       </div>
 
@@ -106,14 +106,14 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
       <div className="px-6 pb-3 space-y-2 shrink-0">
         {/* Search bar */}
         <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by prospect name..."
-            className="w-full pl-9 pr-8 py-2 text-[13px] bg-gray-50 dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+            className="w-full pl-9 pr-8 py-2 text-[13px] bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
           />
           {search && (
             <button
@@ -136,7 +136,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
               className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
                 outcomeFilter === f.value
                   ? 'bg-black dark:bg-white text-white dark:text-black'
-                  : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-600'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
             >
               {f.label}
@@ -200,16 +200,16 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
       <div className="flex-1 overflow-y-auto px-6">
         {filteredCalls.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <svg className="w-10 h-10 text-gray-300 dark:text-zinc-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-10 h-10 text-gray-300 dark:text-gray-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
             </svg>
-            <h3 className="text-[15px] font-medium text-gray-600 dark:text-zinc-400 mb-1">No calls yet</h3>
-            <p className="text-[13px] text-gray-400 dark:text-zinc-500">Calls will appear here once bots start recording</p>
+            <h3 className="text-[15px] font-medium text-gray-600 dark:text-gray-400 mb-1">No calls yet</h3>
+            <p className="text-[13px] text-gray-400 dark:text-gray-500">Calls will appear here once bots start recording</p>
           </div>
         ) : (
           <>
             {/* Table header */}
-            <div className="flex items-center gap-2 px-3 py-2 text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider border-b border-gray-200 dark:border-zinc-700 sticky top-0 bg-white dark:bg-zinc-900 z-10">
+            <div className="flex items-center gap-2 px-3 py-2 text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-900 z-10">
               <span className="w-[140px]">Date / Time</span>
               <span className="flex-1">Prospect</span>
               <span className="w-[80px] text-right">Duration</span>
@@ -261,12 +261,12 @@ function CallRow({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-gray-100/80 dark:hover:bg-zinc-800/80 ${
-        isOdd ? 'bg-gray-50/50 dark:bg-zinc-800/50' : 'bg-white dark:bg-zinc-900'
+      className={`w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-gray-100/80 dark:hover:bg-gray-800/80 ${
+        isOdd ? 'bg-gray-50/50 dark:bg-gray-800/50' : 'bg-white dark:bg-gray-900'
       }`}
     >
       {/* Date/Time */}
-      <span className="w-[140px] text-[12px] text-gray-600 dark:text-zinc-400 shrink-0">
+      <span className="w-[140px] text-[12px] text-gray-600 dark:text-gray-400 shrink-0">
         {formatCallDate(call.startedAt)}
       </span>
 
@@ -276,7 +276,7 @@ function CallRow({
       </span>
 
       {/* Duration */}
-      <span className="w-[80px] text-[12px] text-gray-600 dark:text-zinc-400 text-right shrink-0">
+      <span className="w-[80px] text-[12px] text-gray-600 dark:text-gray-400 text-right shrink-0">
         {formatDuration(call.duration)}
       </span>
 
@@ -295,7 +295,7 @@ function CallRow({
       </span>
 
       {/* Talk % */}
-      <span className="w-[50px] text-[12px] text-gray-500 dark:text-zinc-400 text-right shrink-0">
+      <span className="w-[50px] text-[12px] text-gray-500 dark:text-gray-400 text-right shrink-0">
         {talkPercent !== null ? `${talkPercent}%` : '—'}
       </span>
 

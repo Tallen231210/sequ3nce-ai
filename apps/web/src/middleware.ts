@@ -10,12 +10,15 @@ const isProtectedRoute = createRouteMatcher([
   "/calls(.*)",
 ]);
 
-// Routes that should skip middleware entirely
-const isWebhookRoute = createRouteMatcher(["/api/webhooks(.*)"]);
+// Routes that should skip middleware entirely (no Clerk auth)
+const isPublicApiRoute = createRouteMatcher([
+  "/api/webhooks(.*)",
+  "/api/stripe/b2c-(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // Skip middleware for webhook routes
-  if (isWebhookRoute(req)) {
+  // Skip middleware for webhook and B2C API routes (B2C uses its own auth, not Clerk)
+  if (isPublicApiRoute(req)) {
     return NextResponse.next();
   }
 
@@ -26,7 +29,7 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals, static files, and webhook routes
-    "/((?!_next|api/webhooks|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Skip Next.js internals, static files, webhook routes, and B2C Stripe routes
+    "/((?!_next|api/webhooks|api/stripe/b2c-|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
   ],
 };

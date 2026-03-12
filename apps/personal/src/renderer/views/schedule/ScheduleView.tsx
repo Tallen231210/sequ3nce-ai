@@ -3,7 +3,6 @@ import type { CloserInfo, CalendarEvent } from '../../convex';
 import {
   getCalendarEvents,
   getCalendarStatus,
-  connectCalendar,
   syncCalendar,
   disconnectCalendar,
   excludeCalendarEvent,
@@ -31,10 +30,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekOffset, setWeekOffset] = useState(0);
 
-  // Connection form
-  const [icsUrl, setIcsUrl] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
+  // Connection form (no longer needed for ICS — uses Google OAuth now)
 
   // Meeting modal
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -83,20 +79,6 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   }, [loadData]);
 
   // Handlers
-  async function handleConnect() {
-    if (!icsUrl.trim()) return;
-    setIsConnecting(true);
-    setConnectError(null);
-    const ok = await connectCalendar(closerInfo.email, closerInfo.teamId, icsUrl.trim());
-    if (ok) {
-      await syncCalendar(closerInfo.email, closerInfo.teamId);
-      await loadData();
-    } else {
-      setConnectError('Failed to connect. Please check the URL and try again.');
-    }
-    setIsConnecting(false);
-  }
-
   async function handleSync() {
     setIsSyncing(true);
     await syncCalendar(closerInfo.email, closerInfo.teamId);
@@ -134,15 +116,12 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
     );
   }
 
-  // Not connected
+  // Not connected — show Google Calendar OAuth button
   if (!status?.connected) {
     return (
       <ScheduleConnectForm
-        icsUrl={icsUrl}
-        onIcsUrlChange={setIcsUrl}
-        onConnect={handleConnect}
-        isConnecting={isConnecting}
-        connectError={connectError}
+        closerId={closerInfo.closerId}
+        onConnected={loadData}
       />
     );
   }

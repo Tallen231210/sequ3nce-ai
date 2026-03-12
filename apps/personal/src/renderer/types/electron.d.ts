@@ -31,6 +31,7 @@ export interface AppAPI {
   getPlatform: () => Promise<{ platform: string; arch: string; osRelease: string }>;
   setWindowSize: (width: number, height: number) => Promise<void>;
   themeChanged: (theme: string) => Promise<void>;
+  setBadgeCount: (count: number) => Promise<void>;
 }
 
 export interface AmmoAPI {

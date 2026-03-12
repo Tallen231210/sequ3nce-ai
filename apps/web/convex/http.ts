@@ -6995,4 +6995,243 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ==================== B2C Job Board Routes ====================
+
+// GET /b2c/jobs/open — List open job postings for B2C closers
+http.route({
+  path: "/b2c/jobs/open",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const industry = url.searchParams.get("industry") || undefined;
+      const ticketRange = url.searchParams.get("ticketRange") || undefined;
+      const limit = url.searchParams.get("limit");
+      const result = await ctx.runQuery(api.b2cJobBoard.listOpenPostings, {
+        industry,
+        ticketRange,
+        limit: limit ? Number(limit) : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error listing open postings:", error);
+      return b2cJsonResponse({ error: "Failed to load job postings" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/jobs/open",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/jobs/posting — Get a single job posting by ID
+http.route({
+  path: "/b2c/jobs/posting",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const postingId = url.searchParams.get("postingId");
+      if (!postingId) return b2cJsonResponse({ error: "postingId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cJobBoard.getJobPosting, {
+        postingId: postingId as any,
+      });
+      if (!result) return b2cJsonResponse({ error: "Posting not found" }, 404);
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting posting:", error);
+      return b2cJsonResponse({ error: "Failed to load posting" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/jobs/posting",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/jobs/interest-status — Check if closer is interested in a posting
+http.route({
+  path: "/b2c/jobs/interest-status",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const postingId = url.searchParams.get("postingId");
+      const userId = url.searchParams.get("userId");
+      if (!postingId || !userId) {
+        return b2cJsonResponse({ error: "postingId and userId are required" }, 400);
+      }
+      const result = await ctx.runQuery(api.b2cJobBoard.getInterestStatus, {
+        postingId: postingId as any,
+        b2cUserId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error checking interest status:", error);
+      return b2cJsonResponse({ error: "Failed to check interest" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/jobs/interest-status",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/jobs/my-interests — Jobs the closer has expressed interest in
+http.route({
+  path: "/b2c/jobs/my-interests",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cJobBoard.getMyInterests, {
+        b2cUserId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting interests:", error);
+      return b2cJsonResponse({ error: "Failed to load interests" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/jobs/my-interests",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/jobs/express-interest — Closer expresses interest in a posting
+http.route({
+  path: "/b2c/jobs/express-interest",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.postingId || !body.userId) {
+        return b2cJsonResponse({ error: "postingId and userId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cJobBoard.expressInterest, {
+        postingId: body.postingId as any,
+        b2cUserId: body.userId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error expressing interest:", error);
+      const msg = (error?.message || "Failed to express interest").split("\n")[0].replace("Uncaught Error: ", "");
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/jobs/express-interest",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/jobs/withdraw-interest — Closer withdraws interest from a posting
+http.route({
+  path: "/b2c/jobs/withdraw-interest",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.postingId || !body.userId) {
+        return b2cJsonResponse({ error: "postingId and userId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cJobBoard.withdrawInterest, {
+        postingId: body.postingId as any,
+        b2cUserId: body.userId as any,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error withdrawing interest:", error);
+      const msg = (error?.message || "Failed to withdraw interest").split("\n")[0].replace("Uncaught Error: ", "");
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/jobs/withdraw-interest",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/profile/toggle-availability — Toggle "Available for Hire"
+http.route({
+  path: "/b2c/profile/toggle-availability",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || typeof body.isAvailable !== "boolean") {
+        return b2cJsonResponse({ error: "userId and isAvailable (boolean) are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cProfiles.toggleAvailability, {
+        userId: body.userId as any,
+        isAvailable: body.isAvailable,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error: any) {
+      console.error("Error toggling availability:", error);
+      const msg = (error?.message || "Failed to toggle availability").split("\n")[0].replace("Uncaught Error: ", "");
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/profile/toggle-availability",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/subscription-status — Check subscription status (polled by Electron app after checkout)
+http.route({
+  path: "/b2c/subscription-status",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId");
+
+    if (!userId) {
+      return b2cJsonResponse({ error: "userId is required" }, 400);
+    }
+
+    try {
+      const result = await ctx.runQuery(api.b2cBilling.getB2CSubscription, {
+        userId: userId as Id<"b2cUsers">,
+      });
+
+      if (!result) {
+        return b2cJsonResponse({ error: "User not found" }, 404);
+      }
+
+      return b2cJsonResponse({
+        subscriptionStatus: result.subscriptionStatus,
+        stripeCustomerId: result.stripeCustomerId,
+      });
+    } catch (error) {
+      console.error("Error checking B2C subscription status:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/subscription-status",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
 export default http;

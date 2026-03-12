@@ -5,6 +5,7 @@ import {
   getActiveCallForCloserBot,
   getPendingQuestionnaireInfo,
   getDMUnreadCount,
+  getIncomingFriendRequests,
 } from '../convex';
 import { useTheme } from '../ThemeContext';
 import logoImage from '../../assets/logo.png';
@@ -19,6 +20,7 @@ import { SettingsView } from './SettingsView';
 import { ProfileView } from './ProfileView';
 import { CommunityView } from './CommunityView';
 import { DirectMessagesView } from './DirectMessagesView';
+import { JobBoardView } from './JobBoardView';
 
 // Sidebar navigation items for Sequ3nce Personal (B2C)
 type SidebarItem =
@@ -71,8 +73,8 @@ const NAV_ITEMS: NavItem[] = [
     id: 'schedule',
     label: 'Schedule',
     icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
       </svg>
     ),
   },
@@ -192,15 +194,28 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
     return () => clearInterval(interval);
   }, [closerInfo.closerId]);
 
-  // Poll DM unread count for Messages badge
+  // Poll DM unread count + friend requests for badge
+  const [friendRequestCount, setFriendRequestCount] = useState(0);
+
   useEffect(() => {
     if (!closerInfo.b2cUserId) return;
-    const poll = () => {
-      getDMUnreadCount(closerInfo.b2cUserId!).then(setDmUnreadCount).catch(() => {});
+    const poll = async () => {
+      const [dmCount, friendResult] = await Promise.all([
+        getDMUnreadCount(closerInfo.b2cUserId!).catch(() => 0),
+        getIncomingFriendRequests(closerInfo.b2cUserId!).catch(() => ({ requests: [] })),
+      ]);
+      setDmUnreadCount(dmCount);
+      setFriendRequestCount(friendResult.requests.length);
+      // Update dock/taskbar badge
+      const totalBadge = dmCount + friendResult.requests.length;
+      window.electron?.app?.setBadgeCount?.(totalBadge).catch(() => {});
     };
     poll();
     const interval = setInterval(poll, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.electron?.app?.setBadgeCount?.(0).catch(() => {});
+    };
   }, [closerInfo.b2cUserId]);
 
   // Theme sync to floating windows is now handled by ThemeContext.tsx
@@ -302,7 +317,7 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
         {/* Nav items */}
         <nav className="flex-1 px-2 pt-2 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
-            const badge = item.id === 'calls' ? callsPendingCount : item.id === 'messages' ? dmUnreadCount : 0;
+            const badge = item.id === 'calls' ? callsPendingCount : item.id === 'messages' ? dmUnreadCount : item.id === 'community' ? friendRequestCount : 0;
             return (
               <button
                 key={item.id}
@@ -350,16 +365,6 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
             )}
           </button>
 
-          {/* Sign out */}
-          <button
-            onClick={onLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Sign Out
-          </button>
         </div>
       </div>
 
@@ -445,7 +450,7 @@ function renderContent(
     case 'community':
       return <CommunityView closerInfo={closerInfo} onStartDM={onStartDM} />;
     case 'jobboard':
-      return <PlaceholderView name={NAV_ITEMS.find((i) => i.id === item)?.label || item} />;
+      return <JobBoardView closerInfo={closerInfo} />;
     default:
       return <PlaceholderView name={NAV_ITEMS.find((i) => i.id === item)?.label || item} />;
   }

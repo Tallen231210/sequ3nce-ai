@@ -602,3 +602,26 @@ export const adminSetVerification = internalMutation({
     return { success: true };
   },
 });
+
+/** Toggle "Available for Hire" status on a closer's profile */
+export const toggleAvailability = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    isAvailable: v.boolean(),
+  },
+  handler: async (ctx, { userId, isAvailable }) => {
+    const profile = await ctx.db
+      .query("b2cProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!profile) throw new Error("Profile not found");
+
+    await ctx.db.patch(profile._id, {
+      isAvailable,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});

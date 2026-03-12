@@ -162,7 +162,7 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
               onMessageAuthor={onStartDM}
             />
           ) : loadingChannels && selectedView !== 'training' ? (
-            <div className="text-sm text-gray-400 dark:text-zinc-500 text-center py-8">
+            <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
               Loading community...
             </div>
           ) : (

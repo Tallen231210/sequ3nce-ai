@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import type { B2CProfile } from '../convex';
 
 // ==================== Tag Input Component ====================
 
@@ -50,9 +51,9 @@ export function TagInput({ label, tags, onChange, maxTags, suggestions, placehol
 
   return (
     <div className="space-y-2">
-      <label className="block text-[13px] font-medium text-gray-700 dark:text-zinc-300">
+      <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300">
         {label}
-        <span className="text-gray-400 dark:text-zinc-500 font-normal ml-1">
+        <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">
           ({tags.length}/{maxTags})
         </span>
       </label>
@@ -63,13 +64,13 @@ export function TagInput({ label, tags, onChange, maxTags, suggestions, placehol
           {tags.map((tag, i) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 px-3 py-1 text-[12px] font-medium bg-gray-100 dark:bg-zinc-700 text-gray-700 dark:text-zinc-300 rounded-full"
+              className="inline-flex items-center gap-1 px-3 py-1 text-[12px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full"
             >
               {tag}
               <button
                 type="button"
                 onClick={() => removeTag(i)}
-                className="ml-0.5 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300"
+                className="ml-0.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -100,19 +101,19 @@ export function TagInput({ label, tags, onChange, maxTags, suggestions, placehol
               }
             }}
             placeholder={placeholder || `Add ${label.toLowerCase()}...`}
-            className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+            className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
           />
 
           {/* Suggestions dropdown */}
           {showSuggestions && filteredSuggestions.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+            <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-40 overflow-y-auto">
               {filteredSuggestions.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => addTag(suggestion)}
-                  className="w-full text-left px-3 py-2 text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-700"
+                  className="w-full text-left px-3 py-2 text-[13px] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   {suggestion}
                 </button>
@@ -149,18 +150,18 @@ const SOCIAL_FIELDS: { key: keyof SocialLinksProps['links']; label: string; plac
 export function SocialLinksSection({ links, onChange }: SocialLinksProps) {
   return (
     <div className="space-y-3">
-      <label className="block text-[13px] font-medium text-gray-700 dark:text-zinc-300">
+      <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300">
         Social Links
       </label>
       {SOCIAL_FIELDS.map(({ key, label, placeholder }) => (
         <div key={key}>
-          <label className="block text-[12px] text-gray-500 dark:text-zinc-400 mb-1">{label}</label>
+          <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">{label}</label>
           <input
             type="url"
             value={links[key] || ''}
             onChange={(e) => onChange({ ...links, [key]: e.target.value })}
             placeholder={placeholder}
-            className="w-full px-3 py-2 text-[13px] bg-white dark:bg-zinc-800 text-gray-900 dark:text-zinc-100 border border-gray-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-zinc-500 placeholder-gray-400 dark:placeholder-zinc-500"
+            className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
           />
         </div>
       ))}
@@ -178,7 +179,7 @@ interface TicketRangeProps {
 export function TicketRangeSelector({ value, onChange }: TicketRangeProps) {
   return (
     <div className="space-y-2">
-      <label className="block text-[13px] font-medium text-gray-700 dark:text-zinc-300">
+      <label className="block text-[13px] font-medium text-gray-700 dark:text-gray-300">
         Ticket Range
       </label>
       <div className="flex flex-wrap gap-2">
@@ -190,13 +191,311 @@ export function TicketRangeSelector({ value, onChange }: TicketRangeProps) {
             className={`px-3 py-1.5 text-[12px] font-medium rounded-lg border transition-colors ${
               value === range
                 ? 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white'
-                : 'bg-white dark:bg-zinc-800 text-gray-600 dark:text-zinc-400 border-gray-200 dark:border-zinc-700 hover:border-gray-400 dark:hover:border-zinc-500'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500'
             }`}
           >
             {range}
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ==================== Stats Section ====================
+
+const VERIFICATION_CALENDLY_URL = "https://calendly.com/sequ3nce/verify";
+
+type ManualStats = B2CProfile['manualStats'];
+type AutoStats = B2CProfile['autoStats'];
+
+interface StatsSectionProps {
+  autoStats: AutoStats;
+  manualStats: ManualStats;
+  statsSource: "auto" | "manual" | "combined";
+  isManuallyVerified: boolean;
+  onStatsSourceChange: (source: "auto" | "manual" | "combined") => void;
+  onManualStatsChange: (stats: ManualStats) => void;
+}
+
+function formatStatCurrency(amount: number): string {
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}k`;
+  return `$${amount.toLocaleString()}`;
+}
+
+export function StatsSection({
+  autoStats,
+  manualStats,
+  statsSource,
+  isManuallyVerified,
+  onStatsSourceChange,
+  onManualStatsChange,
+}: StatsSectionProps) {
+  const updateManualStat = (key: string, value: string) => {
+    const num = value === '' ? undefined : Number(value);
+    if (num !== undefined && isNaN(num)) return;
+    onManualStatsChange({ ...manualStats, [key]: num });
+  };
+
+  const showCombinedOption = autoStats !== null && manualStats !== null;
+  const activeStyle = 'bg-black dark:bg-white text-white dark:text-black border-black dark:border-white';
+  const inactiveStyle = 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500';
+
+  return (
+    <div className="space-y-4">
+      {/* Source toggle */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => onStatsSourceChange('auto')}
+          className={`flex-1 px-3 py-2.5 text-[12px] font-medium rounded-lg border transition-colors ${statsSource === 'auto' ? activeStyle : inactiveStyle}`}
+        >
+          From Calls
+        </button>
+        <button
+          type="button"
+          onClick={() => onStatsSourceChange('manual')}
+          className={`flex-1 px-3 py-2.5 text-[12px] font-medium rounded-lg border transition-colors ${statsSource === 'manual' ? activeStyle : inactiveStyle}`}
+        >
+          Manual
+        </button>
+        {showCombinedOption && (
+          <button
+            type="button"
+            onClick={() => onStatsSourceChange('combined')}
+            className={`flex-1 px-3 py-2.5 text-[12px] font-medium rounded-lg border transition-colors ${statsSource === 'combined' ? activeStyle : inactiveStyle}`}
+          >
+            Combined
+          </button>
+        )}
+      </div>
+
+      {statsSource === 'auto' ? (
+        /* Auto stats — read-only display */
+        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+          {autoStats ? (
+            <>
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-emerald-500" viewBox="0 0 24 24" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307z" clipRule="evenodd" />
+                </svg>
+                <span className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400">
+                  Verified by Sequ3nce
+                </span>
+              </div>
+              <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">
+                Computed from {autoStats.callsCompleted} recorded call{autoStats.callsCompleted !== 1 ? 's' : ''}.
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <AutoStatCard label="Close Rate" value={autoStats.closeRate !== null ? `${autoStats.closeRate}%` : '—'} />
+                <AutoStatCard label="Cash Collected" value={formatStatCurrency(autoStats.cashCollected)} />
+                <AutoStatCard label="Calls" value={autoStats.callsCompleted.toLocaleString()} />
+                <AutoStatCard label="Avg Deal" value={autoStats.avgDealSize !== null ? formatStatCurrency(autoStats.avgDealSize) : '—'} />
+                <AutoStatCard label="Avg Duration" value={autoStats.avgDuration !== null ? `${Math.round(autoStats.avgDuration / 60)}m` : '—'} />
+                <AutoStatCard label="Talk Ratio" value={autoStats.talkRatio !== null ? `${autoStats.talkRatio}%` : '—'} />
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-[13px] text-gray-500 dark:text-gray-400">
+                No recorded calls yet. Record calls using the Sequ3nce bot to build verified stats.
+              </p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                Or switch to &quot;Manual&quot; to enter your stats.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : statsSource === 'combined' ? (
+        /* Combined mode — manual baseline + auto on top */
+        <>
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+            <p className="text-[12px] text-emerald-700 dark:text-emerald-400">
+              Your verified baseline stats plus data from {autoStats?.callsCompleted ?? 0} call{autoStats?.callsCompleted !== 1 ? 's' : ''} recorded through Sequ3nce. Stats grow as you take more calls.
+            </p>
+          </div>
+
+          <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            Baseline Stats (editable)
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <ManualStatInput
+              label="Cash Collected ($)"
+              value={manualStats?.cashCollected}
+              onChange={(v) => updateManualStat('cashCollected', v)}
+              placeholder="2340000"
+            />
+            <ManualStatInput
+              label="Close Rate (%)"
+              value={manualStats?.closeRate}
+              onChange={(v) => updateManualStat('closeRate', v)}
+              placeholder="36"
+              max={100}
+            />
+            <ManualStatInput
+              label="Calls Completed"
+              value={manualStats?.callsCompleted}
+              onChange={(v) => updateManualStat('callsCompleted', v)}
+              placeholder="847"
+              integer
+            />
+            <ManualStatInput
+              label="Avg Deal Size ($)"
+              value={manualStats?.avgDealSize}
+              onChange={(v) => updateManualStat('avgDealSize', v)}
+              placeholder="6800"
+            />
+            <ManualStatInput
+              label="Avg Duration (minutes)"
+              value={manualStats?.avgDuration !== undefined ? Math.round(manualStats.avgDuration / 60) : undefined}
+              onChange={(v) => {
+                const mins = v === '' ? undefined : Number(v);
+                if (mins !== undefined && isNaN(mins)) return;
+                onManualStatsChange({ ...manualStats, avgDuration: mins !== undefined ? mins * 60 : undefined });
+              }}
+              placeholder="38"
+              integer
+            />
+            <ManualStatInput
+              label="Talk Ratio (%)"
+              value={manualStats?.talkRatio}
+              onChange={(v) => updateManualStat('talkRatio', v)}
+              placeholder="42"
+              max={100}
+            />
+          </div>
+
+          <VerificationStatusBlock isManuallyVerified={isManuallyVerified} />
+        </>
+      ) : (
+        /* Manual stats — editable fields */
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <ManualStatInput
+              label="Cash Collected ($)"
+              value={manualStats?.cashCollected}
+              onChange={(v) => updateManualStat('cashCollected', v)}
+              placeholder="2340000"
+            />
+            <ManualStatInput
+              label="Close Rate (%)"
+              value={manualStats?.closeRate}
+              onChange={(v) => updateManualStat('closeRate', v)}
+              placeholder="36"
+              max={100}
+            />
+            <ManualStatInput
+              label="Calls Completed"
+              value={manualStats?.callsCompleted}
+              onChange={(v) => updateManualStat('callsCompleted', v)}
+              placeholder="847"
+              integer
+            />
+            <ManualStatInput
+              label="Avg Deal Size ($)"
+              value={manualStats?.avgDealSize}
+              onChange={(v) => updateManualStat('avgDealSize', v)}
+              placeholder="6800"
+            />
+            <ManualStatInput
+              label="Avg Duration (minutes)"
+              value={manualStats?.avgDuration !== undefined ? Math.round(manualStats.avgDuration / 60) : undefined}
+              onChange={(v) => {
+                const mins = v === '' ? undefined : Number(v);
+                if (mins !== undefined && isNaN(mins)) return;
+                onManualStatsChange({ ...manualStats, avgDuration: mins !== undefined ? mins * 60 : undefined });
+              }}
+              placeholder="38"
+              integer
+            />
+            <ManualStatInput
+              label="Talk Ratio (%)"
+              value={manualStats?.talkRatio}
+              onChange={(v) => updateManualStat('talkRatio', v)}
+              placeholder="42"
+              max={100}
+            />
+          </div>
+
+          <VerificationStatusBlock isManuallyVerified={isManuallyVerified} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function VerificationStatusBlock({ isManuallyVerified }: { isManuallyVerified: boolean }) {
+  if (isManuallyVerified) {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+        <svg className="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+          <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307z" clipRule="evenodd" />
+        </svg>
+        <span className="text-[12px] font-medium text-emerald-700 dark:text-emerald-400">
+          Your stats have been verified by Sequ3nce.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+      <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-2">
+        Self-reported stats show a &quot;Self-Reported&quot; label on your public profile instead of the verified badge.
+      </p>
+      <a
+        href={VERIFICATION_CALENDLY_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 text-[12px] font-medium text-black dark:text-white hover:underline"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+        Get Verified — Book a review call
+      </a>
+    </div>
+  );
+}
+
+function AutoStatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="text-center">
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-0.5">{label}</p>
+      <p className="text-[15px] font-semibold text-gray-900 dark:text-white">{value}</p>
+    </div>
+  );
+}
+
+function ManualStatInput({
+  label, value, onChange, placeholder, max, integer,
+}: {
+  label: string;
+  value: number | undefined;
+  onChange: (value: string) => void;
+  placeholder: string;
+  max?: number;
+  integer?: boolean;
+}) {
+  return (
+    <div>
+      <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+      <input
+        type="number"
+        value={value !== undefined ? value : ''}
+        onChange={(e) => {
+          let v = e.target.value;
+          if (integer) v = v.replace(/\./g, '');
+          if (max !== undefined && Number(v) > max) v = String(max);
+          onChange(v);
+        }}
+        placeholder={placeholder}
+        min={0}
+        max={max}
+        step={integer ? 1 : 'any'}
+        className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
+      />
     </div>
   );
 }

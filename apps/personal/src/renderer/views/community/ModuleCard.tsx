@@ -19,7 +19,7 @@ export function ModuleCard({ module, onClick }: ModuleCardProps) {
   return (
     <button
       onClick={onClick}
-      className="text-left rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600 transition-all hover:shadow-md group"
+      className="text-left rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-all hover:shadow-md group"
     >
       {/* Thumbnail / gradient header */}
       {module.thumbnailUrl ? (
@@ -42,11 +42,11 @@ export function ModuleCard({ module, onClick }: ModuleCardProps) {
           {module.title}
         </h3>
         {module.description && (
-          <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1 line-clamp-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
             {module.description}
           </p>
         )}
-        <span className="inline-block mt-2 text-xs text-gray-400 dark:text-zinc-500 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
+        <span className="inline-block mt-2 text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
           {module.lessonCount} lesson{module.lessonCount !== 1 ? 's' : ''}
         </span>
       </div>
