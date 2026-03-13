@@ -927,6 +927,7 @@ export default defineSchema({
     role: v.optional(v.string()),           // "admin" | "user" (undefined = "user")
     passwordResetCode: v.optional(v.string()),  // 6-digit reset code (hashed)
     passwordResetExpiry: v.optional(v.number()), // Expiry timestamp for reset code
+    badges: v.optional(v.array(v.string())),    // "founder", "coach", etc.
   })
     .index("by_email", ["email"])
     .index("by_phone", ["phone"])

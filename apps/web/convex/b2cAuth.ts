@@ -195,6 +195,7 @@ export const loginB2CUser = mutation({
         subscriptionStatus: user.subscriptionStatus,
         b2cUserId: user._id,
         role: user.role || "user",
+        badges: user.badges || [],
       },
     };
   },
@@ -240,6 +241,20 @@ export const setAdminRole = mutation({
     if (!user) throw new Error("User not found");
     await ctx.db.patch(args.userId, { role: args.role || undefined });
     return { success: true, role: args.role || "user" };
+  },
+});
+
+// Set badges on a B2C user (run via CLI: npx convex run b2cAuth:setBadges '{"userId":"...","badges":["founder"]}' --prod)
+export const setBadges = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    badges: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+    await ctx.db.patch(args.userId, { badges: args.badges });
+    return { success: true, badges: args.badges };
   },
 });
 

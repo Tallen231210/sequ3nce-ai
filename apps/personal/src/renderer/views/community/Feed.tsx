@@ -19,12 +19,11 @@ interface FeedProps {
   userId: string;
   channels: CommunityChannel[];
   isAdmin?: boolean;
-  onMessageAuthor?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
 const POLL_INTERVAL = 10_000;
 
-export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) {
+export function Feed({ userId, channels, isAdmin }: FeedProps) {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
@@ -235,7 +234,6 @@ export function Feed({ userId, channels, isAdmin, onMessageAuthor }: FeedProps) 
                 onUnreact={handleUnreact}
                 onPin={handlePin}
                 onUnpin={handleUnpin}
-                onMessageAuthor={onMessageAuthor}
               />
             ))}
           </div>

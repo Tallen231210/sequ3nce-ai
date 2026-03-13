@@ -13,6 +13,7 @@ export interface CloserInfo {
   subscriptionStatus?: string; // "active" | "cancelled" | "past_due" | "none"
   b2cUserId?: string;
   role?: string;
+  badges?: string[];
 }
 
 export interface LoginResult {

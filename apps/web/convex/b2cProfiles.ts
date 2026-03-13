@@ -257,6 +257,7 @@ export const getPublicProfile = internalQuery({
       stats,
       isVerified,
       statsSource,
+      badges: user.badges ?? [],
     };
   },
 });

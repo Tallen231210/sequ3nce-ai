@@ -6,10 +6,9 @@ import { MemberCard } from './MemberCard';
 
 interface MembersProps {
   currentUserId?: string;
-  onStartDM?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
-export function Members({ currentUserId, onStartDM }: MembersProps) {
+export function Members({ currentUserId }: MembersProps) {
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -146,7 +145,6 @@ export function Members({ currentUserId, onStartDM }: MembersProps) {
                 member={member}
                 isCurrentUser={member.userId === currentUserId}
                 friendshipStatus={friendStatusMap.get(member.userId)}
-                onMessage={onStartDM ? (userId, name, photoUrl) => onStartDM(userId, name, photoUrl) : undefined}
                 onAddFriend={handleAddFriend}
                 onAcceptFriend={handleAcceptFriend}
               />

@@ -15,12 +15,11 @@ interface ChannelsProps {
   userId: string;
   channels: CommunityChannel[];
   isAdmin?: boolean;
-  onMessageAuthor?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
 const POLL_INTERVAL = 10_000;
 
-export function Channels({ userId, channels, isAdmin, onMessageAuthor }: ChannelsProps) {
+export function Channels({ userId, channels, isAdmin }: ChannelsProps) {
   const [selectedChannel, setSelectedChannel] = useState<CommunityChannel | null>(
     channels[0] ?? null
   );
@@ -200,7 +199,6 @@ export function Channels({ userId, channels, isAdmin, onMessageAuthor }: Channel
                       onLike={handleLike}
                       onEdit={handleEdit}
                       onDelete={handleDelete}
-                      onMessageAuthor={onMessageAuthor}
                     />
                   ))}
                 </div>

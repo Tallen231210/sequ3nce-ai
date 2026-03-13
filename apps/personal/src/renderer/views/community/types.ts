@@ -18,6 +18,7 @@ export interface CommunityPost {
   authorId: string;
   authorName: string;
   authorPhotoUrl: string | null;
+  authorBadges?: string[];
   body: string;
   visibility?: string; // "everyone" (default) | "friends"
   likeCount: number;
@@ -38,6 +39,7 @@ export interface CommunityComment {
   authorId: string;
   authorName: string;
   authorPhotoUrl: string | null;
+  authorBadges?: string[];
   body: string;
   parentCommentId?: string;
   likeCount: number;
@@ -56,6 +58,7 @@ export interface CommunityMember {
   location: string | null;
   industries: string[];
   photoUrl: string | null;
+  badges?: string[];
   createdAt: number;
 }
 

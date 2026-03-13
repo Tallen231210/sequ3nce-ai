@@ -20,7 +20,6 @@ interface ChannelPostListProps {
   userId: string;
   channels: CommunityChannel[];
   isAdmin?: boolean;
-  onMessageAuthor?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
 const POLL_INTERVAL = 10_000;
@@ -30,7 +29,6 @@ export function ChannelPostList({
   userId,
   channels,
   isAdmin,
-  onMessageAuthor,
 }: ChannelPostListProps) {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,7 +226,6 @@ export function ChannelPostList({
                   onUnreact={handleUnreact}
                   onPin={handlePin}
                   onUnpin={handleUnpin}
-                  onMessageAuthor={onMessageAuthor}
                 />
               ))}
               <div className="border-t border-gray-100 dark:border-gray-700 my-3" />
@@ -251,7 +248,6 @@ export function ChannelPostList({
                 onUnreact={handleUnreact}
                 onPin={handlePin}
                 onUnpin={handleUnpin}
-                onMessageAuthor={onMessageAuthor}
               />
             ))}
           </div>

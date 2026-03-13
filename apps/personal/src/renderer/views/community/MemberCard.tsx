@@ -7,12 +7,11 @@ interface MemberCardProps {
   member: CommunityMember;
   isCurrentUser?: boolean;
   friendshipStatus?: FriendshipStatus;
-  onMessage?: (userId: string, name: string, photoUrl: string | null) => void;
   onAddFriend?: (userId: string) => void;
   onAcceptFriend?: (userId: string) => void;
 }
 
-export function MemberCard({ member, isCurrentUser, friendshipStatus, onMessage, onAddFriend, onAcceptFriend }: MemberCardProps) {
+export function MemberCard({ member, isCurrentUser, friendshipStatus, onAddFriend, onAcceptFriend }: MemberCardProps) {
   const initials = getInitials(member.name);
   const gradient = getAvatarGradient(member.name);
 
@@ -35,8 +34,14 @@ export function MemberCard({ member, isCurrentUser, friendshipStatus, onMessage,
 
       {/* Name + headline */}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-          {member.name}
+        <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900 dark:text-white truncate">
+          <span className="truncate">{member.name}</span>
+          {member.badges?.includes('founder') && (
+            <span className="inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200 dark:border-amber-700/50 shrink-0">
+              <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+              Founder
+            </span>
+          )}
         </div>
         {member.headline && (
           <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
@@ -48,19 +53,6 @@ export function MemberCard({ member, isCurrentUser, friendshipStatus, onMessage,
       {/* Actions */}
       {!isCurrentUser && (
         <div className="flex items-center gap-1 shrink-0">
-          {onMessage && (
-            <button
-              onClick={() => onMessage(member.userId, member.name, member.photoUrl)}
-              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
-              title="Message"
-            >
-              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
-                <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
-              </svg>
-            </button>
-          )}
-
           {friendshipStatus === 'none' && onAddFriend && (
             <button
               onClick={() => onAddFriend(member.userId)}

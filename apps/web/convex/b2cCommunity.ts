@@ -114,6 +114,7 @@ export const getFeed = query({
       results.map(async (post) => {
         const photoUrl = await resolvePhotoUrl(ctx, post.authorPhotoStorageId);
         const channel = await ctx.db.get(post.channelId);
+        const author = await ctx.db.get(post.authorId);
         let isLikedByMe = false;
         if (args.userId) {
           const like = await ctx.db
@@ -127,6 +128,7 @@ export const getFeed = query({
         return {
           ...post,
           authorPhotoUrl: photoUrl,
+          authorBadges: author?.badges ?? [],
           channelName: channel?.name ?? "Unknown",
           channelSlug: channel?.slug ?? "",
           isLikedByMe,
@@ -215,6 +217,7 @@ export const listPosts = query({
     const enriched = await Promise.all(
       results.map(async (post) => {
         const photoUrl = await resolvePhotoUrl(ctx, post.authorPhotoStorageId);
+        const author = await ctx.db.get(post.authorId);
         let isLikedByMe = false;
         if (args.userId) {
           const like = await ctx.db
@@ -228,6 +231,7 @@ export const listPosts = query({
         return {
           ...post,
           authorPhotoUrl: photoUrl,
+          authorBadges: author?.badges ?? [],
           isLikedByMe,
           reactionCounts: (post as any).reactionCounts ?? {},
           myReactions: [] as string[],
@@ -267,6 +271,7 @@ export const getPost = query({
 
     const photoUrl = await resolvePhotoUrl(ctx, post.authorPhotoStorageId);
     const channel = await ctx.db.get(post.channelId);
+    const author = await ctx.db.get(post.authorId);
     let isLikedByMe = false;
     if (args.userId) {
       const like = await ctx.db
@@ -281,6 +286,7 @@ export const getPost = query({
     return {
       ...post,
       authorPhotoUrl: photoUrl,
+      authorBadges: author?.badges ?? [],
       channelName: channel?.name ?? "Unknown",
       channelSlug: channel?.slug ?? "",
       isLikedByMe,
@@ -316,6 +322,7 @@ export const listComments = query({
     const enriched = await Promise.all(
       results.map(async (comment) => {
         const photoUrl = await resolvePhotoUrl(ctx, comment.authorPhotoStorageId);
+        const author = await ctx.db.get(comment.authorId);
         let isLikedByMe = false;
         if (args.userId) {
           const like = await ctx.db
@@ -329,6 +336,7 @@ export const listComments = query({
         return {
           ...comment,
           authorPhotoUrl: photoUrl,
+          authorBadges: author?.badges ?? [],
           isLikedByMe,
           parentCommentId: (comment as any).parentCommentId ?? undefined,
           reactionCounts: (comment as any).reactionCounts ?? {},
@@ -412,6 +420,7 @@ export const listMembers = query({
           location: profile?.location ?? null,
           industries: profile?.industries ?? [],
           photoUrl,
+          badges: user.badges ?? [],
           createdAt: user.createdAt,
         };
       })
@@ -941,9 +950,11 @@ export const searchPosts = query({
       results.map(async (post) => {
         const photoUrl = await resolvePhotoUrl(ctx, post.authorPhotoStorageId);
         const channel = await ctx.db.get(post.channelId);
+        const author = await ctx.db.get(post.authorId);
         return {
           ...post,
           authorPhotoUrl: photoUrl,
+          authorBadges: author?.badges ?? [],
           channelName: channel?.name ?? "Unknown",
           channelSlug: channel?.slug ?? "",
           isLikedByMe: false,

@@ -8,10 +8,9 @@ interface PostSearchProps {
   userId: string;
   isAdmin?: boolean;
   onClose: () => void;
-  onMessageAuthor?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
-export function PostSearch({ channelId, userId, isAdmin, onClose, onMessageAuthor }: PostSearchProps) {
+export function PostSearch({ channelId, userId, isAdmin, onClose }: PostSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CommunityPost[]>([]);
   const [searched, setSearched] = useState(false);
@@ -100,7 +99,6 @@ export function PostSearch({ channelId, userId, isAdmin, onClose, onMessageAutho
             onUnreact={noop}
             onPin={noop}
             onUnpin={noop}
-            onMessageAuthor={onMessageAuthor}
           />
         ))}
       </div>

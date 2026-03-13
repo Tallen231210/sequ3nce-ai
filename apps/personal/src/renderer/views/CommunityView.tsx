@@ -13,13 +13,12 @@ import { PostSearch } from './community/PostSearch';
 
 interface CommunityViewProps {
   closerInfo: CloserInfo;
-  onStartDM?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
 const REQUEST_COUNT_POLL = 30_000;
 const UNREAD_POLL_INTERVAL = 15_000;
 
-export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
+export function CommunityView({ closerInfo }: CommunityViewProps) {
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [selectedView, setSelectedView] = useState<string>('feed');
@@ -159,7 +158,6 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
               userId={userId}
               isAdmin={isAdmin}
               onClose={() => setShowSearch(false)}
-              onMessageAuthor={onStartDM}
             />
           ) : loadingChannels && selectedView !== 'training' ? (
             <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
@@ -174,7 +172,7 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
                 }} />
               )}
               {selectedView === 'feed' && (
-                <Feed userId={userId} channels={channels} isAdmin={isAdmin} onMessageAuthor={onStartDM} />
+                <Feed userId={userId} channels={channels} isAdmin={isAdmin} />
               )}
               {selectedView === 'training' && <Training />}
               {isChannelView && (
@@ -183,7 +181,6 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
                   userId={userId}
                   channels={channels}
                   isAdmin={isAdmin}
-                  onMessageAuthor={onStartDM}
                 />
               )}
             </>
@@ -197,7 +194,6 @@ export function CommunityView({ closerInfo, onStartDM }: CommunityViewProps) {
           mode={panelMode}
           onModeChange={setPanelMode}
           currentUserId={userId}
-          onStartDM={onStartDM}
           onClose={() => setShowPanel(false)}
         />
       )}
