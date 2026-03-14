@@ -205,22 +205,32 @@ new ForgeExternalsPlugin({
 
 ## Auto-Update Architecture
 
-The Personal app uses a **dedicated update server** to avoid conflicts with B2B Desktop releases in the same repo:
+The Personal app uses a **dedicated update server** to avoid conflicts with B2B Desktop releases in the same repo. The B2B app uses `provider: 'github'` which queries GitHub's "Latest Release" API directly — but we can't do that for B2C because both apps share the same repo and the "Latest Release" could be either product.
 
 ```
-Electron app → https://sequ3nce.ai/api/updates/personal/{manifest}
+Electron app → https://www.sequ3nce.ai/api/updates/personal/latest-mac.yml
                         ↓
               Next.js API route queries GitHub API
               Finds latest personal-v* release (ignores desktop-v*)
                         ↓
-              302 redirect to GitHub release asset
+              For .yml manifests: proxies YAML content directly (200 response)
+              For binaries (.zip/.exe): 302 redirect to GitHub download URL
 ```
 
+**Key design decisions:**
+
+- **Proxy manifests, redirect binaries**: The server fetches manifest YAML from GitHub and returns it as a direct 200 response (Content-Type: text/yaml). This avoids a 4-hop redirect chain that electron-updater can't reliably follow. Binary downloads still use 302 redirects since electron-updater handles those fine.
+- **Manifest filename aliases**: The server maps legacy filenames (`personal-mac.yml`, `latest-personal-mac.yml`) to the current names (`latest-mac.yml`, `latest.yml`). This ensures ALL existing app versions can auto-update regardless of what manifest filename they request.
+- **Use `www.sequ3nce.ai`**: The base URL uses `www.` to avoid Vercel's non-www → www 307 redirect.
+
+**Configuration:**
+
 - **Update server**: `apps/web/src/app/api/updates/personal/[...file]/route.ts`
-- **App config**: `apps/personal/src/index.ts` — uses `provider: 'generic'` with `url: 'https://sequ3nce.ai/api/updates/personal'`
+- **App config**: `apps/personal/src/index.ts` — uses `provider: 'generic'` with `url: 'https://www.sequ3nce.ai/api/updates/personal'`
 - **Signing**: `apps/personal/forge.config.ts` — `osxSign` + `osxNotarize` with keychain profile `sequ3nce-notarize` (skipped on CI)
-- **Channel**: default (`latest`) — **DO NOT set `autoUpdater.channel`**. The default channel makes electron-updater request `latest-mac.yml` / `latest.yml`, which matches the manifest asset names. Setting `channel = 'personal'` would make it request `personal-mac.yml` / `personal.yml`, causing 404s and breaking auto-update silently.
+- **Channel**: default (`latest`) — **DO NOT set `autoUpdater.channel`**. The server has aliases for backward compatibility, but new code should always use the default channel.
 - **Check frequency**: On startup (5-second delay) + every 4 hours
+- **Manifest assets**: CI generates `latest.yml` (Windows) and `latest-mac.yml` (macOS). These names MUST match what electron-updater requests with the default channel.
 
 ## Troubleshooting
 
@@ -249,10 +259,25 @@ You skipped Step 7. The CI-built macOS app is unsigned. Go back and do Steps 7-9
 The `@timfish/forge-externals-plugin` is missing or misconfigured in `forge.config.ts`. See the "Critical: electron-updater and Webpack" section above. Both the webpack externals AND the forge externals plugin are required.
 
 ### Auto-update not working (no crash, just no updates)
-1. Verify `electron-updater` is in webpack `externals` in `webpack.main.config.ts`
-2. Verify `ForgeExternalsPlugin` is in `forge.config.ts` plugins array
-3. Check that `apps/personal/src/index.ts` uses `provider: 'generic'` with URL `https://sequ3nce.ai/api/updates/personal`
-4. Verify the update endpoint returns the correct manifest: `curl -sL "https://sequ3nce.ai/api/updates/personal/latest-mac.yml"`
+1. **Check the update server returns YAML directly (not a redirect)**:
+   ```bash
+   curl -sI "https://www.sequ3nce.ai/api/updates/personal/latest-mac.yml" | head -3
+   ```
+   Must show `HTTP/2 200` with `Content-Type: text/yaml`. If it shows `302`, the server is broken — it must proxy manifest content, NOT redirect.
+2. **Verify the manifest content is correct**:
+   ```bash
+   curl -sL "https://www.sequ3nce.ai/api/updates/personal/latest-mac.yml"
+   ```
+   Must show the correct version and SHA512 matching the signed .zip.
+3. **Test backward compatibility (old channel='personal' filename)**:
+   ```bash
+   curl -sL "https://www.sequ3nce.ai/api/updates/personal/personal-mac.yml" | head -1
+   ```
+   Must also return the manifest (server aliases this to `latest-mac.yml`).
+4. Verify `electron-updater` is in webpack `externals` in `webpack.main.config.ts`
+5. Verify `ForgeExternalsPlugin` is in `forge.config.ts` plugins array
+6. Check that `apps/personal/src/index.ts` uses `provider: 'generic'` with URL `https://www.sequ3nce.ai/api/updates/personal` (must use `www.`)
+7. Verify `autoUpdater.channel` is NOT set (should be commented out or deleted)
 
 ### Notarization fails
 1. Verify keychain profile exists: The profile `sequ3nce-notarize` must be stored in the login keychain. If missing, create it:
