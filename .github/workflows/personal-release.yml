@@ -144,7 +144,7 @@ jobs:
             # GitHub replaces spaces with dots in release asset names
             EXE_NAME=$(basename "$EXE_FILE" | sed 's/ /./g')
             RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-            cat > artifacts/latest-personal.yml << EOF
+            cat > artifacts/latest.yml << EOF
           version: ${VERSION}
           files:
             - url: ${EXE_NAME}
@@ -154,8 +154,8 @@ jobs:
           sha512: ${SHA512_BASE64}
           releaseDate: '${RELEASE_DATE}'
           EOF
-            echo "Generated latest-personal.yml for Windows"
-            cat artifacts/latest-personal.yml
+            echo "Generated latest.yml for Windows"
+            cat artifacts/latest.yml
           fi
 
       - name: Generate macOS update manifest
@@ -168,7 +168,7 @@ jobs:
             # GitHub replaces spaces with dots in release asset names
             ZIP_NAME=$(basename "$ZIP_FILE" | sed 's/ /./g')
             RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-            cat > artifacts/latest-personal-mac.yml << EOF
+            cat > artifacts/latest-mac.yml << EOF
           version: ${VERSION}
           files:
             - url: ${ZIP_NAME}
@@ -178,8 +178,8 @@ jobs:
           sha512: ${SHA512_BASE64}
           releaseDate: '${RELEASE_DATE}'
           EOF
-            echo "Generated latest-personal-mac.yml for macOS"
-            cat artifacts/latest-personal-mac.yml
+            echo "Generated latest-mac.yml for macOS"
+            cat artifacts/latest-mac.yml
           fi
 
       - name: Create Release
@@ -195,8 +195,8 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.deb
             artifacts/**/*.rpm
-            artifacts/latest-personal.yml
-            artifacts/latest-personal-mac.yml
+            artifacts/latest.yml
+            artifacts/latest-mac.yml
           body: |
             ## Sequ3nce Personal v${{ steps.get_version.outputs.VERSION }}
 

@@ -1931,7 +1931,9 @@ autoUpdater.setFeedURL({
   provider: 'generic',
   url: 'https://sequ3nce.ai/api/updates/personal',
 });
-autoUpdater.channel = 'personal';
+// Do NOT set autoUpdater.channel — the default "latest" channel makes
+// electron-updater request latest-mac.yml / latest.yml, which matches
+// the manifest filenames in the GitHub release assets.
 
 // Set up auto-updater event handlers
 function setupAutoUpdater() {

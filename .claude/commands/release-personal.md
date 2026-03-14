@@ -53,7 +53,7 @@ This triggers `.github/workflows/personal-release.yml` which:
 1. Builds the Windows `.exe` installer on `windows-latest`
 2. Builds the macOS `.dmg` and `.zip` on `macos-latest` (**unsigned** — CI has no cert)
 3. Builds Linux `.deb` and `.rpm` packages on `ubuntu-latest`
-4. Generates `latest-personal.yml` (Windows) and `latest-personal-mac.yml` (macOS) auto-update manifests
+4. Generates `latest.yml` (Windows) and `latest-mac.yml` (macOS) auto-update manifests
 5. Creates a **draft** GitHub release with all artifacts attached
 
 ### Step 5: Wait for CI
@@ -124,7 +124,7 @@ SHA=$(shasum -a 512 "out/make/zip/darwin/arm64/Sequ3nce Personal-darwin-arm64-X.
 SIZE=$(stat -f%z "out/make/zip/darwin/arm64/Sequ3nce Personal-darwin-arm64-X.Y.Z.zip")
 
 # Write manifest
-cat > /tmp/latest-personal-mac.yml << EOF
+cat > /tmp/latest-mac.yml << EOF
 version: X.Y.Z
 files:
   - url: Sequ3nce.Personal-darwin-arm64-X.Y.Z.zip
@@ -136,8 +136,8 @@ releaseDate: '$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'
 EOF
 
 # Replace manifest on release
-gh release delete-asset personal-vX.Y.Z "latest-personal-mac.yml" --repo Tallen231210/sequ3nce-ai --yes
-gh release upload personal-vX.Y.Z "/tmp/latest-personal-mac.yml" --repo Tallen231210/sequ3nce-ai
+gh release delete-asset personal-vX.Y.Z "latest-mac.yml" --repo Tallen231210/sequ3nce-ai --yes
+gh release upload personal-vX.Y.Z "/tmp/latest-mac.yml" --repo Tallen231210/sequ3nce-ai
 ```
 
 ### Step 10: Verify
@@ -149,18 +149,18 @@ Run all three of these checks:
 gh release view personal-vX.Y.Z --repo Tallen231210/sequ3nce-ai --json assets --jq '.assets[].name'
 
 # 2. Verify macOS auto-update endpoint serves the new version
-curl -sL "https://sequ3nce.ai/api/updates/personal/latest-personal-mac.yml" | head -2
+curl -sL "https://sequ3nce.ai/api/updates/personal/latest-mac.yml" | head -2
 
 # 3. Verify Windows auto-update endpoint serves the new version
-curl -sL "https://sequ3nce.ai/api/updates/personal/latest-personal.yml" | head -2
+curl -sL "https://sequ3nce.ai/api/updates/personal/latest.yml" | head -2
 ```
 
 Expected release assets (all 7):
 - `Sequ3nce.Personal.dmg` — macOS installer (signed + notarized)
 - `Sequ3nce.Personal-darwin-arm64-X.Y.Z.zip` — macOS auto-update archive (signed + notarized)
-- `latest-personal-mac.yml` — macOS auto-update manifest (with signed .zip hash)
+- `latest-mac.yml` — macOS auto-update manifest (with signed .zip hash)
 - `Sequ3nce.Personal-X.Y.Z.Setup.exe` — Windows installer
-- `latest-personal.yml` — Windows auto-update manifest
+- `latest.yml` — Windows auto-update manifest
 - `sequ3nce-personal_X.Y.Z_amd64.deb` — Linux Debian package
 - `sequ3nce-personal-X.Y.Z-1.x86_64.rpm` — Linux RPM package
 
@@ -219,7 +219,7 @@ Electron app → https://sequ3nce.ai/api/updates/personal/{manifest}
 - **Update server**: `apps/web/src/app/api/updates/personal/[...file]/route.ts`
 - **App config**: `apps/personal/src/index.ts` — uses `provider: 'generic'` with `url: 'https://sequ3nce.ai/api/updates/personal'`
 - **Signing**: `apps/personal/forge.config.ts` — `osxSign` + `osxNotarize` with keychain profile `sequ3nce-notarize` (skipped on CI)
-- **Channel**: `personal` (manifests are named `latest-personal.yml` / `latest-personal-mac.yml`)
+- **Channel**: default (`latest`) — **DO NOT set `autoUpdater.channel`**. The default channel makes electron-updater request `latest-mac.yml` / `latest.yml`, which matches the manifest asset names. Setting `channel = 'personal'` would make it request `personal-mac.yml` / `personal.yml`, causing 404s and breaking auto-update silently.
 - **Check frequency**: On startup (5-second delay) + every 4 hours
 
 ## Troubleshooting
@@ -252,7 +252,7 @@ The `@timfish/forge-externals-plugin` is missing or misconfigured in `forge.conf
 1. Verify `electron-updater` is in webpack `externals` in `webpack.main.config.ts`
 2. Verify `ForgeExternalsPlugin` is in `forge.config.ts` plugins array
 3. Check that `apps/personal/src/index.ts` uses `provider: 'generic'` with URL `https://sequ3nce.ai/api/updates/personal`
-4. Verify the update endpoint returns the correct manifest: `curl -sL "https://sequ3nce.ai/api/updates/personal/latest-personal-mac.yml"`
+4. Verify the update endpoint returns the correct manifest: `curl -sL "https://sequ3nce.ai/api/updates/personal/latest-mac.yml"`
 
 ### Notarization fails
 1. Verify keychain profile exists: The profile `sequ3nce-notarize` must be stored in the login keychain. If missing, create it:
