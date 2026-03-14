@@ -8,18 +8,24 @@ const TAG_PREFIX = "personal-v";
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Simple in-memory cache for GitHub release data
-let cachedRelease: { tag: string; assets: { name: string; url: string }[]; fetchedAt: number } | null = null;
+let cachedRelease: {
+  tag: string;
+  assets: { name: string; url: string }[];
+  fetchedAt: number;
+} | null = null;
 
 async function getLatestPersonalRelease() {
   if (cachedRelease && Date.now() - cachedRelease.fetchedAt < CACHE_TTL_MS) {
     return cachedRelease;
   }
 
-  // Fetch releases from GitHub (public repo, no auth needed)
   const res = await fetch(
     `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=20`,
     {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "sequ3nce-updater" },
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "sequ3nce-updater",
+      },
       cache: "no-store",
     }
   );
@@ -38,10 +44,12 @@ async function getLatestPersonalRelease() {
 
   cachedRelease = {
     tag: release.tag_name,
-    assets: release.assets.map((a: { name: string; browser_download_url: string }) => ({
-      name: a.name,
-      url: a.browser_download_url,
-    })),
+    assets: release.assets.map(
+      (a: { name: string; browser_download_url: string }) => ({
+        name: a.name,
+        url: a.browser_download_url,
+      })
+    ),
     fetchedAt: Date.now(),
   };
 
@@ -56,7 +64,10 @@ export async function GET(
   const filename = file.join("/");
 
   if (!filename) {
-    return NextResponse.json({ error: "File parameter required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "File parameter required" },
+      { status: 400 }
+    );
   }
 
   const release = await getLatestPersonalRelease();
@@ -72,6 +83,34 @@ export async function GET(
     );
   }
 
-  // Redirect to the GitHub download URL
+  // For manifest YAML files: fetch and proxy the content directly.
+  // electron-updater's generic provider needs the YAML body in the response,
+  // not a redirect chain (Vercel 307 → Vercel 302 → GitHub 302 → Azure 200).
+  // Proxying eliminates redirect-related issues that break auto-update discovery.
+  if (filename.endsWith(".yml")) {
+    const yamlRes = await fetch(asset.url, {
+      headers: { "User-Agent": "sequ3nce-updater" },
+      redirect: "follow",
+    });
+
+    if (!yamlRes.ok) {
+      return NextResponse.json(
+        { error: "Failed to fetch manifest" },
+        { status: 502 }
+      );
+    }
+
+    const yamlContent = await yamlRes.text();
+    return new NextResponse(yamlContent, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/yaml",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      },
+    });
+  }
+
+  // For binary files (zip, exe, dmg): redirect to the GitHub download URL.
+  // electron-updater handles these redirects fine for file downloads.
   return NextResponse.redirect(asset.url, 302);
 }
