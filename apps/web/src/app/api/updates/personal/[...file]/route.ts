@@ -75,10 +75,26 @@ export async function GET(
     return NextResponse.json({ error: "No release found" }, { status: 404 });
   }
 
-  const asset = release.assets.find((a) => a.name === filename);
+  // Map legacy manifest filenames from older app versions.
+  // v1.1.x–v1.2.0 had autoUpdater.channel = 'personal', which made
+  // electron-updater request 'personal-mac.yml' / 'personal.yml' instead
+  // of 'latest-mac.yml' / 'latest.yml'. This mapping lets those old
+  // versions auto-update without a manual download.
+  const MANIFEST_ALIASES: Record<string, string> = {
+    "personal-mac.yml": "latest-mac.yml",
+    "personal.yml": "latest.yml",
+    "personal-linux.yml": "latest-linux.yml",
+    // Old naming convention from early CI workflow
+    "latest-personal-mac.yml": "latest-mac.yml",
+    "latest-personal.yml": "latest.yml",
+  };
+
+  const resolvedFilename = MANIFEST_ALIASES[filename] || filename;
+
+  const asset = release.assets.find((a) => a.name === resolvedFilename);
   if (!asset) {
     return NextResponse.json(
-      { error: `Asset '${filename}' not found in release ${release.tag}` },
+      { error: `Asset '${resolvedFilename}' not found in release ${release.tag}` },
       { status: 404 }
     );
   }

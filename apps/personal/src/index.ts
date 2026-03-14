@@ -1929,7 +1929,7 @@ autoUpdater.autoInstallOnAppQuit = true;
 // The /api/updates/personal endpoint finds the latest personal-v* release.
 autoUpdater.setFeedURL({
   provider: 'generic',
-  url: 'https://sequ3nce.ai/api/updates/personal',
+  url: 'https://www.sequ3nce.ai/api/updates/personal',
 });
 // Do NOT set autoUpdater.channel — the default "latest" channel makes
 // electron-updater request latest-mac.yml / latest.yml, which matches
