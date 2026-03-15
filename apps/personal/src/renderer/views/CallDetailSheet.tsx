@@ -11,8 +11,6 @@ import type {
 import {
   getTranscriptSegments,
   getAmmoByCall,
-  flagCallForReview,
-  unflagCall,
   refreshRecordingUrl,
   getCallAnalysis,
   getHighlightClipsByCall,
@@ -52,9 +50,6 @@ export function CallDetailSheet({
   const [polledAnalysis, setPolledAnalysis] = useState<CallAnalysis | undefined>(call.callAnalysis);
 
   // Flag state
-  const [isFlagged, setIsFlagged] = useState(call.flaggedForReview || false);
-  const [reviewStatus, setReviewStatus] = useState(call.reviewStatus || null);
-  const [isFlagging, setIsFlagging] = useState(false);
 
   // Share modal state
   const [showShareModal, setShowShareModal] = useState(false);
@@ -147,24 +142,6 @@ export function CallDetailSheet({
     }
   }
 
-  async function handleToggleFlag() {
-    setIsFlagging(true);
-    if (isFlagged && reviewStatus !== 'reviewed') {
-      const ok = await unflagCall(call._id, closerInfo.closerId);
-      if (ok) {
-        setIsFlagged(false);
-        onCallUpdated({ ...call, flaggedForReview: false });
-      }
-    } else {
-      const ok = await flagCallForReview(call._id, closerInfo.closerId);
-      if (ok) {
-        setIsFlagged(true);
-        setReviewStatus(null);
-        onCallUpdated({ ...call, flaggedForReview: true, reviewStatus: undefined });
-      }
-    }
-    setIsFlagging(false);
-  }
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -204,23 +181,6 @@ export function CallDetailSheet({
             </button>
           )}
 
-          {/* Flag button */}
-          {hasVideo && (
-            <button
-              onClick={handleToggleFlag}
-              disabled={isFlagging}
-              className={`flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium rounded-md border transition-colors ${
-                isFlagged
-                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 6a3 3 0 013-3h2.25a3 3 0 013 3v2.25a3 3 0 01-3 3H6a3 3 0 01-3-3V6zm9.47.47a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 11-1.06-1.06L15.19 12H10.5a.75.75 0 010-1.5h4.69l-2.72-2.72a.75.75 0 010-1.06z" clipRule="evenodd" />
-              </svg>
-              {reviewStatus === 'reviewed' ? 'Flag Again' : isFlagged ? 'Flagged' : 'Flag for Review'}
-            </button>
-          )}
 
           {/* Share button */}
           {hasVideo && (

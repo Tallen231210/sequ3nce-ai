@@ -23,6 +23,8 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const initialLoadDone = useRef(false);
 
   // Profile fields
   const [profileSlug, setProfileSlug] = useState<string | null>(null);
@@ -74,10 +76,19 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         setIsManuallyVerified(profile.isManuallyVerified || false);
       }
       setIsLoading(false);
+      // Allow a tick for React to flush state before arming dirty tracking
+      setTimeout(() => { initialLoadDone.current = true; }, 0);
     }).catch(() => {
       if (mountedRef.current) setIsLoading(false);
     });
   }, [closerInfo.b2cUserId]);
+
+  function markDirty() {
+    if (initialLoadDone.current) {
+      setHasUnsavedChanges(true);
+      setSaveSuccess(false);
+    }
+  }
 
   async function handleSave() {
     if (!closerInfo.b2cUserId || savingRef.current) return;
@@ -97,7 +108,6 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         skills: skills.length > 0 ? skills : undefined,
         socialLinks,
         isPublic,
-        isAvailable: isPublic,
         introVideoUrl: introVideoUrl || undefined,
         highlightReelUrl: undefined,
         whatsappNumber: whatsappNumber || undefined,
@@ -110,6 +120,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
 
       if (result.success) {
         setSaveSuccess(true);
+        setHasUnsavedChanges(false);
         setTimeout(() => { if (mountedRef.current) setSaveSuccess(false); }, 3000);
       } else {
         setError(result.error || 'Failed to save profile');
@@ -226,7 +237,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
                 <input
                   type="text"
                   value={headline}
-                  onChange={(e) => setHeadline(e.target.value.slice(0, 120))}
+                  onChange={(e) => { setHeadline(e.target.value.slice(0, 120)); markDirty(); }}
                   placeholder="High-Ticket Coaching Closer"
                   className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
                 />
@@ -236,7 +247,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
                 <input
                   type="text"
                   value={location}
-                  onChange={(e) => setLocation(e.target.value.slice(0, 100))}
+                  onChange={(e) => { setLocation(e.target.value.slice(0, 100)); markDirty(); }}
                   placeholder="Austin, TX"
                   className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
                 />
@@ -265,7 +276,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             </label>
             <textarea
               value={bio}
-              onChange={(e) => setBio(e.target.value.slice(0, 2000))}
+              onChange={(e) => { setBio(e.target.value.slice(0, 2000)); markDirty(); }}
               placeholder="Tell potential employers about your sales experience, closing style, and what makes you stand out..."
               rows={5}
               className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500 resize-none"
@@ -279,16 +290,16 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
           <TagInput
             label="Industries"
             tags={industries}
-            onChange={setIndustries}
+            onChange={(v) => { setIndustries(v); markDirty(); }}
             maxTags={10}
             suggestions={INDUSTRY_SUGGESTIONS}
             placeholder="Add an industry..."
           />
-          <TicketRangeSelector value={ticketRange} onChange={setTicketRange} />
+          <TicketRangeSelector value={ticketRange} onChange={(v) => { setTicketRange(v); markDirty(); }} />
           <TagInput
             label="Skills"
             tags={skills}
-            onChange={setSkills}
+            onChange={(v) => { setSkills(v); markDirty(); }}
             maxTags={20}
             suggestions={SKILL_SUGGESTIONS}
             placeholder="Add a skill..."
@@ -298,7 +309,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         {/* Social Links */}
         <section className="space-y-4">
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Social & Links</h2>
-          <SocialLinksSection links={socialLinks} onChange={setSocialLinks} />
+          <SocialLinksSection links={socialLinks} onChange={(v) => { setSocialLinks(v); markDirty(); }} />
         </section>
 
         {/* Videos & Contact */}
@@ -306,7 +317,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Videos & Contact</h2>
           <ProfileVideoInputs
             introVideoUrl={introVideoUrl}
-            onIntroChange={setIntroVideoUrl}
+            onIntroChange={(v) => { setIntroVideoUrl(v); markDirty(); }}
           />
           <div>
             <label className="block text-[12px] text-gray-500 dark:text-gray-400 mb-1">
@@ -315,7 +326,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             <input
               type="tel"
               value={whatsappNumber}
-              onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 15))}
+              onChange={(e) => { setWhatsappNumber(e.target.value.replace(/\D/g, '').slice(0, 15)); markDirty(); }}
               placeholder="15551234567"
               className="w-full px-3 py-2 text-[13px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-gray-400 dark:focus:border-gray-500 placeholder-gray-400 dark:placeholder-gray-500"
             />
@@ -342,8 +353,8 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             manualStats={manualStats}
             statsSource={statsSource}
             isManuallyVerified={isManuallyVerified}
-            onStatsSourceChange={setStatsSource}
-            onManualStatsChange={setManualStats}
+            onStatsSourceChange={(v) => { setStatsSource(v); markDirty(); }}
+            onManualStatsChange={(v) => { setManualStats(v); markDirty(); }}
           />
         </section>
 
@@ -353,7 +364,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
           <label className="flex items-center gap-3 cursor-pointer">
             <button
               type="button"
-              onClick={() => setIsPublic(!isPublic)}
+              onClick={() => { setIsPublic(!isPublic); markDirty(); }}
               className={`relative w-11 h-6 rounded-full transition-colors ${
                 isPublic ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'
               }`}
@@ -389,12 +400,19 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             {saveSuccess && (
               <span className="text-[13px] text-green-600 dark:text-green-400">Profile saved!</span>
             )}
+            {hasUnsavedChanges && !error && !saveSuccess && (
+              <span className="text-[13px] text-amber-600 dark:text-amber-400">You have unsaved changes</span>
+            )}
           </div>
           <button
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="px-6 py-2.5 text-[14px] font-medium bg-black dark:bg-white text-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className={`px-6 py-2.5 text-[14px] font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+              hasUnsavedChanges
+                ? 'bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-500 dark:text-white dark:hover:bg-amber-600'
+                : 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200'
+            }`}
           >
             {isSaving ? 'Saving...' : 'Save Profile'}
           </button>

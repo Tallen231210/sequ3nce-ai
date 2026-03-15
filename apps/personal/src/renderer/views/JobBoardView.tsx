@@ -498,10 +498,10 @@ function ProfileTab({
       <div className="flex items-center justify-between p-4 border border-gray-200 dark:border-zinc-700 rounded-xl bg-white dark:bg-zinc-800/50 mb-4">
         <div>
           <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-            Available for Hire
+            Show in Talent Directory
           </h3>
           <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">
-            When enabled, your profile appears in the Talent Directory
+            When enabled, Sequ3nce companies can discover your profile
           </p>
         </div>
         <button

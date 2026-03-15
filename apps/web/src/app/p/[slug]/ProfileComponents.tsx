@@ -35,6 +35,7 @@ export interface ProfileData {
   } | null;
   isVerified?: boolean;
   statsSource?: string;
+  badges?: string[];
 }
 
 // ==================== Utilities ====================
