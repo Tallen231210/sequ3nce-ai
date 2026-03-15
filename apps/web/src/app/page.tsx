@@ -25,7 +25,6 @@ import {
   Video,
   TrendingUp,
   Zap,
-  X,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -118,22 +117,11 @@ function ScreenshotTabs() {
 /* ═══════════════════════════════════════════════════ */
 export default function Home() {
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isBannerVisible, setIsBannerVisible] = useState(false);
-
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
-    // Show banner only if not previously dismissed
-    if (typeof window !== "undefined" && !localStorage.getItem("b2c-banner-dismissed")) {
-      setIsBannerVisible(true);
-    }
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  const dismissBanner = () => {
-    setIsBannerVisible(false);
-    localStorage.setItem("b2c-banner-dismissed", "1");
-  };
 
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -203,22 +191,13 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-white overflow-x-hidden relative">
       {/* ─── B2C Banner ─── */}
-      {isBannerVisible && (
-        <div className="fixed top-0 left-0 right-0 z-[60] bg-zinc-950 text-zinc-400 h-9 flex items-center justify-center text-[13px]">
-          <Link href="/personal" className="hover:text-white transition-colors">
-            <span className="hidden sm:inline">Individual closer? Try Sequ3nce Personal — your sales career, verified.</span>
-            <span className="sm:hidden">Closer? Try Sequ3nce Personal</span>
-            <span className="text-white ml-1">&rarr;</span>
-          </Link>
-          <button
-            onClick={dismissBanner}
-            className="absolute right-3 text-zinc-500 hover:text-white transition-colors"
-            aria-label="Dismiss banner"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
+      <div className="fixed top-0 left-0 right-0 z-[60] bg-zinc-950 text-zinc-400 h-9 flex items-center justify-center text-[13px]">
+        <Link href="/personal" className="hover:text-white transition-colors">
+          <span className="hidden sm:inline">Individual closer? Try Sequ3nce Personal — your sales career, verified.</span>
+          <span className="sm:hidden">Closer? Try Sequ3nce Personal</span>
+          <span className="text-white ml-1">&rarr;</span>
+        </Link>
+      </div>
 
       {/* ─── Global grid pattern ─── */}
       <div
@@ -236,8 +215,8 @@ export default function Home() {
         className={cn(
           "fixed left-0 right-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
           isScrolled
-            ? isBannerVisible ? "top-[52px] px-4 sm:px-6 lg:px-8" : "top-4 px-4 sm:px-6 lg:px-8"
-            : isBannerVisible ? "top-9 px-0" : "top-0 px-0"
+            ? "top-[52px] px-4 sm:px-6 lg:px-8"
+            : "top-9 px-0"
         )}
       >
         <div
