@@ -267,6 +267,12 @@ export default function Home() {
                       : id.charAt(0).toUpperCase() + id.slice(1)}
                 </button>
               ))}
+              <Link
+                href="/personal"
+                className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors"
+              >
+                For Closers
+              </Link>
             </nav>
             <div className="flex items-center gap-3">
               <SignedOut>
