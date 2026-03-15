@@ -17,7 +17,6 @@ import {
   BookOpen,
   Users,
   Calendar,
-  ChevronDown,
   Check,
   Monitor,
   UserPlus,
@@ -26,101 +25,11 @@ import {
   Video,
   TrendingUp,
   Zap,
+  X,
 } from "lucide-react";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-
-/* ─── Scroll animation hook ──────────────────────── */
-function useInView(threshold = 0.1) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [isInView, setIsInView] = useState(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setIsInView(true);
-      },
-      { threshold }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [threshold]);
-
-  return { ref, isInView };
-}
-
-function AnimatedSection({
-  children,
-  className,
-  delay = 0,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  delay?: number;
-}) {
-  const { ref, isInView } = useInView(0.05);
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        "transition-all duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
-        isInView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-16",
-        className
-      )}
-      style={{ transitionDelay: `${delay}ms` }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/* ─── FAQ Accordion ──────────────────────────────── */
-function FAQItem({
-  question,
-  answer,
-  index,
-}: {
-  question: string;
-  answer: string;
-  index: number;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  return (
-    <div className="group border-b border-zinc-200">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between py-7 text-left hover:opacity-70 transition-opacity"
-      >
-        <div className="flex items-baseline gap-5">
-          <span className="text-xs font-mono text-zinc-400 tabular-nums">
-            {String(index + 1).padStart(2, "0")}
-          </span>
-          <span className="font-medium text-[15px] text-zinc-900">
-            {question}
-          </span>
-        </div>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 text-zinc-400 transition-transform duration-300 shrink-0 ml-4",
-            isOpen && "rotate-180"
-          )}
-        />
-      </button>
-      <div
-        className={cn(
-          "grid transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          isOpen ? "grid-rows-[1fr] pb-7" : "grid-rows-[0fr]"
-        )}
-      >
-        <div className="overflow-hidden">
-          <p className="text-zinc-500 text-[15px] leading-relaxed pl-11">
-            {answer}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { AnimatedSection, FAQItem } from "@/components/landing/shared";
 
 /* ─── Screenshot Tabs ────────────────────────────── */
 function ScreenshotTabs() {
@@ -209,12 +118,22 @@ function ScreenshotTabs() {
 /* ═══════════════════════════════════════════════════ */
 export default function Home() {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isBannerVisible, setIsBannerVisible] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
+    // Show banner only if not previously dismissed
+    if (typeof window !== "undefined" && !localStorage.getItem("b2c-banner-dismissed")) {
+      setIsBannerVisible(true);
+    }
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const dismissBanner = () => {
+    setIsBannerVisible(false);
+    localStorage.setItem("b2c-banner-dismissed", "1");
+  };
 
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -283,6 +202,24 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-white overflow-x-hidden relative">
+      {/* ─── B2C Banner ─── */}
+      {isBannerVisible && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-zinc-950 text-zinc-400 h-9 flex items-center justify-center text-[13px]">
+          <Link href="/personal" className="hover:text-white transition-colors">
+            <span className="hidden sm:inline">Individual closer? Try Sequ3nce Personal — your sales career, verified.</span>
+            <span className="sm:hidden">Closer? Try Sequ3nce Personal</span>
+            <span className="text-white ml-1">&rarr;</span>
+          </Link>
+          <button
+            onClick={dismissBanner}
+            className="absolute right-3 text-zinc-500 hover:text-white transition-colors"
+            aria-label="Dismiss banner"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* ─── Global grid pattern ─── */}
       <div
         className="fixed inset-0 pointer-events-none z-0"
@@ -299,8 +236,8 @@ export default function Home() {
         className={cn(
           "fixed left-0 right-0 z-50 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
           isScrolled
-            ? "top-4 px-4 sm:px-6 lg:px-8"
-            : "top-0 px-0"
+            ? isBannerVisible ? "top-[52px] px-4 sm:px-6 lg:px-8" : "top-4 px-4 sm:px-6 lg:px-8"
+            : isBannerVisible ? "top-9 px-0" : "top-0 px-0"
         )}
       >
         <div
@@ -1129,6 +1066,11 @@ export default function Home() {
                     </button>
                   </li>
                 ))}
+                <li>
+                  <Link href="/personal" className="hover:text-zinc-900 transition-colors">
+                    Sequ3nce Personal
+                  </Link>
+                </li>
               </ul>
             </div>
 
