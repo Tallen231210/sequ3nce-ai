@@ -328,6 +328,7 @@ function AppContent() {
           email: result.email || signupEmail.trim().toLowerCase(),
           status: 'active',
           subscriptionStatus: result.subscriptionStatus || 'none',
+          b2cUserId: result.b2cUserId,
         };
 
         // Clear signup form fields
