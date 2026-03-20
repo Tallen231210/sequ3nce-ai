@@ -17,12 +17,14 @@ import {
   changePassword,
   requestPasswordReset,
   resetPasswordWithCode,
+  sendVerificationCode,
   logClientError,
   isMeetingBotEnabled,
   type CloserInfo,
   type ScheduledCallMatch,
 } from './convex';
 import { MeetingBotHub } from './views/MeetingBotHub';
+import { EmailVerificationScreen } from './views/EmailVerificationScreen';
 import { SubscriptionGate } from './views/SubscriptionGate';
 import { ThemeProvider } from './ThemeContext';
 import logoImage from '../assets/logo.png';
@@ -145,6 +147,7 @@ type AuthState =
   | 'signup'             // Showing signup form
   | 'signing_up'         // Attempting signup
   | 'forgot_password'    // Showing forgot password flow
+  | 'verify_email'       // Awaiting email verification code
   | 'authenticated'      // Fully logged in
   | 'error';             // Error state
 
@@ -179,6 +182,8 @@ function AppContent() {
   const [isBotMode, setIsBotMode] = useState(false);
   const [botModeChecked, setBotModeChecked] = useState(false);
   const isSubmittingRef = useRef(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
+  const [pendingCloserInfo, setPendingCloserInfo] = useState<CloserInfo | null>(null);
 
   // Shared post-auth initialization (DRY — used by login, signup, and session restore)
   const initializeSession = (info: CloserInfo) => {
@@ -246,7 +251,14 @@ function AppContent() {
       const result = await loginCloser(email.trim().toLowerCase(), password.trim());
 
       if (result.success && result.closer) {
-        initializeSession(result.closer);
+        if (result.emailVerified === false) {
+          setPendingCloserInfo(result.closer);
+          setPendingVerificationEmail(result.closer.email);
+          setAuthState('verify_email');
+          sendVerificationCode(result.closer.email);
+        } else {
+          initializeSession(result.closer);
+        }
       } else {
         setAuthError({
           message: result.error || 'Login failed. Please try again.',
@@ -325,7 +337,12 @@ function AppContent() {
         setSignupPassword('');
         setSignupConfirmPassword('');
 
-        initializeSession(closerInfoData);
+        // Route to email verification
+        const verifyEmail = result.email || signupEmail.trim().toLowerCase();
+        setPendingCloserInfo(closerInfoData);
+        setPendingVerificationEmail(verifyEmail);
+        setAuthState('verify_email');
+        sendVerificationCode(verifyEmail);
       } else {
         setAuthError({
           message: result.error || 'Signup failed. Please try again.',
@@ -403,6 +420,24 @@ function AppContent() {
 
   if (authState === 'forgot_password') {
     return <ForgotPasswordScreen onBack={() => setAuthState('login')} />;
+  }
+
+  if (authState === 'verify_email' && pendingVerificationEmail) {
+    return (
+      <EmailVerificationScreen
+        email={pendingVerificationEmail}
+        onVerified={() => {
+          if (pendingCloserInfo) initializeSession(pendingCloserInfo);
+          setPendingCloserInfo(null);
+          setPendingVerificationEmail('');
+        }}
+        onBack={() => {
+          setPendingCloserInfo(null);
+          setPendingVerificationEmail('');
+          setAuthState('login');
+        }}
+      />
+    );
   }
 
   if (authState === 'signup' || authState === 'signing_up') {

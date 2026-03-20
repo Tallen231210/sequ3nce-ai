@@ -4,7 +4,6 @@ import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import {
   buildCallStartedEmbed,
-  buildCallSummaryEmbed,
   buildCallGoingLongEmbed,
   buildCallCompletedEmbed,
 } from "./discord";
@@ -313,8 +312,6 @@ export const getSlackStatus = query({
 export type SlackNotificationType =
   | "reinforcement"
   | "call_started"
-  | "summary_30"
-  | "summary_60"
   | "call_going_long"
   | "call_completed";
 
@@ -364,7 +361,7 @@ type SlackNotificationResult =
   | { success: false; error: string };
 
 // Map notification type strings to slackNotificationChannels keys
-type NotificationChannelKey = "reinforcement" | "callStarted" | "callSummary" | "callGoingLong" | "callCompleted";
+type NotificationChannelKey = "reinforcement" | "callStarted" | "callGoingLong" | "callCompleted";
 
 function getNotificationChannelKey(type: string): NotificationChannelKey | null {
   switch (type) {
@@ -372,9 +369,6 @@ function getNotificationChannelKey(type: string): NotificationChannelKey | null 
       return "reinforcement";
     case "call_started":
       return "callStarted";
-    case "summary_30":
-    case "summary_60":
-      return "callSummary";
     case "call_going_long":
       return "callGoingLong";
     case "call_completed":
@@ -651,89 +645,6 @@ export function buildCallStartedBlocks(
 }
 
 /**
- * Build Slack blocks for call summary (30 or 60 minute)
- */
-export function buildCallSummaryBlocks(
-  closerName: string,
-  prospectName: string | undefined,
-  durationMinutes: number,
-  summary: string,
-  callId?: string,
-  milestone: "30" | "60" = "30"
-) {
-  const dashboardUrl = callId
-    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://sequ3nce.ai/dashboard";
-
-  return {
-    blocks: [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: `📊 ${milestone}-Minute Call Summary`,
-          emoji: true,
-        },
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `*${closerName}* • Call with *${prospectName || "Unknown"}*`,
-          },
-        ],
-      },
-      {
-        type: "divider",
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: summary,
-        },
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `Duration: ${durationMinutes} minutes`,
-          },
-        ],
-      },
-      {
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Listen Live",
-              emoji: true,
-            },
-            url: dashboardUrl,
-            action_id: "listen_live",
-          },
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "Open Call",
-              emoji: true,
-            },
-            url: dashboardUrl,
-            action_id: "open_call",
-          },
-        ],
-      },
-    ],
-    text: `📊 ${milestone}-min summary for ${closerName}'s call with ${prospectName || "prospect"}: ${summary.substring(0, 100)}...`,
-  };
-}
-
-/**
  * Build Slack blocks for call going long notification
  */
 export function buildCallGoingLongBlocks(
@@ -834,19 +745,21 @@ export function buildCallGoingLongBlocks(
 export function buildCallCompletedBlocks(
   closerName: string,
   prospectName: string | undefined,
-  outcome: string,
+  outcome: string | undefined,
   durationMinutes: number,
   summary: string,
   cashCollected?: number,
   contractValue?: number,
   callId?: string
 ) {
-  // Emoji based on outcome
-  const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" : "❌";
+  // Emoji based on outcome (⏳ = pending, closer hasn't submitted questionnaire yet)
+  const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" :
+                        outcome ? "❌" : "⏳";
   const outcomeText = outcome === "closed" ? "Closed" :
                       outcome === "follow_up" ? "Follow-up" :
                       outcome === "lost" ? "Not Closed" :
-                      outcome === "no_show" ? "No Show" : outcome;
+                      outcome === "no_show" ? "No Show" :
+                      outcome ? outcome : "Pending";
 
   const dashboardUrl = callId
     ? `https://sequ3nce.ai/dashboard/calls/${callId}`
@@ -1134,174 +1047,6 @@ export const sendCallStartedNotification = internalAction({
 });
 
 // Type for active calls from getLiveCallsForSlack
-interface ActiveCallForSlack {
-  _id: Id<"calls">;
-  startedAt?: number;
-}
-
-/**
- * Check for long-running calls and send 30/60 minute summaries
- * Called by cron job every 5 minutes
- */
-export const checkCallMilestones = internalAction({
-  args: {},
-  handler: async (ctx): Promise<{ success: boolean; checkedCalls?: number; error?: string }> => {
-    try {
-      // Get all active calls (on_call status)
-      const activeCalls = await ctx.runQuery(api.calls.getLiveCallsForSlack, {}) as ActiveCallForSlack[];
-
-      console.log(`[Slack] Checking ${activeCalls.length} active calls for milestones`);
-
-      const now = Date.now();
-      const THIRTY_MINUTES = 30 * 60 * 1000;
-      const SIXTY_MINUTES = 60 * 60 * 1000;
-
-      for (const call of activeCalls) {
-        if (!call.startedAt) continue;
-
-        const callDuration = now - call.startedAt;
-        const durationMinutes = Math.floor(callDuration / 60000);
-
-        // Check 30-minute milestone
-        if (callDuration >= THIRTY_MINUTES && callDuration < SIXTY_MINUTES) {
-          const alreadySent30 = await ctx.runQuery(api.slack.hasNotificationBeenSent, {
-            callId: call._id,
-            type: "summary_30",
-          });
-
-          if (!alreadySent30) {
-            console.log(`[Slack] Sending 30-minute summary for call:`, call._id);
-            await ctx.runAction(internal.slack.sendCallSummaryNotification, {
-              callId: call._id,
-              milestone: "30" as const,
-              durationMinutes,
-            });
-          }
-        }
-
-        // Check 60-minute milestone
-        if (callDuration >= SIXTY_MINUTES) {
-          const alreadySent60 = await ctx.runQuery(api.slack.hasNotificationBeenSent, {
-            callId: call._id,
-            type: "summary_60",
-          });
-
-          if (!alreadySent60) {
-            console.log(`[Slack] Sending 60-minute summary for call:`, call._id);
-            await ctx.runAction(internal.slack.sendCallSummaryNotification, {
-              callId: call._id,
-              milestone: "60" as const,
-              durationMinutes,
-            });
-          }
-        }
-      }
-
-      return { success: true, checkedCalls: activeCalls.length };
-    } catch (error) {
-      console.error("[Slack] Error checking call milestones:", error);
-      return { success: false, error: String(error) };
-    }
-  },
-});
-
-/**
- * Send a call summary notification for 30 or 60 minute milestone
- */
-export const sendCallSummaryNotification = internalAction({
-  args: {
-    callId: v.id("calls"),
-    milestone: v.union(v.literal("30"), v.literal("60")),
-    durationMinutes: v.number(),
-  },
-  handler: async (ctx, args): Promise<SlackNotificationResult> => {
-    try {
-      const notificationType = args.milestone === "30" ? "summary_30" : "summary_60";
-
-      // Get call details
-      const call = await ctx.runQuery(api.calls.getCallById, { callId: args.callId as string }) as { closerId: string; teamId: any; prospectName?: string; transcriptText?: string } | null;
-      if (!call) {
-        return { success: false, error: "Call not found" };
-      }
-
-      // Record dedup BEFORE sending to prevent duplicates (especially for Discord-only teams)
-      await ctx.runMutation(internal.slack.recordNotificationSent, {
-        teamId: call.teamId,
-        callId: args.callId,
-        type: notificationType,
-      });
-
-      // Get closer details
-      const closer = await ctx.runQuery(api.closers.getCloserById, { closerId: call.closerId }) as { name: string } | null;
-      if (!closer) {
-        return { success: false, error: "Closer not found" };
-      }
-
-      // Generate AI summary from transcript
-      let summary = "Summary not available - transcript still processing.";
-      if (call.transcriptText && call.transcriptText.length > 100) {
-        try {
-          summary = await ctx.runAction(internal.ai.generateLiveSummary, {
-            callId: args.callId,
-            transcript: call.transcriptText,
-            prospectName: call.prospectName,
-          }) as string;
-        } catch (error) {
-          console.error("[Slack] Failed to generate summary:", error);
-        }
-      }
-
-      // Build the message
-      const { blocks, text } = buildCallSummaryBlocks(
-        closer.name,
-        call.prospectName,
-        args.durationMinutes,
-        summary,
-        args.callId,
-        args.milestone
-      );
-
-      // Send via unified notification system
-      const result: SlackNotificationResult = await ctx.runAction(internal.slack.sendSlackNotification, {
-        teamId: call.teamId,
-        callId: args.callId,
-        type: notificationType,
-        blocks,
-        text,
-      });
-
-      // Also send to Discord (if configured)
-      try {
-        const { content, embeds } = buildCallSummaryEmbed(
-          closer.name,
-          call.prospectName,
-          args.durationMinutes,
-          summary,
-          args.callId,
-          args.milestone
-        );
-
-        await ctx.runAction(internal.discord.sendDiscordNotification, {
-          teamId: call.teamId,
-          callId: args.callId,
-          type: notificationType,
-          content,
-          embeds,
-        });
-        console.log(`[Discord] ${args.milestone}-minute summary notification sent for call:`, args.callId);
-      } catch (discordError) {
-        // Log but don't fail the overall notification if Discord fails
-        console.error("[Discord] Call summary notification failed:", discordError);
-      }
-
-      return result;
-    } catch (error) {
-      console.error("[Slack] Error sending call summary notification:", error);
-      return { success: false, error: String(error) };
-    }
-  },
-});
-
 /**
  * Send call going long notification
  * Called when closer clicks "Call Going Long" button in desktop app
@@ -1479,9 +1224,9 @@ export const sendCallCompletedNotification = internalAction({
         return { success: false, error: "Call not found" };
       }
 
-      // Skip if no summary or outcome (not really completed)
-      if (!call.summary || !call.outcome) {
-        console.log("[Slack] Call missing summary or outcome, skipping notification:", args.callId);
+      // Skip if no summary (AI hasn't generated it yet)
+      if (!call.summary) {
+        console.log("[Slack] Call missing summary, skipping notification:", args.callId);
         return { success: true, skipped: true, reason: "Call not fully completed" };
       }
 
@@ -1569,5 +1314,35 @@ export const sendCallCompletedNotification = internalAction({
       console.error("[Slack] Error sending call completed notification:", error);
       return { success: false, error: String(error) };
     }
+  },
+});
+
+/**
+ * Schedule a delayed call_completed notification.
+ * Called from generateCallSummary (action) via ctx.runMutation when the closer
+ * hasn't submitted the post-call questionnaire yet.
+ * If the closer submits within the delay window, calls.ts cancels this
+ * scheduled job and fires the notification immediately with full data.
+ */
+export const scheduleCallCompletedNotification = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    delayMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const scheduledId = await ctx.scheduler.runAfter(
+      args.delayMs,
+      internal.slack.sendCallCompletedNotification,
+      { callId: args.callId }
+    );
+
+    // Store the scheduledId on the call so it can be cancelled if closer submits early
+    await ctx.db.patch(args.callId, {
+      pendingNotificationJobId: String(scheduledId),
+    });
+
+    console.log(
+      `[Slack] Scheduled call_completed notification for ${args.callId} in ${args.delayMs}ms (job: ${scheduledId})`
+    );
   },
 });

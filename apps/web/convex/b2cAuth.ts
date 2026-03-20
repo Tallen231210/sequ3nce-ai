@@ -124,6 +124,7 @@ export const signupB2CUser = mutation({
       email,
       phone,
       phoneVerified: false,
+      emailVerified: false,
       name,
       passwordHash,
       personalWorkspaceId: teamId,
@@ -186,6 +187,7 @@ export const loginB2CUser = mutation({
 
     return {
       success: true,
+      emailVerified: user.emailVerified === undefined ? true : user.emailVerified,
       closer: {
         closerId: closer._id,
         teamId: user.personalWorkspaceId,
@@ -255,6 +257,46 @@ export const setBadges = mutation({
     if (!user) throw new Error("User not found");
     await ctx.db.patch(args.userId, { badges: args.badges });
     return { success: true, badges: args.badges };
+  },
+});
+
+// Admin: update a B2C user's email (run via CLI: npx convex run b2cAuth:adminUpdateEmail '{"userId":"...","newEmail":"..."}' --prod)
+export const adminUpdateEmail = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    newEmail: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const newEmail = args.newEmail.trim().toLowerCase();
+    if (!EMAIL_REGEX.test(newEmail)) throw new Error("Invalid email format");
+
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+
+    // Check if new email is already taken by another B2C user
+    const existing = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q) => q.eq("email", newEmail))
+      .first();
+    if (existing && existing._id !== args.userId) {
+      throw new Error("Email already taken by another B2C account");
+    }
+
+    const oldEmail = user.email;
+
+    // Update b2cUsers record
+    await ctx.db.patch(args.userId, { email: newEmail });
+
+    // Update the closer record in their personal workspace
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", user.personalWorkspaceId))
+      .first();
+    if (closer) {
+      await ctx.db.patch(closer._id, { email: newEmail });
+    }
+
+    return { success: true, oldEmail, newEmail };
   },
 });
 

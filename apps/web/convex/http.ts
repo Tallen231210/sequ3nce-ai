@@ -3263,6 +3263,10 @@ http.route({
         }
 
         case "bot.call_ended": {
+          // Log departure reason for debugging bot-leaves-early issues
+          const subCode = eventData?.data?.sub_code || eventData?.sub_code || "unknown";
+          console.log(`[recall-webhook] bot.call_ended for ${recallBotId}, sub_code: ${subCode}`);
+
           // Immediately mark bot completed so apps detect the call ended
           // (bot.done fires later after recording processing — could take minutes for long calls)
           const callEndedAt = Date.now();
@@ -5343,6 +5347,73 @@ http.route({
 
 http.route({
   path: "/b2c/reset-password",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST endpoint for B2C email verification — send code
+http.route({
+  path: "/b2c/send-verification",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email } = body;
+
+      if (typeof email !== "string" || !email.trim()) {
+        return b2cJsonResponse({ success: false, error: "Email is required" }, 400);
+      }
+
+      const result = await ctx.runAction(api.b2cEmailVerification.sendEmailVerificationCode, {
+        email,
+      });
+
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error in send-verification:", error);
+      return b2cJsonResponse({ success: false, error: "Failed to send verification code" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/send-verification",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST endpoint for B2C email verification — verify code
+http.route({
+  path: "/b2c/verify-email",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, code } = body;
+
+      if (typeof email !== "string" || typeof code !== "string") {
+        return b2cJsonResponse({ success: false, error: "Email and code must be strings" }, 400);
+      }
+
+      if (!email.trim() || !code.trim()) {
+        return b2cJsonResponse({ success: false, error: "Email and code are required" }, 400);
+      }
+
+      const result = await ctx.runMutation(api.b2cEmailVerification.verifyEmailCode, {
+        email,
+        code,
+      });
+
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      console.error("Error in verify-email:", error);
+      return b2cJsonResponse({ success: false, error: "Failed to verify email" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/verify-email",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });

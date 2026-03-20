@@ -306,6 +306,9 @@ export default defineSchema({
     leadQualityScore: v.optional(v.number()), // 1-10 rating
     prospectWasDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
 
+    // Delayed notification scheduling (for "wait, then fire anyway" pattern)
+    pendingNotificationJobId: v.optional(v.string()),
+
     // AI detection fields (populated by audio processor during call)
     budgetDiscussion: v.optional(v.object({
       detected: v.boolean(),
@@ -928,6 +931,10 @@ export default defineSchema({
     passwordResetCode: v.optional(v.string()),  // 6-digit reset code (hashed)
     passwordResetExpiry: v.optional(v.number()), // Expiry timestamp for reset code
     badges: v.optional(v.array(v.string())),    // "founder", "coach", etc.
+    emailVerified: v.optional(v.boolean()),                // undefined = grandfathered (treated as true)
+    emailVerificationCode: v.optional(v.string()),         // SHA-256 hashed 6-digit code
+    emailVerificationExpiry: v.optional(v.number()),       // Unix timestamp
+    emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
   })
     .index("by_email", ["email"])
     .index("by_phone", ["phone"])

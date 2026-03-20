@@ -10,13 +10,6 @@ crons.interval(
   api.calendar.syncAllCalendars
 );
 
-// Check for long-running calls and send 30/60 minute summaries
-crons.interval(
-  "check-call-milestones",
-  { minutes: 5 },
-  internal.slack.checkCallMilestones
-);
-
 // Auto-schedule meeting bots — DISABLED: bots are now created on-demand when closer clicks "Join & Record"
 // crons.interval(
 //   "auto-schedule-meeting-bots",

@@ -437,31 +437,6 @@ export const getCompletedCallsWithCloser = query({
   },
 });
 
-// Get all on_call calls across all teams (for Slack milestone checks)
-export const getLiveCallsForSlack = query({
-  args: {},
-  handler: async (ctx) => {
-    // Get all teams with Slack connected
-    const teams = await ctx.db.query("teams").collect();
-    const slackTeamIds = teams
-      .filter((t) => t.slackAccessToken || t.slackWebhookUrl)
-      .map((t) => t._id);
-
-    if (slackTeamIds.length === 0) {
-      return [];
-    }
-
-    // Get all on_call calls for these teams
-    const allCalls = await ctx.db.query("calls").collect();
-    return allCalls.filter(
-      (call) =>
-        call.status === "on_call" &&
-        slackTeamIds.includes(call.teamId) &&
-        call.startedAt // Must have startedAt for duration calculation
-    );
-  },
-});
-
 // Get live calls (waiting or on_call)
 export const getLiveCalls = query({
   args: {
@@ -831,6 +806,37 @@ export const completeCallWithOutcome = mutation({
           prospectName: args.prospectName,
           duration: call.duration,
         });
+      }
+    }
+
+    // If AI summary already generated but notification hasn't fired yet,
+    // cancel the delayed notification and fire immediately with full data
+    if (call.summary) {
+      const alreadySent = await ctx.db
+        .query("slackNotifications")
+        .withIndex("by_call_and_type", (q) =>
+          q.eq("callId", args.callId).eq("type", "call_completed")
+        )
+        .first();
+
+      if (!alreadySent) {
+        // Cancel the pending delayed notification if one exists
+        if (call.pendingNotificationJobId) {
+          try {
+            await ctx.scheduler.cancel(
+              call.pendingNotificationJobId as Id<"_scheduled_functions">
+            );
+            console.log(`[calls] Cancelled pending notification job: ${call.pendingNotificationJobId}`);
+          } catch {
+            // Job may have already fired — dedup will catch it
+          }
+        }
+
+        // Fire notification immediately — we now have outcome + summary
+        await ctx.scheduler.runAfter(0, internal.slack.sendCallCompletedNotification, {
+          callId: args.callId,
+        });
+        console.log(`[calls] Early-fired notification for ${args.callId} — closer submitted questionnaire`);
       }
     }
 

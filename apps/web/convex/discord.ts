@@ -58,9 +58,6 @@ function getNotificationChannelKey(type: string): NotificationChannelKey | null 
       return "reinforcement";
     case "call_started":
       return "callStarted";
-    case "summary_30":
-    case "summary_60":
-      return "callSummary";
     case "call_going_long":
       return "callGoingLong";
     case "call_completed":
@@ -128,41 +125,6 @@ export function buildCallStartedEmbed(
 }
 
 /**
- * Build Discord embed for call summary (30 or 60 minute)
- */
-export function buildCallSummaryEmbed(
-  closerName: string,
-  prospectName: string | undefined,
-  durationMinutes: number,
-  summary: string,
-  callId?: string,
-  milestone: "30" | "60" = "30"
-): { content: string; embeds: DiscordEmbed[] } {
-  const dashboardUrl = callId
-    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://sequ3nce.ai/dashboard";
-
-  const embed: DiscordEmbed = {
-    title: `${milestone}-Minute Call Summary`,
-    description: summary,
-    color: DISCORD_COLORS.callSummary,
-    fields: [
-      { name: "Closer", value: closerName, inline: true },
-      { name: "Prospect", value: prospectName || "Unknown", inline: true },
-      { name: "Duration", value: `${durationMinutes} minutes`, inline: true },
-    ],
-    timestamp: new Date().toISOString(),
-    footer: { text: "Sequ3nce.ai" },
-    url: dashboardUrl,
-  };
-
-  return {
-    content: `${milestone}-min summary for ${closerName}'s call with ${prospectName || "prospect"}`,
-    embeds: [embed],
-  };
-}
-
-/**
  * Build Discord embed for call going long notification
  */
 export function buildCallGoingLongEmbed(
@@ -225,7 +187,7 @@ export function buildCallGoingLongEmbed(
 export function buildCallCompletedEmbed(
   closerName: string,
   prospectName: string | undefined,
-  outcome: string,
+  outcome: string | undefined,
   durationMinutes: number,
   summary: string,
   cashCollected?: number,
@@ -236,17 +198,21 @@ export function buildCallCompletedEmbed(
     ? `https://sequ3nce.ai/dashboard/calls/${callId}`
     : "https://sequ3nce.ai/dashboard";
 
-  // Color based on outcome: Green for closed, Yellow for follow-up, Red for lost/no-show
-  const color = outcome === "closed" ? 3066993 : outcome === "follow_up" ? 15844367 : 15158332;
+  // Color based on outcome: Green=closed, Yellow=follow-up, Red=lost, Grey=pending
+  const color = outcome === "closed" ? 3066993 :
+                outcome === "follow_up" ? 15844367 :
+                outcome ? 15158332 : 9807270;
 
   // Format outcome text
   const outcomeText = outcome === "closed" ? "Closed" :
                       outcome === "follow_up" ? "Follow-up" :
                       outcome === "lost" ? "Not Closed" :
-                      outcome === "no_show" ? "No Show" : outcome;
+                      outcome === "no_show" ? "No Show" :
+                      outcome ? outcome : "Pending";
 
-  // Emoji based on outcome
-  const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" : "❌";
+  // Emoji based on outcome (⏳ = pending, closer hasn't submitted questionnaire yet)
+  const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" :
+                        outcome ? "❌" : "⏳";
 
   // Format duration nicely
   const durationText =

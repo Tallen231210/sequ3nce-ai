@@ -1637,19 +1637,6 @@ export default function SettingsPage() {
                     />
 
                     <NotificationChannelConfig
-                      type="callSummary"
-                      label="Call Summaries (30 & 60 min)"
-                      description="AI-generated summaries for long-running calls"
-                      config={slackStatus.notificationChannels?.callSummary}
-                      channels={slackChannels}
-                      onUpdate={(enabled, channelId, channelName) =>
-                        handleUpdateNotificationChannel("callSummary", enabled, channelId, channelName)
-                      }
-                      saving={savingNotificationChannel === "callSummary"}
-                      loadingChannels={loadingSlackChannels}
-                    />
-
-                    <NotificationChannelConfig
                       type="callGoingLong"
                       label="Call Going Long"
                       description="When closers signal their call is running over"
@@ -1760,7 +1747,6 @@ export default function SettingsPage() {
                     <ul className="list-disc list-inside space-y-0.5">
                       <li>Reinforcement requests from closers</li>
                       <li>Call started alerts</li>
-                      <li>30 &amp; 60 minute call summaries</li>
                       <li>Call going long alerts</li>
                     </ul>
                   </div>
@@ -1836,20 +1822,6 @@ export default function SettingsPage() {
                   saving={savingDiscordChannel === "callStarted"}
                   testing={testingDiscordWebhook === "callStarted"}
                   testResult={discordTestResults.callStarted}
-                />
-
-                <DiscordNotificationConfig
-                  type="callSummary"
-                  label="Call Summaries (30 & 60 min)"
-                  description="AI-generated summaries for long-running calls"
-                  config={settings?.team?.discordNotificationChannels?.callSummary}
-                  onUpdate={(enabled, webhookUrl, channelName) =>
-                    handleUpdateDiscordChannel("callSummary", enabled, webhookUrl, channelName)
-                  }
-                  onTest={(webhookUrl, channelName) => handleTestDiscordWebhook("callSummary", webhookUrl, channelName)}
-                  saving={savingDiscordChannel === "callSummary"}
-                  testing={testingDiscordWebhook === "callSummary"}
-                  testResult={discordTestResults.callSummary}
                 />
 
                 <DiscordNotificationConfig

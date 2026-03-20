@@ -408,6 +408,10 @@ export const createBot = action({
             b64_data: BOT_AVATAR_JPEG_B64,
           },
         },
+        automatic_leave: {
+          everyone_left_timeout: 120,   // 2 minutes — survives WiFi drops, bio breaks
+          noone_joined_timeout: 300,    // 5 minutes — don't waste bot if nobody joins
+        },
         recording_config: {
           retention: { type: "forever" as const },
           video_mixed_layout: "gallery_view_v2",
@@ -627,6 +631,10 @@ export const createQuickBot = action({
             kind: "jpeg" as const,
             b64_data: BOT_AVATAR_JPEG_B64,
           },
+        },
+        automatic_leave: {
+          everyone_left_timeout: 120,   // 2 minutes — survives WiFi drops, bio breaks
+          noone_joined_timeout: 300,    // 5 minutes — don't waste bot if nobody joins
         },
         recording_config: {
           retention: { type: "forever" as const },

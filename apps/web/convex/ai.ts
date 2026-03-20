@@ -113,10 +113,24 @@ export const generateCallSummary = internalAction({
           summary,
         });
 
-        // Send call completed notification (Slack and Discord)
-        await ctx.runAction(internal.slack.sendCallCompletedNotification, {
-          callId,
-        });
+        // Smart notification: check if closer already submitted questionnaire
+        const call = await ctx.runQuery(api.calls.getCallById, { callId: callId as string }) as {
+          outcome?: string;
+        } | null;
+
+        if (call?.outcome) {
+          // Closer already submitted — fire notification immediately with full data
+          await ctx.runAction(internal.slack.sendCallCompletedNotification, {
+            callId,
+          });
+        } else {
+          // Closer hasn't submitted yet — schedule with 90s grace period.
+          // If closer submits within 90s, calls.ts cancels this and fires immediately.
+          await ctx.runMutation(internal.slack.scheduleCallCompletedNotification, {
+            callId,
+            delayMs: 90_000,
+          });
+        }
       }
 
       return summary;

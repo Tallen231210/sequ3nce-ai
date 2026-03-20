@@ -19,6 +19,7 @@ export interface CloserInfo {
 export interface LoginResult {
   success: boolean;
   error?: string;
+  emailVerified?: boolean;
   closer?: CloserInfo;
 }
 
@@ -310,6 +311,45 @@ export async function resetPasswordWithCode(
     return { success: true };
   } catch (error) {
     console.error("[Convex] Failed to reset password:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+// Send email verification code
+export async function sendVerificationCode(
+  email: string
+): Promise<{ success: boolean; error?: string; alreadyVerified?: boolean; retryAfter?: number }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/send-verification?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to send verification code:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+// Verify email with 6-digit code
+export async function verifyEmail(
+  email: string,
+  code: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/verify-email?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, code }),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to verify email:", error);
     return { success: false, error: "Network error. Please check your connection." };
   }
 }
