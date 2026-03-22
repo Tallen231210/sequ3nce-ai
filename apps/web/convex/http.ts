@@ -6536,6 +6536,55 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ==================== B2C Presence Endpoints ====================
+
+// POST /b2c/heartbeat — Update user's lastSeenAt for online presence
+http.route({
+  path: "/b2c/heartbeat",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId } = body;
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runMutation(api.b2cPresence.heartbeat, {
+        userId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error in heartbeat:", error);
+      return b2cJsonResponse({ error: "Failed to update presence" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/heartbeat",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/online-users — Get list of currently online user IDs
+http.route({
+  path: "/b2c/online-users",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const result = await ctx.runQuery(api.b2cPresence.getOnlineUserIds, {});
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error getting online users:", error);
+      return b2cJsonResponse({ error: "Failed to get online users" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/online-users",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
 // ==================== B2C Friendship Endpoints ====================
 
 // GET /b2c/friends — List accepted friends
@@ -7108,6 +7157,158 @@ http.route({
   path: "/b2c/highlight-clips/public",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ==================== B2C Highlight Share Endpoints ====================
+
+// POST /b2c/highlight-shares — Create a share link for a clip
+http.route({
+  path: "/b2c/highlight-shares",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { clipId, userId, password } = body;
+      if (!clipId || !userId) return b2cJsonResponse({ error: "clipId and userId are required" }, 400);
+      const result = await ctx.runMutation(api.b2cHighlightShares.createShare, {
+        clipId: clipId as any,
+        userId: userId as any,
+        password: password || undefined,
+      });
+      return b2cJsonResponse({ ...result, url: `https://sequ3nce.ai/h/${result.token}` });
+    } catch (error: any) {
+      console.error("Error creating highlight share:", error);
+      return b2cJsonResponse({ error: error.message || "Failed to create share" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-shares",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// GET /b2c/highlight-shares?clipId= — List active shares for a clip
+http.route({
+  path: "/b2c/highlight-shares",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const clipId = url.searchParams.get("clipId");
+      if (!clipId) return b2cJsonResponse({ error: "clipId is required" }, 400);
+      const shares = await ctx.runQuery(internal.b2cHighlightShares.getSharesByClip, {
+        clipId: clipId as any,
+      });
+      return b2cJsonResponse({ shares });
+    } catch (error) {
+      console.error("Error listing highlight shares:", error);
+      return b2cJsonResponse({ error: "Failed to list shares" }, 500);
+    }
+  }),
+});
+
+// POST /b2c/highlight-shares/revoke — Revoke a share link
+http.route({
+  path: "/b2c/highlight-shares/revoke",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { shareId, userId } = body;
+      if (!shareId || !userId) return b2cJsonResponse({ error: "shareId and userId are required" }, 400);
+      const result = await ctx.runMutation(api.b2cHighlightShares.revokeShare, {
+        shareId: shareId as any,
+        userId: userId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      console.error("Error revoking highlight share:", error);
+      return b2cJsonResponse({ error: error.message || "Failed to revoke share" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-shares/revoke",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/highlight-shares/public — Public page data + password check
+http.route({
+  path: "/b2c/highlight-shares/public",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { token, password } = body;
+      if (!token) return b2cJsonResponse({ error: "token is required" }, 400);
+
+      const shareData = await ctx.runQuery(internal.b2cHighlightShares.getShareByToken, {
+        token,
+      });
+      if (!shareData) return b2cJsonResponse({ error: "Share not found or revoked" }, 404);
+
+      // Password check
+      if (shareData.hasPassword) {
+        if (!password) {
+          return b2cJsonResponse({ needsPassword: true }, 401);
+        }
+        // Hash the provided password and verify
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+        const passwordHash = Array.from(new Uint8Array(hashBuffer))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
+        const verify = await ctx.runQuery(internal.b2cHighlightShares.verifySharePassword, {
+          token,
+          passwordHash,
+        });
+        if (!verify.valid) {
+          return b2cJsonResponse({ passwordIncorrect: true }, 401);
+        }
+      }
+
+      // Refresh recording URL if needed
+      let recordingUrl = shareData.recordingUrl;
+      if (shareData.callId) {
+        try {
+          const refreshResult = await ctx.runAction(api.meetingBot.refreshRecordingUrl, {
+            callId: shareData.callId,
+          });
+          if (refreshResult?.recordingUrl) {
+            recordingUrl = refreshResult.recordingUrl;
+          }
+        } catch {
+          // Use existing URL if refresh fails
+        }
+      }
+
+      return b2cJsonResponse({
+        label: shareData.label,
+        startTime: shareData.startTime,
+        endTime: shareData.endTime,
+        isFullCall: shareData.isFullCall,
+        blurRegion: shareData.blurRegion,
+        recordingUrl,
+        closerName: shareData.closerName,
+        profileSlug: shareData.profileSlug,
+      });
+    } catch (error) {
+      console.error("Error fetching public highlight share:", error);
+      return b2cJsonResponse({ error: "Failed to load shared highlight" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/highlight-shares/public",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
 // POST /b2c/resources/reorder — Reorder resources

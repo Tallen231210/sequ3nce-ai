@@ -5,8 +5,12 @@ import {
   getActiveCallForCloserBot,
   getPendingQuestionnaireInfo,
   getIncomingFriendRequests,
+  getDMUnreadCount,
+  sendHeartbeat,
+  getOnlineUserIds,
 } from '../convex';
 import { useTheme } from '../ThemeContext';
+import { playNotificationChime } from './notificationSound';
 import logoImage from '../../assets/logo.png';
 import { DashboardView } from './DashboardView';
 import { StatsView } from './StatsView';
@@ -19,15 +23,19 @@ import { SettingsView } from './SettingsView';
 import { ProfileView } from './ProfileView';
 import { CommunityView } from './CommunityView';
 import { JobBoardView } from './JobBoardView';
+import { DirectMessagesView } from './DirectMessagesView';
+import { HighlightsView } from './HighlightsView';
 
 // Sidebar navigation items for Sequ3nce Personal (B2C)
 type SidebarItem =
   | 'dashboard'
   | 'stats'
   | 'calls'
+  | 'highlights'
   | 'schedule'
   | 'resources'
   | 'jobboard'
+  | 'messages'
   | 'profile'
   | 'community'
   | 'settings';
@@ -67,6 +75,15 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    id: 'highlights',
+    label: 'Highlights',
+    icon: (
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" />
+      </svg>
+    ),
+  },
+  {
     id: 'schedule',
     label: 'Schedule',
     icon: (
@@ -91,6 +108,16 @@ const NAV_ITEMS: NavItem[] = [
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
         <path fillRule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm-2 5a1 1 0 100 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
         <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'messages',
+    label: 'Messages',
+    icon: (
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+        <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
       </svg>
     ),
   },
@@ -152,6 +179,17 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Sidebar badge counts
   const [callsPendingCount, setCallsPendingCount] = useState(0);
+  const [friendRequestCount, setFriendRequestCount] = useState(0);
+  const [dmUnreadCount, setDmUnreadCount] = useState(0);
+  const prevDmUnreadRef = useRef(0);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+
+  // Cross-navigation state for DMs from Community
+  const [dmRecipient, setDmRecipient] = useState<{
+    id: string;
+    name: string;
+    photoUrl: string | null;
+  } | null>(null);
 
   // Check calendar onboarding on mount
   useEffect(() => {
@@ -174,23 +212,74 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
   }, [closerInfo.closerId]);
 
   // Poll friend requests for community badge
-  const [friendRequestCount, setFriendRequestCount] = useState(0);
-
   useEffect(() => {
     if (!closerInfo.b2cUserId) return;
     const poll = async () => {
       const friendResult = await getIncomingFriendRequests(closerInfo.b2cUserId!).catch(() => ({ requests: [] }));
       setFriendRequestCount(friendResult.requests.length);
-      // Update dock/taskbar badge
-      window.electron?.app?.setBadgeCount?.(friendResult.requests.length).catch(() => {});
     };
     poll();
     const interval = setInterval(poll, 10000);
+    return () => clearInterval(interval);
+  }, [closerInfo.b2cUserId]);
+
+  // DM unread badge polling + notification chime
+  useEffect(() => {
+    if (!closerInfo.b2cUserId) return;
+    const poll = async () => {
+      const count = await getDMUnreadCount(closerInfo.b2cUserId!);
+      setDmUnreadCount(count);
+
+      // Electron push notification + sound for new DMs
+      if (count > prevDmUnreadRef.current && selectedItem !== 'messages') {
+        new Notification('New Message', { body: 'You have a new message', silent: true });
+        playNotificationChime();
+      }
+      prevDmUnreadRef.current = count;
+    };
+    poll();
+    const interval = setInterval(poll, 10000);
+    return () => clearInterval(interval);
+  }, [closerInfo.b2cUserId, selectedItem]);
+
+  // Update dock/taskbar badge when either count changes
+  useEffect(() => {
+    const totalBadge = friendRequestCount + dmUnreadCount;
+    window.electron?.app?.setBadgeCount?.(totalBadge).catch(() => {});
     return () => {
-      clearInterval(interval);
       window.electron?.app?.setBadgeCount?.(0).catch(() => {});
     };
+  }, [friendRequestCount, dmUnreadCount]);
+
+  // Heartbeat for online presence — every 60 seconds
+  useEffect(() => {
+    if (!closerInfo.b2cUserId) return;
+    sendHeartbeat(closerInfo.b2cUserId);
+    const interval = setInterval(() => {
+      sendHeartbeat(closerInfo.b2cUserId!);
+    }, 60000);
+    return () => clearInterval(interval);
   }, [closerInfo.b2cUserId]);
+
+  // Online user IDs polling — every 30 seconds
+  useEffect(() => {
+    const poll = async () => {
+      const ids = await getOnlineUserIds();
+      setOnlineUserIds(new Set(ids));
+    };
+    poll();
+    const interval = setInterval(poll, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleNavigateToMessage = useCallback((recipientId: string, recipientName: string, recipientPhotoUrl: string | null) => {
+    setDmRecipient({ id: recipientId, name: recipientName, photoUrl: recipientPhotoUrl });
+    setSelectedItem('messages');
+  }, []);
+
+  const handleDmRecipientConsumed = useCallback(() => {
+    setDmRecipient(null);
+  }, []);
 
   // Theme sync to floating windows is now handled by ThemeContext.tsx
 
@@ -291,7 +380,12 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
         {/* Nav items */}
         <nav className="flex-1 px-2 pt-2 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
-            const badge = item.id === 'calls' ? callsPendingCount : item.id === 'community' ? friendRequestCount : 0;
+            const badgeCounts: Partial<Record<SidebarItem, number>> = {
+              calls: callsPendingCount,
+              community: friendRequestCount,
+              messages: dmUnreadCount,
+            };
+            const badge = badgeCounts[item.id] ?? 0;
             return (
               <button
                 key={item.id}
@@ -375,7 +469,14 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {renderContent(selectedItem, closerInfo, setSelectedItem, onLogout, handleOpenQuestionnaire)}
+          {renderContent(selectedItem, closerInfo, setSelectedItem, onLogout, handleOpenQuestionnaire, {
+            dmRecipientId: dmRecipient?.id ?? null,
+            dmRecipientName: dmRecipient?.name,
+            dmRecipientPhotoUrl: dmRecipient?.photoUrl,
+            onDmRecipientConsumed: handleDmRecipientConsumed,
+            onlineUserIds,
+            onNavigateToMessage: handleNavigateToMessage,
+          })}
         </div>
       </div>
     </div>
@@ -383,12 +484,22 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 }
 
 // Route sidebar selection to the correct view component
+interface RenderContentExtras {
+  dmRecipientId: string | null;
+  dmRecipientName?: string;
+  dmRecipientPhotoUrl?: string | null;
+  onDmRecipientConsumed: () => void;
+  onlineUserIds: Set<string>;
+  onNavigateToMessage: (recipientId: string, recipientName: string, recipientPhotoUrl: string | null) => void;
+}
+
 function renderContent(
   item: SidebarItem,
   closerInfo: CloserInfo,
   onNavigate: (item: SidebarItem) => void,
   onLogout: () => void,
   onOpenQuestionnaire?: (callId: string, prospectName?: string) => void,
+  extras?: RenderContentExtras,
 ): React.ReactNode {
   switch (item) {
     case 'dashboard':
@@ -397,6 +508,8 @@ function renderContent(
       return <StatsView closerInfo={closerInfo} />;
     case 'calls':
       return <CallHistoryView closerInfo={closerInfo} onOpenQuestionnaire={onOpenQuestionnaire} />;
+    case 'highlights':
+      return <HighlightsView closerInfo={closerInfo} />;
     case 'schedule':
       return <ScheduleView closerInfo={closerInfo} />;
     case 'resources':
@@ -406,9 +519,20 @@ function renderContent(
     case 'profile':
       return <ProfileView closerInfo={closerInfo} />;
     case 'community':
-      return <CommunityView closerInfo={closerInfo} />;
+      return <CommunityView closerInfo={closerInfo} onNavigateToMessage={extras?.onNavigateToMessage} />;
     case 'jobboard':
       return <JobBoardView closerInfo={closerInfo} />;
+    case 'messages':
+      return (
+        <DirectMessagesView
+          closerInfo={closerInfo}
+          initialRecipientId={extras?.dmRecipientId}
+          initialRecipientName={extras?.dmRecipientName}
+          initialRecipientPhotoUrl={extras?.dmRecipientPhotoUrl}
+          onRecipientConsumed={extras?.onDmRecipientConsumed}
+          onlineUserIds={extras?.onlineUserIds}
+        />
+      );
     default:
       return <PlaceholderView name={NAV_ITEMS.find((i) => i.id === item)?.label || item} />;
   }

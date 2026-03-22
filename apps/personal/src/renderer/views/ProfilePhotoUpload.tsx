@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { generateProfileUploadUrl, saveProfilePhoto } from '../convex';
+import { generateProfileUploadUrl, saveProfilePhoto, getMyProfile } from '../convex';
+import { PhotoCropModal } from './PhotoCropModal';
+import { getInitials } from './community/types';
 
 interface ProfilePhotoUploadProps {
   userId: string;
@@ -11,22 +13,13 @@ interface ProfilePhotoUploadProps {
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-function getInitials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-}
-
 export function ProfilePhotoUpload({ userId, photoUrl, name, onPhotoUpdated }: ProfilePhotoUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
-  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -44,18 +37,24 @@ export function ProfilePhotoUpload({ userId, photoUrl, name, onPhotoUpdated }: P
     }
 
     setError(null);
+    setPendingFile(file);
+  }
+
+  async function handleCropComplete(croppedBlob: Blob) {
+    setPendingFile(null);
     setIsUploading(true);
+    setError(null);
 
     try {
       // Step 1: Get signed upload URL
       const urlResult = await generateProfileUploadUrl(userId);
       if (!urlResult) throw new Error('Failed to get upload URL');
 
-      // Step 2: Upload file to Convex storage
+      // Step 2: Upload cropped image to Convex storage
       const uploadResponse = await fetch(urlResult.uploadUrl, {
         method: 'POST',
-        headers: { 'Content-Type': file.type },
-        body: file,
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: croppedBlob,
       });
 
       if (!uploadResponse.ok) throw new Error('Upload failed');
@@ -65,14 +64,24 @@ export function ProfilePhotoUpload({ userId, photoUrl, name, onPhotoUpdated }: P
       const saveResult = await saveProfilePhoto(userId, storageId);
       if (!saveResult.success) throw new Error(saveResult.error || 'Failed to save photo');
 
-      // Create a temporary local URL for immediate display
-      const localUrl = URL.createObjectURL(file);
-      onPhotoUpdated(localUrl);
+      // Step 4: Re-fetch profile to get persistent server URL
+      const profile = await getMyProfile(userId);
+      if (profile?.photoUrl) {
+        onPhotoUpdated(profile.photoUrl);
+      } else {
+        // Fallback: use blob URL if re-fetch fails (degraded but functional)
+        const fallbackUrl = URL.createObjectURL(croppedBlob);
+        onPhotoUpdated(fallbackUrl);
+      }
     } catch (err: any) {
       setError(err.message || 'Upload failed. Please try again.');
     } finally {
       setIsUploading(false);
     }
+  }
+
+  function handleCropCancel() {
+    setPendingFile(null);
   }
 
   return (
@@ -120,6 +129,14 @@ export function ProfilePhotoUpload({ userId, photoUrl, name, onPhotoUpdated }: P
 
       {error && (
         <span className="text-[12px] text-red-500 dark:text-red-400">{error}</span>
+      )}
+
+      {pendingFile && (
+        <PhotoCropModal
+          imageFile={pendingFile}
+          onCropComplete={handleCropComplete}
+          onCancel={handleCropCancel}
+        />
       )}
     </div>
   );

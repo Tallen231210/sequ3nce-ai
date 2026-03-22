@@ -7,6 +7,7 @@ interface MembersPanelProps {
   onModeChange: (mode: 'members' | 'friends') => void;
   currentUserId: string;
   onClose: () => void;
+  onMessageMember?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
 export function MembersPanel({
@@ -14,6 +15,7 @@ export function MembersPanel({
   onModeChange,
   currentUserId,
   onClose,
+  onMessageMember,
 }: MembersPanelProps) {
   return (
     <div className="w-[280px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 flex flex-col h-full bg-white dark:bg-gray-900">
@@ -56,9 +58,9 @@ export function MembersPanel({
       {/* Content — scrollable */}
       <div className="flex-1 overflow-y-auto px-3 pb-3">
         {mode === 'members' ? (
-          <Members currentUserId={currentUserId} />
+          <Members currentUserId={currentUserId} onMessageMember={onMessageMember} />
         ) : (
-          <Friends userId={currentUserId} />
+          <Friends userId={currentUserId} onMessageFriend={onMessageMember} />
         )}
       </div>
     </div>

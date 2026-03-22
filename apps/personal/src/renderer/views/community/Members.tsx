@@ -6,9 +6,10 @@ import { MemberCard } from './MemberCard';
 
 interface MembersProps {
   currentUserId?: string;
+  onMessageMember?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
-export function Members({ currentUserId }: MembersProps) {
+export function Members({ currentUserId, onMessageMember }: MembersProps) {
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -16,7 +17,7 @@ export function Members({ currentUserId }: MembersProps) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [friendStatusMap, setFriendStatusMap] = useState<Map<string, FriendshipStatus>>(new Map());
   const mountedRef = useRef(true);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined as any);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -147,6 +148,7 @@ export function Members({ currentUserId }: MembersProps) {
                 friendshipStatus={friendStatusMap.get(member.userId)}
                 onAddFriend={handleAddFriend}
                 onAcceptFriend={handleAcceptFriend}
+                onMessage={onMessageMember ? () => onMessageMember(member.userId, member.name, member.photoUrl) : undefined}
               />
             ))}
           </div>

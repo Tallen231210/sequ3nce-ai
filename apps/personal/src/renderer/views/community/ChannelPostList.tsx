@@ -161,20 +161,21 @@ export function ChannelPostList({
     }
   }, [userId]);
 
-  // Compute message grouping
-  const isGroupedAt = (index: number): boolean => {
-    if (index === 0) return false;
-    const current = posts[index];
-    const prev = posts[index - 1];
-    if (current.authorId !== prev.authorId) return false;
-    return (prev.createdAt - current.createdAt) < 5 * 60 * 1000;
-  };
-
   const channel = channels.find((c) => c._id === channelId);
 
   // Separate pinned and regular posts
   const pinnedPosts = posts.filter((p) => p.isPinned);
   const regularPosts = posts.filter((p) => !p.isPinned);
+
+  // Compute message grouping on the regular (non-pinned) list only,
+  // so pinned posts in a separate section don't affect grouping.
+  function isRegularPostGrouped(index: number): boolean {
+    if (index === 0) return false;
+    const current = regularPosts[index];
+    const prev = regularPosts[index - 1];
+    if (current.authorId !== prev.authorId) return false;
+    return Math.abs(prev.createdAt - current.createdAt) < 5 * 60 * 1000;
+  }
 
   return (
     <div className="space-y-4">
@@ -240,7 +241,7 @@ export function ChannelPostList({
                 post={post}
                 userId={userId}
                 isAdmin={isAdmin}
-                isGrouped={isGroupedAt(posts.indexOf(post))}
+                isGrouped={isRegularPostGrouped(index)}
                 onLike={handleLike}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

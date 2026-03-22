@@ -2,6 +2,7 @@ import React from 'react';
 import type { CommunityMember } from './types';
 import type { FriendshipStatus } from '../../convex';
 import { getInitials, getAvatarGradient } from './types';
+import { ChatBubbleIcon } from './icons';
 
 interface MemberCardProps {
   member: CommunityMember;
@@ -9,9 +10,10 @@ interface MemberCardProps {
   friendshipStatus?: FriendshipStatus;
   onAddFriend?: (userId: string) => void;
   onAcceptFriend?: (userId: string) => void;
+  onMessage?: () => void;
 }
 
-export function MemberCard({ member, isCurrentUser, friendshipStatus, onAddFriend, onAcceptFriend }: MemberCardProps) {
+export function MemberCard({ member, isCurrentUser, friendshipStatus, onAddFriend, onAcceptFriend, onMessage }: MemberCardProps) {
   const initials = getInitials(member.name);
   const gradient = getAvatarGradient(member.name);
 
@@ -53,6 +55,15 @@ export function MemberCard({ member, isCurrentUser, friendshipStatus, onAddFrien
       {/* Actions */}
       {!isCurrentUser && (
         <div className="flex items-center gap-1 shrink-0">
+          {onMessage && (
+            <button
+              onClick={onMessage}
+              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+              title="Send message"
+            >
+              <ChatBubbleIcon />
+            </button>
+          )}
           {friendshipStatus === 'none' && onAddFriend && (
             <button
               onClick={() => onAddFriend(member.userId)}

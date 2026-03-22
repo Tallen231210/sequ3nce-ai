@@ -161,13 +161,14 @@ export function Feed({ userId, channels, isAdmin }: FeedProps) {
     }
   }, [userId]);
 
-  // Compute message grouping: same author within 5 minutes
+  // Compute message grouping: same author + same channel within 5 minutes
   const isGrouped = (index: number): boolean => {
     if (index === 0) return false;
     const current = posts[index];
     const prev = posts[index - 1];
     if (current.authorId !== prev.authorId) return false;
-    return (prev.createdAt - current.createdAt) < 5 * 60 * 1000;
+    if (current.channelId !== prev.channelId) return false;
+    return Math.abs(prev.createdAt - current.createdAt) < 5 * 60 * 1000;
   };
 
   return (

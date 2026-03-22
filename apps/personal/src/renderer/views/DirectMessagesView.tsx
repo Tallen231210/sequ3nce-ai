@@ -11,6 +11,7 @@ import {
 } from '../convex';
 import { formatRelativeTime, getInitials, getAvatarGradient } from './community/types';
 import { TypingIndicator } from './community/TypingIndicator';
+import { NewDMModal } from './NewDMModal';
 
 const MAX_DM_BODY = 2000;
 const POLL_INTERVAL = 3000;
@@ -21,6 +22,7 @@ interface DirectMessagesViewProps {
   initialRecipientName?: string;
   initialRecipientPhotoUrl?: string | null;
   onRecipientConsumed?: () => void;
+  onlineUserIds?: Set<string>;
 }
 
 export function DirectMessagesView({
@@ -29,6 +31,7 @@ export function DirectMessagesView({
   initialRecipientName,
   initialRecipientPhotoUrl,
   onRecipientConsumed,
+  onlineUserIds = new Set(),
 }: DirectMessagesViewProps) {
   const userId = closerInfo.b2cUserId || '';
 
@@ -52,6 +55,10 @@ export function DirectMessagesView({
   // Input state
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  // New DM modal
+  const [showNewDM, setShowNewDM] = useState(false);
 
   // Typing indicator state
   const [typingNames, setTypingNames] = useState<string[]>([]);
@@ -59,9 +66,9 @@ export function DirectMessagesView({
 
   const mountedRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const threadPollRef = useRef<ReturnType<typeof setInterval>>(undefined as any);
-  const messagePollRef = useRef<ReturnType<typeof setInterval>>(undefined as any);
-  const typingPollRef = useRef<ReturnType<typeof setInterval>>(undefined as any);
+  const threadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const messagePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initialRecipientHandled = useRef(false);
 
   // Load threads
@@ -90,7 +97,7 @@ export function DirectMessagesView({
     threadPollRef.current = setInterval(loadThreads, POLL_INTERVAL);
     return () => {
       mountedRef.current = false;
-      clearInterval(threadPollRef.current);
+      if (threadPollRef.current) clearInterval(threadPollRef.current);
     };
   }, [loadThreads]);
 
@@ -193,6 +200,8 @@ export function DirectMessagesView({
 
     if (result.error) {
       console.error("Send DM error:", result.error);
+      setSendError(result.error);
+      setTimeout(() => setSendError(null), 4000);
       return;
     }
 
@@ -251,15 +260,50 @@ export function DirectMessagesView({
   // Determine conversation header info
   const conversationName = pendingRecipient?.name || activeThread?.otherUserName || '';
   const conversationPhoto = pendingRecipient?.photoUrl || activeThread?.otherUserPhotoUrl || null;
+  const conversationUserId = pendingRecipient?.userId || activeThread?.otherUserId || '';
+  const isConversationUserOnline = onlineUserIds.has(conversationUserId);
   const showConversation = !!(activeThread || pendingRecipient);
+
+  const handleNewDMSelect = useCallback((memberId: string, memberName: string, memberPhotoUrl: string | null) => {
+    setShowNewDM(false);
+    // Check if there's an existing thread with this user
+    const existingThread = threads.find((t) => t.otherUserId === memberId);
+    if (existingThread) {
+      selectThread(existingThread);
+    } else {
+      setPendingRecipient({ userId: memberId, name: memberName, photoUrl: memberPhotoUrl });
+      setActiveThread(null);
+      setMessages([]);
+    }
+  }, [threads, selectThread]);
 
   return (
     <div className="flex h-full">
+      {/* New DM Modal */}
+      {showNewDM && (
+        <NewDMModal
+          userId={userId}
+          existingThreads={threads}
+          onlineUserIds={onlineUserIds}
+          onSelect={handleNewDMSelect}
+          onClose={() => setShowNewDM(false)}
+        />
+      )}
+
       {/* Left panel — Thread list */}
       <div className="w-[280px] border-r border-gray-200 dark:border-gray-700 flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">Messages</h2>
+          <button
+            onClick={() => setShowNewDM(true)}
+            className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            title="New message"
+          >
+            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+            </svg>
+          </button>
         </div>
 
         {/* Search */}
@@ -294,6 +338,7 @@ export function DirectMessagesView({
                 key={thread._id}
                 thread={thread}
                 isActive={activeThread?._id === thread._id}
+                isOnline={onlineUserIds.has(thread.otherUserId)}
                 onClick={() => selectThread(thread)}
               />
             ))
@@ -307,9 +352,19 @@ export function DirectMessagesView({
           <>
             {/* Conversation header */}
             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
-              <Avatar name={conversationName} photoUrl={conversationPhoto} size="sm" />
-              <div className="font-semibold text-sm text-gray-900 dark:text-white">
-                {conversationName}
+              <div className="relative shrink-0">
+                <Avatar name={conversationName} photoUrl={conversationPhoto} size="sm" />
+                {isConversationUserOnline && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full" />
+                )}
+              </div>
+              <div>
+                <div className="font-semibold text-sm text-gray-900 dark:text-white">
+                  {conversationName}
+                </div>
+                {isConversationUserOnline && (
+                  <div className="text-[10px] text-green-500 font-medium">Online</div>
+                )}
               </div>
             </div>
 
@@ -359,8 +414,15 @@ export function DirectMessagesView({
                   {sending ? 'Sending...' : 'Send'}
                 </button>
               </div>
-              <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 text-right">
-                {draft.length}/{MAX_DM_BODY}
+              <div className="flex items-center justify-between mt-1">
+                {sendError ? (
+                  <div className="text-[11px] text-red-500 font-medium">{sendError}</div>
+                ) : (
+                  <div />
+                )}
+                <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                  {draft.length}/{MAX_DM_BODY}
+                </div>
               </div>
             </div>
           </>
@@ -386,10 +448,12 @@ export function DirectMessagesView({
 function ThreadItem({
   thread,
   isActive,
+  isOnline,
   onClick,
 }: {
   thread: DMThread;
   isActive: boolean;
+  isOnline?: boolean;
   onClick: () => void;
 }) {
   const initials = getInitials(thread.otherUserName);
@@ -404,20 +468,25 @@ function ThreadItem({
           : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
       }`}
     >
-      {/* Avatar */}
-      {thread.otherUserPhotoUrl ? (
-        <img
-          src={thread.otherUserPhotoUrl}
-          alt={thread.otherUserName}
-          className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-        />
-      ) : (
-        <div
-          className={`w-10 h-10 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}
-        >
-          {initials}
-        </div>
-      )}
+      {/* Avatar with online indicator */}
+      <div className="relative flex-shrink-0">
+        {thread.otherUserPhotoUrl ? (
+          <img
+            src={thread.otherUserPhotoUrl}
+            alt={thread.otherUserName}
+            className="w-10 h-10 rounded-full object-cover"
+          />
+        ) : (
+          <div
+            className={`w-10 h-10 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-semibold text-sm`}
+          >
+            {initials}
+          </div>
+        )}
+        {isOnline && (
+          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-900 rounded-full" />
+        )}
+      </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0">

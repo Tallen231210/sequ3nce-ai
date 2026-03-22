@@ -935,6 +935,7 @@ export default defineSchema({
     emailVerificationCode: v.optional(v.string()),         // SHA-256 hashed 6-digit code
     emailVerificationExpiry: v.optional(v.number()),       // Unix timestamp
     emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
+    lastSeenAt: v.optional(v.number()),                    // Online presence heartbeat timestamp
   })
     .index("by_email", ["email"])
     .index("by_phone", ["phone"])
@@ -1176,6 +1177,19 @@ export default defineSchema({
   })
     .index("by_user", ["userId", "sortOrder"])
     .index("by_call", ["callId"]),
+
+  // B2C Highlight Clip Shares — shareable URLs for individual clips
+  b2cHighlightShares: defineTable({
+    clipId: v.id("b2cHighlightClips"),
+    userId: v.id("b2cUsers"),
+    token: v.string(),                    // URL-safe 16-char base36
+    isActive: v.boolean(),
+    hasPassword: v.boolean(),
+    passwordHash: v.optional(v.string()), // SHA-256 hex
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_clip", ["clipId"]),
 
   // B2C Job Postings — created by B2B teams, browsed by B2C closers
   b2cJobPostings: defineTable({

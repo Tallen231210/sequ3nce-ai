@@ -2053,6 +2053,71 @@ export async function reorderHighlightClips(
   }
 }
 
+// ==================== B2C Highlight Sharing ====================
+
+export interface HighlightShareInfo {
+  _id: string;
+  token: string;
+  hasPassword: boolean;
+  createdAt: number;
+  isActive: boolean;
+}
+
+// Create a share link for a highlight clip
+export async function createHighlightShare(
+  clipId: string,
+  userId: string,
+  password?: string
+): Promise<{ token?: string; shareId?: string; url?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/highlight-shares?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clipId, userId, password: password || undefined }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to create share link" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to create highlight share:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+// Get active share links for a clip
+export async function getHighlightSharesByClip(clipId: string): Promise<HighlightShareInfo[]> {
+  try {
+    const params = new URLSearchParams({ clipId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/highlight-shares?${params}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.shares || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get highlight shares:", error);
+    return [];
+  }
+}
+
+// Revoke a highlight share link
+export async function revokeHighlightShare(
+  shareId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/highlight-shares/revoke?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shareId, userId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to revoke share" };
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to revoke highlight share:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
 // ==================== B2C Community API ====================
 
 export interface CommunityChannel {
@@ -2568,6 +2633,35 @@ export async function deleteDMMessage(
   } catch (error) {
     console.error("[Convex] Failed to delete DM:", error);
     return { error: "Network error" };
+  }
+}
+
+// ==================== ONLINE PRESENCE ====================
+
+// Send heartbeat to update online presence
+export async function sendHeartbeat(userId: string): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/b2c/heartbeat?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+  } catch (error) {
+    // Silently fail — heartbeat is best-effort
+    console.error("[Convex] Heartbeat failed:", error);
+  }
+}
+
+// Get IDs of currently online users
+export async function getOnlineUserIds(): Promise<string[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/online-users?_=${Date.now()}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.onlineIds || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get online users:", error);
+    return [];
   }
 }
 

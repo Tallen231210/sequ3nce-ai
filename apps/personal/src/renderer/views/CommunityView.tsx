@@ -13,12 +13,13 @@ import { PostSearch } from './community/PostSearch';
 
 interface CommunityViewProps {
   closerInfo: CloserInfo;
+  onNavigateToMessage?: (recipientId: string, recipientName: string, recipientPhotoUrl: string | null) => void;
 }
 
 const REQUEST_COUNT_POLL = 30_000;
 const UNREAD_POLL_INTERVAL = 15_000;
 
-export function CommunityView({ closerInfo }: CommunityViewProps) {
+export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityViewProps) {
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
   const [selectedView, setSelectedView] = useState<string>('feed');
@@ -110,23 +111,17 @@ export function CommunityView({ closerInfo }: CommunityViewProps) {
     }
   };
 
-  const handleToggleMembers = () => {
-    if (showPanel && panelMode === 'members') {
+  const handleTogglePanel = (mode: 'members' | 'friends') => {
+    if (showPanel && panelMode === mode) {
       setShowPanel(false);
     } else {
-      setPanelMode('members');
+      setPanelMode(mode);
       setShowPanel(true);
     }
   };
 
-  const handleToggleFriends = () => {
-    if (showPanel && panelMode === 'friends') {
-      setShowPanel(false);
-    } else {
-      setPanelMode('friends');
-      setShowPanel(true);
-    }
-  };
+  const handleToggleMembers = () => handleTogglePanel('members');
+  const handleToggleFriends = () => handleTogglePanel('friends');
 
   return (
     <div className="flex h-full">
@@ -195,6 +190,7 @@ export function CommunityView({ closerInfo }: CommunityViewProps) {
           onModeChange={setPanelMode}
           currentUserId={userId}
           onClose={() => setShowPanel(false)}
+          onMessageMember={onNavigateToMessage}
         />
       )}
     </div>

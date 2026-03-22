@@ -8,12 +8,14 @@ import {
 } from '../../convex';
 import type { FriendItem, FriendRequest } from '../../convex';
 import { getInitials, getAvatarGradient } from './types';
+import { ChatBubbleIcon } from './icons';
 
 interface FriendsProps {
   userId: string;
+  onMessageFriend?: (userId: string, name: string, photoUrl: string | null) => void;
 }
 
-export function Friends({ userId }: FriendsProps) {
+export function Friends({ userId, onMessageFriend }: FriendsProps) {
   const [friends, setFriends] = useState<FriendItem[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,6 +160,7 @@ export function Friends({ userId }: FriendsProps) {
                 key={friend.userId}
                 friend={friend}
                 onRemove={() => handleRemove(friend.userId)}
+                onMessage={onMessageFriend ? () => onMessageFriend(friend.userId, friend.name, friend.photoUrl) : undefined}
               />
             ))}
           </div>
@@ -226,9 +229,11 @@ function RequestCard({
 function FriendCard({
   friend,
   onRemove,
+  onMessage,
 }: {
   friend: FriendItem;
   onRemove: () => void;
+  onMessage?: () => void;
 }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const initials = getInitials(friend.name);
@@ -250,6 +255,15 @@ function FriendCard({
         )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
+        {onMessage && (
+          <button
+            onClick={onMessage}
+            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+            title="Send message"
+          >
+            <ChatBubbleIcon />
+          </button>
+        )}
         {confirmRemove ? (
           <button
             onClick={() => { onRemove(); setConfirmRemove(false); }}

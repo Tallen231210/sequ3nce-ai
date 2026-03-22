@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 // ==================== Constants ====================
 
@@ -21,6 +23,21 @@ async function resolvePhotoUrl(
   return await ctx.storage.getUrl(storageId);
 }
 
+// Fetch all threads where userId is participant1 or participant2
+async function getAllThreadsForUser(ctx: QueryCtx, userId: Id<"b2cUsers">) {
+  const [threads1, threads2] = await Promise.all([
+    ctx.db
+      .query("b2cDirectMessageThreads")
+      .withIndex("by_participant1", (q) => q.eq("participant1Id", userId))
+      .collect(),
+    ctx.db
+      .query("b2cDirectMessageThreads")
+      .withIndex("by_participant2", (q) => q.eq("participant2Id", userId))
+      .collect(),
+  ]);
+  return [...threads1, ...threads2];
+}
+
 // ==================== Queries ====================
 
 // List all DM threads for a user, with other participant's info and unread counts
@@ -33,20 +50,7 @@ export const listThreads = query({
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
 
-    // Get threads where user is participant1
-    const threads1 = await ctx.db
-      .query("b2cDirectMessageThreads")
-      .withIndex("by_participant1", (q) => q.eq("participant1Id", args.userId))
-      .collect();
-
-    // Get threads where user is participant2
-    const threads2 = await ctx.db
-      .query("b2cDirectMessageThreads")
-      .withIndex("by_participant2", (q) => q.eq("participant2Id", args.userId))
-      .collect();
-
-    // Merge and sort by lastMessageAt desc
-    let allThreads = [...threads1, ...threads2];
+    let allThreads = await getAllThreadsForUser(ctx, args.userId);
     allThreads.sort((a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt));
 
     // Apply cursor
@@ -170,17 +174,7 @@ export const getUnreadCount = query({
     userId: v.id("b2cUsers"),
   },
   handler: async (ctx, args) => {
-    // Get all threads for user
-    const threads1 = await ctx.db
-      .query("b2cDirectMessageThreads")
-      .withIndex("by_participant1", (q) => q.eq("participant1Id", args.userId))
-      .collect();
-    const threads2 = await ctx.db
-      .query("b2cDirectMessageThreads")
-      .withIndex("by_participant2", (q) => q.eq("participant2Id", args.userId))
-      .collect();
-
-    const allThreads = [...threads1, ...threads2];
+    const allThreads = await getAllThreadsForUser(ctx, args.userId);
     let total = 0;
 
     for (const thread of allThreads) {
@@ -320,6 +314,21 @@ export const deleteMessage = mutation({
     if (message.senderId !== args.userId) throw new Error("Not authorized");
 
     await ctx.db.patch(args.messageId, { isDeleted: true });
+
+    // Update thread preview to reflect the latest non-deleted message
+    const threadMessages = await ctx.db
+      .query("b2cDirectMessages")
+      .withIndex("by_thread", (q) => q.eq("threadId", message.threadId))
+      .order("desc")
+      .collect();
+    const latestVisible = threadMessages.find(
+      (m) => !m.isDeleted && m._id !== args.messageId
+    );
+    await ctx.db.patch(message.threadId, {
+      lastMessagePreview: latestVisible ? latestVisible.body.slice(0, 100) : undefined,
+      ...(latestVisible ? { lastMessageAt: latestVisible.createdAt } : {}),
+    });
+
     return { success: true };
   },
 });
