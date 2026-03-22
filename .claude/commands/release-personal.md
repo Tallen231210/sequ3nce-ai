@@ -9,6 +9,9 @@ This command releases a new version of the Sequ3nce Personal Electron app for **
 Before releasing, ensure:
 - [ ] All code changes are complete and tested
 - [ ] You're on the `main` branch with no uncommitted changes
+- [ ] **Lock file in sync**: Run `cd apps/personal && npm ci` — if it fails, run `npm install` and commit the updated `package-lock.json`
+- [ ] **No missing imports**: Run `cd apps/personal && npx tsc --noEmit` and verify zero project errors (ignore `node_modules/` errors)
+- [ ] **No untracked imports**: Run `git status -u apps/personal/src/` and check that every `.tsx`/`.ts` file imported by your code is either committed or staged — CI won't have untracked local files
 
 ## Steps to Release
 
