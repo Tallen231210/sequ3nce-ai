@@ -119,9 +119,7 @@ export function HighlightClipCard({
         {!isPlaying && videoSrc && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
-              <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-              </svg>
+              <div className="w-0 h-0 ml-1 border-t-[10px] border-t-transparent border-b-[10px] border-b-transparent border-l-[16px] border-l-black" />
             </div>
           </div>
         )}
