@@ -202,8 +202,9 @@ wss.on("connection", async (ws, req) => {
     }
   });
 
-  ws.on("close", async () => {
-    logger.info("WebSocket connection closed");
+  ws.on("close", async (code, reason) => {
+    const reasonStr = reason?.toString() || 'none';
+    logger.info(`WebSocket connection closed. Code: ${code}, Reason: ${reasonStr}`);
 
     const handler = activeCalls.get(ws);
     if (handler) {
@@ -266,6 +267,8 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
 
   logger.info(`[Recall] Connection params - botId: ${botId}, closerId: ${closerId}, teamId: ${teamId}, closerName: ${closerName || "unknown"}, prospectName: ${prospectName || "unknown"}`);
 
+  const connectionStartTime = Date.now();
+
   // Create CallHandler with Recall-specific config
   const callMetadata: CallMetadata = {
     callId: botId,
@@ -323,6 +326,25 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
     .catch((err) => {
       logger.error(`[Recall] Failed to start call handler: ${err}`);
     });
+
+  // Keep Recall WebSocket alive — prevents Railway proxy idle timeout (~16 min)
+  // Mirrors the manager listener keepalive pattern
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+    } else {
+      clearInterval(pingInterval);
+    }
+  }, 30000);
+
+  // Confirm pong responses are flowing (temporary diagnostic)
+  let pongCount = 0;
+  ws.on("pong", () => {
+    pongCount++;
+    if (pongCount <= 3) {
+      logger.info(`[Recall] Pong #${pongCount} received for bot ${botId}`);
+    }
+  });
 
   let messageCount = 0;
   let audioEventCount = 0;
@@ -423,8 +445,11 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
     }
   });
 
-  ws.on("close", async () => {
-    logger.info(`[Recall] Bot connection closed. Total: ${messageCount} msgs, ${audioEventCount} audio, ${transcriptEventCount} transcript`);
+  ws.on("close", async (code, reason) => {
+    clearInterval(pingInterval);
+    const reasonStr = reason?.toString() || 'none';
+    const elapsedSec = Math.floor((Date.now() - connectionStartTime) / 1000);
+    logger.info(`[Recall] Bot connection closed. Code: ${code}, Reason: ${reasonStr}, Elapsed: ${elapsedSec}s, Pongs: ${pongCount}, Total: ${messageCount} msgs, ${audioEventCount} audio, ${transcriptEventCount} transcript`);
 
     const handler = activeCalls.get(ws);
     if (handler) {
