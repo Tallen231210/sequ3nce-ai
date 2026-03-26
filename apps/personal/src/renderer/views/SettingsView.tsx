@@ -122,15 +122,6 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
     try { mainData = await window.electron.diagnostics.collect() as Record<string, Record<string, unknown>>; } catch { /* ignore */ }
 
     // 2. Renderer-side data collection (each wrapped independently)
-    let micPermission = 'unknown';
-    try { micPermission = await window.electron.audio.checkMicrophonePermission(); } catch { /* ignore */ }
-
-    let screenPermission = false;
-    try { screenPermission = await window.electron.audio.checkPermissions(); } catch { /* ignore */ }
-
-    let audioStatusStr = 'unknown';
-    try { audioStatusStr = await window.electron.audio.getStatus(); } catch { /* ignore */ }
-
     let audioDevices: Array<{ kind: string; label: string }> = [];
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -153,21 +144,16 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
       },
       audio: {
         ...mainData.audio,
-        systemAudioCaptureStatus: audioStatusStr,
         audioDevices,
       },
       websocket: mainData.websocket,
       call: mainData.call || undefined,
       meetingBot: {
-        meetingBotEnabled: localStorage.getItem('sequ3nce_personal_bot_mode') === 'true',
+        meetingBotEnabled: true,
         calendarConnected: calStatus?.connected || false,
         ammoPanelVisible: mainData.context?.ammoTrackerVisible as boolean || false,
         questionnairePanelVisible: mainData.context?.postCallPending as boolean || false,
-        appMode: localStorage.getItem('sequ3nce_personal_bot_mode') === 'true' ? 'hub' : 'legacy',
-      },
-      permissions: {
-        microphonePermission: micPermission,
-        screenRecordingPermission: screenPermission ? 'granted' : 'denied',
+        appMode: 'hub',
       },
       createdAt: Date.now(),
     };

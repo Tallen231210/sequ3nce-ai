@@ -1,34 +1,6 @@
 // Preload script - exposes safe IPC methods to renderer
 import { contextBridge, ipcRenderer } from 'electron';
 
-export type AudioStatus = 'idle' | 'connecting' | 'capturing' | 'reconnecting' | 'error';
-
-export interface AudioAPI {
-  getStatus: () => Promise<AudioStatus>;
-  checkPermissions: () => Promise<boolean>;
-  requestPermissions: () => Promise<boolean>;
-  checkMicrophonePermission: () => Promise<string>;
-  requestMicrophonePermission: () => Promise<boolean>;
-  openMicrophonePreferences: () => Promise<void>;
-  start: (config: {
-    teamId: string;
-    closerId: string;
-    prospectName?: string;
-  }) => Promise<{ success: boolean; callId?: string; error?: string }>;
-  stop: () => Promise<{ success: boolean; hasRecording?: boolean; error?: string }>;
-  sendAudioData: (data: ArrayBuffer) => void;
-  sendAudioLevel: (level: number) => void;
-  getServiceUrl: () => Promise<string>;
-  testLoopback: () => Promise<{ success: boolean; hasAudio: boolean; error?: string }>;
-  onStatusChange: (callback: (status: AudioStatus) => void) => () => void;
-  onError: (callback: (error: string) => void) => () => void;
-  onAudioLevel: (callback: (level: number) => void) => () => void;
-  onCallIdUpdated: (callback: (callId: string) => void) => () => void;
-  onReconnecting: (callback: (info: { attempt: number; maxAttempts: number }) => void) => () => void;
-  onReconnected: (callback: () => void) => () => void;
-  onSilenceWarning: (callback: (info: { silenceDuration: number; message: string }) => void) => () => void;
-}
-
 export interface AppAPI {
   getVersion: () => Promise<string>;
   getPlatform: () => Promise<{ platform: string; arch: string; osRelease: string }>;
@@ -111,13 +83,12 @@ export interface BotAPI {
 export interface DiagnosticsAPI {
   collect: () => Promise<{
     system: Record<string, unknown>;
-    websocket: Record<string, unknown>;
-    audio: Record<string, unknown>;
+    call: Record<string, unknown>;
+    context: Record<string, unknown>;
   }>;
 }
 
 export interface ElectronAPI {
-  audio: AudioAPI;
   app: AppAPI;
   ammo: AmmoAPI;
   auth: AuthAPI;
@@ -131,56 +102,6 @@ export interface ElectronAPI {
 
 // Expose protected methods to renderer via contextBridge
 contextBridge.exposeInMainWorld('electron', {
-  audio: {
-    getStatus: () => ipcRenderer.invoke('audio:get-status'),
-    checkPermissions: () => ipcRenderer.invoke('audio:check-permissions'),
-    requestPermissions: () => ipcRenderer.invoke('audio:request-permissions'),
-    checkMicrophonePermission: () => ipcRenderer.invoke('audio:check-microphone-permission'),
-    requestMicrophonePermission: () => ipcRenderer.invoke('audio:request-microphone-permission'),
-    openMicrophonePreferences: () => ipcRenderer.invoke('audio:open-microphone-preferences'),
-    start: (config: { teamId: string; closerId: string; prospectName?: string }) =>
-      ipcRenderer.invoke('audio:start', config),
-    stop: () => ipcRenderer.invoke('audio:stop'),
-    sendAudioData: (data: ArrayBuffer) => ipcRenderer.send('audio:data', data),
-    sendAudioLevel: (level: number) => ipcRenderer.send('audio:level', level),
-    getServiceUrl: () => ipcRenderer.invoke('audio:get-service-url'),
-    testLoopback: () => ipcRenderer.invoke('audio:test-loopback'),
-    onStatusChange: (callback: (status: AudioStatus) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, status: AudioStatus) => callback(status);
-      ipcRenderer.on('audio:status-change', handler);
-      return () => ipcRenderer.removeListener('audio:status-change', handler);
-    },
-    onError: (callback: (error: string) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, error: string) => callback(error);
-      ipcRenderer.on('audio:error', handler);
-      return () => ipcRenderer.removeListener('audio:error', handler);
-    },
-    onAudioLevel: (callback: (level: number) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, level: number) => callback(level);
-      ipcRenderer.on('audio:level', handler);
-      return () => ipcRenderer.removeListener('audio:level', handler);
-    },
-    onCallIdUpdated: (callback: (callId: string) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, callId: string) => callback(callId);
-      ipcRenderer.on('audio:call-id-updated', handler);
-      return () => ipcRenderer.removeListener('audio:call-id-updated', handler);
-    },
-    onReconnecting: (callback: (info: { attempt: number; maxAttempts: number }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, info: { attempt: number; maxAttempts: number }) => callback(info);
-      ipcRenderer.on('audio:reconnecting', handler);
-      return () => ipcRenderer.removeListener('audio:reconnecting', handler);
-    },
-    onReconnected: (callback: () => void) => {
-      const handler = () => callback();
-      ipcRenderer.on('audio:reconnected', handler);
-      return () => ipcRenderer.removeListener('audio:reconnected', handler);
-    },
-    onSilenceWarning: (callback: (info: { silenceDuration: number; message: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, info: { silenceDuration: number; message: string }) => callback(info);
-      ipcRenderer.on('audio:silence-warning', handler);
-      return () => ipcRenderer.removeListener('audio:silence-warning', handler);
-    },
-  },
   app: {
     getVersion: () => ipcRenderer.invoke('app:get-version'),
     getPlatform: () => ipcRenderer.invoke('app:get-platform'),
@@ -263,15 +184,6 @@ contextBridge.exposeInMainWorld('electron', {
     collect: () => ipcRenderer.invoke('diagnostics:collect'),
   },
 } as ElectronAPI);
-
-// Also expose for tray menu actions
-ipcRenderer.on('tray:start-recording', () => {
-  window.dispatchEvent(new CustomEvent('tray:start-recording'));
-});
-
-ipcRenderer.on('tray:stop-recording', () => {
-  window.dispatchEvent(new CustomEvent('tray:stop-recording'));
-});
 
 // Auth callback from deep link
 ipcRenderer.on('auth:callback', (_event, data: { token?: string; error?: string }) => {

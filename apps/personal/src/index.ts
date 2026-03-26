@@ -531,19 +531,6 @@ const createTray = (): void => {
     },
     { type: 'separator' },
     {
-      label: 'Start Recording',
-      click: () => {
-        mainWindow?.webContents.send('tray:start-recording');
-      },
-    },
-    {
-      label: 'Stop Recording',
-      click: () => {
-        mainWindow?.webContents.send('tray:stop-recording');
-      },
-    },
-    { type: 'separator' },
-    {
       label: 'Quit Sequ3nce',
       click: () => {
         isQuitting = true;
@@ -952,30 +939,7 @@ const setupIpcHandlers = (): void => {
     return signOut();
   });
 
-  // ---- Audio IPC Handlers ----
-
-  // Get current audio capture status
-  ipcMain.handle('audio:get-status', () => {
-    return audioStatus;
-  });
-
-  // B2C Personal app: Audio IPC handlers return safe no-op defaults
-  // (Local audio capture is not used — recording is done via server-side meeting bots)
-  ipcMain.handle('audio:check-permissions', async () => true);
-  ipcMain.handle('audio:request-permissions', async () => true);
-  ipcMain.handle('audio:open-preferences', () => { /* no-op */ });
-  ipcMain.handle('audio:check-microphone-permission', async () => 'granted');
-  ipcMain.handle('audio:request-microphone-permission', async () => true);
-  ipcMain.handle('audio:open-microphone-preferences', () => { /* no-op */ });
-
-  // Start audio capture — not available in B2C Personal app
-  ipcMain.handle('audio:start', async (_event, config: AudioCaptureConfig) => {
-    console.log('[Main] Local audio capture not available in Personal app');
-    return { success: false, error: 'Local recording not available in Personal app' };
-  });
-  ipcMain.on('audio:data', () => { /* no-op */ });
-  ipcMain.on('audio:level', () => { /* no-op */ });
-  ipcMain.handle('audio:stop', async () => ({ success: true }));
+  // Audio IPC handlers removed — B2C Personal app uses meeting bots only (no local audio capture)
 
   // Set dock/taskbar badge count (macOS dock badge, Windows taskbar overlay)
   ipcMain.handle('app:set-badge-count', (_event, count: number) => {
@@ -1089,11 +1053,6 @@ const setupIpcHandlers = (): void => {
       mainWindow.center();
       console.log(`[Main] Window resized to ${width}x${height}`);
     }
-  });
-
-  // Get audio service URL (for debugging)
-  ipcMain.handle('audio:get-service-url', () => {
-    return AUDIO_SERVICE_URL;
   });
 
   // ---- Ammo Tracker IPC Handlers ----

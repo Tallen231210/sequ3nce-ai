@@ -125,29 +125,11 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
 
     const reportId = generateReportId();
 
-    // 1. Main process diagnostics (system, websocket, audio, call, context)
-    let mainData: Record<string, Record<string, unknown>> = { system: {}, websocket: {}, audio: {}, call: {}, context: {} };
+    // 1. Main process diagnostics (system, call, context)
+    let mainData: Record<string, Record<string, unknown>> = { system: {}, call: {}, context: {} };
     try { mainData = await window.electron.diagnostics.collect() as Record<string, Record<string, unknown>>; } catch { /* ignore */ }
 
-    // 2. Renderer-side data collection (each wrapped independently)
-    let micPermission = 'unknown';
-    try { micPermission = await window.electron.audio.checkMicrophonePermission(); } catch { /* ignore */ }
-
-    let screenPermission = false;
-    try { screenPermission = await window.electron.audio.checkPermissions(); } catch { /* ignore */ }
-
-    let audioStatusStr = 'unknown';
-    try { audioStatusStr = await window.electron.audio.getStatus(); } catch { /* ignore */ }
-
-    let audioDevices: Array<{ kind: string; label: string }> = [];
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      audioDevices = devices
-        .filter(d => d.kind === 'audioinput' || d.kind === 'audiooutput')
-        .map(d => ({ kind: d.kind, label: d.label || 'unlabeled' }));
-    } catch { /* ignore */ }
-
-    // 3. Build report
+    // 2. Build report
     const report = {
       reportId,
       appType: 'b2b',
@@ -159,12 +141,6 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
         ...mainData.system,
         userAgent: navigator.userAgent,
       },
-      audio: {
-        ...mainData.audio,
-        systemAudioCaptureStatus: audioStatusStr,
-        audioDevices,
-      },
-      websocket: mainData.websocket,
       call: mainData.call || undefined,
       meetingBot: {
         meetingBotEnabled: localStorage.getItem('sequ3nce_bot_mode') === 'true',
