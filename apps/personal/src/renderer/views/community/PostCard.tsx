@@ -157,6 +157,12 @@ export function PostCard({
                   Founder
                 </span>
               )}
+              {post.authorBadges?.includes('pioneer1') && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-700/50">
+                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" /></svg>
+                  Pioneer #1
+                </span>
+              )}
               {showChannelLabel && post.channelName && (
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   in <span className="text-gray-600 dark:text-gray-300 font-medium">#{post.channelSlug || post.channelName}</span>

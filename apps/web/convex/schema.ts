@@ -936,6 +936,7 @@ export default defineSchema({
     emailVerificationExpiry: v.optional(v.number()),       // Unix timestamp
     emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
     lastSeenAt: v.optional(v.number()),                    // Online presence heartbeat timestamp
+    trialExpiresAt: v.optional(v.number()),                 // Beta trial end date (undefined = no trial)
   })
     .index("by_email", ["email"])
     .index("by_phone", ["phone"])

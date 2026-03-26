@@ -14,6 +14,7 @@ export interface CloserInfo {
   b2cUserId?: string;
   role?: string;
   badges?: string[];
+  trialExpiresAt?: number;
 }
 
 export interface LoginResult {

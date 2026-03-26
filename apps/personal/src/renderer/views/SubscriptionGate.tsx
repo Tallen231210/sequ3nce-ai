@@ -113,6 +113,7 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
 
   const isPastDue = closerInfo.subscriptionStatus === 'past_due';
   const isCancelled = closerInfo.subscriptionStatus === 'cancelled';
+  const isTrialExpired = !!(closerInfo.trialExpiresAt && closerInfo.trialExpiresAt < Date.now());
 
   return (
     <div className="h-screen flex flex-col bg-white text-black">
@@ -129,14 +130,18 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
             ? 'Payment Issue'
             : isCancelled
               ? 'Subscription Inactive'
-              : 'Unlock Sequ3nce Personal'}
+              : isTrialExpired
+                ? 'Trial Ended'
+                : 'Unlock Sequ3nce Personal'}
         </h1>
         <p className="text-gray-500 text-sm mb-8 text-center max-w-sm">
           {isPastDue
             ? 'Your subscription payment failed. Please update your payment method to continue.'
             : isCancelled
               ? 'Your subscription has been cancelled. Resubscribe to regain access.'
-              : 'Get access to all the tools you need to crush your sales goals.'}
+              : isTrialExpired
+                ? 'Your 90-day free trial has ended. Subscribe to continue using Sequ3nce Personal.'
+                : 'Get access to all the tools you need to crush your sales goals.'}
         </p>
 
         {/* Features */}

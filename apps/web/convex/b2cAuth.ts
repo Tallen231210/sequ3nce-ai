@@ -132,6 +132,22 @@ export const signupB2CUser = mutation({
       createdAt: now,
     });
 
+    // 4. Auto-grant 90-day trial for first 50 beta users
+    const BETA_USER_CAP = 50;
+    const TRIAL_DAYS = 90;
+    const totalUsers = await ctx.db.query("b2cUsers").collect();
+    let finalSubscriptionStatus: "active" | "none" = "none";
+    let trialExpiresAt: number | undefined;
+
+    if (totalUsers.length <= BETA_USER_CAP) {
+      trialExpiresAt = now + (TRIAL_DAYS * 24 * 60 * 60 * 1000);
+      finalSubscriptionStatus = "active";
+      await ctx.db.patch(b2cUserId, {
+        subscriptionStatus: "active",
+        trialExpiresAt,
+      });
+    }
+
     return {
       success: true,
       b2cUserId,
@@ -139,7 +155,8 @@ export const signupB2CUser = mutation({
       teamId,
       name,
       email,
-      subscriptionStatus: "none",
+      subscriptionStatus: finalSubscriptionStatus,
+      trialExpiresAt,
     };
   },
 });
@@ -172,6 +189,18 @@ export const loginB2CUser = mutation({
     // Update last login timestamp
     await ctx.db.patch(user._id, { lastLoginAt: Date.now() });
 
+    // Check if trial has expired (trial user = has trialExpiresAt but no subscriptionId)
+    let currentSubscriptionStatus = user.subscriptionStatus;
+    if (
+      user.trialExpiresAt &&
+      user.trialExpiresAt < Date.now() &&
+      user.subscriptionStatus === "active" &&
+      !user.subscriptionId
+    ) {
+      await ctx.db.patch(user._id, { subscriptionStatus: "none" });
+      currentSubscriptionStatus = "none";
+    }
+
     // Find the closer record in their personal workspace
     const closer = await ctx.db
       .query("closers")
@@ -194,10 +223,11 @@ export const loginB2CUser = mutation({
         name: user.name,
         email: user.email,
         status: closer.status,
-        subscriptionStatus: user.subscriptionStatus,
+        subscriptionStatus: currentSubscriptionStatus,
         b2cUserId: user._id,
         role: user.role || "user",
         badges: user.badges || [],
+        trialExpiresAt: user.trialExpiresAt,
       },
     };
   },

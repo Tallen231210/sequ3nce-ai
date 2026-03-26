@@ -233,6 +233,12 @@ function CommentItem({
               Founder
             </span>
           )}
+          {comment.authorBadges?.includes('pioneer1') && (
+            <span className="inline-flex items-center gap-0.5 px-1 py-0 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-700/50">
+              <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" /></svg>
+              Pioneer #1
+            </span>
+          )}
           <span className="text-[10px] text-gray-400 dark:text-gray-500">{formatRelativeTime(comment.createdAt)}</span>
           {isEdited && <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">(edited)</span>}
         </div>
