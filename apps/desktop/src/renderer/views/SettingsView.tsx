@@ -151,8 +151,8 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
         appMode: localStorage.getItem('sequ3nce_bot_mode') === 'true' ? 'hub' : 'legacy',
       },
       permissions: {
-        microphonePermission: micPermission,
-        screenRecordingPermission: screenPermission ? 'granted' : 'denied',
+        microphonePermission: 'not_applicable',
+        screenRecordingPermission: 'not_applicable',
       },
       createdAt: Date.now(),
     };

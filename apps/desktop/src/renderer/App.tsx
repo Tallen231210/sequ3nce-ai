@@ -23,8 +23,6 @@ async function sendStartupDiagnostic(closerEmail: string): Promise<void> {
       osVersion: undefined as string | undefined,
       architecture: undefined as string | undefined,
       appVersion: undefined as string | undefined,
-      screenPermission: undefined as string | undefined,
-      microphonePermission: undefined as string | undefined,
       context: undefined as string | undefined,
     };
 
