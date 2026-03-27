@@ -1192,6 +1192,37 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_clip", ["clipId"]),
 
+  // B2C Content Submissions — user-generated clips & testimonials for marketing
+  b2cContentSubmissions: defineTable({
+    userId: v.id("b2cUsers"),
+    type: v.union(v.literal("clip"), v.literal("testimonial")),
+    // Clip-specific
+    clipId: v.optional(v.id("b2cHighlightClips")),
+    callId: v.optional(v.id("calls")),
+    startTime: v.optional(v.number()),
+    endTime: v.optional(v.number()),
+    blurRegion: v.optional(v.string()),
+    // Testimonial-specific
+    videoUrl: v.optional(v.string()),
+    // Shared fields
+    label: v.string(),
+    category: v.string(),
+    note: v.optional(v.string()),
+    paymentHandle: v.string(),
+    paymentMethod: v.string(),
+    consentGiven: v.boolean(),
+    // Review
+    status: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected"), v.literal("paid")),
+    reviewedBy: v.optional(v.id("b2cUsers")),
+    reviewedAt: v.optional(v.number()),
+    rejectionReason: v.optional(v.string()),
+    paidAmount: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_status", ["status", "createdAt"])
+    .index("by_clip", ["clipId"]),
+
   // B2C Job Postings — created by B2B teams, browsed by B2C closers
   b2cJobPostings: defineTable({
     teamId: v.id("teams"),

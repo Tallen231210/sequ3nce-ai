@@ -6,9 +6,11 @@ import {
   deleteHighlightClip,
   reorderHighlightClips,
   refreshRecordingUrl,
+  getMyContentSubmissions,
 } from '../convex';
 import { HighlightClipCard } from './HighlightClipCard';
 import { ClipShareModal } from './ClipShareModal';
+import { ContentSubmitModal } from './ContentSubmitModal';
 
 const MAX_CLIPS = 10;
 
@@ -23,6 +25,8 @@ export function HighlightsView({ closerInfo }: HighlightsViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [recordingUrls, setRecordingUrls] = useState<Map<string, string>>(new Map());
   const [shareClipId, setShareClipId] = useState<string | null>(null);
+  const [submitContentClipId, setSubmitContentClipId] = useState<string | null>(null);
+  const [submittedClipIds, setSubmittedClipIds] = useState<Set<string>>(new Set());
 
   const mountedRef = useRef(true);
   const dragItemRef = useRef<number | null>(null);
@@ -55,6 +59,23 @@ export function HighlightsView({ closerInfo }: HighlightsViewProps) {
     );
     if (mountedRef.current) setRecordingUrls(urlMap);
   };
+
+  // Load submitted clip IDs to show "Submitted" badge
+  const loadSubmittedClipIds = useCallback(async () => {
+    if (!userId) return;
+    const submissions = await getMyContentSubmissions(userId);
+    if (mountedRef.current) {
+      const ids = new Set<string>();
+      for (const sub of submissions) {
+        if (sub.clipId) ids.add(sub.clipId);
+      }
+      setSubmittedClipIds(ids);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    loadSubmittedClipIds();
+  }, [loadSubmittedClipIds]);
 
   const handleEdit = useCallback(async (clipId: string, label: string, blurRegion: string) => {
     const result = await updateHighlightClip({ clipId, userId, label, blurRegion });
@@ -96,6 +117,7 @@ export function HighlightsView({ closerInfo }: HighlightsViewProps) {
   };
 
   const shareClip = clips.find((c) => c._id === shareClipId);
+  const submitContentClip = clips.find((c) => c._id === submitContentClipId);
 
   if (isLoading) {
     return (
@@ -154,6 +176,8 @@ export function HighlightsView({ closerInfo }: HighlightsViewProps) {
                 onDragEnter={handleDragEnter}
                 onDragEnd={handleDragEnd}
                 index={index}
+                onSubmitContent={setSubmitContentClipId}
+                isSubmitted={submittedClipIds.has(clip._id)}
               />
             ))}
           </div>
@@ -167,6 +191,21 @@ export function HighlightsView({ closerInfo }: HighlightsViewProps) {
           userId={userId}
           clipLabel={shareClip.label}
           onClose={() => setShareClipId(null)}
+        />
+      )}
+
+      {/* Content submit modal */}
+      {submitContentClip && (
+        <ContentSubmitModal
+          type="clip"
+          clipId={submitContentClip._id}
+          clipLabel={submitContentClip.label}
+          userId={userId}
+          onClose={() => setSubmitContentClipId(null)}
+          onSubmitted={() => {
+            setSubmitContentClipId(null);
+            loadSubmittedClipIds();
+          }}
         />
       )}
     </div>

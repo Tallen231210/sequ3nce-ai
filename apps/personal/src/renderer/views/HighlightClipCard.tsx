@@ -11,6 +11,8 @@ interface HighlightClipCardProps {
   onDragEnter: (index: number) => void;
   onDragEnd: () => void;
   index: number;
+  onSubmitContent?: (clipId: string) => void;
+  isSubmitted?: boolean;
 }
 
 function formatClipDuration(startTime: number, endTime: number): string {
@@ -42,6 +44,8 @@ export function HighlightClipCard({
   onDragEnter,
   onDragEnd,
   index,
+  onSubmitContent,
+  isSubmitted,
 }: HighlightClipCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -209,6 +213,22 @@ export function HighlightClipCard({
                 </svg>
                 Share
               </button>
+              {onSubmitContent && clip.blurRegion !== 'none' && !clip.isFullCall && !isSubmitted && (
+                <button
+                  onClick={() => onSubmitContent(clip._id)}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                  </svg>
+                  Submit
+                </button>
+              )}
+              {onSubmitContent && isSubmitted && (
+                <span className="px-2 py-1 text-[11px] text-purple-500 dark:text-purple-400 font-medium">
+                  Submitted
+                </span>
+              )}
               <button
                 onClick={() => setIsEditing(true)}
                 className="flex items-center gap-1 px-2 py-1 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"

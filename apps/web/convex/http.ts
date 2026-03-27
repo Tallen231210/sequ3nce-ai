@@ -7159,6 +7159,143 @@ http.route({
   handler: b2cCorsPreflightHandler("GET, OPTIONS"),
 });
 
+// ==================== B2C Content Submission Endpoints ====================
+
+// POST /b2c/content/submit-clip — Submit a highlight clip for content
+http.route({
+  path: "/b2c/content/submit-clip",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, clipId, category, note, paymentHandle, paymentMethod, consentGiven } = body;
+      if (!userId || !clipId) return b2cJsonResponse({ error: "userId and clipId are required" }, 400);
+      const result = await ctx.runMutation(api.b2cContentSubmissions.submitClip, {
+        userId: userId as any, clipId: clipId as any, category, note, paymentHandle, paymentMethod, consentGiven: consentGiven === true,
+      });
+      return b2cJsonResponse({ success: true, ...result });
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to submit clip" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/content/submit-clip", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// POST /b2c/content/submit-testimonial — Submit a testimonial video
+http.route({
+  path: "/b2c/content/submit-testimonial",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, label, videoUrl, category, note, paymentHandle, paymentMethod, consentGiven } = body;
+      if (!userId || !label || !videoUrl) return b2cJsonResponse({ error: "userId, label, and videoUrl are required" }, 400);
+      const result = await ctx.runMutation(api.b2cContentSubmissions.submitTestimonial, {
+        userId: userId as any, label, videoUrl, category, note, paymentHandle, paymentMethod, consentGiven: consentGiven === true,
+      });
+      return b2cJsonResponse({ success: true, ...result });
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to submit testimonial" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/content/submit-testimonial", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// GET /b2c/content/my-submissions — User's own submissions
+http.route({
+  path: "/b2c/content/my-submissions",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const submissions = await ctx.runQuery(internal.b2cContentSubmissions.getMySubmissions, { userId: userId as any });
+      return b2cJsonResponse({ submissions });
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to load submissions" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/content/my-submissions", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// GET /b2c/content/pending — Founder: pending review queue
+http.route({
+  path: "/b2c/content/pending",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const reviewerUserId = url.searchParams.get("reviewerUserId");
+      if (!reviewerUserId) return b2cJsonResponse({ error: "reviewerUserId is required" }, 400);
+      const submissions = await ctx.runQuery(internal.b2cContentSubmissions.getPendingSubmissions, { reviewerUserId: reviewerUserId as any });
+      return b2cJsonResponse({ submissions });
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to load pending submissions" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/content/pending", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// GET /b2c/content/all — Founder: all submissions with optional status filter
+http.route({
+  path: "/b2c/content/all",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const reviewerUserId = url.searchParams.get("reviewerUserId");
+      const status = url.searchParams.get("status") || undefined;
+      if (!reviewerUserId) return b2cJsonResponse({ error: "reviewerUserId is required" }, 400);
+      const submissions = await ctx.runQuery(internal.b2cContentSubmissions.getAllSubmissions, { reviewerUserId: reviewerUserId as any, status });
+      return b2cJsonResponse({ submissions });
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to load submissions" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/content/all", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// POST /b2c/content/review — Founder: approve or reject a submission
+http.route({
+  path: "/b2c/content/review",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { submissionId, reviewerUserId, action, rejectionReason } = body;
+      if (!submissionId || !reviewerUserId || !action) return b2cJsonResponse({ error: "submissionId, reviewerUserId, and action are required" }, 400);
+      const result = await ctx.runMutation(api.b2cContentSubmissions.reviewSubmission, {
+        submissionId: submissionId as any, reviewerUserId: reviewerUserId as any, action, rejectionReason,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to review submission" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/content/review", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// POST /b2c/content/mark-paid — Founder: mark an approved submission as paid
+http.route({
+  path: "/b2c/content/mark-paid",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { submissionId, reviewerUserId, paidAmount } = body;
+      if (!submissionId || !reviewerUserId || !paidAmount) return b2cJsonResponse({ error: "submissionId, reviewerUserId, and paidAmount are required" }, 400);
+      const result = await ctx.runMutation(api.b2cContentSubmissions.markPaid, {
+        submissionId: submissionId as any, reviewerUserId: reviewerUserId as any, paidAmount: Number(paidAmount),
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to mark as paid" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/content/mark-paid", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
 // ==================== B2C Highlight Share Endpoints ====================
 
 // POST /b2c/highlight-shares — Create a share link for a clip

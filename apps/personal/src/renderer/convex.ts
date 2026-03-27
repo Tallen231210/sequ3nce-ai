@@ -2119,6 +2119,167 @@ export async function revokeHighlightShare(
   }
 }
 
+// ==================== B2C Content Submissions API ====================
+
+export interface ContentSubmission {
+  _id: string;
+  userId: string;
+  type: "clip" | "testimonial";
+  clipId?: string;
+  label: string;
+  category: string;
+  note?: string;
+  paymentHandle: string;
+  paymentMethod: string;
+  videoUrl?: string;
+  status: "pending" | "approved" | "rejected" | "paid";
+  reviewedAt?: number;
+  rejectionReason?: string;
+  paidAmount?: number;
+  createdAt: number;
+  submitterName?: string;
+  submitterEmail?: string;
+  recordingUrl?: string;
+  startTime?: number;
+  endTime?: number;
+  blurRegion?: string;
+}
+
+export async function submitClipForContent(
+  userId: string,
+  clipId: string,
+  category: string,
+  paymentHandle: string,
+  paymentMethod: string,
+  consentGiven: boolean,
+  note?: string
+): Promise<{ success: boolean; submissionId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/content/submit-clip?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, clipId, category, paymentHandle, paymentMethod, consentGiven, note }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to submit clip" };
+    return { success: true, submissionId: data.submissionId };
+  } catch (error) {
+    console.error("[Convex] Failed to submit clip for content:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function submitTestimonialForContent(
+  userId: string,
+  label: string,
+  videoUrl: string,
+  category: string,
+  paymentHandle: string,
+  paymentMethod: string,
+  consentGiven: boolean,
+  note?: string
+): Promise<{ success: boolean; submissionId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/content/submit-testimonial?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, label, videoUrl, category, paymentHandle, paymentMethod, consentGiven, note }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to submit testimonial" };
+    return { success: true, submissionId: data.submissionId };
+  } catch (error) {
+    console.error("[Convex] Failed to submit testimonial for content:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function getMyContentSubmissions(userId: string): Promise<ContentSubmission[]> {
+  try {
+    const params = new URLSearchParams({ userId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/content/my-submissions?${params}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.submissions || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get content submissions:", error);
+    return [];
+  }
+}
+
+export async function getPendingContentSubmissions(
+  reviewerUserId: string
+): Promise<ContentSubmission[]> {
+  try {
+    const params = new URLSearchParams({ reviewerUserId, _: String(Date.now()) });
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/content/pending?${params}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.submissions || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get pending content submissions:", error);
+    return [];
+  }
+}
+
+export async function getAllContentSubmissions(
+  reviewerUserId: string,
+  status?: string
+): Promise<ContentSubmission[]> {
+  try {
+    const params = new URLSearchParams({ reviewerUserId, _: String(Date.now()) });
+    if (status) params.set("status", status);
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/content/all?${params}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.submissions || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get all content submissions:", error);
+    return [];
+  }
+}
+
+export async function reviewContentSubmission(
+  submissionId: string,
+  reviewerUserId: string,
+  action: "approve" | "reject",
+  rejectionReason?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/content/review?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ submissionId, reviewerUserId, action, rejectionReason }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to review submission" };
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to review content submission:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function markContentSubmissionPaid(
+  submissionId: string,
+  reviewerUserId: string,
+  paidAmount: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/content/mark-paid?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ submissionId, reviewerUserId, paidAmount }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to mark as paid" };
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to mark content submission paid:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
 // ==================== B2C Community API ====================
 
 export interface CommunityChannel {
