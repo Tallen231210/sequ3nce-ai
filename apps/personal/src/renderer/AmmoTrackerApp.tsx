@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AmmoItem, TranscriptSegment } from './types/electron';
 import { AmmoV2Panel, type AmmoV2Analysis } from './AmmoV2Panel';
-import { ChatPanel } from './components/ChatPanel';
-import appIcon from '../assets/icon.png';
+// ChatPanel removed — B2C has no sales manager messaging
+import appIcon from '../assets/logo.png';
 
 const CONVEX_SITE_URL = 'https://ideal-ram-982.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds
 const NOTES_SAVE_DELAY = 2000; // Auto-save notes after 2 seconds of no typing
 
-// Tab types - simplified (no nudges), added resources and chat
-type TabType = 'ammo' | 'transcript' | 'notes' | 'resources' | 'chat';
+// Tab types - simplified (no nudges), added resources
+type TabType = 'ammo' | 'transcript' | 'notes' | 'resources';
 
 // Resource type from Convex
 interface Resource {
@@ -50,14 +50,6 @@ function ResourcesIcon({ active }: { active: boolean }) {
   return (
     <svg className={`w-4 h-4 ${active ? 'text-black dark:text-white' : 'text-gray-400 dark:text-zinc-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-    </svg>
-  );
-}
-
-function ChatIcon({ active }: { active: boolean }) {
-  return (
-    <svg className={`w-4 h-4 ${active ? 'text-black dark:text-white' : 'text-gray-400 dark:text-zinc-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
     </svg>
   );
 }
@@ -666,7 +658,6 @@ export function AmmoTrackerApp() {
   const [isAmmoV2Enabled, setIsAmmoV2Enabled] = useState(false);
   const [closerId, setCloserId] = useState<string | null>(null);
   const [closerName, setCloserName] = useState<string | null>(null);
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [isMinimized, setIsMinimized] = useState(false);
 
   const seenAmmoIds = useRef<Set<string>>(new Set());
@@ -854,26 +845,13 @@ export function AmmoTrackerApp() {
         checkAmmoV2Enabled(currentTeamId);
       }
 
-      // Get closer info for chat
+      // Get closer info (for speaker identification)
       const closerInfo = await window.ammoTracker.chatGetCloserInfo?.();
       if (closerInfo) {
-        console.log('[Panel] Closer info:', closerInfo);
         setCloserId(closerInfo.closerId);
         setCloserName(closerInfo.closerName);
-        // If teamId not set yet, use from closer info
         if (!currentTeamId && closerInfo.teamId) {
           setTeamId(closerInfo.teamId);
-        }
-
-        // Fetch initial unread count for chat badge
-        if (closerInfo.closerId && window.ammoTracker.chatGetUnreadCount) {
-          try {
-            const count = await window.ammoTracker.chatGetUnreadCount(closerInfo.closerId);
-            console.log('[Panel] Initial unread count:', count);
-            setChatUnreadCount(count);
-          } catch (err) {
-            console.error('[Panel] Failed to get initial unread count:', err);
-          }
         }
       }
 
@@ -967,29 +945,6 @@ export function AmmoTrackerApp() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [callId, notes, saveNotes]);
 
-  // Listen for chat unread count changes
-  useEffect(() => {
-    if (!window.ammoTracker?.onUnreadCountChanged) return;
-
-    const unsubscribe = window.ammoTracker.onUnreadCountChanged((count) => {
-      setChatUnreadCount(count);
-    });
-
-    return unsubscribe;
-  }, []);
-
-  // Listen for switch to chat tab (from notification click)
-  useEffect(() => {
-    if (!window.ammoTracker?.onSwitchToChatTab) return;
-
-    const unsubscribe = window.ammoTracker.onSwitchToChatTab(() => {
-      console.log('[Panel] Switching to chat tab from notification');
-      setActiveTab('chat');
-    });
-
-    return unsubscribe;
-  }, []);
-
   const handleMinimize = useCallback(() => {
     setIsMinimized(true);
     window.ammoTracker?.minimize();
@@ -1064,13 +1019,7 @@ export function AmmoTrackerApp() {
             icon={<ResourcesIcon active={activeTab === 'resources'} />}
             label="Resources"
           />
-          <TabButton
-            active={activeTab === 'chat'}
-            onClick={() => setActiveTab('chat')}
-            icon={<ChatIcon active={activeTab === 'chat'} />}
-            label="Chat"
-            badge={chatUnreadCount > 0 ? chatUnreadCount : undefined}
-          />
+          {/* Chat tab removed — B2C has no sales manager messaging */}
         </div>
 
         <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -1129,14 +1078,7 @@ export function AmmoTrackerApp() {
             />
           </div>
         )}
-        {activeTab === 'chat' && (
-          <ChatPanel
-            closerId={closerId}
-            teamId={teamId}
-            closerName={closerName}
-            onUnreadCountChange={setChatUnreadCount}
-          />
-        )}
+        {/* Chat panel removed — B2C has no sales manager messaging */}
       </div>
     </div>
   );

@@ -430,7 +430,7 @@ export const createBot = action({
           },
         },
         automatic_leave: {
-          everyone_left_timeout: 120,   // 2 minutes — survives WiFi drops, bio breaks
+          everyone_left_timeout: 15,    // 15 seconds — enough for WiFi reconnects, fast exit after real call ends
           noone_joined_timeout: 300,    // 5 minutes — don't waste bot if nobody joins
         },
         recording_config: {
@@ -684,7 +684,7 @@ export const createQuickBot = action({
           },
         },
         automatic_leave: {
-          everyone_left_timeout: 120,   // 2 minutes — survives WiFi drops, bio breaks
+          everyone_left_timeout: 15,    // 15 seconds — enough for WiFi reconnects, fast exit after real call ends
           noone_joined_timeout: 300,    // 5 minutes — don't waste bot if nobody joins
         },
         recording_config: {
