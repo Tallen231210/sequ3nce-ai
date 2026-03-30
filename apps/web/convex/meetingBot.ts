@@ -273,6 +273,7 @@ export const insertBot = internalMutation({
     calendarEventId: v.optional(v.string()),
     scheduledAt: v.optional(v.number()),
     source: v.string(),
+    closerName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const botId = await ctx.db.insert("meetingBots", {
@@ -285,9 +286,21 @@ export const insertBot = internalMutation({
       scheduledAt: args.scheduledAt,
       status: "scheduled",
       source: args.source,
+      closerName: args.closerName,
       createdAt: Date.now(),
     });
     return botId;
+  },
+});
+
+// Store closer name on bot record for webhook transcript speaker identification
+export const updateBotCloserName = internalMutation({
+  args: {
+    botId: v.id("meetingBots"),
+    closerName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.botId, { closerName: args.closerName });
   },
 });
 
@@ -381,6 +394,14 @@ export const createBot = action({
     });
     const closerName = closer?.name;
 
+    // Store closerName on bot record for webhook transcript speaker identification
+    if (closerName) {
+      await ctx.runMutation(internal.meetingBot.updateBotCloserName, {
+        botId,
+        closerName,
+      });
+    }
+
     // 3. Call Recall.ai API to create the bot
     const recallApiKey = process.env.RECALL_API_KEY;
     if (!recallApiKey) {
@@ -434,10 +455,15 @@ export const createBot = action({
               url: streamingUrl,
               events: [
                 "audio_mixed_raw.data",
-                "transcript.data",
-                "transcript.partial_data",
                 "participant_events.join",
                 "participant_events.leave",
+              ],
+            },
+            {
+              type: "webhook" as const,
+              url: `https://ideal-ram-982.convex.site/recall-transcript-webhook?token=${process.env.RECALL_TRANSCRIPT_WEBHOOK_SECRET}`,
+              events: [
+                "transcript.data",
               ],
             },
           ],
@@ -499,6 +525,23 @@ export const createBot = action({
       });
       throw error;
     }
+  },
+});
+
+// User manually ends call — marks bot as "ended_by_user" so desktop poll stops showing it
+export const endCallManually = mutation({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    const bots = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_closer_and_status", (q) => q.eq("closerId", args.closerId).eq("status", "active"))
+      .collect();
+
+    for (const bot of bots) {
+      await ctx.db.patch(bot._id, { status: "ended_by_user" });
+    }
+
+    return { success: true, endedCount: bots.length };
   },
 });
 
@@ -605,6 +648,14 @@ export const createQuickBot = action({
     });
     const closerName = closer?.name;
 
+    // Store closerName on bot record for webhook transcript speaker identification
+    if (closerName) {
+      await ctx.runMutation(internal.meetingBot.updateBotCloserName, {
+        botId,
+        closerName,
+      });
+    }
+
     // 3. Call Recall.ai API to create the bot
     const recallApiKey = process.env.RECALL_API_KEY;
     if (!recallApiKey) {
@@ -658,10 +709,15 @@ export const createQuickBot = action({
               url: streamingUrl,
               events: [
                 "audio_mixed_raw.data",
-                "transcript.data",
-                "transcript.partial_data",
                 "participant_events.join",
                 "participant_events.leave",
+              ],
+            },
+            {
+              type: "webhook" as const,
+              url: `https://ideal-ram-982.convex.site/recall-transcript-webhook?token=${process.env.RECALL_TRANSCRIPT_WEBHOOK_SECRET}`,
+              events: [
+                "transcript.data",
               ],
             },
           ],
@@ -854,9 +910,9 @@ export const completeBotFromAudioProcessor = mutation({
       return;
     }
 
-    // Only transition if not already completed (webhook may have beaten us)
-    if (bot.status === "completed") {
-      console.log(`[completeBotFromAudioProcessor] Bot ${args.botId} already completed, skipping`);
+    // Only transition if active or ended_by_user (webhook may have beaten us)
+    if (bot.status !== "active" && bot.status !== "ended_by_user") {
+      console.log(`[completeBotFromAudioProcessor] Bot ${args.botId} status is ${bot.status}, skipping`);
       return;
     }
 

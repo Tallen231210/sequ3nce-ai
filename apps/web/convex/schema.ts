@@ -826,6 +826,7 @@ export default defineSchema({
     questionnaireCompleted: v.optional(v.boolean()), // Whether closer filled post-call form
     source: v.string(), // "calendar" | "quick_bot"
     failureReason: v.optional(v.string()), // Why the bot failed (if status === "failed")
+    closerName: v.optional(v.string()), // For webhook transcript speaker identification
     createdAt: v.number(),
   })
     .index("by_closer", ["closerId"])

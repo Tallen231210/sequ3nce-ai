@@ -3188,6 +3188,100 @@ http.route({
 });
 
 // ============================================
+// RECALL.AI TRANSCRIPT WEBHOOK (real-time transcription via webhook)
+// ============================================
+
+http.route({
+  path: "/recall-transcript-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      // Verify webhook token
+      const url = new URL(request.url);
+      const token = url.searchParams.get("token");
+      const expectedToken = process.env.RECALL_TRANSCRIPT_WEBHOOK_SECRET;
+      if (!token || !expectedToken || token !== expectedToken) {
+        console.error("[TranscriptWebhook] Invalid or missing token");
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
+      }
+
+      const body = await request.json();
+      const eventType = body.event;
+
+      if (eventType !== "transcript.data") {
+        return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Extract transcript data
+      const transcriptData = body.data?.data || body.data;
+      const words = transcriptData?.words || [];
+      const text = words.map((w: any) => w.text).join(" ");
+      const participantName = transcriptData?.participant?.name || "Unknown";
+      const startTimestamp = words[0]?.start_timestamp?.relative || 0;
+
+      if (!text.trim()) {
+        return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Look up bot by Recall bot UUID
+      const recallBotId = body.data?.bot?.id;
+      if (!recallBotId) {
+        console.error("[TranscriptWebhook] Missing bot.id in payload");
+        return new Response(JSON.stringify({ error: "Missing bot.id" }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Find our meetingBot record by Recall bot UUID
+      const bot = await ctx.runQuery(api.meetingBot.getBotByRecallId, { recallBotId });
+      if (!bot || !bot.callId) {
+        console.warn(`[TranscriptWebhook] Bot not found or no callId for recallBotId: ${recallBotId}`);
+        return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Determine speaker: match participant name to closer name
+      const closerName = bot.closerName || "";
+      const isCloser = closerName && participantName.toLowerCase().includes(closerName.toLowerCase().substring(0, Math.min(closerName.length, 5)));
+      const speaker = isCloser ? "closer" : "prospect";
+
+      // Save transcript segment
+      await ctx.runMutation(api.calls.addTranscriptSegment, {
+        callId: bot.callId as string,
+        teamId: bot.teamId as string,
+        speaker,
+        text,
+        timestamp: Math.floor(startTimestamp),
+      });
+
+      // Update call status to "on_call" on first transcript (triggers live calls dashboard + notifications)
+      await ctx.runMutation(api.calls.updateCallStatus, {
+        callId: bot.callId as string,
+        status: "on_call",
+        speakerCount: 1,
+      });
+
+      return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    } catch (error) {
+      console.error("[TranscriptWebhook] Error processing transcript:", error);
+      return new Response(JSON.stringify({ error: "Internal error" }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+  }),
+});
+
+http.route({
+  path: "/recall-transcript-webhook",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
 // RECALL.AI WEBHOOK HANDLER
 // ============================================
 
@@ -3524,6 +3618,52 @@ http.route({
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// Manual end call — user clicks "End Call" in desktop app
+http.route({
+  path: "/endCallManually",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId } = body;
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId required" }), {
+          status: 400,
+          headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" },
+        });
+      }
+      const result = await ctx.runMutation(api.meetingBot.endCallManually, {
+        closerId: closerId as any,
+      });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" },
+      });
+    } catch (error: any) {
+      return new Response(JSON.stringify({ error: error.message || "Failed to end call" }), {
+        status: 500,
+        headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/endCallManually",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Max-Age": "86400",
       },
     });
   }),

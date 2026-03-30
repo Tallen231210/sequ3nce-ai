@@ -426,6 +426,21 @@ export interface ActiveBotCall {
   meetingUrl: string;
 }
 
+// User manually ends call — writes "ended_by_user" to Convex so poll stops detecting it
+export async function endCallManually(closerId: string): Promise<{ success: boolean }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/endCallManually`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return { success: false };
+    return await response.json();
+  } catch {
+    return { success: false };
+  }
+}
+
 export async function getActiveCallForCloserBot(closerId: string): Promise<ActiveBotCall | null> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/getActiveCallForCloserBot`, {

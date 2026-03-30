@@ -31,6 +31,7 @@ const wss = new WebSocketServer({
   perMessageDeflate: false, // Disable compression — PCM audio doesn't compress well and adds latency
 });
 
+logger.info(`[AudioProcessor] Process started at ${new Date().toISOString()}, PID: ${process.pid}`);
 logger.info(`Audio processing server starting on port ${PORT}`);
 
 wss.on("connection", async (ws, req) => {
@@ -327,28 +328,17 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
       logger.error(`[Recall] Failed to start call handler: ${err}`);
     });
 
-  // Keep Recall WebSocket alive — prevents Railway proxy idle timeout (~16 min)
-  // Mirrors the manager listener keepalive pattern
-  const pingInterval = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.ping();
-    } else {
-      clearInterval(pingInterval);
-    }
-  }, 30000);
-
-  // Confirm pong responses are flowing (temporary diagnostic)
-  let pongCount = 0;
-  ws.on("pong", () => {
-    pongCount++;
-    if (pongCount <= 3) {
-      logger.info(`[Recall] Pong #${pongCount} received for bot ${botId}`);
-    }
-  });
+  // No ping/pong — transcripts now delivered via webhook, not WebSocket.
+  // WebSocket only carries audio + participant events. Closes fast when meeting ends.
 
   let messageCount = 0;
   let audioEventCount = 0;
-  let transcriptEventCount = 0;
+
+  // Health log every 60 seconds
+  const healthLogInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - connectionStartTime) / 1000);
+    logger.info(`[Recall] Health: bot=${botId}, elapsed=${elapsed}s, msgs=${messageCount}, audio=${audioEventCount}`);
+  }, 60000);
 
   ws.on("message", async (data, isBinary) => {
     messageCount++;
@@ -358,7 +348,7 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
       const preview = data.toString().slice(0, 300);
       logger.info(`[Recall] MSG #${messageCount} (binary=${isBinary}, len=${data.toString().length}): ${preview}`);
     } else if (messageCount % 100 === 0) {
-      logger.info(`[Recall] Stats: ${messageCount} msgs, ${audioEventCount} audio, ${transcriptEventCount} transcript`);
+      logger.info(`[Recall] Stats: ${messageCount} msgs, ${audioEventCount} audio`);
     }
 
     try {
@@ -391,32 +381,9 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
           break;
         }
 
-        case "transcript.data": {
-          transcriptEventCount++;
-          // Recall.ai transcript event — payload nested under data.data
-          const transcriptData = message.data?.data || message.data;
-          const words = transcriptData?.words || [];
-          const text = words.map((w: any) => w.text).join(" ");
-          const participantName = transcriptData?.participant?.name || "Unknown";
-
-          logger.info(`[Recall] Transcript #${transcriptEventCount}: "${text}" by ${participantName} (${words.length} words)`);
-
-          if (text.trim()) {
-            const startTimestamp = words[0]?.start_timestamp?.relative || words[0]?.start_ms || 0;
-            callHandler.handleRecallTranscript({
-              text,
-              speaker: participantName,
-              timestamp: Date.now(),
-              startMs: typeof startTimestamp === 'number' && startTimestamp < 1000 ? startTimestamp * 1000 : startTimestamp,
-            });
-          }
-          break;
-        }
-
+        case "transcript.data":
         case "transcript.partial_data": {
-          // Partial/interim transcript — skip, we use finals only (they arrive fast
-          // with prioritize_low_latency mode, ~1-3s). Storing partials causes duplicates
-          // since each partial is a progressive update of the same utterance.
+          // Transcripts now delivered via webhook — ignore any that arrive on WebSocket
           break;
         }
 
@@ -446,10 +413,10 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
   });
 
   ws.on("close", async (code, reason) => {
-    clearInterval(pingInterval);
+    clearInterval(healthLogInterval);
     const reasonStr = reason?.toString() || 'none';
     const elapsedSec = Math.floor((Date.now() - connectionStartTime) / 1000);
-    logger.info(`[Recall] Bot connection closed. Code: ${code}, Reason: ${reasonStr}, Elapsed: ${elapsedSec}s, Pongs: ${pongCount}, Total: ${messageCount} msgs, ${audioEventCount} audio, ${transcriptEventCount} transcript`);
+    logger.info(`[Recall] Bot connection closed. Code: ${code}, Reason: ${reasonStr}, Elapsed: ${elapsedSec}s, Total: ${messageCount} msgs, ${audioEventCount} audio`);
 
     const handler = activeCalls.get(ws);
     if (handler) {

@@ -872,25 +872,15 @@ const setupIpcHandlers = (): void => {
 
   ipcMain.handle('bot:call-ended', async (_event, data: { callId: string; closerId: string; closerName?: string; teamId?: string; prospectName?: string }) => {
     console.log('[Main] Bot call ended:', data.callId);
-    // Clear current call FIRST so poll doesn't fire another callEnded
     currentCallId = null;
-    // Hide ammo panel immediately, then destroy after a tick (prevents blank flash)
+    // Close ammo panel only — post-call form is now manual (user clicks "End Call" or "Fill Out Form")
     if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
       ammoTrackerWindow.hide();
-      // Remove close handler that would preventDefault, then destroy cleanly
       ammoTrackerWindow.removeAllListeners('close');
       ammoTrackerWindow.destroy();
       ammoTrackerWindow = null;
       ammoTrackerVisible = false;
     }
-    // Open floating post-call questionnaire
-    createPostCallWindow({
-      callId: data.callId,
-      closerId: data.closerId,
-      closerName: data.closerName || chatCloserName || '',
-      teamId: data.teamId || currentTeamId || '',
-      prospectName: data.prospectName,
-    });
   });
 
   ipcMain.handle('bot:open-questionnaire', async (_event, data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string }) => {

@@ -3,6 +3,7 @@ import type { CloserInfo, ActiveBotCall } from '../convex';
 import {
   needsCalendarOnboarding,
   getActiveCallForCloserBot,
+  endCallManually,
   getUnreadFeedbackCount,
   getUnreadSharedMomentsCount,
   getPendingQuestionnaireInfo,
@@ -147,6 +148,12 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
   const previousCallRef = useRef<ActiveBotCall | null>(null);
   const botCallNotifiedRef = useRef<string | null>(null); // Track which callId we've sent IPC for
 
+  // Post-call pending state (soft prompt instead of auto-fire)
+  const [callEndedPending, setCallEndedPending] = useState<{
+    callId: string;
+    prospectName?: string;
+  } | null>(null);
+
   // Quick bot modal
   const [showQuickBot, setShowQuickBot] = useState(false);
 
@@ -218,12 +225,13 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
       const call = await getActiveCallForCloserBot(closerInfo.closerId);
 
       if (call) {
-        // Bot is active
+        // Bot is active — clear any pending call-ended prompt
         if (!activeCallStartRef.current) {
           activeCallStartRef.current = Date.now();
         }
         setActiveCall(call);
         previousCallRef.current = call;
+        setCallEndedPending(null);
 
         // Send IPC to open floating ammo panel (only once per call)
         if (botCallNotifiedRef.current !== call.callId) {
@@ -239,15 +247,12 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
           });
         }
       } else {
-        // No active call
+        // No active call — show soft prompt instead of auto-firing questionnaire
         if (previousCallRef.current && activeCallStartRef.current) {
-          // Call just ended — check minimum duration
           const elapsed = (Date.now() - activeCallStartRef.current) / 1000;
           if (elapsed >= MIN_CALL_DURATION) {
-            // Send IPC to open floating post-call questionnaire
-            window.electron?.bot?.callEnded({
+            setCallEndedPending({
               callId: previousCallRef.current.callId,
-              closerId: closerInfo.closerId,
               prospectName: previousCallRef.current.prospectName || undefined,
             });
           }
@@ -266,6 +271,27 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
+  }, []);
+
+  // Manual "End Call" — user clicks this when their call is done
+  const handleEndCall = useCallback(async () => {
+    // 1. Write to Convex FIRST — prevents poll from seeing this call as active
+    await endCallManually(closerInfo.closerId);
+    // 2. Close ammo panel via IPC
+    window.electron?.bot?.callEnded({ callId: activeCall?.callId || '', closerId: closerInfo.closerId });
+    // 3. Navigate to Calls tab
+    setSelectedItem('calls');
+    // 4. Clear local state (poll will confirm via null response)
+    setActiveCall(null);
+    activeCallStartRef.current = null;
+    previousCallRef.current = null;
+    // DO NOT clear botCallNotifiedRef — leave it set so poll doesn't reopen ammo
+  }, [activeCall, closerInfo.closerId]);
+
+  // Soft prompt "Fill Out Form" — navigates to Calls tab
+  const handleGoToPostCallForm = useCallback(() => {
+    setSelectedItem('calls');
+    setCallEndedPending(null);
   }, []);
 
   // Open floating post-call questionnaire via IPC (used by "Fill Out Now" banner in CallHistoryView)
@@ -396,11 +422,36 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
                 Active Call: {activeCall.prospectName || activeCall.meetingTitle || 'In Progress'}
               </span>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => window.electron?.ammo?.toggle()}
+                className="text-xs font-medium bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors"
+              >
+                Show Ammo Panel
+              </button>
+              <button
+                onClick={handleEndCall}
+                className="text-xs font-medium bg-white text-green-700 hover:bg-green-50 px-3 py-1 rounded-md transition-colors"
+              >
+                End Call
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Call Ended — Soft Prompt (replaces auto-fire) */}
+        {!activeCall && callEndedPending && (
+          <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between shrink-0">
+            <span className="text-sm font-medium">
+              {callEndedPending.prospectName
+                ? `Call with ${callEndedPending.prospectName} ended — fill out your post-call form`
+                : 'Call ended — fill out your post-call form'}
+            </span>
             <button
-              onClick={() => window.electron?.ammo?.toggle()}
-              className="text-xs font-medium bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors"
+              onClick={handleGoToPostCallForm}
+              className="text-xs font-medium bg-white text-amber-700 hover:bg-amber-50 px-3 py-1 rounded-md transition-colors"
             >
-              Show Ammo Panel
+              Fill Out Form
             </button>
           </div>
         )}
