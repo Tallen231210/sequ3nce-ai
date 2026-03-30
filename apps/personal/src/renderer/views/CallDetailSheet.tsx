@@ -87,15 +87,25 @@ export function CallDetailSheet({
       if (active) { setAmmoItems(a); setIsLoadingAmmo(false); }
     });
 
-    // Refresh recording URL if video
+    // Refresh recording URL if video — retry up to 10 times (recording may still be uploading)
     if (hasVideo) {
       setIsRefreshingUrl(true);
-      refreshRecordingUrl(call._id).then((url) => {
-        if (active) {
-          if (url) setVideoUrl(url);
-          setIsRefreshingUrl(false);
-        }
-      });
+      let retryCount = 0;
+      const tryRefresh = () => {
+        refreshRecordingUrl(call._id).then((url) => {
+          if (!active) return;
+          if (url) {
+            setVideoUrl(url);
+            setIsRefreshingUrl(false);
+          } else if (retryCount < 10) {
+            retryCount++;
+            setTimeout(tryRefresh, 3000);
+          } else {
+            setIsRefreshingUrl(false);
+          }
+        });
+      };
+      tryRefresh();
     }
 
     // Load existing highlight clips for this call
@@ -207,8 +217,9 @@ export function CallDetailSheet({
         {hasVideo && (
           <div className="shrink-0">
             {isRefreshingUrl ? (
-              <div className="flex items-center justify-center h-[200px] bg-gray-50">
-                <span className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <div className="flex flex-col items-center justify-center h-[200px] bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <span className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mb-2" />
+                <span className="text-xs text-gray-400 dark:text-gray-500">Processing recording...</span>
               </div>
             ) : videoUrl ? (
               <video

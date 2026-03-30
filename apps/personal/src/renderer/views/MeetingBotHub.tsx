@@ -390,20 +390,34 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
     await endCallManually(closerInfo.closerId);
     // 2. Close ammo panel via IPC
     window.electron?.bot?.callEnded({ callId: activeCall?.callId || '', closerId: closerInfo.closerId });
-    // 3. Navigate to Calls tab
-    setSelectedItem('calls');
-    // 4. Clear local state (poll will confirm via null response)
+    // 3. Open post-call form immediately for THIS call
+    window.electron?.bot?.openQuestionnaire({
+      callId: activeCall?.callId || '',
+      closerId: closerInfo.closerId,
+      closerName: closerInfo.name,
+      teamId: closerInfo.teamId,
+      prospectName: activeCall?.prospectName || undefined,
+    });
+    // 4. Clear local state
     setActiveCall(null);
     activeCallStartRef.current = null;
     previousCallRef.current = null;
-    // DO NOT clear botCallNotifiedRef — leave it set so poll doesn't reopen ammo
-  }, [activeCall, closerInfo.closerId]);
-
-  // Soft prompt "Fill Out Form" — navigates to Calls tab
-  const handleGoToPostCallForm = useCallback(() => {
-    setSelectedItem('calls');
     setCallEndedPending(null);
-  }, []);
+  }, [activeCall, closerInfo]);
+
+  // Soft prompt "Fill Out Form" — opens form directly
+  const handleGoToPostCallForm = useCallback(() => {
+    if (callEndedPending) {
+      window.electron?.bot?.openQuestionnaire({
+        callId: callEndedPending.callId,
+        closerId: closerInfo.closerId,
+        closerName: closerInfo.name,
+        teamId: closerInfo.teamId,
+        prospectName: callEndedPending.prospectName,
+      });
+    }
+    setCallEndedPending(null);
+  }, [callEndedPending, closerInfo]);
 
   // Open floating post-call questionnaire via IPC (used by "Fill Out Now" banner in CallHistoryView)
   const handleOpenQuestionnaire = useCallback((callId: string, prospectName?: string) => {

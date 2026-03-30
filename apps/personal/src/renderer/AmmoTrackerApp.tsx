@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { AmmoItem, TranscriptSegment } from './types/electron';
 import { AmmoV2Panel, type AmmoV2Analysis } from './AmmoV2Panel';
 // ChatPanel removed — B2C has no sales manager messaging
-import appIcon from '../assets/logo.png';
+import appIcon from '../assets/ammo-icon.png';
 
 const CONVEX_SITE_URL = 'https://ideal-ram-982.convex.site';
 const POLL_INTERVAL = 2000; // Poll every 2 seconds

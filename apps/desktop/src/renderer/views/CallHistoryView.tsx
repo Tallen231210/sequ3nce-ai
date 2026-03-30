@@ -212,7 +212,6 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
             <div className="flex items-center gap-2 px-3 py-2 text-[10px] font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wider border-b border-gray-200 dark:border-zinc-700 sticky top-0 bg-white dark:bg-zinc-900 z-10">
               <span className="w-[140px]">Date / Time</span>
               <span className="flex-1">Prospect</span>
-              <span className="w-[80px] text-right">Duration</span>
               <span className="w-[90px] text-center">Outcome</span>
               <span className="w-[80px] text-right">Cash</span>
               <span className="w-[50px] text-right">Talk</span>
@@ -273,11 +272,6 @@ function CallRow({
       {/* Prospect */}
       <span className="flex-1 text-[13px] font-medium text-black dark:text-white truncate">
         {call.prospectName || 'Unknown'}
-      </span>
-
-      {/* Duration */}
-      <span className="w-[80px] text-[12px] text-gray-600 dark:text-zinc-400 text-right shrink-0">
-        {formatDuration(call.duration)}
       </span>
 
       {/* Outcome badge */}

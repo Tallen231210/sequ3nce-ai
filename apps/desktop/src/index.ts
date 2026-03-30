@@ -294,14 +294,9 @@ const createPostCallWindow = (data: { callId: string; closerId: string; closerNa
     postCallData = null;
   });
 
-  // Prevent closing via Cmd+W — must submit the form
-  postCallWindow.on('close', (event) => {
-    if (!isQuitting && postCallData) {
-      event.preventDefault();
-      // Flash the window to indicate they must submit
-      postCallWindow?.flashFrame(true);
-      setTimeout(() => postCallWindow?.flashFrame(false), 1000);
-    }
+  // Allow dismissal — unfilled call stays in pending queue (badge on Calls tab)
+  postCallWindow.on('close', () => {
+    postCallData = null;
   });
 };
 
