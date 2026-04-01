@@ -247,7 +247,8 @@ const createPostCallWindow = (data: { callId: string; closerId: string; closerNa
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
   const windowWidth = screenWidth - 80;
-  const windowHeight = 320;
+  // Use up to 40% of screen height (min 280, max 420) so form fits on all displays
+  const windowHeight = Math.min(420, Math.max(280, Math.round(screenHeight * 0.4)));
   const x = 40; // 40px padding on left
   const y = screenHeight - windowHeight; // Bottom of screen
 
