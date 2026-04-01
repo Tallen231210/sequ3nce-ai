@@ -3232,9 +3232,15 @@ http.route({
 
       // Find our meetingBot record by Recall bot UUID
       const bot = await ctx.runQuery(api.meetingBot.getBotByRecallId, { recallBotId });
-      if (!bot || !bot.callId) {
-        console.warn(`[TranscriptWebhook] Bot not found or no callId for recallBotId: ${recallBotId}`);
-        return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (!bot) {
+        console.error(`[TranscriptWebhook] Bot not found for recallBotId: ${recallBotId}`);
+        return new Response(JSON.stringify({ error: "Bot not found" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+      if (!bot.callId) {
+        // Race condition: webhook arrived before audio processor linked callId to bot.
+        // Return 500 so Recall retries (up to 60 retries at 1s intervals).
+        console.warn(`[TranscriptWebhook] No callId yet for bot ${recallBotId} — returning 500 to trigger retry`);
+        return new Response(JSON.stringify({ error: "Call not linked yet" }), { status: 500, headers: { "Content-Type": "application/json" } });
       }
 
       // Determine speaker: match participant name to closer name
@@ -3251,12 +3257,16 @@ http.route({
         timestamp: Math.floor(startTimestamp),
       });
 
-      // Update call status to "on_call" on first transcript (triggers live calls dashboard + notifications)
-      await ctx.runMutation(api.calls.updateCallStatus, {
-        callId: bot.callId as string,
-        status: "on_call",
-        speakerCount: 1,
-      });
+      // Update call status to "on_call" only on first transcript (triggers live calls dashboard + notifications)
+      // Skip if call is already "on_call" to avoid redundant DB writes on every transcript event
+      const call = await ctx.runQuery(api.calls.getCallById, { callId: bot.callId as string }) as { status?: string } | null;
+      if (call && call.status !== "on_call") {
+        await ctx.runMutation(api.calls.updateCallStatus, {
+          callId: bot.callId as string,
+          status: "on_call",
+          speakerCount: 1,
+        });
+      }
 
       return new Response(JSON.stringify({ received: true }), { status: 200, headers: { "Content-Type": "application/json" } });
     } catch (error) {
@@ -3363,12 +3373,13 @@ http.route({
 
           // Immediately mark bot completed so apps detect the call ended
           // (bot.done fires later after recording processing — could take minutes for long calls)
+          // NOTE: Do NOT set questionnaireCompleted here — if the user already submitted the
+          // form (via "End Call" flow), this webhook fires AFTER and would overwrite true→false.
           const callEndedAt = Date.now();
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
             recallBotId,
             status: "completed",
             endedAt: callEndedAt,
-            questionnaireCompleted: false,
           });
 
           // Complete linked call if it exists
@@ -3405,7 +3416,6 @@ http.route({
               recallBotId,
               status: "completed",
               endedAt: doneAt,
-              questionnaireCompleted: false,
             });
           }
 
@@ -5558,6 +5568,36 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// POST /b2c/onboarding — Save onboarding questionnaire answers
+http.route({
+  path: "/b2c/onboarding",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, source, income, struggle } = body;
+      if (!userId || !source || !income || !struggle) {
+        return b2cJsonResponse({ error: "All fields are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cAuth.completeOnboarding, {
+        userId: userId as any,
+        source,
+        income,
+        struggle,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to save onboarding" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/onboarding",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // GET endpoint to look up B2C user by email (internal use only)
 http.route({
   path: "/b2c/user",
@@ -7435,6 +7475,212 @@ http.route({
   }),
 });
 http.route({ path: "/b2c/content/mark-paid", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// ==================== B2C Weekly Contest Endpoints ====================
+
+// POST /b2c/contest/create — Founder creates a new weekly contest
+http.route({
+  path: "/b2c/contest/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { createdBy, title, description, prizeAmount, weekStartDate, weekEndDate } = body;
+      if (!createdBy || !title || prizeAmount == null || !weekStartDate || !weekEndDate) {
+        return b2cJsonResponse({ error: "createdBy, title, prizeAmount, weekStartDate, and weekEndDate are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cWeeklyContest.createContest, {
+        createdBy: createdBy as any, title, description, prizeAmount: Number(prizeAmount), weekStartDate, weekEndDate,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to create contest" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/create", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// GET /b2c/contest/active — Get current active contest
+http.route({
+  path: "/b2c/contest/active",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const contest = await ctx.runQuery(api.b2cWeeklyContest.getActiveContest, {});
+      return b2cJsonResponse(contest || null);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to get active contest" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/active", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// GET /b2c/contest/submissions?contestId= — Get submissions for a contest
+http.route({
+  path: "/b2c/contest/submissions",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const contestId = url.searchParams.get("contestId");
+      if (!contestId) return b2cJsonResponse({ error: "contestId is required" }, 400);
+      const submissions = await ctx.runQuery(internal.b2cWeeklyContest.getContestSubmissions, {
+        contestId: contestId as any,
+      });
+      return b2cJsonResponse(submissions);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to get submissions" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/submissions", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// POST /b2c/contest/submit — Submit an entry to the active contest
+http.route({
+  path: "/b2c/contest/submit",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, contestId, type, title, clipId, shareUrl } = body;
+      if (!userId || !contestId || !type || !title) {
+        return b2cJsonResponse({ error: "userId, contestId, type, and title are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cWeeklyContest.submitEntry, {
+        userId: userId as any, contestId: contestId as any, type, title,
+        clipId: clipId ? (clipId as any) : undefined,
+        shareUrl: shareUrl || undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to submit entry" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/submit", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// POST /b2c/contest/vote — Cast a vote
+http.route({
+  path: "/b2c/contest/vote",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, contestId, submissionId } = body;
+      if (!userId || !contestId || !submissionId) {
+        return b2cJsonResponse({ error: "userId, contestId, and submissionId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cWeeklyContest.castVote, {
+        userId: userId as any, contestId: contestId as any, submissionId: submissionId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to cast vote" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/vote", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// POST /b2c/contest/remove-vote — Remove a vote
+http.route({
+  path: "/b2c/contest/remove-vote",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, contestId } = body;
+      if (!userId || !contestId) {
+        return b2cJsonResponse({ error: "userId and contestId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cWeeklyContest.removeVote, {
+        userId: userId as any, contestId: contestId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to remove vote" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/remove-vote", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
+// GET /b2c/contest/my-submission?contestId=&userId= — Get user's submission
+http.route({
+  path: "/b2c/contest/my-submission",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const contestId = url.searchParams.get("contestId");
+      const userId = url.searchParams.get("userId");
+      if (!contestId || !userId) return b2cJsonResponse({ error: "contestId and userId are required" }, 400);
+      const submission = await ctx.runQuery(internal.b2cWeeklyContest.getMySubmission, {
+        contestId: contestId as any, userId: userId as any,
+      });
+      return b2cJsonResponse(submission || null);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to get submission" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/my-submission", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// GET /b2c/contest/my-vote?contestId=&userId= — Get user's vote
+http.route({
+  path: "/b2c/contest/my-vote",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const contestId = url.searchParams.get("contestId");
+      const userId = url.searchParams.get("userId");
+      if (!contestId || !userId) return b2cJsonResponse({ error: "contestId and userId are required" }, 400);
+      const vote = await ctx.runQuery(internal.b2cWeeklyContest.getMyVote, {
+        contestId: contestId as any, userId: userId as any,
+      });
+      return b2cJsonResponse(vote || null);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to get vote" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/my-vote", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// GET /b2c/contest/history — Get past contests with winner info
+http.route({
+  path: "/b2c/contest/history",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const contests = await ctx.runQuery(api.b2cWeeklyContest.getPastContests, {});
+      return b2cJsonResponse(contests);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to get contest history" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/history", method: "OPTIONS", handler: b2cCorsPreflightHandler("GET, OPTIONS") });
+
+// POST /b2c/contest/complete — Founder completes a contest
+http.route({
+  path: "/b2c/contest/complete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { contestId, reviewerUserId } = body;
+      if (!contestId || !reviewerUserId) {
+        return b2cJsonResponse({ error: "contestId and reviewerUserId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cWeeklyContest.completeContest, {
+        contestId: contestId as any, reviewerUserId: reviewerUserId as any,
+      });
+      return b2cJsonResponse(result);
+    } catch (error: any) {
+      return b2cJsonResponse({ error: error.message || "Failed to complete contest" }, 400);
+    }
+  }),
+});
+http.route({ path: "/b2c/contest/complete", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
 
 // ==================== B2C Highlight Share Endpoints ====================
 

@@ -10,6 +10,7 @@ import { ChannelPostList } from './community/ChannelPostList';
 import { Training } from './community/Training';
 import { WelcomeBanner } from './community/WelcomeBanner';
 import { PostSearch } from './community/PostSearch';
+import { CallOfTheWeekView } from './community/CallOfTheWeekView';
 
 interface CommunityViewProps {
   closerInfo: CloserInfo;
@@ -18,6 +19,7 @@ interface CommunityViewProps {
 
 const REQUEST_COUNT_POLL = 30_000;
 const UNREAD_POLL_INTERVAL = 15_000;
+const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week']);
 
 export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityViewProps) {
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
@@ -82,12 +84,12 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
     if (mountedRef.current) setUnreadChannelIds(new Set(result.unreadChannelIds));
   };
 
-  // Determine if the selected view is a channel ID
-  const isChannelView = selectedView !== 'feed' && selectedView !== 'training';
+  const isChannelView = !SPECIAL_VIEWS.has(selectedView);
 
   // Build header title + description
   const getHeaderInfo = () => {
     if (selectedView === 'feed') return { title: 'Feed', description: 'All posts across channels' };
+    if (selectedView === 'call-of-the-week') return { title: 'Call of the Week', description: 'Weekly contest — vote for the best call' };
     if (selectedView === 'training') return { title: 'Training', description: 'Courses and modules' };
     const channel = channels.find((c) => c._id === selectedView);
     if (channel) return { title: `# ${channel.slug}`, description: channel.description };
@@ -99,9 +101,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
   const handleSelectView = (view: string) => {
     setSelectedView(view);
     setShowSearch(false);
-    // Mark channel as read when selecting it
-    const isChannel = view !== 'feed' && view !== 'training';
-    if (isChannel && userId) {
+    if (!SPECIAL_VIEWS.has(view) && userId) {
       markChannelRead(userId, view);
       setUnreadChannelIds((prev) => {
         const next = new Set(prev);
@@ -168,6 +168,9 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
               )}
               {selectedView === 'feed' && (
                 <Feed userId={userId} channels={channels} isAdmin={isAdmin} />
+              )}
+              {selectedView === 'call-of-the-week' && (
+                <CallOfTheWeekView closerInfo={closerInfo} />
               )}
               {selectedView === 'training' && <Training />}
               {isChannelView && (

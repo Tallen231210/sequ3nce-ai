@@ -204,7 +204,7 @@ export function Feed({ userId, channels, isAdmin }: FeedProps) {
       {newPostCount > 0 && (
         <button
           onClick={handleLoadNew}
-          className="w-full py-2 px-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+          className="w-full py-2 px-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-700 dark:text-gray-300 font-medium hover:text-gray-900 dark:hover:text-white transition-colors"
         >
           {newPostCount} new {newPostCount === 1 ? 'post' : 'posts'} available — Load new posts
         </button>

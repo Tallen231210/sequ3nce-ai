@@ -26,6 +26,7 @@ import type * as b2cPresence from "../b2cPresence.js";
 import type * as b2cProfiles from "../b2cProfiles.js";
 import type * as b2cResources from "../b2cResources.js";
 import type * as b2cTraining from "../b2cTraining.js";
+import type * as b2cWeeklyContest from "../b2cWeeklyContest.js";
 import type * as billing from "../billing.js";
 import type * as botAvatar from "../botAvatar.js";
 import type * as calendar from "../calendar.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   b2cProfiles: typeof b2cProfiles;
   b2cResources: typeof b2cResources;
   b2cTraining: typeof b2cTraining;
+  b2cWeeklyContest: typeof b2cWeeklyContest;
   billing: typeof billing;
   botAvatar: typeof botAvatar;
   calendar: typeof calendar;

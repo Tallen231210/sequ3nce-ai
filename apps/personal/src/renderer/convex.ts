@@ -15,6 +15,7 @@ export interface CloserInfo {
   role?: string;
   badges?: string[];
   trialExpiresAt?: number;
+  onboardingCompleted?: boolean;
 }
 
 export interface LoginResult {
@@ -352,6 +353,28 @@ export async function verifyEmail(
   } catch (error) {
     console.error("[Convex] Failed to verify email:", error);
     return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+// Save onboarding questionnaire answers
+export async function completeOnboarding(
+  userId: string,
+  source: string,
+  income: string,
+  struggle: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/onboarding?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, source, income, struggle }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to save onboarding" };
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to save onboarding:", error);
+    return { success: false, error: "Network error" };
   }
 }
 
@@ -3368,6 +3391,208 @@ export async function createB2CPortal(
   } catch (error) {
     console.error("[Convex] Failed to create B2C portal:", error);
     return { error: "Network error. Please check your connection." };
+  }
+}
+
+// ==================== B2C Weekly Contest API ====================
+
+export interface WeeklyContest {
+  _id: string;
+  title: string;
+  description?: string;
+  prizeAmount: number;
+  status: string;
+  winnerId?: string;
+  winnerSubmissionId?: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  createdAt: number;
+  winnerName?: string;
+  winnerSubmissionTitle?: string;
+}
+
+export interface WeeklySubmission {
+  _id: string;
+  contestId: string;
+  userId: string;
+  type: string;
+  clipId?: string;
+  shareUrl?: string;
+  title: string;
+  voteCount: number;
+  createdAt: number;
+  submitterName?: string;
+  recordingUrl?: string;
+}
+
+export async function createWeeklyContest(
+  createdBy: string,
+  title: string,
+  description: string | undefined,
+  prizeAmount: number,
+  weekStartDate: string,
+  weekEndDate: string
+): Promise<{ contestId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/contest/create?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ createdBy, title, description, prizeAmount, weekStartDate, weekEndDate }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to create contest" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to create weekly contest:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+export async function getActiveContest(): Promise<WeeklyContest | null> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/contest/active?_=${Date.now()}`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get active contest:", error);
+    return null;
+  }
+}
+
+export async function getContestSubmissions(contestId: string): Promise<WeeklySubmission[]> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/contest/submissions?contestId=${encodeURIComponent(contestId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get contest submissions:", error);
+    return [];
+  }
+}
+
+export async function submitContestEntry(
+  userId: string,
+  contestId: string,
+  type: string,
+  title: string,
+  clipId?: string,
+  shareUrl?: string
+): Promise<{ submissionId?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/contest/submit?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, contestId, type, title, clipId, shareUrl }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { error: data.error || "Failed to submit entry" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to submit contest entry:", error);
+    return { error: "Network error. Please check your connection." };
+  }
+}
+
+export async function castContestVote(
+  userId: string,
+  contestId: string,
+  submissionId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/contest/vote?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, contestId, submissionId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to cast vote" };
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to cast contest vote:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function removeContestVote(
+  userId: string,
+  contestId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/contest/remove-vote?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, contestId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to remove vote" };
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to remove contest vote:", error);
+    return { success: false, error: "Network error. Please check your connection." };
+  }
+}
+
+export async function getMyContestSubmission(
+  contestId: string,
+  userId: string
+): Promise<WeeklySubmission | null> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/contest/my-submission?contestId=${encodeURIComponent(contestId)}&userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get my contest submission:", error);
+    return null;
+  }
+}
+
+export async function getMyContestVote(
+  contestId: string,
+  userId: string
+): Promise<{ _id: string; submissionId: string } | null> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/contest/my-vote?contestId=${encodeURIComponent(contestId)}&userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get my contest vote:", error);
+    return null;
+  }
+}
+
+export async function getPastContests(): Promise<WeeklyContest[]> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/contest/history?_=${Date.now()}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get past contests:", error);
+    return [];
+  }
+}
+
+export async function completeWeeklyContest(
+  contestId: string,
+  reviewerUserId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/contest/complete?_=${Date.now()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contestId, reviewerUserId }),
+    });
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error || "Failed to complete contest" };
+    return { success: true };
+  } catch (error) {
+    console.error("[Convex] Failed to complete weekly contest:", error);
+    return { success: false, error: "Network error. Please check your connection." };
   }
 }
 

@@ -12,6 +12,7 @@ import {
 import { MeetingBotHub } from './views/MeetingBotHub';
 import { EmailVerificationScreen } from './views/EmailVerificationScreen';
 import { SubscriptionGate } from './views/SubscriptionGate';
+import { OnboardingQuestionnaire } from './views/OnboardingQuestionnaire';
 import { ThemeProvider } from './ThemeContext';
 import logoImage from '../assets/logo.png';
 
@@ -386,6 +387,19 @@ function AppContent() {
             setCloserInfo(updatedInfo);
           }}
           onLogout={handleLogout}
+        />
+      );
+    }
+
+    // Onboarding questionnaire — show after subscription is active but before main app
+    if (!closerInfo.onboardingCompleted) {
+      return (
+        <OnboardingQuestionnaire
+          closerInfo={closerInfo}
+          onComplete={(updatedInfo) => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedInfo));
+            setCloserInfo(updatedInfo);
+          }}
         />
       );
     }

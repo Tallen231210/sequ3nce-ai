@@ -785,6 +785,16 @@ export const completeCallWithOutcome = mutation({
       if (bot && bot.questionnaireCompleted !== true) {
         await ctx.db.patch(call.meetingBotId, { questionnaireCompleted: true });
       }
+    } else {
+      // Fallback: if meetingBotId wasn't linked (race condition), find bot by callId
+      const bot = await ctx.db
+        .query("meetingBots")
+        .withIndex("by_closer", (q) => q.eq("closerId", call.closerId))
+        .filter((q) => q.eq(q.field("callId"), args.callId))
+        .first();
+      if (bot && bot.questionnaireCompleted !== true) {
+        await ctx.db.patch(bot._id, { questionnaireCompleted: true });
+      }
     }
 
     // Schedule AI summary + deep analysis (runs async, doesn't block completion)

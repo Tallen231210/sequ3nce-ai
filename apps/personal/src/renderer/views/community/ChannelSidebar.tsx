@@ -11,6 +11,13 @@ interface ChannelSidebarProps {
   onToggleFriends: () => void;
 }
 
+function navButtonClass(isActive: boolean): string {
+  if (isActive) {
+    return 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white font-semibold';
+  }
+  return 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800';
+}
+
 export function ChannelSidebar({
   channels,
   selectedView,
@@ -26,16 +33,25 @@ export function ChannelSidebar({
       <div className="px-2 pt-3 pb-1">
         <button
           onClick={() => onSelect('feed')}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-            selectedView === 'feed'
-              ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white font-semibold'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'feed')}`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
           </svg>
           Feed
+        </button>
+      </div>
+
+      {/* Call of the Week */}
+      <div className="px-2 pb-1">
+        <button
+          onClick={() => onSelect('call-of-the-week')}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'call-of-the-week')}`}
+        >
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-4.5A3.375 3.375 0 0 0 13.125 10.875h-2.25A3.375 3.375 0 0 0 7.5 14.25v4.5m9 0H7.5M12 3.75l2.25 3h-4.5L12 3.75Z" />
+          </svg>
+          Call of the Week
         </button>
       </div>
 
@@ -67,7 +83,7 @@ export function ChannelSidebar({
               }`}
             >
               {isUnread && !isActive && (
-                <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                <span className="w-2 h-2 bg-gray-600 dark:bg-gray-400 rounded-full flex-shrink-0" />
               )}
               <span className="truncate">
                 <span className="text-gray-400 dark:text-gray-500 mr-0.5">#</span>
@@ -85,11 +101,7 @@ export function ChannelSidebar({
       <div className="px-2 pb-1">
         <button
           onClick={() => onSelect('training')}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-            selectedView === 'training'
-              ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white font-semibold'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'training')}`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
@@ -119,7 +131,7 @@ export function ChannelSidebar({
             </svg>
             Friends
             {pendingRequestCount > 0 && (
-              <span className="absolute -top-0.5 right-0 min-w-[16px] h-[16px] flex items-center justify-center px-1 text-[9px] font-bold bg-red-500 text-white rounded-full">
+              <span className="absolute -top-0.5 right-0 min-w-[16px] h-[16px] flex items-center justify-center px-1 text-[9px] font-bold bg-gray-600 dark:bg-gray-400 text-white rounded-full">
                 {pendingRequestCount > 9 ? '9+' : pendingRequestCount}
               </span>
             )}

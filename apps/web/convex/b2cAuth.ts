@@ -228,8 +228,32 @@ export const loginB2CUser = mutation({
         role: user.role || "user",
         badges: user.badges || [],
         trialExpiresAt: user.trialExpiresAt,
+        onboardingCompleted: user.onboardingCompleted || false,
       },
     };
+  },
+});
+
+// Save onboarding questionnaire answers
+export const completeOnboarding = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    source: v.string(),
+    income: v.string(),
+    struggle: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+
+    await ctx.db.patch(args.userId, {
+      onboardingCompleted: true,
+      onboardingSource: args.source,
+      onboardingIncome: args.income,
+      onboardingStruggle: args.struggle,
+    });
+
+    return { success: true };
   },
 });
 

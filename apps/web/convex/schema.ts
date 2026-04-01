@@ -938,6 +938,10 @@ export default defineSchema({
     emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
     lastSeenAt: v.optional(v.number()),                    // Online presence heartbeat timestamp
     trialExpiresAt: v.optional(v.number()),                 // Beta trial end date (undefined = no trial)
+    onboardingCompleted: v.optional(v.boolean()),           // Whether onboarding questionnaire was filled
+    onboardingSource: v.optional(v.string()),               // "instagram" | "youtube" | "google" | "referral"
+    onboardingIncome: v.optional(v.string()),               // "0-1k" | "2-5k" | "5-10k" | "10-20k" | "20k+"
+    onboardingStruggle: v.optional(v.string()),             // "finding_offer" | "networking" | "improving_skills" | "staying_consistent"
   })
     .index("by_email", ["email"])
     .index("by_phone", ["phone"])
@@ -1223,6 +1227,44 @@ export default defineSchema({
     .index("by_user", ["userId", "createdAt"])
     .index("by_status", ["status", "createdAt"])
     .index("by_clip", ["clipId"]),
+
+  // B2C Weekly Contests — Call of the Week voting system
+  b2cWeeklyContests: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+    prizeAmount: v.number(),
+    status: v.string(), // "active" | "completed"
+    createdBy: v.id("b2cUsers"),
+    winnerId: v.optional(v.id("b2cUsers")),
+    winnerSubmissionId: v.optional(v.id("b2cWeeklySubmissions")),
+    weekStartDate: v.string(), // "2026-03-31" (Monday)
+    weekEndDate: v.string(),   // "2026-04-06" (Sunday)
+    createdAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_week", ["weekStartDate"]),
+
+  b2cWeeklySubmissions: defineTable({
+    contestId: v.id("b2cWeeklyContests"),
+    userId: v.id("b2cUsers"),
+    type: v.string(), // "highlight" | "share_link"
+    clipId: v.optional(v.id("b2cHighlightClips")),
+    shareUrl: v.optional(v.string()),
+    title: v.string(),
+    voteCount: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_contest", ["contestId"])
+    .index("by_user_contest", ["userId", "contestId"]),
+
+  b2cWeeklyVotes: defineTable({
+    contestId: v.id("b2cWeeklyContests"),
+    userId: v.id("b2cUsers"),
+    submissionId: v.id("b2cWeeklySubmissions"),
+    createdAt: v.number(),
+  })
+    .index("by_user_contest", ["userId", "contestId"])
+    .index("by_submission", ["submissionId"]),
 
   // B2C Job Postings — created by B2B teams, browsed by B2C closers
   b2cJobPostings: defineTable({
