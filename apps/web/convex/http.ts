@@ -3258,9 +3258,9 @@ http.route({
       });
 
       // Update call status to "on_call" only on first transcript (triggers live calls dashboard + notifications)
-      // Skip if call is already "on_call" to avoid redundant DB writes on every transcript event
+      // Only transition from "waiting" — never revert "on_call" or "completed" status
       const call = await ctx.runQuery(api.calls.getCallById, { callId: bot.callId as string }) as { status?: string } | null;
-      if (call && call.status !== "on_call") {
+      if (call && call.status === "waiting") {
         await ctx.runMutation(api.calls.updateCallStatus, {
           callId: bot.callId as string,
           status: "on_call",

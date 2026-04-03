@@ -260,13 +260,48 @@ export const completeCall = mutation({
     status: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.callId as any, {
-      recordingUrl: args.recordingUrl,
-      transcriptText: args.transcript,
-      duration: args.duration,
-      status: args.status,
-      endedAt: Date.now(),
-    });
+    const call = await ctx.db.get(args.callId as any) as {
+      transcriptText?: string;
+      recordingUrl?: string;
+      duration?: number;
+      endedAt?: number;
+      status?: string;
+    } | null;
+    if (!call) return;
+
+    // Build patch defensively — only write fields that improve the record
+    const patch: Record<string, any> = {};
+
+    // Only write transcriptText if incoming is non-empty (never overwrite good data with empty)
+    if (args.transcript && args.transcript.trim().length > 0) {
+      if (!call.transcriptText || args.transcript.length > call.transcriptText.length) {
+        patch.transcriptText = args.transcript;
+      }
+    }
+
+    // Only write recordingUrl if incoming is non-empty and current is empty
+    if (args.recordingUrl && !call.recordingUrl) {
+      patch.recordingUrl = args.recordingUrl;
+    }
+
+    // Only write duration if not already set
+    if (!call.duration && args.duration > 0) {
+      patch.duration = args.duration;
+    }
+
+    // Only set endedAt if not already set
+    if (!call.endedAt) {
+      patch.endedAt = Date.now();
+    }
+
+    // Only transition status forward, never revert from "completed"
+    if (call.status !== "completed") {
+      patch.status = args.status;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      await ctx.db.patch(args.callId as any, patch);
+    }
   },
 });
 

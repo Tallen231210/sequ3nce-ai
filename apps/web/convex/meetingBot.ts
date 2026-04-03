@@ -996,30 +996,39 @@ export const completeCallFromBot = internalMutation({
     });
 
     // Schedule AI summary generation with 60s delay to let transcript fully flush
-    // (audio processor may still be writing transcript segments when bot completes)
+    // Only schedule if not already generated (user may have submitted form first)
     if (call.transcriptText) {
-      await ctx.scheduler.runAfter(60000, internal.ai.generateCallSummary, {
-        callId: args.callId,
-        transcript: call.transcriptText,
-        outcome: call.outcome || "unknown",
-        prospectName: call.prospectName || "Prospect",
-      });
-      // Schedule deep analysis (chapters + sales process scoring)
-      await ctx.scheduler.runAfter(65000, internal.ai.generateCallAnalysis, {
-        callId: args.callId,
-        transcript: call.transcriptText,
-        outcome: call.outcome || "unknown",
-        prospectName: call.prospectName || "Prospect",
-        duration: call.duration,
-      });
-      console.log(`[completeCallFromBot] Scheduled AI summary + analysis for call ${args.callId}`);
+      if (!call.summary) {
+        await ctx.scheduler.runAfter(60000, internal.ai.generateCallSummary, {
+          callId: args.callId,
+          transcript: call.transcriptText,
+          outcome: call.outcome || "unknown",
+          prospectName: call.prospectName || "Prospect",
+        });
+      }
+      if (!call.callAnalysis) {
+        await ctx.scheduler.runAfter(65000, internal.ai.generateCallAnalysis, {
+          callId: args.callId,
+          transcript: call.transcriptText,
+          outcome: call.outcome || "unknown",
+          prospectName: call.prospectName || "Prospect",
+          duration: call.duration,
+        });
+      }
+      if (!call.summary || !call.callAnalysis) {
+        console.log(`[completeCallFromBot] Scheduled AI for call ${args.callId} (summary: ${!call.summary}, analysis: ${!call.callAnalysis})`);
+      } else {
+        console.log(`[completeCallFromBot] AI already generated for call ${args.callId}, skipping`);
+      }
     } else {
-      // Transcript not ready yet — schedule a retry in 60 seconds
-      await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
-        callId: args.callId,
-        attempt: 1,
-      });
-      console.log(`[completeCallFromBot] Transcript not ready, scheduled retry for call ${args.callId}`);
+      // Transcript not ready — only schedule retry if AI hasn't already been generated
+      if (!call.summary && !call.callAnalysis) {
+        await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
+          callId: args.callId,
+          attempt: 1,
+        });
+        console.log(`[completeCallFromBot] Transcript not ready, scheduled retry for call ${args.callId}`);
+      }
     }
 
     console.log(`[completeCallFromBot] Call completed: ${args.callId}`);
@@ -1045,27 +1054,31 @@ export const retrySummaryGeneration = internalAction({
 
     if (call.transcriptText && call.transcriptText.trim().length > 50) {
       // Transcript is ready — generate summary + deep analysis
-      // Run independently so one failure doesn't block the other
-      try {
-        await ctx.runAction(internal.ai.generateCallSummary, {
-          callId: args.callId,
-          transcript: call.transcriptText,
-          outcome: call.outcome || "unknown",
-          prospectName: call.prospectName || "Prospect",
-        });
-      } catch (e) {
-        console.error(`[retrySummaryGeneration] Summary failed for call ${args.callId}:`, e);
+      // Only generate if not already done (user form or earlier retry may have triggered it)
+      if (!call.summary) {
+        try {
+          await ctx.runAction(internal.ai.generateCallSummary, {
+            callId: args.callId,
+            transcript: call.transcriptText,
+            outcome: call.outcome || "unknown",
+            prospectName: call.prospectName || "Prospect",
+          });
+        } catch (e) {
+          console.error(`[retrySummaryGeneration] Summary failed for call ${args.callId}:`, e);
+        }
       }
-      try {
-        await ctx.runAction(internal.ai.generateCallAnalysis, {
-          callId: args.callId,
-          transcript: call.transcriptText,
-          outcome: call.outcome || "unknown",
-          prospectName: call.prospectName || "Prospect",
-          duration: call.duration,
-        });
-      } catch (e) {
-        console.error(`[retrySummaryGeneration] Analysis failed for call ${args.callId}:`, e);
+      if (!call.callAnalysis) {
+        try {
+          await ctx.runAction(internal.ai.generateCallAnalysis, {
+            callId: args.callId,
+            transcript: call.transcriptText,
+            outcome: call.outcome || "unknown",
+            prospectName: call.prospectName || "Prospect",
+            duration: call.duration,
+          });
+        } catch (e) {
+          console.error(`[retrySummaryGeneration] Analysis failed for call ${args.callId}:`, e);
+        }
       }
       console.log(`[retrySummaryGeneration] Generated summary + analysis for call ${args.callId} on attempt ${args.attempt}`);
     } else if (args.attempt < 3) {
