@@ -375,7 +375,8 @@ export class CallHandler {
       }
 
       // CRITICAL: Add transcript segment to Convex for real-time display in dashboard
-      if (this.convexCallId) {
+      // Skip for Recall calls — webhook handler saves segments to avoid duplicates
+      if (this.convexCallId && this.source !== "recall") {
         const speaker = isCloser ? "closer" : "prospect";
         // Use Speechmatics' audio-aligned timestamp (accurate to the actual recording)
         // Add timestampOffset for reconnection scenarios (ensures new segments sort after existing ones)
@@ -396,11 +397,16 @@ export class CallHandler {
         } catch (err) {
           logger.error("Failed to add transcript segment", err);
         }
+      } else if (this.convexCallId && this.source === "recall") {
+        // For Recall calls, still track the audio timestamp for ammo extraction
+        const timestampSeconds = Math.floor(chunk.audioTimestamp) + this.timestampOffset;
+        this.session.lastAudioTimestamp = timestampSeconds;
       }
 
       // Update full transcript more frequently (every 5 lines instead of sporadic)
+      // Skip for Recall calls — transcriptText is saved when call ends via completeCall()
       const lineCount = this.session.fullTranscript.split('\n').filter(l => l.trim()).length;
-      if (this.convexCallId && lineCount % 5 === 0) {
+      if (this.convexCallId && this.source !== "recall" && lineCount % 5 === 0) {
         try {
           await addTranscript(this.convexCallId, this.session.fullTranscript);
         } catch (err) {

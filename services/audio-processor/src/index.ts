@@ -299,7 +299,7 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
 
   // Start the call handler (creates Convex call record, etc.)
   callHandler.start()
-    .then((convexCallId) => {
+    .then(async (convexCallId) => {
       logger.info(`[Recall] Call initialized: botId=${botId}, Convex ID: ${convexCallId}`);
       relayCallId = convexCallId || null;
 
@@ -307,9 +307,14 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
       if (convexCallId) {
         connectionVisitorCallIds.set(ws, convexCallId);
 
-        linkCallToBot(botId, convexCallId).catch((err) => {
+        // CRITICAL: Await linkCallToBot so the bot record has callId before
+        // transcript webhooks arrive. Without this, webhooks see callId=null
+        // and transcripts are lost.
+        try {
+          await linkCallToBot(botId, convexCallId);
+        } catch (err) {
           logger.error(`[Recall] Failed to link call to bot: ${err}`);
-        });
+        }
       }
 
       // Create live stream record — use convexCallId as visitorCallId so the
@@ -381,9 +386,26 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
           break;
         }
 
-        case "transcript.data":
+        case "transcript.data": {
+          // Webhook handles DB storage — process here for in-memory ammo extraction + fullTranscript
+          const transcriptData = eventData?.data || eventData;
+          const words = transcriptData?.words || [];
+          const text = words.map((w: any) => w.text).join(" ");
+          const participant = transcriptData?.participant?.name || "Unknown";
+          const startMs = words[0]?.start_timestamp?.relative || 0;
+
+          if (text.trim() && callHandler) {
+            callHandler.handleRecallTranscript({
+              text,
+              speaker: participant,
+              timestamp: Math.floor(startMs),
+              startMs,
+            }).catch(err => logger.error(`[Recall] Failed to process transcript for ammo: ${err}`));
+          }
+          break;
+        }
         case "transcript.partial_data": {
-          // Transcripts now delivered via webhook — ignore any that arrive on WebSocket
+          // Partial transcripts not needed — final transcript.data is sufficient
           break;
         }
 

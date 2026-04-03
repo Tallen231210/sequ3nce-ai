@@ -196,6 +196,7 @@ export function PostCallWindowApp() {
         data.objectionsOvercomeOther = objectionsOvercome === 'other' ? objectionsOvercomeOther.trim() || undefined : undefined;
       } else if (outcome === 'lost' || outcome === 'follow_up') {
         data.dealValue = parseInt(pitchedValue) || 0;
+        data.contractValue = parseInt(pitchedValue) || 0;
         data.primaryObjection = primaryObjection === 'other' ? primaryObjectionOther : (primaryObjection ?? undefined);
         data.primaryObjectionOther = primaryObjection === 'other' ? primaryObjectionOther : undefined;
       }
