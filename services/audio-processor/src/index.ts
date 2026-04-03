@@ -388,7 +388,7 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
 
         case "transcript.data": {
           // Webhook handles DB storage — process here for in-memory ammo extraction + fullTranscript
-          const transcriptData = eventData?.data || eventData;
+          const transcriptData = message.data?.data || message.data;
           const words = transcriptData?.words || [];
           const text = words.map((w: any) => w.text).join(" ");
           const participant = transcriptData?.participant?.name || "Unknown";
