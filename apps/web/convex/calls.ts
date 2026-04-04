@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalAction } from "./_generated/server";
+import { mutation, query, internalMutation, internalAction, internalQuery } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { buildCallStartedBlocks } from "./slack";
@@ -2946,5 +2946,33 @@ export const debugCheckAmmoAnalysis = query({
     return {
       recentAnalyses,
     };
+  },
+});
+
+// Internal query to get transcript segments for a call (used by retrySummaryGeneration fallback)
+export const getTranscriptSegmentsInternal = internalQuery({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_call_and_time", (q) => q.eq("callId", args.callId))
+      .order("asc")
+      .take(5000);
+  },
+});
+
+// Internal mutation to write assembled transcriptText to a call record
+export const writeTranscriptText = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    transcriptText: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return;
+    // Only write if current transcriptText is empty or shorter
+    if (!call.transcriptText || args.transcriptText.length > call.transcriptText.length) {
+      await ctx.db.patch(args.callId, { transcriptText: args.transcriptText });
+    }
   },
 });

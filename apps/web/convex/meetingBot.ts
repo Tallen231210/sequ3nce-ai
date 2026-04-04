@@ -455,6 +455,7 @@ export const createBot = action({
               url: streamingUrl,
               events: [
                 "audio_mixed_raw.data",
+                "transcript.data",
                 "participant_events.join",
                 "participant_events.leave",
               ],
@@ -709,6 +710,7 @@ export const createQuickBot = action({
               url: streamingUrl,
               events: [
                 "audio_mixed_raw.data",
+                "transcript.data",
                 "participant_events.join",
                 "participant_events.leave",
               ],
@@ -1052,14 +1054,33 @@ export const retrySummaryGeneration = internalAction({
       return;
     }
 
-    if (call.transcriptText && call.transcriptText.trim().length > 50) {
+    // If transcriptText is empty, try to assemble it from transcript segments (webhook fallback)
+    let transcript = call.transcriptText || "";
+    if (!transcript || transcript.trim().length < 50) {
+      const segments = await ctx.runQuery(internal.calls.getTranscriptSegmentsInternal, {
+        callId: args.callId,
+      });
+      if (segments && segments.length > 0) {
+        transcript = segments
+          .map((s: { speaker: string; text: string }) => `${s.speaker === "closer" ? "Closer" : "Prospect"}: ${s.text}`)
+          .join("\n");
+        // Save the assembled transcript to the call record
+        await ctx.runMutation(internal.calls.writeTranscriptText, {
+          callId: args.callId,
+          transcriptText: transcript,
+        });
+        console.log(`[retrySummaryGeneration] Assembled transcriptText from ${segments.length} segments for call ${args.callId}`);
+      }
+    }
+
+    if (transcript && transcript.trim().length > 50) {
       // Transcript is ready — generate summary + deep analysis
       // Only generate if not already done (user form or earlier retry may have triggered it)
       if (!call.summary) {
         try {
           await ctx.runAction(internal.ai.generateCallSummary, {
             callId: args.callId,
-            transcript: call.transcriptText,
+            transcript,
             outcome: call.outcome || "unknown",
             prospectName: call.prospectName || "Prospect",
           });
@@ -1071,7 +1092,7 @@ export const retrySummaryGeneration = internalAction({
         try {
           await ctx.runAction(internal.ai.generateCallAnalysis, {
             callId: args.callId,
-            transcript: call.transcriptText,
+            transcript,
             outcome: call.outcome || "unknown",
             prospectName: call.prospectName || "Prospect",
             duration: call.duration,
