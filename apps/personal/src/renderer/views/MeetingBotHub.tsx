@@ -90,15 +90,6 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    id: 'submissions',
-    label: 'Creator Cash',
-    icon: (
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-      </svg>
-    ),
-  },
-  {
     id: 'contentreview',
     label: 'Content Review',
     icon: (
@@ -132,16 +123,6 @@ const NAV_ITEMS: NavItem[] = [
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
         <path fillRule="evenodd" d="M6 6V5a3 3 0 013-3h2a3 3 0 013 3v1h2a2 2 0 012 2v3.57A22.952 22.952 0 0110 13a22.95 22.95 0 01-8-1.43V8a2 2 0 012-2h2zm2-1a1 1 0 011-1h2a1 1 0 011 1v1H8V5zm-2 5a1 1 0 100 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
         <path d="M2 13.692V16a2 2 0 002 2h12a2 2 0 002-2v-2.308A24.974 24.974 0 0110 15c-2.796 0-5.487-.46-8-1.308z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'messages',
-    label: 'Messages',
-    icon: (
-      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-        <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
-        <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
       </svg>
     ),
   },
@@ -206,6 +187,9 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Quick bot modal
   const [showQuickBot, setShowQuickBot] = useState(false);
+
+  // Messages slide-out panel
+  const [showMessages, setShowMessages] = useState(false);
 
   // Sidebar badge counts
   const [callsPendingCount, setCallsPendingCount] = useState(0);
@@ -320,7 +304,7 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   const handleNavigateToMessage = useCallback((recipientId: string, recipientName: string, recipientPhotoUrl: string | null) => {
     setDmRecipient({ id: recipientId, name: recipientName, photoUrl: recipientPhotoUrl });
-    setSelectedItem('messages');
+    setShowMessages(true);
   }, []);
 
   const handleDmRecipientConsumed = useCallback(() => {
@@ -492,7 +476,7 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
           })}
         </nav>
 
-        {/* Theme toggle + Sign out */}
+        {/* Bottom utility bar: Theme toggle + Rewards */}
         <div className="px-3 py-3 border-t border-gray-200 flex items-center justify-between">
           {/* Theme toggle */}
           <button
@@ -501,25 +485,54 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
             title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
           >
             {theme === 'light' ? (
-              /* Moon icon — click to go dark */
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
               </svg>
             ) : (
-              /* Sun icon — click to go light */
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             )}
           </button>
-
+          {/* Rewards button */}
+          <button
+            onClick={() => setSelectedItem('submissions')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+              selectedItem === 'submissions'
+                ? 'bg-black text-white'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/70'
+            }`}
+            title="Rewards"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+            </svg>
+            Rewards
+          </button>
         </div>
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Draggable titlebar region across content with Quick Bot button */}
-        <div className="titlebar h-14 border-b border-gray-100 flex items-center justify-end px-5">
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        {/* Draggable titlebar region across content with Messages + Quick Bot buttons */}
+        <div className="titlebar h-14 border-b border-gray-100 flex items-center justify-end px-5 gap-2">
+          {/* Messages button */}
+          <button
+            onClick={() => setShowMessages(!showMessages)}
+            className="no-drag relative flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            title="Messages"
+          >
+            <svg className="w-4.5 h-4.5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+              <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
+            </svg>
+            {dmUnreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center text-[9px] font-bold rounded-full bg-red-500 text-white px-1">
+                {dmUnreadCount > 99 ? '99+' : dmUnreadCount}
+              </span>
+            )}
+          </button>
+          {/* Quick Bot button */}
           <button onClick={() => setShowQuickBot(true)}
             className="no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -583,6 +596,40 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
             onNavigateToMessage: handleNavigateToMessage,
           })}
         </div>
+
+        {/* Messages slide-out panel */}
+        {showMessages && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/20 z-40"
+              onClick={() => setShowMessages(false)}
+            />
+            {/* Panel */}
+            <div className="absolute top-0 right-0 h-full w-[700px] bg-white dark:bg-zinc-900 shadow-2xl z-50 flex flex-col border-l border-gray-200 dark:border-zinc-700">
+              {/* Close button overlaid on top-right */}
+              <button
+                onClick={() => setShowMessages(false)}
+                className="absolute top-3 right-3 z-10 flex items-center justify-center w-7 h-7 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              {/* DM view */}
+              <div className="flex-1 overflow-hidden">
+                <DirectMessagesView
+                  closerInfo={closerInfo}
+                  initialRecipientId={dmRecipient?.id ?? null}
+                  initialRecipientName={dmRecipient?.name}
+                  initialRecipientPhotoUrl={dmRecipient?.photoUrl}
+                  onRecipientConsumed={handleDmRecipientConsumed}
+                  onlineUserIds={onlineUserIds}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
