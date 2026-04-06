@@ -87,6 +87,9 @@ export default function SharePage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoError, setVideoError] = useState(false);
 
+  // Tab state for right panel (must be before any early returns — React hooks rule)
+  const [activeTab, setActiveTab] = useState<"overview" | "analysis" | "transcript">("overview");
+
   const fetchSharedData = useCallback(async (password?: string) => {
     try {
       const response = await fetch(`${CONVEX_SITE_URL}/getSharedLinkData`, {
@@ -293,9 +296,6 @@ export default function SharePage() {
   const isClip = shareType === "clip" && startSeconds != null && endSeconds != null;
   const isCompliance = accessType === "compliance";
   const hasComments = includeComments && comments.length > 0;
-
-  // Tab state for right panel
-  const [activeTab, setActiveTab] = useState<"overview" | "analysis" | "transcript">("overview");
 
   // Parse summary into structured fields
   const summaryFields = call.summary ? parseSummary(call.summary) : null;
