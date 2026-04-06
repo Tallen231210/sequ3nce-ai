@@ -27,6 +27,22 @@ interface SharedLinkData {
     startedAt?: number;
     recordingUrl?: string;
     recordingType: string;
+    summary?: string;
+    callAnalysis?: {
+      chapters: Array<{ title: string; startTime: number; endTime: number; summary: string }>;
+      analysis: {
+        opening: { score: string; summary: string };
+        discovery: { score: string; summary: string };
+        presentation: { score: string; summary: string };
+        objectionHandling: { score: string; summary: string };
+        closing: { score: string; summary: string };
+      };
+      callSequence: Array<{ phase: string; description: string }>;
+      analyzedAt: number;
+    };
+    closerTalkTime?: number;
+    prospectTalkTime?: number;
+    outcome?: string;
   };
   transcript: Array<{
     speaker: string;
@@ -278,6 +294,15 @@ export default function SharePage() {
   const isCompliance = accessType === "compliance";
   const hasComments = includeComments && comments.length > 0;
 
+  // Tab state for right panel
+  const [activeTab, setActiveTab] = useState<"overview" | "analysis" | "transcript">("overview");
+
+  // Parse summary into structured fields
+  const summaryFields = call.summary ? parseSummary(call.summary) : null;
+  const analysis = call.callAnalysis?.analysis;
+  const talkTotal = (call.closerTalkTime || 0) + (call.prospectTalkTime || 0);
+  const closerPercent = talkTotal > 0 ? Math.round(((call.closerTalkTime || 0) / talkTotal) * 100) : null;
+
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
@@ -324,11 +349,11 @@ export default function SharePage() {
         </span>
       </div>
 
-      {/* Main content — split layout matching internal call review page */}
+      {/* Main content — side-by-side layout */}
       <div className="flex-1 flex min-h-0">
-        {/* Left: Video + Transcript (~65%) */}
-        <div className={`${hasComments ? "w-[65%]" : "w-full"} flex flex-col border-r border-zinc-200`}>
-          {/* Video — fixed at top, never scrolls */}
+        {/* Left: Video + Chapters (sticky) */}
+        <div className="w-[55%] flex flex-col border-r border-zinc-200">
+          {/* Video */}
           <div className="shrink-0 p-4">
             {call.recordingUrl && !videoError ? (
               <PublicVideoPlayer
@@ -356,7 +381,7 @@ export default function SharePage() {
             )}
           </div>
 
-          {/* Chapter strip — between video and transcript */}
+          {/* Chapter strip */}
           {data.chapters && data.chapters.length > 0 && (
             <div className="shrink-0">
               <ChapterStrip
@@ -367,41 +392,176 @@ export default function SharePage() {
             </div>
           )}
 
-          {/* Transcript — fills remaining space, scrolls independently */}
-          <div className="flex-1 flex flex-col min-h-0 border-t border-zinc-200">
-            <div className="shrink-0 px-4 py-2 border-b border-zinc-100">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-                Transcript
-              </h3>
-            </div>
-            <PublicTranscript
-              segments={transcript}
-              currentTime={currentTime}
-              onSeek={handleSeek}
-              startSeconds={isClip ? startSeconds : undefined}
-              endSeconds={isClip ? endSeconds : undefined}
-            />
-          </div>
-        </div>
-
-        {/* Right: Comments (~35%) */}
-        {hasComments && (
-          <div className="w-[35%] flex flex-col">
-            <div className="shrink-0 px-4 py-2 border-b border-zinc-100 flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                <MessageCircle className="h-3.5 w-3.5" />
-                Comments
+          {/* Comments (if available) — below chapters */}
+          {hasComments && (
+            <div className="flex-1 flex flex-col min-h-0 border-t border-zinc-200">
+              <div className="shrink-0 px-4 py-2 border-b border-zinc-100 flex items-center gap-2">
+                <MessageCircle className="h-3.5 w-3.5 text-zinc-400" />
+                <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                  Comments
+                </h3>
                 <span className="text-[10px] font-medium bg-zinc-100 text-zinc-400 px-1.5 py-0.5 rounded">
                   {comments.length}
                 </span>
-              </h3>
+              </div>
+              <PublicComments
+                comments={comments}
+                onSeek={handleSeek}
+              />
             </div>
-            <PublicComments
-              comments={comments}
-              onSeek={handleSeek}
-            />
+          )}
+        </div>
+
+        {/* Right: Tabbed panel — Overview / Analysis / Transcript */}
+        <div className="w-[45%] flex flex-col min-h-0">
+          {/* Tab bar */}
+          <div className="shrink-0 flex border-b border-zinc-200">
+            {(["overview", "analysis", "transcript"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2.5 text-xs font-medium capitalize transition-colors relative ${
+                  activeTab === tab
+                    ? "text-zinc-900"
+                    : "text-zinc-400 hover:text-zinc-600"
+                }`}
+              >
+                {tab}
+                {activeTab === tab && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-zinc-900" />
+                )}
+              </button>
+            ))}
           </div>
-        )}
+
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto">
+            {activeTab === "overview" && (
+              <div className="p-5 space-y-5">
+                {/* AI Summary */}
+                {summaryFields && (
+                  <div>
+                    <h4 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-3">AI Summary</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      {summaryFields.map(({ label, value }) => (
+                        <div key={label}>
+                          <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">{label}</p>
+                          <p className="text-sm text-zinc-700">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Talk-to-Listen Ratio */}
+                {closerPercent !== null && (
+                  <div>
+                    <h4 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-2">Talk-to-Listen Ratio</h4>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-zinc-900 rounded-full" style={{ width: `${closerPercent}%` }} />
+                      </div>
+                      <span className="text-xs text-zinc-500 whitespace-nowrap">
+                        Closer {closerPercent}% / Prospect {100 - closerPercent}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Outcome */}
+                {call.outcome && (
+                  <div>
+                    <h4 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">Outcome</h4>
+                    <span className={`inline-block text-xs font-medium px-2.5 py-1 rounded-full ${
+                      call.outcome === "closed" ? "bg-green-50 text-green-700" :
+                      call.outcome === "lost" ? "bg-red-50 text-red-700" :
+                      call.outcome === "follow_up" ? "bg-amber-50 text-amber-700" :
+                      "bg-zinc-100 text-zinc-500"
+                    }`}>
+                      {call.outcome === "follow_up" ? "Follow Up" : call.outcome.charAt(0).toUpperCase() + call.outcome.slice(1)}
+                    </span>
+                  </div>
+                )}
+
+                {/* No data fallback */}
+                {!summaryFields && closerPercent === null && !call.outcome && (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <p className="text-sm text-zinc-400">No overview data available</p>
+                    <p className="text-xs text-zinc-300 mt-1">AI analysis is available for new calls</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "analysis" && (
+              <div className="p-5 space-y-4">
+                {analysis ? (
+                  <>
+                    {/* Sales Process Scores */}
+                    <h4 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Sales Process</h4>
+                    {(["opening", "discovery", "presentation", "objectionHandling", "closing"] as const).map((dim) => {
+                      const d = analysis[dim];
+                      const scoreColor = d.score === "strong" ? "text-green-600 bg-green-50" :
+                                         d.score === "moderate" ? "text-amber-600 bg-amber-50" :
+                                         "text-red-600 bg-red-50";
+                      return (
+                        <div key={dim} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-zinc-700 capitalize">
+                              {dim === "objectionHandling" ? "Objection Handling" : dim}
+                            </span>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase ${scoreColor}`}>
+                              {d.score}
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-500">{d.summary}</p>
+                        </div>
+                      );
+                    })}
+
+                    {/* Call Sequence */}
+                    {call.callAnalysis?.callSequence && call.callAnalysis.callSequence.length > 0 && (
+                      <div className="pt-2">
+                        <h4 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-3">Call Flow</h4>
+                        <div className="space-y-2">
+                          {call.callAnalysis.callSequence.map((step, i) => (
+                            <div key={i} className="flex gap-3">
+                              <div className="flex flex-col items-center">
+                                <div className="w-2 h-2 rounded-full bg-zinc-300 mt-1.5" />
+                                {i < call.callAnalysis!.callSequence.length - 1 && (
+                                  <div className="w-px flex-1 bg-zinc-200" />
+                                )}
+                              </div>
+                              <div className="pb-3">
+                                <p className="text-xs font-medium text-zinc-700">{step.phase}</p>
+                                <p className="text-xs text-zinc-400">{step.description}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <p className="text-sm text-zinc-400">No AI analysis available</p>
+                    <p className="text-xs text-zinc-300 mt-1">AI analysis is available for new calls</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "transcript" && (
+              <PublicTranscript
+                segments={transcript}
+                currentTime={currentTime}
+                onSeek={handleSeek}
+                startSeconds={isClip ? startSeconds : undefined}
+                endSeconds={isClip ? endSeconds : undefined}
+              />
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -425,4 +585,19 @@ function formatDuration(seconds: number): string {
     return `${hours}h ${remainingMins}m`;
   }
   return `${mins}m ${secs}s`;
+}
+
+function parseSummary(summary: string): Array<{ label: string; value: string }> {
+  // AI summary is formatted as "**Label:** value" bullet points
+  const fields: Array<{ label: string; value: string }> = [];
+  const lines = summary.split("\n").filter((l) => l.trim());
+  for (const line of lines) {
+    const match = line.match(/\*?\*?([^:*]+)\*?\*?:\s*(.+)/);
+    if (match) {
+      fields.push({ label: match[1].replace(/[*-]/g, "").trim(), value: match[2].trim() });
+    } else if (line.trim()) {
+      fields.push({ label: "Summary", value: line.replace(/^[-*]\s*/, "").trim() });
+    }
+  }
+  return fields.length > 0 ? fields : [{ label: "Summary", value: summary }];
 }
