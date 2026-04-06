@@ -1777,17 +1777,41 @@ export const getCloserDashboardStats = query({
       periodStart = d.getTime();
     }
 
-    // Get this closer's calls in the period
-    const myCalls = await ctx.db
+    // Calculate previous period start for trend comparison
+    let prevPeriodStart: number;
+    if (args.period === "today") {
+      prevPeriodStart = periodStart - 24 * 60 * 60 * 1000;
+    } else if (args.period === "month") {
+      const prevMonth = new Date(periodStart);
+      prevMonth.setMonth(prevMonth.getMonth() - 1);
+      prevPeriodStart = prevMonth.getTime();
+    } else if (args.period === "last30") {
+      prevPeriodStart = periodStart - 30 * 24 * 60 * 60 * 1000;
+    } else {
+      prevPeriodStart = periodStart - 7 * 24 * 60 * 60 * 1000;
+    }
+
+    // Get this closer's ALL calls (for both current and previous period)
+    const allCloserCalls = await ctx.db
       .query("calls")
       .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
-      .filter((q) => q.gte(q.field("startedAt"), periodStart))
+      .filter((q) => q.gte(q.field("startedAt"), prevPeriodStart))
       .collect();
+
+    const myCalls = allCloserCalls.filter((c) => (c.startedAt || 0) >= periodStart);
+    const prevCalls = allCloserCalls.filter((c) => (c.startedAt || 0) >= prevPeriodStart && (c.startedAt || 0) < periodStart);
 
     const myCompleted = myCalls.filter((c) => c.status === "completed" || c.endedAt);
     const myClosed = myCompleted.filter((c) => c.outcome === "closed" || c.outcome === "closed_won");
     const myCloseRate = myCompleted.length > 0 ? (myClosed.length / myCompleted.length) * 100 : 0;
     const myCash = myCompleted.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+
+    // Previous period stats for trends
+    const prevCompleted = prevCalls.filter((c) => c.status === "completed" || c.endedAt);
+    const prevClosed = prevCompleted.filter((c) => c.outcome === "closed" || c.outcome === "closed_won");
+    const prevCash = prevCompleted.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
+    const prevContractValue = prevClosed.reduce((sum, c) => sum + (c.contractValue || 0), 0);
+    const prevNonNoShow = prevCompleted.filter((c) => c.outcome !== "no_show");
 
     // Compute avg call duration (seconds)
     const myDurations = myCompleted.filter((c) => c.duration && c.duration > 0).map((c) => c.duration!);
@@ -1808,6 +1832,18 @@ export const getCloserDashboardStats = query({
     const revenuePerCallContract = myCompleted.length > 0 ? Math.round(totalContractValue / myCompleted.length) : 0;
     const revenuePerSitCash = myNonNoShow.length > 0 ? Math.round(myCash / myNonNoShow.length) : 0;
     const revenuePerSitContract = myNonNoShow.length > 0 ? Math.round(totalContractValue / myNonNoShow.length) : 0;
+
+    // Previous period revenue per call/sit for trends
+    const prevRevenuePerCallCash = prevCompleted.length > 0 ? Math.round(prevCash / prevCompleted.length) : 0;
+    const prevRevenuePerSitCash = prevNonNoShow.length > 0 ? Math.round(prevCash / prevNonNoShow.length) : 0;
+
+    // Trend: percentage change (positive = improvement)
+    const revenuePerCallTrend = prevRevenuePerCallCash > 0
+      ? Math.round(((revenuePerCallCash - prevRevenuePerCallCash) / prevRevenuePerCallCash) * 100)
+      : null;
+    const revenuePerSitTrend = prevRevenuePerSitCash > 0
+      ? Math.round(((revenuePerSitCash - prevRevenuePerSitCash) / prevRevenuePerSitCash) * 100)
+      : null;
 
     // Get all team closers for comparison
     const teamClosers = await ctx.db
@@ -1879,6 +1915,8 @@ export const getCloserDashboardStats = query({
       revenuePerCallContract,
       revenuePerSitCash,
       revenuePerSitContract,
+      revenuePerCallTrend,
+      revenuePerSitTrend,
       teamAvgCloseRate: Math.round(teamAvgCloseRate * 10) / 10,
       teamAvgCash: Math.round(teamAvgCash),
       teamAvgCalls: Math.round(teamAvgCalls * 10) / 10,

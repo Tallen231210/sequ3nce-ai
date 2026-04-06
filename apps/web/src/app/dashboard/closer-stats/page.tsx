@@ -145,6 +145,8 @@ interface CloserCardProps {
     revenuePerCallContract: number;
     revenuePerSitCash: number;
     revenuePerSitContract: number;
+    revenuePerCallTrend: number | null;
+    revenuePerSitTrend: number | null;
     revenueThisWeek: number;
     revenueThisMonth: number;
     callsThisWeek: number;
@@ -339,18 +341,30 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Rev/Call</span>
-                  <span className="font-medium">
+                  <span className="font-medium flex items-center gap-1.5">
                     {closer.revenuePerCallCash > 0 || closer.revenuePerCallContract > 0
                       ? `${formatCurrency(closer.revenuePerCallCash)} / ${formatCurrency(closer.revenuePerCallContract)}`
                       : "—"}
+                    {closer.revenuePerCallTrend !== null && (
+                      <span className={`text-[10px] font-semibold ${closer.revenuePerCallTrend > 0 ? 'text-green-600' : closer.revenuePerCallTrend < 0 ? 'text-red-500' : 'text-zinc-400'}`}>
+                        {closer.revenuePerCallTrend > 0 ? '↑' : closer.revenuePerCallTrend < 0 ? '↓' : ''}
+                        {closer.revenuePerCallTrend > 0 ? '+' : ''}{closer.revenuePerCallTrend}%
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Rev/Sit</span>
-                  <span className="font-medium">
+                  <span className="font-medium flex items-center gap-1.5">
                     {closer.revenuePerSitCash > 0 || closer.revenuePerSitContract > 0
                       ? `${formatCurrency(closer.revenuePerSitCash)} / ${formatCurrency(closer.revenuePerSitContract)}`
                       : "—"}
+                    {closer.revenuePerSitTrend !== null && (
+                      <span className={`text-[10px] font-semibold ${closer.revenuePerSitTrend > 0 ? 'text-green-600' : closer.revenuePerSitTrend < 0 ? 'text-red-500' : 'text-zinc-400'}`}>
+                        {closer.revenuePerSitTrend > 0 ? '↑' : closer.revenuePerSitTrend < 0 ? '↓' : ''}
+                        {closer.revenuePerSitTrend > 0 ? '+' : ''}{closer.revenuePerSitTrend}%
+                      </span>
+                    )}
                   </span>
                 </div>
                 {closer.talkToListenRatio !== null && (

@@ -393,6 +393,8 @@ interface CloserStats {
   revenuePerCallContract: number;
   revenuePerSitCash: number;
   revenuePerSitContract: number;
+  revenuePerCallTrend: number | null;
+  revenuePerSitTrend: number | null;
 
   // Secondary stats
   showRate: number; // percentage
@@ -607,6 +609,17 @@ export const getCloserStats = query({
       const revenuePerSitCash = nonNoShowCalls.length > 0 ? Math.round(cashCollected / nonNoShowCalls.length) : 0;
       const revenuePerSitContract = nonNoShowCalls.length > 0 ? Math.round(totalContractValue / nonNoShowCalls.length) : 0;
 
+      // Revenue per call/sit trends (vs previous period)
+      const prevNonNoShowCalls = prevCompletedCalls.filter((c) => c.outcome !== "no_show");
+      const prevRPCCash = prevCompletedCalls.length > 0 ? prevCashCollected / prevCompletedCalls.length : 0;
+      const prevRPSCash = prevNonNoShowCalls.length > 0 ? prevCashCollected / prevNonNoShowCalls.length : 0;
+      const revenuePerCallTrend = prevRPCCash > 0
+        ? Math.round(((revenuePerCallCash - prevRPCCash) / prevRPCCash) * 100)
+        : null;
+      const revenuePerSitTrend = prevRPSCash > 0
+        ? Math.round(((revenuePerSitCash - prevRPSCash) / prevRPSCash) * 100)
+        : null;
+
       // Follow-up conversion rate (rescheduled -> eventually closed)
       // We'll approximate this by looking at calls marked as rescheduled
       // In practice, this would need a more complex tracking system
@@ -679,6 +692,8 @@ export const getCloserStats = query({
         revenuePerCallContract,
         revenuePerSitCash,
         revenuePerSitContract,
+        revenuePerCallTrend,
+        revenuePerSitTrend,
         showRate,
         avgDealValue,
         followUpConversionRate,

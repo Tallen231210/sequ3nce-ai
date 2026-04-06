@@ -981,6 +981,8 @@ export interface CloserStats {
   revenuePerCallContract: number;
   revenuePerSitCash: number;
   revenuePerSitContract: number;
+  revenuePerCallTrend: number | null;
+  revenuePerSitTrend: number | null;
   teamSize: number;
   teamAvgCloseRate: number;
   teamAvgCash: number;

@@ -94,12 +94,14 @@ export function StatsView({ closerInfo }: StatsViewProps) {
           title="Revenue / Call"
           value={`${formatCurrency(stats?.revenuePerCallCash ?? 0)} / ${formatCurrency(stats?.revenuePerCallContract ?? 0)}`}
           subtitle="cash / contract"
+          trend={stats?.revenuePerCallTrend}
         />
         <StatCard
           icon={<DollarIcon />}
           title="Revenue / Sit"
           value={`${formatCurrency(stats?.revenuePerSitCash ?? 0)} / ${formatCurrency(stats?.revenuePerSitContract ?? 0)}`}
           subtitle="excl. no-shows"
+          trend={stats?.revenuePerSitTrend}
         />
       </div>
 
@@ -454,10 +456,28 @@ function InsightsSection({ insights }: { insights?: string[] }) {
 
 // --- Stat Card ---
 
-function StatCard({ icon, title, value, subtitle }: { icon: React.ReactNode; title: string; value: string; subtitle?: string }) {
+function StatCard({ icon, title, value, subtitle, trend }: { icon: React.ReactNode; title: string; value: string; subtitle?: string; trend?: number | null }) {
   return (
     <div className="bg-white border border-gray-200/60 rounded-lg p-3.5">
-      <div className="text-gray-500 mb-2.5">{icon}</div>
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="text-gray-500">{icon}</div>
+        {trend !== undefined && trend !== null && (
+          <span className={`flex items-center gap-0.5 text-[11px] font-semibold ${
+            trend > 0 ? 'text-green-600' : trend < 0 ? 'text-red-500' : 'text-gray-400'
+          }`}>
+            {trend > 0 ? (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+              </svg>
+            ) : trend < 0 ? (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 4.5l15 15m0 0V8.25m0 11.25H8.25" />
+              </svg>
+            ) : null}
+            {trend > 0 ? '+' : ''}{trend}%
+          </span>
+        )}
+      </div>
       <div className="text-2xl font-bold text-black font-mono leading-tight mb-1">{value}</div>
       <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">{title}</div>
       {subtitle && <div className="text-[9px] text-gray-400 mt-0.5">{subtitle}</div>}
