@@ -13,7 +13,7 @@ export const createCheckoutSession = internalAction({
     email: v.string(),
     b2cUserId: v.id("b2cUsers"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ url: string | null }> => {
     const stripe = getStripe();
 
     // Check if user already has a Stripe customer ID
@@ -75,7 +75,7 @@ export const createPortalSession = internalAction({
   args: {
     b2cUserId: v.id("b2cUsers"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ url?: string; error?: string }> => {
     const stripe = getStripe();
 
     const subscription = await ctx.runQuery(internal.b2cBilling.getB2CSubscriptionInternal, {
