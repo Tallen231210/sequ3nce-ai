@@ -852,6 +852,14 @@ export const completeCallWithOutcome = mutation({
           duration: call.duration,
         });
       }
+    } else if (!call.summary || !call.callAnalysis) {
+      // Transcript not ready yet (user submitted form before bot finished).
+      // Schedule retry — it will assemble transcriptText from webhook segments.
+      await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
+        callId: args.callId,
+        attempt: 1,
+      });
+      console.log(`[completeCallWithOutcome] Transcript not ready, scheduled retry for call ${args.callId}`);
     }
 
     // If AI summary already generated but notification hasn't fired yet,
@@ -2973,6 +2981,32 @@ export const writeTranscriptText = internalMutation({
     // Only write if current transcriptText is empty or shorter
     if (!call.transcriptText || args.transcriptText.length > call.transcriptText.length) {
       await ctx.db.patch(args.callId, { transcriptText: args.transcriptText });
+    }
+  },
+});
+
+// Internal mutation to recalculate talk time from segments (used by retrySummaryGeneration)
+export const updateTalkTimeInternal = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    closerTalkTime: v.number(),
+    prospectTalkTime: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return;
+    // Only recalculate if current values look suspicious (one side is 0 but other isn't)
+    const currentCloser = (call as any).closerTalkTime || 0;
+    const currentProspect = (call as any).prospectTalkTime || 0;
+    const isSuspicious = (currentCloser === 0 && currentProspect > 0) ||
+                         (currentProspect === 0 && currentCloser > 0) ||
+                         (currentCloser === 0 && currentProspect === 0);
+    if (isSuspicious && args.closerTalkTime + args.prospectTalkTime > 0) {
+      await ctx.db.patch(args.callId, {
+        closerTalkTime: args.closerTalkTime,
+        prospectTalkTime: args.prospectTalkTime,
+      });
+      console.log(`[updateTalkTimeInternal] Recalculated talk time for call ${args.callId}: closer=${args.closerTalkTime}s, prospect=${args.prospectTalkTime}s`);
     }
   },
 });

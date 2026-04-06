@@ -851,9 +851,9 @@ export const createCallFromBot = mutation({
 
     console.log(`[createCallFromBot] Call created: ${callId} for bot: ${args.meetingBotId}`);
 
-    // Schedule call started notification (Slack + Discord)
-    // Safe: sendCallStartedNotification has dedup, so if audio processor also triggers it, the second is skipped
-    await ctx.scheduler.runAfter(0, internal.slack.sendCallStartedNotification, {
+    // Schedule call started notification (Slack + Discord) with 2s delay
+    // to let dedup check work if updateCallStatus also triggers a notification
+    await ctx.scheduler.runAfter(2000, internal.slack.sendCallStartedNotification, {
       callId,
     });
 
@@ -1054,23 +1054,39 @@ export const retrySummaryGeneration = internalAction({
       return;
     }
 
-    // If transcriptText is empty, try to assemble it from transcript segments (webhook fallback)
-    let transcript = call.transcriptText || "";
-    if (!transcript || transcript.trim().length < 50) {
-      const segments = await ctx.runQuery(internal.calls.getTranscriptSegmentsInternal, {
+    // Always prefer webhook segments — they have correct speaker labels.
+    // The audio processor's fullTranscript can have wrong speaker identification.
+    const segments = await ctx.runQuery(internal.calls.getTranscriptSegmentsInternal, {
+      callId: args.callId,
+    });
+    let transcript: string;
+    if (segments && segments.length > 0) {
+      transcript = segments
+        .map((s: { speaker: string; text: string }) => `${s.speaker === "closer" ? "Closer" : "Prospect"}: ${s.text}`)
+        .join("\n");
+      // Save the correctly-labeled transcript to the call record
+      await ctx.runMutation(internal.calls.writeTranscriptText, {
         callId: args.callId,
+        transcriptText: transcript,
       });
-      if (segments && segments.length > 0) {
-        transcript = segments
-          .map((s: { speaker: string; text: string }) => `${s.speaker === "closer" ? "Closer" : "Prospect"}: ${s.text}`)
-          .join("\n");
-        // Save the assembled transcript to the call record
-        await ctx.runMutation(internal.calls.writeTranscriptText, {
-          callId: args.callId,
-          transcriptText: transcript,
-        });
-        console.log(`[retrySummaryGeneration] Assembled transcriptText from ${segments.length} segments for call ${args.callId}`);
+      // Recalculate talk time from segments (audio processor's values may be wrong)
+      let closerChars = 0;
+      let prospectChars = 0;
+      for (const s of segments) {
+        if (s.speaker === "closer") closerChars += s.text.length;
+        else prospectChars += s.text.length;
       }
+      const closerTalkTime = Math.round(closerChars / 12.5);
+      const prospectTalkTime = Math.round(prospectChars / 12.5);
+      await ctx.runMutation(internal.calls.updateTalkTimeInternal, {
+        callId: args.callId,
+        closerTalkTime,
+        prospectTalkTime,
+      });
+      console.log(`[retrySummaryGeneration] Assembled transcript from ${segments.length} segments for call ${args.callId}`);
+    } else {
+      // No segments — fall back to audio processor's transcript
+      transcript = call.transcriptText || "";
     }
 
     if (transcript && transcript.trim().length > 50) {
