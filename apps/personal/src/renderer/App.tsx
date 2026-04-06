@@ -7,6 +7,7 @@ import {
   resetPasswordWithCode,
   sendVerificationCode,
   logClientError,
+  getSubscriptionStatus,
   type CloserInfo,
 } from './convex';
 import { MeetingBotHub } from './views/MeetingBotHub';
@@ -122,6 +123,25 @@ function AppContent() {
 
     sendStartupDiagnostic(info.email);
   };
+
+  // Poll subscription status every 60 seconds — detect cancellation without requiring logout
+  useEffect(() => {
+    if (authState !== 'authenticated' || !closerInfo?.b2cUserId) return;
+    if (closerInfo.subscriptionStatus !== 'active') return; // Already on paywall, no need to poll
+
+    const checkSubscription = async () => {
+      const result = await getSubscriptionStatus(closerInfo.b2cUserId!);
+      if (result.subscriptionStatus !== 'active' && closerInfo.subscriptionStatus === 'active') {
+        // Subscription was revoked — update local state to trigger paywall
+        const updated = { ...closerInfo, subscriptionStatus: result.subscriptionStatus };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        setCloserInfo(updated);
+      }
+    };
+
+    const interval = setInterval(checkSubscription, 60000);
+    return () => clearInterval(interval);
+  }, [authState, closerInfo?.b2cUserId, closerInfo?.subscriptionStatus]);
 
   // Check for existing session on mount
   useEffect(() => {
