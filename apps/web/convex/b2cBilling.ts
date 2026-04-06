@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 
 // ==================== Queries ====================
 
@@ -118,5 +118,38 @@ export const updateB2CSubscriptionByUserId = mutation({
 
     await ctx.db.patch(args.userId, updates);
     console.log(`B2C subscription updated for ${user.email}: ${args.subscriptionStatus}`);
+  },
+});
+
+// ==================== Internal variants (for Stripe actions) ====================
+
+/** Internal query: get subscription info for a B2C user */
+export const getB2CSubscriptionInternal = internalQuery({
+  args: { userId: v.id("b2cUsers") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) return null;
+    return {
+      subscriptionStatus: user.subscriptionStatus,
+      stripeCustomerId: user.stripeCustomerId,
+      subscriptionId: user.subscriptionId,
+    };
+  },
+});
+
+/** Internal mutation: set Stripe customer ID */
+export const setB2CStripeCustomerIdInternal = internalMutation({
+  args: { userId: v.id("b2cUsers"), stripeCustomerId: v.string() },
+  handler: async (ctx, { userId, stripeCustomerId }) => {
+    await ctx.db.patch(userId, { stripeCustomerId });
+  },
+});
+
+/** Internal query: get total B2C user count for pricing tier */
+export const getB2CUserCountInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("b2cUsers").collect();
+    return users.length;
   },
 });

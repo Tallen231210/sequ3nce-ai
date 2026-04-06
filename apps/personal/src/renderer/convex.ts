@@ -3363,16 +3363,13 @@ export async function toggleAvailability(
 
 // ==================== B2C Billing / Stripe ====================
 
-// Next.js API base URL (not Convex HTTP — these routes need Stripe SDK)
-const NEXT_API_URL = "https://sequ3nce.ai";
-
-/** Create a Stripe Checkout session for B2C $129.99/mo subscription */
+/** Create a Stripe Checkout session for B2C subscription with 45-day trial */
 export async function createB2CCheckout(
   email: string,
   b2cUserId: string
 ): Promise<{ url?: string; error?: string }> {
   try {
-    const response = await fetch(`${NEXT_API_URL}/api/stripe/b2c-create-checkout`, {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/create-checkout`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, b2cUserId }),
@@ -3391,7 +3388,7 @@ export async function createB2CPortal(
   b2cUserId: string
 ): Promise<{ url?: string; error?: string }> {
   try {
-    const response = await fetch(`${NEXT_API_URL}/api/stripe/b2c-create-portal`, {
+    const response = await fetch(`${CONVEX_SITE_URL}/b2c/create-portal`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ b2cUserId }),

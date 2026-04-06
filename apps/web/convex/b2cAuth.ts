@@ -135,6 +135,10 @@ export const signupB2CUser = mutation({
     // 4. New users start with "none" — trial is managed by Stripe (45-day free trial on checkout)
     // Existing beta users (first 50) who already have trials are untouched (their data is already in the DB)
 
+    // Determine pricing tier for new user
+    const totalUsers = await ctx.db.query("b2cUsers").collect();
+    const pricingTier = totalUsers.length <= 100 ? "early" : "standard";
+
     return {
       success: true,
       b2cUserId,
@@ -144,6 +148,7 @@ export const signupB2CUser = mutation({
       email,
       subscriptionStatus: "none" as const,
       trialExpiresAt: undefined,
+      pricingTier,
     };
   },
 });

@@ -242,6 +242,7 @@ function AppContent() {
           subscriptionStatus: result.subscriptionStatus || 'none',
           b2cUserId: result.b2cUserId,
           trialExpiresAt: (result as any).trialExpiresAt,
+          pricingTier: (result as any).pricingTier,
         };
 
         // Clear signup form fields

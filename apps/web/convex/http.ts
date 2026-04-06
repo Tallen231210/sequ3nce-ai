@@ -8101,4 +8101,73 @@ http.route({
   handler: b2cCorsPreflightHandler("GET, OPTIONS"),
 });
 
+// ============================================
+// B2C STRIPE CHECKOUT & PORTAL (via Convex actions)
+// ============================================
+
+// POST /b2c/create-checkout — Create Stripe checkout session with 45-day trial
+http.route({
+  path: "/b2c/create-checkout",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { email, b2cUserId } = await request.json();
+
+      if (!email || !b2cUserId) {
+        return b2cJsonResponse({ error: "Missing email or b2cUserId" }, 400);
+      }
+
+      const result = await ctx.runAction(internal.b2cStripe.createCheckoutSession, {
+        email,
+        b2cUserId: b2cUserId as Id<"b2cUsers">,
+      });
+
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("[B2C Checkout] Error:", error);
+      return b2cJsonResponse({ error: "Failed to create checkout session" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/create-checkout",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/create-portal — Create Stripe billing portal session
+http.route({
+  path: "/b2c/create-portal",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { b2cUserId } = await request.json();
+
+      if (!b2cUserId) {
+        return b2cJsonResponse({ error: "Missing b2cUserId" }, 400);
+      }
+
+      const result = await ctx.runAction(internal.b2cStripe.createPortalSession, {
+        b2cUserId: b2cUserId as Id<"b2cUsers">,
+      });
+
+      if (result.error) {
+        return b2cJsonResponse({ error: result.error }, 400);
+      }
+
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("[B2C Portal] Error:", error);
+      return b2cJsonResponse({ error: "Failed to create portal session" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/create-portal",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 export default http;
