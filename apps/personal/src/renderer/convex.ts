@@ -16,6 +16,7 @@ export interface CloserInfo {
   badges?: string[];
   trialExpiresAt?: number;
   onboardingCompleted?: boolean;
+  pricingTier?: "early" | "standard";
 }
 
 export interface LoginResult {

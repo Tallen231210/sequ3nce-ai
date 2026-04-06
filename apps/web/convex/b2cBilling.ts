@@ -19,6 +19,15 @@ export const getB2CSubscription = query({
   },
 });
 
+/** Get total B2C user count (for tiered pricing — $99 for first 100, $129.99 after) */
+export const getB2CUserCount = query({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("b2cUsers").collect();
+    return users.length;
+  },
+});
+
 // ==================== Mutations ====================
 
 /** Set Stripe customer ID on a B2C user (called during checkout creation) */

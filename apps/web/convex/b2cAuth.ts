@@ -132,21 +132,8 @@ export const signupB2CUser = mutation({
       createdAt: now,
     });
 
-    // 4. Auto-grant 90-day trial for first 50 beta users
-    const BETA_USER_CAP = 50;
-    const TRIAL_DAYS = 90;
-    const totalUsers = await ctx.db.query("b2cUsers").collect();
-    let finalSubscriptionStatus: "active" | "none" = "none";
-    let trialExpiresAt: number | undefined;
-
-    if (totalUsers.length <= BETA_USER_CAP) {
-      trialExpiresAt = now + (TRIAL_DAYS * 24 * 60 * 60 * 1000);
-      finalSubscriptionStatus = "active";
-      await ctx.db.patch(b2cUserId, {
-        subscriptionStatus: "active",
-        trialExpiresAt,
-      });
-    }
+    // 4. New users start with "none" — trial is managed by Stripe (45-day free trial on checkout)
+    // Existing beta users (first 50) who already have trials are untouched (their data is already in the DB)
 
     return {
       success: true,
@@ -155,8 +142,8 @@ export const signupB2CUser = mutation({
       teamId,
       name,
       email,
-      subscriptionStatus: finalSubscriptionStatus,
-      trialExpiresAt,
+      subscriptionStatus: "none" as const,
+      trialExpiresAt: undefined,
     };
   },
 });
@@ -229,6 +216,10 @@ export const loginB2CUser = mutation({
         badges: user.badges || [],
         trialExpiresAt: user.trialExpiresAt,
         onboardingCompleted: user.onboardingCompleted || false,
+        pricingTier: await (async () => {
+          const totalUsers = await ctx.db.query("b2cUsers").collect();
+          return totalUsers.length <= 100 ? "early" : "standard";
+        })(),
       },
     };
   },

@@ -376,22 +376,7 @@ function AppContent() {
   }
 
   if (authState === 'authenticated' && closerInfo) {
-    // Subscription paywall — block access unless subscription is active
-    if (closerInfo.subscriptionStatus !== 'active') {
-      return (
-        <SubscriptionGate
-          closerInfo={closerInfo}
-          onSubscribed={(updatedInfo) => {
-            // Update session with active subscription
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedInfo));
-            setCloserInfo(updatedInfo);
-          }}
-          onLogout={handleLogout}
-        />
-      );
-    }
-
-    // Onboarding questionnaire — show after subscription is active but before main app
+    // Onboarding questionnaire — show first (before paywall) so we capture user data regardless
     if (!closerInfo.onboardingCompleted) {
       return (
         <OnboardingQuestionnaire
@@ -400,6 +385,20 @@ function AppContent() {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedInfo));
             setCloserInfo(updatedInfo);
           }}
+        />
+      );
+    }
+
+    // Subscription paywall — collect card with 45-day free trial
+    if (closerInfo.subscriptionStatus !== 'active') {
+      return (
+        <SubscriptionGate
+          closerInfo={closerInfo}
+          onSubscribed={(updatedInfo) => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedInfo));
+            setCloserInfo(updatedInfo);
+          }}
+          onLogout={handleLogout}
         />
       );
     }

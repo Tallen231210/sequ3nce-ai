@@ -114,6 +114,14 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
   const isPastDue = closerInfo.subscriptionStatus === 'past_due';
   const isCancelled = closerInfo.subscriptionStatus === 'cancelled';
   const isTrialExpired = !!(closerInfo.trialExpiresAt && closerInfo.trialExpiresAt < Date.now());
+  const isNewUser = !closerInfo.trialExpiresAt && !closerInfo.subscriptionStatus?.match(/active|cancelled|past_due/);
+  const isEarlyBird = closerInfo.pricingTier === 'early';
+  const price = isEarlyBird ? '$99' : '$129.99';
+
+  // Calculate trial end date for display
+  const trialEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  });
 
   return (
     <div className="h-screen flex flex-col bg-white text-black">
@@ -132,7 +140,9 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
               ? 'Subscription Inactive'
               : isTrialExpired
                 ? 'Trial Ended'
-                : 'Unlock Sequ3nce Personal'}
+                : isNewUser
+                  ? 'Start Your Free Trial'
+                  : 'Unlock Sequ3nce Personal'}
         </h1>
         <p className="text-gray-500 text-sm mb-8 text-center max-w-sm">
           {isPastDue
@@ -140,8 +150,10 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
             : isCancelled
               ? 'Your subscription has been cancelled. Resubscribe to regain access.'
               : isTrialExpired
-                ? 'Your 90-day free trial has ended. Subscribe to continue using Sequ3nce Personal.'
-                : 'Get access to all the tools you need to crush your sales goals.'}
+                ? 'Your free trial has ended. Subscribe to continue using Sequ3nce Personal.'
+                : isNewUser
+                  ? `Enter your card to start your 45-day free trial. You won't be charged until ${trialEndDate}.`
+                  : 'Get access to all the tools you need to crush your sales goals.'}
         </p>
 
         {/* Features */}
@@ -158,10 +170,19 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
 
         {/* Price card */}
         <div className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl p-6 mb-6 text-center">
-          <div className="mb-4">
-            <span className="text-3xl font-bold text-gray-900">$129.99</span>
+          {isNewUser && (
+            <div className="mb-2">
+              <span className="text-xs font-semibold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">45 days free</span>
+            </div>
+          )}
+          <div className="mb-1">
+            <span className="text-3xl font-bold text-gray-900">{price}</span>
             <span className="text-gray-500 text-sm">/month</span>
           </div>
+          {isNewUser && (
+            <p className="text-xs text-gray-400 mb-4">after trial ends</p>
+          )}
+          {!isNewUser && <div className="mb-4" />}
 
           {isPastDue ? (
             <button
@@ -183,7 +204,9 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
                   ? 'Waiting for payment...'
                   : isCancelled
                     ? 'Resubscribe'
-                    : 'Subscribe Now'}
+                    : isNewUser
+                      ? 'Start Free Trial'
+                      : 'Subscribe Now'}
             </button>
           )}
         </div>

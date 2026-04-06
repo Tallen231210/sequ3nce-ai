@@ -46,14 +46,22 @@ export async function POST(req: Request) {
       });
     }
 
-    // Create checkout session
+    // Determine pricing tier: $99/mo for first 100 users, $129.99/mo after
+    const EARLY_BIRD_PRICE_ID = process.env.STRIPE_B2C_PRICE_ID_EARLY || "price_1TJJ5IISqY0sJmwBEtBkLzMO";
+    const STANDARD_PRICE_ID = process.env.STRIPE_B2C_PRICE_ID!;
+
+    // Query total B2C user count to determine pricing tier
+    const userCount = await convex.query(api.b2cBilling.getB2CUserCount, {});
+    const priceId = userCount <= 100 ? EARLY_BIRD_PRICE_ID : STANDARD_PRICE_ID;
+
+    // Create checkout session with 45-day free trial
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [
         {
-          price: process.env.STRIPE_B2C_PRICE_ID!,
+          price: priceId,
           quantity: 1,
         },
       ],
@@ -61,6 +69,7 @@ export async function POST(req: Request) {
       cancel_url: `https://sequ3nce.ai/b2c-subscribe?canceled=true`,
       allow_promotion_codes: true,
       subscription_data: {
+        trial_period_days: 45,
         metadata: {
           b2cUserId,
           platform: "b2c_personal",
