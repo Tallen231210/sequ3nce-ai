@@ -388,6 +388,12 @@ interface CloserStats {
   totalContractValue: number; // Sum of contractValue field (total commitments)
   avgContractValue: number; // Average contract size
 
+  // Revenue per call / per sit
+  revenuePerCallCash: number;
+  revenuePerCallContract: number;
+  revenuePerSitCash: number;
+  revenuePerSitContract: number;
+
   // Secondary stats
   showRate: number; // percentage
   avgDealValue: number;
@@ -594,6 +600,13 @@ export const getCloserStats = query({
         ? cashCollected / closedCalls.length
         : 0;
 
+      // Revenue Per Call / Revenue Per Sit
+      const nonNoShowCalls = completedCalls.filter((c) => c.outcome !== "no_show");
+      const revenuePerCallCash = completedCalls.length > 0 ? Math.round(cashCollected / completedCalls.length) : 0;
+      const revenuePerCallContract = completedCalls.length > 0 ? Math.round(totalContractValue / completedCalls.length) : 0;
+      const revenuePerSitCash = nonNoShowCalls.length > 0 ? Math.round(cashCollected / nonNoShowCalls.length) : 0;
+      const revenuePerSitContract = nonNoShowCalls.length > 0 ? Math.round(totalContractValue / nonNoShowCalls.length) : 0;
+
       // Follow-up conversion rate (rescheduled -> eventually closed)
       // We'll approximate this by looking at calls marked as rescheduled
       // In practice, this would need a more complex tracking system
@@ -662,6 +675,10 @@ export const getCloserStats = query({
         totalCashCollected,
         totalContractValue,
         avgContractValue,
+        revenuePerCallCash,
+        revenuePerCallContract,
+        revenuePerSitCash,
+        revenuePerSitContract,
         showRate,
         avgDealValue,
         followUpConversionRate,

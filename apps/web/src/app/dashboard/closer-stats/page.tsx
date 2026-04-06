@@ -141,6 +141,10 @@ interface CloserCardProps {
     followUpConversionRate: number;
     avgAmmoPerCall: number;
     talkToListenRatio: number | null;
+    revenuePerCallCash: number;
+    revenuePerCallContract: number;
+    revenuePerSitCash: number;
+    revenuePerSitContract: number;
     revenueThisWeek: number;
     revenueThisMonth: number;
     callsThisWeek: number;
@@ -331,6 +335,22 @@ function CloserCard({ closer, liveStatus, dateRange }: CloserCardProps) {
                   <span className="text-zinc-500">Ammo/Call</span>
                   <span className="font-medium">
                     {closer.avgAmmoPerCall > 0 ? closer.avgAmmoPerCall.toFixed(1) : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Rev/Call</span>
+                  <span className="font-medium">
+                    {closer.revenuePerCallCash > 0 || closer.revenuePerCallContract > 0
+                      ? `${formatCurrency(closer.revenuePerCallCash)} / ${formatCurrency(closer.revenuePerCallContract)}`
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Rev/Sit</span>
+                  <span className="font-medium">
+                    {closer.revenuePerSitCash > 0 || closer.revenuePerSitContract > 0
+                      ? `${formatCurrency(closer.revenuePerSitCash)} / ${formatCurrency(closer.revenuePerSitContract)}`
+                      : "—"}
                   </span>
                 </div>
                 {closer.talkToListenRatio !== null && (

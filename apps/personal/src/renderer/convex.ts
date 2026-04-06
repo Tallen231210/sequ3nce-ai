@@ -977,12 +977,20 @@ export interface CloserStats {
   avgCallDuration: number;
   avgTalkRatio: number;
   totalContractValue: number;
+  revenuePerCallCash: number;
+  revenuePerCallContract: number;
+  revenuePerSitCash: number;
+  revenuePerSitContract: number;
   teamSize: number;
   teamAvgCloseRate: number;
   teamAvgCash: number;
   teamAvgCalls: number;
   teamAvgDuration: number;
   teamAvgTalkRatio: number;
+  teamAvgRevenuePerCallCash: number;
+  teamAvgRevenuePerCallContract: number;
+  teamAvgRevenuePerSitCash: number;
+  teamAvgRevenuePerSitContract: number;
 }
 
 export async function getCloserStats(closerId: string, period: string): Promise<CloserStats | null> {

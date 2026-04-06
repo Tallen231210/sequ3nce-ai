@@ -77,8 +77,8 @@ export function StatsView({ closerInfo }: StatsViewProps) {
         </div>
       </div>
 
-      {/* 6 Stat Cards — 2 rows of 3 */}
-      <div className="grid grid-cols-3 gap-3 mb-8">
+      {/* Stat Cards — 4 columns */}
+      <div className="grid grid-cols-4 gap-3 mb-8">
         <StatCard
           icon={<PhoneIcon />}
           title={periodLabel('Calls', period)}
@@ -86,9 +86,21 @@ export function StatsView({ closerInfo }: StatsViewProps) {
         />
         <StatCard icon={<TargetIcon />} title="Close Rate" value={`${Math.round(stats?.closeRate ?? 0)}%`} />
         <StatCard icon={<DollarIcon />} title="Cash Collected" value={formatCurrency(stats?.cashCollected ?? 0)} />
+        <StatCard icon={<DocIcon />} title="Contract Value" value={formatCurrency(stats?.totalContractValue ?? 0)} />
         <StatCard icon={<ClockIcon />} title="Avg Call Duration" value={formatDuration(stats?.avgCallDuration ?? 0)} />
         <StatCard icon={<WaveformIcon />} title="Talk Ratio" value={`${Math.round(stats?.avgTalkRatio ?? 0)}%`} />
-        <StatCard icon={<DocIcon />} title="Contract Value" value={formatCurrency(stats?.totalContractValue ?? 0)} />
+        <StatCard
+          icon={<DollarIcon />}
+          title="Revenue / Call"
+          value={`${formatCurrency(stats?.revenuePerCallCash ?? 0)} / ${formatCurrency(stats?.revenuePerCallContract ?? 0)}`}
+          subtitle="cash / contract"
+        />
+        <StatCard
+          icon={<DollarIcon />}
+          title="Revenue / Sit"
+          value={`${formatCurrency(stats?.revenuePerSitCash ?? 0)} / ${formatCurrency(stats?.revenuePerSitContract ?? 0)}`}
+          subtitle="excl. no-shows"
+        />
       </div>
 
       {/* Team Comparison */}
@@ -442,12 +454,13 @@ function InsightsSection({ insights }: { insights?: string[] }) {
 
 // --- Stat Card ---
 
-function StatCard({ icon, title, value }: { icon: React.ReactNode; title: string; value: string }) {
+function StatCard({ icon, title, value, subtitle }: { icon: React.ReactNode; title: string; value: string; subtitle?: string }) {
   return (
     <div className="bg-white border border-gray-200/60 rounded-lg p-3.5">
       <div className="text-gray-500 mb-2.5">{icon}</div>
       <div className="text-2xl font-bold text-black font-mono leading-tight mb-1">{value}</div>
       <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">{title}</div>
+      {subtitle && <div className="text-[9px] text-gray-400 mt-0.5">{subtitle}</div>}
     </div>
   );
 }

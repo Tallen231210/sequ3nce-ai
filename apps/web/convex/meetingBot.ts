@@ -1802,6 +1802,13 @@ export const getCloserDashboardStats = query({
     // Compute total contract value from closed deals
     const totalContractValue = myClosed.reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
+    // Revenue Per Call / Revenue Per Sit
+    const myNonNoShow = myCompleted.filter((c) => c.outcome !== "no_show");
+    const revenuePerCallCash = myCompleted.length > 0 ? Math.round(myCash / myCompleted.length) : 0;
+    const revenuePerCallContract = myCompleted.length > 0 ? Math.round(totalContractValue / myCompleted.length) : 0;
+    const revenuePerSitCash = myNonNoShow.length > 0 ? Math.round(myCash / myNonNoShow.length) : 0;
+    const revenuePerSitContract = myNonNoShow.length > 0 ? Math.round(totalContractValue / myNonNoShow.length) : 0;
+
     // Get all team closers for comparison
     const teamClosers = await ctx.db
       .query("closers")
@@ -1818,6 +1825,7 @@ export const getCloserDashboardStats = query({
     let teamTotalTalkRatio = 0;
     let teamTalkRatioCount = 0;
     let teamTotalContractValue = 0;
+    let teamTotalNonNoShow = 0;
 
     for (const tc of teamClosers) {
       const tcCalls = await ctx.db
@@ -1827,9 +1835,11 @@ export const getCloserDashboardStats = query({
         .collect();
       const tcCompleted = tcCalls.filter((c) => c.status === "completed" || c.endedAt);
       const tcClosed = tcCompleted.filter((c) => c.outcome === "closed" || c.outcome === "closed_won");
+      const tcNonNoShow = tcCompleted.filter((c) => c.outcome !== "no_show");
       teamTotalCalls += tcCalls.length;
       teamTotalCompleted += tcCompleted.length;
       teamTotalClosed += tcClosed.length;
+      teamTotalNonNoShow += tcNonNoShow.length;
       teamTotalCash += tcCompleted.reduce((sum, c) => sum + (c.cashCollected || 0), 0);
       teamTotalContractValue += tcClosed.reduce((sum, c) => sum + (c.contractValue || 0), 0);
 
@@ -1852,6 +1862,12 @@ export const getCloserDashboardStats = query({
     const teamAvgTalkRatio = teamTalkRatioCount > 0 ? teamTotalTalkRatio / teamTalkRatioCount : 0;
     const teamAvgContractValue = teamTotalContractValue / teamCount;
 
+    // Team revenue per call/sit averages
+    const teamAvgRevenuePerCallCash = teamTotalCompleted > 0 ? Math.round(teamTotalCash / teamTotalCompleted) : 0;
+    const teamAvgRevenuePerCallContract = teamTotalCompleted > 0 ? Math.round(teamTotalContractValue / teamTotalCompleted) : 0;
+    const teamAvgRevenuePerSitCash = teamTotalNonNoShow > 0 ? Math.round(teamTotalCash / teamTotalNonNoShow) : 0;
+    const teamAvgRevenuePerSitContract = teamTotalNonNoShow > 0 ? Math.round(teamTotalContractValue / teamTotalNonNoShow) : 0;
+
     return {
       callsThisPeriod: myCalls.length,
       closeRate: Math.round(myCloseRate * 10) / 10,
@@ -1859,12 +1875,20 @@ export const getCloserDashboardStats = query({
       avgCallDuration: Math.round(avgCallDuration),
       avgTalkRatio: Math.round(avgTalkRatio * 10) / 10,
       totalContractValue: Math.round(totalContractValue),
+      revenuePerCallCash,
+      revenuePerCallContract,
+      revenuePerSitCash,
+      revenuePerSitContract,
       teamAvgCloseRate: Math.round(teamAvgCloseRate * 10) / 10,
       teamAvgCash: Math.round(teamAvgCash),
       teamAvgCalls: Math.round(teamAvgCalls * 10) / 10,
       teamAvgDuration: Math.round(teamAvgDuration),
       teamAvgTalkRatio: Math.round(teamAvgTalkRatio * 10) / 10,
       teamAvgContractValue: Math.round(teamAvgContractValue),
+      teamAvgRevenuePerCallCash,
+      teamAvgRevenuePerCallContract,
+      teamAvgRevenuePerSitCash,
+      teamAvgRevenuePerSitContract,
       teamSize: teamClosers.length,
     };
   },
