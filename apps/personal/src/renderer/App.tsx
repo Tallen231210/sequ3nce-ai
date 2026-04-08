@@ -155,6 +155,17 @@ function AppContent() {
       try {
         const info = JSON.parse(savedCloserInfo) as CloserInfo;
         initializeSession(info);
+
+        // Verify subscription status with server immediately (cached status may be stale)
+        if (info.b2cUserId) {
+          getSubscriptionStatus(info.b2cUserId).then((result) => {
+            if (result.subscriptionStatus !== info.subscriptionStatus) {
+              const updated = { ...info, subscriptionStatus: result.subscriptionStatus };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+              setCloserInfo(updated);
+            }
+          }).catch(() => {}); // Silently fail — use cached status if server unreachable
+        }
       } catch (err) {
         console.error('[App] Error parsing saved closer info:', err);
         clearSession();
