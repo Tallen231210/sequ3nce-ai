@@ -3,6 +3,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, g
 import { autoUpdater } from 'electron-updater';
 import WebSocket from 'ws';
 import * as os from 'os';
+import { initializeStream, shutdownStream } from './stream';
 
 // ============================================
 // macOS Version Detection (MUST be before app.ready)
@@ -47,6 +48,8 @@ declare const SCHEDULE_WEBPACK_ENTRY: string;
 declare const SCHEDULE_PRELOAD_WEBPACK_ENTRY: string;
 declare const POST_CALL_WEBPACK_ENTRY: string;
 declare const POST_CALL_PRELOAD_WEBPACK_ENTRY: string;
+declare const STREAM_OVERLAY_WEBPACK_ENTRY: string;
+declare const STREAM_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1797,6 +1800,14 @@ app.whenReady().then(() => {
     toggleAmmoTracker();
   });
 
+  // Initialize Sequ3nce Stream (hold-to-talk dictation)
+  // Wrapped in try/catch so any Stream failure cannot break the rest of the app.
+  try {
+    initializeStream();
+  } catch (err) {
+    console.error('[Main] initializeStream failed:', err);
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -1861,6 +1872,11 @@ app.on('window-all-closed', () => {
 app.on('before-quit', async () => {
   isQuitting = true;
   globalShortcut.unregisterAll();
+  try {
+    shutdownStream();
+  } catch (err) {
+    console.error('[Main] shutdownStream failed:', err);
+  }
   await closeWebSocket();
 });
 

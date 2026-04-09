@@ -89,6 +89,22 @@ export interface DiagnosticsAPI {
   }>;
 }
 
+// Sequ3nce Stream (dictation) — see apps/personal/src/stream/
+export interface StreamPermissionsState {
+  microphone: boolean;
+  accessibility: boolean;
+  platform: string;
+}
+
+export interface StreamAPI {
+  checkPermissions: () => Promise<StreamPermissionsState>;
+  requestMicrophone: () => Promise<{ granted: boolean }>;
+  requestAccessibility: () => Promise<{ opened: boolean }>;
+  rebindHotkey: (hotkeyName: string) => Promise<{ success: boolean; error?: string }>;
+  getStatus: () => Promise<{ overlayReady: boolean; hotkeyAvailable: boolean; appVersion: string }>;
+  setUserId: (userId: string | null) => Promise<{ success: boolean; error?: string }>;
+}
+
 export interface ElectronAPI {
   app: AppAPI;
   ammo: AmmoAPI;
@@ -99,6 +115,7 @@ export interface ElectronAPI {
   chat: ChatAPI;
   bot: BotAPI;
   diagnostics: DiagnosticsAPI;
+  stream: StreamAPI;
 }
 
 // Expose protected methods to renderer via contextBridge
@@ -184,6 +201,14 @@ contextBridge.exposeInMainWorld('electron', {
   },
   diagnostics: {
     collect: () => ipcRenderer.invoke('diagnostics:collect'),
+  },
+  stream: {
+    checkPermissions: () => ipcRenderer.invoke('stream:check-permissions'),
+    requestMicrophone: () => ipcRenderer.invoke('stream:request-microphone'),
+    requestAccessibility: () => ipcRenderer.invoke('stream:request-accessibility'),
+    rebindHotkey: (hotkeyName: string) => ipcRenderer.invoke('stream:rebind-hotkey', hotkeyName),
+    getStatus: () => ipcRenderer.invoke('stream:get-status'),
+    setUserId: (userId: string | null) => ipcRenderer.invoke('stream:set-user-id', userId),
   },
 } as ElectronAPI);
 

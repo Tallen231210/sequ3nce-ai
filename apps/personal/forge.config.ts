@@ -162,13 +162,22 @@ const config: ForgeConfig = {
               js: './src/post-call-preload.ts',
             },
           },
+          {
+            html: './src/stream-overlay.html',
+            js: './src/stream-overlay-renderer.ts',
+            name: 'stream_overlay',
+            preload: {
+              js: './src/stream-overlay-preload.ts',
+            },
+          },
         ],
       },
     }),
     // Copies webpack externals (electron-updater) into packaged node_modules
     // so runtime require() can find them after Electron Packager prunes node_modules
+    // uiohook-napi is a native module used by the Stream dictation feature for global hotkey capture
     new ForgeExternalsPlugin({
-      externals: ['electron-updater'],
+      externals: ['electron-updater', 'uiohook-napi'],
       includeDeps: true,
     }),
     // Fuses are used to enable/disable various Electron functionality
