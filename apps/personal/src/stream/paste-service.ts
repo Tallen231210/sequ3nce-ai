@@ -2,10 +2,14 @@
 // Cmd+V (macOS) / Ctrl+V (Windows) into the currently-focused app, then restores
 // the user's original clipboard contents after a short delay.
 //
-// Uses Electron's built-in clipboard module + uiohook-napi's keyTap for keystroke
-// simulation. This avoids adding robotjs (abandoned since 2019) as a dependency.
+// Cross-platform strategy mirrors hotkey-service.ts:
+//   - macOS: native paste-simulator dylib that uses CGEventPost (ported from
+//     CypherKey). More reliable than uiohook-napi's keyTap, and we already
+//     ship a koffi-loaded dylib for the Fn hotkey.
+//   - Windows: uiohook-napi's keyTap (Ctrl+V via libuiohook).
 
 import { clipboard } from 'electron';
+import { loadPasteSimulatorNative } from './native-loader';
 
 // Delay before restoring the user's original clipboard contents.
 // Must be long enough for the target app to actually receive the paste event.
@@ -26,39 +30,49 @@ function loadUiohook() {
 }
 
 /**
- * Paste the given text into the focused app.
- *
- * Flow:
- *   1. Capture the user's current clipboard contents (text + image if any).
- *   2. Write `text` to the clipboard.
- *   3. Simulate the platform paste shortcut (Cmd+V on darwin, Ctrl+V elsewhere).
- *   4. After a short delay, restore the original clipboard.
+ * Synthesize the platform paste shortcut into the focused app.
+ * Throws if neither backend is available.
  */
-export async function pasteText(text: string): Promise<void> {
-  if (!text) return;
+function synthesizePasteKeystroke(): void {
+  if (process.platform === 'darwin') {
+    const native = loadPasteSimulatorNative();
+    if (!native) {
+      throw new Error('paste-simulator.dylib failed to load');
+    }
+    native.simulatePaste();
+    return;
+  }
 
   const mod = loadUiohook();
   if (!mod) {
     throw new Error('uiohook-napi not available — cannot simulate paste keystroke');
   }
-  const { uIOhook, UiohookKey } = mod;
+  mod.uIOhook.keyTap(mod.UiohookKey.V, [mod.UiohookKey.Ctrl]);
+}
+
+/**
+ * Paste the given text into the focused app.
+ *
+ * Flow:
+ *   1. Capture the user's current clipboard contents (text + html + image).
+ *   2. Write `text` to the clipboard.
+ *   3. Synthesize the platform paste shortcut.
+ *   4. After a short delay, restore the original clipboard.
+ */
+export async function pasteText(text: string): Promise<void> {
+  if (!text) return;
 
   // Snapshot the previous clipboard so we can restore it later.
-  // We capture text AND image separately because clipboard.readImage() returns
-  // an empty NativeImage if the clipboard doesn't hold one (so it's safe to call).
   const previousText = clipboard.readText();
   const previousHtml = clipboard.readHTML();
   const previousImage = clipboard.readImage();
 
   clipboard.writeText(text);
 
-  // Synthesize the paste shortcut. uiohook-napi's keyTap sends the modifier(s) down,
-  // taps the target key, then releases the modifier(s).
-  const modifierKey = process.platform === 'darwin' ? UiohookKey.Meta : UiohookKey.Ctrl;
   try {
-    uIOhook.keyTap(UiohookKey.V, [modifierKey]);
+    synthesizePasteKeystroke();
   } catch (err) {
-    console.error('[Stream] keyTap failed:', err);
+    console.error('[Stream] synthesizePasteKeystroke failed:', err);
     // Restore clipboard immediately if we couldn't paste — otherwise the user
     // is stuck with the transcribed text sitting on their clipboard.
     clipboard.writeText(previousText);

@@ -1,29 +1,42 @@
 import React from 'react';
 
 interface HotkeyVisualProps {
-  /** The hotkey name to render, e.g. "RightControl". Defaults to "RightControl". */
+  /** The hotkey name to render, e.g. "Fn" on macOS or "RightControl" on Windows. */
   hotkey: string;
+  /** Platform — controls which keyboard layout we render. */
+  platform: 'darwin' | 'win32' | string;
 }
 
 /**
- * Stylized keyboard row showing the hold-to-talk hotkey. Shows a simplified
- * modifier row with the selected key highlighted. Matches the Sequ3nce
- * design language (dark-friendly, rounded, accent indigo→cyan gradient).
+ * Stylized keyboard row showing the hold-to-talk hotkey. macOS shows the
+ * MacBook bottom row (with the globe/Fn key on the left); Windows shows a
+ * Windows-style modifier row.
  */
-export function HotkeyVisual({ hotkey }: HotkeyVisualProps) {
+export function HotkeyVisual({ hotkey, platform }: HotkeyVisualProps) {
   const label = displayNameForHotkey(hotkey);
+  const isMac = platform === 'darwin';
 
-  // We render a row of realistic mac-style keycaps with the active one highlighted.
-  // For other keys not in the row, we show just the single key highlighted.
-  const keys: Array<{ id: string; label: string; width?: string }> = [
-    { id: 'LeftControl', label: 'control' },
-    { id: 'LeftAlt', label: 'option' },
-    { id: 'LeftCommand', label: '⌘ command', width: '72px' },
-    { id: 'Space', label: 'space', width: '180px' },
-    { id: 'RightCommand', label: '⌘ command', width: '72px' },
-    { id: 'RightAlt', label: 'option' },
-    { id: 'RightControl', label: 'control' },
-  ];
+  // Two different layouts: a real MacBook bottom row vs a Windows bottom row.
+  const keys: Array<{ id: string; label: string; width?: string }> = isMac
+    ? [
+        { id: 'Fn', label: '🌐 fn' },
+        { id: 'LeftControl', label: 'control' },
+        { id: 'LeftAlt', label: 'option' },
+        { id: 'LeftCommand', label: '⌘ command', width: '72px' },
+        { id: 'Space', label: 'space', width: '180px' },
+        { id: 'RightCommand', label: '⌘ command', width: '72px' },
+        { id: 'RightAlt', label: 'option' },
+      ]
+    : [
+        { id: 'LeftControl', label: 'Ctrl' },
+        { id: 'LeftMeta', label: '⊞ Win' },
+        { id: 'LeftAlt', label: 'Alt' },
+        { id: 'Space', label: 'space', width: '180px' },
+        { id: 'RightAlt', label: 'Alt' },
+        { id: 'RightMeta', label: '⊞ Win' },
+        { id: 'RightShift', label: 'Shift' },
+        { id: 'RightControl', label: 'Ctrl' },
+      ];
 
   return (
     <div className="w-full flex flex-col items-center gap-3">
@@ -69,13 +82,14 @@ export function HotkeyVisual({ hotkey }: HotkeyVisualProps) {
 
 export function displayNameForHotkey(hotkey: string): string {
   const map: Record<string, string> = {
+    Fn: 'Fn (globe)',
     RightControl: 'Right Control',
     RightCtrl: 'Right Control',
     LeftControl: 'Left Control',
     LeftCtrl: 'Left Control',
-    RightAlt: 'Right Option',
+    RightAlt: 'Right Alt',
     RightOption: 'Right Option',
-    LeftAlt: 'Left Option',
+    LeftAlt: 'Left Alt',
     LeftOption: 'Left Option',
     RightShift: 'Right Shift',
     LeftShift: 'Left Shift',

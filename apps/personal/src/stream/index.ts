@@ -11,7 +11,7 @@
 // the app.
 
 import { createStreamOverlay, getStreamOverlay, showStreamOverlay, hideStreamOverlay, destroyStreamOverlay } from './overlay-window';
-import { HotkeyService, DEFAULT_HOTKEY_NAME } from './hotkey-service';
+import { HotkeyService, defaultHotkeyForPlatform } from './hotkey-service';
 import { registerStreamIpcHandlers } from './ipc-handlers';
 
 // Feature kill switch. Flipping this to false and shipping a patch release
@@ -47,7 +47,7 @@ export function initializeStream(): void {
     // 3. Start the hotkey service (no-op if the hook isn't available)
     hotkeyService = new HotkeyService();
     if (hookAvailable) {
-      hotkeyService.start(DEFAULT_HOTKEY_NAME);
+      hotkeyService.start(defaultHotkeyForPlatform());
 
       hotkeyService.on('hotkey-down', () => {
         const overlay = getStreamOverlay();

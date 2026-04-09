@@ -23,7 +23,10 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const currentHotkey = settings?.hotkey ?? 'RightControl';
+  // Default hotkey depends on platform — macOS = Fn (via custom CGEventTap dylib),
+  // Windows = Right Control (via uiohook-napi).
+  const platformDefault = permissions?.platform === 'darwin' ? 'Fn' : 'RightControl';
+  const currentHotkey = settings?.hotkey ?? platformDefault;
 
   const refreshPermissions = useCallback(async () => {
     setCheckingPermissions(true);
@@ -122,7 +125,7 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
     <div className="flex flex-col gap-6 px-8 py-6">
       {/* Hero: hotkey visual */}
       <div className="flex flex-col items-center gap-3 py-4">
-        <HotkeyVisual hotkey={currentHotkey} />
+        <HotkeyVisual hotkey={currentHotkey} platform={permissions?.platform ?? 'darwin'} />
       </div>
 
       {errorMessage && (
@@ -213,49 +216,51 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
         )}
       </section>
 
-      {/* Hotkey picker */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          Hotkey
-        </h3>
-        <div className="rounded-2xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
-          {hotkeyOptions.map((opt, idx) => {
-            const isSelected = opt.id === currentHotkey;
-            const isBusy = busyKey === opt.id;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => handleHotkeyChange(opt.id)}
-                disabled={isBusy}
-                className={`w-full flex items-center justify-between p-4 text-left transition-colors ${
-                  idx > 0 ? 'border-t border-gray-100 dark:border-zinc-800' : ''
-                } ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60'}`}
-              >
-                <div>
-                  <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{opt.label}</div>
-                  {opt.hint && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400">{opt.hint}</div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  {isBusy && <span className="text-[10px] text-gray-400">saving…</span>}
-                  <div
-                    className={`w-4 h-4 rounded-full border-2 ${
-                      isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300 dark:border-zinc-600'
-                    }`}
-                  >
-                    {isSelected && (
-                      <div className="w-full h-full rounded-full flex items-center justify-center">
-                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                      </div>
+      {/* Hotkey picker — Windows only. macOS is locked to Fn in v1. */}
+      {!isMac && (
+        <section className="flex flex-col gap-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Hotkey
+          </h3>
+          <div className="rounded-2xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
+            {hotkeyOptions.map((opt, idx) => {
+              const isSelected = opt.id === currentHotkey;
+              const isBusy = busyKey === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => handleHotkeyChange(opt.id)}
+                  disabled={isBusy}
+                  className={`w-full flex items-center justify-between p-4 text-left transition-colors ${
+                    idx > 0 ? 'border-t border-gray-100 dark:border-zinc-800' : ''
+                  } ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60'}`}
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{opt.label}</div>
+                    {opt.hint && (
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{opt.hint}</div>
                     )}
                   </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+                  <div className="flex items-center gap-2">
+                    {isBusy && <span className="text-[10px] text-gray-400">saving…</span>}
+                    <div
+                      className={`w-4 h-4 rounded-full border-2 ${
+                        isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300 dark:border-zinc-600'
+                      }`}
+                    >
+                      {isSelected && (
+                        <div className="w-full h-full rounded-full flex items-center justify-center">
+                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Danger zone */}
       <section className="flex flex-col gap-3">

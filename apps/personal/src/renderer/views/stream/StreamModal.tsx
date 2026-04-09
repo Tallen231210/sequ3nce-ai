@@ -17,6 +17,15 @@ interface StreamModalProps {
 
 type StreamTab = 'history' | 'settings';
 
+async function detectPlatform(): Promise<string> {
+  try {
+    const result = await window.electron?.stream?.checkPermissions();
+    return result?.platform ?? 'darwin';
+  } catch {
+    return 'darwin';
+  }
+}
+
 /**
  * Full-screen centered modal for Sequ3nce Stream. Two tabs:
  *  - History: rolling 500 transcriptions fetched from /b2c/stream/history
@@ -50,10 +59,14 @@ export function StreamModal({ closerInfo, onClose }: StreamModalProps) {
         // First-run: if no settings row OR they haven't finished onboarding, show Settings tab.
         if (!s || !s.hasCompletedOnboarding) {
           setActiveTab('settings');
-          // Seed a settings row with the default hotkey so the user has something to see.
-          // We mark onboarding complete here so next time they jump straight to history.
+          // Seed a settings row with the platform-default hotkey so the user
+          // has something to see. macOS uses Fn (custom CGEventTap dylib);
+          // Windows uses Right Control. Mark onboarding complete so next opens
+          // jump straight to History.
+          const platform = await detectPlatform();
+          const platformDefault = platform === 'darwin' ? 'Fn' : 'RightControl';
           try {
-            await saveStreamSettings(b2cUserId, s?.hotkey ?? 'RightControl', true);
+            await saveStreamSettings(b2cUserId, s?.hotkey ?? platformDefault, true);
             const refreshed = await fetchStreamSettings(b2cUserId);
             if (!cancelled) setSettings(refreshed);
           } catch (err) {

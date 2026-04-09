@@ -5,6 +5,7 @@ import { ipcMain, systemPreferences, shell, app } from 'electron';
 import { pasteText } from './paste-service';
 import { getStreamOverlay, hideStreamOverlay } from './overlay-window';
 import { HotkeyService } from './hotkey-service';
+import { loadStreamHotkeyNative } from './native-loader';
 
 interface StreamDeps {
   hotkeyService: HotkeyService;

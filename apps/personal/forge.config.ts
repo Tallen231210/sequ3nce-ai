@@ -53,6 +53,8 @@ const config: ForgeConfig = {
     extraResource: [
       './assets',
       './app-update.yml',
+      // Sequ3nce Stream native dylibs (macOS only — built by scripts/build-native.sh)
+      './native',
     ],
     // B2C Personal app doesn't need audio/camera/screen permissions (uses server-side meeting bots)
   },
