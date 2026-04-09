@@ -8170,4 +8170,185 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ============================================
+// SEQU3NCE STREAM — Dictation endpoints
+// ============================================
+
+// POST /b2c/stream/transcribe — transcribe a base64 audio clip via Groq Whisper
+http.route({
+  path: "/b2c/stream/transcribe",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { b2cUserId, audioBase64, mimeType, durationSec } = body ?? {};
+
+      if (typeof b2cUserId !== "string" || typeof audioBase64 !== "string" || typeof mimeType !== "string") {
+        return b2cJsonResponse({ error: "b2cUserId, audioBase64, and mimeType are required" }, 400);
+      }
+      if (audioBase64.length === 0) {
+        return b2cJsonResponse({ error: "Empty audio payload" }, 400);
+      }
+
+      const result = await ctx.runAction(internal.streamActions.transcribeAudio, {
+        b2cUserId: b2cUserId as Id<"b2cUsers">,
+        audioBase64,
+        mimeType,
+        durationSec: typeof durationSec === "number" ? durationSec : undefined,
+      });
+
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to transcribe audio";
+      console.error("[Stream] transcribe error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stream/transcribe",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/stream/history?userId=... — fetch recent transcriptions
+http.route({
+  path: "/b2c/stream/history",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const limitParam = url.searchParams.get("limit");
+
+      if (!userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+
+      const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+      const rows = await ctx.runQuery(api.stream.getStreamHistory, {
+        b2cUserId: userId as Id<"b2cUsers">,
+        limit: Number.isFinite(limit as number) ? (limit as number) : undefined,
+      });
+
+      return b2cJsonResponse({ transcriptions: rows }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to load history";
+      console.error("[Stream] history error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stream/history",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// DELETE /b2c/stream/history — delete one transcription or all (via JSON body)
+// POST is used instead of DELETE so browsers and Electron can send a JSON body cleanly.
+http.route({
+  path: "/b2c/stream/history/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { b2cUserId, transcriptionId, all } = body ?? {};
+
+      if (typeof b2cUserId !== "string") {
+        return b2cJsonResponse({ error: "b2cUserId is required" }, 400);
+      }
+
+      if (all === true) {
+        const result = await ctx.runMutation(api.stream.deleteAllStreamHistory, {
+          b2cUserId: b2cUserId as Id<"b2cUsers">,
+        });
+        return b2cJsonResponse(result, 200, true);
+      }
+
+      if (typeof transcriptionId !== "string") {
+        return b2cJsonResponse({ error: "transcriptionId or all is required" }, 400);
+      }
+
+      const result = await ctx.runMutation(api.stream.deleteStreamTranscription, {
+        b2cUserId: b2cUserId as Id<"b2cUsers">,
+        transcriptionId: transcriptionId as Id<"streamTranscriptions">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to delete transcription";
+      console.error("[Stream] delete error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stream/history/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/stream/settings?userId=... — fetch a user's Stream settings
+http.route({
+  path: "/b2c/stream/settings",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+
+      const settings = await ctx.runQuery(api.stream.getStreamSettings, {
+        b2cUserId: userId as Id<"b2cUsers">,
+      });
+
+      return b2cJsonResponse({ settings }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to load settings";
+      console.error("[Stream] settings GET error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+// POST /b2c/stream/settings — save a user's Stream settings
+http.route({
+  path: "/b2c/stream/settings",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { b2cUserId, hotkey, hasCompletedOnboarding } = body ?? {};
+
+      if (typeof b2cUserId !== "string" || typeof hotkey !== "string") {
+        return b2cJsonResponse({ error: "b2cUserId and hotkey are required" }, 400);
+      }
+
+      const id = await ctx.runMutation(api.stream.upsertStreamSettings, {
+        b2cUserId: b2cUserId as Id<"b2cUsers">,
+        hotkey,
+        hasCompletedOnboarding:
+          typeof hasCompletedOnboarding === "boolean" ? hasCompletedOnboarding : undefined,
+      });
+
+      return b2cJsonResponse({ id }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to save settings";
+      console.error("[Stream] settings POST error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stream/settings",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
 export default http;

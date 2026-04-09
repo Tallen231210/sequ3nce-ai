@@ -56,6 +56,8 @@ import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
+import type * as stream from "../stream.js";
+import type * as streamActions from "../streamActions.js";
 import type * as teams from "../teams.js";
 import type * as trainingPlaylists from "../trainingPlaylists.js";
 import type * as zoomOAuth from "../zoomOAuth.js";
@@ -115,6 +117,8 @@ declare const fullApi: ApiFromModules<{
   rolePlayRoom: typeof rolePlayRoom;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
+  stream: typeof stream;
+  streamActions: typeof streamActions;
   teams: typeof teams;
   trainingPlaylists: typeof trainingPlaylists;
   zoomOAuth: typeof zoomOAuth;

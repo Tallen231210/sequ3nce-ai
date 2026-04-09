@@ -1296,4 +1296,27 @@ export default defineSchema({
     .index("by_job", ["jobPostingId", "createdAt"])
     .index("by_user", ["b2cUserId", "createdAt"])
     .index("by_job_user", ["jobPostingId", "b2cUserId"]),
+
+  // ============================================
+  // SEQU3NCE STREAM — Wispr Flow-style dictation
+  // ============================================
+
+  // Per-user Stream preferences (hotkey binding, etc.)
+  streamSettings: defineTable({
+    b2cUserId: v.id("b2cUsers"),
+    // Electron accelerator-style string, e.g. "Fn", "RightControl", "CommandOrControl+Shift+Space"
+    hotkey: v.string(),
+    // Track whether the user has completed first-run setup (so we can route them to Settings tab once)
+    hasCompletedOnboarding: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["b2cUserId"]),
+
+  // Rolling history of dictated transcriptions (capped at 500 per user via pruning in actions)
+  streamTranscriptions: defineTable({
+    b2cUserId: v.id("b2cUsers"),
+    text: v.string(),
+    durationSec: v.optional(v.number()), // Length of audio clip in seconds
+    createdAt: v.number(),
+  }).index("by_user_and_date", ["b2cUserId", "createdAt"]),
 });
