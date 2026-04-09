@@ -243,13 +243,14 @@ const createPostCallWindow = (data: { callId: string; closerId: string; closerNa
   // Store call data for the window to retrieve
   postCallData = data;
 
-  // Position at bottom of primary display, full width minus 80px padding
+  // Position at bottom of primary display
+  // Cap width at 1100px to prevent horizontal overflow on wide screens, use full width minus padding on narrow ones
+  // Increase max height to 480px so wrapped elements have room
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  const windowWidth = screenWidth - 80;
-  // Use up to 40% of screen height (min 280, max 420) so form fits on all displays
-  const windowHeight = Math.min(420, Math.max(280, Math.round(screenHeight * 0.4)));
-  const x = 40; // 40px padding on left
+  const windowWidth = Math.min(screenWidth - 80, 1100);
+  const windowHeight = Math.min(480, Math.max(300, Math.round(screenHeight * 0.45)));
+  const x = Math.round((screenWidth - windowWidth) / 2); // Center horizontally
   const y = screenHeight - windowHeight; // Bottom of screen
 
   postCallWindow = new BrowserWindow({

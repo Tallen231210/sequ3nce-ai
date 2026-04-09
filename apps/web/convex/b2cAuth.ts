@@ -543,3 +543,18 @@ export const updateSubscriptionStatus = mutation({
     return { success: true };
   },
 });
+
+// Admin: update B2C user name
+export const adminUpdateName = mutation({
+  args: { userId: v.id("b2cUsers"), name: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, { name: args.name });
+    // Also update the closer record
+    const user = await ctx.db.get(args.userId);
+    if (user?.personalWorkspaceId) {
+      const closer = await ctx.db.query("closers").withIndex("by_team", q => q.eq("teamId", user.personalWorkspaceId)).first();
+      if (closer) await ctx.db.patch(closer._id, { name: args.name });
+    }
+    return { success: true };
+  },
+});

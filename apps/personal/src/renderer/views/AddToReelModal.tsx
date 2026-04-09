@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CloserInfo, CallHistoryItem, CallChapter } from '../convex';
 import { addHighlightClip } from '../convex';
 
@@ -34,12 +34,14 @@ export function AddToReelModal({
   onClose,
   onAdded,
 }: AddToReelModalProps) {
+  const duration = call.duration || 0;
+
   const [isFullCall, setIsFullCall] = useState(!chapter);
   const [startStr, setStartStr] = useState(
     chapter ? formatTimeInput(chapter.startTime) : '0:00'
   );
   const [endStr, setEndStr] = useState(
-    chapter ? formatTimeInput(chapter.endTime) : formatTimeInput(call.duration || 0)
+    chapter ? formatTimeInput(chapter.endTime) : formatTimeInput(duration)
   );
   const [label, setLabel] = useState(
     chapter
@@ -50,18 +52,105 @@ export function AddToReelModal({
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Video playback state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+
   const savingRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
 
-  // Set video preview to start time
+  // Seek video when start time changes (and not playing)
   useEffect(() => {
-    if (videoRef.current && videoUrl) {
+    if (videoRef.current && videoUrl && !isPlaying) {
       const startSec = parseTimeInput(startStr);
       if (startSec !== null) {
         videoRef.current.currentTime = startSec;
+        setCurrentTime(startSec);
       }
     }
   }, [startStr, videoUrl]);
+
+  // Handle video time updates (for playhead + auto-pause at end)
+  const handleTimeUpdate = useCallback(() => {
+    if (!videoRef.current) return;
+    const time = videoRef.current.currentTime;
+    setCurrentTime(time);
+
+    const endSec = parseTimeInput(endStr);
+    if (endSec !== null && time >= endSec && !isFullCall) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = endSec;
+      setIsPlaying(false);
+    }
+  }, [endStr, isFullCall]);
+
+  // Toggle play/pause
+  const togglePlay = useCallback(() => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      // If at or past end, seek to start first
+      const startSec = parseTimeInput(startStr) || 0;
+      const endSec = parseTimeInput(endStr) || duration;
+      if (videoRef.current.currentTime >= endSec) {
+        videoRef.current.currentTime = startSec;
+      }
+      videoRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    }
+  }, [isPlaying, startStr, endStr, duration]);
+
+  // Drag handler for range slider handles
+  const handleDragStart = useCallback((handle: 'start' | 'end') => (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!trackRef.current || duration <= 0) return;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const rect = trackRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const percent = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / rect.width));
+      const time = Math.round(percent * duration);
+
+      if (handle === 'start') {
+        const endSec = parseTimeInput(endStr) || duration;
+        const clamped = Math.min(time, endSec - 1);
+        setStartStr(formatTimeInput(Math.max(0, clamped)));
+        if (videoRef.current) {
+          videoRef.current.currentTime = Math.max(0, clamped);
+          setCurrentTime(Math.max(0, clamped));
+        }
+      } else {
+        const startSec = parseTimeInput(startStr) || 0;
+        const clamped = Math.max(time, startSec + 1);
+        setEndStr(formatTimeInput(Math.min(duration, clamped)));
+        if (videoRef.current) {
+          videoRef.current.currentTime = Math.min(duration, clamped);
+          setCurrentTime(Math.min(duration, clamped));
+        }
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [duration, startStr, endStr]);
+
+  // Click on track to seek video
+  const handleTrackClick = useCallback((e: React.MouseEvent) => {
+    if (!trackRef.current || !videoRef.current || duration <= 0) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const time = Math.round(percent * duration);
+    videoRef.current.currentTime = time;
+    setCurrentTime(time);
+  }, [duration]);
 
   async function handleSave() {
     if (!closerInfo.b2cUserId || savingRef.current) return;
@@ -70,7 +159,7 @@ export function AddToReelModal({
     setError(null);
 
     const startTime = isFullCall ? 0 : parseTimeInput(startStr);
-    const endTime = isFullCall ? (call.duration || 0) : parseTimeInput(endStr);
+    const endTime = isFullCall ? duration : parseTimeInput(endStr);
 
     if (startTime === null || endTime === null) {
       setError('Invalid time format. Use mm:ss');
@@ -121,9 +210,16 @@ export function AddToReelModal({
     { value: 'none', label: 'No Blur' },
   ];
 
+  // Calculate slider positions as percentages
+  const startSec = parseTimeInput(startStr) || 0;
+  const endSec = parseTimeInput(endStr) || duration;
+  const startPercent = duration > 0 ? (startSec / duration) * 100 : 0;
+  const endPercent = duration > 0 ? (endSec / duration) * 100 : 100;
+  const playheadPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="w-[480px] bg-white dark:bg-gray-900 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-[520px] bg-white dark:bg-gray-900 rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800">
           <h3 className="text-[15px] font-bold text-black dark:text-white">
@@ -140,17 +236,88 @@ export function AddToReelModal({
         </div>
 
         {/* Content */}
-        <div className="px-5 py-4 space-y-4 overflow-y-auto max-h-[500px]">
-          {/* Video Preview */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto max-h-[560px]">
+          {/* Video Preview — clickable play/pause */}
           {videoUrl && (
-            <div className="rounded-lg overflow-hidden bg-black" style={{ maxHeight: 200 }}>
+            <div
+              className="rounded-lg overflow-hidden bg-black relative cursor-pointer group"
+              style={{ maxHeight: 240 }}
+              onClick={togglePlay}
+            >
               <video
                 ref={videoRef}
                 src={videoUrl}
                 className="w-full"
-                style={{ maxHeight: 200 }}
-                muted
+                style={{ maxHeight: 240 }}
+                onTimeUpdate={handleTimeUpdate}
+                onEnded={() => setIsPlaying(false)}
               />
+              {/* Play/pause overlay */}
+              <div className={`absolute inset-0 flex items-center justify-center transition-opacity ${
+                isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
+              } bg-black/20 group-hover:bg-black/30`}>
+                <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+                  {isPlaying ? (
+                    <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M5.5 3a.5.5 0 01.5.5v13a.5.5 0 01-1 0v-13a.5.5 0 01.5-.5zm9 0a.5.5 0 01.5.5v13a.5.5 0 01-1 0v-13a.5.5 0 01.5-.5z" clipRule="evenodd" />
+                      <rect x="4" y="3" width="4" height="14" rx="1" />
+                      <rect x="12" y="3" width="4" height="14" rx="1" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              {/* Current time badge */}
+              <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white font-mono">
+                {formatTimeInput(Math.floor(currentTime))} / {formatTimeInput(duration)}
+              </div>
+            </div>
+          )}
+
+          {/* Range Slider — hidden when Full Call */}
+          {videoUrl && !isFullCall && duration > 0 && (
+            <div className="px-1">
+              {/* Time labels */}
+              <div className="flex justify-between text-[10px] text-gray-400 font-mono mb-1">
+                <span>{formatTimeInput(startSec)}</span>
+                <span>{formatTimeInput(endSec)}</span>
+              </div>
+              {/* Track */}
+              <div
+                ref={trackRef}
+                className="relative h-6 cursor-pointer select-none"
+                onClick={handleTrackClick}
+              >
+                {/* Background track */}
+                <div className="absolute top-[10px] left-0 right-0 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full" />
+                {/* Selected range */}
+                <div
+                  className="absolute top-[10px] h-1.5 bg-black dark:bg-white rounded-full"
+                  style={{ left: `${startPercent}%`, width: `${endPercent - startPercent}%` }}
+                />
+                {/* Playhead */}
+                <div
+                  className="absolute top-[6px] w-0.5 h-3 bg-gray-400 rounded-full pointer-events-none transition-[left] duration-75"
+                  style={{ left: `${playheadPercent}%` }}
+                />
+                {/* Start handle */}
+                <div
+                  className="absolute top-[4px] w-4 h-4 bg-black dark:bg-white rounded-full border-2 border-white dark:border-gray-900 shadow-md cursor-grab active:cursor-grabbing hover:scale-110 transition-transform z-10"
+                  style={{ left: `calc(${startPercent}% - 8px)` }}
+                  onMouseDown={handleDragStart('start')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                {/* End handle */}
+                <div
+                  className="absolute top-[4px] w-4 h-4 bg-black dark:bg-white rounded-full border-2 border-white dark:border-gray-900 shadow-md cursor-grab active:cursor-grabbing hover:scale-110 transition-transform z-10"
+                  style={{ left: `calc(${endPercent}% - 8px)` }}
+                  onMouseDown={handleDragStart('end')}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
             </div>
           )}
 
@@ -163,7 +330,7 @@ export function AddToReelModal({
                 setIsFullCall(e.target.checked);
                 if (e.target.checked) {
                   setStartStr('0:00');
-                  setEndStr(formatTimeInput(call.duration || 0));
+                  setEndStr(formatTimeInput(duration));
                 }
               }}
               className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-black dark:text-white focus:ring-0"
