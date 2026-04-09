@@ -19,6 +19,7 @@ import { StatsView } from './StatsView';
 import { CallHistoryView } from './CallHistoryView';
 import { BotOnboardingView } from './BotOnboardingView';
 import { QuickBotModal } from './QuickBotModal';
+import { StreamModal } from './stream/StreamModal';
 import { ScheduleView } from './schedule/ScheduleView';
 import { ResourcesView } from './ResourcesView';
 import { SettingsView } from './SettingsView';
@@ -187,6 +188,7 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Quick bot modal
   const [showQuickBot, setShowQuickBot] = useState(false);
+  const [showStream, setShowStream] = useState(false);
 
   // Messages slide-out panel
   const [showMessages, setShowMessages] = useState(false);
@@ -208,6 +210,20 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
     name: string;
     photoUrl: string | null;
   } | null>(null);
+
+  // Push signed-in B2C user id to the main process so the Sequ3nce Stream
+  // overlay can attribute transcriptions. Clears on unmount so logout resets state.
+  useEffect(() => {
+    if (!closerInfo.b2cUserId) return;
+    window.electron?.stream?.setUserId(closerInfo.b2cUserId).catch((err) => {
+      console.error('[MeetingBotHub] stream.setUserId failed:', err);
+    });
+    return () => {
+      window.electron?.stream?.setUserId(null).catch(() => {
+        // ignore
+      });
+    };
+  }, [closerInfo.b2cUserId]);
 
   // Check calendar onboarding on mount
   useEffect(() => {
@@ -426,6 +442,11 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
         <QuickBotModal closerInfo={closerInfo} onClose={() => setShowQuickBot(false)} />
       )}
 
+      {/* Sequ3nce Stream modal */}
+      {showStream && (
+        <StreamModal closerInfo={closerInfo} onClose={() => setShowStream(false)} />
+      )}
+
       {/* Sidebar */}
       <div className="w-[200px] flex flex-col border-r border-gray-200 bg-gray-50/80">
         {/* Draggable titlebar region at top of sidebar */}
@@ -531,6 +552,20 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
                 {dmUnreadCount > 99 ? '99+' : dmUnreadCount}
               </span>
             )}
+          </button>
+          {/* Sequ3nce Stream button (dictation) */}
+          <button
+            onClick={() => setShowStream(true)}
+            className="no-drag relative flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            title="Sequ3nce Stream — hold-to-talk dictation"
+          >
+            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z M19 10v2a7 7 0 01-14 0v-2 M12 19v4 M8 23h8"
+              />
+            </svg>
           </button>
           {/* Quick Bot button */}
           <button onClick={() => setShowQuickBot(true)}
