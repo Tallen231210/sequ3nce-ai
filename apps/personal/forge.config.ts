@@ -56,7 +56,10 @@ const config: ForgeConfig = {
       // Sequ3nce Stream native dylibs (macOS only — built by scripts/build-native.sh)
       './native',
     ],
-    // B2C Personal app doesn't need audio/camera/screen permissions (uses server-side meeting bots)
+    // Sequ3nce Stream needs microphone access for dictation
+    extendInfo: {
+      NSMicrophoneUsageDescription: 'Sequ3nce Stream uses your microphone for voice dictation.',
+    },
   },
   rebuildConfig: {},
   makers: [
