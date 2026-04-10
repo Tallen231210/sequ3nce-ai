@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Header } from "@/components/dashboard/header";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ import {
   Calendar,
 } from "lucide-react";
 
-type DateRange = "today" | "this_week" | "this_month" | "last_30_days" | "all_time";
+type DateRange = "today" | "this_week" | "this_month" | "last_30_days" | "all_time" | "custom";
 
 const DATE_RANGE_LABELS: Record<DateRange, string> = {
   today: "Today",
@@ -41,6 +42,7 @@ const DATE_RANGE_LABELS: Record<DateRange, string> = {
   this_month: "This Month",
   last_30_days: "Last 30 Days",
   all_time: "All Time",
+  custom: "Custom Range",
 };
 
 function formatCurrency(amount: number): string {
@@ -663,15 +665,22 @@ function TeamStatsSection({ teamStats, dateRange }: TeamStatsSectionProps) {
 export default function CloserStatsPage() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
   const [dateRange, setDateRange] = useState<DateRange>("last_30_days");
+  const [customStart, setCustomStart] = useState<number | undefined>(undefined);
+  const [customEnd, setCustomEnd] = useState<number | undefined>(undefined);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const queryArgs = dateRange === "custom" && customStart && customEnd
+    ? { clerkId: clerkId!, dateRange, customStart, customEnd }
+    : clerkId ? { clerkId, dateRange } : null;
 
   const stats = useQuery(
     api.closers.getCloserStats,
-    clerkId ? { clerkId, dateRange } : "skip"
+    queryArgs ?? "skip"
   );
 
   const teamStats = useQuery(
     api.closers.getTeamStats,
-    clerkId ? { clerkId, dateRange } : "skip"
+    queryArgs ?? "skip"
   );
 
   const liveStatus = useQuery(
@@ -718,21 +727,54 @@ export default function CloserStatsPage() {
               {stats.length} active closer{stats.length !== 1 ? "s" : ""}
             </span>
           </div>
-          <Select
-            value={dateRange}
-            onValueChange={(value) => setDateRange(value as DateRange)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="this_week">This Week</SelectItem>
-              <SelectItem value="this_month">This Month</SelectItem>
-              <SelectItem value="last_30_days">Last 30 Days</SelectItem>
-              <SelectItem value="all_time">All Time</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="relative">
+            <Select
+              value={dateRange}
+              onValueChange={(value) => {
+                setDateRange(value as DateRange);
+                if (value === "custom") {
+                  setShowDatePicker(true);
+                } else {
+                  setShowDatePicker(false);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue>
+                  {dateRange === "custom" && customStart && customEnd
+                    ? `${new Date(customStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${new Date(customEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                    : DATE_RANGE_LABELS[dateRange]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="this_week">This Week</SelectItem>
+                <SelectItem value="this_month">This Month</SelectItem>
+                <SelectItem value="last_30_days">Last 30 Days</SelectItem>
+                <SelectItem value="all_time">All Time</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
+            {showDatePicker && (
+              <div className="absolute top-full right-0 mt-2 z-50">
+                <DateRangePicker
+                  onApply={(start, end) => {
+                    setCustomStart(start);
+                    setCustomEnd(end);
+                    setShowDatePicker(false);
+                  }}
+                  onClear={() => {
+                    setCustomStart(undefined);
+                    setCustomEnd(undefined);
+                    setDateRange("last_30_days");
+                    setShowDatePicker(false);
+                  }}
+                  initialStart={customStart}
+                  initialEnd={customEnd}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Dynamic Summary */}

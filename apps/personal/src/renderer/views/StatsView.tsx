@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type {
   CloserInfo,
   CloserStats,
@@ -12,6 +12,7 @@ import {
   getLostDealsByObjection,
   getObjectionAnalysis,
 } from '../convex';
+import { DateRangePicker } from './DateRangePicker';
 
 interface StatsViewProps {
   closerInfo: CloserInfo;
@@ -22,10 +23,14 @@ const PERIOD_OPTIONS = [
   { value: 'week', label: 'This Week' },
   { value: 'month', label: 'This Month' },
   { value: 'last30', label: 'Last 30 Days' },
+  { value: 'custom', label: 'Custom' },
 ] as const;
 
 export function StatsView({ closerInfo }: StatsViewProps) {
   const [period, setPeriod] = useState('week');
+  const [customStart, setCustomStart] = useState<number | null>(null);
+  const [customEnd, setCustomEnd] = useState<number | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [stats, setStats] = useState<CloserStats | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [lostDeals, setLostDeals] = useState<LostDealsData | null>(null);
@@ -33,17 +38,22 @@ export function StatsView({ closerInfo }: StatsViewProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Don't load for 'custom' until dates are selected
+    if (period === 'custom' && (!customStart || !customEnd)) return;
     loadAll();
-  }, [period, closerInfo.closerId]);
+  }, [period, customStart, customEnd, closerInfo.closerId]);
 
   async function loadAll() {
     setIsLoading(true);
+    const extra = period === 'custom' && customStart && customEnd
+      ? { customStart, customEnd }
+      : undefined;
     try {
       const [s, a, l, o] = await Promise.all([
-        getCloserStats(closerInfo.closerId, period),
-        getAnalyticsSummary(closerInfo.closerId, closerInfo.teamId, period),
-        getLostDealsByObjection(closerInfo.closerId, closerInfo.teamId, period),
-        getObjectionAnalysis(closerInfo.closerId, closerInfo.teamId, period),
+        getCloserStats(closerInfo.closerId, period, extra?.customStart, extra?.customEnd),
+        getAnalyticsSummary(closerInfo.closerId, closerInfo.teamId, period, extra?.customStart, extra?.customEnd),
+        getLostDealsByObjection(closerInfo.closerId, closerInfo.teamId, period, extra?.customStart, extra?.customEnd),
+        getObjectionAnalysis(closerInfo.closerId, closerInfo.teamId, period, extra?.customStart, extra?.customEnd),
       ]);
       setStats(s);
       setAnalytics(a);
@@ -55,25 +65,59 @@ export function StatsView({ closerInfo }: StatsViewProps) {
     setIsLoading(false);
   }
 
+  const handlePeriodChange = useCallback((value: string) => {
+    setPeriod(value);
+    if (value === 'custom') {
+      setShowDatePicker(true);
+    } else {
+      setShowDatePicker(false);
+    }
+  }, []);
+
+  const handleDateRangeApply = useCallback((start: number, end: number) => {
+    setCustomStart(start);
+    setCustomEnd(end);
+    setShowDatePicker(false);
+  }, []);
+
+  const handleDateRangeClear = useCallback(() => {
+    setCustomStart(null);
+    setCustomEnd(null);
+    setPeriod('week');
+    setShowDatePicker(false);
+  }, []);
+
   return (
     <div className="p-8 max-w-[960px]">
       {/* Header + Period Selector */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-black">Performance</h1>
-        <div className="flex gap-1">
+        <div className="relative flex gap-1">
           {PERIOD_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              onClick={() => setPeriod(opt.value)}
+              onClick={() => handlePeriodChange(opt.value)}
               className={`text-[11px] font-medium px-2.5 py-1.5 rounded-md transition-colors ${
                 period === opt.value
                   ? 'bg-black text-white'
                   : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
-              {opt.label}
+              {opt.value === 'custom' && customStart && customEnd
+                ? `${new Date(customStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(customEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                : opt.label}
             </button>
           ))}
+          {showDatePicker && (
+            <div className="absolute top-full right-0 mt-2 z-50">
+              <DateRangePicker
+                onApply={handleDateRangeApply}
+                onClear={handleDateRangeClear}
+                initialStart={customStart}
+                initialEnd={customEnd}
+              />
+            </div>
+          )}
         </div>
       </div>
 

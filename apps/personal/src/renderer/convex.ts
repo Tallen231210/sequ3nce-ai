@@ -996,12 +996,15 @@ export interface CloserStats {
   teamAvgRevenuePerSitContract: number;
 }
 
-export async function getCloserStats(closerId: string, period: string): Promise<CloserStats | null> {
+export async function getCloserStats(closerId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<CloserStats | null> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/getCloserStats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ closerId, period }),
+      body: JSON.stringify({
+        closerId, period,
+        ...(customStart != null && customEnd != null ? { customStart, customEnd } : {}),
+      }),
     });
 
     if (!response.ok) return null;
@@ -1031,12 +1034,15 @@ export interface AnalyticsSummary {
   trends: AnalyticsTrends;
 }
 
-export async function getAnalyticsSummary(closerId: string, teamId: string, period: string): Promise<AnalyticsSummary | null> {
+export async function getAnalyticsSummary(closerId: string, teamId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<AnalyticsSummary | null> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/getCloserAnalyticsSummary`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ closerId, teamId, period }),
+      body: JSON.stringify({
+        closerId, teamId, period,
+        ...(customStart != null && customEnd != null ? { customStart, customEnd } : {}),
+      }),
     });
 
     if (!response.ok) return null;
@@ -1063,12 +1069,15 @@ export interface LostDealsData {
   problemAreas: string[];
 }
 
-export async function getLostDealsByObjection(closerId: string, teamId: string, period: string): Promise<LostDealsData | null> {
+export async function getLostDealsByObjection(closerId: string, teamId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<LostDealsData | null> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/getCloserLostDeals`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ closerId, teamId, period }),
+      body: JSON.stringify({
+        closerId, teamId, period,
+        ...(customStart != null && customEnd != null ? { customStart, customEnd } : {}),
+      }),
     });
 
     if (!response.ok) return null;
@@ -1103,12 +1112,15 @@ export interface ObjectionAnalysisData {
   insights: string[];
 }
 
-export async function getObjectionAnalysis(closerId: string, teamId: string, period: string): Promise<ObjectionAnalysisData | null> {
+export async function getObjectionAnalysis(closerId: string, teamId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<ObjectionAnalysisData | null> {
   try {
     const response = await fetch(`${CONVEX_SITE_URL}/getCloserObjectionAnalysis`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ closerId, teamId, period }),
+      body: JSON.stringify({
+        closerId, teamId, period,
+        ...(customStart != null && customEnd != null ? { customStart, customEnd } : {}),
+      }),
     });
 
     if (!response.ok) return null;

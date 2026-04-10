@@ -31,12 +31,12 @@ export default function RecruitingPage() {
 
       <div className="p-6">
         {/* Tab toggle */}
-        <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1 w-fit mb-6">
+        <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-900 border border-transparent dark:border-zinc-700 rounded-lg p-1 w-fit mb-6">
           <Button
             variant={activeTab === "postings" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("postings")}
-            className={activeTab === "postings" ? "" : "text-zinc-500"}
+            className={activeTab === "postings" ? "" : "text-zinc-500 dark:text-zinc-400"}
           >
             My Postings
           </Button>
@@ -44,7 +44,7 @@ export default function RecruitingPage() {
             variant={activeTab === "talent" ? "default" : "ghost"}
             size="sm"
             onClick={() => setActiveTab("talent")}
-            className={activeTab === "talent" ? "" : "text-zinc-500"}
+            className={activeTab === "talent" ? "" : "text-zinc-500 dark:text-zinc-400"}
           >
             Talent Directory
           </Button>

@@ -180,6 +180,9 @@ function AppContent() {
     window.electron.training?.setCloserId(null);
     // Stop chat polling
     window.electron.chat?.stopPolling();
+    // Clear schedule window state so stale email/teamId don't persist across sessions
+    window.electron.schedule?.setCloserEmail(null);
+    window.electron.schedule?.setTeamId(null);
   };
 
   const handleRetry = () => {

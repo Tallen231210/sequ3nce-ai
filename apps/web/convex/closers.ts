@@ -432,8 +432,11 @@ export const getCloserStats = query({
       v.literal("this_week"),
       v.literal("this_month"),
       v.literal("last_30_days"),
-      v.literal("all_time")
+      v.literal("all_time"),
+      v.literal("custom")
     ),
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<CloserStats[]> => {
     // Get the user to find their team
@@ -479,6 +482,18 @@ export const getCloserStats = query({
     let previousPeriodEnd: number;
 
     switch (args.dateRange) {
+      case "custom":
+        if (args.customStart != null && args.customEnd != null) {
+          filterDate = args.customStart;
+          const customDuration = args.customEnd - args.customStart;
+          previousPeriodStart = args.customStart - customDuration;
+          previousPeriodEnd = args.customStart;
+        } else {
+          filterDate = last30Days.getTime();
+          previousPeriodStart = filterDate - 30 * 24 * 60 * 60 * 1000;
+          previousPeriodEnd = filterDate;
+        }
+        break;
       case "this_week":
         filterDate = startOfWeek.getTime();
         previousPeriodStart = filterDate - 7 * 24 * 60 * 60 * 1000;
@@ -775,8 +790,11 @@ export const getTeamStats = query({
       v.literal("this_week"),
       v.literal("this_month"),
       v.literal("last_30_days"),
-      v.literal("all_time")
+      v.literal("all_time"),
+      v.literal("custom")
     ),
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<TeamStats | null> => {
     // Get the user to find their team
@@ -808,6 +826,18 @@ export const getTeamStats = query({
     let previousPeriodEnd: number;
 
     switch (args.dateRange) {
+      case "custom":
+        if (args.customStart != null && args.customEnd != null) {
+          filterDate = args.customStart;
+          const customDuration = args.customEnd - args.customStart;
+          previousPeriodStart = args.customStart - customDuration;
+          previousPeriodEnd = args.customStart;
+        } else {
+          filterDate = last30Days.getTime();
+          previousPeriodStart = filterDate - 30 * 24 * 60 * 60 * 1000;
+          previousPeriodEnd = filterDate;
+        }
+        break;
       case "this_week":
         filterDate = startOfWeek.getTime();
         previousPeriodStart = filterDate - 7 * 24 * 60 * 60 * 1000;
@@ -815,9 +845,9 @@ export const getTeamStats = query({
         break;
       case "this_month":
         filterDate = startOfMonth.getTime();
-        const prevMonth = new Date(startOfMonth);
-        prevMonth.setMonth(prevMonth.getMonth() - 1);
-        previousPeriodStart = prevMonth.getTime();
+        const prevMonth2 = new Date(startOfMonth);
+        prevMonth2.setMonth(prevMonth2.getMonth() - 1);
+        previousPeriodStart = prevMonth2.getTime();
         previousPeriodEnd = filterDate;
         break;
       case "last_30_days":

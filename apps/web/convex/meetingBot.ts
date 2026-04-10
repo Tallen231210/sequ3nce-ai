@@ -1750,7 +1750,9 @@ export const getCallHistoryForCloser = query({
 export const getCloserDashboardStats = query({
   args: {
     closerId: v.id("closers"),
-    period: v.string(), // "today" | "week" | "month" | "last30"
+    period: v.string(), // "today" | "week" | "month" | "last30" | "custom"
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const closer = await ctx.db.get(args.closerId);
@@ -1758,7 +1760,12 @@ export const getCloserDashboardStats = query({
 
     const now = Date.now();
     let periodStart: number;
-    if (args.period === "today") {
+    let periodEnd: number = now;
+
+    if (args.period === "custom" && args.customStart != null && args.customEnd != null) {
+      periodStart = args.customStart;
+      periodEnd = args.customEnd;
+    } else if (args.period === "today") {
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       periodStart = d.getTime();
@@ -1778,8 +1785,12 @@ export const getCloserDashboardStats = query({
     }
 
     // Calculate previous period start for trend comparison
+    // For custom ranges, previous period = same duration immediately before start
     let prevPeriodStart: number;
-    if (args.period === "today") {
+    if (args.period === "custom" && args.customStart != null && args.customEnd != null) {
+      const duration = args.customEnd - args.customStart;
+      prevPeriodStart = args.customStart - duration;
+    } else if (args.period === "today") {
       prevPeriodStart = periodStart - 24 * 60 * 60 * 1000;
     } else if (args.period === "month") {
       const prevMonth = new Date(periodStart);
@@ -1798,7 +1809,7 @@ export const getCloserDashboardStats = query({
       .filter((q) => q.gte(q.field("startedAt"), prevPeriodStart))
       .collect();
 
-    const myCalls = allCloserCalls.filter((c) => (c.startedAt || 0) >= periodStart);
+    const myCalls = allCloserCalls.filter((c) => (c.startedAt || 0) >= periodStart && (c.startedAt || 0) <= periodEnd);
     const prevCalls = allCloserCalls.filter((c) => (c.startedAt || 0) >= prevPeriodStart && (c.startedAt || 0) < periodStart);
 
     const myCompleted = myCalls.filter((c) => c.status === "completed" || c.endedAt);

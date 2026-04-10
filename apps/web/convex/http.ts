@@ -3992,7 +3992,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, period } = body;
+      const { closerId, period, customStart, customEnd } = body;
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -4004,6 +4004,9 @@ http.route({
       const stats = await ctx.runQuery(api.meetingBot.getCloserDashboardStats, {
         closerId: closerId as Id<"closers">,
         period: period || "week",
+        ...(typeof customStart === "number" && typeof customEnd === "number"
+          ? { customStart, customEnd }
+          : {}),
       });
 
       return new Response(JSON.stringify(stats), {
@@ -4293,6 +4296,7 @@ function mapPeriodToDateRange(period: string): string {
     case "week": return "this_week";
     case "month": return "this_month";
     case "last30": return "last_30_days";
+    case "custom": return "custom";
     default: return "last_30_days";
   }
 }
@@ -4304,7 +4308,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, period } = body;
+      const { closerId, teamId, period, customStart, customEnd } = body;
 
       if (!closerId || !teamId) {
         return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
@@ -4317,6 +4321,9 @@ http.route({
         teamId: teamId as Id<"teams">,
         dateRange: mapPeriodToDateRange(period || "week"),
         closerId: closerId as Id<"closers">,
+        ...(typeof customStart === "number" && typeof customEnd === "number"
+          ? { customStart, customEnd }
+          : {}),
       });
 
       return new Response(JSON.stringify(result), {
@@ -4355,7 +4362,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, period } = body;
+      const { closerId, teamId, period, customStart, customEnd } = body;
 
       if (!closerId || !teamId) {
         return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
@@ -4368,6 +4375,9 @@ http.route({
         teamId: teamId as Id<"teams">,
         dateRange: mapPeriodToDateRange(period || "week"),
         closerId: closerId as Id<"closers">,
+        ...(typeof customStart === "number" && typeof customEnd === "number"
+          ? { customStart, customEnd }
+          : {}),
       });
 
       return new Response(JSON.stringify(result), {
@@ -4406,7 +4416,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, period } = body;
+      const { closerId, teamId, period, customStart, customEnd } = body;
 
       if (!closerId || !teamId) {
         return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
@@ -4419,6 +4429,9 @@ http.route({
         teamId: teamId as Id<"teams">,
         dateRange: mapPeriodToDateRange(period || "week"),
         closerId: closerId as Id<"closers">,
+        ...(typeof customStart === "number" && typeof customEnd === "number"
+          ? { customStart, customEnd }
+          : {}),
       });
 
       return new Response(JSON.stringify(result), {

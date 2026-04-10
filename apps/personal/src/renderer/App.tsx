@@ -131,8 +131,13 @@ function AppContent() {
 
     const checkSubscription = async () => {
       const result = await getSubscriptionStatus(closerInfo.b2cUserId!);
+      // Only revoke if the server definitively said the subscription is inactive.
+      // Ignore network errors — a transient WiFi dropout or sleep/wake should NOT
+      // kick the user to the paywall. The error field is set on network failures
+      // and non-OK HTTP responses, so we skip those entirely.
+      if (result.error) return;
       if (result.subscriptionStatus !== 'active' && closerInfo.subscriptionStatus === 'active') {
-        // Subscription was revoked — update local state to trigger paywall
+        // Subscription was genuinely revoked by the server — update local state to trigger paywall
         const updated = { ...closerInfo, subscriptionStatus: result.subscriptionStatus };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         setCloserInfo(updated);

@@ -105,9 +105,14 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   }
 
   async function handleDisconnect() {
-    await disconnectCalendar(closerInfo.email, closerInfo.teamId);
-    setStatus(null);
-    setEvents([]);
+    const success = await disconnectCalendar(closerInfo.email, closerInfo.teamId);
+    if (success) {
+      // Refresh from backend to confirm actual state
+      await loadData();
+    } else {
+      // Disconnect failed — reload to show the real state instead of clearing UI
+      await loadData();
+    }
   }
 
   async function handleExclude(event: CalendarEvent) {

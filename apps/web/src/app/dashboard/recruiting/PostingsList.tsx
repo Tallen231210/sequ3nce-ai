@@ -42,7 +42,7 @@ export function PostingsList({ teamId, clerkId }: PostingsListProps) {
     <>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-md p-0.5">
+          <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-900 border border-transparent dark:border-zinc-700 rounded-md p-0.5">
             {(["all", "open", "closed"] as FilterStatus[]).map((s) => (
               <button
                 key={s}
@@ -50,7 +50,7 @@ export function PostingsList({ teamId, clerkId }: PostingsListProps) {
                 className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
                   filter === s
                     ? "bg-white dark:bg-zinc-700 text-foreground shadow-sm"
-                    : "text-zinc-500 hover:text-foreground"
+                    : "text-zinc-500 dark:text-zinc-400 hover:text-foreground"
                 }`}
               >
                 {s.charAt(0).toUpperCase() + s.slice(1)}

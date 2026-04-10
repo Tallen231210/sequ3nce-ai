@@ -65,8 +65,9 @@ export function ScheduleApp() {
     return cleanup;
   }, []);
 
-  // Fetch calendar status and events when email is available
-  const fetchCalendarData = useCallback(async () => {
+  // Fetch calendar status and events when email is available.
+  // Includes a single retry if teamId isn't set yet (race condition on window open).
+  const fetchCalendarData = useCallback(async (retryCount = 0) => {
     if (!closerEmail) {
       setIsLoading(false);
       return;
@@ -78,6 +79,23 @@ export function ScheduleApp() {
     try {
       // Get calendar status
       const status = await window.schedule?.getCalendarStatus(closerEmail);
+
+      // If the main process says teamId isn't set yet, retry once after a short delay.
+      // This handles the race condition where the schedule window opens before
+      // setTeamId IPC has completed.
+      if (status && 'error' in status && (status as { error: string }).error === 'teamId_not_set' && retryCount < 2) {
+        console.log(`[Schedule] teamId not set yet, retrying in 500ms (attempt ${retryCount + 1})`);
+        setTimeout(() => fetchCalendarData(retryCount + 1), 500);
+        return;
+      }
+
+      // If we got an error response (not a valid calendar status), treat as error
+      if (status && 'error' in status) {
+        setError('Failed to load calendar. Please close and reopen the schedule.');
+        setIsLoading(false);
+        return;
+      }
+
       setCalendarStatus(status);
 
       if (status?.connected) {
@@ -136,7 +154,7 @@ export function ScheduleApp() {
     }
   };
 
-  // Disconnect calendar
+  // Disconnect calendar — check result and refresh from backend
   const handleDisconnect = async () => {
     if (!closerEmail) return;
 
@@ -144,13 +162,15 @@ export function ScheduleApp() {
     setError(null);
 
     try {
-      await window.schedule?.disconnectCalendar(closerEmail);
-      setCalendarStatus(null);
-      setEvents([]);
+      const success = await window.schedule?.disconnectCalendar(closerEmail);
+      if (!success) {
+        setError('Failed to disconnect calendar. Please try again.');
+      }
+      // Always refresh from backend to show actual state
+      await fetchCalendarData();
     } catch (err) {
       console.error('Failed to disconnect calendar:', err);
       setError('Failed to disconnect calendar');
-    } finally {
       setIsLoading(false);
     }
   };

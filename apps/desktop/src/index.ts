@@ -1079,8 +1079,8 @@ const setupIpcHandlers = (): void => {
   // Get calendar status for a closer (requires teamId)
   ipcMain.handle('schedule:get-calendar-status', async (_event, email: string) => {
     if (!currentScheduleTeamId) {
-      console.error('[Main] No teamId set for schedule');
-      return null;
+      console.error('[Main] No teamId set for schedule — renderer should retry');
+      return { error: 'teamId_not_set' };
     }
 
     try {
@@ -1090,13 +1090,13 @@ const setupIpcHandlers = (): void => {
 
       if (!response.ok) {
         console.error('[Main] Failed to get calendar status:', response.statusText);
-        return null;
+        return { error: 'fetch_failed' };
       }
 
       return await response.json();
     } catch (error) {
       console.error('[Main] Error getting calendar status:', error);
-      return null;
+      return { error: 'network_error' };
     }
   });
 

@@ -44,6 +44,7 @@ export function RefgrowWidget({ email }: RefgrowWidgetProps) {
         onLoad={() => setIsLoading(false)}
         onError={() => { setIsLoading(false); setLoadError(true); }}
         style={{ minHeight: '600px' }}
+        allow="clipboard-write"
       />
     </div>
   );

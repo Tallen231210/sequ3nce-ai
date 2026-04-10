@@ -2,12 +2,29 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Date range types
-type DateRange = "today" | "this_week" | "last_7_days" | "this_month" | "last_30_days" | "last_90_days";
+type DateRange = "today" | "this_week" | "last_7_days" | "this_month" | "last_30_days" | "last_90_days" | "custom";
 
-// Helper to get date range timestamps
-function getDateRangeTimestamps(range: DateRange): { start: number; end: number; prevStart: number; prevEnd: number } {
+// Helper to get date range timestamps.
+// When customStart/customEnd are provided (and range is "custom"), uses them directly.
+// Previous period for custom ranges = same-length window immediately before customStart.
+function getDateRangeTimestamps(
+  range: DateRange,
+  customStart?: number,
+  customEnd?: number,
+): { start: number; end: number; prevStart: number; prevEnd: number } {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
+
+  // Custom date range — use the provided timestamps directly
+  if (range === "custom" && customStart != null && customEnd != null) {
+    const duration = customEnd - customStart;
+    return {
+      start: customStart,
+      end: customEnd,
+      prevStart: customStart - duration,
+      prevEnd: customStart,
+    };
+  }
 
   let start: number;
   let prevStart: number;
@@ -66,9 +83,13 @@ export const getAnalyticsSummary = query({
     dateRange: v.string(),
     closerId: v.optional(v.id("closers")),
     outcome: v.optional(v.string()),
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { start, end, prevStart, prevEnd } = getDateRangeTimestamps(args.dateRange as DateRange);
+    const { start, end, prevStart, prevEnd } = getDateRangeTimestamps(
+      args.dateRange as DateRange, args.customStart, args.customEnd
+    );
 
     // Get all completed calls for this period
     let calls = await ctx.db
@@ -153,9 +174,13 @@ export const getLostDealsByObjection = query({
     teamId: v.id("teams"),
     dateRange: v.string(),
     closerId: v.optional(v.id("closers")),
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { start, end, prevStart, prevEnd } = getDateRangeTimestamps(args.dateRange as DateRange);
+    const { start, end, prevStart, prevEnd } = getDateRangeTimestamps(
+      args.dateRange as DateRange, args.customStart, args.customEnd
+    );
 
     // Get lost calls (lost OR follow_up outcomes)
     let lostCalls = await ctx.db
@@ -470,9 +495,13 @@ export const getObjectionAnalysis = query({
     teamId: v.id("teams"),
     dateRange: v.string(),
     closerId: v.optional(v.id("closers")),
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { start, end } = getDateRangeTimestamps(args.dateRange as DateRange);
+    const { start, end } = getDateRangeTimestamps(
+      args.dateRange as DateRange, args.customStart, args.customEnd
+    );
 
     // Get all completed calls in the period
     let calls = await ctx.db
