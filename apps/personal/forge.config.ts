@@ -86,7 +86,8 @@ const config: ForgeConfig = {
         categories: ['Office', 'Utility'],
       },
     }),
-    // Linux RPM
+    // Linux RPM — strip disabled because koffi bundles cross-arch .node prebuilds
+    // that cause `strip` to fail on non-native architectures
     new MakerRpm({
       options: {
         name: 'sequ3nce-personal',
@@ -94,6 +95,7 @@ const config: ForgeConfig = {
         homepage: 'https://sequ3nce.ai',
         icon: './assets/icon.png',
         categories: ['Office', 'Utility'],
+        strip: false,
       },
     }),
   ],
