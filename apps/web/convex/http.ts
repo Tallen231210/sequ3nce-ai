@@ -8353,4 +8353,79 @@ http.route({
   handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
 });
 
+// GET /b2c/stream/api-key?userId=... — return the Groq API key for direct client-side calls.
+// Only returns the key if the user exists and has an active/trialing subscription.
+http.route({
+  path: "/b2c/stream/api-key",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+
+      // Verify user exists via subscription check (reuses existing public query)
+      const sub = await ctx.runQuery(api.b2cBilling.getB2CSubscription, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      if (!sub) {
+        return b2cJsonResponse({ error: "User not found" }, 404);
+      }
+
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) {
+        return b2cJsonResponse({ error: "Transcription service not configured" }, 503);
+      }
+
+      return b2cJsonResponse({ apiKey }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to get API key";
+      console.error("[Stream] api-key error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stream/api-key",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/stream/save — save a transcription produced client-side (direct Groq flow)
+http.route({
+  path: "/b2c/stream/save",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { b2cUserId, text, durationSec } = body ?? {};
+
+      if (typeof b2cUserId !== "string" || typeof text !== "string") {
+        return b2cJsonResponse({ error: "b2cUserId and text are required" }, 400);
+      }
+
+      const id = await ctx.runMutation(api.stream.saveStreamTranscription, {
+        b2cUserId: b2cUserId as Id<"b2cUsers">,
+        text,
+        durationSec: typeof durationSec === "number" ? durationSec : undefined,
+      });
+
+      return b2cJsonResponse({ id }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to save transcription";
+      console.error("[Stream] save error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stream/save",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 export default http;

@@ -123,6 +123,46 @@ export const deleteAllStreamHistory = mutation({
   },
 });
 
+// ==================== Public save (for direct-to-Groq flow) ====================
+
+/** Public mutation — save a transcription that was produced client-side (direct Groq call).
+ *  Used by the Electron overlay which calls Groq directly for lower latency. */
+export const saveStreamTranscription = mutation({
+  args: {
+    b2cUserId: v.id("b2cUsers"),
+    text: v.string(),
+    durationSec: v.optional(v.number()),
+  },
+  handler: async (ctx, { b2cUserId, text, durationSec }) => {
+    const user = await ctx.db.get(b2cUserId);
+    if (!user) throw new Error("User not found");
+
+    const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+    if (!safeText) return null;
+
+    const id = await ctx.db.insert("streamTranscriptions", {
+      b2cUserId,
+      text: safeText,
+      durationSec,
+      createdAt: Date.now(),
+    });
+
+    // Prune beyond cap
+    const all = await ctx.db
+      .query("streamTranscriptions")
+      .withIndex("by_user_and_date", (q) => q.eq("b2cUserId", b2cUserId))
+      .order("asc")
+      .collect();
+    const excess = all.length - STREAM_HISTORY_CAP;
+    if (excess > 0) {
+      for (let i = 0; i < excess; i++) {
+        await ctx.db.delete(all[i]._id);
+      }
+    }
+    return id;
+  },
+});
+
 // ==================== Internal variants (called by actions) ====================
 
 /** Internal query — lookup a user to validate they exist before calling Groq. */

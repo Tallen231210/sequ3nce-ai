@@ -69,6 +69,16 @@ export async function pasteText(text: string): Promise<void> {
 
   clipboard.writeText(text);
 
+  // Verify the clipboard write landed before simulating the keystroke.
+  // Without this, a fast OS event loop can process the Cmd+V before the
+  // pasteboard update propagates — causing the OLD clipboard content to paste.
+  const written = clipboard.readText();
+  if (written !== text) {
+    // Retry once
+    clipboard.writeText(text);
+    await new Promise((r) => setTimeout(r, 30));
+  }
+
   try {
     synthesizePasteKeystroke();
   } catch (err) {

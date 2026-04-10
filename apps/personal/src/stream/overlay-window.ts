@@ -8,8 +8,9 @@ import { BrowserWindow, screen } from 'electron';
 declare const STREAM_OVERLAY_WEBPACK_ENTRY: string;
 declare const STREAM_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
-const OVERLAY_WIDTH = 320;
-const OVERLAY_HEIGHT = 220;
+// Compact horizontal pill — logo + waveform + close button
+const OVERLAY_WIDTH = 280;
+const OVERLAY_HEIGHT = 60;
 
 // Off-screen position used while the overlay is hidden. We use negative coords
 // far off any plausible display instead of calling hide() because show() after
@@ -87,7 +88,7 @@ export function showStreamOverlay(): void {
   const primary = screen.getPrimaryDisplay();
   const workArea = primary.workArea;
   const x = Math.round(workArea.x + (workArea.width - OVERLAY_WIDTH) / 2);
-  const y = Math.round(workArea.y + workArea.height - OVERLAY_HEIGHT - 80); // 80px above the bottom
+  const y = Math.round(workArea.y + workArea.height - OVERLAY_HEIGHT - 40); // compact pill near the bottom
 
   overlayWindow.setPosition(x, y);
   overlayWindow.showInactive();

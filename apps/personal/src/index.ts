@@ -4,6 +4,7 @@ import { autoUpdater } from 'electron-updater';
 import WebSocket from 'ws';
 import * as os from 'os';
 import { initializeStream, shutdownStream } from './stream';
+import { getStreamOverlay } from './stream/overlay-window';
 
 // ============================================
 // macOS Version Detection (MUST be before app.ready)
@@ -1267,6 +1268,10 @@ const setupIpcHandlers = (): void => {
     }
     if (postCallWindow && !postCallWindow.isDestroyed()) {
       postCallWindow.webContents.send('theme-changed', theme);
+    }
+    const streamOverlay = getStreamOverlay();
+    if (streamOverlay && !streamOverlay.isDestroyed()) {
+      streamOverlay.webContents.send('theme-changed', theme);
     }
   });
 

@@ -1,21 +1,52 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Waveform } from './Waveform';
-import { AudioRecorder, blobToBase64 } from './AudioRecorder';
+import { AudioRecorder } from './AudioRecorder';
 
 type OverlayState = 'idle' | 'recording' | 'processing' | 'success' | 'error';
 
-// Convex prod HTTP endpoint. Must match apps/web/convex/http.ts routes.
-// Kept in sync with the CSP in stream-overlay.html.
-const STREAM_TRANSCRIBE_URL = 'https://ideal-ram-982.convex.site/b2c/stream/transcribe';
+const CONVEX_SITE_URL = 'https://ideal-ram-982.convex.site';
+// Direct-to-Groq: call the Whisper API with zero middleman hops for minimum latency
+const GROQ_TRANSCRIPTION_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
+const GROQ_MODEL = 'whisper-large-v3-turbo';
+
+// Cache the Groq API key in memory after first fetch — never written to disk
+let cachedApiKey: string | null = null;
+
+async function getGroqApiKey(userId: string): Promise<string> {
+  if (cachedApiKey) return cachedApiKey;
+  const res = await fetch(`${CONVEX_SITE_URL}/b2c/stream/api-key?userId=${encodeURIComponent(userId)}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Failed to get API key (${res.status}): ${body.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { apiKey?: string; error?: string };
+  if (!data.apiKey) throw new Error(data.error ?? 'No API key returned');
+  cachedApiKey = data.apiKey;
+  return cachedApiKey;
+}
+
+/** Save transcription to Convex history (fire-and-forget, doesn't block paste) */
+function saveTranscriptionInBackground(userId: string, text: string, durationSec?: number): void {
+  fetch(`${CONVEX_SITE_URL}/b2c/stream/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ b2cUserId: userId, text, durationSec }),
+  }).catch((err) => {
+    console.error('[StreamOverlay] background save failed:', err);
+  });
+}
 
 export function StreamOverlayApp() {
   const [state, setState] = useState<OverlayState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const recorderRef = useRef<AudioRecorder | null>(null);
   const userIdRef = useRef<string | null>(null);
   // Track whether a stop() is already in flight so a fast tap of the hotkey
   // doesn't double-stop the recorder.
   const stoppingRef = useRef(false);
+
+  const isDark = theme === 'dark';
 
   // On mount, fetch the current user id and subscribe to changes.
   useEffect(() => {
@@ -24,11 +55,15 @@ export function StreamOverlayApp() {
     }).catch(() => {
       userIdRef.current = null;
     });
-    const off = window.streamOverlay?.onUserIdChanged((id) => {
+    const offUser = window.streamOverlay?.onUserIdChanged((id) => {
       userIdRef.current = id ?? null;
     });
+    const offTheme = window.streamOverlay?.onThemeChanged((t) => {
+      setTheme(t === 'dark' ? 'dark' : 'light');
+    });
     return () => {
-      off?.();
+      offUser?.();
+      offTheme?.();
     };
   }, []);
 
@@ -81,21 +116,28 @@ export function StreamOverlayApp() {
         throw new Error('Not signed in');
       }
 
-      const audioBase64 = await blobToBase64(blob);
+      // Get the Groq API key (cached after first fetch)
+      const apiKey = await getGroqApiKey(b2cUserId);
 
-      const res = await fetch(STREAM_TRANSCRIBE_URL, {
+      // Call Groq Whisper directly — single network hop, no Convex middleman
+      const form = new FormData();
+      form.append('file', blob, `dictation.${mimeType.includes('webm') ? 'webm' : 'ogg'}`);
+      form.append('model', GROQ_MODEL);
+      form.append('language', 'en');
+      form.append('response_format', 'json');
+
+      const res = await fetch(GROQ_TRANSCRIPTION_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          b2cUserId,
-          audioBase64,
-          mimeType,
-          durationSec,
-        }),
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
       });
 
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
+        // If auth failed, clear the cached key so next attempt re-fetches
+        if (res.status === 401 || res.status === 403) {
+          cachedApiKey = null;
+        }
         throw new Error(`Transcription failed (${res.status}): ${errBody.slice(0, 200)}`);
       }
 
@@ -117,8 +159,12 @@ export function StreamOverlayApp() {
         throw new Error(pasteResult?.error ?? 'Paste failed');
       }
 
-      setState('success');
-      resetAfter(500);
+      // Save transcription to Convex history in the background (non-blocking)
+      saveTranscriptionInBackground(b2cUserId, text, durationSec);
+
+      // Instant hide — the paste landing is the confirmation
+      setState('idle');
+      window.streamOverlay?.hideOverlay();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Transcription failed';
       console.error('[StreamOverlay] stop failed:', msg);
@@ -153,53 +199,105 @@ export function StreamOverlayApp() {
   }[state];
 
   const isActive = state === 'recording';
+  const isProcessing = state === 'processing';
 
   return (
     <div
       style={{
         width: '100%',
         height: '100%',
-        padding: 20,
+        padding: '0 12px',
         boxSizing: 'border-box',
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 14,
-        background: '#000000',
-        borderRadius: 12,
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.5)',
-        color: '#ffffff',
+        gap: 10,
+        background: isDark ? 'rgba(24, 24, 27, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+        borderRadius: 28,
+        border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.1)',
+        boxShadow: isDark ? '0 12px 36px rgba(0, 0, 0, 0.5)' : '0 12px 36px rgba(0, 0, 0, 0.15)',
+        color: isDark ? '#ffffff' : '#000000',
         fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         userSelect: 'none',
       }}
     >
-      {/* Top label */}
-      <div
+      {/* Sequ3nce icon — inverted in light mode so the S stays visible */}
+      <img
+        src={require('../../assets/icon.png')}
+        alt="S"
         style={{
-          fontSize: 11,
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          flexShrink: 0,
+          filter: isDark ? 'none' : 'invert(1)',
+        }}
+      />
+
+      {/* Waveform / status text */}
+      <div style={{ flex: 1, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0 }}>
+        {isProcessing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div
+              style={{
+                width: 14,
+                height: 14,
+                border: isDark ? '2px solid rgba(255,255,255,0.2)' : '2px solid rgba(0,0,0,0.1)',
+                borderTopColor: '#34d399',
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }}
+            />
+            <span style={{ fontSize: 12, fontWeight: 500, color: isDark ? '#a1a1aa' : '#71717a' }}>
+              Transcribing...
+            </span>
+          </div>
+        ) : state === 'error' ? (
+          <span style={{ fontSize: 11, fontWeight: 500, color: '#f87171' }}>
+            {errorMessage ?? 'Error'}
+          </span>
+        ) : state === 'success' ? (
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#34d399' }}>
+            Done
+          </span>
+        ) : (
+          <Waveform active={isActive} isDark={isDark} />
+        )}
+      </div>
+
+      {/* Close / dismiss button */}
+      <button
+        onClick={() => window.streamOverlay?.hideOverlay()}
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: '50%',
+          border: 'none',
+          background: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+          color: isDark ? '#71717a' : '#a1a1aa',
+          fontSize: 13,
           fontWeight: 600,
-          letterSpacing: 0.8,
-          color: '#a1a1aa',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          lineHeight: 1,
+          padding: 0,
         }}
       >
-        Sequ3nce Stream
-      </div>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <line x1="2" y1="2" x2="8" y2="8" />
+          <line x1="8" y1="2" x2="2" y2="8" />
+        </svg>
+      </button>
 
-      <Waveform active={isActive} />
-
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 500,
-          color: state === 'error' ? '#f87171' : '#d4d4d8',
-          textAlign: 'center',
-          minHeight: 16,
-        }}
-      >
-        {bodyText}
-      </div>
+      {/* Spin animation for the processing spinner */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -157,13 +157,17 @@ export function registerStreamIpcHandlers(deps: StreamDeps): void {
   // the CGEventTap (macOS) or uiohook (Windows) stops completely — no Fn
   // capture, no audio, no overlay.
   ipcMain.handle('stream:set-enabled', async (_event, enabled: unknown) => {
+    console.log('[Stream] set-enabled IPC received:', enabled);
     if (typeof enabled !== 'boolean') {
       return { success: false, error: 'enabled must be a boolean' };
     }
     try {
       if (enabled) {
+        console.log('[Stream] Starting hotkey service...');
         deps.hotkeyService.start();
+        console.log('[Stream] Hotkey service start() returned');
       } else {
+        console.log('[Stream] Stopping hotkey service...');
         deps.hotkeyService.stop();
       }
       return { success: true };

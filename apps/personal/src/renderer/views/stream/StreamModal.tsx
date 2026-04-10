@@ -59,8 +59,15 @@ export function StreamModal({ closerInfo, onClose, streamEnabled, onStreamEnable
         const s = await fetchStreamSettings(b2cUserId);
         if (cancelled) return;
         setSettings(s);
-        // Sync the enabled state from persisted settings
-        onStreamEnabledChange(s?.enabled ?? false);
+        // Sync the enabled state from persisted settings — both visual AND main process.
+        // Without the IPC call, the toggle shows ON but the hotkey doesn't actually run.
+        const isEnabled = s?.enabled ?? false;
+        onStreamEnabledChange(isEnabled);
+        if (isEnabled) {
+          window.electron?.stream?.setEnabled(true).catch((err) => {
+            console.error('[StreamModal] initial setEnabled IPC failed:', err);
+          });
+        }
         // First-run: if no settings row OR they haven't finished onboarding, show Settings tab.
         if (!s || !s.hasCompletedOnboarding) {
           setActiveTab('settings');
@@ -136,20 +143,19 @@ export function StreamModal({ closerInfo, onClose, streamEnabled, onStreamEnable
     if (!b2cUserId || togglingEnabled) return;
     const newEnabled = !streamEnabled;
     setTogglingEnabled(true);
+    // Update UI immediately
+    onStreamEnabledChange(newEnabled);
     try {
-      await saveStreamSettings(
-        b2cUserId,
-        settings?.hotkey ?? 'Fn',
-        undefined,
-        newEnabled,
-      );
-      onStreamEnabledChange(newEnabled);
-      // Tell the main process to start or stop the hotkey hook
+      // Fire IPC first — this starts/stops the hotkey hook instantly
       await window.electron?.stream?.setEnabled(newEnabled);
-      // Refresh settings to be in sync
-      const s = await fetchStreamSettings(b2cUserId);
-      setSettings(s);
+      // Then persist to Convex in the background (non-blocking for the user)
+      saveStreamSettings(b2cUserId, settings?.hotkey ?? 'Fn', undefined, newEnabled)
+        .then(() => fetchStreamSettings(b2cUserId))
+        .then((s) => setSettings(s))
+        .catch((err) => console.error('[StreamModal] save settings failed:', err));
     } catch (err) {
+      // Revert UI if IPC failed
+      onStreamEnabledChange(!newEnabled);
       console.error('[StreamModal] toggle enabled failed:', err);
     } finally {
       setTogglingEnabled(false);

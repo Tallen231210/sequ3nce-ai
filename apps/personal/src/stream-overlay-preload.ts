@@ -17,6 +17,11 @@ const api = {
     ipcRenderer.on('stream:hotkey-up', handler);
     return () => ipcRenderer.off('stream:hotkey-up', handler);
   },
+  onThemeChanged(listener: (theme: string) => void): () => void {
+    const handler = (_e: unknown, theme: string) => listener(theme);
+    ipcRenderer.on('theme-changed', handler);
+    return () => ipcRenderer.off('theme-changed', handler);
+  },
   onUserIdChanged(listener: (userId: string | null) => void): () => void {
     const handler = (_e: unknown, userId: string | null) => listener(userId);
     ipcRenderer.on('stream:user-id-changed', handler);
