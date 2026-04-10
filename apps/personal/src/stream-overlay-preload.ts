@@ -30,6 +30,9 @@ const api = {
   async getUserId(): Promise<string | null> {
     return ipcRenderer.invoke('stream:get-user-id');
   },
+  async getTheme(): Promise<string> {
+    return ipcRenderer.invoke('stream:get-theme');
+  },
   pasteText(text: string): Promise<{ success: boolean; error?: string }> {
     return ipcRenderer.invoke('stream:paste-text', text);
   },

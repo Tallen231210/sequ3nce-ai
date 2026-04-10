@@ -1100,6 +1100,11 @@ const setupIpcHandlers = (): void => {
     return currentTheme;
   });
 
+  // Get current theme for stream overlay (same pattern)
+  ipcMain.handle('stream:get-theme', () => {
+    return currentTheme;
+  });
+
   // Close ammo tracker window
   ipcMain.handle('ammo:close', () => {
     if (ammoTrackerWindow) {

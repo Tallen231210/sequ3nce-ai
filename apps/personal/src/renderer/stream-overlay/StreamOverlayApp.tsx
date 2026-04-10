@@ -48,13 +48,17 @@ export function StreamOverlayApp() {
 
   const isDark = theme === 'dark';
 
-  // On mount, fetch the current user id and subscribe to changes.
+  // On mount, fetch current user id + theme, and subscribe to changes.
   useEffect(() => {
     window.streamOverlay?.getUserId().then((id) => {
       userIdRef.current = id ?? null;
     }).catch(() => {
       userIdRef.current = null;
     });
+    // Fetch the current theme so we don't start with the wrong mode
+    window.streamOverlay?.getTheme().then((t) => {
+      setTheme(t === 'dark' ? 'dark' : 'light');
+    }).catch(() => {});
     const offUser = window.streamOverlay?.onUserIdChanged((id) => {
       userIdRef.current = id ?? null;
     });
