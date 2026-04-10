@@ -87,10 +87,49 @@ export function registerStreamIpcHandlers(deps: StreamDeps): void {
   });
 
   // --- Main-window → main: request microphone permission (macOS) ---
+  // Three-step approach to handle all possible states:
+  //   1. If status is "not-determined" (never asked): call askForMediaAccess to show the system dialog
+  //   2. If status is "denied" (previously denied): open System Settings directly since the dialog won't re-appear
+  //   3. If status is "granted": nothing to do
   ipcMain.handle('stream:request-microphone', async () => {
     if (process.platform !== 'darwin') return { granted: true };
-    const granted = await systemPreferences.askForMediaAccess('microphone');
-    return { granted };
+
+    const status = systemPreferences.getMediaAccessStatus('microphone');
+    console.log('[Stream] Microphone status before request:', status);
+
+    if (status === 'granted') {
+      return { granted: true };
+    }
+
+    if (status === 'denied' || status === 'restricted') {
+      // Can't re-prompt — macOS requires the user to go to System Settings manually
+      console.log('[Stream] Mic previously denied, opening System Settings');
+      await shell.openExternal(
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
+      );
+      return { granted: false, openedSettings: true };
+    }
+
+    // Status is "not-determined" or "unknown" — try the system dialog
+    try {
+      const granted = await systemPreferences.askForMediaAccess('microphone');
+      console.log('[Stream] askForMediaAccess result:', granted);
+      if (!granted) {
+        // Dialog may have been dismissed or failed silently — open System Settings as fallback
+        await shell.openExternal(
+          'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
+        );
+        return { granted: false, openedSettings: true };
+      }
+      return { granted: true };
+    } catch (err) {
+      console.error('[Stream] askForMediaAccess threw:', err);
+      // Fallback: open System Settings directly
+      await shell.openExternal(
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
+      );
+      return { granted: false, openedSettings: true };
+    }
   });
 
   // --- Main-window → main: open macOS accessibility pref pane ---

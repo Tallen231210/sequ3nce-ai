@@ -50,7 +50,14 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
 
   const handleRequestMicrophone = useCallback(async () => {
     try {
-      await window.electron?.stream?.requestMicrophone();
+      const result = await window.electron?.stream?.requestMicrophone();
+      // If the handler opened System Settings (because permission was denied or
+      // the prompt failed), the user will toggle it there and come back.
+      // The focus listener in refreshPermissions handles the re-check.
+      if (result && !result.granted) {
+        // Permission not yet granted — System Settings was opened as fallback.
+        // Don't show an error; the focus listener will re-check when they return.
+      }
     } catch (err) {
       console.error('[Stream settings] requestMicrophone failed', err);
     }
@@ -154,7 +161,7 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
               <button
                 onClick={handleRequestMicrophone}
                 disabled={checkingPermissions}
-                className="px-3 py-1.5 text-[12px] font-semibold text-white bg-black rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                className="px-3 py-1.5 text-[12px] font-semibold text-white bg-black rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors whitespace-nowrap"
               >
                 {checkingPermissions ? 'Checking…' : 'Grant'}
               </button>
