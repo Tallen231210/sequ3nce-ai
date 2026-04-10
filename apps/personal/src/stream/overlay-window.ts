@@ -75,15 +75,25 @@ export function showStreamOverlay(): void {
   const x = Math.round(workArea.x + (workArea.width - OVERLAY_WIDTH) / 2);
   const y = Math.round(workArea.y + workArea.height - OVERLAY_HEIGHT - 40); // compact pill near the bottom
 
+  // Enable full-screen visibility right before showing (not at creation time,
+  // which was causing the dock dot to disappear). This lets the overlay float
+  // above macOS full-screen spaces.
+  if (process.platform === 'darwin') {
+    overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+
   overlayWindow.setPosition(x, y);
   overlayWindow.showInactive();
 }
 
 export function hideStreamOverlay(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
-  // Move off-screen first so the hide transition doesn't flicker the old position
-  // on the next show.
   overlayWindow.hide();
+  // Disable full-screen visibility after hiding so it doesn't interfere
+  // with the app's dock indicator while the overlay is inactive.
+  if (process.platform === 'darwin') {
+    overlayWindow.setVisibleOnAllWorkspaces(false);
+  }
   overlayWindow.setPosition(OFFSCREEN_X, OFFSCREEN_Y);
 }
 
