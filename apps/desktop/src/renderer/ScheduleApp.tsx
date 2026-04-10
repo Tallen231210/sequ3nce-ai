@@ -83,14 +83,14 @@ export function ScheduleApp() {
       // If the main process says teamId isn't set yet, retry once after a short delay.
       // This handles the race condition where the schedule window opens before
       // setTeamId IPC has completed.
-      if (status && 'error' in status && (status as { error: string }).error === 'teamId_not_set' && retryCount < 2) {
+      if (status && typeof status === 'object' && 'error' in status && (status as unknown as { error: string }).error === 'teamId_not_set' && retryCount < 2) {
         console.log(`[Schedule] teamId not set yet, retrying in 500ms (attempt ${retryCount + 1})`);
         setTimeout(() => fetchCalendarData(retryCount + 1), 500);
         return;
       }
 
       // If we got an error response (not a valid calendar status), treat as error
-      if (status && 'error' in status) {
+      if (status && typeof status === 'object' && 'error' in status) {
         setError('Failed to load calendar. Please close and reopen the schedule.');
         setIsLoading(false);
         return;
