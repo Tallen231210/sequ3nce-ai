@@ -37,12 +37,8 @@ export function createStreamOverlay(): BrowserWindow {
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    skipTaskbar: true,
     resizable: false,
-    hasShadow: false,
-    backgroundColor: '#00000000',
     show: false,
-    focusable: false, // Don't steal focus from whatever the user is dictating into
     webPreferences: {
       preload: STREAM_OVERLAY_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
@@ -50,23 +46,12 @@ export function createStreamOverlay(): BrowserWindow {
     },
   });
 
-  // alwaysOnTop with "screen-saver" level keeps the overlay above full-screen apps
-  // on macOS. "floating" is sufficient on Windows.
-  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
-  // Show across all virtual desktops / mission control spaces on macOS
-  if (process.platform === 'darwin') {
-    overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  }
-
   overlayWindow.loadURL(STREAM_OVERLAY_WEBPACK_ENTRY);
 
-  overlayWindow.once('ready-to-show', () => {
-    // Pre-render so the first show is instant. We keep the window hidden
-    // (show:false in constructor) but need to call showInactive + hide so the
-    // renderer fully mounts; otherwise the first actual show has a white flash.
-    overlayWindow?.showInactive();
-    overlayWindow?.hide();
-  });
+  // NOTE: Do NOT showInactive()+hide() here for pre-rendering. That pattern
+  // breaks the app's macOS dock indicator and activation state — the app loses
+  // its dock dot and can't be focused via Cmd+Tab. The overlay renders on
+  // first actual show instead; any brief flash is acceptable.
 
   overlayWindow.on('closed', () => {
     overlayWindow = null;

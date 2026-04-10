@@ -41,8 +41,9 @@ export function initializeStream(): void {
       console.warn('[Stream] uiohook-napi not available — Stream will be inactive');
     }
 
-    // 2. Pre-create overlay window off-screen so showing it on hotkey press is instant
-    createStreamOverlay();
+    // 2. Do NOT pre-create the overlay window at startup. Creating a hidden
+    //    BrowserWindow with skipTaskbar+alwaysOnTop breaks the app's macOS dock
+    //    indicator and activation state. Instead, create it lazily on first hotkey press.
 
     // 3. Create the hotkey service and wire up events, but do NOT start yet.
     //    The user's toggle in the Stream modal controls whether the hook runs.
@@ -50,10 +51,19 @@ export function initializeStream(): void {
     //    which calls hotkeyService.start(). Default is OFF for new users.
     hotkeyService = new HotkeyService();
     hotkeyService.on('hotkey-down', () => {
-      const overlay = getStreamOverlay();
-      if (!overlay || overlay.isDestroyed()) return;
+      // Lazy-create overlay on first hotkey press
+      let overlay = getStreamOverlay();
+      if (!overlay || overlay.isDestroyed()) {
+        overlay = createStreamOverlay();
+      }
       showStreamOverlay();
-      overlay.webContents.send('stream:hotkey-down');
+      // Small delay to let the overlay renderer mount before sending the event
+      setTimeout(() => {
+        const win = getStreamOverlay();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('stream:hotkey-down');
+        }
+      }, overlay.webContents.isLoading() ? 300 : 0);
     });
     hotkeyService.on('hotkey-up', () => {
       const overlay = getStreamOverlay();
