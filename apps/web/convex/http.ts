@@ -8323,7 +8323,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { b2cUserId, hotkey, hasCompletedOnboarding } = body ?? {};
+      const { b2cUserId, hotkey, hasCompletedOnboarding, enabled } = body ?? {};
 
       if (typeof b2cUserId !== "string" || typeof hotkey !== "string") {
         return b2cJsonResponse({ error: "b2cUserId and hotkey are required" }, 400);
@@ -8334,6 +8334,8 @@ http.route({
         hotkey,
         hasCompletedOnboarding:
           typeof hasCompletedOnboarding === "boolean" ? hasCompletedOnboarding : undefined,
+        enabled:
+          typeof enabled === "boolean" ? enabled : undefined,
       });
 
       return b2cJsonResponse({ id }, 200, true);

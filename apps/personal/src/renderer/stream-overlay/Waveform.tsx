@@ -52,11 +52,8 @@ export function Waveform({ active, bars = 28 }: WaveformProps) {
         const x = i * (barWidth + gap);
         const y = centerY - waveHeight / 2;
 
-        // Gradient from indigo to cyan, inspired by Sequ3nce's brand palette
-        const gradient = ctx.createLinearGradient(0, y, 0, y + waveHeight);
-        gradient.addColorStop(0, active ? '#a78bfa' : '#6b7280');
-        gradient.addColorStop(1, active ? '#22d3ee' : '#9ca3af');
-        ctx.fillStyle = gradient;
+        // Monochrome — white when active, dim gray when idle
+        ctx.fillStyle = active ? '#ffffff' : '#52525b';
 
         // Rounded bars
         const radius = barWidth / 2;

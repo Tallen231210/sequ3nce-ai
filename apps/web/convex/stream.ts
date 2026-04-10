@@ -34,8 +34,9 @@ export const upsertStreamSettings = mutation({
     b2cUserId: v.id("b2cUsers"),
     hotkey: v.string(),
     hasCompletedOnboarding: v.optional(v.boolean()),
+    enabled: v.optional(v.boolean()),
   },
-  handler: async (ctx, { b2cUserId, hotkey, hasCompletedOnboarding }) => {
+  handler: async (ctx, { b2cUserId, hotkey, hasCompletedOnboarding, enabled }) => {
     if (hotkey.length === 0 || hotkey.length > MAX_HOTKEY_LENGTH) {
       throw new Error("Invalid hotkey length");
     }
@@ -51,13 +52,10 @@ export const upsertStreamSettings = mutation({
       .unique();
 
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        hotkey,
-        ...(hasCompletedOnboarding !== undefined
-          ? { hasCompletedOnboarding }
-          : {}),
-        updatedAt: now,
-      });
+      const patch: Record<string, unknown> = { hotkey, updatedAt: now };
+      if (hasCompletedOnboarding !== undefined) patch.hasCompletedOnboarding = hasCompletedOnboarding;
+      if (enabled !== undefined) patch.enabled = enabled;
+      await ctx.db.patch(existing._id, patch);
       return existing._id;
     }
 
@@ -65,6 +63,7 @@ export const upsertStreamSettings = mutation({
       b2cUserId,
       hotkey,
       hasCompletedOnboarding: hasCompletedOnboarding ?? false,
+      enabled: enabled ?? false,
       createdAt: now,
       updatedAt: now,
     });

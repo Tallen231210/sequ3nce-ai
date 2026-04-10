@@ -189,6 +189,7 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
   // Quick bot modal
   const [showQuickBot, setShowQuickBot] = useState(false);
   const [showStream, setShowStream] = useState(false);
+  const [streamEnabled, setStreamEnabled] = useState(false);
 
   // Messages slide-out panel
   const [showMessages, setShowMessages] = useState(false);
@@ -444,7 +445,12 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
       {/* Sequ3nce Stream modal */}
       {showStream && (
-        <StreamModal closerInfo={closerInfo} onClose={() => setShowStream(false)} />
+        <StreamModal
+          closerInfo={closerInfo}
+          onClose={() => setShowStream(false)}
+          streamEnabled={streamEnabled}
+          onStreamEnabledChange={setStreamEnabled}
+        />
       )}
 
       {/* Sidebar */}
@@ -556,16 +562,21 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
           {/* Sequ3nce Stream button (dictation) */}
           <button
             onClick={() => setShowStream(true)}
-            className="no-drag relative flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            className="no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-gray-900 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
             title="Sequ3nce Stream — hold-to-talk dictation"
           >
-            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z M19 10v2a7 7 0 01-14 0v-2 M12 19v4 M8 23h8"
-              />
+            {/* Status dot */}
+            <span className={`w-2 h-2 rounded-full shrink-0 ${streamEnabled ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+            {/* Waveform icon */}
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke={streamEnabled ? '#10b981' : '#9ca3af'} strokeWidth={2} strokeLinecap="round">
+              <line x1="4" y1="8" x2="4" y2="16" />
+              <line x1="7.5" y1="5" x2="7.5" y2="19" />
+              <line x1="11" y1="3" x2="11" y2="21" />
+              <line x1="14.5" y1="6" x2="14.5" y2="18" />
+              <line x1="18" y1="9" x2="18" y2="15" />
+              <line x1="21" y1="10" x2="21" y2="14" />
             </svg>
+            Sequ3nce Stream
           </button>
           {/* Quick Bot button */}
           <button onClick={() => setShowQuickBot(true)}

@@ -151,4 +151,26 @@ export function registerStreamIpcHandlers(deps: StreamDeps): void {
   ipcMain.handle('stream:get-user-id', async () => {
     return currentUserId;
   });
+
+  // --- Main-window → main: enable/disable the hotkey hook at runtime ---
+  // Called when the user flips the toggle in the Stream modal. When disabled,
+  // the CGEventTap (macOS) or uiohook (Windows) stops completely — no Fn
+  // capture, no audio, no overlay.
+  ipcMain.handle('stream:set-enabled', async (_event, enabled: unknown) => {
+    if (typeof enabled !== 'boolean') {
+      return { success: false, error: 'enabled must be a boolean' };
+    }
+    try {
+      if (enabled) {
+        deps.hotkeyService.start();
+      } else {
+        deps.hotkeyService.stop();
+      }
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to toggle';
+      console.error('[Stream] set-enabled failed:', msg);
+      return { success: false, error: msg };
+    }
+  });
 }

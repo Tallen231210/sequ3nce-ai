@@ -44,24 +44,22 @@ export function initializeStream(): void {
     // 2. Pre-create overlay window off-screen so showing it on hotkey press is instant
     createStreamOverlay();
 
-    // 3. Start the hotkey service (no-op if the hook isn't available)
+    // 3. Create the hotkey service and wire up events, but do NOT start yet.
+    //    The user's toggle in the Stream modal controls whether the hook runs.
+    //    When the user enables Stream, the renderer calls stream:set-enabled(true)
+    //    which calls hotkeyService.start(). Default is OFF for new users.
     hotkeyService = new HotkeyService();
-    if (hookAvailable) {
-      hotkeyService.start(defaultHotkeyForPlatform());
-
-      hotkeyService.on('hotkey-down', () => {
-        const overlay = getStreamOverlay();
-        if (!overlay || overlay.isDestroyed()) return;
-        showStreamOverlay();
-        overlay.webContents.send('stream:hotkey-down');
-      });
-
-      hotkeyService.on('hotkey-up', () => {
-        const overlay = getStreamOverlay();
-        if (!overlay || overlay.isDestroyed()) return;
-        overlay.webContents.send('stream:hotkey-up');
-      });
-    }
+    hotkeyService.on('hotkey-down', () => {
+      const overlay = getStreamOverlay();
+      if (!overlay || overlay.isDestroyed()) return;
+      showStreamOverlay();
+      overlay.webContents.send('stream:hotkey-down');
+    });
+    hotkeyService.on('hotkey-up', () => {
+      const overlay = getStreamOverlay();
+      if (!overlay || overlay.isDestroyed()) return;
+      overlay.webContents.send('stream:hotkey-up');
+    });
 
     // 4. Register main-process IPC handlers (always, even if the hook failed)
     registerStreamIpcHandlers({ hotkeyService: hotkeyService! });

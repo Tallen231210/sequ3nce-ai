@@ -103,6 +103,7 @@ export interface StreamAPI {
   rebindHotkey: (hotkeyName: string) => Promise<{ success: boolean; error?: string }>;
   getStatus: () => Promise<{ overlayReady: boolean; hotkeyAvailable: boolean; appVersion: string }>;
   setUserId: (userId: string | null) => Promise<{ success: boolean; error?: string }>;
+  setEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface ElectronAPI {
@@ -209,6 +210,7 @@ contextBridge.exposeInMainWorld('electron', {
     rebindHotkey: (hotkeyName: string) => ipcRenderer.invoke('stream:rebind-hotkey', hotkeyName),
     getStatus: () => ipcRenderer.invoke('stream:get-status'),
     setUserId: (userId: string | null) => ipcRenderer.invoke('stream:set-user-id', userId),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke('stream:set-enabled', enabled),
   },
 } as ElectronAPI);
 

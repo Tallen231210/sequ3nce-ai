@@ -1308,6 +1308,9 @@ export default defineSchema({
     hotkey: v.string(),
     // Track whether the user has completed first-run setup (so we can route them to Settings tab once)
     hasCompletedOnboarding: v.optional(v.boolean()),
+    // Master on/off switch — defaults false until user explicitly enables. When false the Fn hotkey
+    // hook does not run and no audio is captured.
+    enabled: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["b2cUserId"]),

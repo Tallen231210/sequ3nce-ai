@@ -105,6 +105,7 @@ export interface StreamAPI {
   rebindHotkey: (hotkeyName: string) => Promise<{ success: boolean; error?: string }>;
   getStatus: () => Promise<{ overlayReady: boolean; hotkeyAvailable: boolean; appVersion: string }>;
   setUserId: (userId: string | null) => Promise<{ success: boolean; error?: string }>;
+  setEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
 }
 
 export interface ElectronAPI {

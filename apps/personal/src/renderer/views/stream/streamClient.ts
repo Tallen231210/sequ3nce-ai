@@ -10,6 +10,7 @@ export interface StreamSettings {
   b2cUserId: string;
   hotkey: string;
   hasCompletedOnboarding?: boolean;
+  enabled?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -41,11 +42,12 @@ export async function saveStreamSettings(
   b2cUserId: string,
   hotkey: string,
   hasCompletedOnboarding?: boolean,
+  enabled?: boolean,
 ): Promise<void> {
   const res = await fetch(`${CONVEX_SITE_URL}/b2c/stream/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ b2cUserId, hotkey, hasCompletedOnboarding }),
+    body: JSON.stringify({ b2cUserId, hotkey, hasCompletedOnboarding, enabled }),
   });
   await parseJson<{ id: string }>(res);
 }

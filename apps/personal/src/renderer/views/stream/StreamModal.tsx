@@ -13,6 +13,8 @@ import {
 interface StreamModalProps {
   closerInfo: CloserInfo;
   onClose: () => void;
+  streamEnabled: boolean;
+  onStreamEnabledChange: (enabled: boolean) => void;
 }
 
 type StreamTab = 'history' | 'settings';
@@ -35,16 +37,17 @@ async function detectPlatform(): Promise<string> {
  * Settings so the user sees the permissions flow + hotkey visual. After the
  * settings are saved once, subsequent opens go straight to History.
  */
-export function StreamModal({ closerInfo, onClose }: StreamModalProps) {
+export function StreamModal({ closerInfo, onClose, streamEnabled, onStreamEnabledChange }: StreamModalProps) {
   const [activeTab, setActiveTab] = useState<StreamTab>('history');
   const [settings, setSettings] = useState<StreamSettings | null>(null);
   const [transcriptions, setTranscriptions] = useState<StreamTranscription[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [togglingEnabled, setTogglingEnabled] = useState(false);
 
   const b2cUserId = closerInfo.b2cUserId;
 
-  // Initial load: fetch settings + decide which tab to open on
+  // Initial load: fetch settings + decide which tab to open on + sync enabled state
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -56,17 +59,18 @@ export function StreamModal({ closerInfo, onClose }: StreamModalProps) {
         const s = await fetchStreamSettings(b2cUserId);
         if (cancelled) return;
         setSettings(s);
+        // Sync the enabled state from persisted settings
+        onStreamEnabledChange(s?.enabled ?? false);
         // First-run: if no settings row OR they haven't finished onboarding, show Settings tab.
         if (!s || !s.hasCompletedOnboarding) {
           setActiveTab('settings');
           // Seed a settings row with the platform-default hotkey so the user
           // has something to see. macOS uses Fn (custom CGEventTap dylib);
-          // Windows uses Right Control. Mark onboarding complete so next opens
-          // jump straight to History.
+          // Windows uses Right Control. Defaults OFF — user flips the toggle.
           const platform = await detectPlatform();
           const platformDefault = platform === 'darwin' ? 'Fn' : 'RightControl';
           try {
-            await saveStreamSettings(b2cUserId, s?.hotkey ?? platformDefault, true);
+            await saveStreamSettings(b2cUserId, s?.hotkey ?? platformDefault, true, false);
             const refreshed = await fetchStreamSettings(b2cUserId);
             if (!cancelled) setSettings(refreshed);
           } catch (err) {
@@ -82,7 +86,7 @@ export function StreamModal({ closerInfo, onClose }: StreamModalProps) {
     return () => {
       cancelled = true;
     };
-  }, [b2cUserId]);
+  }, [b2cUserId, onStreamEnabledChange]);
 
   const refreshHistory = useCallback(async () => {
     if (!b2cUserId) return;
@@ -120,12 +124,37 @@ export function StreamModal({ closerInfo, onClose }: StreamModalProps) {
     try {
       const s = await fetchStreamSettings(b2cUserId);
       setSettings(s);
+      onStreamEnabledChange(s?.enabled ?? false);
     } catch (err) {
       console.error('[StreamModal] reload settings failed:', err);
     }
     // Also refresh history in case they triggered delete-all
     refreshHistory();
-  }, [b2cUserId, refreshHistory]);
+  }, [b2cUserId, refreshHistory, onStreamEnabledChange]);
+
+  const handleToggleEnabled = useCallback(async () => {
+    if (!b2cUserId || togglingEnabled) return;
+    const newEnabled = !streamEnabled;
+    setTogglingEnabled(true);
+    try {
+      await saveStreamSettings(
+        b2cUserId,
+        settings?.hotkey ?? 'Fn',
+        undefined,
+        newEnabled,
+      );
+      onStreamEnabledChange(newEnabled);
+      // Tell the main process to start or stop the hotkey hook
+      await window.electron?.stream?.setEnabled(newEnabled);
+      // Refresh settings to be in sync
+      const s = await fetchStreamSettings(b2cUserId);
+      setSettings(s);
+    } catch (err) {
+      console.error('[StreamModal] toggle enabled failed:', err);
+    } finally {
+      setTogglingEnabled(false);
+    }
+  }, [b2cUserId, streamEnabled, settings, togglingEnabled, onStreamEnabledChange]);
 
   // Escape closes the modal (matches the pattern used by other modals)
   useEffect(() => {
@@ -137,51 +166,57 @@ export function StreamModal({ closerInfo, onClose }: StreamModalProps) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-zinc-950 rounded-3xl shadow-2xl w-[720px] max-w-[90vw] h-[640px] max-h-[85vh] flex flex-col overflow-hidden border border-gray-200 dark:border-zinc-800">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
+      <div className="w-[640px] max-w-[92vw] h-[600px] max-h-[88vh] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 dark:border-zinc-800 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center shadow-md">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z M19 10v2a7 7 0 01-14 0v-2 M12 19v4 M8 23h8"
-                />
-              </svg>
-            </div>
-            <div>
-              <div className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Sequ3nce Stream</div>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">Hold-to-talk dictation anywhere on your screen</div>
-            </div>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-black">Sequ3nce Stream</h2>
+            <p className="text-[12px] text-gray-500 mt-0.5">Hold-to-talk dictation, anywhere on your screen.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-            title="Close"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-3">
+            {/* On/Off toggle */}
+            <button
+              onClick={handleToggleEnabled}
+              disabled={togglingEnabled}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                streamEnabled ? 'bg-black' : 'bg-gray-200'
+              }`}
+              title={streamEnabled ? 'Disable Stream' : 'Enable Stream'}
+            >
+              <span
+                className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                  streamEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            {/* Close */}
+            <button
+              onClick={onClose}
+              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Tab bar */}
-        <div className="flex items-center gap-1 px-8 pt-3 shrink-0 border-b border-gray-100 dark:border-zinc-800">
+        <div className="flex items-center px-5 border-b border-gray-200 shrink-0">
           {(['history', 'settings'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2.5 text-xs font-semibold capitalize rounded-t-lg transition-colors relative ${
+              className={`relative px-3 pb-3 -mb-px text-[13px] font-medium capitalize transition-colors ${
                 activeTab === tab
-                  ? 'text-gray-900 dark:text-white'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  ? 'text-black'
+                  : 'text-gray-500 hover:text-gray-800'
               }`}
             >
               {tab}
               {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full" />
+                <div className="absolute bottom-0 left-0 right-0 h-px bg-black" />
               )}
             </button>
           ))}
@@ -191,7 +226,7 @@ export function StreamModal({ closerInfo, onClose }: StreamModalProps) {
         <div className="flex-1 overflow-hidden flex flex-col">
           {!initialLoadDone ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-gray-200 dark:border-zinc-700 border-t-black dark:border-t-white rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-gray-200 border-t-black rounded-full animate-spin" />
             </div>
           ) : activeTab === 'history' ? (
             <StreamHistoryTab

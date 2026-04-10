@@ -122,54 +122,39 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
   ];
 
   return (
-    <div className="flex flex-col gap-6 px-8 py-6">
+    <div className="flex flex-col gap-6 px-5 py-5">
       {/* Hero: hotkey visual */}
-      <div className="flex flex-col items-center gap-3 py-4">
+      <div className="flex flex-col items-center gap-3 pt-2 pb-4">
         <HotkeyVisual hotkey={currentHotkey} platform={permissions?.platform ?? 'darwin'} />
       </div>
 
       {errorMessage && (
-        <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-sm text-red-700 dark:text-red-300">
+        <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
           {errorMessage}
         </div>
       )}
 
       {/* Permissions */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
           Permissions
         </h3>
-        <div className="rounded-2xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
           {/* Microphone */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-zinc-800">
-            <div className="flex items-start gap-3">
-              <div
-                className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                  !permissions ? 'bg-gray-100 dark:bg-zinc-800' : permissions.microphone ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-amber-100 dark:bg-amber-900/40'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z M19 10v2a7 7 0 01-14 0v-2 M12 19v4 M8 23h8"
-                  />
-                </svg>
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Microphone access</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Required so Stream can hear what you dictate
-                </div>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <div>
+              <div className="text-[13px] font-medium text-black">Microphone access</div>
+              <div className="text-[12px] text-gray-500">
+                So Stream can hear what you dictate
               </div>
             </div>
             {permissions?.microphone ? (
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Granted</span>
+              <span className="text-[12px] font-medium text-gray-500">Granted</span>
             ) : (
               <button
                 onClick={handleRequestMicrophone}
                 disabled={checkingPermissions}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-black rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                className="px-3 py-1.5 text-[12px] font-semibold text-white bg-black rounded-md hover:bg-gray-800 disabled:opacity-50 transition-colors"
               >
                 {checkingPermissions ? 'Checking…' : 'Grant'}
               </button>
@@ -178,30 +163,19 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
 
           {/* Accessibility (mac only) */}
           {isMac && (
-            <div className="flex items-center justify-between p-4">
-              <div className="flex items-start gap-3">
-                <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    !permissions ? 'bg-gray-100 dark:bg-zinc-800' : permissions.accessibility ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-amber-100 dark:bg-amber-900/40'
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l-4 4-4-4 M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Accessibility access</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Required so Stream can paste into the focused app
-                  </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <div className="text-[13px] font-medium text-black">Accessibility access</div>
+                <div className="text-[12px] text-gray-500">
+                  So Stream can paste into the focused app
                 </div>
               </div>
               {permissions?.accessibility ? (
-                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Granted</span>
+                <span className="text-[12px] font-medium text-gray-500">Granted</span>
               ) : (
                 <button
                   onClick={handleRequestAccessibility}
-                  className="px-3 py-1.5 text-xs font-semibold text-white bg-black rounded-lg hover:bg-gray-800 transition-colors"
+                  className="px-3 py-1.5 text-[12px] font-semibold text-white bg-black rounded-md hover:bg-gray-800 transition-colors"
                 >
                   Open Settings
                 </button>
@@ -210,19 +184,21 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
           )}
         </div>
         {allGood && (
-          <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-            You&apos;re all set — try holding <span className="font-bold">{displayNameForHotkey(currentHotkey)}</span> anywhere and speak.
+          <div className="text-[12px] text-gray-500">
+            You&apos;re all set — hold{' '}
+            <span className="font-semibold text-black">{displayNameForHotkey(currentHotkey)}</span>{' '}
+            anywhere and speak.
           </div>
         )}
       </section>
 
       {/* Hotkey picker — Windows only. macOS is locked to Fn in v1. */}
       {!isMac && (
-        <section className="flex flex-col gap-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        <section className="flex flex-col gap-2">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             Hotkey
           </h3>
-          <div className="rounded-2xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
+          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             {hotkeyOptions.map((opt, idx) => {
               const isSelected = opt.id === currentHotkey;
               const isBusy = busyKey === opt.id;
@@ -231,21 +207,21 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
                   key={opt.id}
                   onClick={() => handleHotkeyChange(opt.id)}
                   disabled={isBusy}
-                  className={`w-full flex items-center justify-between p-4 text-left transition-colors ${
-                    idx > 0 ? 'border-t border-gray-100 dark:border-zinc-800' : ''
-                  } ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/40' : 'hover:bg-gray-50 dark:hover:bg-zinc-800/60'}`}
+                  className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
+                    idx > 0 ? 'border-t border-gray-100' : ''
+                  } hover:bg-gray-50`}
                 >
                   <div>
-                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">{opt.label}</div>
+                    <div className="text-[13px] font-medium text-black">{opt.label}</div>
                     {opt.hint && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{opt.hint}</div>
+                      <div className="text-[12px] text-gray-500">{opt.hint}</div>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {isBusy && <span className="text-[10px] text-gray-400">saving…</span>}
+                    {isBusy && <span className="text-[11px] text-gray-400">saving…</span>}
                     <div
-                      className={`w-4 h-4 rounded-full border-2 ${
-                        isSelected ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300 dark:border-zinc-600'
+                      className={`w-4 h-4 rounded-full border ${
+                        isSelected ? 'border-black bg-black' : 'border-gray-300'
                       }`}
                     >
                       {isSelected && (
@@ -263,21 +239,21 @@ export function StreamSettingsTab({ closerInfo, settings, onSettingsChanged }: S
       )}
 
       {/* Danger zone */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
           Danger zone
         </h3>
-        <div className="rounded-2xl border border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20 p-4 flex items-center justify-between">
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-gray-800 dark:text-gray-200">Delete all history</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Remove every transcription from your account. This cannot be undone.
+            <div className="text-[13px] font-medium text-black">Delete all history</div>
+            <div className="text-[12px] text-gray-500">
+              Remove every transcription from your account. Cannot be undone.
             </div>
           </div>
           <button
             onClick={handleDeleteAll}
             disabled={deletingAll}
-            className="px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-300 bg-white dark:bg-zinc-900 border border-red-300 dark:border-red-900 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/60 disabled:opacity-50 transition-colors"
+            className="px-3 py-1.5 text-[12px] font-semibold text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors whitespace-nowrap"
           >
             {deletingAll ? 'Deleting…' : deleteConfirm ? 'Click again to confirm' : 'Delete all'}
           </button>

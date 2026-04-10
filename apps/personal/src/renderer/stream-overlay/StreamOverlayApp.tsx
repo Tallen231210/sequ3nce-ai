@@ -165,12 +165,12 @@ export function StreamOverlayApp() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 16,
-        background: 'rgba(17, 24, 39, 0.92)',
-        borderRadius: 24,
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        boxShadow: '0 20px 48px rgba(0, 0, 0, 0.55)',
-        color: '#f9fafb',
+        gap: 14,
+        background: '#000000',
+        borderRadius: 12,
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.5)',
+        color: '#ffffff',
         fontFamily: "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         userSelect: 'none',
       }}
@@ -180,9 +180,8 @@ export function StreamOverlayApp() {
         style={{
           fontSize: 11,
           fontWeight: 600,
-          letterSpacing: 1.2,
-          textTransform: 'uppercase',
-          color: isActive ? '#a78bfa' : '#9ca3af',
+          letterSpacing: 0.8,
+          color: '#a1a1aa',
         }}
       >
         Sequ3nce Stream
@@ -192,11 +191,11 @@ export function StreamOverlayApp() {
 
       <div
         style={{
-          fontSize: 13,
+          fontSize: 12,
           fontWeight: 500,
-          color: state === 'error' ? '#f87171' : state === 'success' ? '#34d399' : '#d1d5db',
+          color: state === 'error' ? '#f87171' : '#d4d4d8',
           textAlign: 'center',
-          minHeight: 18,
+          minHeight: 16,
         }}
       >
         {bodyText}
