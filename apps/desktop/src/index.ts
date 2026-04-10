@@ -1514,11 +1514,12 @@ app.on('before-quit', () => {
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
-// Set the GitHub release feed
+// Use dedicated update server to avoid "Latest Release" collision with Personal app.
+// The /api/updates/desktop endpoint filters for desktop-v* tags only.
+// Must use www. to avoid Vercel's non-www → www 307 redirect.
 autoUpdater.setFeedURL({
-  provider: 'github',
-  owner: 'Tallen231210',
-  repo: 'sequ3nce-ai',
+  provider: 'generic',
+  url: 'https://www.sequ3nce.ai/api/updates/desktop',
 });
 
 // Set up auto-updater event handlers
