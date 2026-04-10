@@ -112,7 +112,8 @@ jobs:
             apps/personal/out/make/**/*.rpm
 
   create-release:
-    needs: [build-mac, build-windows, build-linux]
+    needs: [build-mac, build-windows]
+    # Linux build is optional — koffi's cross-arch prebuilds break RPM strip
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
