@@ -16,6 +16,7 @@ import {
   Calendar,
   Target,
   GraduationCap,
+  Mic,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,13 @@ const features = [
     title: "Get hired by verified companies",
     description:
       "Browse job postings from companies already using Sequ3nce. One click shares your verified profile with hiring managers — no resume, no cover letter, just proof you can close.",
+    size: "large" as const,
+  },
+  {
+    icon: Mic,
+    title: "Sequ3nce Stream — voice dictation for closers",
+    description:
+      "Hold a key, speak, release — your words appear wherever your cursor is. Draft follow-up emails, fill out CRM notes, write proposals, and take call notes — all by voice, anywhere on your screen. Built for the speed closers actually work at.",
     size: "large" as const,
   },
   {
@@ -212,17 +220,17 @@ export default function PersonalLandingPage() {
           <AnimatedSection>
             <div className="text-center max-w-3xl mx-auto">
               <h1 className="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-semibold tracking-[-0.03em] text-zinc-950 leading-[0.95]">
-                Your sales career
-                <span className="text-zinc-300">,</span>
+                The app top closers
                 <br />
-                verified
+                won&apos;t work without
                 <span className="text-zinc-300">.</span>
               </h1>
               <p className="mt-8 text-lg lg:text-xl text-zinc-500 max-w-2xl mx-auto leading-relaxed">
 
                 The call recording tool that makes Fathom look like a toy — built
                 specifically for high-performing closers. Record every call, verify
-                your stats, build your profile, and get discovered by top companies. $129.99/mo.
+                your stats, build your profile, and get discovered by top companies.
+                Start with a 45-day free trial. The first 100 users lock in $99/mo for life and the highest affiliate tier — everyone after pays $129.99/mo.
               </p>
               <div className="mt-10">
                 <Link
@@ -236,11 +244,29 @@ export default function PersonalLandingPage() {
             </div>
           </AnimatedSection>
 
+          {/* Demo video */}
+          <AnimatedSection delay={150}>
+            <div className="mt-16 max-w-4xl mx-auto">
+              <div
+                className="relative w-full rounded-2xl overflow-hidden border border-zinc-200/60 shadow-xl shadow-zinc-200/30 bg-zinc-50"
+                style={{ paddingBottom: '56.25%' }}
+              >
+                <iframe
+                  src="https://share.descript.com/embed/I65Zekf6Wkg"
+                  className="absolute inset-0 w-full h-full"
+                  allow="autoplay; fullscreen"
+                  allowFullScreen
+                  frameBorder="0"
+                />
+              </div>
+            </div>
+          </AnimatedSection>
+
           {/* Stats strip */}
-          <AnimatedSection delay={200}>
+          <AnimatedSection delay={300}>
             <div className="mt-16 grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-2xl mx-auto">
               {[
-                { label: "$129.99/mo", sub: "Everything included" },
+                { label: "$99/mo", sub: "First 100 users" },
                 { label: "AI Analysis", sub: "After every call" },
                 { label: "Elite Training", sub: "From top closers" },
                 { label: "Job Board", sub: "Verified companies" },
@@ -266,9 +292,10 @@ export default function PersonalLandingPage() {
           <AnimatedSection>
             <div className="text-center mb-16">
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-[-0.03em] text-zinc-950 leading-tight">
-                Your track record should
+                Your sales career
+                <span className="text-zinc-300">,</span>
                 <br />
-                be verifiable
+                verified
                 <span className="text-zinc-300">.</span>
               </h2>
             </div>
@@ -421,13 +448,18 @@ export default function PersonalLandingPage() {
           <AnimatedSection delay={100}>
             <div className="max-w-md mx-auto rounded-2xl border-2 border-zinc-900 bg-white p-8 lg:p-10">
               <div className="text-center mb-8">
+                <div className="inline-block bg-zinc-900 text-white text-xs font-semibold px-3 py-1 rounded-full mb-4 tracking-wide">
+                  EARLY BIRD — FIRST 100 USERS
+                </div>
                 <div className="text-5xl lg:text-6xl font-bold text-zinc-900">
-                  $129
-                  <span className="text-3xl font-bold">.99</span>
+                  $99
                   <span className="text-2xl font-medium text-zinc-400">/mo</span>
                 </div>
-                <p className="text-sm text-zinc-500 mt-2">
-                  Cancel anytime. No contracts.
+                <div className="text-sm text-zinc-400 mt-2 line-through">
+                  $129.99/mo after first 100 users
+                </div>
+                <p className="text-sm text-zinc-500 mt-1">
+                  45-day free trial. Cancel anytime. No contracts.
                 </p>
               </div>
 
