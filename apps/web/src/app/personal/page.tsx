@@ -18,8 +18,10 @@ import {
   GraduationCap,
   Mic,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { LeadCaptureModal } from "@/components/LeadCaptureModal";
 
 /* ─── Data ───────────────────────────────────────── */
 
@@ -158,7 +160,24 @@ const faqs = [
 /* ─── Component ──────────────────────────────────── */
 
 export default function PersonalLandingPage() {
+  return (
+    <Suspense>
+      <PersonalLandingPageInner />
+    </Suspense>
+  );
+}
+
+function PersonalLandingPageInner() {
+  const searchParams = useSearchParams();
+  const refParam = searchParams.get("ref") || undefined;
   const [isScrolled, setIsScrolled] = useState(false);
+  const [showLeadModal, setShowLeadModal] = useState(false);
+  const [leadSource, setLeadSource] = useState("hero");
+
+  const openLeadModal = useCallback((source: string) => {
+    setLeadSource(source);
+    setShowLeadModal(true);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
@@ -205,12 +224,12 @@ export default function PersonalLandingPage() {
               </Link>
             </nav>
           </div>
-          <Link
-            href="/personal/download"
+          <button
+            onClick={() => openLeadModal("nav")}
             className="bg-zinc-900 text-white text-[13px] font-medium px-5 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
           >
             Download App
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -233,13 +252,13 @@ export default function PersonalLandingPage() {
                 Start with a 45-day free trial. The first 100 users lock in $99/mo for life and the highest affiliate tier — everyone after pays $129.99/mo.
               </p>
               <div className="mt-10">
-                <Link
-                  href="/personal/download"
+                <button
+                  onClick={() => openLeadModal("hero")}
                   className="inline-flex items-center bg-zinc-900 text-white font-medium px-8 py-4 rounded-xl text-[15px] hover:bg-zinc-800 transition-colors"
                 >
                   Download the App
                   <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                </Link>
+                </button>
               </div>
             </div>
           </AnimatedSection>
@@ -474,12 +493,12 @@ export default function PersonalLandingPage() {
                 ))}
               </div>
 
-              <Link
-                href="/personal/download"
+              <button
+                onClick={() => openLeadModal("pricing")}
                 className="block w-full bg-zinc-900 text-white text-center font-medium py-3.5 rounded-xl hover:bg-zinc-800 transition-colors"
               >
                 Download &amp; Get Started
-              </Link>
+              </button>
             </div>
           </AnimatedSection>
         </div>
@@ -522,13 +541,13 @@ export default function PersonalLandingPage() {
                 Start building your verified track record today.
               </p>
               <div className="mt-14">
-                <Link
-                  href="/personal/download"
+                <button
+                  onClick={() => openLeadModal("cta")}
                   className="inline-flex items-center bg-zinc-900 text-white font-medium px-8 py-4 rounded-xl text-[15px] hover:bg-zinc-800 transition-colors"
                 >
                   Download Sequ3nce Personal
                   <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                </Link>
+                </button>
               </div>
             </div>
           </AnimatedSection>
@@ -605,6 +624,14 @@ export default function PersonalLandingPage() {
           </div>
         </div>
       </footer>
+      {/* Lead capture modal — shown when any download button is clicked */}
+      {showLeadModal && (
+        <LeadCaptureModal
+          onClose={() => setShowLeadModal(false)}
+          source={leadSource}
+          refParam={refParam}
+        />
+      )}
     </main>
   );
 }

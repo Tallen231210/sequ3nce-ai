@@ -8441,4 +8441,43 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ============================================
+// B2C LEADS — landing page lead capture
+// ============================================
+
+// POST /b2c/leads — save a lead from the landing page (email + phone)
+http.route({
+  path: "/b2c/leads",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, phone, source, refParam } = body ?? {};
+
+      if (typeof email !== "string" || typeof phone !== "string") {
+        return b2cJsonResponse({ error: "email and phone are required" }, 400);
+      }
+
+      const id = await ctx.runMutation(api.b2cLeads.saveLead, {
+        email,
+        phone,
+        source: typeof source === "string" ? source : undefined,
+        refParam: typeof refParam === "string" ? refParam : undefined,
+      });
+
+      return b2cJsonResponse({ id }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to save lead";
+      console.error("[Leads] save error:", msg);
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/leads",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 export default http;

@@ -1322,4 +1322,20 @@ export default defineSchema({
     durationSec: v.optional(v.number()), // Length of audio clip in seconds
     createdAt: v.number(),
   }).index("by_user_and_date", ["b2cUserId", "createdAt"]),
+
+  // ============================================
+  // B2C LEADS — captured on landing page before download
+  // ============================================
+
+  // Warm leads from the /personal landing page. Captured when users click
+  // "Download" — email is used for Refgrow affiliate attribution, phone
+  // is for sales team follow-up.
+  b2cLeads: defineTable({
+    email: v.string(),
+    phone: v.string(),
+    source: v.optional(v.string()),   // which button: "hero", "nav", "pricing", "cta"
+    refParam: v.optional(v.string()), // raw ?ref= value from affiliate link
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_email", ["email"]),
 });
