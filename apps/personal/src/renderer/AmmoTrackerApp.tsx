@@ -945,6 +945,8 @@ export function AmmoTrackerApp() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [callId, notes, saveNotes]);
 
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
   const handleMinimize = useCallback(() => {
     setIsMinimized(true);
     window.ammoTracker?.minimize();
@@ -953,6 +955,11 @@ export function AmmoTrackerApp() {
   const handleExpand = useCallback(() => {
     setIsMinimized(false);
     window.ammoTracker?.expand();
+  }, []);
+
+  const handleClose = useCallback(() => {
+    window.ammoTracker?.close();
+    setShowCloseConfirm(false);
   }, []);
 
   if (isLoading) {
@@ -1026,8 +1033,17 @@ export function AmmoTrackerApp() {
           <span className={`w-2 h-2 rounded-full transition-colors duration-150 ${callId ? 'bg-green-500' : 'bg-gray-300 dark:bg-zinc-600'}`} />
           <button
             onClick={handleMinimize}
-            className="w-6 h-6 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center text-gray-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors duration-150"
+            className="w-6 h-6 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-700 flex items-center justify-center text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors duration-150"
             title="Minimize panel"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setShowCloseConfirm(true)}
+            className="w-6 h-6 rounded-md hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center text-gray-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors duration-150"
+            title="Close panel"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1080,6 +1096,30 @@ export function AmmoTrackerApp() {
         )}
         {/* Chat panel removed — B2C has no sales manager messaging */}
       </div>
+
+      {/* Close confirmation dialog */}
+      {showCloseConfirm && (
+        <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-50 rounded-2xl">
+          <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-5 mx-4 max-w-[260px]">
+            <p className="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">Close ammo panel?</p>
+            <p className="text-[12px] text-gray-500 dark:text-zinc-400 mb-4">You can reopen it anytime from the main app.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCloseConfirm(false)}
+                className="flex-1 py-2 text-[12px] font-medium text-gray-700 dark:text-zinc-300 bg-gray-100 dark:bg-zinc-700 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-600 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClose}
+                className="flex-1 py-2 text-[12px] font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
