@@ -23,6 +23,16 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
+  // Redirect affiliate links from root to /personal — Refgrow generates links like
+  // sequ3nce.ai?ref=ZCGBIE but the B2C landing page (with lead capture + Refgrow
+  // attribution) lives at /personal. This preserves the ?ref= param so the cookie
+  // and attribution still work.
+  const url = req.nextUrl;
+  if (url.pathname === "/" && url.searchParams.has("ref")) {
+    url.pathname = "/personal";
+    return NextResponse.redirect(url);
+  }
+
   if (isProtectedRoute(req)) {
     await auth.protect();
   }
