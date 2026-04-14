@@ -3,11 +3,18 @@ import { api, internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Sync all connected calendars every 15 minutes
+// Sync all connected calendars every 15 minutes (legacy single-calendar + B2B)
 crons.interval(
   "sync-all-calendars",
   { minutes: 15 },
   api.calendar.syncAllCalendars
+);
+
+// Sync all B2C multi-calendar connections every 15 minutes
+crons.interval(
+  "sync-b2c-calendars",
+  { minutes: 15 },
+  internal.googleCalendar.syncAllB2cCalendars
 );
 
 // Auto-schedule meeting bots — DISABLED: bots are now created on-demand when closer clicks "Join & Record"

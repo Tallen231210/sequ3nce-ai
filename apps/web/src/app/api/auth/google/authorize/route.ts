@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const closerId = url.searchParams.get("closerId");
   const app = url.searchParams.get("app");
+  const calendarLabel = url.searchParams.get("label"); // B2C multi-calendar: offer/company name
 
   if (!closerId) {
     return NextResponse.json({ error: "Missing closerId" }, { status: 400 });
@@ -29,8 +30,12 @@ export async function GET(req: NextRequest) {
     process.env.GOOGLE_REDIRECT_URI ||
     `${process.env.NEXT_PUBLIC_APP_URL || "https://sequ3nce.ai"}/api/auth/google/callback`;
 
-  // Encode optional app identifier into state so callback knows which app to redirect to
-  const state = app ? `${closerId}::${app}` : closerId;
+  // Encode app identifier and calendar label into state for the callback
+  // Format: "closerId::app::label" (label is URL-encoded for safety)
+  let state = closerId;
+  if (app) state += `::${app}`;
+  else state += `::`;
+  if (calendarLabel) state += `::${encodeURIComponent(calendarLabel)}`;
 
   const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authUrl.searchParams.set("client_id", clientId);

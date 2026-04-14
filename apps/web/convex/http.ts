@@ -8480,4 +8480,125 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ============================================
+// B2C MULTI-CALENDAR
+// ============================================
+
+// GET /b2c/calendars?closerId=X — list all calendar connections for a closer
+http.route({
+  path: "/b2c/calendars",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const closerId = url.searchParams.get("closerId");
+      if (!closerId) {
+        return b2cJsonResponse({ error: "closerId is required" }, 400);
+      }
+      const calendars = await ctx.runQuery(api.b2cCalendars.getCalendars, {
+        closerId: closerId as Id<"closers">,
+      });
+      return b2cJsonResponse({ calendars }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to load calendars";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+// POST /b2c/calendars — add a new calendar connection
+http.route({
+  path: "/b2c/calendars",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { closerId, teamId, label, provider, googleRefreshToken, googleEmail, icsUrl } = body ?? {};
+      if (typeof closerId !== "string" || typeof teamId !== "string" || typeof label !== "string" || typeof provider !== "string") {
+        return b2cJsonResponse({ error: "closerId, teamId, label, and provider are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCalendars.addCalendar, {
+        closerId: closerId as Id<"closers">,
+        teamId: teamId as Id<"teams">,
+        label,
+        provider,
+        googleRefreshToken: typeof googleRefreshToken === "string" ? googleRefreshToken : undefined,
+        googleEmail: typeof googleEmail === "string" ? googleEmail : undefined,
+        icsUrl: typeof icsUrl === "string" ? icsUrl : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to add calendar";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+// POST /b2c/calendars/remove — remove a calendar and all its events
+http.route({
+  path: "/b2c/calendars/remove",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { calendarId, closerId } = body ?? {};
+      if (typeof calendarId !== "string" || typeof closerId !== "string") {
+        return b2cJsonResponse({ error: "calendarId and closerId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCalendars.removeCalendar, {
+        calendarId: calendarId as Id<"b2cCalendars">,
+        closerId: closerId as Id<"closers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to remove calendar";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+// POST /b2c/calendars/update — update label, color, or enabled state
+http.route({
+  path: "/b2c/calendars/update",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { calendarId, closerId, label, color, isEnabled } = body ?? {};
+      if (typeof calendarId !== "string" || typeof closerId !== "string") {
+        return b2cJsonResponse({ error: "calendarId and closerId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCalendars.updateCalendar, {
+        calendarId: calendarId as Id<"b2cCalendars">,
+        closerId: closerId as Id<"closers">,
+        label: typeof label === "string" ? label : undefined,
+        color: typeof color === "string" ? color : undefined,
+        isEnabled: typeof isEnabled === "boolean" ? isEnabled : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to update calendar";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/calendars",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/calendars/remove",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/calendars/update",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 export default http;

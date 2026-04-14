@@ -1,15 +1,16 @@
 import { v } from "convex/values";
-import { mutation, action, internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query, action, internalMutation, internalQuery } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 
 // ============================================
-// INTERNAL QUERIES
+// QUERIES
 // ============================================
 
 /**
- * Get closer by ID for use in actions
+ * Get closer by ID. Public so the OAuth callback (ConvexHttpClient) can read teamId
+ * for creating b2cCalendar records.
  */
-export const getCloserById = internalQuery({
+export const getCloserById = query({
   args: { closerId: v.id("closers") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.closerId);

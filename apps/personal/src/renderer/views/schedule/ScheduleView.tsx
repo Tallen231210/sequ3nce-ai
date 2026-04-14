@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import type { CloserInfo, CalendarEvent } from '../../convex';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import type { CloserInfo, CalendarEvent, B2cCalendar } from '../../convex';
 import {
   getCalendarEvents,
   getCalendarStatus,
@@ -7,10 +7,11 @@ import {
   disconnectCalendar,
   excludeCalendarEvent,
   createBotForMeeting,
+  getB2cCalendars,
   type CalendarStatus,
 } from '../../convex';
 import { type ViewMode, formatRelative, formatWeekLabel, getWeekDates, extractProspectName } from './scheduleUtils';
-import { ScheduleConnectForm } from './ScheduleConnectForm';
+import { CalendarManagement } from './CalendarManagement';
 import { ScheduleListView } from './ScheduleListView';
 import { ScheduleWeekView } from './ScheduleWeekView';
 import { ScheduleMeetingModal } from './ScheduleMeetingModal';
@@ -22,6 +23,7 @@ interface ScheduleViewProps {
 export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [status, setStatus] = useState<CalendarStatus | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [b2cCalendars, setB2cCalendars] = useState<B2cCalendar[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -30,7 +32,11 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('week');
   const [weekOffset, setWeekOffset] = useState(0);
 
-  // Connection form (no longer needed for ICS — uses Google OAuth now)
+  // Calendar filter — set of calendar IDs that are currently visible
+  const [hiddenCalendarIds, setHiddenCalendarIds] = useState<Set<string>>(new Set());
+
+  // Show/hide calendar management panel
+  const [showCalendarPanel, setShowCalendarPanel] = useState(false);
 
   // Meeting modal
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -42,11 +48,19 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const loadData = useCallback(async () => {
     const thisLoadId = ++loadIdRef.current;
     try {
-      const calStatus = await getCalendarStatus(closerInfo.email, closerInfo.teamId);
+      // Load b2cCalendars (multi-calendar) alongside legacy status
+      const [calStatus, calendars] = await Promise.all([
+        getCalendarStatus(closerInfo.email, closerInfo.teamId),
+        getB2cCalendars(closerInfo.closerId),
+      ]);
       if (thisLoadId !== loadIdRef.current) return;
       setStatus(calStatus);
+      setB2cCalendars(calendars);
 
-      if (calStatus?.connected) {
+      // Consider "connected" if legacy connection OR any b2cCalendars exist
+      const isConnected = calStatus?.connected || calendars.length > 0;
+
+      if (isConnected) {
         let start: number, end: number;
         if (viewMode === 'week') {
           const dates = getWeekDates(weekOffset);
@@ -78,6 +92,16 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
     return () => { clearInterval(syncTimer); clearInterval(minuteTimer); };
   }, [loadData]);
 
+  // Filter events by visible calendars
+  const filteredEvents = useMemo(() => {
+    if (hiddenCalendarIds.size === 0) return events;
+    return events.filter((e) => {
+      // Events without a calendarId (legacy) are always shown
+      if (!(e as any).calendarId) return true;
+      return !hiddenCalendarIds.has((e as any).calendarId);
+    });
+  }, [events, hiddenCalendarIds]);
+
   // Handlers
   async function handleSync() {
     setIsSyncing(true);
@@ -87,9 +111,10 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   }
 
   async function handleDisconnect() {
-    await disconnectCalendar(closerInfo.email, closerInfo.teamId);
-    setStatus(null);
-    setEvents([]);
+    const success = await disconnectCalendar(closerInfo.email, closerInfo.teamId);
+    if (success) {
+      await loadData();
+    }
   }
 
   async function handleExclude(event: CalendarEvent) {
@@ -106,6 +131,18 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
     await loadData();
   }
 
+  function toggleCalendarVisibility(calendarId: string) {
+    setHiddenCalendarIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(calendarId)) {
+        next.delete(calendarId);
+      } else {
+        next.add(calendarId);
+      }
+      return next;
+    });
+  }
+
   // Loading state
   if (isLoading) {
     return (
@@ -116,13 +153,41 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
     );
   }
 
-  // Not connected — show Google Calendar OAuth button
-  if (!status?.connected) {
+  // Not connected — show calendar management (which shows the initial connect screen)
+  const isConnected = status?.connected || b2cCalendars.length > 0;
+  if (!isConnected) {
     return (
-      <ScheduleConnectForm
-        closerId={closerInfo.closerId}
-        onConnected={loadData}
+      <CalendarManagement
+        closerInfo={closerInfo}
+        calendars={b2cCalendars}
+        onRefresh={loadData}
       />
+    );
+  }
+
+  // Calendar management panel (slide-in when "Calendars" button is clicked)
+  if (showCalendarPanel) {
+    return (
+      <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <div className="flex items-center justify-between px-4 py-3">
+            <h2 className="text-[14px] font-semibold text-black dark:text-white">My Calendars</h2>
+            <button
+              onClick={() => setShowCalendarPanel(false)}
+              className="text-[12px] font-medium text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Back to Schedule
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <CalendarManagement
+            closerInfo={closerInfo}
+            calendars={b2cCalendars}
+            onRefresh={loadData}
+          />
+        </div>
+      </div>
     );
   }
 
@@ -133,22 +198,43 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
       {/* Header */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="flex items-center justify-between px-4 py-2.5">
-          {/* Sync status */}
-          <div className="flex items-center gap-1.5">
-            {status.lastSynced && (
-              <>
+          {/* Calendar filter pills (multi-calendar) */}
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto">
+            {b2cCalendars.length > 0 ? (
+              b2cCalendars.filter((c) => c.isEnabled).map((cal) => {
+                const isHidden = hiddenCalendarIds.has(cal._id);
+                return (
+                  <button
+                    key={cal._id}
+                    onClick={() => toggleCalendarVisibility(cal._id)}
+                    className={`flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded-md transition-colors whitespace-nowrap ${
+                      isHidden
+                        ? 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: isHidden ? '#d1d5db' : cal.color }}
+                    />
+                    {cal.label}
+                  </button>
+                );
+              })
+            ) : status?.lastSynced ? (
+              <div className="flex items-center gap-1.5">
                 <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
                 <span className="text-[12px] text-gray-500 dark:text-gray-400">
                   Synced {formatRelative(status.lastSynced)}
                 </span>
-              </>
-            )}
+              </div>
+            ) : null}
           </div>
 
           {/* View mode toggle */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5" style={{ width: 120 }}>
+          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 shrink-0" style={{ width: 120 }}>
             {(['list', 'week'] as ViewMode[]).map((mode) => (
               <button
                 key={mode}
@@ -165,7 +251,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={handleSync}
               disabled={isSyncing}
@@ -177,10 +263,10 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
               {isSyncing ? 'Syncing' : 'Refresh'}
             </button>
             <button
-              onClick={handleDisconnect}
-              className="text-[12px] font-medium text-gray-400 hover:text-red-500 transition-colors"
+              onClick={() => setShowCalendarPanel(true)}
+              className="text-[12px] font-medium text-gray-500 hover:text-gray-700 transition-colors"
             >
-              Disconnect
+              Calendars
             </button>
           </div>
         </div>
@@ -227,7 +313,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
       {/* Content */}
       {viewMode === 'list' ? (
         <ScheduleListView
-          events={events}
+          events={filteredEvents}
           now={now}
           closerEmail={closerInfo.email}
           onExclude={handleExclude}
@@ -235,7 +321,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
         />
       ) : (
         <ScheduleWeekView
-          events={events}
+          events={filteredEvents}
           weekDates={weekDates}
           now={now}
           closerEmail={closerInfo.email}

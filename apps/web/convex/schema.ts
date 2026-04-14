@@ -196,6 +196,10 @@ export default defineSchema({
       name: v.optional(v.string()),
       isOrganizer: v.optional(v.boolean()),
     }))),
+    // Multi-calendar support (B2C) — tracks which calendar connection this event belongs to
+    calendarId: v.optional(v.id("b2cCalendars")),
+    calendarColor: v.optional(v.string()),  // denormalized for fast UI rendering
+    calendarLabel: v.optional(v.string()),  // denormalized for fast UI rendering
   })
     .index("by_closer", ["closerId"])
     .index("by_team_and_time", ["teamId", "startTime"])
@@ -1296,6 +1300,29 @@ export default defineSchema({
     .index("by_job", ["jobPostingId", "createdAt"])
     .index("by_user", ["b2cUserId", "createdAt"])
     .index("by_job_user", ["jobPostingId", "b2cUserId"]),
+
+  // ============================================
+  // B2C MULTI-CALENDAR — multiple Google Calendar connections per closer
+  // ============================================
+
+  // Each record represents one Google Calendar (or ICS feed) connection.
+  // Closers can have up to 5 calendars, each labeled with an offer/company name
+  // and color-coded for visual separation in the schedule view.
+  b2cCalendars: defineTable({
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    label: v.string(),                              // user-provided: "Solar Co", "Coaching Inc"
+    color: v.string(),                              // hex color from preset palette
+    provider: v.string(),                           // "google" | "ics"
+    googleRefreshToken: v.optional(v.string()),      // Google OAuth refresh token
+    googleEmail: v.optional(v.string()),             // Google account email (for display + dupe detection)
+    icsUrl: v.optional(v.string()),                  // ICS feed URL (fallback method)
+    isEnabled: v.boolean(),                          // toggle visibility in schedule
+    lastSyncAt: v.optional(v.number()),
+    syncError: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_closer", ["closerId"]),
 
   // ============================================
   // SEQU3NCE STREAM — Wispr Flow-style dictation

@@ -3632,3 +3632,95 @@ export async function getSubscriptionStatus(
     return { subscriptionStatus: "none", error: "Network error" };
   }
 }
+
+// ==================== B2C MULTI-CALENDAR ====================
+
+export interface B2cCalendar {
+  _id: string;
+  closerId: string;
+  teamId: string;
+  label: string;
+  color: string;
+  provider: string;
+  googleEmail?: string;
+  isEnabled: boolean;
+  lastSyncAt?: number;
+  syncError?: string;
+  createdAt: number;
+}
+
+export async function getB2cCalendars(closerId: string): Promise<B2cCalendar[]> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/calendars?closerId=${encodeURIComponent(closerId)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.calendars || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get calendars:", error);
+    return [];
+  }
+}
+
+export async function addB2cCalendar(
+  closerId: string,
+  teamId: string,
+  label: string,
+  provider: string,
+  opts?: { googleRefreshToken?: string; googleEmail?: string; icsUrl?: string }
+): Promise<{ id?: string; color?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/calendars`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        closerId, teamId, label, provider,
+        ...opts,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Failed to add calendar" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to add calendar:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function removeB2cCalendar(
+  calendarId: string,
+  closerId: string
+): Promise<{ deleted?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/calendars/remove`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calendarId, closerId }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Failed to remove calendar" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to remove calendar:", error);
+    return { error: "Network error" };
+  }
+}
+
+export async function updateB2cCalendar(
+  calendarId: string,
+  closerId: string,
+  updates: { label?: string; color?: string; isEnabled?: boolean }
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/calendars/update`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calendarId, closerId, ...updates }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Failed to update calendar" };
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to update calendar:", error);
+    return { error: "Network error" };
+  }
+}

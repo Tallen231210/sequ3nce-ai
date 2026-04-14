@@ -23,6 +23,10 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
   const prospect = getProspectAttendee(event, closerEmail);
   const isPast = urgency === 'ended';
 
+  // Multi-calendar: show colored left border + label if event has calendar metadata
+  const calColor = (event as any).calendarColor as string | undefined;
+  const calLabel = (event as any).calendarLabel as string | undefined;
+
   return (
     <div
       className={`p-4 bg-white dark:bg-gray-900 rounded-xl border transition-colors ${
@@ -32,6 +36,7 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
           ? 'border-gray-100 dark:border-gray-800 opacity-60'
           : 'border-gray-100 dark:border-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)]'
       }`}
+      style={calColor ? { borderLeftWidth: 3, borderLeftColor: calColor } : undefined}
     >
       {/* Top row: urgency badge + time */}
       <div className="flex items-center justify-between mb-2">
@@ -47,9 +52,20 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
       </div>
 
       {/* Title */}
-      <h4 className="text-[15px] font-semibold text-black dark:text-white mb-1.5 line-clamp-2">
+      <h4 className="text-[15px] font-semibold text-black dark:text-white mb-1 line-clamp-2">
         {event.title}
       </h4>
+
+      {/* Calendar label (multi-calendar) */}
+      {calLabel && (
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{ backgroundColor: calColor }}
+          />
+          <span className="text-[11px] text-gray-400 dark:text-gray-500">{calLabel}</span>
+        </div>
+      )}
 
       {/* Prospect attendee */}
       {prospect && (

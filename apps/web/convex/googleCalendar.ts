@@ -274,6 +274,286 @@ function extractProspectAttendees(
     }));
 }
 
+// ============================================
+// B2C MULTI-CALENDAR SYNC (uses b2cCalendars table)
+// ============================================
+
+/** Get a b2cCalendar record by ID. */
+export const getB2cCalendarById = internalQuery({
+  args: { calendarId: v.id("b2cCalendars") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.calendarId);
+  },
+});
+
+/** Get all enabled b2cCalendars with Google refresh tokens. */
+export const getEnabledB2cGoogleCalendars = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("b2cCalendars").collect();
+    return all.filter(
+      (c) => c.isEnabled && c.googleRefreshToken && c.provider === "google"
+    );
+  },
+});
+
+/**
+ * Refresh a Google OAuth access token using a b2cCalendar's refresh token.
+ */
+export const refreshB2cAccessToken = internalAction({
+  args: { calendarId: v.id("b2cCalendars") },
+  handler: async (ctx, args): Promise<string> => {
+    const calendar = await ctx.runQuery(internal.googleCalendar.getB2cCalendarById, {
+      calendarId: args.calendarId,
+    });
+
+    if (!calendar?.googleRefreshToken) {
+      throw new Error("No Google Calendar refresh token found on b2cCalendar");
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      throw new Error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET env vars");
+    }
+
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: calendar.googleRefreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || data.error) {
+      if (data.error === "invalid_grant") {
+        // Mark the calendar as having a sync error so the UI can show "Reconnect"
+        await ctx.runMutation(internal.b2cCalendars.markSyncError, {
+          calendarId: args.calendarId,
+          syncError: "Authorization revoked — please reconnect",
+        });
+        throw new Error("Google Calendar authorization revoked. User needs to reconnect.");
+      }
+      throw new Error(`Token refresh failed: ${data.error || response.status}`);
+    }
+
+    return data.access_token;
+  },
+});
+
+/**
+ * Fetch events from Google Calendar API for a b2cCalendar record.
+ * Tags events with calendarId, calendarColor, and calendarLabel.
+ */
+export const fetchB2cCalendarEvents = internalAction({
+  args: { calendarId: v.id("b2cCalendars") },
+  handler: async (ctx, args): Promise<{ success: boolean; syncedEvents: number }> => {
+    // 1. Get the calendar record
+    const calendar = await ctx.runQuery(internal.googleCalendar.getB2cCalendarById, {
+      calendarId: args.calendarId,
+    });
+    if (!calendar) throw new Error("Calendar record not found");
+
+    // 2. Get the closer for attendee filtering
+    const closer = await ctx.runQuery(internal.googleCalendar.getCloserWithToken, {
+      closerId: calendar.closerId,
+    });
+    if (!closer) throw new Error("Closer not found");
+
+    // 3. Get fresh access token
+    const accessToken = await ctx.runAction(
+      internal.googleCalendar.refreshB2cAccessToken,
+      { calendarId: args.calendarId }
+    );
+
+    // 4. Fetch events from Google Calendar API
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const params = new URLSearchParams({
+      timeMin: sevenDaysAgo.toISOString(),
+      timeMax: thirtyDaysFromNow.toISOString(),
+      singleEvents: "true",
+      orderBy: "startTime",
+      maxResults: "250",
+    });
+
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Google Calendar API error ${response.status}: ${errorBody}`);
+    }
+
+    const data = await response.json();
+
+    // 5. Transform to our event format with calendar metadata
+    const events = (data.items || [])
+      .filter((item: GoogleCalendarEvent) => item.status !== "cancelled")
+      .map((item: GoogleCalendarEvent) => ({
+        uid: item.id,
+        title: item.summary || "Untitled",
+        description: item.description || undefined,
+        startTime: parseGoogleDateTime(item.start),
+        endTime: parseGoogleDateTime(item.end),
+        location: item.location || undefined,
+        isAllDay: !!item.start.date && !item.start.dateTime,
+        meetingUrl:
+          extractMeetingUrl(item.location) ||
+          extractMeetingUrl(item.description) ||
+          item.hangoutLink ||
+          undefined,
+        attendees: extractProspectAttendees(
+          item.attendees || [],
+          calendar.googleEmail || closer.email
+        ),
+        // Multi-calendar fields
+        calendarId: args.calendarId,
+        calendarColor: calendar.color,
+        calendarLabel: calendar.label,
+      }));
+
+    // 6. Upsert events (using existing mutation but with calendar metadata)
+    await ctx.runMutation(internal.googleCalendar.upsertB2cCalendarEvents, {
+      closerId: calendar.closerId,
+      teamId: calendar.teamId,
+      calendarId: args.calendarId,
+      events,
+    });
+
+    // 7. Mark sync success
+    await ctx.runMutation(internal.b2cCalendars.markSyncSuccess, {
+      calendarId: args.calendarId,
+      lastSyncAt: Date.now(),
+    });
+
+    return { success: true, syncedEvents: events.length };
+  },
+});
+
+/** Upsert calendar events with multi-calendar metadata. Deduplicates by uid + closerId + calendarId. */
+export const upsertB2cCalendarEvents = internalMutation({
+  args: {
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    calendarId: v.id("b2cCalendars"),
+    events: v.array(v.object({
+      uid: v.string(),
+      title: v.string(),
+      description: v.optional(v.string()),
+      startTime: v.number(),
+      endTime: v.number(),
+      location: v.optional(v.string()),
+      isAllDay: v.optional(v.boolean()),
+      meetingUrl: v.optional(v.string()),
+      attendees: v.optional(v.array(v.object({
+        email: v.string(),
+        name: v.optional(v.string()),
+        isOrganizer: v.optional(v.boolean()),
+      }))),
+      calendarId: v.id("b2cCalendars"),
+      calendarColor: v.string(),
+      calendarLabel: v.string(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    for (const event of args.events) {
+      // Check for existing event by uid + closer (may already exist from old single-calendar sync)
+      const existing = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_closer_and_uid", (q) =>
+          q.eq("closerId", args.closerId).eq("uid", event.uid)
+        )
+        .first();
+
+      if (existing) {
+        // Update existing event with new data + calendar metadata
+        await ctx.db.patch(existing._id, {
+          title: event.title,
+          description: event.description,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          location: event.location,
+          isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
+          fetchedAt: now,
+          attendees: event.attendees,
+          calendarId: args.calendarId,
+          calendarColor: event.calendarColor,
+          calendarLabel: event.calendarLabel,
+        });
+      } else {
+        await ctx.db.insert("calendarEvents", {
+          closerId: args.closerId,
+          teamId: args.teamId,
+          uid: event.uid,
+          title: event.title,
+          description: event.description,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          location: event.location,
+          isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
+          fetchedAt: now,
+          attendees: event.attendees,
+          calendarId: args.calendarId,
+          calendarColor: event.calendarColor,
+          calendarLabel: event.calendarLabel,
+        });
+      }
+    }
+  },
+});
+
+/**
+ * Sync all enabled b2cCalendars with Google Calendar API.
+ * Called from the cron job alongside the legacy single-calendar sync.
+ */
+export const syncAllB2cCalendars = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const calendars = await ctx.runQuery(
+      internal.googleCalendar.getEnabledB2cGoogleCalendars
+    );
+
+    if (calendars.length === 0) return { synced: 0 };
+
+    let synced = 0;
+    for (const cal of calendars) {
+      try {
+        await ctx.runAction(internal.googleCalendar.fetchB2cCalendarEvents, {
+          calendarId: cal._id,
+        });
+        synced++;
+      } catch (err) {
+        console.error(`[B2C Calendar Sync] Failed for calendar ${cal._id} (${cal.label}):`, err);
+        try {
+          await ctx.runMutation(internal.b2cCalendars.markSyncError, {
+            calendarId: cal._id,
+            syncError: err instanceof Error ? err.message : "Sync failed",
+          });
+        } catch {
+          // swallow — don't let error reporting fail the whole sync
+        }
+      }
+    }
+
+    console.log(`[B2C Calendar Sync] Synced ${synced}/${calendars.length} calendars`);
+    return { synced };
+  },
+});
+
 /** Extract meeting URL from text (location, description, etc.). */
 function extractMeetingUrl(text: string | null | undefined): string | undefined {
   if (!text) return undefined;

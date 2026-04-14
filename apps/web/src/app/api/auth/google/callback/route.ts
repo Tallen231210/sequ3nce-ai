@@ -46,8 +46,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // State may be "closerId" or "closerId::app" (e.g. "closerId::personal")
-    const [closerId, app] = (state || "").split("::");
+    // State format: "closerId::app::label" (label is URL-encoded)
+    const stateParts = (state || "").split("::");
+    const closerId = stateParts[0];
+    const app = stateParts[1] || undefined;
+    const calendarLabel = stateParts[2] ? decodeURIComponent(stateParts[2]) : undefined;
     const typedCloserId = closerId as Id<"closers">;
 
     // Exchange authorization code for tokens
@@ -123,12 +126,36 @@ export async function GET(req: NextRequest) {
       console.warn("[Google OAuth] Failed to fetch user info:", userInfoError);
     }
 
-    // Save the refresh token on the closer record
+    // Save the refresh token on the closer record (legacy — kept for backward compat)
     await convex.mutation(api.calendarOAuth.saveGoogleCalendarConnection, {
       closerId: typedCloserId,
       refreshToken,
       email,
     });
+
+    // For B2C Personal app: also create a b2cCalendars record for multi-calendar support
+    if (app === "personal" && calendarLabel) {
+      try {
+        // Get closer to find teamId
+        const closer = await convex.query(api.calendarOAuth.getCloserById, {
+          closerId: typedCloserId,
+        });
+        if (closer) {
+          await convex.mutation(api.b2cCalendars.addCalendar, {
+            closerId: typedCloserId,
+            teamId: closer.teamId,
+            label: calendarLabel,
+            provider: "google",
+            googleRefreshToken: refreshToken,
+            googleEmail: email,
+          });
+          console.log("[Google OAuth] Created b2cCalendar record:", calendarLabel, email);
+        }
+      } catch (b2cErr) {
+        // Don't fail the whole OAuth if b2cCalendar creation fails (e.g., dupe email)
+        console.warn("[Google OAuth] b2cCalendar creation failed (non-fatal):", b2cErr);
+      }
+    }
 
     console.log("[Google OAuth] Successfully saved Google Calendar connection for closer:", typedCloserId);
 
