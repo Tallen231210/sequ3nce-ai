@@ -8601,4 +8601,224 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ============================================
+// B2C FEATURE REQUESTS
+// ============================================
+
+http.route({
+  path: "/b2c/feature-requests",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const sortBy = url.searchParams.get("sortBy") || "popular";
+      const limit = url.searchParams.get("limit");
+      const requests = await ctx.runQuery(api.b2cFeatureRequests.listRequests, {
+        userId: userId ? userId as Id<"b2cUsers"> : undefined,
+        sortBy,
+        limit: limit ? parseInt(limit, 10) : undefined,
+      });
+      return b2cJsonResponse({ requests }, 200, true);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to load feature requests" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/feature-requests",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, title, description } = body ?? {};
+      if (typeof userId !== "string" || typeof title !== "string" || typeof description !== "string") {
+        return b2cJsonResponse({ error: "userId, title, and description are required" }, 400);
+      }
+      const id = await ctx.runMutation(api.b2cFeatureRequests.createRequest, {
+        userId: userId as Id<"b2cUsers">,
+        title,
+        description,
+      });
+      return b2cJsonResponse({ id }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to create request";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/feature-requests",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/feature-requests/upvote",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { userId, requestId } = await request.json();
+      if (typeof userId !== "string" || typeof requestId !== "string") {
+        return b2cJsonResponse({ error: "userId and requestId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFeatureRequests.upvoteRequest, {
+        userId: userId as Id<"b2cUsers">,
+        requestId: requestId as Id<"b2cFeatureRequests">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to upvote";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/feature-requests/upvote",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/feature-requests/remove-upvote",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { userId, requestId } = await request.json();
+      if (typeof userId !== "string" || typeof requestId !== "string") {
+        return b2cJsonResponse({ error: "userId and requestId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFeatureRequests.removeUpvote, {
+        userId: userId as Id<"b2cUsers">,
+        requestId: requestId as Id<"b2cFeatureRequests">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to remove upvote";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/feature-requests/remove-upvote",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/feature-requests/status",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { userId, requestId, status } = await request.json();
+      if (typeof userId !== "string" || typeof requestId !== "string" || typeof status !== "string") {
+        return b2cJsonResponse({ error: "userId, requestId, and status are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFeatureRequests.updateStatus, {
+        userId: userId as Id<"b2cUsers">,
+        requestId: requestId as Id<"b2cFeatureRequests">,
+        status,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to update status";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/feature-requests/status",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/feature-requests/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { userId, requestId } = await request.json();
+      if (typeof userId !== "string" || typeof requestId !== "string") {
+        return b2cJsonResponse({ error: "userId and requestId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cFeatureRequests.deleteRequest, {
+        userId: userId as Id<"b2cUsers">,
+        requestId: requestId as Id<"b2cFeatureRequests">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to delete request";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/feature-requests/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ============================================
+// B2C BUG REPORTS
+// ============================================
+
+http.route({
+  path: "/b2c/bug-reports",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { authorId, authorEmail, whatHappened, whatWereDoing, whichScreen, appVersion, platform } = body ?? {};
+      if (typeof authorId !== "string" || typeof whatHappened !== "string" || typeof whatWereDoing !== "string" || typeof whichScreen !== "string") {
+        return b2cJsonResponse({ error: "authorId, whatHappened, whatWereDoing, and whichScreen are required" }, 400);
+      }
+      const id = await ctx.runMutation(api.b2cBugReports.submitBugReport, {
+        authorId: authorId as Id<"b2cUsers">,
+        authorEmail: typeof authorEmail === "string" ? authorEmail : "",
+        whatHappened,
+        whatWereDoing,
+        whichScreen,
+        appVersion: typeof appVersion === "string" ? appVersion : undefined,
+        platform: typeof platform === "string" ? platform : undefined,
+      });
+      return b2cJsonResponse({ id }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to submit bug report";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/bug-reports",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const authorId = url.searchParams.get("authorId");
+      if (!authorId) {
+        return b2cJsonResponse({ error: "authorId is required" }, 400);
+      }
+      const reports = await ctx.runQuery(api.b2cBugReports.getMyReports, {
+        authorId: authorId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse({ reports }, 200, true);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to load reports" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/bug-reports",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
 export default http;

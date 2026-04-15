@@ -3728,3 +3728,153 @@ export async function updateB2cCalendar(
     return { error: "Network error" };
   }
 }
+
+// ==================== B2C FEATURE REQUESTS ====================
+
+export interface FeatureRequest {
+  _id: string;
+  authorId: string;
+  authorName: string;
+  title: string;
+  description: string;
+  status: string;
+  upvoteCount: number;
+  commentCount: number;
+  hasVoted: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function getFeatureRequests(
+  userId: string,
+  sortBy: string = "popular"
+): Promise<FeatureRequest[]> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/feature-requests?userId=${encodeURIComponent(userId)}&sortBy=${sortBy}`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.requests || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get feature requests:", error);
+    return [];
+  }
+}
+
+export async function createFeatureRequest(
+  userId: string,
+  title: string,
+  description: string
+): Promise<{ id?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/feature-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, title, description }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Failed to create request" };
+    return data;
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+export async function upvoteFeatureRequest(
+  userId: string,
+  requestId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/feature-requests/upvote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, requestId }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+export async function removeFeatureRequestUpvote(
+  userId: string,
+  requestId: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/feature-requests/remove-upvote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, requestId }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+export async function updateFeatureRequestStatus(
+  userId: string,
+  requestId: string,
+  status: string
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/feature-requests/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, requestId, status }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+// ==================== B2C BUG REPORTS ====================
+
+export interface BugReport {
+  _id: string;
+  authorId: string;
+  whatHappened: string;
+  whatWereDoing: string;
+  whichScreen: string;
+  status: string;
+  createdAt: number;
+}
+
+export async function submitBugReport(args: {
+  authorId: string;
+  authorEmail: string;
+  whatHappened: string;
+  whatWereDoing: string;
+  whichScreen: string;
+  appVersion?: string;
+  platform?: string;
+}): Promise<{ id?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/bug-reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Failed to submit report" };
+    return data;
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+export async function getMyBugReports(authorId: string): Promise<BugReport[]> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/bug-reports?authorId=${encodeURIComponent(authorId)}`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.reports || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get bug reports:", error);
+    return [];
+  }
+}

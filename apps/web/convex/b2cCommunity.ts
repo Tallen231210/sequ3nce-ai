@@ -804,6 +804,36 @@ export const seedDefaultChannels = mutation({
   },
 });
 
+// Add a single channel (for seeding new channels after initial setup)
+export const addChannel = mutation({
+  args: {
+    slug: v.string(),
+    name: v.string(),
+    description: v.string(),
+    order: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Check for duplicate slug
+    const existing = await ctx.db
+      .query("b2cCommunityChannels")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .first();
+    if (existing) return { id: existing._id, alreadyExists: true };
+
+    const id = await ctx.db.insert("b2cCommunityChannels", {
+      slug: args.slug,
+      name: args.name,
+      description: args.description,
+      order: args.order,
+      isDefault: true,
+      isArchived: false,
+      postCount: 0,
+      createdAt: Date.now(),
+    });
+    return { id, alreadyExists: false };
+  },
+});
+
 // Archive a channel (admin-only, soft delete)
 export const archiveChannel = mutation({
   args: { channelId: v.id("b2cCommunityChannels") },

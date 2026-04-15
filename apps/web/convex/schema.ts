@@ -1325,6 +1325,52 @@ export default defineSchema({
     .index("by_closer", ["closerId"]),
 
   // ============================================
+  // B2C COMMUNITY — Feature Requests, Bug Reports
+  // ============================================
+
+  // Feature requests with upvoting (one vote per user per request)
+  b2cFeatureRequests: defineTable({
+    authorId: v.id("b2cUsers"),
+    authorName: v.string(),
+    authorPhotoStorageId: v.optional(v.string()),
+    title: v.string(),
+    description: v.string(),
+    status: v.string(), // "open" | "planned" | "in_progress" | "shipped"
+    upvoteCount: v.number(),
+    commentCount: v.number(),
+    isDeleted: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_upvotes", ["isDeleted", "upvoteCount"])
+    .index("by_created", ["isDeleted", "createdAt"])
+    .index("by_author", ["authorId", "createdAt"]),
+
+  // One-vote-per-user-per-request enforcement
+  b2cFeatureRequestVotes: defineTable({
+    requestId: v.id("b2cFeatureRequests"),
+    userId: v.id("b2cUsers"),
+    createdAt: v.number(),
+  })
+    .index("by_user_request", ["userId", "requestId"])
+    .index("by_request", ["requestId"]),
+
+  // Private bug reports (structured form, only visible to the author + admins)
+  b2cBugReports: defineTable({
+    authorId: v.id("b2cUsers"),
+    authorEmail: v.string(),
+    whatHappened: v.string(),
+    whatWereDoing: v.string(),
+    whichScreen: v.string(),
+    appVersion: v.optional(v.string()),
+    platform: v.optional(v.string()),
+    status: v.string(), // "new" | "reviewed" | "fixed"
+    createdAt: v.number(),
+  })
+    .index("by_status", ["status", "createdAt"])
+    .index("by_author", ["authorId", "createdAt"]),
+
+  // ============================================
   // SEQU3NCE STREAM — Wispr Flow-style dictation
   // ============================================
 

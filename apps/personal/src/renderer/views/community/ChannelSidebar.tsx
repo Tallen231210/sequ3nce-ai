@@ -55,6 +55,45 @@ export function ChannelSidebar({
         </button>
       </div>
 
+      {/* Wins */}
+      <div className="px-2 pb-1">
+        <button
+          onClick={() => onSelect('wins')}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'wins')}`}
+        >
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+          </svg>
+          Wins
+        </button>
+      </div>
+
+      {/* Feature Requests */}
+      <div className="px-2 pb-1">
+        <button
+          onClick={() => onSelect('feature-requests')}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'feature-requests')}`}
+        >
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 1 0-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+          </svg>
+          Feature Requests
+        </button>
+      </div>
+
+      {/* Report a Bug */}
+      <div className="px-2 pb-1">
+        <button
+          onClick={() => onSelect('bug-report')}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'bug-report')}`}
+        >
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 12.75c1.148 0 2.278.08 3.383.237 1.037.146 1.866.966 1.866 2.013 0 3.728-2.35 6.75-5.25 6.75S6.75 18.728 6.75 15c0-1.046.83-1.867 1.866-2.013A24.204 24.204 0 0 1 12 12.75Zm0 0c2.883 0 5.647.508 8.207 1.44a23.91 23.91 0 0 1-1.152-6.135c-.22-2.595-2.112-4.555-4.555-4.555h-5c-2.443 0-4.335 1.96-4.555 4.555a23.91 23.91 0 0 1-1.152 6.135c2.56-.932 5.324-1.44 8.207-1.44ZM9.75 9.75h4.5" />
+          </svg>
+          Report a Bug
+        </button>
+      </div>
+
       {/* Separator */}
       <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
 
@@ -65,9 +104,9 @@ export function ChannelSidebar({
         </span>
       </div>
 
-      {/* Channel list */}
+      {/* Channel list (filter out "wins" since it has its own sidebar button) */}
       <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-        {channels.map((ch) => {
+        {channels.filter((ch) => ch.slug !== 'wins').map((ch) => {
           const isActive = selectedView === ch._id;
           const isUnread = unreadChannelIds.has(ch._id);
           return (
