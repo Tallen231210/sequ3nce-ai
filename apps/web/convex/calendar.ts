@@ -433,10 +433,12 @@ export const upsertCalendarEvents = internalMutation({
     }
 
     // Delete events that are no longer in the feed (and are in the future)
-    // Only delete if not matched by the new dedup logic
+    // Only delete if not matched by the new dedup logic.
+    // Skip events owned by a b2cCalendar — they're managed by the B2C sync.
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
     for (const existing of existingEvents) {
       if (!matchedExistingIds.has(existing._id) && existing.startTime > oneDayAgo) {
+        if (existing.calendarId) continue;
         await ctx.db.delete(existing._id);
       }
     }
@@ -524,10 +526,14 @@ export const upsertCalendarEventsWithAttendees = internalMutation({
       }
     }
 
-    // Delete future events no longer in Google Calendar
+    // Delete future events no longer in Google Calendar — but ONLY events
+    // that belong to this sync source. Events with a calendarId (from b2cCalendars
+    // multi-calendar sync) must be left alone; only the B2C sync manages those.
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
     for (const existing of existingEvents) {
       if (!matchedExistingIds.has(existing._id) && existing.startTime > oneDayAgo) {
+        // Skip events owned by a b2cCalendar — they're managed by the B2C sync
+        if (existing.calendarId) continue;
         await ctx.db.delete(existing._id);
       }
     }

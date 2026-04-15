@@ -1143,6 +1143,10 @@ export interface CalendarEvent {
   isAllDay?: boolean;
   meetingUrl?: string;
   attendees?: Array<{ email: string; name?: string; isOrganizer?: boolean }>;
+  // Multi-calendar fields (B2C)
+  calendarId?: string;
+  calendarColor?: string;
+  calendarLabel?: string;
 }
 
 export async function getCalendarEvents(

@@ -107,8 +107,8 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
     if (hiddenCalendarIds.size === 0) return events;
     return events.filter((e) => {
       // Events without a calendarId (legacy) are always shown
-      if (!(e as any).calendarId) return true;
-      return !hiddenCalendarIds.has((e as any).calendarId);
+      if (!e.calendarId) return true;
+      return !hiddenCalendarIds.has(e.calendarId);
     });
   }, [events, hiddenCalendarIds]);
 

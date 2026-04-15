@@ -24,8 +24,8 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
   const isPast = urgency === 'ended';
 
   // Multi-calendar: show colored left border + label if event has calendar metadata
-  const calColor = (event as any).calendarColor as string | undefined;
-  const calLabel = (event as any).calendarLabel as string | undefined;
+  const calColor = event.calendarColor;
+  const calLabel = event.calendarLabel;
 
   return (
     <div
