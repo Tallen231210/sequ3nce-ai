@@ -97,6 +97,61 @@ export const addCalendar = mutation({
   },
 });
 
+/** Add a calendar WITH a refresh token. Called only from the OAuth callback
+ *  (server-side Next.js route, not from the Electron client). Separated from
+ *  addCalendar so the client-facing mutation never accepts tokens. */
+export const addCalendarFromOAuth = mutation({
+  args: {
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    label: v.string(),
+    provider: v.string(),
+    googleRefreshToken: v.string(),
+    googleEmail: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const label = args.label.trim() || "Calendar";
+
+    const existing = await ctx.db
+      .query("b2cCalendars")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+
+    if (existing.length >= MAX_CALENDARS) {
+      throw new Error(`Maximum ${MAX_CALENDARS} calendars reached`);
+    }
+
+    // Check for duplicate Google email
+    if (args.googleEmail) {
+      const dupe = existing.find(
+        (c) => c.googleEmail?.toLowerCase() === args.googleEmail!.toLowerCase()
+      );
+      if (dupe) {
+        // Update existing calendar's refresh token
+        await ctx.db.patch(dupe._id, { googleRefreshToken: args.googleRefreshToken });
+        return { id: dupe._id, color: dupe.color };
+      }
+    }
+
+    const usedColors = new Set(existing.map((c) => c.color));
+    const color = COLOR_PALETTE.find((c) => !usedColors.has(c)) ?? COLOR_PALETTE[existing.length % COLOR_PALETTE.length];
+
+    const id = await ctx.db.insert("b2cCalendars", {
+      closerId: args.closerId,
+      teamId: args.teamId,
+      label,
+      color,
+      provider: args.provider,
+      googleRefreshToken: args.googleRefreshToken,
+      googleEmail: args.googleEmail,
+      isEnabled: true,
+      createdAt: Date.now(),
+    });
+
+    return { id, color };
+  },
+});
+
 /** Remove a calendar and ALL its events. Disconnect is always immediate and
  *  unconditional — never blocked by token revocation or API calls. */
 export const removeCalendar = mutation({

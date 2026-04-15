@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
             });
           }
 
-          await convex.mutation(api.b2cCalendars.addCalendar, {
+          await convex.mutation(api.b2cCalendars.addCalendarFromOAuth, {
             closerId: typedCloserId,
             teamId: closer.teamId,
             label: calendarLabel,
