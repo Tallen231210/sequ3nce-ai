@@ -28,6 +28,7 @@ import type * as b2cJobBoard from "../b2cJobBoard.js";
 import type * as b2cLeads from "../b2cLeads.js";
 import type * as b2cPresence from "../b2cPresence.js";
 import type * as b2cProfiles from "../b2cProfiles.js";
+import type * as b2cPublicJobs from "../b2cPublicJobs.js";
 import type * as b2cResources from "../b2cResources.js";
 import type * as b2cStripe from "../b2cStripe.js";
 import type * as b2cTraining from "../b2cTraining.js";
@@ -93,6 +94,7 @@ declare const fullApi: ApiFromModules<{
   b2cLeads: typeof b2cLeads;
   b2cPresence: typeof b2cPresence;
   b2cProfiles: typeof b2cProfiles;
+  b2cPublicJobs: typeof b2cPublicJobs;
   b2cResources: typeof b2cResources;
   b2cStripe: typeof b2cStripe;
   b2cTraining: typeof b2cTraining;

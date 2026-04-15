@@ -3878,3 +3878,106 @@ export async function getMyBugReports(authorId: string): Promise<BugReport[]> {
     return [];
   }
 }
+
+// ==================== B2C PUBLIC JOB BOARD ====================
+
+export interface PublicJob {
+  _id: string;
+  companyName: string;
+  title: string;
+  location: string;
+  salaryRange?: string;
+  industry: string;
+  description?: string;
+  applyUrl: string;
+  source?: string;
+  status: string;
+  createdAt: number;
+  tracking: {
+    saved: boolean;
+    applied: boolean;
+    interviewed: boolean;
+  } | null;
+}
+
+export async function getPublicJobs(userId: string, industry?: string): Promise<PublicJob[]> {
+  try {
+    let url = `${CONVEX_SITE_URL}/b2c/public-jobs?userId=${encodeURIComponent(userId)}`;
+    if (industry) url += `&industry=${encodeURIComponent(industry)}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.jobs || [];
+  } catch (error) {
+    console.error("[Convex] Failed to get public jobs:", error);
+    return [];
+  }
+}
+
+export async function addPublicJob(args: {
+  userId: string;
+  companyName: string;
+  title: string;
+  location: string;
+  salaryRange?: string;
+  industry: string;
+  description?: string;
+  applyUrl: string;
+  source?: string;
+}): Promise<{ id?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/public-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || "Failed to add job" };
+    return data;
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+export async function closePublicJob(userId: string, jobId: string): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/public-jobs/close`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, jobId }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+export async function deletePublicJob(userId: string, jobId: string): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/public-jobs/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, jobId }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+export async function updateJobTracking(
+  userId: string,
+  jobId: string,
+  updates: { saved?: boolean; applied?: boolean; interviewed?: boolean }
+): Promise<{ id?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/public-jobs/track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, jobId, ...updates }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}

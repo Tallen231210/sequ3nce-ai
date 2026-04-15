@@ -8821,4 +8821,165 @@ http.route({
   handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
 });
 
+// ============================================
+// B2C PUBLIC JOB BOARD
+// ============================================
+
+http.route({
+  path: "/b2c/public-jobs",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const industry = url.searchParams.get("industry");
+      const jobs = await ctx.runQuery(api.b2cPublicJobs.listJobs, {
+        userId: userId ? userId as Id<"b2cUsers"> : undefined,
+        industry: industry || undefined,
+      });
+      return b2cJsonResponse({ jobs }, 200, true);
+    } catch (error) {
+      return b2cJsonResponse({ error: "Failed to load jobs" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/public-jobs",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const id = await ctx.runMutation(api.b2cPublicJobs.addJob, {
+        userId: (body.userId || "") as Id<"b2cUsers">,
+        companyName: body.companyName || "",
+        title: body.title || "",
+        location: body.location || "",
+        salaryRange: body.salaryRange || undefined,
+        industry: body.industry || "",
+        description: body.description || undefined,
+        applyUrl: body.applyUrl || "",
+        source: body.source || undefined,
+      });
+      return b2cJsonResponse({ id }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to add job";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/public-jobs",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/public-jobs/edit",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cPublicJobs.editJob, {
+        userId: body.userId as Id<"b2cUsers">,
+        jobId: body.jobId as Id<"b2cPublicJobs">,
+        companyName: body.companyName,
+        title: body.title,
+        location: body.location,
+        salaryRange: body.salaryRange,
+        industry: body.industry,
+        description: body.description,
+        applyUrl: body.applyUrl,
+        source: body.source,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to edit job";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/public-jobs/edit",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/public-jobs/close",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { userId, jobId } = await request.json();
+      const result = await ctx.runMutation(api.b2cPublicJobs.closeJob, {
+        userId: userId as Id<"b2cUsers">,
+        jobId: jobId as Id<"b2cPublicJobs">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to close job";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/public-jobs/close",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/public-jobs/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { userId, jobId } = await request.json();
+      const result = await ctx.runMutation(api.b2cPublicJobs.deleteJob, {
+        userId: userId as Id<"b2cUsers">,
+        jobId: jobId as Id<"b2cPublicJobs">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to delete job";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/public-jobs/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+http.route({
+  path: "/b2c/public-jobs/track",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const id = await ctx.runMutation(api.b2cPublicJobs.updateTracking, {
+        userId: body.userId as Id<"b2cUsers">,
+        jobId: body.jobId as Id<"b2cPublicJobs">,
+        saved: typeof body.saved === "boolean" ? body.saved : undefined,
+        applied: typeof body.applied === "boolean" ? body.applied : undefined,
+        interviewed: typeof body.interviewed === "boolean" ? body.interviewed : undefined,
+      });
+      return b2cJsonResponse({ id }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to update tracking";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/public-jobs/track",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 export default http;

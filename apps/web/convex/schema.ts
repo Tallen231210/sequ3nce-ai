@@ -1325,6 +1325,40 @@ export default defineSchema({
     .index("by_closer", ["closerId"]),
 
   // ============================================
+  // B2C PUBLIC JOB BOARD — curated external jobs
+  // ============================================
+
+  // Jobs curated by founders from LinkedIn/Indeed/etc.
+  b2cPublicJobs: defineTable({
+    companyName: v.string(),
+    title: v.string(),
+    location: v.string(),
+    salaryRange: v.optional(v.string()),
+    industry: v.string(),
+    description: v.optional(v.string()),
+    applyUrl: v.string(),
+    source: v.optional(v.string()),    // "LinkedIn", "Indeed", "Direct", "Other"
+    addedBy: v.id("b2cUsers"),
+    status: v.string(),                // "active" | "closed"
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status", "createdAt"])
+    .index("by_industry", ["status", "industry", "createdAt"]),
+
+  // Per-user tracking (Saved / Applied / Interviewed) for public jobs
+  b2cPublicJobTracking: defineTable({
+    jobId: v.id("b2cPublicJobs"),
+    userId: v.id("b2cUsers"),
+    saved: v.boolean(),
+    applied: v.boolean(),
+    interviewed: v.boolean(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_job", ["userId", "jobId"])
+    .index("by_user", ["userId"]),
+
+  // ============================================
   // B2C COMMUNITY — Feature Requests, Bug Reports
   // ============================================
 
