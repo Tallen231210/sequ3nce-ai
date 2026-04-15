@@ -21,7 +21,7 @@ interface CommunityViewProps {
 
 const REQUEST_COUNT_POLL = 30_000;
 const UNREAD_POLL_INTERVAL = 15_000;
-const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week', 'wins', 'feature-requests', 'bug-report']);
+const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week', 'feature-requests', 'bug-report']);
 
 export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityViewProps) {
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
@@ -92,7 +92,6 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
   const getHeaderInfo = () => {
     if (selectedView === 'feed') return { title: 'Feed', description: 'All posts across channels' };
     if (selectedView === 'call-of-the-week') return { title: 'Call of the Week', description: 'Weekly contest — vote for the best call' };
-    if (selectedView === 'wins') return { title: 'Wins', description: 'Celebrate your closes and milestones' };
     if (selectedView === 'feature-requests') return { title: 'Feature Requests', description: 'Vote on what we build next' };
     if (selectedView === 'bug-report') return { title: 'Report a Bug', description: 'Help us improve by reporting issues' };
     if (selectedView === 'training') return { title: 'Training', description: 'Courses and modules' };
@@ -177,19 +176,6 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
               {selectedView === 'call-of-the-week' && (
                 <CallOfTheWeekView closerInfo={closerInfo} />
               )}
-              {selectedView === 'wins' && (() => {
-                const winsChannel = channels.find(c => c.slug === 'wins');
-                return winsChannel ? (
-                  <ChannelPostList
-                    channelId={winsChannel._id}
-                    userId={userId}
-                    isAdmin={isAdmin}
-                    onNavigateToMessage={onNavigateToMessage}
-                  />
-                ) : (
-                  <div className="p-8 text-center text-gray-500 text-[13px]">Wins channel loading...</div>
-                );
-              })()}
               {selectedView === 'feature-requests' && (
                 <FeatureRequestsView closerInfo={closerInfo} />
               )}
