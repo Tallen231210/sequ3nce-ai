@@ -126,21 +126,28 @@ export async function GET(req: NextRequest) {
       console.warn("[Google OAuth] Failed to fetch user info:", userInfoError);
     }
 
-    // Save the refresh token on the closer record (legacy — kept for backward compat)
-    await convex.mutation(api.calendarOAuth.saveGoogleCalendarConnection, {
-      closerId: typedCloserId,
-      refreshToken,
-      email,
-    });
-
-    // For B2C Personal app: also create a b2cCalendars record for multi-calendar support
+    // For B2C Personal app: create/update a b2cCalendars record.
+    // Do NOT overwrite the closers table token — the legacy sync uses it for
+    // the original calendar, and overwriting breaks that connection.
     if (app === "personal" && calendarLabel) {
       try {
-        // Get closer to find teamId
         const closer = await convex.query(api.calendarOAuth.getCloserById, {
           closerId: typedCloserId,
         });
         if (closer) {
+          // Only update the closers table token if this is the FIRST calendar connection
+          // (no existing b2cCalendar records). Otherwise leave it alone.
+          const existingCalendars = await convex.query(api.b2cCalendars.getCalendars, {
+            closerId: typedCloserId,
+          });
+          if (existingCalendars.length === 0) {
+            await convex.mutation(api.calendarOAuth.saveGoogleCalendarConnection, {
+              closerId: typedCloserId,
+              refreshToken,
+              email,
+            });
+          }
+
           await convex.mutation(api.b2cCalendars.addCalendar, {
             closerId: typedCloserId,
             teamId: closer.teamId,
@@ -152,9 +159,15 @@ export async function GET(req: NextRequest) {
           console.log("[Google OAuth] Created b2cCalendar record:", calendarLabel, email);
         }
       } catch (b2cErr) {
-        // Don't fail the whole OAuth if b2cCalendar creation fails (e.g., dupe email)
         console.warn("[Google OAuth] b2cCalendar creation failed (non-fatal):", b2cErr);
       }
+    } else {
+      // Non-B2C apps (B2B Desktop): save directly on closers table as before
+      await convex.mutation(api.calendarOAuth.saveGoogleCalendarConnection, {
+        closerId: typedCloserId,
+        refreshToken,
+        email,
+      });
     }
 
     console.log("[Google OAuth] Successfully saved Google Calendar connection for closer:", typedCloserId);

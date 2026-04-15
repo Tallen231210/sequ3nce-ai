@@ -84,12 +84,22 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
     if (thisLoadId === loadIdRef.current) setIsLoading(false);
   }, [closerInfo, viewMode, weekOffset]);
 
-  // Initial load + auto-sync + minute timer
+  // Initial load + auto-sync + minute timer + OAuth callback refresh
   useEffect(() => {
     loadData();
     const syncTimer = setInterval(loadData, 300000);
     const minuteTimer = setInterval(() => setNow(Date.now()), 60000);
-    return () => { clearInterval(syncTimer); clearInterval(minuteTimer); };
+    // Refresh when a new calendar is connected via OAuth deep link
+    function handleCalendarConnected() {
+      loadData();
+      setShowCalendarPanel(false);
+    }
+    window.addEventListener('calendar:connected', handleCalendarConnected);
+    return () => {
+      clearInterval(syncTimer);
+      clearInterval(minuteTimer);
+      window.removeEventListener('calendar:connected', handleCalendarConnected);
+    };
   }, [loadData]);
 
   // Filter events by visible calendars
