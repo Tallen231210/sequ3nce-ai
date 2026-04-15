@@ -207,6 +207,35 @@ export const syncGoogleCalendar = action({
   },
 });
 
+/**
+ * Sync all b2cCalendars for a specific closer. Public action so the
+ * Electron app can call it from the Refresh button.
+ */
+export const syncB2cCalendarsForCloser = action({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args): Promise<{ synced: number; errors: number }> => {
+    const calendars = await ctx.runQuery(
+      internal.googleCalendar.getEnabledB2cGoogleCalendars
+    );
+    const myCalendars = calendars.filter((c) => c.closerId === args.closerId);
+
+    let synced = 0;
+    let errors = 0;
+    for (const cal of myCalendars) {
+      try {
+        await ctx.runAction(internal.googleCalendar.fetchB2cCalendarEvents, {
+          calendarId: cal._id,
+        });
+        synced++;
+      } catch (err) {
+        console.error(`[B2C Sync] Failed for calendar ${cal._id}:`, err);
+        errors++;
+      }
+    }
+    return { synced, errors };
+  },
+});
+
 // ============================================
 // HELPERS
 // ============================================

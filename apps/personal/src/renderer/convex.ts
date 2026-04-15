@@ -3653,6 +3653,19 @@ export interface B2cCalendar {
   createdAt: number;
 }
 
+export async function syncAllB2cCalendars(closerId: string): Promise<{ synced?: number; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/calendars/sync-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    return await res.json();
+  } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
 export async function getB2cCalendars(closerId: string): Promise<B2cCalendar[]> {
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/b2c/calendars?closerId=${encodeURIComponent(closerId)}`);

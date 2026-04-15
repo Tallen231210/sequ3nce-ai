@@ -8821,6 +8821,33 @@ http.route({
   handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
 });
 
+// POST /b2c/calendars/sync-all — trigger sync for all b2cCalendars for a closer
+http.route({
+  path: "/b2c/calendars/sync-all",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { closerId } = await request.json();
+      if (typeof closerId !== "string") {
+        return b2cJsonResponse({ error: "closerId is required" }, 400);
+      }
+      const result = await ctx.runAction(api.googleCalendar.syncB2cCalendarsForCloser, {
+        closerId: closerId as Id<"closers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Sync failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/calendars/sync-all",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // ============================================
 // B2C PUBLIC JOB BOARD
 // ============================================

@@ -4,6 +4,7 @@ import {
   getCalendarEvents,
   getCalendarStatus,
   syncCalendar,
+  syncAllB2cCalendars,
   disconnectCalendar,
   excludeCalendarEvent,
   createBotForMeeting,
@@ -115,7 +116,11 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   // Handlers
   async function handleSync() {
     setIsSyncing(true);
-    await syncCalendar(closerInfo.email, closerInfo.teamId);
+    // Sync legacy calendar + all b2cCalendars in parallel
+    await Promise.all([
+      syncCalendar(closerInfo.email, closerInfo.teamId),
+      syncAllB2cCalendars(closerInfo.closerId),
+    ]);
     await loadData();
     setIsSyncing(false);
   }
