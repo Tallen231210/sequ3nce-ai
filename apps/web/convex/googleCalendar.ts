@@ -513,6 +513,25 @@ export const upsertB2cCalendarEvents = internalMutation({
         });
       }
     }
+
+    // Delete future events for THIS calendar that are no longer in Google Calendar
+    // (e.g., cancelled or deleted meetings). Only deletes events owned by this calendarId.
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const processedUids = new Set(args.events.map((e) => e.uid));
+    const allExisting = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+
+    for (const existing of allExisting) {
+      if (
+        existing.calendarId === args.calendarId &&
+        existing.startTime > oneDayAgo &&
+        !processedUids.has(existing.uid)
+      ) {
+        await ctx.db.delete(existing._id);
+      }
+    }
   },
 });
 

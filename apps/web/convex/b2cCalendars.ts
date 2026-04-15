@@ -19,28 +19,31 @@ const MAX_LABEL_LENGTH = 50;
 
 // ==================== Queries ====================
 
-/** Get all calendars for a closer. */
+/** Get all calendars for a closer. Strips sensitive fields (refresh tokens). */
 export const getCalendars = query({
   args: { closerId: v.id("closers") },
   handler: async (ctx, { closerId }) => {
-    return ctx.db
+    const calendars = await ctx.db
       .query("b2cCalendars")
       .withIndex("by_closer", (q) => q.eq("closerId", closerId))
       .collect();
+    // Never leak OAuth refresh tokens to the client
+    return calendars.map(({ googleRefreshToken, ...safe }) => safe);
   },
 });
 
 // ==================== Mutations ====================
 
 /** Add a new calendar connection. Auto-assigns color from palette.
- *  Enforces max 5 calendars and rejects duplicate Google accounts. */
+ *  Enforces max 5 calendars and rejects duplicate Google accounts.
+ *  NOTE: Does NOT accept googleRefreshToken — tokens are set only via
+ *  createFromOAuth (internal mutation) during the OAuth callback. */
 export const addCalendar = mutation({
   args: {
     closerId: v.id("closers"),
     teamId: v.id("teams"),
     label: v.string(),
     provider: v.string(),
-    googleRefreshToken: v.optional(v.string()),
     googleEmail: v.optional(v.string()),
     icsUrl: v.optional(v.string()),
   },
@@ -84,7 +87,6 @@ export const addCalendar = mutation({
       label,
       color,
       provider: args.provider,
-      googleRefreshToken: args.googleRefreshToken,
       googleEmail: args.googleEmail,
       icsUrl: args.icsUrl,
       isEnabled: true,
@@ -184,7 +186,7 @@ export const updateCalendar = mutation({
 
 // ==================== Internal mutations (for sync + OAuth) ====================
 
-/** Internal: mark a successful sync on a calendar. */
+/** Internal: mark a successful sync on a calendar. Clears any previous error. */
 export const markSyncSuccess = internalMutation({
   args: {
     calendarId: v.id("b2cCalendars"),
@@ -193,7 +195,9 @@ export const markSyncSuccess = internalMutation({
   handler: async (ctx, { calendarId, lastSyncAt }) => {
     const calendar = await ctx.db.get(calendarId);
     if (!calendar) return;
-    await ctx.db.patch(calendarId, { lastSyncAt });
+    // Clear syncError on success — Convex doesn't support setting optional to undefined via patch,
+    // so we set it to empty string and treat "" as no error in the UI
+    await ctx.db.patch(calendarId, { lastSyncAt, syncError: "" });
   },
 });
 

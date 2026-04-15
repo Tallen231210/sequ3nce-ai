@@ -8513,16 +8513,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, label, provider, googleRefreshToken, googleEmail, icsUrl } = body ?? {};
+      const { closerId, teamId, label, provider, googleEmail, icsUrl } = body ?? {};
       if (typeof closerId !== "string" || typeof teamId !== "string" || typeof label !== "string" || typeof provider !== "string") {
         return b2cJsonResponse({ error: "closerId, teamId, label, and provider are required" }, 400);
       }
+      // NOTE: googleRefreshToken is NOT accepted from the client — only set via OAuth callback
       const result = await ctx.runMutation(api.b2cCalendars.addCalendar, {
         closerId: closerId as Id<"closers">,
         teamId: teamId as Id<"teams">,
         label,
         provider,
-        googleRefreshToken: typeof googleRefreshToken === "string" ? googleRefreshToken : undefined,
         googleEmail: typeof googleEmail === "string" ? googleEmail : undefined,
         icsUrl: typeof icsUrl === "string" ? icsUrl : undefined,
       });
