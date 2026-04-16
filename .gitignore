@@ -44,3 +44,6 @@ profile-*.png
 .turbo/
 .vercel
 .env*.local
+
+# Superpowers brainstorm scratch
+.superpowers/
