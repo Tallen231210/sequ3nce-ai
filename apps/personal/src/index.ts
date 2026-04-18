@@ -107,7 +107,7 @@ let ammoTrackerVisible = false;
 let ammoTrackerPreMinimizeBounds: Electron.Rectangle | null = null; // Store bounds before minimize
 
 // Post-call window state
-let postCallData: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string } | null = null;
+let postCallData: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string; b2cUserId?: string } | null = null;
 
 // Current logged-in closer ID (for training window)
 let currentCloserId: string | null = null;
@@ -177,11 +177,21 @@ const createWindow = (): void => {
     mainWindow?.show();
   });
 
-  // Prevent window from closing, minimize to tray instead
+  // Prevent window from closing, minimize to tray instead.
+  // If we're in native macOS fullscreen, hiding synchronously leaves the Space
+  // black — we must exit fullscreen first and hide once the transition ends.
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
+    if (isQuitting) return;
+    event.preventDefault();
+    if (!mainWindow) return;
+
+    if (mainWindow.isFullScreen()) {
+      mainWindow.once('leave-full-screen', () => {
+        mainWindow?.hide();
+      });
+      mainWindow.setFullScreen(false);
+    } else {
+      mainWindow.hide();
     }
   });
 
@@ -291,7 +301,7 @@ const toggleAmmoTracker = (): void => {
 };
 
 // Create the floating post-call questionnaire window (bottom of screen)
-const createPostCallWindow = (data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string }): void => {
+const createPostCallWindow = (data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string; b2cUserId?: string }): void => {
   // If post-call window already exists for this call, just focus it
   if (postCallWindow && !postCallWindow.isDestroyed() && postCallData?.callId === data.callId) {
     postCallWindow.focus();
@@ -1242,7 +1252,7 @@ const setupIpcHandlers = (): void => {
     }
   });
 
-  ipcMain.handle('bot:open-questionnaire', async (_event, data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string }) => {
+  ipcMain.handle('bot:open-questionnaire', async (_event, data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string; b2cUserId?: string }) => {
     console.log('[Main] Opening post-call questionnaire for:', data.callId);
     createPostCallWindow(data);
   });

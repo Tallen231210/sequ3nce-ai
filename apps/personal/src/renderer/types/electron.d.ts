@@ -78,6 +78,7 @@ export interface BotAPI {
     closerName: string;
     teamId: string;
     prospectName?: string;
+    b2cUserId?: string;
   }) => Promise<void>;
 }
 

@@ -8114,6 +8114,35 @@ http.route({
   handler: b2cCorsPreflightHandler("GET, OPTIONS"),
 });
 
+// GET /b2c/session/resolve?email=X — Hydrate missing session fields (b2cUserId) from server.
+// Used by the Personal app on startup when the locally-cached closerInfo predates the b2cUserId field.
+http.route({
+  path: "/b2c/session/resolve",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const email = url.searchParams.get("email");
+
+    if (!email) {
+      return b2cJsonResponse({ error: "email is required" }, 400);
+    }
+
+    try {
+      const result = await ctx.runQuery(api.b2cAuth.resolveSessionByEmail, { email });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("Error resolving B2C session:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/session/resolve",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
 // ============================================
 // B2C STRIPE CHECKOUT & PORTAL (via Convex actions)
 // ============================================
@@ -8819,6 +8848,889 @@ http.route({
   path: "/b2c/bug-reports",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// ==================== Money Bells ====================
+
+// GET /b2c/money-bells/opt-in-status?userId=X
+http.route({
+  path: "/b2c/money-bells/opt-in-status",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cMoneyBells.getOptInStatus, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/opt-in-status",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/money-bells/opt-in — join Money Bells
+http.route({
+  path: "/b2c/money-bells/opt-in",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || typeof body.acknowledgedWarning !== "boolean") {
+        return b2cJsonResponse({ error: "userId and acknowledgedWarning are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cMoneyBells.joinMoneyBells, {
+        userId: body.userId as Id<"b2cUsers">,
+        acknowledgedWarning: body.acknowledgedWarning,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/opt-in",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/money-bells/broadcast — create a broadcast
+http.route({
+  path: "/b2c/money-bells/broadcast",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.callId || typeof body.cashCollected !== "number") {
+        return b2cJsonResponse({ error: "userId, callId, and cashCollected are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cMoneyBells.createBroadcast, {
+        userId: body.userId as Id<"b2cUsers">,
+        callId: body.callId as Id<"calls">,
+        cashCollected: body.cashCollected,
+        note: body.note || undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/broadcast",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/money-bells/broadcast/delete — delete a broadcast (1h window or founder)
+http.route({
+  path: "/b2c/money-bells/broadcast/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.broadcastId) {
+        return b2cJsonResponse({ error: "userId and broadcastId are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cMoneyBells.deleteBroadcast, {
+        userId: body.userId as Id<"b2cUsers">,
+        broadcastId: body.broadcastId as Id<"b2cMoneyBellBroadcasts">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/broadcast/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/money-bells/leaderboard?month=YYYY-MM&page=N
+http.route({
+  path: "/b2c/money-bells/leaderboard",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const month = url.searchParams.get("month");
+      const page = Number(url.searchParams.get("page") || "1");
+      if (!month) return b2cJsonResponse({ error: "month is required" }, 400);
+      const result = await ctx.runQuery(api.b2cMoneyBells.getLeaderboard, {
+        month,
+        page,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/leaderboard",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/money-bells/user-rank?userId=X&month=YYYY-MM
+http.route({
+  path: "/b2c/money-bells/user-rank",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const month = url.searchParams.get("month");
+      if (!userId || !month) return b2cJsonResponse({ error: "userId and month are required" }, 400);
+      const result = await ctx.runQuery(api.b2cMoneyBells.getUserRank, {
+        userId: userId as Id<"b2cUsers">,
+        month,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/user-rank",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/money-bells/prize?month=YYYY-MM
+http.route({
+  path: "/b2c/money-bells/prize",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const month = url.searchParams.get("month");
+      if (!month) return b2cJsonResponse({ error: "month is required" }, 400);
+      const result = await ctx.runQuery(api.b2cMoneyBells.getMonthlyPrize, { month });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+// POST /b2c/money-bells/prize — founder-only: set monthly prize (all three ranks)
+http.route({
+  path: "/b2c/money-bells/prize",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.month) {
+        return b2cJsonResponse({ error: "userId and month are required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cMoneyBells.setMonthlyPrize, {
+        userId: body.userId as Id<"b2cUsers">,
+        month: body.month,
+        prizeText1: typeof body.prizeText1 === "string" ? body.prizeText1 : undefined,
+        prizeText2: typeof body.prizeText2 === "string" ? body.prizeText2 : undefined,
+        prizeText3: typeof body.prizeText3 === "string" ? body.prizeText3 : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 403);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/prize",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// POST /b2c/money-bells/prize/paid — founder-only: mark prize as paid
+http.route({
+  path: "/b2c/money-bells/prize/paid",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.month) {
+        return b2cJsonResponse({ error: "userId and month are required" }, 400);
+      }
+      const rank =
+        body.rank === 2 ? 2 : body.rank === 3 ? 3 : (1 as 1);
+      const result = await ctx.runMutation(api.b2cMoneyBells.markPrizePaid, {
+        userId: body.userId as Id<"b2cUsers">,
+        month: body.month,
+        rank,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 403);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/prize/paid",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/money-bells/feed?cursor=X&limit=Y&userId=Z
+http.route({
+  path: "/b2c/money-bells/feed",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const cursor = url.searchParams.get("cursor");
+      const limit = url.searchParams.get("limit");
+      const userId = url.searchParams.get("userId");
+      const result = await ctx.runQuery(api.b2cMoneyBells.getMoneyBellsFeed, {
+        cursor: cursor ? Number(cursor) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        userId: userId ? (userId as Id<"b2cUsers">) : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/feed",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/money-bells/hall-of-fame
+http.route({
+  path: "/b2c/money-bells/hall-of-fame",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const result = await ctx.runQuery(api.b2cMoneyBells.getHallOfFame, {});
+      return b2cJsonResponse({ winners: result }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/hall-of-fame",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/money-bells/month-stats?month=YYYY-MM
+http.route({
+  path: "/b2c/money-bells/month-stats",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const month = url.searchParams.get("month");
+      if (!month) return b2cJsonResponse({ error: "month is required" }, 400);
+      const result = await ctx.runQuery(api.b2cMoneyBells.getMonthStats, { month });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/month-stats",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/money-bells/has-broadcast-for-call?callId=X
+http.route({
+  path: "/b2c/money-bells/has-broadcast-for-call",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const callId = url.searchParams.get("callId");
+      if (!callId) return b2cJsonResponse({ error: "callId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cMoneyBells.hasBroadcastForCall, {
+        callId: callId as Id<"calls">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/has-broadcast-for-call",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/money-bells/unread-count?userId=X&since=T — count of recent broadcasts by others
+http.route({
+  path: "/b2c/money-bells/unread-count",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const sinceStr = url.searchParams.get("since");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const since = sinceStr ? Number(sinceStr) : 0;
+      if (!Number.isFinite(since)) return b2cJsonResponse({ error: "since must be a number" }, 400);
+      const result = await ctx.runQuery(api.b2cMoneyBells.getUnreadBroadcastCount, {
+        userId: userId as Id<"b2cUsers">,
+        since,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/unread-count",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ============================================
+// B2C TEAM NOTIFICATIONS (founder→users)
+// ============================================
+
+// POST /b2c/notifications/send — founder sends to specific recipients
+http.route({
+  path: "/b2c/notifications/send",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cTeamNotifications.sendTeamNotification, {
+        founderId: body.founderId as Id<"b2cUsers">,
+        recipientIds: body.recipientIds as Id<"b2cUsers">[],
+        body: body.body,
+        repliesAllowed: body.repliesAllowed,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/send",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/notifications/send-all — founder sends to all eligible users
+http.route({
+  path: "/b2c/notifications/send-all",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cTeamNotifications.sendTeamNotificationToAll, {
+        founderId: body.founderId as Id<"b2cUsers">,
+        body: body.body,
+        repliesAllowed: body.repliesAllowed,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/send-all",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/notifications/mark-thread-read — founder marks team thread read (shared state)
+http.route({
+  path: "/b2c/notifications/mark-thread-read",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cTeamNotifications.markTeamThreadRead, {
+        founderId: body.founderId as Id<"b2cUsers">,
+        threadId: body.threadId as Id<"b2cDirectMessageThreads">,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/mark-thread-read",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/notifications/reply-team-thread — user reply into a team thread
+http.route({
+  path: "/b2c/notifications/reply-team-thread",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cTeamNotifications.replyToTeamThread, {
+        senderId: body.senderId as Id<"b2cUsers">,
+        threadId: body.threadId as Id<"b2cDirectMessageThreads">,
+        body: body.body,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/reply-team-thread",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/notifications/send-as-team — founder reply as "Sequ3nce Team"
+http.route({
+  path: "/b2c/notifications/send-as-team",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cTeamNotifications.sendTeamMessageAsTeam, {
+        founderId: body.founderId as Id<"b2cUsers">,
+        threadId: body.threadId as Id<"b2cDirectMessageThreads">,
+        body: body.body,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/send-as-team",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/notifications/eligible-count — count of users that a "send to all" will hit
+http.route({
+  path: "/b2c/notifications/eligible-count",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      if (!founderId) return b2cJsonResponse({ error: "founderId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cTeamNotifications.getEligibleRecipientCount, {
+        founderId: founderId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/eligible-count",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/notifications/broadcasts — founder history list
+http.route({
+  path: "/b2c/notifications/broadcasts",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      const cursorStr = url.searchParams.get("cursor");
+      const limitStr = url.searchParams.get("limit");
+      if (!founderId) return b2cJsonResponse({ error: "founderId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cTeamNotifications.listTeamBroadcasts, {
+        founderId: founderId as Id<"b2cUsers">,
+        cursor: cursorStr ? Number(cursorStr) : undefined,
+        limit: limitStr ? Number(limitStr) : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/broadcasts",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/notifications/team-threads — founder inbox list
+http.route({
+  path: "/b2c/notifications/team-threads",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      const cursorStr = url.searchParams.get("cursor");
+      const limitStr = url.searchParams.get("limit");
+      if (!founderId) return b2cJsonResponse({ error: "founderId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cTeamNotifications.listTeamThreads, {
+        founderId: founderId as Id<"b2cUsers">,
+        cursor: cursorStr ? Number(cursorStr) : undefined,
+        limit: limitStr ? Number(limitStr) : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/team-threads",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/notifications/team-unread-count — shared founder badge count
+http.route({
+  path: "/b2c/notifications/team-unread-count",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      if (!founderId) return b2cJsonResponse({ error: "founderId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cTeamNotifications.getTeamUnreadCount, {
+        founderId: founderId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/team-unread-count",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/notifications/team-thread-messages — founder reads a team thread
+http.route({
+  path: "/b2c/notifications/team-thread-messages",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      const threadId = url.searchParams.get("threadId");
+      const cursorStr = url.searchParams.get("cursor");
+      const limitStr = url.searchParams.get("limit");
+      if (!founderId || !threadId) return b2cJsonResponse({ error: "founderId and threadId are required" }, 400);
+      const result = await ctx.runQuery(api.b2cTeamNotifications.getTeamThreadMessages, {
+        founderId: founderId as Id<"b2cUsers">,
+        threadId: threadId as Id<"b2cDirectMessageThreads">,
+        cursor: cursorStr ? Number(cursorStr) : undefined,
+        limit: limitStr ? Number(limitStr) : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/notifications/team-thread-messages",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// ============================================
+// B2C STATS VERIFICATION (founder review of claimed stats)
+// ============================================
+
+// POST /b2c/stats-verification/upload-url — get a signed URL for one evidence file
+http.route({
+  path: "/b2c/stats-verification/upload-url",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runMutation(api.b2cStatsVerification.generateEvidenceUploadUrl, {
+        userId: body.userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/upload-url",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/stats-verification/submit — create a pending request after uploads
+http.route({
+  path: "/b2c/stats-verification/submit",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cStatsVerification.submitVerificationRequest, {
+        userId: body.userId as Id<"b2cUsers">,
+        claimedStats: body.claimedStats,
+        context: body.context,
+        payStubStorageIds: body.payStubStorageIds,
+        crmStorageIds: body.crmStorageIds ?? [],
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/submit",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/stats-verification/approve — founder approves
+http.route({
+  path: "/b2c/stats-verification/approve",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cStatsVerification.approveVerificationRequest, {
+        founderId: body.founderId as Id<"b2cUsers">,
+        requestId: body.requestId as Id<"b2cStatsVerificationRequests">,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/approve",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/stats-verification/reject — founder rejects with reason
+http.route({
+  path: "/b2c/stats-verification/reject",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cStatsVerification.rejectVerificationRequest, {
+        founderId: body.founderId as Id<"b2cUsers">,
+        requestId: body.requestId as Id<"b2cStatsVerificationRequests">,
+        reason: body.reason,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/reject",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// GET /b2c/stats-verification/my-latest?userId=X
+http.route({
+  path: "/b2c/stats-verification/my-latest",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cStatsVerification.getMyLatestVerificationRequest, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/my-latest",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/stats-verification/pending?founderId=X&status=Y&cursor=Z&limit=N
+http.route({
+  path: "/b2c/stats-verification/pending",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      const statusStr = url.searchParams.get("status");
+      const cursorStr = url.searchParams.get("cursor");
+      const limitStr = url.searchParams.get("limit");
+      if (!founderId) return b2cJsonResponse({ error: "founderId is required" }, 400);
+      const validStatus = statusStr === "pending" || statusStr === "approved" || statusStr === "rejected"
+        ? (statusStr as "pending" | "approved" | "rejected")
+        : undefined;
+      const result = await ctx.runQuery(api.b2cStatsVerification.listPendingVerificationRequests, {
+        founderId: founderId as Id<"b2cUsers">,
+        status: validStatus,
+        cursor: cursorStr ? Number(cursorStr) : undefined,
+        limit: limitStr ? Number(limitStr) : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/pending",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/stats-verification/pending-count?founderId=X
+http.route({
+  path: "/b2c/stats-verification/pending-count",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      if (!founderId) return b2cJsonResponse({ error: "founderId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cStatsVerification.getPendingVerificationCount, {
+        founderId: founderId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/pending-count",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/stats-verification/detail?founderId=X&requestId=Y
+http.route({
+  path: "/b2c/stats-verification/detail",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const founderId = url.searchParams.get("founderId");
+      const requestId = url.searchParams.get("requestId");
+      if (!founderId || !requestId) {
+        return b2cJsonResponse({ error: "founderId and requestId are required" }, 400);
+      }
+      const result = await ctx.runQuery(api.b2cStatsVerification.getVerificationRequest, {
+        founderId: founderId as Id<"b2cUsers">,
+        requestId: requestId as Id<"b2cStatsVerificationRequests">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/stats-verification/detail",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
 });
 
 // POST /b2c/calendars/sync-all — trigger sync for all b2cCalendars for a closer

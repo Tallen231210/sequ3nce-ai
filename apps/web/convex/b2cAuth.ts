@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, internalQuery, action, internalMutation } from "./_generated/server";
+import { mutation, internalQuery, query, action, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 // Password hashing using Web Crypto API (same pattern as closers.ts)
@@ -250,6 +250,30 @@ export const completeOnboarding = mutation({
     });
 
     return { success: true };
+  },
+});
+
+// Public: resolve a minimal session refresh for a B2C user by email.
+// Returns only b2cUserId (plus subscriptionStatus, which callers would refetch anyway) —
+// used by the Personal app to hydrate stale localStorage that predates the b2cUserId field.
+// Email is low-sensitivity because the signup/login endpoints already leak existence of an account.
+export const resolveSessionByEmail = query({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    if (!email) return { b2cUserId: null, subscriptionStatus: null };
+
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+
+    if (!user) return { b2cUserId: null, subscriptionStatus: null };
+
+    return {
+      b2cUserId: user._id,
+      subscriptionStatus: user.subscriptionStatus ?? null,
+    };
   },
 });
 

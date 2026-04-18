@@ -17,6 +17,13 @@ crons.interval(
   internal.googleCalendar.syncAllB2cCalendars
 );
 
+// Money Bells — determine monthly winner at 00:00 UTC on the 1st of each month
+crons.cron(
+  "determine-money-bells-winner",
+  "0 0 1 * *",
+  internal.b2cMoneyBells.determineMonthWinner
+);
+
 // Auto-schedule meeting bots — DISABLED: bots are now created on-demand when closer clicks "Join & Record"
 // crons.interval(
 //   "auto-schedule-meeting-bots",

@@ -1,11 +1,16 @@
 import React from 'react';
 import type { CommunityChannel } from './types';
 
+// Flip to true once the user base is big enough for weekly submissions.
+// Hides the sidebar entry only — the view + data model are left intact.
+const SHOW_CALL_OF_THE_WEEK = false;
+
 interface ChannelSidebarProps {
   channels: CommunityChannel[];
   selectedView: string; // 'feed' | channelId | 'training'
   onSelect: (view: string) => void;
   unreadChannelIds: Set<string>;
+  moneyBellsUnreadCount: number;
   pendingRequestCount: number;
   onToggleMembers: () => void;
   onToggleFriends: () => void;
@@ -23,6 +28,7 @@ export function ChannelSidebar({
   selectedView,
   onSelect,
   unreadChannelIds,
+  moneyBellsUnreadCount,
   pendingRequestCount,
   onToggleMembers,
   onToggleFriends,
@@ -42,16 +48,42 @@ export function ChannelSidebar({
         </button>
       </div>
 
-      {/* Call of the Week */}
+      {/* Call of the Week — hidden until user base is big enough (flag at top of file) */}
+      {SHOW_CALL_OF_THE_WEEK && (
+        <div className="px-2 pb-1">
+          <button
+            onClick={() => onSelect('call-of-the-week')}
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'call-of-the-week')}`}
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-4.5A3.375 3.375 0 0 0 13.125 10.875h-2.25A3.375 3.375 0 0 0 7.5 14.25v4.5m9 0H7.5M12 3.75l2.25 3h-4.5L12 3.75Z" />
+            </svg>
+            Call of the Week
+          </button>
+        </div>
+      )}
+
+      {/* Money Bells */}
       <div className="px-2 pb-1">
         <button
-          onClick={() => onSelect('call-of-the-week')}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'call-of-the-week')}`}
+          onClick={() => onSelect('money-bells')}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'money-bells')}`}
         >
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-4.5A3.375 3.375 0 0 0 13.125 10.875h-2.25A3.375 3.375 0 0 0 7.5 14.25v4.5m9 0H7.5M12 3.75l2.25 3h-4.5L12 3.75Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V12Zm-12 0h.008v.008H6V12Z" />
           </svg>
-          Call of the Week
+          <span className="flex-1 text-left">Money Bells</span>
+          {moneyBellsUnreadCount > 0 && selectedView !== 'money-bells' && (
+            <span
+              className={`min-w-[18px] h-[18px] flex items-center justify-center px-1.5 text-[10px] font-bold rounded-full tabular-nums ${
+                selectedView === 'money-bells'
+                  ? 'bg-white text-black'
+                  : 'bg-red-500 text-white'
+              }`}
+            >
+              {moneyBellsUnreadCount >= 99 ? '99+' : moneyBellsUnreadCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -91,9 +123,9 @@ export function ChannelSidebar({
         </span>
       </div>
 
-      {/* Channel list */}
+      {/* Channel list — excludes 'money-bells' which is rendered as a special view above */}
       <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-        {channels.map((ch) => {
+        {channels.filter((ch) => ch.slug !== 'money-bells').map((ch) => {
           const isActive = selectedView === ch._id;
           const isUnread = unreadChannelIds.has(ch._id);
           return (

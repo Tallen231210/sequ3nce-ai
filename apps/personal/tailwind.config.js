@@ -6,6 +6,10 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: ['Geist', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
+      colors: {
+        'mb-signal': '#fde047',
       },
       colors: {
         background: '#000000',

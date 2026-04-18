@@ -1,5 +1,7 @@
-import React, { useState, useRef } from 'react';
-import type { B2CProfile } from '../convex';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { B2CProfile, MyLatestVerificationRequest } from '../convex';
+import { getMyLatestVerificationRequest } from '../convex';
+import { StatsVerificationModal } from './statsVerification/StatsVerificationModal';
 
 // ==================== Tag Input Component ====================
 
@@ -204,12 +206,11 @@ export function TicketRangeSelector({ value, onChange }: TicketRangeProps) {
 
 // ==================== Stats Section ====================
 
-const VERIFICATION_CALENDLY_URL = "https://calendly.com/sequ3nce/verify";
-
 type ManualStats = B2CProfile['manualStats'];
 type AutoStats = B2CProfile['autoStats'];
 
 interface StatsSectionProps {
+  userId: string;
   autoStats: AutoStats;
   manualStats: ManualStats;
   statsSource: "auto" | "manual" | "combined";
@@ -225,6 +226,7 @@ function formatStatCurrency(amount: number): string {
 }
 
 export function StatsSection({
+  userId,
   autoStats,
   manualStats,
   statsSource,
@@ -319,7 +321,7 @@ export function StatsSection({
           <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             Baseline Stats (editable)
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <ManualStatInput
               label="Cash Collected ($)"
               value={manualStats?.cashCollected}
@@ -340,38 +342,18 @@ export function StatsSection({
               placeholder="847"
               integer
             />
-            <ManualStatInput
-              label="Avg Deal Size ($)"
-              value={manualStats?.avgDealSize}
-              onChange={(v) => updateManualStat('avgDealSize', v)}
-              placeholder="6800"
-            />
-            <ManualStatInput
-              label="Avg Duration (minutes)"
-              value={manualStats?.avgDuration !== undefined ? Math.round(manualStats.avgDuration / 60) : undefined}
-              onChange={(v) => {
-                const mins = v === '' ? undefined : Number(v);
-                if (mins !== undefined && isNaN(mins)) return;
-                onManualStatsChange({ ...manualStats, avgDuration: mins !== undefined ? mins * 60 : undefined });
-              }}
-              placeholder="38"
-              integer
-            />
-            <ManualStatInput
-              label="Talk Ratio (%)"
-              value={manualStats?.talkRatio}
-              onChange={(v) => updateManualStat('talkRatio', v)}
-              placeholder="42"
-              max={100}
-            />
           </div>
 
-          <VerificationStatusBlock isManuallyVerified={isManuallyVerified} />
+          <VerificationStatusBlock
+            userId={userId}
+            isManuallyVerified={isManuallyVerified}
+            manualStats={manualStats}
+          />
         </>
       ) : (
         /* Manual stats — editable fields */
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <ManualStatInput
               label="Cash Collected ($)"
               value={manualStats?.cashCollected}
@@ -392,40 +374,47 @@ export function StatsSection({
               placeholder="847"
               integer
             />
-            <ManualStatInput
-              label="Avg Deal Size ($)"
-              value={manualStats?.avgDealSize}
-              onChange={(v) => updateManualStat('avgDealSize', v)}
-              placeholder="6800"
-            />
-            <ManualStatInput
-              label="Avg Duration (minutes)"
-              value={manualStats?.avgDuration !== undefined ? Math.round(manualStats.avgDuration / 60) : undefined}
-              onChange={(v) => {
-                const mins = v === '' ? undefined : Number(v);
-                if (mins !== undefined && isNaN(mins)) return;
-                onManualStatsChange({ ...manualStats, avgDuration: mins !== undefined ? mins * 60 : undefined });
-              }}
-              placeholder="38"
-              integer
-            />
-            <ManualStatInput
-              label="Talk Ratio (%)"
-              value={manualStats?.talkRatio}
-              onChange={(v) => updateManualStat('talkRatio', v)}
-              placeholder="42"
-              max={100}
-            />
           </div>
 
-          <VerificationStatusBlock isManuallyVerified={isManuallyVerified} />
+          <VerificationStatusBlock
+            userId={userId}
+            isManuallyVerified={isManuallyVerified}
+            manualStats={manualStats}
+          />
         </>
       )}
     </div>
   );
 }
 
-function VerificationStatusBlock({ isManuallyVerified }: { isManuallyVerified: boolean }) {
+function VerificationStatusBlock({
+  userId,
+  isManuallyVerified,
+  manualStats,
+}: {
+  userId: string;
+  isManuallyVerified: boolean;
+  manualStats: ManualStats;
+}) {
+  const [latest, setLatest] = useState<MyLatestVerificationRequest | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    const res = await getMyLatestVerificationRequest(userId);
+    if (res && !('error' in res)) {
+      setLatest(res);
+    } else {
+      setLatest(null);
+    }
+    setLoading(false);
+  }, [userId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
   if (isManuallyVerified) {
     return (
       <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
@@ -439,24 +428,62 @@ function VerificationStatusBlock({ isManuallyVerified }: { isManuallyVerified: b
     );
   }
 
+  const isPending = latest?.status === 'pending';
+
   return (
     <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
       <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-2">
         Self-reported stats show a &quot;Self-Reported&quot; label on your public profile instead of the verified badge.
       </p>
-      <a
-        href={VERIFICATION_CALENDLY_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1.5 text-[12px] font-medium text-black dark:text-white hover:underline"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-        </svg>
-        Get Verified — Book a review call
-      </a>
+      {loading ? (
+        <span className="text-[11px] text-gray-400 dark:text-gray-500">Checking status…</span>
+      ) : isPending ? (
+        <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-gray-600 dark:text-gray-300">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+          Verification pending — submitted {formatSubmittedAt(latest!.submittedAt)}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium bg-black text-white dark:bg-white dark:text-black rounded-lg hover:opacity-80 transition-opacity"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+          Submit for verification
+        </button>
+      )}
+      {latest?.status === 'rejected' && latest.rejectionReason && (
+        <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">
+          Last submission was rejected: {latest.rejectionReason}
+        </p>
+      )}
+
+      {showModal && (
+        <StatsVerificationModal
+          userId={userId}
+          initialStats={{
+            cashCollected: manualStats?.cashCollected,
+            closeRate: manualStats?.closeRate,
+            callsCompleted: manualStats?.callsCompleted,
+          }}
+          onClose={() => setShowModal(false)}
+          onSubmitted={() => {
+            setShowModal(false);
+            void refresh();
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function formatSubmittedAt(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function AutoStatCard({ label, value }: { label: string; value: string }) {

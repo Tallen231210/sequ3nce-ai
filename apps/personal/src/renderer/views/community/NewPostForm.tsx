@@ -46,7 +46,7 @@ export function NewPostForm({ channels, selectedChannelId, onSubmit }: NewPostFo
               onChange={(e) => setChannelId(e.target.value)}
               className="text-xs border border-gray-200 dark:border-gray-600 rounded-md px-2 py-1 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300"
             >
-              {channels.map((ch) => (
+              {channels.filter((ch) => ch.slug !== 'money-bells').map((ch) => (
                 <option key={ch._id} value={ch._id}>
                   #{ch.slug}
                 </option>

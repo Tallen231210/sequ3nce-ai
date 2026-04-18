@@ -114,11 +114,21 @@ const createWindow = (): void => {
     mainWindow?.show();
   });
 
-  // Prevent window from closing, minimize to tray instead
+  // Prevent window from closing, minimize to tray instead.
+  // If we're in native macOS fullscreen, hiding synchronously leaves the Space
+  // black — we must exit fullscreen first and hide once the transition ends.
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
+    if (isQuitting) return;
+    event.preventDefault();
+    if (!mainWindow) return;
+
+    if (mainWindow.isFullScreen()) {
+      mainWindow.once('leave-full-screen', () => {
+        mainWindow?.hide();
+      });
+      mainWindow.setFullScreen(false);
+    } else {
+      mainWindow.hide();
     }
   });
 

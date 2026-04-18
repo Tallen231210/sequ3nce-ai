@@ -2738,13 +2738,17 @@ export async function toggleCommentLike(
 
 export interface DMThread {
   _id: string;
-  otherUserId: string;
+  // Null for team-notification threads (no real "other user").
+  otherUserId: string | null;
   otherUserName: string;
   otherUserPhotoUrl: string | null;
   lastMessageAt: number;
   lastMessagePreview: string | null;
   unreadCount: number;
   createdAt: number;
+  // Team-notification additions (defaults for legacy rows):
+  senderType?: "user" | "team";
+  repliesAllowed?: boolean;
 }
 
 export interface DMMessage {
@@ -2755,6 +2759,8 @@ export interface DMMessage {
   isRead: boolean;
   isDeleted: boolean;
   createdAt: number;
+  // Set when the message was sent as "Sequ3nce Team" by a founder.
+  teamSentBy?: string | null;
 }
 
 export async function getDMThreads(
@@ -3637,6 +3643,26 @@ export async function getSubscriptionStatus(
   }
 }
 
+// Hydrate missing session fields (b2cUserId) for users whose cached localStorage
+// predates the b2cUserId field. Returns null on any error so the caller can fall
+// back to cached state without surfacing a scary UX failure.
+export async function resolveSessionByEmail(
+  email: string
+): Promise<{ b2cUserId: string | null; subscriptionStatus: string | null } | null> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/b2c/session/resolve?email=${encodeURIComponent(email)}&_=${Date.now()}`
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    if ('error' in data) return null;
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to resolve session:", error);
+    return null;
+  }
+}
+
 // ==================== B2C MULTI-CALENDAR ====================
 
 export interface B2cCalendar {
@@ -3991,6 +4017,667 @@ export async function updateJobTracking(
     });
     return await res.json();
   } catch (error) {
+    return { error: "Network error" };
+  }
+}
+
+// ==================== Money Bells ====================
+
+export interface MoneyBellsLeaderboardEntry {
+  rank: number;
+  userId: string;
+  userName: string;
+  userBadges: string[];
+  photoUrl: string | null;
+  totalCash: number;
+  broadcastCount: number;
+}
+
+export interface MoneyBellsLeaderboard {
+  month: string;
+  page: number;
+  totalPages: number;
+  totalBroadcasters: number;
+  entries: MoneyBellsLeaderboardEntry[];
+  topCash: number;
+  monthlyGoal: number;
+}
+
+export interface MoneyBellsUserRank {
+  rank: number | null;
+  totalCash: number;
+  gapToNext: number | null;
+  totalBroadcasters: number;
+  photoUrl: string | null;
+}
+
+export interface MoneyBellsPrize {
+  active: boolean;
+  // Three free-form prize slots (1st, 2nd, 3rd place). Any can be null.
+  prizeText1?: string | null;
+  prizeText2?: string | null;
+  prizeText3?: string | null;
+  // Legacy — only present when a row was created under the old single-number API
+  prizeAmount?: number | null;
+  prizeLabel?: string;
+  daysLeft: number;
+}
+
+export interface MoneyBellsHallOfFameWinner {
+  month: string;
+  prizeAmount: number;
+  // Free-form prize text (new API). Falls back to prizeAmount when null.
+  prizeText1?: string | null;
+  winnerUserId: string | null;
+  winnerName: string;
+  photoUrl: string | null;
+  winnerCashCollected: number;
+  paidAt: number | null;
+}
+
+export interface MoneyBellsBroadcastPost {
+  _id: string;
+  channelId: string;
+  authorId: string;
+  authorName: string;
+  authorPhotoUrl: string | null;
+  authorBadges: string[];
+  body: string;
+  visibility: string;
+  likeCount: number;
+  commentCount: number;
+  isPinned: boolean;
+  reactionCounts: Record<string, number>;
+  myReactions: string[];
+  isLikedByMe: boolean;
+  broadcastId: string;
+  broadcastData: {
+    cashCollected: number;
+    note: string | null;
+    callId: string;
+    broadcastedAt: number;
+    month: string;
+    isEdited: boolean;
+  };
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function getMoneyBellsOptInStatus(
+  userId: string
+): Promise<{ optedIn: boolean; joinedAt: number | null } | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/opt-in-status?userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function joinMoneyBells(
+  userId: string,
+  acknowledgedWarning: boolean
+): Promise<{ success: boolean; alreadyJoined?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/money-bells/opt-in`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, acknowledgedWarning }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function createMoneyBellBroadcast(
+  userId: string,
+  callId: string,
+  cashCollected: number,
+  note?: string
+): Promise<{ success: boolean; broadcastId?: string; postId?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/money-bells/broadcast`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, callId, cashCollected, note }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function deleteMoneyBellBroadcast(
+  userId: string,
+  broadcastId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/money-bells/broadcast/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, broadcastId }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function getMoneyBellsLeaderboard(
+  month: string,
+  page: number = 1
+): Promise<MoneyBellsLeaderboard | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/leaderboard?month=${encodeURIComponent(month)}&page=${page}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getMoneyBellsUserRank(
+  userId: string,
+  month: string
+): Promise<MoneyBellsUserRank | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/user-rank?userId=${encodeURIComponent(userId)}&month=${encodeURIComponent(month)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getMoneyBellsPrize(
+  month: string
+): Promise<MoneyBellsPrize | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/prize?month=${encodeURIComponent(month)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function setMoneyBellsMonthlyPrize(
+  userId: string,
+  month: string,
+  prizes: { prizeText1?: string; prizeText2?: string; prizeText3?: string }
+): Promise<{ success: boolean; created?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/money-bells/prize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, month, ...prizes }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function markMoneyBellsPrizePaid(
+  userId: string,
+  month: string,
+  rank: 1 | 2 | 3 = 1
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/money-bells/prize/paid`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, month, rank }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function getMoneyBellsFeed(
+  userId?: string,
+  cursor?: number,
+  limit?: number
+): Promise<{ posts: MoneyBellsBroadcastPost[]; nextCursor: number | null } | { error: string }> {
+  try {
+    const params = new URLSearchParams();
+    if (userId) params.set("userId", userId);
+    if (cursor) params.set("cursor", String(cursor));
+    if (limit) params.set("limit", String(limit));
+    params.set("_", String(Date.now()));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/money-bells/feed?${params}`);
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getMoneyBellsHallOfFame(): Promise<
+  { winners: MoneyBellsHallOfFameWinner[] } | { error: string }
+> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/hall-of-fame?_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export interface MoneyBellsMonthStats {
+  totalPool: number;
+  broadcastCount: number;
+  broadcasterCount: number;
+  avgBroadcast: number;
+  biggestDeal: { userId: string; cashCollected: number; broadcastedAt: number } | null;
+}
+
+export async function getMoneyBellsMonthStats(
+  month: string
+): Promise<MoneyBellsMonthStats | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/month-stats?month=${encodeURIComponent(month)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function hasBroadcastForCall(
+  callId: string
+): Promise<{ hasBroadcast: boolean; broadcastId: string | null } | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/has-broadcast-for-call?callId=${encodeURIComponent(callId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getMoneyBellsUnreadCount(
+  userId: string,
+  since: number
+): Promise<{ count: number } | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/money-bells/unread-count?userId=${encodeURIComponent(userId)}&since=${since}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+// ==================== B2C TEAM NOTIFICATIONS ====================
+
+export interface TeamBroadcast {
+  _id: string;
+  body: string;
+  recipientMode: "specific" | "all";
+  recipientCount: number;
+  repliesAllowed: boolean;
+  sentAt: number;
+  sentBy: { userId: string; name: string } | null;
+  readCount: number;
+}
+
+export interface TeamThread {
+  _id: string;
+  recipientUserId: string;
+  recipientName: string;
+  recipientPhotoUrl: string | null;
+  lastMessageAt: number;
+  lastMessagePreview: string | null;
+  unreadCount: number;
+  repliesAllowed: boolean;
+  createdAt: number;
+}
+
+export interface TeamThreadMessage {
+  _id: string;
+  threadId: string;
+  senderId: string;
+  body: string;
+  isRead: boolean;
+  isDeleted: boolean;
+  createdAt: number;
+  teamSentBy: string | null;
+}
+
+export async function sendTeamNotification(
+  founderId: string,
+  recipientIds: string[],
+  body: string,
+  repliesAllowed: boolean
+): Promise<{ broadcastId: string; threadIds: string[]; recipientCount: number } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ founderId, recipientIds, body, repliesAllowed }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function sendTeamNotificationToAll(
+  founderId: string,
+  body: string,
+  repliesAllowed: boolean
+): Promise<{ broadcastId: string; recipientCount: number } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/send-all`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ founderId, body, repliesAllowed }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function markTeamThreadRead(
+  founderId: string,
+  threadId: string
+): Promise<{ marked: number } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/mark-thread-read`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ founderId, threadId }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function replyToTeamThread(
+  senderId: string,
+  threadId: string,
+  body: string
+): Promise<{ messageId: string } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/reply-team-thread`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ senderId, threadId, body }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function sendTeamMessageAsTeam(
+  founderId: string,
+  threadId: string,
+  body: string
+): Promise<{ messageId: string } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/send-as-team`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ founderId, threadId, body }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getEligibleRecipientCount(
+  founderId: string
+): Promise<{ count: number } | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/notifications/eligible-count?founderId=${encodeURIComponent(founderId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function listTeamBroadcasts(
+  founderId: string,
+  limit?: number,
+  cursor?: number
+): Promise<{ broadcasts: TeamBroadcast[]; nextCursor: number | null } | { error: string }> {
+  try {
+    const params = new URLSearchParams({ founderId, _: String(Date.now()) });
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/broadcasts?${params}`);
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function listTeamThreads(
+  founderId: string,
+  limit?: number,
+  cursor?: number
+): Promise<{ threads: TeamThread[]; nextCursor: number | null } | { error: string }> {
+  try {
+    const params = new URLSearchParams({ founderId, _: String(Date.now()) });
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/team-threads?${params}`);
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getTeamUnreadCount(
+  founderId: string
+): Promise<{ count: number } | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/notifications/team-unread-count?founderId=${encodeURIComponent(founderId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getTeamThreadMessages(
+  founderId: string,
+  threadId: string,
+  limit?: number,
+  cursor?: number
+): Promise<
+  | {
+      messages: TeamThreadMessage[];
+      nextCursor: number | null;
+      thread: { _id: string; recipientUserId: string; repliesAllowed: boolean };
+    }
+  | { error: string }
+> {
+  try {
+    const params = new URLSearchParams({ founderId, threadId, _: String(Date.now()) });
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/notifications/team-thread-messages?${params}`);
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+// ==================== B2C STATS VERIFICATION ====================
+
+export interface StatsVerificationClaim {
+  cashCollected?: number;
+  closeRate?: number;
+  callsCompleted?: number;
+}
+
+export interface StatsVerificationRequest {
+  requestId: string;
+  status: "pending" | "approved" | "rejected";
+  submittedAt: number;
+  claimedStats: StatsVerificationClaim;
+  context: string | null;
+  payStubUrls: string[];
+  crmUrls: string[];
+  rejectionReason: string | null;
+  reviewedBy: string | null;
+  reviewedAt: number | null;
+  user: {
+    userId: string;
+    name: string;
+    email: string;
+    photoUrl: string | null;
+  } | null;
+}
+
+export interface MyLatestVerificationRequest {
+  requestId: string;
+  status: "pending" | "approved" | "rejected";
+  submittedAt: number;
+  rejectionReason?: string;
+  reviewedAt?: number;
+}
+
+export async function generateEvidenceUploadUrl(
+  userId: string
+): Promise<{ uploadUrl: string } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/stats-verification/upload-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function submitVerificationRequest(
+  userId: string,
+  claimedStats: StatsVerificationClaim,
+  payStubStorageIds: string[],
+  crmStorageIds: string[],
+  context?: string
+): Promise<{ requestId: string } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/stats-verification/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, claimedStats, payStubStorageIds, crmStorageIds, context }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function approveVerificationRequest(
+  founderId: string,
+  requestId: string
+): Promise<{ success: true } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/stats-verification/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ founderId, requestId }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function rejectVerificationRequest(
+  founderId: string,
+  requestId: string,
+  reason: string
+): Promise<{ success: true; threadId: string | null } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/stats-verification/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ founderId, requestId, reason }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getMyLatestVerificationRequest(
+  userId: string
+): Promise<MyLatestVerificationRequest | null | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/stats-verification/my-latest?userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function listVerificationRequests(
+  founderId: string,
+  status?: "pending" | "approved" | "rejected",
+  limit?: number,
+  cursor?: number
+): Promise<{ requests: StatsVerificationRequest[]; nextCursor: number | null } | { error: string }> {
+  try {
+    const params = new URLSearchParams({ founderId, _: String(Date.now()) });
+    if (status) params.set("status", status);
+    if (limit) params.set("limit", String(limit));
+    if (cursor) params.set("cursor", String(cursor));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/stats-verification/pending?${params}`);
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getPendingVerificationCount(
+  founderId: string
+): Promise<{ count: number } | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/stats-verification/pending-count?founderId=${encodeURIComponent(founderId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: "Network error" };
+  }
+}
+
+export async function getVerificationRequestDetail(
+  founderId: string,
+  requestId: string
+): Promise<StatsVerificationRequest | { error: string }> {
+  try {
+    const params = new URLSearchParams({ founderId, requestId, _: String(Date.now()) });
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/stats-verification/detail?${params}`);
+    return await res.json();
+  } catch {
     return { error: "Network error" };
   }
 }

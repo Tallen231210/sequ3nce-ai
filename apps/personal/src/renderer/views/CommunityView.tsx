@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { CloserInfo } from '../convex';
-import { getCommunityChannels, getPendingFriendRequestCount, getUnreadChannels, markChannelRead } from '../convex';
+import { getCommunityChannels, getMoneyBellsUnreadCount, getPendingFriendRequestCount, getUnreadChannels, markChannelRead } from '../convex';
 import type { CommunityChannel } from './community/types';
 import { ChannelSidebar } from './community/ChannelSidebar';
 import { CommunityHeader } from './community/CommunityHeader';
@@ -13,6 +13,7 @@ import { PostSearch } from './community/PostSearch';
 import { CallOfTheWeekView } from './community/CallOfTheWeekView';
 import { FeatureRequestsView } from './community/FeatureRequestsView';
 import { BugReportView } from './community/BugReportView';
+import { MoneyBellsView } from './community/moneyBells/MoneyBellsView';
 
 interface CommunityViewProps {
   closerInfo: CloserInfo;
@@ -21,7 +22,33 @@ interface CommunityViewProps {
 
 const REQUEST_COUNT_POLL = 30_000;
 const UNREAD_POLL_INTERVAL = 15_000;
-const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week', 'feature-requests', 'bug-report']);
+const MONEY_BELLS_UNREAD_POLL = 20_000;
+const MONEY_BELLS_LAST_VIEWED_KEY = 'sequ3nce_money_bells_last_viewed';
+const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week', 'feature-requests', 'bug-report', 'money-bells']);
+
+function readMoneyBellsLastViewed(): number {
+  try {
+    const raw = localStorage.getItem(MONEY_BELLS_LAST_VIEWED_KEY);
+    if (!raw) {
+      // First-time user: seed with current time so they don't see an overwhelming initial count.
+      const now = Date.now();
+      localStorage.setItem(MONEY_BELLS_LAST_VIEWED_KEY, String(now));
+      return now;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : Date.now();
+  } catch {
+    return Date.now();
+  }
+}
+
+function writeMoneyBellsLastViewed(ts: number): void {
+  try {
+    localStorage.setItem(MONEY_BELLS_LAST_VIEWED_KEY, String(ts));
+  } catch {
+    // Ignore — quota/private mode; badge will poll again soon.
+  }
+}
 
 export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityViewProps) {
   const [channels, setChannels] = useState<CommunityChannel[]>([]);
@@ -31,6 +58,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
   const [panelMode, setPanelMode] = useState<'members' | 'friends'>('members');
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [unreadChannelIds, setUnreadChannelIds] = useState<Set<string>>(new Set());
+  const [moneyBellsUnread, setMoneyBellsUnread] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
   const mountedRef = useRef(true);
 
@@ -67,6 +95,26 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
     return () => clearInterval(interval);
   }, [userId]);
 
+  // Poll for Money Bells unread (new broadcasts by others since last visit).
+  // When the user is viewing Money Bells, we keep the badge at 0.
+  useEffect(() => {
+    if (!userId) return;
+    const tick = async () => {
+      if (!mountedRef.current) return;
+      if (selectedView === 'money-bells') {
+        setMoneyBellsUnread(0);
+        return;
+      }
+      const since = readMoneyBellsLastViewed();
+      const result = await getMoneyBellsUnreadCount(userId, since);
+      if (!mountedRef.current) return;
+      if ('count' in result) setMoneyBellsUnread(result.count);
+    };
+    void tick();
+    const interval = setInterval(tick, MONEY_BELLS_UNREAD_POLL);
+    return () => clearInterval(interval);
+  }, [userId, selectedView]);
+
   const loadChannels = async () => {
     const result = await getCommunityChannels();
     if (mountedRef.current) {
@@ -91,6 +139,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
   // Build header title + description
   const getHeaderInfo = () => {
     if (selectedView === 'feed') return { title: 'Feed', description: 'All posts across channels' };
+    if (selectedView === 'money-bells') return { title: 'Money Bells', description: 'Monthly cash-collected leaderboard' };
     if (selectedView === 'call-of-the-week') return { title: 'Call of the Week', description: 'Weekly contest — vote for the best call' };
     if (selectedView === 'feature-requests') return { title: 'Feature Requests', description: 'Vote on what we build next' };
     if (selectedView === 'bug-report') return { title: 'Report a Bug', description: 'Help us improve by reporting issues' };
@@ -112,6 +161,10 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
         next.delete(view);
         return next;
       });
+    }
+    if (view === 'money-bells') {
+      writeMoneyBellsLastViewed(Date.now());
+      setMoneyBellsUnread(0);
     }
   };
 
@@ -135,6 +188,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
         selectedView={selectedView}
         onSelect={handleSelectView}
         unreadChannelIds={unreadChannelIds}
+        moneyBellsUnreadCount={moneyBellsUnread}
         pendingRequestCount={pendingRequestCount}
         onToggleMembers={handleToggleMembers}
         onToggleFriends={handleToggleFriends}
@@ -172,6 +226,9 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
               )}
               {selectedView === 'feed' && (
                 <Feed userId={userId} channels={channels} isAdmin={isAdmin} />
+              )}
+              {selectedView === 'money-bells' && (
+                <MoneyBellsView closerInfo={closerInfo} />
               )}
               {selectedView === 'call-of-the-week' && (
                 <CallOfTheWeekView closerInfo={closerInfo} />

@@ -8,6 +8,7 @@ import {
   sendVerificationCode,
   logClientError,
   getSubscriptionStatus,
+  resolveSessionByEmail,
   type CloserInfo,
 } from './convex';
 import { MeetingBotHub } from './views/MeetingBotHub';
@@ -161,16 +162,34 @@ function AppContent() {
         const info = JSON.parse(savedCloserInfo) as CloserInfo;
         initializeSession(info);
 
-        // Verify subscription status with server immediately (cached status may be stale)
-        if (info.b2cUserId) {
-          getSubscriptionStatus(info.b2cUserId).then((result) => {
-            if (result.subscriptionStatus !== info.subscriptionStatus) {
-              const updated = { ...info, subscriptionStatus: result.subscriptionStatus };
+        // Hydrate missing b2cUserId for sessions written before that field shipped.
+        // Then verify subscription status with server. Both are fire-and-forget — use
+        // cached state if the server is unreachable.
+        const refreshSessionFromServer = async () => {
+          let effectiveInfo = info;
+          if (!info.b2cUserId && info.email) {
+            const resolved = await resolveSessionByEmail(info.email);
+            if (resolved?.b2cUserId) {
+              effectiveInfo = {
+                ...info,
+                b2cUserId: resolved.b2cUserId,
+                subscriptionStatus: resolved.subscriptionStatus ?? info.subscriptionStatus,
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(effectiveInfo));
+              setCloserInfo(effectiveInfo);
+            }
+          }
+
+          if (effectiveInfo.b2cUserId) {
+            const result = await getSubscriptionStatus(effectiveInfo.b2cUserId);
+            if (!result.error && result.subscriptionStatus !== effectiveInfo.subscriptionStatus) {
+              const updated = { ...effectiveInfo, subscriptionStatus: result.subscriptionStatus };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
               setCloserInfo(updated);
             }
-          }).catch(() => {}); // Silently fail — use cached status if server unreachable
-        }
+          }
+        };
+        void refreshSessionFromServer().catch(() => {}); // Silently fail — use cached state if server unreachable
       } catch (err) {
         console.error('[App] Error parsing saved closer info:', err);
         clearSession();
@@ -331,6 +350,13 @@ function AppContent() {
     setAuthState(returnTo);
   };
 
+  const handleSwitchToSignupFromError = () => {
+    setAuthError(null);
+    setPassword('');
+    setSignupEmail(email);
+    setAuthState('signup');
+  };
+
   // Render based on auth state
   if (authState === 'initial_loading') {
     return (
@@ -362,7 +388,12 @@ function AppContent() {
   }
 
   if (authState === 'forgot_password') {
-    return <ForgotPasswordScreen onBack={() => setAuthState('login')} />;
+    return (
+      <ForgotPasswordScreen
+        onBack={() => setAuthState('login')}
+        onSwitchToSignup={() => setAuthState('signup')}
+      />
+    );
   }
 
   if (authState === 'verify_email' && pendingVerificationEmail) {
@@ -408,6 +439,7 @@ function AppContent() {
       <ErrorScreen
         error={authError}
         onRetry={handleRetry}
+        onSwitchToSignup={handleSwitchToSignupFromError}
       />
     );
   }
@@ -550,9 +582,10 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
 
 interface ForgotPasswordScreenProps {
   onBack: () => void;
+  onSwitchToSignup: () => void;
 }
 
-function ForgotPasswordScreen({ onBack }: ForgotPasswordScreenProps) {
+function ForgotPasswordScreen({ onBack, onSwitchToSignup }: ForgotPasswordScreenProps) {
   const [step, setStep] = useState<'email' | 'code' | 'success'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -667,6 +700,17 @@ function ForgotPasswordScreen({ onBack }: ForgotPasswordScreenProps) {
             {successMessage && (
               <p className="text-xs text-green-600 text-center">{successMessage}</p>
             )}
+            <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+              Didn't receive a code? Check your spam folder, or make sure you're using the same email you signed up with.
+              {' '}
+              <button
+                type="button"
+                onClick={onSwitchToSignup}
+                className="text-black font-medium hover:underline"
+              >
+                Don't have an account? Sign up →
+              </button>
+            </p>
 
             <input
               type="text"
@@ -886,10 +930,12 @@ function SignupScreen({
 interface ErrorScreenProps {
   error: AuthError;
   onRetry: () => void;
+  onSwitchToSignup?: () => void;
 }
 
-function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
+function ErrorScreen({ error, onRetry, onSwitchToSignup }: ErrorScreenProps) {
   const heading = error.origin === 'signup' ? 'Signup Failed' : 'Login Failed';
+  const showSignupOption = error.origin === 'login' && onSwitchToSignup;
 
   return (
     <div className="h-screen flex flex-col bg-white text-black">
@@ -919,7 +965,21 @@ function ErrorScreen({ error, onRetry }: ErrorScreenProps) {
           >
             Try again
           </button>
+          {showSignupOption && (
+            <button
+              onClick={onSwitchToSignup}
+              className="w-full py-3 bg-white text-black border border-gray-300 font-medium rounded-lg hover:bg-gray-50 transition-colors duration-150"
+            >
+              Create an account
+            </button>
+          )}
         </div>
+
+        {showSignupOption && (
+          <p className="mt-6 text-xs text-gray-400 text-center max-w-xs">
+            Don't have an account yet? New users need to sign up first.
+          </p>
+        )}
       </div>
     </div>
   );

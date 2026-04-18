@@ -984,13 +984,15 @@ export default defineSchema({
     isPinned: v.boolean(),
     isDeleted: v.boolean(),
     reactionCounts: v.optional(v.any()), // { thumbsup: 3, fire: 1 }
+    broadcastId: v.optional(v.id("b2cMoneyBellBroadcasts")), // linked broadcast — when set, post is a Money Bells broadcast
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_channel", ["channelId", "createdAt"])
     .index("by_author", ["authorId", "createdAt"])
     .index("by_channel_pinned", ["channelId", "isPinned"])
-    .index("by_created", ["createdAt"]),
+    .index("by_created", ["createdAt"])
+    .index("by_broadcast", ["broadcastId"]),
 
   // Post likes (separate table for uniqueness enforcement)
   b2cCommunityPostLikes: defineTable({
@@ -1059,20 +1061,30 @@ export default defineSchema({
 
   // ==================== B2C Community Tables (Phase C — schema only) ====================
 
-  // DM threads between two users
+  // DM threads between two users.
+  // Team threads (founder→user notifications) use participantKey="team_<recipientId>"
+  // and leave participant2Id undefined; senderType distinguishes them.
   b2cDirectMessageThreads: defineTable({
     participantKey: v.string(),
     participant1Id: v.id("b2cUsers"),
-    participant2Id: v.id("b2cUsers"),
+    participant2Id: v.optional(v.id("b2cUsers")),
     lastMessageAt: v.optional(v.number()),
     lastMessagePreview: v.optional(v.string()),
     createdAt: v.number(),
+    // Team-notification fields (undefined treated as "user" for legacy rows):
+    senderType: v.optional(v.union(v.literal("user"), v.literal("team"))),
+    repliesAllowed: v.optional(v.boolean()),
   })
     .index("by_participant_key", ["participantKey"])
     .index("by_participant1", ["participant1Id", "lastMessageAt"])
-    .index("by_participant2", ["participant2Id", "lastMessageAt"]),
+    .index("by_participant2", ["participant2Id", "lastMessageAt"])
+    .index("by_sender_type_last", ["senderType", "lastMessageAt"]),
 
-  // Individual DM messages
+  // Individual DM messages.
+  // For team-notification messages: teamSentBy = the founder who actually typed it
+  // (senderId is the same founder; teamSentBy signals that the message should be
+  // rendered as "Sequ3nce Team" regardless). broadcastId links messages from the
+  // same fan-out event, used for aggregate read-count queries.
   b2cDirectMessages: defineTable({
     threadId: v.id("b2cDirectMessageThreads"),
     senderId: v.id("b2cUsers"),
@@ -1081,9 +1093,25 @@ export default defineSchema({
     readAt: v.optional(v.number()),
     isDeleted: v.boolean(),
     createdAt: v.number(),
+    teamSentBy: v.optional(v.id("b2cUsers")),
+    broadcastId: v.optional(v.id("b2cTeamBroadcasts")),
   })
     .index("by_thread", ["threadId", "createdAt"])
-    .index("by_recipient_unread", ["threadId", "isRead"]),
+    .index("by_recipient_unread", ["threadId", "isRead"])
+    .index("by_broadcast", ["broadcastId"]),
+
+  // One row per founder-initiated notification send (either specific or all-users).
+  // Powers the founder-side history panel and aggregate read-count display.
+  b2cTeamBroadcasts: defineTable({
+    sentBy: v.id("b2cUsers"),
+    body: v.string(),
+    recipientMode: v.union(v.literal("specific"), v.literal("all")),
+    recipientCount: v.number(),
+    repliesAllowed: v.boolean(),
+    sentAt: v.number(),
+  })
+    .index("by_sent_at", ["sentAt"])
+    .index("by_sent_by", ["sentBy", "sentAt"]),
 
   // ==================== B2C Community Tables (Phase D — schema only) ====================
 
@@ -1134,6 +1162,63 @@ export default defineSchema({
     .index("by_thread", ["threadId"])
     .index("by_expires", ["expiresAt"]),
 
+  // ==================== Money Bells (B2C monthly cash-collected leaderboard) ====================
+
+  // Broadcast source of truth — one row per "I just closed a deal" broadcast
+  b2cMoneyBellBroadcasts: defineTable({
+    userId: v.id("b2cUsers"),
+    callId: v.id("calls"),
+    cashCollected: v.number(),              // snapshot at broadcast time
+    note: v.optional(v.string()),           // optional user note, max 140 chars
+    postId: v.id("b2cCommunityPosts"),      // linked post row (for reactions/comments)
+    isDeleted: v.boolean(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("b2cUsers")),
+    broadcastedAt: v.number(),
+    month: v.string(),                       // "YYYY-MM" for leaderboard month queries
+  })
+    .index("by_month_cash", ["month", "isDeleted", "cashCollected"])
+    .index("by_user_month", ["userId", "month", "isDeleted"])
+    .index("by_call", ["callId"])
+    .index("by_post", ["postId"]),
+
+  // Monthly prize config + winner tracking
+  b2cMoneyBellPrizes: defineTable({
+    month: v.string(),                       // "YYYY-MM" — one row per month
+    prizeAmount: v.optional(v.number()),     // legacy (rank-1 dollar amount); new rows use prizeText1
+    prizeLabel: v.optional(v.string()),      // legacy e.g. "Top Cash Collected"
+    // Free-form prize text per rank — anything ("$500 cash", "Rolex Submariner", "iPad Air", ...)
+    prizeText1: v.optional(v.string()),
+    prizeText2: v.optional(v.string()),
+    prizeText3: v.optional(v.string()),
+    // Rank-1 winner (legacy field names preserved)
+    winnerUserId: v.optional(v.id("b2cUsers")),
+    winnerCashCollected: v.optional(v.number()),
+    // Rank-2 + rank-3 winners
+    winner2UserId: v.optional(v.id("b2cUsers")),
+    winner2CashCollected: v.optional(v.number()),
+    winner3UserId: v.optional(v.id("b2cUsers")),
+    winner3CashCollected: v.optional(v.number()),
+    paid: v.boolean(),                       // rank-1 paid flag (legacy)
+    paidAt: v.optional(v.number()),
+    paid2: v.optional(v.boolean()),
+    paid2At: v.optional(v.number()),
+    paid3: v.optional(v.boolean()),
+    paid3At: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_month", ["month"])
+    .index("by_paid_status", ["paid"]),
+
+  // Per-user opt-in records (users must join Money Bells before broadcasting)
+  b2cMoneyBellOptIns: defineTable({
+    userId: v.id("b2cUsers"),
+    joinedAt: v.number(),
+    acknowledgedWarning: v.boolean(),       // honor-system acknowledgment
+  })
+    .index("by_user", ["userId"]),
+
   // B2C closer profiles (public-facing profile data)
   b2cProfiles: defineTable({
     userId: v.id("b2cUsers"),
@@ -1172,6 +1257,34 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_public", ["isPublic"]),
+
+  // B2C Stats Verification Requests — closers submit pay stub/CRM screenshots to
+  // claim "Verified by Sequ3nce" on their public profile. Founders review and
+  // approve/reject. Row per submission; history preserved through reject→resubmit cycles.
+  b2cStatsVerificationRequests: defineTable({
+    userId: v.id("b2cUsers"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    claimedStats: v.object({
+      cashCollected: v.optional(v.number()),
+      closeRate: v.optional(v.number()),
+      callsCompleted: v.optional(v.number()),
+    }),
+    context: v.optional(v.string()),           // user note, 500 char cap
+    payStubStorageIds: v.array(v.string()),    // 1-6, required
+    crmStorageIds: v.array(v.string()),        // 0-4, optional
+    submittedAt: v.number(),
+    reviewedBy: v.optional(v.id("b2cUsers")),
+    reviewedAt: v.optional(v.number()),
+    rejectionReason: v.optional(v.string()),
+    inboxThreadId: v.optional(v.id("b2cDirectMessageThreads")),
+  })
+    .index("by_user", ["userId", "submittedAt"])
+    .index("by_user_pending", ["userId", "status"])
+    .index("by_status_submitted_at", ["status", "submittedAt"]),
 
   // B2C Highlight Clips — call clips showcased on public profiles
   b2cHighlightClips: defineTable({

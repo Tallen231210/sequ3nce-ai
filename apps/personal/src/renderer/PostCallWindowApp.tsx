@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { completeCallWithOutcome } from './convex';
+import { completeCallWithOutcome, getMoneyBellsOptInStatus, hasBroadcastForCall } from './convex';
+import { BroadcastCelebrationModal } from './views/community/moneyBells/BroadcastCelebrationModal';
 import logoImage from '../assets/logo.png';
 
 // Type for the postCall API exposed by post-call-preload.ts
@@ -12,6 +13,7 @@ declare global {
         closerName: string;
         teamId: string;
         prospectName?: string;
+        b2cUserId?: string;
       } | null>;
       submitQuestionnaire: () => Promise<void>;
       onCallData: (callback: (data: {
@@ -20,6 +22,7 @@ declare global {
         closerName: string;
         teamId: string;
         prospectName?: string;
+        b2cUserId?: string;
       }) => void) => () => void;
       onThemeChanged: (callback: (theme: string) => void) => () => void;
     };
@@ -63,6 +66,7 @@ interface CallData {
   closerName: string;
   teamId: string;
   prospectName?: string;
+  b2cUserId?: string;
 }
 
 export function PostCallWindowApp() {
@@ -93,6 +97,7 @@ export function PostCallWindowApp() {
   const [notes, setNotes] = useState(savedForm?.notes ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [broadcastModalCash, setBroadcastModalCash] = useState<number | null>(null);
 
   // Persist form state to sessionStorage (survives HMR reloads)
   useEffect(() => {
@@ -203,15 +208,49 @@ export function PostCallWindowApp() {
 
       const result = await completeCallWithOutcome(data);
 
-      if (result.success) {
-        // Clear persisted form state
-        sessionStorage.removeItem('post-call-form');
-        // Tell main process to close this window
-        window.postCall.submitQuestionnaire();
-      } else {
+      if (!result.success) {
         setError(result.error || 'Failed to save. Please try again.');
+        return;
       }
+
+      // Money Bells trigger — isolated from the save flow. If any step throws or
+      // returns an error, we fall through to the normal close path without surfacing
+      // an error (the call itself was saved successfully).
+      let shouldShowModal = false;
+      if (outcome === 'closed') {
+        const cash = parseInt(cashCollected) || 0;
+        if (cash > 0 && !callData.b2cUserId) {
+          // Stale session predating the b2cUserId field. Log once so diagnostics catch
+          // the "modal silently skipped" case — App.tsx startup hydration should repair this.
+          console.warn('[PostCall] Closed deal but b2cUserId missing on session — Money Bells skipped. User may need to re-login.');
+        } else if (cash > 0 && callData.b2cUserId) {
+          try {
+            const [optIn, broadcastCheck] = await Promise.all([
+              getMoneyBellsOptInStatus(callData.b2cUserId),
+              hasBroadcastForCall(callData.callId),
+            ]);
+            const alreadyBroadcast = 'hasBroadcast' in broadcastCheck && broadcastCheck.hasBroadcast;
+            const isOptedIn = 'optedIn' in optIn && optIn.optedIn;
+            if (isOptedIn && !alreadyBroadcast) {
+              shouldShowModal = true;
+              setBroadcastModalCash(cash);
+            }
+          } catch (mbErr) {
+            console.warn('[PostCall] Money Bells check failed, skipping modal:', mbErr);
+          }
+        }
+      }
+
+      if (shouldShowModal) {
+        // Modal handles window close via onClose (which also clears sessionStorage).
+        return;
+      }
+
+      // Normal close path — clear form state and tell main process to close this window.
+      sessionStorage.removeItem('post-call-form');
+      window.postCall.submitQuestionnaire();
     } catch (err) {
+      // Only reached when completeCallWithOutcome itself threw — the MB block has its own try/catch.
       setError('Network error. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -461,6 +500,20 @@ export function PostCallWindowApp() {
           )}
         </button>
       </div>
+
+      {broadcastModalCash !== null && callData?.b2cUserId && (
+        <BroadcastCelebrationModal
+          userId={callData.b2cUserId}
+          callId={callData.callId}
+          cashCollected={broadcastModalCash}
+          prospectName={prospectName.trim() || undefined}
+          onClose={() => {
+            setBroadcastModalCash(null);
+            sessionStorage.removeItem('post-call-form');
+            window.postCall.submitQuestionnaire();
+          }}
+        />
+      )}
     </div>
   );
 }

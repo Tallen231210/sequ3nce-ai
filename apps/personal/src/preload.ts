@@ -198,6 +198,7 @@ contextBridge.exposeInMainWorld('electron', {
       closerName: string;
       teamId: string;
       prospectName?: string;
+      b2cUserId?: string;
     }) => ipcRenderer.invoke('bot:open-questionnaire', data),
   },
   diagnostics: {

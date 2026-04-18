@@ -10,6 +10,9 @@ import {
   sendHeartbeat,
   getOnlineUserIds,
   getPendingContentSubmissions,
+  getTeamUnreadCount,
+  getMoneyBellsUnreadCount,
+  getPendingVerificationCount,
 } from '../convex';
 import { useTheme } from '../ThemeContext';
 import { playNotificationChime } from './notificationSound';
@@ -30,6 +33,8 @@ import { DirectMessagesView } from './DirectMessagesView';
 import { HighlightsView } from './HighlightsView';
 import { ContentSubmissionsView } from './ContentSubmissionsView';
 import { ContentReviewView } from './ContentReviewView';
+import { NotificationsView } from './notifications/NotificationsView';
+import { StatsVerificationReviewView } from './statsVerification/StatsVerificationReviewView';
 
 // Sidebar navigation items for Sequ3nce Personal (B2C)
 type SidebarItem =
@@ -43,6 +48,8 @@ type SidebarItem =
   | 'resources'
   | 'jobboard'
   | 'messages'
+  | 'notifications'
+  | 'verification-review'
   | 'profile'
   | 'community'
   | 'settings';
@@ -146,6 +153,24 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    id: 'notifications',
+    label: 'Notifications',
+    icon: (
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'verification-review',
+    label: 'Verification Review',
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+      </svg>
+    ),
+  },
+  {
     id: 'settings',
     label: 'Settings',
     icon: (
@@ -201,9 +226,13 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
   const prevDmUnreadRef = useRef(0);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [contentPendingCount, setContentPendingCount] = useState(0);
+  const [teamNotificationUnreadCount, setTeamNotificationUnreadCount] = useState(0);
+  const prevTeamNotifUnreadRef = useRef(0);
+  const [moneyBellsUnreadCount, setMoneyBellsUnreadCount] = useState(0);
+  const [verificationPendingCount, setVerificationPendingCount] = useState(0);
 
-  // Whether user has founder badge (for content review access)
-  const isFounder = closerInfo.badges?.includes('founder') ?? false;
+  // Whether user has founder badge (for content review access + notifications admin)
+  const isFounder = (closerInfo.badges?.includes('founder') ?? false) || (closerInfo.badges?.includes('admin') ?? false);
 
   // Cross-navigation state for DMs from Community
   const [dmRecipient, setDmRecipient] = useState<{
@@ -276,6 +305,60 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
     const interval = setInterval(poll, 10000);
     return () => clearInterval(interval);
   }, [closerInfo.b2cUserId, selectedItem]);
+
+  // Money Bells unread badge (propagated into the Community sidebar-tab badge).
+  // The sub-tab badge inside ChannelSidebar uses the same endpoint, and clicking
+  // the Money Bells sub-tab updates the localStorage lastViewed → clears both.
+  useEffect(() => {
+    if (!closerInfo.b2cUserId) return;
+    const MONEY_BELLS_LAST_VIEWED_KEY = 'sequ3nce_money_bells_last_viewed';
+    const poll = async () => {
+      const since = Number(localStorage.getItem(MONEY_BELLS_LAST_VIEWED_KEY)) || Date.now();
+      const res = await getMoneyBellsUnreadCount(closerInfo.b2cUserId!, since);
+      if ('count' in res) setMoneyBellsUnreadCount(res.count);
+    };
+    poll();
+    const interval = setInterval(poll, 20000);
+    return () => clearInterval(interval);
+  }, [closerInfo.b2cUserId]);
+
+  // Founder-only: pending stats-verification requests badge
+  useEffect(() => {
+    if (!closerInfo.b2cUserId || !isFounder) return;
+    const poll = async () => {
+      const res = await getPendingVerificationCount(closerInfo.b2cUserId!);
+      if ('count' in res) setVerificationPendingCount(res.count);
+    };
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => clearInterval(interval);
+  }, [closerInfo.b2cUserId, isFounder]);
+
+  // Founder-only: team-notification inbox unread badge + notification chime (shared across founders)
+  useEffect(() => {
+    if (!closerInfo.b2cUserId || !isFounder) return;
+    const poll = async () => {
+      const res = await getTeamUnreadCount(closerInfo.b2cUserId!);
+      if ('count' in res) {
+        setTeamNotificationUnreadCount(res.count);
+        if (
+          res.count > prevTeamNotifUnreadRef.current &&
+          selectedItem !== 'notifications' &&
+          selectedItem !== 'messages'
+        ) {
+          new Notification('New reply to Sequ3nce Team', {
+            body: 'A user replied to an official notification.',
+            silent: true,
+          });
+          playNotificationChime();
+        }
+        prevTeamNotifUnreadRef.current = res.count;
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => clearInterval(interval);
+  }, [closerInfo.b2cUserId, isFounder, selectedItem]);
 
   // Content review pending count polling (founder only)
   useEffect(() => {
@@ -387,17 +470,25 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Manual "End Call" — user clicks this when their call is done
   const handleEndCall = useCallback(async () => {
+    // Guard: if there's no active call, there's nothing to end — do not open a
+    // post-call form with an empty callId (would produce a broken questionnaire).
+    if (!activeCall?.callId) {
+      console.warn('[MeetingBotHub] handleEndCall invoked with no activeCall — skipping.');
+      return;
+    }
+    const callId = activeCall.callId;
     // 1. Write to Convex FIRST — prevents poll from seeing this call as active
     await endCallManually(closerInfo.closerId);
     // 2. Close ammo panel via IPC
-    window.electron?.bot?.callEnded({ callId: activeCall?.callId || '', closerId: closerInfo.closerId });
+    window.electron?.bot?.callEnded({ callId, closerId: closerInfo.closerId });
     // 3. Open post-call form immediately for THIS call
     window.electron?.bot?.openQuestionnaire({
-      callId: activeCall?.callId || '',
+      callId,
       closerId: closerInfo.closerId,
       closerName: closerInfo.name,
       teamId: closerInfo.teamId,
-      prospectName: activeCall?.prospectName || undefined,
+      prospectName: activeCall.prospectName || undefined,
+      b2cUserId: closerInfo.b2cUserId,
     });
     // 4. Clear local state
     setActiveCall(null);
@@ -408,13 +499,14 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Soft prompt "Fill Out Form" — opens form directly
   const handleGoToPostCallForm = useCallback(() => {
-    if (callEndedPending) {
+    if (callEndedPending?.callId) {
       window.electron?.bot?.openQuestionnaire({
         callId: callEndedPending.callId,
         closerId: closerInfo.closerId,
         closerName: closerInfo.name,
         teamId: closerInfo.teamId,
         prospectName: callEndedPending.prospectName,
+        b2cUserId: closerInfo.b2cUserId,
       });
     }
     setCallEndedPending(null);
@@ -422,12 +514,17 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Open floating post-call questionnaire via IPC (used by "Fill Out Now" banner in CallHistoryView)
   const handleOpenQuestionnaire = useCallback((callId: string, prospectName?: string) => {
+    if (!callId) {
+      console.warn('[MeetingBotHub] handleOpenQuestionnaire invoked with empty callId — skipping.');
+      return;
+    }
     window.electron?.bot?.openQuestionnaire({
       callId,
       closerId: closerInfo.closerId,
       closerName: closerInfo.name,
       teamId: closerInfo.teamId,
       prospectName,
+      b2cUserId: closerInfo.b2cUserId,
     });
   }, [closerInfo]);
 
@@ -469,12 +566,14 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
         {/* Nav items */}
         <nav className="flex-1 px-2 pt-2 space-y-0.5 overflow-y-auto">
-          {NAV_ITEMS.filter((item) => item.id !== 'contentreview' || isFounder).map((item) => {
+          {NAV_ITEMS.filter((item) => (item.id !== 'contentreview' || isFounder) && (item.id !== 'notifications' || isFounder) && (item.id !== 'verification-review' || isFounder)).map((item) => {
             const badgeCounts: Partial<Record<SidebarItem, number>> = {
               calls: callsPendingCount,
-              community: friendRequestCount,
+              community: friendRequestCount + moneyBellsUnreadCount,
               messages: dmUnreadCount,
               contentreview: contentPendingCount,
+              notifications: teamNotificationUnreadCount,
+              'verification-review': verificationPendingCount,
             };
             const badge = badgeCounts[item.id] ?? 0;
             return (
@@ -735,6 +834,10 @@ function renderContent(
           onlineUserIds={extras?.onlineUserIds}
         />
       );
+    case 'notifications':
+      return <NotificationsView closerInfo={closerInfo} />;
+    case 'verification-review':
+      return <StatsVerificationReviewView closerInfo={closerInfo} />;
     default:
       return <PlaceholderView name={NAV_ITEMS.find((i) => i.id === item)?.label || item} />;
   }

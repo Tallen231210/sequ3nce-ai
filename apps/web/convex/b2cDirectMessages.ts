@@ -64,13 +64,48 @@ export const listThreads = query({
     const hasMore = page.length > limit;
     const results = page.slice(0, limit);
 
-    // Enrich with other user's info + unread count
+    // Enrich with other user's info + unread count.
+    // Team-notification threads (senderType === "team") have no participant2Id —
+    // they render as "Sequ3nce Team" on the recipient's side.
     const enriched = await Promise.all(
       results.map(async (thread) => {
+        const isTeamThread = thread.senderType === "team";
+
+        if (isTeamThread) {
+          // Unread count: messages not sent by the viewer AND not read yet.
+          const unreadMessages = await ctx.db
+            .query("b2cDirectMessages")
+            .withIndex("by_recipient_unread", (q) =>
+              q.eq("threadId", thread._id).eq("isRead", false)
+            )
+            .collect();
+          const unreadCount = unreadMessages.filter(
+            (m) => m.senderId !== args.userId && !m.isDeleted
+          ).length;
+
+          return {
+            _id: thread._id,
+            otherUserId: null as string | null,
+            otherUserName: "Sequ3nce Team",
+            otherUserPhotoUrl: null as string | null,
+            lastMessageAt: thread.lastMessageAt ?? thread.createdAt,
+            lastMessagePreview: thread.lastMessagePreview ?? null,
+            unreadCount,
+            createdAt: thread.createdAt,
+            senderType: "team" as const,
+            repliesAllowed: thread.repliesAllowed ?? false,
+          };
+        }
+
         const otherId =
           thread.participant1Id === args.userId
             ? thread.participant2Id
             : thread.participant1Id;
+
+        if (!otherId) {
+          // Should not happen for user threads, but guard defensively.
+          return null;
+        }
 
         const otherUser = await ctx.db.get(otherId);
         const profile = otherUser
@@ -82,7 +117,6 @@ export const listThreads = query({
 
         const photoUrl = await resolvePhotoUrl(ctx, profile?.photoStorageId);
 
-        // Count unread messages in this thread (sent by other user, not read)
         const unreadMessages = await ctx.db
           .query("b2cDirectMessages")
           .withIndex("by_recipient_unread", (q) =>
@@ -95,19 +129,22 @@ export const listThreads = query({
 
         return {
           _id: thread._id,
-          otherUserId: otherId,
+          otherUserId: otherId as string | null,
           otherUserName: otherUser?.name ?? "Unknown",
           otherUserPhotoUrl: photoUrl,
           lastMessageAt: thread.lastMessageAt ?? thread.createdAt,
           lastMessagePreview: thread.lastMessagePreview ?? null,
           unreadCount,
           createdAt: thread.createdAt,
+          senderType: "user" as const,
+          repliesAllowed: true,
         };
       })
     );
+    const enrichedFiltered = enriched.filter((t): t is NonNullable<typeof t> => t !== null);
 
     return {
-      threads: enriched,
+      threads: enrichedFiltered,
       nextCursor: hasMore
         ? (results[results.length - 1].lastMessageAt ?? results[results.length - 1].createdAt)
         : null,

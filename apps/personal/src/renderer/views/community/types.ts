@@ -29,6 +29,16 @@ export interface CommunityPost {
   myReactions: string[];
   channelName?: string;
   channelSlug?: string;
+  // Money Bells broadcast fields (present only on broadcast posts)
+  broadcastId?: string;
+  broadcastData?: {
+    cashCollected: number;
+    note: string | null;
+    callId: string;
+    broadcastedAt: number;
+    month: string;
+    isEdited?: boolean;
+  };
   createdAt: number;
   updatedAt: number;
 }

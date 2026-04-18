@@ -12,9 +12,8 @@ export function ReactionPills({ reactionCounts, myReactions, onReact, onUnreact 
   const [showPicker, setShowPicker] = useState(false);
 
   const entries = Object.entries(reactionCounts).filter(([, count]) => count > 0);
-  if (entries.length === 0 && !showPicker) {
-    return null;
-  }
+  // Always render: when no reactions exist, just the "+" add-reaction button is shown.
+  // Previously returned null here, which made it impossible to add the first reaction.
 
   const handleToggle = (emoji: string) => {
     if (myReactions.includes(emoji)) {

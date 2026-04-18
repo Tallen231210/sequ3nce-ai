@@ -74,7 +74,23 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
   sharedPage: [
     async ({ electronApp }, use) => {
-      const window = await electronApp.firstWindow();
+      // Electron in dev mode may auto-open DevTools as its first BrowserWindow.
+      // Poll until we find a window whose URL is NOT a devtools:// URL.
+      let window: Page | null = null;
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline) {
+        const windows = electronApp.windows();
+        const appWindow = windows.find((w) => !w.url().startsWith("devtools://"));
+        if (appWindow) {
+          window = appWindow;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (!window) {
+        // Fall back to firstWindow if we somehow couldn't find a non-devtools window
+        window = await electronApp.firstWindow();
+      }
       await window.waitForLoadState("domcontentloaded");
       await use(window);
     },

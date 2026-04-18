@@ -355,6 +355,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
         <section className="space-y-4">
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white">Performance Stats</h2>
           <StatsSection
+            userId={closerInfo.b2cUserId ?? ''}
             autoStats={autoStats}
             manualStats={manualStats}
             statsSource={statsSource}

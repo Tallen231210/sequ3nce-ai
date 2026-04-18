@@ -3,6 +3,7 @@ import type { CommunityPost } from './types';
 import { formatRelativeTime, getInitials, getAvatarGradient } from './types';
 import { CommentThread } from './CommentThread';
 import { ReactionPills } from './ReactionPills';
+import { BroadcastCard } from './moneyBells/BroadcastCard';
 
 interface PostCardProps {
   post: CommunityPost;
@@ -19,7 +20,25 @@ interface PostCardProps {
   onUnpin?: (postId: string) => void;
 }
 
-export function PostCard({
+export function PostCard(props: PostCardProps) {
+  // Money Bells broadcast variant — dispatch to BroadcastCard before any hooks
+  // to keep hook order stable and let BroadcastCard manage its own state.
+  if (props.post.broadcastId && props.post.broadcastData) {
+    return (
+      <BroadcastCard
+        post={props.post}
+        userId={props.userId}
+        isAdmin={props.isAdmin}
+        onReact={props.onReact}
+        onUnreact={props.onUnreact}
+        onDelete={props.onDelete}
+      />
+    );
+  }
+  return <StandardPostCard {...props} />;
+}
+
+function StandardPostCard({
   post,
   userId,
   showChannelLabel = false,

@@ -7,6 +7,7 @@ export interface PostCallCallData {
   closerName: string;
   teamId: string;
   prospectName?: string;
+  b2cUserId?: string;
 }
 
 // Expose post-call-specific APIs to the renderer

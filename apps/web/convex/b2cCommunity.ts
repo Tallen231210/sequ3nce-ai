@@ -80,9 +80,11 @@ export const getFeed = query({
       .order("desc")
       .collect();
 
-    // Filter deleted, apply visibility, and apply cursor
+    // Filter deleted, broadcasts, apply visibility, and apply cursor
     let filtered = posts.filter((p) => {
       if (p.isDeleted) return false;
+      // Broadcast posts belong to Money Bells — exclude from aggregated Feed
+      if (p.broadcastId) return false;
 
       // Friends-only filter: show only posts from friends
       if (args.friendsOnly && friendIdSet) {
