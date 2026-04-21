@@ -8474,14 +8474,14 @@ http.route({
 // B2C LEADS — landing page lead capture
 // ============================================
 
-// POST /b2c/leads — save a lead from the landing page (email + phone)
+// POST /b2c/leads — save a lead from the landing page (email + phone + optional name)
 http.route({
   path: "/b2c/leads",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { email, phone, source, refParam } = body ?? {};
+      const { email, phone, firstName, lastName, source, refParam } = body ?? {};
 
       if (typeof email !== "string" || typeof phone !== "string") {
         return b2cJsonResponse({ error: "email and phone are required" }, 400);
@@ -8490,6 +8490,8 @@ http.route({
       const id = await ctx.runMutation(api.b2cLeads.saveLead, {
         email,
         phone,
+        firstName: typeof firstName === "string" ? firstName : undefined,
+        lastName: typeof lastName === "string" ? lastName : undefined,
         source: typeof source === "string" ? source : undefined,
         refParam: typeof refParam === "string" ? refParam : undefined,
       });

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, internalQuery, query, action, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 // Password hashing using Web Crypto API (same pattern as closers.ts)
 async function hashPassword(password: string): Promise<string> {
@@ -138,6 +138,14 @@ export const signupB2CUser = mutation({
     // Determine pricing tier for new user
     const totalUsers = await ctx.db.query("b2cUsers").collect();
     const pricingTier = totalUsers.length <= 100 ? "early" : "standard";
+
+    // Sync to GHL — append the `b2c-signed-up` tag so marketing's workflow
+    // exits the "downloaded but didn't sign up" nurture sequence. Fire-and-forget.
+    await ctx.scheduler.runAfter(0, api.b2cGhl.syncSignupToGHL, {
+      email,
+      phone,
+      name,
+    });
 
     return {
       success: true,

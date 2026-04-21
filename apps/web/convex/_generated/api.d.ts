@@ -22,6 +22,8 @@ import type * as b2cDirectMessages from "../b2cDirectMessages.js";
 import type * as b2cEmailVerification from "../b2cEmailVerification.js";
 import type * as b2cFeatureRequests from "../b2cFeatureRequests.js";
 import type * as b2cFriendships from "../b2cFriendships.js";
+import type * as b2cGhl from "../b2cGhl.js";
+import type * as b2cGhlInternal from "../b2cGhlInternal.js";
 import type * as b2cHighlightClips from "../b2cHighlightClips.js";
 import type * as b2cHighlightShares from "../b2cHighlightShares.js";
 import type * as b2cJobBoard from "../b2cJobBoard.js";
@@ -91,6 +93,8 @@ declare const fullApi: ApiFromModules<{
   b2cEmailVerification: typeof b2cEmailVerification;
   b2cFeatureRequests: typeof b2cFeatureRequests;
   b2cFriendships: typeof b2cFriendships;
+  b2cGhl: typeof b2cGhl;
+  b2cGhlInternal: typeof b2cGhlInternal;
   b2cHighlightClips: typeof b2cHighlightClips;
   b2cHighlightShares: typeof b2cHighlightShares;
   b2cJobBoard: typeof b2cJobBoard;

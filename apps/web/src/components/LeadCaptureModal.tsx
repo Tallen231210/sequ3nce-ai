@@ -14,6 +14,8 @@ interface LeadCaptureModalProps {
 
 export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModalProps) {
   const router = useRouter();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +34,19 @@ export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModal
     e.preventDefault();
     setError(null);
 
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPhone = phone.trim();
 
+    if (!trimmedFirst) {
+      setError("Please enter your first name.");
+      return;
+    }
+    if (!trimmedLast) {
+      setError("Please enter your last name.");
+      return;
+    }
     if (!trimmedEmail || !EMAIL_REGEX.test(trimmedEmail)) {
       setError("Please enter a valid email address.");
       return;
@@ -62,6 +74,8 @@ export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModal
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          firstName: trimmedFirst,
+          lastName: trimmedLast,
           email: trimmedEmail,
           phone: trimmedPhone,
           source,
@@ -80,7 +94,7 @@ export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModal
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setIsSubmitting(false);
     }
-  }, [email, phone, source, refParam, router]);
+  }, [firstName, lastName, email, phone, source, refParam, router]);
 
   return (
     <div
@@ -101,6 +115,39 @@ export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModal
         {/* Form */}
         <form onSubmit={handleSubmit} className="px-8 pt-4 pb-8">
           <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[13px] font-medium text-zinc-700 mb-1">
+                  First name
+                </label>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Jane"
+                  required
+                  autoFocus
+                  autoComplete="given-name"
+                  className="w-full px-3.5 py-2.5 text-[14px] bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400 transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-medium text-zinc-700 mb-1">
+                  Last name
+                </label>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Smith"
+                  required
+                  autoComplete="family-name"
+                  className="w-full px-3.5 py-2.5 text-[14px] bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400 transition-colors"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-[13px] font-medium text-zinc-700 mb-1">
                 Email
@@ -111,7 +158,7 @@ export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModal
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                autoFocus
+                autoComplete="email"
                 className="w-full px-3.5 py-2.5 text-[14px] bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400 transition-colors"
               />
             </div>
@@ -126,6 +173,7 @@ export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModal
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+1 (555) 000-0000"
                 required
+                autoComplete="tel"
                 className="w-full px-3.5 py-2.5 text-[14px] bg-zinc-50 border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-400 transition-colors"
               />
             </div>

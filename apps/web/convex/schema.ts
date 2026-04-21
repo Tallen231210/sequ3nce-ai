@@ -1553,9 +1553,21 @@ export default defineSchema({
   b2cLeads: defineTable({
     email: v.string(),
     phone: v.string(),
+    firstName: v.optional(v.string()), // collected from landing-page form
+    lastName: v.optional(v.string()),
     source: v.optional(v.string()),   // which button: "hero", "nav", "pricing", "cta"
     refParam: v.optional(v.string()), // raw ?ref= value from affiliate link
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_email", ["email"]),
+    // GHL (GoHighLevel) sync state — set by the b2cGhl.syncLeadToGHL action.
+    // Status lifecycle: pending → synced | failed. A cron retries failed rows.
+    ghlContactId: v.optional(v.string()),
+    ghlSyncStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("synced"), v.literal("failed"))
+    ),
+    ghlSyncedAt: v.optional(v.number()),
+    ghlLastError: v.optional(v.string()),
+  })
+    .index("by_email", ["email"])
+    .index("by_sync_status", ["ghlSyncStatus"]),
 });

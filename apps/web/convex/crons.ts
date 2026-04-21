@@ -24,6 +24,13 @@ crons.cron(
   internal.b2cMoneyBells.determineMonthWinner
 );
 
+// GHL lead sync — retry any failed or stuck-pending lead syncs every 10 min
+crons.interval(
+  "retry-failed-ghl-lead-syncs",
+  { minutes: 10 },
+  api.b2cGhl.retryFailedLeadSyncs
+);
+
 // Auto-schedule meeting bots — DISABLED: bots are now created on-demand when closer clicks "Join & Record"
 // crons.interval(
 //   "auto-schedule-meeting-bots",
