@@ -31,6 +31,14 @@ crons.interval(
   api.b2cGhl.retryFailedLeadSyncs
 );
 
+// Personal Goal Tracker — hourly sweep to transition active goals to
+// completed (target hit) or expired (deadline passed). Idempotent, paginated.
+crons.interval(
+  "transition-stale-goals",
+  { hours: 1 },
+  internal.b2cPersonalGoals.transitionStaleGoals,
+);
+
 // Auto-schedule meeting bots — DISABLED: bots are now created on-demand when closer clicks "Join & Record"
 // crons.interval(
 //   "auto-schedule-meeting-bots",

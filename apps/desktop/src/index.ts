@@ -1,5 +1,5 @@
 // Main process entry point
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, globalShortcut, clipboard, dialog, Notification, screen } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, globalShortcut, clipboard, dialog, Notification, screen, powerMonitor } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as os from 'os';
 
@@ -174,6 +174,11 @@ const createAmmoTrackerWindow = (): void => {
     backgroundColor: '#00000000',
     show: false,
     focusable: true, // Allow text input in notes field
+    // A floating overlay should NEVER enter macOS fullscreen. The OS-level flag
+    // prevents both user-initiated (green button / Cmd-Ctrl-F) AND programmatic
+    // transitions — closing the root cause of the "black Space" bug regardless
+    // of trigger (Stage Manager, display sleep/wake, Electron state corruption).
+    fullscreenable: false,
     webPreferences: {
       preload: AMMO_TRACKER_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
@@ -182,6 +187,14 @@ const createAmmoTrackerWindow = (): void => {
   });
 
   ammoTrackerWindow.loadURL(AMMO_TRACKER_WEBPACK_ENTRY);
+
+  // macOS: make the overlay follow the user across Spaces AND float above other
+  // apps in fullscreen (Zoom, Google Meet, screen-share). `visibleOnAllWorkspaces`
+  // is NOT a valid constructor option — it's silently ignored there — so we must
+  // set it at runtime via this method call.
+  if (process.platform === 'darwin') {
+    ammoTrackerWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 
   // Show window when ready
   ammoTrackerWindow.once('ready-to-show', () => {
@@ -1451,6 +1464,22 @@ app.whenReady().then(() => {
   globalShortcut.register('CommandOrControl+Shift+A', () => {
     toggleAmmoTracker();
   });
+
+  // Defensive re-assertion for the ammo tracker overlay. macOS events like
+  // display sleep/wake, monitor hot-plug, or Space transitions can silently
+  // desync the visibleOnAllWorkspaces / visibleOnFullScreen collection-behavior
+  // bits (Electron #36364). Re-assert on resume + display changes so the
+  // overlay keeps floating above fullscreen meeting apps after long idle
+  // periods.
+  if (process.platform === 'darwin') {
+    const reassertAmmoOverlay = () => {
+      if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
+        ammoTrackerWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      }
+    };
+    powerMonitor.on('resume', reassertAmmoOverlay);
+    screen.on('display-metrics-changed', reassertAmmoOverlay);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

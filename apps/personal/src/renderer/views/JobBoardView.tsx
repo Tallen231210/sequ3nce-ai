@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { CloserInfo, PublicJob } from '../convex';
 import { getPublicJobs, addPublicJob, closePublicJob, deletePublicJob, updateJobTracking } from '../convex';
 
@@ -14,6 +14,22 @@ const INDUSTRIES = [
 ];
 
 const SOURCES = ['LinkedIn', 'Indeed', 'Direct', 'Other'];
+
+// Short relative-time formatter for "posted N ago" labels on job cards.
+function formatRelative(ts: number): string {
+  const diffMs = Date.now() - ts;
+  if (diffMs < 60_000) return 'just now';
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
 
 export function JobBoardView({ closerInfo }: JobBoardViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>('public');
@@ -61,6 +77,16 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
     loadJobs();
   }, [userId, loadJobs]);
 
+  // Per-user stats computed from the already-loaded jobs array (no extra query).
+  // Reflects whatever filter is currently active (e.g. industry) so counts
+  // match what the user is actually looking at.
+  const stats = useMemo(() => ({
+    active: jobs.length,
+    saved: jobs.filter((j) => j.tracking?.saved).length,
+    applied: jobs.filter((j) => j.tracking?.applied).length,
+    interviewed: jobs.filter((j) => j.tracking?.interviewed).length,
+  }), [jobs]);
+
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 pt-6 pb-0">
@@ -101,6 +127,16 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
           </div>
         ) : (
           <>
+            {/* Stat row — per-user totals for the currently-visible (filtered) set */}
+            {!isLoading && (
+              <div className="grid grid-cols-4 gap-2 mb-4">
+                <StatCell label="Active Jobs" value={stats.active} />
+                <StatCell label="Saved" value={stats.saved} />
+                <StatCell label="Applied" value={stats.applied} />
+                <StatCell label="Interviewed" value={stats.interviewed} />
+              </div>
+            )}
+
             {/* Filter bar */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -114,7 +150,6 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
                     <option key={ind} value={ind}>{ind}</option>
                   ))}
                 </select>
-                <span className="text-[12px] text-gray-400">{jobs.length} active</span>
               </div>
               {isFounder && (
                 <button
@@ -158,6 +193,21 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
   );
 }
 
+// ==================== Stat Cell ====================
+
+function StatCell({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-gray-100 dark:border-zinc-800">
+      <div className="text-[9px] font-mono font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        {label}
+      </div>
+      <div className="text-[20px] font-bold text-gray-900 dark:text-white tabular-nums tracking-tight mt-0.5">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 // ==================== Job Card ====================
 
 function JobCard({ job, isFounder, onTracking, onClose, onDelete }: {
@@ -184,6 +234,8 @@ function JobCard({ job, isFounder, onTracking, onClose, onDelete }: {
                 <span className="text-green-600 font-medium">{job.salaryRange}</span>
               </>
             )}
+            <span>&middot;</span>
+            <span className="text-gray-400">{formatRelative(job.createdAt)}</span>
           </div>
         </div>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-500 shrink-0">

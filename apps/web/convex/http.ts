@@ -9102,6 +9102,148 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ============================================
+// B2C PERSONAL GOAL TRACKER
+// ============================================
+
+// GET /b2c/personal-goals/active?userId=X&closerId=Y
+http.route({
+  path: "/b2c/personal-goals/active",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const closerId = url.searchParams.get("closerId");
+      if (!userId || !closerId) {
+        return b2cJsonResponse({ error: "userId and closerId are required" }, 400);
+      }
+      const result = await ctx.runQuery(api.b2cPersonalGoals.getActiveGoalWithProgress, {
+        userId: userId as Id<"b2cUsers">,
+        closerId: closerId as Id<"closers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/personal-goals/active",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/personal-goals/commission?userId=X
+http.route({
+  path: "/b2c/personal-goals/commission",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      if (!userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cPersonalGoals.getCommissionSettings, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+// POST /b2c/personal-goals/commission
+http.route({
+  path: "/b2c/personal-goals/commission",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || !body.commissionMode || typeof body.commissionRate !== "number") {
+        return b2cJsonResponse({ error: "userId, commissionMode, commissionRate are required" }, 400);
+      }
+      if (body.commissionMode !== "cash" && body.commissionMode !== "contract") {
+        return b2cJsonResponse({ error: "commissionMode must be 'cash' or 'contract'" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cPersonalGoals.setCommissionSettings, {
+        userId: body.userId as Id<"b2cUsers">,
+        commissionMode: body.commissionMode,
+        commissionRate: body.commissionRate,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/personal-goals/commission",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, POST, OPTIONS"),
+});
+
+// POST /b2c/personal-goals/create — create a new active goal
+http.route({
+  path: "/b2c/personal-goals/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId || typeof body.title !== "string" || typeof body.targetAmount !== "number" || typeof body.durationMonths !== "number") {
+        return b2cJsonResponse({ error: "userId, title, targetAmount, durationMonths required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cPersonalGoals.createGoal, {
+        userId: body.userId as Id<"b2cUsers">,
+        title: body.title,
+        emoji: typeof body.emoji === "string" ? body.emoji : undefined,
+        targetAmount: body.targetAmount,
+        durationMonths: body.durationMonths,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/personal-goals/create",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/personal-goals/cancel — cancel the user's active goal
+http.route({
+  path: "/b2c/personal-goals/cancel",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId) return b2cJsonResponse({ error: "userId is required" }, 400);
+      const result = await ctx.runMutation(api.b2cPersonalGoals.cancelActiveGoal, {
+        userId: body.userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/personal-goals/cancel",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // GET /b2c/money-bells/feed?cursor=X&limit=Y&userId=Z
 http.route({
   path: "/b2c/money-bells/feed",

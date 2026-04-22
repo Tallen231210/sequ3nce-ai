@@ -4241,6 +4241,118 @@ export async function markMoneyBellsPrizePaid(
   }
 }
 
+// ==================== B2C Personal Goal Tracker ====================
+
+export type GoalStatus = 'active' | 'completed' | 'expired' | 'cancelled';
+export type CommissionMode = 'cash' | 'contract';
+
+export interface PersonalGoal {
+  _id: string;
+  userId: string;
+  title: string;
+  emoji?: string;
+  targetAmount: number;
+  startDate: number;
+  endDate: number;
+  status: GoalStatus;
+  completedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ActiveGoalProgress {
+  goal: PersonalGoal | null;
+  earned: number;
+  lastTerminal: PersonalGoal | null;
+  hasCommissionSettings: boolean;
+  commissionMode: CommissionMode | null;
+  commissionRate: number | null;
+}
+
+export interface CommissionSettings {
+  _id: string;
+  userId: string;
+  commissionMode: CommissionMode;
+  commissionRate: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function getActiveGoalWithProgress(
+  userId: string,
+  closerId: string
+): Promise<ActiveGoalProgress | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/personal-goals/active?userId=${encodeURIComponent(userId)}&closerId=${encodeURIComponent(closerId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function getCommissionSettings(
+  userId: string
+): Promise<CommissionSettings | null | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/personal-goals/commission?userId=${encodeURIComponent(userId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function setCommissionSettings(
+  userId: string,
+  commissionMode: CommissionMode,
+  commissionRate: number
+): Promise<{ id?: string; created?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/personal-goals/commission`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, commissionMode, commissionRate }),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function createPersonalGoal(
+  userId: string,
+  payload: { title: string; emoji?: string; targetAmount: number; durationMonths: number }
+): Promise<{ id?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/personal-goals/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, ...payload }),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function cancelActivePersonalGoal(
+  userId: string
+): Promise<{ success: boolean; reason?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/personal-goals/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
+  }
+}
+
 export async function getMoneyBellsFeed(
   userId?: string,
   cursor?: number,

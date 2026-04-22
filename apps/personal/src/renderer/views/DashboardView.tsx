@@ -3,6 +3,7 @@ import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem } from '..
 import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting } from '../convex';
 import { extractProspectName } from './schedule/scheduleUtils';
 import { ScheduleMeetingModal } from './schedule/ScheduleMeetingModal';
+import { PersonalGoalWidget } from './dashboard/PersonalGoalWidget';
 
 interface DashboardViewProps {
   closerInfo: CloserInfo;
@@ -77,6 +78,11 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-black">{greeting}</h1>
         <p className="text-sm text-gray-500 mt-1">{dateStr}</p>
+      </div>
+
+      {/* Personal goal tracker — identity-anchored motivation widget */}
+      <div className="mb-8">
+        <PersonalGoalWidget closerInfo={closerInfo} />
       </div>
 
       {/* Quick Stats Row */}

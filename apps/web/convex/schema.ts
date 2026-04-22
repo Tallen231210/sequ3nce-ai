@@ -368,7 +368,8 @@ export default defineSchema({
     .index("by_team", ["teamId"])
     .index("by_closer", ["closerId"])
     .index("by_team_and_status", ["teamId", "status"])
-    .index("by_team_and_date", ["teamId", "createdAt"]),
+    .index("by_team_and_date", ["teamId", "createdAt"])
+    .index("by_closer_and_startedAt", ["closerId", "startedAt"]),
 
   // Ammo (key moments extracted from calls)
   ammo: defineTable({
@@ -1218,6 +1219,40 @@ export default defineSchema({
     acknowledgedWarning: v.boolean(),       // honor-system acknowledgment
   })
     .index("by_user", ["userId"]),
+
+  // Per-user commission configuration driving the Personal Goal Tracker widget
+  // on the Dashboard. One row per user; set once on first goal, editable anytime.
+  b2cGoalTrackerSettings: defineTable({
+    userId: v.id("b2cUsers"),
+    commissionMode: v.union(v.literal("cash"), v.literal("contract")),
+    commissionRate: v.number(),             // 0.10 = 10%
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"]),
+
+  // User-defined motivational goals. At most one "active" goal per user at any
+  // time; completed / expired / cancelled goals are preserved for future history.
+  b2cPersonalGoals: defineTable({
+    userId: v.id("b2cUsers"),
+    title: v.string(),                      // ≤ 80 chars; may include the "why" inline
+    emoji: v.optional(v.string()),          // rendered bigger than inline emoji in title; falls back to 🎯
+    targetAmount: v.number(),               // dollars EARNED (after commission calc)
+    startDate: v.number(),                  // ms epoch — goal creation; baseline for progress
+    endDate: v.number(),                    // ms epoch — deadline
+    status: v.union(
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("expired"),
+      v.literal("cancelled"),
+    ),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_status_endDate", ["status", "endDate"]),
 
   // B2C closer profiles (public-facing profile data)
   b2cProfiles: defineTable({
