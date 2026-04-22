@@ -56,9 +56,10 @@ const config: ForgeConfig = {
       // Sequ3nce Stream native dylibs (macOS only — built by scripts/build-native.sh)
       './native',
     ],
-    // Sequ3nce Stream needs microphone access for dictation
+    // Microphone (Stream dictation + Coaching Calls), Camera (Coaching Calls)
     extendInfo: {
-      NSMicrophoneUsageDescription: 'Sequ3nce Stream uses your microphone for voice dictation.',
+      NSMicrophoneUsageDescription: 'Sequ3nce uses your microphone for voice dictation and live coaching calls.',
+      NSCameraUsageDescription: 'Sequ3nce uses your camera for live coaching calls.',
     },
   },
   rebuildConfig: {},
