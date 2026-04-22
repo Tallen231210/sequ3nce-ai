@@ -1,5 +1,5 @@
 // Main process entry point
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, globalShortcut, clipboard, dialog, Notification, screen, powerMonitor } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, globalShortcut, clipboard, dialog, Notification, screen, powerMonitor, systemPreferences, desktopCapturer } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import WebSocket from 'ws';
 import * as os from 'os';
@@ -971,6 +971,19 @@ const setupIpcHandlers = (): void => {
     app.setBadgeCount(count);
   });
 
+  // Request camera + microphone access from the OS. On macOS, this is the
+  // explicit path to trigger the system permission dialog — Electron's Chromium
+  // layer silently fails getUserMedia without it on newer macOS versions.
+  // On non-macOS platforms we resolve true (no OS gate, Chromium handles it).
+  ipcMain.handle('app:request-media-access', async () => {
+    if (process.platform !== 'darwin') {
+      return { camera: true, microphone: true };
+    }
+    const camera = await systemPreferences.askForMediaAccess('camera');
+    const microphone = await systemPreferences.askForMediaAccess('microphone');
+    return { camera, microphone };
+  });
+
   // Get app version
   ipcMain.handle('app:get-version', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1857,6 +1870,45 @@ app.whenReady().then(() => {
     powerMonitor.on('resume', reassertAmmoOverlay);
     screen.on('display-metrics-changed', reassertAmmoOverlay);
   }
+
+  // Grant permission requests from renderers for the APIs video calling needs.
+  // Electron defaults to *deny* on all permission prompts, so Daily.co's
+  // getUserMedia() + getDisplayMedia() calls fail silently without this.
+  // We scope the grant narrowly — only the permissions an in-app video call
+  // legitimately needs. macOS still enforces its own system-level prompts on
+  // top of this (Camera/Microphone/Screen Recording under System Settings).
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, permission, callback) => {
+      const allowed = new Set([
+        'media',            // camera + mic (getUserMedia)
+        'display-capture',  // screen sharing (getDisplayMedia)
+      ]);
+      callback(allowed.has(permission));
+    }
+  );
+
+  // Screen-share source picker. When Daily's SDK calls getDisplayMedia() to
+  // screen-share, Electron's Chromium raises a display-media request that we
+  // must handle — otherwise it silently fails with no picker shown.
+  // `useSystemPicker: true` uses macOS 14+'s native screen picker (best UX).
+  // On older macOS / other platforms, we fall back to auto-picking the
+  // primary screen so the share still works without a picker UI.
+  session.defaultSession.setDisplayMediaRequestHandler(
+    (_request, callback) => {
+      desktopCapturer
+        .getSources({ types: ['screen', 'window'] })
+        .then((sources) => {
+          // On macOS 14+ with useSystemPicker:true this callback is invoked
+          // AFTER the user picks via the native dialog, so sources[0] already
+          // reflects their choice. On older platforms we fall through to the
+          // first screen source.
+          const picked = sources[0];
+          callback(picked ? { video: picked } : {});
+        })
+        .catch(() => callback({}));
+    },
+    { useSystemPicker: true }
+  );
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

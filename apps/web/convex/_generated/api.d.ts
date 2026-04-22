@@ -15,6 +15,8 @@ import type * as b2cAuth from "../b2cAuth.js";
 import type * as b2cBilling from "../b2cBilling.js";
 import type * as b2cBugReports from "../b2cBugReports.js";
 import type * as b2cCalendars from "../b2cCalendars.js";
+import type * as b2cCoachingCalls from "../b2cCoachingCalls.js";
+import type * as b2cCoachingCallsDaily from "../b2cCoachingCallsDaily.js";
 import type * as b2cCommunity from "../b2cCommunity.js";
 import type * as b2cCommunityReactions from "../b2cCommunityReactions.js";
 import type * as b2cContentSubmissions from "../b2cContentSubmissions.js";
@@ -87,6 +89,8 @@ declare const fullApi: ApiFromModules<{
   b2cBilling: typeof b2cBilling;
   b2cBugReports: typeof b2cBugReports;
   b2cCalendars: typeof b2cCalendars;
+  b2cCoachingCalls: typeof b2cCoachingCalls;
+  b2cCoachingCallsDaily: typeof b2cCoachingCallsDaily;
   b2cCommunity: typeof b2cCommunity;
   b2cCommunityReactions: typeof b2cCommunityReactions;
   b2cContentSubmissions: typeof b2cContentSubmissions;

@@ -200,10 +200,15 @@ export default defineSchema({
     calendarId: v.optional(v.id("b2cCalendars")),
     calendarColor: v.optional(v.string()),  // denormalized for fast UI rendering
     calendarLabel: v.optional(v.string()),  // denormalized for fast UI rendering
+    // When set, this calendar event is a system-generated reference to a
+    // Sequ3nce coaching call. The Schedule Join handler routes to the in-app
+    // CoachingCallRoom overlay instead of opening meetingUrl externally.
+    coachingCallId: v.optional(v.id("b2cCoachingCalls")),
   })
     .index("by_closer", ["closerId"])
     .index("by_team_and_time", ["teamId", "startTime"])
-    .index("by_closer_and_uid", ["closerId", "uid"]),
+    .index("by_closer_and_uid", ["closerId", "uid"])
+    .index("by_coaching_call", ["coachingCallId"]),
 
   // Scheduled calls (synced from Calendly or other calendar integrations)
   scheduledCalls: defineTable({
@@ -1253,6 +1258,61 @@ export default defineSchema({
     .index("by_user_status", ["userId", "status"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_status_endDate", ["status", "endDate"]),
+
+  // B2C Coaching Calls — live group video sessions hosted by badged coaches
+  // via Daily.co. Interactive (everyone unmutes), coach is the Daily meeting
+  // owner (mute/kick powers). Records to Daily cloud, URL persisted here once
+  // processing completes.
+  b2cCoachingCalls: defineTable({
+    coachUserId: v.id("b2cUsers"),
+    title: v.string(),                        // ≤ 120 chars; validated in mutation
+    description: v.optional(v.string()),      // ≤ 1000 chars
+    scheduledStartTime: v.number(),           // ms epoch
+    scheduledDurationMin: v.number(),         // 15 / 30 / 45 / 60 / 90 / 120
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("live"),
+      v.literal("ended"),
+      v.literal("cancelled"),
+    ),
+    // Stable identifier we pass to Daily.co. Deterministic (e.g. "coaching-<id>")
+    // so the same call always maps to the same Daily room.
+    dailyRoomName: v.string(),
+    // Filled when the coach clicks Start and we create the Daily room.
+    dailyRoomUrl: v.optional(v.string()),
+    // Recording lifecycle — Daily records to their cloud; we poll for URL after end.
+    recordingUrl: v.optional(v.string()),
+    recordingStatus: v.optional(v.union(
+      v.literal("recording"),
+      v.literal("processing"),
+      v.literal("ready"),
+      v.literal("failed"),
+      v.literal("deleted"),  // coach or founder manually removed the recording
+    )),
+    actualStartTime: v.optional(v.number()),
+    actualEndTime: v.optional(v.number()),
+    cancelledReason: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status_start", ["status", "scheduledStartTime"])
+    .index("by_coach", ["coachUserId", "scheduledStartTime"])
+    .index("by_daily_room", ["dailyRoomName"]),
+
+  // Attendance log for coaching calls — powers analytics, kick enforcement,
+  // and future RSVP features. One row per join event (users who leave + rejoin
+  // get multiple rows; we use latest by joinedAt).
+  b2cCoachingCallAttendance: defineTable({
+    callId: v.id("b2cCoachingCalls"),
+    userId: v.id("b2cUsers"),
+    joinedAt: v.number(),
+    leftAt: v.optional(v.number()),
+    role: v.union(v.literal("coach"), v.literal("attendee")),
+    kicked: v.optional(v.boolean()),
+  })
+    .index("by_call", ["callId"])
+    .index("by_user", ["userId"])
+    .index("by_call_user", ["callId", "userId"]),
 
   // B2C closer profiles (public-facing profile data)
   b2cProfiles: defineTable({

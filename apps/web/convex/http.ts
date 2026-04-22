@@ -9244,6 +9244,328 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ============================================
+// B2C COACHING CALLS
+// ============================================
+
+// GET /b2c/coaching-calls/list?status=X&limit=Y
+http.route({
+  path: "/b2c/coaching-calls/list",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const statusStr = url.searchParams.get("status");
+      const limitStr = url.searchParams.get("limit");
+      const validStatus =
+        statusStr === "scheduled" ||
+        statusStr === "live" ||
+        statusStr === "ended" ||
+        statusStr === "cancelled"
+          ? (statusStr as "scheduled" | "live" | "ended" | "cancelled")
+          : undefined;
+      const result = await ctx.runQuery(api.b2cCoachingCalls.listCoachingCalls, {
+        status: validStatus,
+        limit: limitStr ? Number(limitStr) : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/list",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/coaching-calls/detail?callId=X
+http.route({
+  path: "/b2c/coaching-calls/detail",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const callId = url.searchParams.get("callId");
+      if (!callId) return b2cJsonResponse({ error: "callId is required" }, 400);
+      const result = await ctx.runQuery(api.b2cCoachingCalls.getCoachingCall, {
+        callId: callId as Id<"b2cCoachingCalls">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/detail",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/coaching-calls/past?cursor=X&limit=Y — past calls with ready recordings
+http.route({
+  path: "/b2c/coaching-calls/past",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const cursorStr = url.searchParams.get("cursor");
+      const limitStr = url.searchParams.get("limit");
+      const result = await ctx.runQuery(
+        api.b2cCoachingCalls.getPastCoachingCallsWithRecordings,
+        {
+          cursor: cursorStr ? Number(cursorStr) : undefined,
+          limit: limitStr ? Number(limitStr) : undefined,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/past",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/create
+http.route({
+  path: "/b2c/coaching-calls/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (
+        !body.coachUserId ||
+        typeof body.title !== "string" ||
+        typeof body.scheduledStartTime !== "number" ||
+        typeof body.scheduledDurationMin !== "number"
+      ) {
+        return b2cJsonResponse(
+          { error: "coachUserId, title, scheduledStartTime, scheduledDurationMin required" },
+          400
+        );
+      }
+      const result = await ctx.runMutation(api.b2cCoachingCalls.createCoachingCall, {
+        coachUserId: body.coachUserId as Id<"b2cUsers">,
+        title: body.title,
+        description: typeof body.description === "string" ? body.description : undefined,
+        scheduledStartTime: body.scheduledStartTime,
+        scheduledDurationMin: body.scheduledDurationMin,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/create",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/cancel
+http.route({
+  path: "/b2c/coaching-calls/cancel",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.callId || !body.callerId) {
+        return b2cJsonResponse({ error: "callId and callerId required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCoachingCalls.cancelCoachingCall, {
+        callId: body.callId as Id<"b2cCoachingCalls">,
+        callerId: body.callerId as Id<"b2cUsers">,
+        reason: typeof body.reason === "string" ? body.reason : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/cancel",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/start — coach starts the call
+http.route({
+  path: "/b2c/coaching-calls/start",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.callId || !body.coachUserId) {
+        return b2cJsonResponse({ error: "callId and coachUserId required" }, 400);
+      }
+      const result = await ctx.runAction(
+        api.b2cCoachingCallsDaily.startCoachingCall,
+        {
+          callId: body.callId as Id<"b2cCoachingCalls">,
+          coachUserId: body.coachUserId as Id<"b2cUsers">,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/start",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/join — attendee joins a live call
+http.route({
+  path: "/b2c/coaching-calls/join",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.callId || !body.userId) {
+        return b2cJsonResponse({ error: "callId and userId required" }, 400);
+      }
+      const result = await ctx.runAction(
+        api.b2cCoachingCallsDaily.joinCoachingCall,
+        {
+          callId: body.callId as Id<"b2cCoachingCalls">,
+          userId: body.userId as Id<"b2cUsers">,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/join",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/end — coach ends the call
+http.route({
+  path: "/b2c/coaching-calls/end",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.callId || !body.coachUserId) {
+        return b2cJsonResponse({ error: "callId and coachUserId required" }, 400);
+      }
+      const result = await ctx.runAction(
+        api.b2cCoachingCallsDaily.endCoachingCall,
+        {
+          callId: body.callId as Id<"b2cCoachingCalls">,
+          coachUserId: body.coachUserId as Id<"b2cUsers">,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/end",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/kick — coach removes a participant
+http.route({
+  path: "/b2c/coaching-calls/kick",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.callId || !body.coachUserId || !body.targetUserId || !body.targetSessionId) {
+        return b2cJsonResponse(
+          { error: "callId, coachUserId, targetUserId, targetSessionId required" },
+          400
+        );
+      }
+      const result = await ctx.runAction(
+        api.b2cCoachingCallsDaily.kickFromCoachingCall,
+        {
+          callId: body.callId as Id<"b2cCoachingCalls">,
+          coachUserId: body.coachUserId as Id<"b2cUsers">,
+          targetUserId: body.targetUserId as Id<"b2cUsers">,
+          targetSessionId: body.targetSessionId,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/kick",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/delete-recording — coach or founder removes the replay
+http.route({
+  path: "/b2c/coaching-calls/delete-recording",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.callId || !body.callerId) {
+        return b2cJsonResponse({ error: "callId and callerId required" }, 400);
+      }
+      const result = await ctx.runAction(
+        api.b2cCoachingCallsDaily.deleteCoachingCallRecording,
+        {
+          callId: body.callId as Id<"b2cCoachingCalls">,
+          callerId: body.callerId as Id<"b2cUsers">,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/delete-recording",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // GET /b2c/money-bells/feed?cursor=X&limit=Y&userId=Z
 http.route({
   path: "/b2c/money-bells/feed",

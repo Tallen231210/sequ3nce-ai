@@ -7,6 +7,12 @@ export interface AppAPI {
   setWindowSize: (width: number, height: number) => Promise<void>;
   themeChanged: (theme: string) => Promise<void>;
   setBadgeCount: (count: number) => Promise<void>;
+  /**
+   * Requests camera + microphone access from the OS. On macOS, this triggers
+   * the system permission prompts (silent-denied on web getUserMedia without
+   * this). On other platforms, resolves true without prompting.
+   */
+  requestMediaAccess: () => Promise<{ camera: boolean; microphone: boolean }>;
 }
 
 export interface AmmoAPI {
@@ -127,6 +133,7 @@ contextBridge.exposeInMainWorld('electron', {
     setWindowSize: (width: number, height: number) => ipcRenderer.invoke('app:set-window-size', width, height),
     themeChanged: (theme: string) => ipcRenderer.invoke('app:theme-changed', theme),
     setBadgeCount: (count: number) => ipcRenderer.invoke('app:set-badge-count', count),
+    requestMediaAccess: () => ipcRenderer.invoke('app:request-media-access'),
   },
   ammo: {
     toggle: () => ipcRenderer.invoke('ammo:toggle'),

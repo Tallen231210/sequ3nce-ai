@@ -14,6 +14,7 @@ import { CallOfTheWeekView } from './community/CallOfTheWeekView';
 import { FeatureRequestsView } from './community/FeatureRequestsView';
 import { BugReportView } from './community/BugReportView';
 import { MoneyBellsView } from './community/moneyBells/MoneyBellsView';
+import { CoachingView } from './community/coaching/CoachingView';
 
 interface CommunityViewProps {
   closerInfo: CloserInfo;
@@ -24,7 +25,7 @@ const REQUEST_COUNT_POLL = 30_000;
 const UNREAD_POLL_INTERVAL = 15_000;
 const MONEY_BELLS_UNREAD_POLL = 20_000;
 const MONEY_BELLS_LAST_VIEWED_KEY = 'sequ3nce_money_bells_last_viewed';
-const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week', 'feature-requests', 'bug-report', 'money-bells']);
+const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week', 'feature-requests', 'bug-report', 'money-bells', 'coaching']);
 
 function readMoneyBellsLastViewed(): number {
   try {
@@ -140,6 +141,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
   const getHeaderInfo = () => {
     if (selectedView === 'feed') return { title: 'Feed', description: 'All posts across channels' };
     if (selectedView === 'money-bells') return { title: 'Money Bells', description: 'Monthly cash-collected leaderboard' };
+    if (selectedView === 'coaching') return { title: 'Coaching Calls', description: 'Live group sessions with Sequ3nce coaches' };
     if (selectedView === 'call-of-the-week') return { title: 'Call of the Week', description: 'Weekly contest — vote for the best call' };
     if (selectedView === 'feature-requests') return { title: 'Feature Requests', description: 'Vote on what we build next' };
     if (selectedView === 'bug-report') return { title: 'Report a Bug', description: 'Help us improve by reporting issues' };
@@ -230,6 +232,9 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
               {selectedView === 'money-bells' && (
                 <MoneyBellsView closerInfo={closerInfo} />
               )}
+              {selectedView === 'coaching' && (
+                <CoachingView closerInfo={closerInfo} />
+              )}
               {selectedView === 'call-of-the-week' && (
                 <CallOfTheWeekView closerInfo={closerInfo} />
               )}
@@ -239,7 +244,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
               {selectedView === 'bug-report' && (
                 <BugReportView closerInfo={closerInfo} />
               )}
-              {selectedView === 'training' && <Training />}
+              {selectedView === 'training' && <Training closerInfo={closerInfo} />}
               {isChannelView && (
                 <ChannelPostList
                   channelId={selectedView}

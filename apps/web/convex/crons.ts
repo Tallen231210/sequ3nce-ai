@@ -39,6 +39,14 @@ crons.interval(
   internal.b2cPersonalGoals.transitionStaleGoals,
 );
 
+// Coaching Calls — hourly sweep to end "live" calls whose deadline is long
+// past and mark "scheduled" calls as ended if the coach never showed.
+crons.interval(
+  "transition-stale-coaching-calls",
+  { hours: 1 },
+  internal.b2cCoachingCalls.transitionStaleCoachingCalls,
+);
+
 // Auto-schedule meeting bots — DISABLED: bots are now created on-demand when closer clicks "Join & Record"
 // crons.interval(
 //   "auto-schedule-meeting-bots",

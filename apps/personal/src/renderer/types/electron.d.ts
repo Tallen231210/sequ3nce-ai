@@ -6,6 +6,7 @@ export interface AppAPI {
   setWindowSize: (width: number, height: number) => Promise<void>;
   themeChanged: (theme: string) => Promise<void>;
   setBadgeCount: (count: number) => Promise<void>;
+  requestMediaAccess: () => Promise<{ camera: boolean; microphone: boolean }>;
 }
 
 export interface AmmoAPI {

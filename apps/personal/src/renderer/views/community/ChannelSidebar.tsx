@@ -5,6 +5,10 @@ import type { CommunityChannel } from './types';
 // Hides the sidebar entry only — the view + data model are left intact.
 const SHOW_CALL_OF_THE_WEEK = false;
 
+// Coaching calls — shipped in v1.12. Flag left in place so we can dark-launch
+// the whole section if needed.
+const SHOW_COACHING = true;
+
 interface ChannelSidebarProps {
   channels: CommunityChannel[];
   selectedView: string; // 'feed' | channelId | 'training'
@@ -59,6 +63,21 @@ export function ChannelSidebar({
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-4.5A3.375 3.375 0 0 0 13.125 10.875h-2.25A3.375 3.375 0 0 0 7.5 14.25v4.5m9 0H7.5M12 3.75l2.25 3h-4.5L12 3.75Z" />
             </svg>
             Call of the Week
+          </button>
+        </div>
+      )}
+
+      {/* Coaching Calls */}
+      {SHOW_COACHING && (
+        <div className="px-2 pb-1">
+          <button
+            onClick={() => onSelect('coaching')}
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${navButtonClass(selectedView === 'coaching')}`}
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+            </svg>
+            Coaching
           </button>
         </div>
       )}

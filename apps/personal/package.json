@@ -1,7 +1,7 @@
 {
   "name": "sequ3nce-personal",
   "productName": "Sequ3nce Personal",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Sequ3nce Personal — call recording, verified stats, and career tools for high-ticket closers",
   "main": ".webpack/main",
   "scripts": {
@@ -65,6 +65,8 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.58.1",
+    "@daily-co/daily-js": "^0.89.1",
+    "@daily-co/daily-react": "^0.25.0",
     "@tailwindcss/postcss": "^4.1.17",
     "convex": "^1.31.0",
     "electron-audio-loopback": "^1.0.6",

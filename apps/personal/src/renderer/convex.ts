@@ -1147,6 +1147,10 @@ export interface CalendarEvent {
   calendarId?: string;
   calendarColor?: string;
   calendarLabel?: string;
+  // When set, this event is a system-generated reference to a coaching call.
+  // The Schedule Join handler routes to the in-app CoachingCallRoom overlay
+  // instead of opening meetingUrl externally.
+  coachingCallId?: string;
 }
 
 export async function getCalendarEvents(
@@ -4238,6 +4242,202 @@ export async function markMoneyBellsPrizePaid(
     return await res.json();
   } catch {
     return { success: false, error: "Network error" };
+  }
+}
+
+// ==================== B2C Coaching Calls ====================
+
+export type CoachingCallStatus = 'scheduled' | 'live' | 'ended' | 'cancelled';
+export type CoachingRecordingStatus = 'recording' | 'processing' | 'ready' | 'failed' | 'deleted';
+
+export interface CoachingCall {
+  _id: string;
+  coachUserId: string;
+  coachName: string;
+  title: string;
+  description?: string;
+  scheduledStartTime: number;
+  scheduledDurationMin: number;
+  status: CoachingCallStatus;
+  dailyRoomName: string;
+  dailyRoomUrl?: string;
+  recordingUrl?: string;
+  recordingStatus?: CoachingRecordingStatus;
+  actualStartTime?: number;
+  actualEndTime?: number;
+  cancelledReason?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CoachingCallJoinResult {
+  roomUrl: string;
+  token: string;
+  selfPhotoUrl?: string | null;
+}
+
+export async function listCoachingCalls(
+  status?: CoachingCallStatus,
+  limit?: number
+): Promise<CoachingCall[] | { error: string }> {
+  try {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (limit) params.set('limit', String(limit));
+    params.set('_', String(Date.now()));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/list?${params}`);
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function getCoachingCall(
+  callId: string
+): Promise<(CoachingCall & { attendeeCount: number }) | null | { error: string }> {
+  try {
+    const res = await fetch(
+      `${CONVEX_SITE_URL}/b2c/coaching-calls/detail?callId=${encodeURIComponent(callId)}&_=${Date.now()}`
+    );
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function getPastCoachingCallsWithRecordings(
+  cursor?: number,
+  limit?: number
+): Promise<{ calls: CoachingCall[]; nextCursor: number | null } | { error: string }> {
+  try {
+    const params = new URLSearchParams();
+    if (cursor) params.set('cursor', String(cursor));
+    if (limit) params.set('limit', String(limit));
+    params.set('_', String(Date.now()));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/past?${params}`);
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function createCoachingCall(
+  coachUserId: string,
+  payload: {
+    title: string;
+    description?: string;
+    scheduledStartTime: number;
+    scheduledDurationMin: number;
+  }
+): Promise<{ callId?: string; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coachUserId, ...payload }),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function cancelCoachingCall(
+  callId: string,
+  callerId: string,
+  reason?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, callerId, reason }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
+  }
+}
+
+export async function startCoachingCall(
+  callId: string,
+  coachUserId: string
+): Promise<CoachingCallJoinResult | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, coachUserId }),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function joinCoachingCall(
+  callId: string,
+  userId: string
+): Promise<CoachingCallJoinResult | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, userId }),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function endCoachingCall(
+  callId: string,
+  coachUserId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/end`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, coachUserId }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
+  }
+}
+
+export async function deleteCoachingCallRecording(
+  callId: string,
+  callerId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/delete-recording`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, callerId }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
+  }
+}
+
+export async function kickFromCoachingCall(
+  callId: string,
+  coachUserId: string,
+  targetUserId: string,
+  targetSessionId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/kick`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, coachUserId, targetUserId, targetSessionId }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
   }
 }
 

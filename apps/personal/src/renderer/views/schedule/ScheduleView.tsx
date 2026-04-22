@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import type { CloserInfo, CalendarEvent, B2cCalendar } from '../../convex';
+import type { CloserInfo, CalendarEvent, B2cCalendar, CoachingCall } from '../../convex';
 import {
   getCalendarEvents,
   getCalendarStatus,
@@ -9,6 +9,7 @@ import {
   excludeCalendarEvent,
   createBotForMeeting,
   getB2cCalendars,
+  joinCoachingCall,
   type CalendarStatus,
 } from '../../convex';
 import { type ViewMode, formatRelative, formatWeekLabel, getWeekDates, extractProspectName } from './scheduleUtils';
@@ -16,6 +17,8 @@ import { CalendarManagement } from './CalendarManagement';
 import { ScheduleListView } from './ScheduleListView';
 import { ScheduleWeekView } from './ScheduleWeekView';
 import { ScheduleMeetingModal } from './ScheduleMeetingModal';
+import { CoachingCallRoom } from '../community/coaching/CoachingCallRoom';
+import { JoinCoachingCallModal } from '../community/coaching/JoinCoachingCallModal';
 
 interface ScheduleViewProps {
   closerInfo: CloserInfo;
@@ -41,6 +44,18 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
 
   // Meeting modal
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  // When the user clicks a coaching event on their calendar, we open a
+  // coaching-specific details modal (NOT the regular meeting modal) — the
+  // user then sees session info + a branded Join CTA before entering the call.
+  const [coachingDetailsCallId, setCoachingDetailsCallId] = useState<string | null>(null);
+  // Active coaching session — set after user hits Join inside the details modal.
+  const [activeCoachingSession, setActiveCoachingSession] = useState<{
+    call: CoachingCall;
+    roomUrl: string;
+    token: string;
+    selfPhotoUrl: string | null;
+  } | null>(null);
+  const [coachingError, setCoachingError] = useState<string | null>(null);
 
   // Stale request guard
   const loadIdRef = useRef(0);
@@ -144,6 +159,38 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
     window.open(event.meetingUrl, '_blank');
     setSelectedEvent(null);
     await loadData();
+  }
+
+  // Routes the Join button: coaching events open a branded details modal
+  // (which has its own Join CTA), everything else falls through to the regular
+  // meeting-confirmation modal.
+  function handleEventJoin(event: CalendarEvent) {
+    if (event.coachingCallId) {
+      setCoachingError(null);
+      setCoachingDetailsCallId(event.coachingCallId);
+      return;
+    }
+    // Regular calendar event — open confirmation modal
+    setSelectedEvent(event);
+  }
+
+  // Called from the coaching details modal's "Join" button.
+  async function handleCoachingJoin(call: CoachingCall) {
+    const userId = closerInfo.b2cUserId;
+    if (!userId) return;
+    setCoachingError(null);
+    const joinRes = await joinCoachingCall(call._id, userId);
+    if ('error' in joinRes) {
+      setCoachingError(joinRes.error);
+      return;
+    }
+    setCoachingDetailsCallId(null);
+    setActiveCoachingSession({
+      call,
+      roomUrl: joinRes.roomUrl,
+      token: joinRes.token,
+      selfPhotoUrl: joinRes.selfPhotoUrl ?? null,
+    });
   }
 
   function toggleCalendarVisibility(calendarId: string) {
@@ -281,7 +328,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
               onClick={() => setShowCalendarPanel(true)}
               className="text-[12px] font-medium text-gray-500 hover:text-gray-700 transition-colors"
             >
-              Calendars
+              Manage calendars
             </button>
           </div>
         </div>
@@ -332,7 +379,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           now={now}
           closerEmail={closerInfo.email}
           onExclude={handleExclude}
-          onJoinRequest={setSelectedEvent}
+          onJoinRequest={handleEventJoin}
         />
       ) : (
         <ScheduleWeekView
@@ -340,7 +387,38 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           weekDates={weekDates}
           now={now}
           closerEmail={closerInfo.email}
-          onEventClick={setSelectedEvent}
+          onEventClick={handleEventJoin}
+        />
+      )}
+
+      {coachingError && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm px-4 py-3 rounded-lg bg-red-600 text-white text-sm shadow-lg">
+          {coachingError}
+          <button
+            onClick={() => setCoachingError(null)}
+            className="ml-3 underline opacity-80 hover:opacity-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {coachingDetailsCallId && (
+        <JoinCoachingCallModal
+          callId={coachingDetailsCallId}
+          onClose={() => setCoachingDetailsCallId(null)}
+          onJoin={handleCoachingJoin}
+        />
+      )}
+
+      {activeCoachingSession && closerInfo.b2cUserId && (
+        <CoachingCallRoom
+          call={activeCoachingSession.call}
+          currentUserId={closerInfo.b2cUserId}
+          roomUrl={activeCoachingSession.roomUrl}
+          token={activeCoachingSession.token}
+          selfPhotoUrl={activeCoachingSession.selfPhotoUrl}
+          onLeave={() => setActiveCoachingSession(null)}
         />
       )}
 
