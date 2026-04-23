@@ -106,7 +106,7 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
     }
     await load();
     setActiveSession({
-      call: { ...call, status: 'live' },
+      call: { ...call, status: 'live', actualStartTime: res.actualStartTime },
       roomUrl: res.roomUrl,
       token: res.token,
       selfPhotoUrl: res.selfPhotoUrl ?? null,

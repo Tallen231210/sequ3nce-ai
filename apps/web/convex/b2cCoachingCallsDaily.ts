@@ -151,7 +151,7 @@ export const startCoachingCall = action({
     callId: v.id("b2cCoachingCalls"),
     coachUserId: v.id("b2cUsers"),
   },
-  handler: async (ctx, args): Promise<{ roomUrl: string; token: string; selfPhotoUrl: string | null }> => {
+  handler: async (ctx, args): Promise<{ roomUrl: string; token: string; selfPhotoUrl: string | null; actualStartTime: number }> => {
     const env = readDailyEnv();
     const call = await ctx.runQuery(api.b2cCoachingCalls.getCoachingCall, {
       callId: args.callId,
@@ -184,10 +184,14 @@ export const startCoachingCall = action({
     );
     const token = await mintMeetingToken(env.apiKey, room.name, meta.name, true);
 
-    // Patch the call row to reflect live + room URL
+    // Compute actualStartTime here so we can return it to the client. The
+    // client uses it for the live-duration timer; without this the host's
+    // timer falls back to Date.now() on every re-render and flickers.
+    const actualStartTime = Date.now();
     await ctx.runMutation(internal.b2cCoachingCalls._patchCallLive, {
       callId: args.callId,
       dailyRoomUrl: room.url,
+      actualStartTime,
     });
     // Record coach attendance
     await ctx.runMutation(internal.b2cCoachingCalls._recordAttendance, {
@@ -196,7 +200,7 @@ export const startCoachingCall = action({
       role: "coach",
     });
 
-    return { roomUrl: room.url, token, selfPhotoUrl: meta.photoUrl };
+    return { roomUrl: room.url, token, selfPhotoUrl: meta.photoUrl, actualStartTime };
   },
 });
 
@@ -289,6 +293,15 @@ export const endCoachingCall = action({
       apiKey: env.apiKey,
     });
 
+    // Delete the Daily room. This force-disconnects every participant (their
+    // client fires 'left-meeting' which closes our overlay) AND stops Daily
+    // from billing for the room. Without this, idle participants who close
+    // the laptop lid keep the room alive until token expiration (4 hours).
+    await dailyFetch(`/rooms/${call.dailyRoomName}`, {
+      method: "DELETE",
+      apiKey: env.apiKey,
+    });
+
     await ctx.runMutation(internal.b2cCoachingCalls._patchCallEnded, {
       callId: args.callId,
     });
@@ -305,11 +318,14 @@ export const endCoachingCall = action({
 });
 
 // Coach kicks a user from the live call. Uses Daily's eject API.
+// v1 simplification: we identify the target by Daily session ID only — there's
+// no reliable client-side mapping from Daily sessionId → b2cUsers ID without
+// a separate handshake. The attendance "kicked" flag is reconciled later by
+// the stale-call cron (not blocking for kick itself to work).
 export const kickFromCoachingCall = action({
   args: {
     callId: v.id("b2cCoachingCalls"),
     coachUserId: v.id("b2cUsers"),
-    targetUserId: v.id("b2cUsers"),
     targetSessionId: v.string(),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
@@ -341,11 +357,6 @@ export const kickFromCoachingCall = action({
         }`
       );
     }
-
-    await ctx.runMutation(internal.b2cCoachingCalls._markAttendanceKicked, {
-      callId: args.callId,
-      userId: args.targetUserId,
-    });
 
     return { success: true };
   },

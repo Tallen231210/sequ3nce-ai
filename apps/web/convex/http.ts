@@ -9506,9 +9506,9 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      if (!body.callId || !body.coachUserId || !body.targetUserId || !body.targetSessionId) {
+      if (!body.callId || !body.coachUserId || !body.targetSessionId) {
         return b2cJsonResponse(
-          { error: "callId, coachUserId, targetUserId, targetSessionId required" },
+          { error: "callId, coachUserId, targetSessionId required" },
           400
         );
       }
@@ -9517,7 +9517,6 @@ http.route({
         {
           callId: body.callId as Id<"b2cCoachingCalls">,
           coachUserId: body.coachUserId as Id<"b2cUsers">,
-          targetUserId: body.targetUserId as Id<"b2cUsers">,
           targetSessionId: body.targetSessionId,
         }
       );

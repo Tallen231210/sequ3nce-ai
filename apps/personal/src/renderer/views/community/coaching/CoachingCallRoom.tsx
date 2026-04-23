@@ -69,8 +69,51 @@ function CoachingCallRoomInner({
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
+  // Chat state lives here (not inside ChatPanel) so closing the panel doesn't
+  // wipe the history. The app-message listener likewise stays mounted for the
+  // life of the overlay so messages that arrive while chat is hidden are kept.
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const recordingStartedRef = useRef(false);
   const isCoach = call.coachUserId === currentUserId;
+  // Anchor the live-duration timer to a stable value. `call.actualStartTime`
+  // is authoritative once set; if the host's activeSession briefly lacks it
+  // (shouldn't happen post-fix, but belt-and-suspenders), we capture Date.now()
+  // exactly once instead of re-evaluating on every daily-react re-render.
+  const startMs = useMemo(
+    () => call.actualStartTime ?? Date.now(),
+    [call.actualStartTime]
+  );
+
+  // Broadcast chat receiver — stays mounted for the whole overlay session.
+  useDailyEvent('app-message', (ev) => {
+    const payload = ev?.data as { kind?: string; body?: string; from?: string };
+    if (payload?.kind === 'chat' && payload.body) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          from: payload.from || 'Anon',
+          body: payload.body,
+          at: Date.now(),
+        },
+      ]);
+    }
+  });
+
+  function sendChat(body: string) {
+    if (!daily) return;
+    const myName = daily.participants().local?.user_name || 'You';
+    daily.sendAppMessage({ kind: 'chat', body, from: myName }, '*');
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-local`,
+        from: myName,
+        body,
+        at: Date.now(),
+      },
+    ]);
+  }
 
   // Join the Daily room once on mount. Immediately after join completes, we
   // publish our Sequ3nce profile photo via setUserData so other participants
@@ -200,7 +243,8 @@ function CoachingCallRoomInner({
 
         {/* Right: timer + count + chat toggle */}
         <div className="flex items-center justify-end gap-3">
-          <LiveDurationPill startMs={call.actualStartTime ?? Date.now()} />
+          <LiveDurationPill startMs={startMs} />
+
           <span className="text-white/30">·</span>
           <ParticipantCountPill />
           <button
@@ -233,7 +277,7 @@ function CoachingCallRoomInner({
             <ConnectingState />
           )}
         </div>
-        {showChat && <ChatPanel />}
+        {showChat && <ChatPanel messages={chatMessages} onSend={sendChat} />}
 
         {/* Watermark — signature icon mark bottom-left of the video pane.
             No opacity filter — that was washing the inverted white against the
@@ -488,10 +532,27 @@ function ParticipantTile({
   coachUserId: string;
   onKickError: (msg: string) => void;
 }) {
+  const daily = useDaily();
   const participant = useParticipant(sessionId);
   const localId = useLocalSessionId();
   const isLocal = sessionId === localId;
   const name = participant?.user_name || 'Guest';
+  // Whether the host has currently muted this attendee. We read the actual
+  // audio track state from Daily — if the participant is muted (for whatever
+  // reason), the icon reflects that.
+  const isMuted = !participant?.audio;
+
+  // Host can force-mute any attendee (useful for background noise). Attendees
+  // can self-unmute afterwards — Daily's updateParticipant({setAudio:false})
+  // is a nudge, not a permanent mute. That's the desired semantic per Tyler.
+  async function handleToggleMute() {
+    if (!daily || !isCoachView || isLocal) return;
+    try {
+      await daily.updateParticipant(sessionId, { setAudio: isMuted });
+    } catch (err) {
+      onKickError(err instanceof Error ? err.message : 'Failed to mute participant');
+    }
+  }
 
   // Daily ships each participant's token user_data as a JSON string. We use
   // it to transport the Sequ3nce profile photo URL so we can render the real
@@ -521,11 +582,7 @@ function ParticipantTile({
   // handle edge cases).
 
   async function handleKick() {
-    // v1 simplification: we pass the session id; backend kicks by session id.
-    // The attendance row update uses a best-effort name match (see backend).
-    // If that's too loose in practice, a follow-up will add app-message
-    // handshake for userId.
-    const res = await kickFromCoachingCall(callId, currentUserId, sessionId as unknown as string, sessionId);
+    const res = await kickFromCoachingCall(callId, currentUserId, sessionId);
     if (res.error) {
       onKickError(res.error);
     }
@@ -576,14 +633,24 @@ function ParticipantTile({
       </div>
 
       {isCoachView && !isLocal && (
-        <button
-          onClick={handleKick}
-          className="absolute top-2 right-2 p-1.5 rounded-md bg-red-600/90 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Remove from call"
-          aria-label="Remove from call"
-        >
-          <Icon name="kick" className="w-3.5 h-3.5" />
-        </button>
+        <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handleToggleMute}
+            className="p-1.5 rounded-md bg-black/70 text-white hover:bg-black/90"
+            title={isMuted ? 'Request unmute' : 'Mute participant'}
+            aria-label={isMuted ? 'Request unmute' : 'Mute participant'}
+          >
+            <Icon name={isMuted ? 'mic-off' : 'mic'} className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={handleKick}
+            className="p-1.5 rounded-md bg-red-600/90 text-white hover:bg-red-500"
+            title="Remove from call"
+            aria-label="Remove from call"
+          >
+            <Icon name="kick" className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -598,28 +665,18 @@ interface ChatMessage {
   at: number;
 }
 
-function ChatPanel() {
-  const daily = useDaily();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+// Pure view: messages are owned by the parent so closing/reopening the panel
+// doesn't lose history, and the app-message listener likewise lives in the
+// parent (stays mounted while the overlay is open).
+function ChatPanel({
+  messages,
+  onSend,
+}: {
+  messages: ChatMessage[];
+  onSend: (body: string) => void;
+}) {
   const [draft, setDraft] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
-
-  // Daily emits app-message for custom messages. We use sendAppMessage/receive
-  // as a simple broadcast chat — no persistence needed for v1.
-  useDailyEvent('app-message', (ev) => {
-    const payload = ev?.data as { kind?: string; body?: string; from?: string };
-    if (payload?.kind === 'chat' && payload.body) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          from: payload.from || 'Anon',
-          body: payload.body,
-          at: Date.now(),
-        },
-      ]);
-    }
-  });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -627,23 +684,8 @@ function ChatPanel() {
 
   function send() {
     const trimmed = draft.trim();
-    if (!trimmed || !daily) return;
-    const myName =
-      daily.participants().local?.user_name || 'You';
-    daily.sendAppMessage(
-      { kind: 'chat', body: trimmed, from: myName },
-      '*'
-    );
-    // Also render locally so the sender sees their own message
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-local`,
-        from: myName,
-        body: trimmed,
-        at: Date.now(),
-      },
-    ]);
+    if (!trimmed) return;
+    onSend(trimmed);
     setDraft('');
   }
 
@@ -656,7 +698,7 @@ function ChatPanel() {
         <img
           src={logoImage}
           alt="Sequ3nce"
-          className="h-3 w-auto opacity-40 [filter:invert(1)_contrast(1.1)_brightness(1.1)]"
+          className="h-6 w-auto opacity-60 [filter:invert(1)_contrast(1.1)_brightness(1.1)]"
         />
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

@@ -4274,6 +4274,9 @@ export interface CoachingCallJoinResult {
   roomUrl: string;
   token: string;
   selfPhotoUrl?: string | null;
+  /** Present when the host starts the call — used to anchor the live timer.
+   *  Omitted for regular joins (attendees get it from call.actualStartTime). */
+  actualStartTime?: number;
 }
 
 export async function listCoachingCalls(
@@ -4426,14 +4429,13 @@ export async function deleteCoachingCallRecording(
 export async function kickFromCoachingCall(
   callId: string,
   coachUserId: string,
-  targetUserId: string,
   targetSessionId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/kick`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callId, coachUserId, targetUserId, targetSessionId }),
+      body: JSON.stringify({ callId, coachUserId, targetSessionId }),
     });
     return await res.json();
   } catch {

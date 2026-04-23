@@ -305,15 +305,15 @@ export const _patchCallLive = internalMutation({
   args: {
     callId: v.id("b2cCoachingCalls"),
     dailyRoomUrl: v.string(),
+    actualStartTime: v.number(),
   },
   handler: async (ctx, args) => {
-    const now = Date.now();
     await ctx.db.patch(args.callId, {
       status: "live",
       dailyRoomUrl: args.dailyRoomUrl,
-      actualStartTime: now,
+      actualStartTime: args.actualStartTime,
       recordingStatus: "recording",
-      updatedAt: now,
+      updatedAt: args.actualStartTime,
     });
   },
 });
