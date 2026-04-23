@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import DailyIframe, { DailyCall, DailyParticipant } from '@daily-co/daily-js';
+import type { DailyParticipant } from '@daily-co/daily-js';
 import {
-  DailyProvider,
   DailyAudio,
   DailyVideo,
   useDaily,
@@ -13,8 +12,18 @@ import {
 import {
   endCoachingCall,
   kickFromCoachingCall,
+  createPlaybookEntry,
+  startBreakouts,
   type CoachingCall,
+  type BreakoutGroup,
 } from '../../../convex';
+import { useCoachingSession } from './CoachingSessionContext';
+import type { BattleRoyaleState, BRSubmission, BRReveal } from './BattleRoyaleTypes';
+import { StartBattleRoyaleModal } from './StartBattleRoyaleModal';
+import { BattleRoyaleOverlay } from './BattleRoyaleOverlay';
+import { BattleRoyaleCoachPanel } from './BattleRoyaleCoachPanel';
+import { StartBreakoutsModal } from './StartBreakoutsModal';
+import { BreakoutTransitionOverlay } from './BreakoutTransitionOverlay';
 import logoImage from '../../../../assets/logo.png';
 import iconImage from '../../../../assets/icon.png';
 
@@ -29,35 +38,10 @@ interface CoachingCallRoomProps {
   onLeave: () => void;
 }
 
-// Main export — wraps the whole overlay in a DailyProvider. We create the
-// call-object via useMemo and, CRITICALLY, call .destroy() on unmount. Daily
-// enforces a global "only one call object alive at a time" invariant; if we
-// skip destroy() the next mount throws "Duplicate DailyIframe instances".
-export function CoachingCallRoom(props: CoachingCallRoomProps) {
-  const callObject = useMemo(
-    () => DailyIframe.createCallObject({ subscribeToTracksAutomatically: true }),
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      // leave() is async; destroy() immediately tears down the instance.
-      // Fire-and-forget — Daily handles the race internally.
-      void callObject.leave().finally(() => {
-        callObject.destroy();
-      });
-    };
-  }, [callObject]);
-
-  return (
-    <DailyProvider callObject={callObject}>
-      <CoachingCallRoomInner {...props} />
-    </DailyProvider>
-  );
-}
-
-// Inner component — has access to Daily hooks via the provider wrapping it.
-function CoachingCallRoomInner({
+// The full-screen coaching-call overlay. Assumes it's rendered inside a
+// DailyProvider (set up by CoachingCallLayer one level up — the provider
+// lives at the app-hub level so the call survives tab navigation).
+export function CoachingCallRoom({
   call,
   currentUserId,
   roomUrl,
@@ -66,6 +50,7 @@ function CoachingCallRoomInner({
   onLeave,
 }: CoachingCallRoomProps) {
   const daily = useDaily();
+  const { minimize, markChatUnread, markHandsUnread, viewMode: sessionViewMode } = useCoachingSession();
   const [error, setError] = useState<string | null>(null);
 
   // Local media state — declared early so call-on acceptance can flip mic on.
@@ -123,6 +108,48 @@ function CoachingCallRoomInner({
   // named in a `called-on` broadcast. Modal shows Unmute/Decline.
   const [callOnPrompt, setCallOnPrompt] = useState<{ from: string } | null>(null);
 
+  // Objection Battle Royale — coach-driven live game. One round at a time;
+  // single state discriminated-union tracks all phases. See BattleRoyaleTypes
+  // for the full shape. `idle` is the at-rest value when no round is active.
+  const [brState, setBrState] = useState<BattleRoyaleState>({ phase: 'idle' });
+  const [showBrModal, setShowBrModal] = useState(false);
+  const brCompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Role Play Rooms (breakouts) — coach-driven. Coach sees the full group
+  // roster so they can hop between rooms. Attendees see their own assignment.
+  type BreakoutState =
+    | { phase: 'idle' }
+    | {
+        phase: 'transitioning';
+        groupId: number;
+        memberNames: string[];
+        roomUrl: string;
+        token: string;
+        endsAt: number;
+      }
+    | {
+        phase: 'in-breakout';
+        groupId: number;
+        roomName: string;
+        endsAt: number;
+      }
+    | {
+        // Coach-only in-breakout view: coach sees the full roster, knows
+        // they can hop, and is currently in one of the rooms (or main).
+        phase: 'coach-running';
+        groups: BreakoutGroup[];
+        endsAt: number;
+        /** Room name the coach is currently in. null = main room. */
+        currentRoomName: string | null;
+      };
+  const [breakoutState, setBreakoutState] = useState<BreakoutState>({ phase: 'idle' });
+  const [showBreakoutsModal, setShowBreakoutsModal] = useState(false);
+  const [showRoomsDropdown, setShowRoomsDropdown] = useState(false);
+  // Original main-room credentials — captured on initial join so we can rejoin
+  // after breakouts. Must NOT change when the user hops to a breakout room.
+  const originalRoomRef = useRef<{ url: string; token: string } | null>(null);
+  const breakoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const recordingStartedRef = useRef(false);
   const isCoach = call.coachUserId === currentUserId;
 
@@ -154,6 +181,8 @@ function CoachingCallRoomInner({
           at: Date.now(),
         },
       ]);
+      // Flag unread badge on the PiP mini if user is currently minimized.
+      if (sessionViewMode === 'mini') markChatUnread();
       return;
     }
 
@@ -162,6 +191,8 @@ function CoachingCallRoomInner({
       const userName = typeof payload.userName === 'string' ? payload.userName : 'Guest';
       const at = typeof payload.at === 'number' ? payload.at : Date.now();
       setRaisedHands((prev) => ({ ...prev, [sessionId]: { sessionId, userName, at } }));
+      // Flag unread hand-queue badge on the PiP mini if minimized.
+      if (sessionViewMode === 'mini') markHandsUnread();
       return;
     }
 
@@ -211,6 +242,195 @@ function CoachingCallRoomInner({
       setTimeout(() => {
         setLiveReactions((prev) => prev.filter((r) => r.id !== reaction.id));
       }, 2500);
+      return;
+    }
+
+    // ---- Battle Royale message handling ----
+
+    // Coach starts a round — everyone (including coach) transitions into
+    // their respective submitting phase.
+    if (
+      payload.kind === 'br-start' &&
+      typeof payload.objection === 'string' &&
+      typeof payload.submitEndTime === 'number' &&
+      typeof payload.voteSec === 'number'
+    ) {
+      const isCoachLocal = call.coachUserId === currentUserId;
+      if (isCoachLocal) {
+        setBrState({
+          phase: 'submitting-coach',
+          objection: payload.objection as string,
+          submitEndTime: payload.submitEndTime as number,
+          voteSec: payload.voteSec as number,
+          received: [],
+        });
+      } else {
+        setBrState({
+          phase: 'submitting',
+          objection: payload.objection as string,
+          submitEndTime: payload.submitEndTime as number,
+          voteSec: payload.voteSec as number,
+          myText: '',
+          mySubmissionId: null,
+        });
+      }
+      return;
+    }
+
+    // Attendee submission — targeted to coach only. Non-coaches ignore.
+    if (
+      payload.kind === 'br-submit' &&
+      typeof payload.id === 'string' &&
+      typeof payload.sessionId === 'string' &&
+      typeof payload.text === 'string' &&
+      typeof payload.from === 'string' &&
+      typeof payload.at === 'number'
+    ) {
+      const isCoachLocal = call.coachUserId === currentUserId;
+      if (!isCoachLocal) return;
+      const sub: BRSubmission = {
+        id: payload.id as string,
+        sessionId: payload.sessionId as string,
+        from: payload.from as string,
+        text: payload.text as string,
+        at: payload.at as number,
+      };
+      setBrState((prev) => {
+        if (prev.phase !== 'submitting-coach' && prev.phase !== 'reviewing') return prev;
+        // Dedup by id (safety against double-submits from retries).
+        if (prev.received.some((s) => s.id === sub.id)) return prev;
+        return { ...prev, received: [...prev.received, sub] };
+      });
+      return;
+    }
+
+    // Coach reveals 3 anonymized finalists — everyone moves into voting phase.
+    if (
+      payload.kind === 'br-reveal' &&
+      typeof payload.objection === 'string' &&
+      Array.isArray(payload.reveals) &&
+      typeof payload.voteEndTime === 'number'
+    ) {
+      const reveals: BRReveal[] = [];
+      for (const r of payload.reveals as unknown[]) {
+        if (r && typeof r === 'object' && 'id' in r && 'text' in r) {
+          const cast = r as { id: unknown; text: unknown };
+          if (typeof cast.id === 'string' && typeof cast.text === 'string') {
+            reveals.push({ id: cast.id, text: cast.text });
+          }
+        }
+      }
+      if (reveals.length === 0) return;
+      const votesInit: Record<string, number> = {};
+      for (const r of reveals) votesInit[r.id] = 0;
+      setBrState({
+        phase: 'voting',
+        objection: payload.objection as string,
+        reveals,
+        voteEndTime: payload.voteEndTime as number,
+        votes: votesInit,
+        myVote: null,
+      });
+      return;
+    }
+
+    // Any participant casts a vote.
+    if (payload.kind === 'br-vote' && typeof payload.revealId === 'string') {
+      const revealId = payload.revealId as string;
+      const previousVote = typeof payload.previousVote === 'string'
+        ? (payload.previousVote as string)
+        : null;
+      setBrState((prev) => {
+        if (prev.phase !== 'voting') return prev;
+        const nextVotes = { ...prev.votes };
+        if (previousVote && nextVotes[previousVote] !== undefined) {
+          nextVotes[previousVote] = Math.max(0, nextVotes[previousVote] - 1);
+        }
+        if (nextVotes[revealId] === undefined) nextVotes[revealId] = 0;
+        nextVotes[revealId] += 1;
+        return { ...prev, votes: nextVotes };
+      });
+      return;
+    }
+
+    // Coach announces winner — everyone shows the winner card for 6s.
+    if (
+      payload.kind === 'br-complete' &&
+      typeof payload.objection === 'string' &&
+      payload.winner && typeof payload.winner === 'object'
+    ) {
+      const w = payload.winner as { id?: unknown; text?: unknown; from?: unknown };
+      if (typeof w.id !== 'string' || typeof w.text !== 'string') return;
+      const winner: BRReveal = {
+        id: w.id,
+        text: w.text,
+        from: typeof w.from === 'string' ? w.from : undefined,
+      };
+      setBrState({
+        phase: 'complete',
+        objection: payload.objection as string,
+        winner,
+      });
+      if (brCompleteTimerRef.current) clearTimeout(brCompleteTimerRef.current);
+      brCompleteTimerRef.current = setTimeout(() => {
+        setBrState({ phase: 'idle' });
+      }, 6000);
+      return;
+    }
+
+    // Coach aborted the round (explicit cancel) — everyone resets.
+    if (payload.kind === 'br-abort') {
+      setBrState({ phase: 'idle' });
+      return;
+    }
+
+    // ---- Role Play Rooms (breakouts) ----
+
+    // Targeted to a single attendee. Contains their personal roomUrl + token
+    // and the names of their groupmates.
+    if (
+      payload.kind === 'breakout-assign' &&
+      typeof payload.groupId === 'number' &&
+      typeof payload.roomUrl === 'string' &&
+      typeof payload.token === 'string' &&
+      typeof payload.endsAt === 'number' &&
+      Array.isArray(payload.memberNames)
+    ) {
+      const memberNames = (payload.memberNames as unknown[])
+        .filter((n): n is string => typeof n === 'string');
+      setBreakoutState({
+        phase: 'transitioning',
+        groupId: payload.groupId as number,
+        memberNames,
+        roomUrl: payload.roomUrl as string,
+        token: payload.token as string,
+        endsAt: payload.endsAt as number,
+      });
+      return;
+    }
+
+    // Shared start signal — all clients now know the shared endsAt.
+    // Attendees already transitioned via breakout-assign; this is informational.
+    // (We don't use it to mutate state here; kept as a placeholder for future
+    //  features like synchronized countdown without targeted assigns.)
+    if (payload.kind === 'breakout-start') {
+      return;
+    }
+
+    // Coach ended breakouts — every client (including coach) returns to main.
+    if (payload.kind === 'breakout-end') {
+      const originalRoom = originalRoomRef.current;
+      if (originalRoom && daily) {
+        void (async () => {
+          try {
+            await daily.leave();
+            await daily.join({ url: originalRoom.url, token: originalRoom.token });
+          } catch (err) {
+            console.error('[CoachingCallRoom] breakout-end rejoin failed:', err);
+          }
+        })();
+      }
+      setBreakoutState({ phase: 'idle' });
       return;
     }
   });
@@ -363,6 +583,469 @@ function CoachingCallRoomInner({
     }
   }
 
+  // ---- Battle Royale handlers (coach + attendee) ----
+
+  // Coach-only: broadcast the start of a round. Everyone transitions into
+  // their role-specific submitting phase.
+  function startBattleRoyale(args: { objection: string; submitSec: number; voteSec: number }) {
+    if (!daily || !isCoach) return;
+    const submitEndTime = Date.now() + args.submitSec * 1000;
+    try {
+      daily.sendAppMessage(
+        {
+          kind: 'br-start',
+          objection: args.objection,
+          submitEndTime,
+          voteSec: args.voteSec,
+        },
+        '*',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start round');
+      return;
+    }
+    // Seed coach's own state (listener will also fire but this avoids a
+    // flicker since sendAppMessage echo delivery isn't synchronous).
+    setBrState({
+      phase: 'submitting-coach',
+      objection: args.objection,
+      submitEndTime,
+      voteSec: args.voteSec,
+      received: [],
+    });
+    setShowBrModal(false);
+  }
+
+  // Attendee-only: update local draft while typing. Parent owns this state
+  // because the submit timer lives at the parent; the overlay is a pure view.
+  function updateBrDraft(text: string) {
+    setBrState((prev) =>
+      prev.phase === 'submitting' ? { ...prev, myText: text } : prev,
+    );
+  }
+
+  // Attendee-only: submit rebuttal to the coach (targeted app-message).
+  function submitMyRebuttal(text: string) {
+    if (!daily) return;
+    const local = daily.participants().local;
+    if (!local) return;
+    const mySessionId = local.session_id;
+    const myName = local.user_name || 'Attendee';
+    // Find the coach's session id by user_name comparison. The coach's display
+    // name is set when the token is minted (coach's real name). If lookup
+    // fails, broadcast to all as a fallback — other attendees will ignore.
+    const participants = daily.participants();
+    const coachSessionId = Object.values(participants).find(
+      (p) => p.user_name === call.coachName,
+    )?.session_id;
+    const subId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      const payload = {
+        kind: 'br-submit',
+        id: subId,
+        sessionId: mySessionId,
+        text,
+        from: myName,
+        at: Date.now(),
+      };
+      if (coachSessionId) {
+        daily.sendAppMessage(payload, coachSessionId);
+      } else {
+        // Fallback broadcast if we can't resolve the coach's session.
+        daily.sendAppMessage(payload, '*');
+      }
+    } catch (err) {
+      console.error('[CoachingCallRoom] br-submit failed:', err);
+      setError('Failed to submit rebuttal');
+      return;
+    }
+    setBrState((prev) =>
+      prev.phase === 'submitting'
+        ? { ...prev, myText: text, mySubmissionId: subId }
+        : prev,
+    );
+  }
+
+  // Coach-only: toggle selection during reviewing phase.
+  function brToggleSelect(submissionId: string) {
+    setBrState((prev) => {
+      if (prev.phase !== 'reviewing') return prev;
+      const next = new Set(prev.selected);
+      if (next.has(submissionId)) next.delete(submissionId);
+      else if (next.size < 3) next.add(submissionId);
+      return { ...prev, selected: next };
+    });
+  }
+
+  // Coach-only: reveal the 3 selected submissions to everyone, transition to voting.
+  function brReveal() {
+    if (!daily || !isCoach) return;
+    setBrState((prev) => {
+      if (prev.phase !== 'reviewing') return prev;
+      if (prev.selected.size !== 3) return prev;
+      const reveals: BRReveal[] = prev.received
+        .filter((s) => prev.selected.has(s.id))
+        .map((s) => ({ id: s.id, text: s.text }));
+      const voteEndTime = Date.now() + prev.voteSec * 1000;
+      try {
+        daily.sendAppMessage(
+          {
+            kind: 'br-reveal',
+            objection: prev.objection,
+            reveals,
+            voteEndTime,
+          },
+          '*',
+        );
+      } catch (err) {
+        console.error('[CoachingCallRoom] br-reveal failed:', err);
+      }
+      const votesInit: Record<string, number> = {};
+      for (const r of reveals) votesInit[r.id] = 0;
+      // Keep `received` accessible so we can look up the author when ending
+      // voting (winner reveal includes from=authorName). Stash via closure:
+      brAuthorsRef.current = new Map(prev.received.map((s) => [s.id, s]));
+      return {
+        phase: 'voting',
+        objection: prev.objection,
+        reveals,
+        voteEndTime,
+        votes: votesInit,
+        myVote: null,
+      };
+    });
+  }
+
+  // Any participant: cast a vote. Optimistic local + broadcast.
+  function castBrVote(revealId: string) {
+    if (!daily) return;
+    setBrState((prev) => {
+      if (prev.phase !== 'voting') return prev;
+      if (prev.myVote === revealId) return prev; // already voted for this one
+      const previousVote = prev.myVote;
+      try {
+        daily.sendAppMessage(
+          {
+            kind: 'br-vote',
+            revealId,
+            previousVote: previousVote ?? undefined,
+          },
+          '*',
+        );
+      } catch (err) {
+        console.error('[CoachingCallRoom] br-vote failed:', err);
+        return prev;
+      }
+      const nextVotes = { ...prev.votes };
+      if (previousVote && nextVotes[previousVote] !== undefined) {
+        nextVotes[previousVote] = Math.max(0, nextVotes[previousVote] - 1);
+      }
+      nextVotes[revealId] = (nextVotes[revealId] ?? 0) + 1;
+      return { ...prev, myVote: revealId, votes: nextVotes };
+    });
+  }
+
+  // Coach-only: end voting, announce winner, auto-save to Playbook.
+  async function endBrVoting() {
+    if (!daily || !isCoach) return;
+    const state = brState;
+    if (state.phase !== 'voting') return;
+
+    // Winner = highest votes; tiebreak = earliest submission (from authorsRef).
+    const ranked = state.reveals
+      .map((r) => ({
+        ...r,
+        count: state.votes[r.id] ?? 0,
+        at: brAuthorsRef.current.get(r.id)?.at ?? Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => b.count - a.count || a.at - b.at);
+    const winnerReveal = ranked[0];
+    if (!winnerReveal) return;
+    const author = brAuthorsRef.current.get(winnerReveal.id);
+    const winnerWithAuthor: BRReveal = {
+      id: winnerReveal.id,
+      text: winnerReveal.text,
+      from: author?.from,
+    };
+
+    try {
+      daily.sendAppMessage(
+        {
+          kind: 'br-complete',
+          objection: state.objection,
+          winner: winnerWithAuthor,
+        },
+        '*',
+      );
+    } catch (err) {
+      console.error('[CoachingCallRoom] br-complete failed:', err);
+    }
+
+    // Show winner locally too.
+    setBrState({ phase: 'complete', objection: state.objection, winner: winnerWithAuthor });
+    if (brCompleteTimerRef.current) clearTimeout(brCompleteTimerRef.current);
+    brCompleteTimerRef.current = setTimeout(() => {
+      setBrState({ phase: 'idle' });
+    }, 6000);
+
+    // Auto-save to Playbook. Fail-safe: if the mutation errors, surface a
+    // toast + copy text to clipboard so the coach can add it manually.
+    try {
+      const res = await createPlaybookEntry({
+        coachUserId: currentUserId,
+        rebuttalText: winnerWithAuthor.text,
+        objectionText: state.objection,
+        authorName: winnerWithAuthor.from || 'Anonymous',
+        sourceCallId: call._id,
+      });
+      if ('error' in res) throw new Error(res.error);
+    } catch (err) {
+      console.error('[CoachingCallRoom] createPlaybookEntry failed:', err);
+      try {
+        await navigator.clipboard.writeText(winnerWithAuthor.text);
+        setError("Couldn't save winner to Playbook — copied text to your clipboard instead.");
+      } catch {
+        setError("Couldn't save winner to Playbook. Add manually via Community → Training.");
+      }
+    }
+  }
+
+  // Coach-only: abandon the current round (no winner, no save).
+  function abortBr() {
+    if (!daily || !isCoach) return;
+    try {
+      daily.sendAppMessage({ kind: 'br-abort' }, '*');
+    } catch { /* non-fatal */ }
+    setBrState({ phase: 'idle' });
+  }
+
+  // Ref holding the full submission list so we can look up authors for the
+  // winner reveal after we've dropped down to a reveals[] subset in state.
+  const brAuthorsRef = useRef<Map<string, BRSubmission>>(new Map());
+
+  // Phase-timer transitions:
+  //   - submit timer ends on coach → auto-move to 'reviewing'
+  //   - submit timer ends on attendee → disable input + mark submitted (no-op for already-submitted)
+  //   - vote timer ends → attendees stay in voting-ended state; coach sees "End voting" button. We DO NOT
+  //     auto-end voting on the coach's side — coach confirms the winner.
+  useEffect(() => {
+    if (brState.phase === 'submitting' || brState.phase === 'submitting-coach') {
+      const remaining = brState.submitEndTime - Date.now();
+      if (remaining <= 0) {
+        if (brState.phase === 'submitting-coach') {
+          setBrState({
+            phase: 'reviewing',
+            objection: brState.objection,
+            voteSec: brState.voteSec,
+            received: brState.received,
+            selected: new Set(),
+          });
+        }
+        // Attendee: no auto-action; textarea becomes disabled once timer reaches 0 in the overlay's useCountdown.
+        return;
+      }
+      const timer = setTimeout(() => {
+        if (brState.phase === 'submitting-coach') {
+          setBrState((prev) => {
+            if (prev.phase !== 'submitting-coach') return prev;
+            return {
+              phase: 'reviewing',
+              objection: prev.objection,
+              voteSec: prev.voteSec,
+              received: prev.received,
+              selected: new Set(),
+            };
+          });
+        }
+      }, remaining);
+      return () => clearTimeout(timer);
+    }
+  }, [brState]);
+
+  // ---- Role Play Rooms (breakouts) handlers ----
+
+  // Coach-only: open the config modal + gather the live attendee roster.
+  async function startBreakoutsFlow(args: { groupSize: number; durationMin: number }) {
+    if (!daily || !isCoach) return;
+    setShowBreakoutsModal(false);
+
+    // Collect the currently-connected, non-local (non-coach), non-kicked roster.
+    const participants = daily.participants();
+    const local = participants.local;
+    const attendees = Object.values(participants)
+      .filter((p) => p && p.session_id !== local?.session_id)
+      .map((p) => ({
+        sessionId: p.session_id,
+        userName: p.user_name || 'Guest',
+      }));
+
+    if (attendees.length < 2) {
+      setError('Need at least 2 connected attendees to start breakouts');
+      return;
+    }
+
+    const res = await startBreakouts({
+      callId: call._id,
+      coachUserId: currentUserId,
+      groupSize: args.groupSize,
+      durationMin: args.durationMin,
+      attendees,
+    });
+    if ('error' in res) {
+      setError(res.error);
+      return;
+    }
+
+    // Broadcast per-attendee assignments (targeted).
+    for (const group of res.groups) {
+      const memberNames = group.members.map((m) => m.userName);
+      for (const member of group.members) {
+        try {
+          daily.sendAppMessage(
+            {
+              kind: 'breakout-assign',
+              groupId: group.groupId,
+              roomUrl: group.roomUrl,
+              token: member.token,
+              endsAt: res.endsAt,
+              memberNames: memberNames.filter((n) => n !== member.userName),
+            },
+            member.sessionId,
+          );
+        } catch (err) {
+          console.error('[CoachingCallRoom] breakout-assign send failed:', err);
+        }
+      }
+    }
+    // Also broadcast a shared start message for informational use.
+    try {
+      daily.sendAppMessage({ kind: 'breakout-start', endsAt: res.endsAt }, '*');
+    } catch { /* non-fatal */ }
+
+    // Coach stays in main room and tracks the full roster.
+    setBreakoutState({
+      phase: 'coach-running',
+      groups: res.groups,
+      endsAt: res.endsAt,
+      currentRoomName: null,
+    });
+
+    // Safety auto-end when the timer elapses — coach's client also broadcasts
+    // breakout-end so attendees rejoin (their own timers will also fire as a
+    // backup if this broadcast is lost).
+    if (breakoutTimerRef.current) clearTimeout(breakoutTimerRef.current);
+    breakoutTimerRef.current = setTimeout(() => {
+      void endBreakoutsFlow();
+    }, Math.max(0, res.endsAt - Date.now()));
+  }
+
+  // Coach-only: hop into a specific breakout room (or back to main).
+  async function coachHopTo(group: BreakoutGroup | null) {
+    if (!daily || !isCoach) return;
+    if (breakoutState.phase !== 'coach-running') return;
+    const target = group
+      ? { url: group.roomUrl, token: group.coachToken }
+      : originalRoomRef.current;
+    if (!target) return;
+    setShowRoomsDropdown(false);
+    try {
+      await daily.leave();
+      await daily.join({ url: target.url, token: target.token });
+      setBreakoutState({
+        ...breakoutState,
+        currentRoomName: group ? group.roomName : null,
+      });
+    } catch (err) {
+      console.error('[CoachingCallRoom] coachHopTo failed:', err);
+      setError('Failed to switch rooms');
+    }
+  }
+
+  // Coach-only: broadcast end + rejoin main room.
+  async function endBreakoutsFlow() {
+    if (!daily || !isCoach) return;
+    try {
+      daily.sendAppMessage({ kind: 'breakout-end' }, '*');
+    } catch { /* non-fatal */ }
+    if (breakoutTimerRef.current) { clearTimeout(breakoutTimerRef.current); breakoutTimerRef.current = null; }
+    // Coach rejoins main (if they were in a breakout).
+    if (breakoutState.phase === 'coach-running' && breakoutState.currentRoomName !== null) {
+      const main = originalRoomRef.current;
+      if (main) {
+        try {
+          await daily.leave();
+          await daily.join({ url: main.url, token: main.token });
+        } catch (err) {
+          console.error('[CoachingCallRoom] coach rejoin-main failed:', err);
+        }
+      }
+    }
+    setBreakoutState({ phase: 'idle' });
+  }
+
+  // Attendee: on 'transitioning', wait 3 seconds, then switch Daily rooms.
+  // On 'in-breakout', arm an auto-rejoin timer so we always come back even if
+  // the coach's breakout-end broadcast is lost.
+  useEffect(() => {
+    if (breakoutState.phase !== 'transitioning') return;
+    const transition = breakoutState;
+    const delay = 3000;
+    const timer = setTimeout(async () => {
+      if (!daily) return;
+      try {
+        await daily.leave();
+        await daily.join({ url: transition.roomUrl, token: transition.token });
+        setBreakoutState({
+          phase: 'in-breakout',
+          groupId: transition.groupId,
+          roomName: transition.roomUrl,
+          endsAt: transition.endsAt,
+        });
+      } catch (err) {
+        console.error('[CoachingCallRoom] breakout switchRoom failed:', err);
+        setError('Failed to join breakout room');
+        setBreakoutState({ phase: 'idle' });
+      }
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [breakoutState, daily]);
+
+  // Auto-rejoin safety timer for attendees in breakouts.
+  useEffect(() => {
+    if (breakoutState.phase !== 'in-breakout') return;
+    const remaining = breakoutState.endsAt - Date.now();
+    if (remaining <= 0) {
+      const main = originalRoomRef.current;
+      if (main && daily) {
+        void (async () => {
+          try {
+            await daily.leave();
+            await daily.join({ url: main.url, token: main.token });
+          } catch (err) {
+            console.error('[CoachingCallRoom] auto-rejoin-main failed:', err);
+          }
+        })();
+      }
+      setBreakoutState({ phase: 'idle' });
+      return;
+    }
+    const timer = setTimeout(() => {
+      const main = originalRoomRef.current;
+      if (main && daily) {
+        void (async () => {
+          try {
+            await daily.leave();
+            await daily.join({ url: main.url, token: main.token });
+          } catch (err) {
+            console.error('[CoachingCallRoom] auto-rejoin-main failed:', err);
+          }
+        })();
+      }
+      setBreakoutState({ phase: 'idle' });
+    }, remaining);
+    return () => clearTimeout(timer);
+  }, [breakoutState, daily]);
+
   // Send a reaction. Fire-and-forget — reactions fading for a sender is fine
   // if the broadcast fails, because locally we also render immediately.
   function sendReaction(emoji: string) {
@@ -421,6 +1104,8 @@ function CoachingCallRoomInner({
   async function joinRoom() {
     if (!daily) return;
     setPreJoinPhase('joining');
+    // Stash the main-room credentials so breakouts can rejoin here on end.
+    originalRoomRef.current = { url: roomUrl, token };
     try {
       await daily.join({ url: roomUrl, token });
       if (selfPhotoUrl) {
@@ -559,6 +1244,41 @@ function CoachingCallRoomInner({
               Clear spotlight
             </button>
           )}
+          {isCoach && brState.phase === 'idle' && breakoutState.phase === 'idle' && (
+            <button
+              onClick={() => setShowBrModal(true)}
+              className="ml-1 px-2.5 py-1 rounded-lg text-[11px] font-mono uppercase tracking-wider bg-amber-400/20 text-amber-200 hover:bg-amber-400/30 transition-colors border border-amber-400/30"
+              title="Start Objection Battle Royale"
+            >
+              ⚔ Battle Royale
+            </button>
+          )}
+          {isCoach && brState.phase === 'idle' && breakoutState.phase === 'idle' && (
+            <button
+              onClick={() => setShowBreakoutsModal(true)}
+              className="ml-1 px-2.5 py-1 rounded-lg text-[11px] font-mono uppercase tracking-wider bg-sky-400/20 text-sky-200 hover:bg-sky-400/30 transition-colors border border-sky-400/30"
+              title="Start Role Play Rooms"
+            >
+              ⊞ Role Play
+            </button>
+          )}
+          {isCoach && breakoutState.phase === 'coach-running' && (
+            <BreakoutCoachControls
+              groups={breakoutState.groups}
+              currentRoomName={breakoutState.currentRoomName}
+              endsAt={breakoutState.endsAt}
+              open={showRoomsDropdown}
+              onToggleOpen={() => setShowRoomsDropdown((v) => !v)}
+              onHopTo={(g) => void coachHopTo(g)}
+              onEnd={() => void endBreakoutsFlow()}
+            />
+          )}
+          {breakoutState.phase === 'in-breakout' && (
+            <BreakoutCountdownBadge
+              groupId={breakoutState.groupId}
+              endsAt={breakoutState.endsAt}
+            />
+          )}
           {isCoach && (
             <button
               onClick={() => { setShowHandQueue((v) => !v); if (!showHandQueue) setShowChat(false); }}
@@ -588,6 +1308,14 @@ function CoachingCallRoomInner({
             }`}
           >
             <Icon name="chat" className="w-4 h-4" />
+          </button>
+          <button
+            onClick={minimize}
+            aria-label="Minimize call"
+            title="Minimize (keep the call running while you use the rest of the app)"
+            className="ml-1 p-2 rounded-lg bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+          >
+            <Icon name="minimize" className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -619,14 +1347,40 @@ function CoachingCallRoomInner({
           ) : (
             <ConnectingState />
           )}
-        </div>
-        {showChat && !showHandQueue && <ChatPanel messages={chatMessages} onSend={sendChat} />}
-        {isCoach && showHandQueue && (
-          <HandQueuePanel
-            raisedHands={raisedHands}
-            onCallOn={callOn}
-            onDismiss={dismissHand}
+
+          {/* Battle Royale overlay — renders over the video area during active
+              rounds (submitting/voting/complete). Pointer-transparent outside
+              the card so clicks on the grid still work. */}
+          <BattleRoyaleOverlay
+            state={brState}
+            onSubmit={submitMyRebuttal}
+            onVote={castBrVote}
+            onDraftChange={updateBrDraft}
           />
+        </div>
+
+        {/* Side panels — only one visible at a time. Coach's Battle Royale
+            workspace takes priority over chat/hand-queue during review/voting
+            so they can focus on the game. */}
+        {isCoach && (brState.phase === 'reviewing' || brState.phase === 'voting') ? (
+          <BattleRoyaleCoachPanel
+            state={brState}
+            onToggleSelect={brToggleSelect}
+            onReveal={brReveal}
+            onEndVoting={endBrVoting}
+            onAbort={abortBr}
+          />
+        ) : (
+          <>
+            {showChat && !showHandQueue && <ChatPanel messages={chatMessages} onSend={sendChat} />}
+            {isCoach && showHandQueue && (
+              <HandQueuePanel
+                raisedHands={raisedHands}
+                onCallOn={callOn}
+                onDismiss={dismissHand}
+              />
+            )}
+          </>
         )}
 
         {/* Watermark — signature icon mark bottom-left of the video pane.
@@ -685,6 +1439,38 @@ function CoachingCallRoomInner({
         />
       )}
 
+      {/* Coach-only Battle Royale start modal */}
+      {showBrModal && isCoach && (
+        <StartBattleRoyaleModal
+          onClose={() => setShowBrModal(false)}
+          onStart={startBattleRoyale}
+        />
+      )}
+
+      {/* Coach-only breakouts config modal */}
+      {showBreakoutsModal && isCoach && (
+        <StartBreakoutsModal
+          attendeeCount={
+            daily
+              ? Object.values(daily.participants()).filter(
+                  (p) => p && p.session_id !== daily.participants().local?.session_id,
+                ).length
+              : 0
+          }
+          onClose={() => setShowBreakoutsModal(false)}
+          onStart={startBreakoutsFlow}
+        />
+      )}
+
+      {/* Attendee transition overlay (pre-switch to breakout room) */}
+      {breakoutState.phase === 'transitioning' && (
+        <BreakoutTransitionOverlay
+          groupId={breakoutState.groupId}
+          memberNames={breakoutState.memberNames}
+          countdownSec={3}
+        />
+      )}
+
       {/* Daily audio — must be rendered once to hear participants */}
       <DailyAudio />
     </div>
@@ -709,7 +1495,9 @@ type IconName =
   | 'smile'
   | 'grid'
   | 'speaker'
-  | 'spotlight';
+  | 'spotlight'
+  | 'minimize'
+  | 'maximize';
 
 function Icon({ name, className = 'w-4 h-4' }: { name: IconName; className?: string }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -759,6 +1547,12 @@ function Icon({ name, className = 'w-4 h-4' }: { name: IconName; className?: str
     ),
     'spotlight': (
       <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+    ),
+    'minimize': (
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+    ),
+    'maximize': (
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
     ),
   };
   return (
@@ -1643,5 +2437,119 @@ if (typeof document !== 'undefined' && !document.getElementById('sq-reaction-key
     }
   `;
   document.head.appendChild(style);
+}
+
+// ==================== Breakout inline helpers ====================
+
+// Coach-only rooms dropdown + end-breakouts button (top bar during a session).
+function BreakoutCoachControls({
+  groups,
+  currentRoomName,
+  endsAt,
+  open,
+  onToggleOpen,
+  onHopTo,
+  onEnd,
+}: {
+  groups: BreakoutGroup[];
+  currentRoomName: string | null;
+  endsAt: number;
+  open: boolean;
+  onToggleOpen: () => void;
+  onHopTo: (g: BreakoutGroup | null) => void;
+  onEnd: () => void;
+}) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  const secondsLeft = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const ss = String(secondsLeft % 60).padStart(2, '0');
+  const currentLabel = currentRoomName
+    ? `Group ${groups.findIndex((g) => g.roomName === currentRoomName) + 1}`
+    : 'Main';
+  return (
+    <div className="ml-1 flex items-center gap-1">
+      <div className="relative">
+        <button
+          onClick={onToggleOpen}
+          className="px-2.5 py-1 rounded-lg text-[11px] font-mono uppercase tracking-wider bg-sky-400/20 text-sky-200 hover:bg-sky-400/30 transition-colors border border-sky-400/30"
+          title="Hop between rooms"
+        >
+          Rooms · {currentLabel} · {mm}:{ss}
+        </button>
+        {open && (
+          <div className="absolute top-full right-0 mt-2 w-[220px] rounded-lg bg-zinc-900 border border-white/10 shadow-xl overflow-hidden z-[30]">
+            <button
+              onClick={() => onHopTo(null)}
+              className={`w-full px-3 py-2 text-left text-[12px] border-b border-white/5 transition-colors ${
+                currentRoomName === null
+                  ? 'bg-white/10 text-white font-semibold'
+                  : 'text-white/80 hover:bg-white/5'
+              }`}
+            >
+              Main room
+            </button>
+            {groups.map((g) => (
+              <button
+                key={g.roomName}
+                onClick={() => onHopTo(g)}
+                className={`w-full px-3 py-2 text-left text-[12px] transition-colors ${
+                  currentRoomName === g.roomName
+                    ? 'bg-white/10 text-white font-semibold'
+                    : 'text-white/80 hover:bg-white/5'
+                }`}
+              >
+                <div>Group {g.groupId}</div>
+                <div className="text-[10px] text-white/40 truncate mt-0.5">
+                  {g.members.map((m) => m.userName).join(', ')}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        onClick={onEnd}
+        className="px-2.5 py-1 rounded-lg text-[11px] font-mono uppercase tracking-wider bg-red-500/20 text-red-200 hover:bg-red-500/30 transition-colors border border-red-500/30"
+        title="End breakouts for everyone"
+      >
+        End
+      </button>
+    </div>
+  );
+}
+
+// Attendee-facing breakout countdown badge shown in the top bar while they're
+// in a sub-room. Pulses amber as the timer runs down.
+function BreakoutCountdownBadge({
+  groupId,
+  endsAt,
+}: {
+  groupId: number;
+  endsAt: number;
+}) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  const secondsLeft = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+  const ss = String(secondsLeft % 60).padStart(2, '0');
+  const urgent = secondsLeft <= 60;
+  return (
+    <div
+      className={`ml-1 px-2.5 py-1 rounded-lg text-[11px] font-mono uppercase tracking-wider border ${
+        urgent
+          ? 'bg-red-400/20 text-red-200 border-red-400/30 animate-pulse'
+          : 'bg-sky-400/20 text-sky-200 border-sky-400/30'
+      }`}
+    >
+      Group {groupId} · {mm}:{ss}
+    </div>
+  );
 }
 

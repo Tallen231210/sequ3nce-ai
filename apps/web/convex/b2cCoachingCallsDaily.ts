@@ -362,6 +362,165 @@ export const kickFromCoachingCall = action({
   },
 });
 
+// ==================== Role Play Rooms (breakouts) ====================
+
+// Coach-initiated breakout rooms. Receives the live participant roster from
+// the coach's client (the server has no view of who's currently connected to
+// the Daily room without webhook data), randomizes them into groups of the
+// requested size, mints one sub-room per group, and mints meeting tokens for
+// each attendee + a coach owner-token per room.
+//
+// The coach's client is responsible for broadcasting targeted `breakout-assign`
+// app-messages to each attendee's session after receiving this response, and
+// the subsequent `breakout-start` to everyone with the shared `endsAt` so
+// clients render the countdown. The auto-rejoin is timer-driven on each
+// client for safety.
+export const startBreakouts = action({
+  args: {
+    callId: v.id("b2cCoachingCalls"),
+    coachUserId: v.id("b2cUsers"),
+    groupSize: v.number(),   // 2..6
+    durationMin: v.number(), // 5..30
+    /** Roster captured on the coach's client at the moment of starting.
+     *  Each entry is {sessionId, userName} for a currently-connected attendee.
+     *  The coach is excluded from grouping (can hop into any room freely). */
+    attendees: v.array(
+      v.object({
+        sessionId: v.string(),
+        userName: v.string(),
+      })
+    ),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    endsAt: number;
+    groups: Array<{
+      groupId: number;
+      roomName: string;
+      roomUrl: string;
+      members: Array<{ sessionId: string; userName: string; token: string }>;
+      coachToken: string;
+    }>;
+  }> => {
+    const env = readDailyEnv();
+    const call = await ctx.runQuery(api.b2cCoachingCalls.getCoachingCall, {
+      callId: args.callId,
+    });
+    if (!call) throw new Error("Call not found");
+    if (call.coachUserId !== args.coachUserId) {
+      throw new Error("Only the coach can start breakouts");
+    }
+    if (call.status !== "live") {
+      throw new Error("Breakouts can only be started during a live call");
+    }
+
+    // Validate inputs
+    const groupSize = Math.max(2, Math.min(6, Math.floor(args.groupSize)));
+    const durationMin = Math.max(5, Math.min(30, Math.floor(args.durationMin)));
+    if (args.attendees.length === 0) {
+      throw new Error("No attendees connected — breakouts need at least 2 people");
+    }
+
+    // Randomize — in-place Fisher-Yates.
+    const shuffled = [...args.attendees];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    // Bucket into groups. If the last group is smaller than 2, merge it up
+    // into the previous group (so we never strand a single person alone).
+    const groupsRaw: Array<typeof shuffled> = [];
+    for (let i = 0; i < shuffled.length; i += groupSize) {
+      groupsRaw.push(shuffled.slice(i, i + groupSize));
+    }
+    if (groupsRaw.length >= 2) {
+      const last = groupsRaw[groupsRaw.length - 1];
+      if (last.length < 2) {
+        const prev = groupsRaw[groupsRaw.length - 2];
+        prev.push(...last);
+        groupsRaw.pop();
+      }
+    }
+
+    // Fetch coach's display name once for their owner tokens in each room.
+    const coachMeta = await ctx.runQuery(
+      internal.b2cCoachingCalls._getUserDailyMetadata,
+      { userId: args.coachUserId }
+    );
+    const coachName = coachMeta.name || "Coach";
+
+    const endsAt = Date.now() + durationMin * 60_000;
+    const expSec = Math.floor(endsAt / 1000) + 5 * 60; // 5-min buffer past end
+
+    // Create rooms + tokens in parallel for fast cut-over.
+    const groups = await Promise.all(
+      groupsRaw.map(async (members, idx) => {
+        const groupId = idx + 1;
+        const roomName = `br-${call._id}-${groupId}-${Date.now().toString(36)}`;
+
+        // Create the breakout room (not recorded — we don't save breakout video).
+        const createRes = await dailyFetch("/rooms", {
+          method: "POST",
+          apiKey: env.apiKey,
+          body: {
+            name: roomName,
+            privacy: "public",
+            properties: {
+              max_participants: Math.max(4, groupSize + 2),
+              enable_chat: true,
+              enable_screenshare: false,
+              enable_prejoin_ui: false,
+              start_video_off: false,
+              start_audio_off: false,
+              exp: expSec,
+            },
+          },
+        });
+        if (!createRes.ok) {
+          throw new Error(
+            `Failed to create breakout room ${groupId}: ${
+              createRes.error ?? JSON.stringify(createRes.data)?.slice(0, 150)
+            }`
+          );
+        }
+        const roomData = createRes.data as { url: string; name: string };
+
+        // Mint attendee tokens + coach owner token.
+        const memberTokens = await Promise.all(
+          members.map(async (m) => {
+            const token = await mintMeetingToken(
+              env.apiKey,
+              roomName,
+              m.userName,
+              false
+            );
+            return { sessionId: m.sessionId, userName: m.userName, token };
+          })
+        );
+        const coachToken = await mintMeetingToken(
+          env.apiKey,
+          roomName,
+          coachName,
+          true
+        );
+
+        return {
+          groupId,
+          roomName,
+          roomUrl: roomData.url,
+          members: memberTokens,
+          coachToken,
+        };
+      })
+    );
+
+    return { endsAt, groups };
+  },
+});
+
 // Debug helper — lists recent Daily recordings (all of them) so we can see
 // what state the recording is in. Founder-only-ish (we don't enforce here
 // since it's called via CLI not HTTP).

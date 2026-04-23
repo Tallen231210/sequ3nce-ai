@@ -7,27 +7,16 @@ import {
   joinCoachingCall,
   deleteCoachingCallRecording,
   type CoachingCall,
-  type CoachingCallJoinResult,
 } from '../../../convex';
 import { CoachingCallCard } from './CoachingCallCard';
 import { ScheduleCoachingCallModal } from './ScheduleCoachingCallModal';
-import { CoachingCallRoom } from './CoachingCallRoom';
 import { ReplayPlayerModal } from './ReplayPlayerModal';
+import { useCoachingSession } from './CoachingSessionContext';
 
 const POLL_MS = 30_000;
 
 interface CoachingViewProps {
   closerInfo: CloserInfo;
-}
-
-// Session state while the current user is inside a live call — holds the
-// Daily room URL + token so the overlay can connect, plus the user's own
-// profile photo URL to broadcast to other participants after join.
-interface ActiveCallSession {
-  call: CoachingCall;
-  roomUrl: string;
-  token: string;
-  selfPhotoUrl: string | null;
 }
 
 export function CoachingView({ closerInfo }: CoachingViewProps) {
@@ -38,13 +27,31 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
     closerInfo.badges?.includes('admin') ||
     false;
 
+  // Active session state lives in the CoachingSessionContext at the hub level
+  // so the call survives tab navigation (enables PiP). CoachingView just reads
+  // the current session to know whether to refresh the list post-leave.
+  const { activeSession, setActiveSession } = useCoachingSession();
+
   const [calls, setCalls] = useState<CoachingCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [activeSession, setActiveSession] = useState<ActiveCallSession | null>(null);
   const [replayCall, setReplayCall] = useState<CoachingCall | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+
+  // Refresh the call list whenever a session ends (e.g., coach ended the call
+  // or user left). `activeSession` transitioning from non-null → null is the
+  // signal; we don't need to observe CoachingCallLayer directly.
+  const prevActiveIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentId = activeSession?.call._id ?? null;
+    if (prevActiveIdRef.current && !currentId) {
+      void load();
+    }
+    prevActiveIdRef.current = currentId;
+    // `load` is stable via useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession]);
 
   const load = useCallback(async () => {
     const res = await listCoachingCalls(undefined, 30);
@@ -147,11 +154,6 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
       return;
     }
     await load();
-  }
-
-  function handleLeaveRoom() {
-    setActiveSession(null);
-    void load();
   }
 
   return (
@@ -283,16 +285,9 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
         />
       )}
 
-      {activeSession && (
-        <CoachingCallRoom
-          call={activeSession.call}
-          currentUserId={userId}
-          roomUrl={activeSession.roomUrl}
-          token={activeSession.token}
-          selfPhotoUrl={activeSession.selfPhotoUrl}
-          onLeave={handleLeaveRoom}
-        />
-      )}
+      {/* Active call is rendered by CoachingCallLayer at the hub level so
+          the Daily call survives tab navigation. We just trigger state via
+          context in handleStart/handleJoin. */}
 
       {replayCall && (
         <ReplayPlayerModal

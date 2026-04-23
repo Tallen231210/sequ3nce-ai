@@ -9565,6 +9565,276 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// POST /b2c/coaching-calls/breakouts/start — coach starts breakout rooms
+http.route({
+  path: "/b2c/coaching-calls/breakouts/start",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (
+        !body.callId ||
+        !body.coachUserId ||
+        typeof body.groupSize !== "number" ||
+        typeof body.durationMin !== "number" ||
+        !Array.isArray(body.attendees)
+      ) {
+        return b2cJsonResponse(
+          { error: "callId, coachUserId, groupSize, durationMin, attendees required" },
+          400
+        );
+      }
+      const result = await ctx.runAction(
+        api.b2cCoachingCallsDaily.startBreakouts,
+        {
+          callId: body.callId as Id<"b2cCoachingCalls">,
+          coachUserId: body.coachUserId as Id<"b2cUsers">,
+          groupSize: body.groupSize,
+          durationMin: body.durationMin,
+          attendees: body.attendees.map((a: { sessionId: string; userName: string }) => ({
+            sessionId: String(a.sessionId),
+            userName: String(a.userName),
+          })),
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/breakouts/start",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// ==================== Objection Playbook ====================
+
+// GET /b2c/playbook/list?cursor=X&limit=Y&tag=Z&sortBy=top|newest&userId=W
+http.route({
+  path: "/b2c/playbook/list",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const cursorStr = url.searchParams.get("cursor");
+      const limitStr = url.searchParams.get("limit");
+      const tag = url.searchParams.get("tag");
+      const sortByParam = url.searchParams.get("sortBy");
+      const userIdStr = url.searchParams.get("userId");
+      const sortBy: "top" | "newest" =
+        sortByParam === "newest" ? "newest" : "top";
+      const result = await ctx.runQuery(
+        api.b2cObjectionPlaybook.listPlaybookEntries,
+        {
+          cursor: cursorStr ? Number(cursorStr) : undefined,
+          limit: limitStr ? Number(limitStr) : undefined,
+          tag: tag ?? undefined,
+          sortBy,
+          userId: userIdStr ? (userIdStr as Id<"b2cUsers">) : undefined,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/playbook/list",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// GET /b2c/playbook/detail?entryId=X&userId=Y
+http.route({
+  path: "/b2c/playbook/detail",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const entryId = url.searchParams.get("entryId");
+      const userIdStr = url.searchParams.get("userId");
+      if (!entryId) {
+        return b2cJsonResponse({ error: "entryId required" }, 400);
+      }
+      const result = await ctx.runQuery(
+        api.b2cObjectionPlaybook.getPlaybookEntry,
+        {
+          entryId: entryId as Id<"b2cObjectionPlaybook">,
+          userId: userIdStr ? (userIdStr as Id<"b2cUsers">) : undefined,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/playbook/detail",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("GET, OPTIONS"),
+});
+
+// POST /b2c/playbook/create — coach-only (Battle Royale auto-save + manual)
+http.route({
+  path: "/b2c/playbook/create",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.coachUserId || !body.rebuttalText || !body.objectionText || !body.authorName) {
+        return b2cJsonResponse(
+          { error: "coachUserId, rebuttalText, objectionText, authorName required" },
+          400
+        );
+      }
+      const result = await ctx.runMutation(
+        api.b2cObjectionPlaybook.createPlaybookEntry,
+        {
+          coachUserId: body.coachUserId as Id<"b2cUsers">,
+          rebuttalText: String(body.rebuttalText),
+          objectionText: String(body.objectionText),
+          authorUserId: body.authorUserId
+            ? (body.authorUserId as Id<"b2cUsers">)
+            : undefined,
+          authorName: String(body.authorName),
+          tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+          sourceCallId: body.sourceCallId
+            ? (body.sourceCallId as Id<"b2cCoachingCalls">)
+            : undefined,
+          coachAnnotation: body.coachAnnotation
+            ? String(body.coachAnnotation)
+            : undefined,
+          featured: typeof body.featured === "boolean" ? body.featured : undefined,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/playbook/create",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/playbook/update — coach-only
+http.route({
+  path: "/b2c/playbook/update",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.entryId || !body.coachUserId) {
+        return b2cJsonResponse({ error: "entryId, coachUserId required" }, 400);
+      }
+      const result = await ctx.runMutation(
+        api.b2cObjectionPlaybook.updatePlaybookEntry,
+        {
+          entryId: body.entryId as Id<"b2cObjectionPlaybook">,
+          coachUserId: body.coachUserId as Id<"b2cUsers">,
+          coachAnnotation: body.coachAnnotation !== undefined
+            ? String(body.coachAnnotation)
+            : undefined,
+          featured: typeof body.featured === "boolean" ? body.featured : undefined,
+          tags: Array.isArray(body.tags) ? body.tags.map(String) : undefined,
+          rebuttalText: body.rebuttalText !== undefined
+            ? String(body.rebuttalText)
+            : undefined,
+          objectionText: body.objectionText !== undefined
+            ? String(body.objectionText)
+            : undefined,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/playbook/update",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/playbook/delete — coach-only
+http.route({
+  path: "/b2c/playbook/delete",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.entryId || !body.coachUserId) {
+        return b2cJsonResponse({ error: "entryId, coachUserId required" }, 400);
+      }
+      const result = await ctx.runMutation(
+        api.b2cObjectionPlaybook.deletePlaybookEntry,
+        {
+          entryId: body.entryId as Id<"b2cObjectionPlaybook">,
+          coachUserId: body.coachUserId as Id<"b2cUsers">,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/playbook/delete",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/playbook/vote — any active subscriber (toggles vote)
+http.route({
+  path: "/b2c/playbook/vote",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.entryId || !body.userId) {
+        return b2cJsonResponse({ error: "entryId, userId required" }, 400);
+      }
+      const result = await ctx.runMutation(
+        api.b2cObjectionPlaybook.votePlaybookEntry,
+        {
+          entryId: body.entryId as Id<"b2cObjectionPlaybook">,
+          userId: body.userId as Id<"b2cUsers">,
+        }
+      );
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/playbook/vote",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // GET /b2c/money-bells/feed?cursor=X&limit=Y&userId=Z
 http.route({
   path: "/b2c/money-bells/feed",

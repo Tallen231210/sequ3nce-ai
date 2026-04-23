@@ -17,7 +17,7 @@ import { CalendarManagement } from './CalendarManagement';
 import { ScheduleListView } from './ScheduleListView';
 import { ScheduleWeekView } from './ScheduleWeekView';
 import { ScheduleMeetingModal } from './ScheduleMeetingModal';
-import { CoachingCallRoom } from '../community/coaching/CoachingCallRoom';
+import { useCoachingSession } from '../community/coaching/CoachingSessionContext';
 import { JoinCoachingCallModal } from '../community/coaching/JoinCoachingCallModal';
 
 interface ScheduleViewProps {
@@ -48,13 +48,9 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   // coaching-specific details modal (NOT the regular meeting modal) — the
   // user then sees session info + a branded Join CTA before entering the call.
   const [coachingDetailsCallId, setCoachingDetailsCallId] = useState<string | null>(null);
-  // Active coaching session — set after user hits Join inside the details modal.
-  const [activeCoachingSession, setActiveCoachingSession] = useState<{
-    call: CoachingCall;
-    roomUrl: string;
-    token: string;
-    selfPhotoUrl: string | null;
-  } | null>(null);
+  // Active coaching session is hoisted to CoachingSessionContext at the hub
+  // level so the call survives tab navigation (enables PiP).
+  const { setActiveSession: setActiveCoachingSession } = useCoachingSession();
   const [coachingError, setCoachingError] = useState<string | null>(null);
 
   // Stale request guard
@@ -411,16 +407,9 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
         />
       )}
 
-      {activeCoachingSession && closerInfo.b2cUserId && (
-        <CoachingCallRoom
-          call={activeCoachingSession.call}
-          currentUserId={closerInfo.b2cUserId}
-          roomUrl={activeCoachingSession.roomUrl}
-          token={activeCoachingSession.token}
-          selfPhotoUrl={activeCoachingSession.selfPhotoUrl}
-          onLeave={() => setActiveCoachingSession(null)}
-        />
-      )}
+      {/* Active coaching call renders via CoachingCallLayer at the hub level —
+          no in-ScheduleView render needed. Join handlers call setActiveSession
+          on the CoachingSessionContext. */}
 
       {/* Meeting confirmation modal */}
       {selectedEvent && (

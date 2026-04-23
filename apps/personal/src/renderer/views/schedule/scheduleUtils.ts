@@ -229,10 +229,9 @@ export function extractProspectName(
 
 // ==================== Overlap layout ====================
 
-// Max personal-event columns we split a time slot into before falling back to
+// Max event columns we split a time slot into before falling back to
 // stacking. 3 covers the realistic ceiling for our users (multi-calendar
-// closers + a Sequ3nce coaching ribbon = 2 columns + ribbon; 3 personal
-// overlaps = all 3 columns; 4+ is an edge case that stacks on column 2).
+// closers + our coaching call = 3 concurrent max).
 const MAX_OVERLAP_COLUMNS = 3;
 
 /** Two events share time when their [start, end) ranges strictly intersect. */
@@ -242,21 +241,19 @@ export function eventsOverlap(a: CalendarEvent, b: CalendarEvent): boolean {
 
 export interface EventLayoutSlot {
   event: CalendarEvent;
-  /** 'grid' = competes for column width with other grid events.
-   *  'ribbon' = Sequ3nce coaching event; pinned as a thin full-width bar at startTime. */
-  lane: 'grid' | 'ribbon';
-  /** 0-indexed column within the overlap cluster. Only meaningful when lane === 'grid'. */
+  /** 0-indexed column within the overlap cluster. */
   columnIndex: number;
   /** Total columns in this event's cluster (1..MAX_OVERLAP_COLUMNS). */
   columnCount: number;
 }
 
 /**
- * Bucket one day's events into layout slots. Coaching events (coachingCallId
- * set) are extracted to a ribbon lane so they don't compete with personal
- * events for split-column width. Personal events get a greedy column
- * assignment; transitively-overlapping events share one cluster and all
- * report the cluster's total columnCount (so their widths line up).
+ * Bucket one day's events into layout slots. Every event (personal or
+ * coaching) participates in the same column-split — coaching events keep
+ * their distinct violet color via CSS, but their block height reflects the
+ * actual duration so users can see at a glance that a call is an hour long.
+ * Transitively-overlapping events share one cluster and all report the
+ * cluster's total columnCount (so their widths line up).
  *
  * Never throws — callers wrap in try/catch as a belt-and-suspenders, but this
  * function handles empty arrays, bad timestamps, and pathological overlaps
@@ -265,16 +262,9 @@ export interface EventLayoutSlot {
 export function layoutEventsForDay(events: CalendarEvent[]): EventLayoutSlot[] {
   if (events.length === 0) return [];
 
-  const coaching: CalendarEvent[] = [];
-  const personal: CalendarEvent[] = [];
-  for (const e of events) {
-    if (e.coachingCallId) coaching.push(e);
-    else personal.push(e);
-  }
-
-  // Sort personal events by start time, tiebreak longer-first so long events
-  // anchor column 0 in their cluster.
-  const sorted = [...personal].sort((a, b) => {
+  // Sort events by start time, tiebreak longer-first so long events anchor
+  // column 0 in their cluster.
+  const sorted = [...events].sort((a, b) => {
     if (a.startTime !== b.startTime) return a.startTime - b.startTime;
     return (b.endTime - b.startTime) - (a.endTime - a.startTime);
   });
@@ -342,18 +332,10 @@ export function layoutEventsForDay(events: CalendarEvent[]): EventLayoutSlot[] {
     const columnCount = Math.min((clusterMaxCol.get(root) ?? 0) + 1, MAX_OVERLAP_COLUMNS);
     return {
       event: ev,
-      lane: 'grid',
       columnIndex: assigned.get(ev._id) ?? 0,
       columnCount,
     };
   });
 
-  const ribbonSlots: EventLayoutSlot[] = coaching.map((ev) => ({
-    event: ev,
-    lane: 'ribbon',
-    columnIndex: 0,
-    columnCount: 1,
-  }));
-
-  return [...gridSlots, ...ribbonSlots];
+  return gridSlots;
 }

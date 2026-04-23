@@ -4443,6 +4443,159 @@ export async function kickFromCoachingCall(
   }
 }
 
+// ==================== Role Play Rooms (breakouts) ====================
+
+export interface BreakoutGroup {
+  groupId: number;
+  roomName: string;
+  roomUrl: string;
+  members: Array<{ sessionId: string; userName: string; token: string }>;
+  coachToken: string;
+}
+
+export interface BreakoutStartResponse {
+  endsAt: number;
+  groups: BreakoutGroup[];
+}
+
+export async function startBreakouts(params: {
+  callId: string;
+  coachUserId: string;
+  groupSize: number;
+  durationMin: number;
+  attendees: Array<{ sessionId: string; userName: string }>;
+}): Promise<BreakoutStartResponse | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/breakouts/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+// ==================== Objection Playbook ====================
+
+export type PlaybookSortBy = 'top' | 'newest';
+
+export interface PlaybookEntry {
+  _id: string;
+  rebuttalText: string;
+  objectionText: string;
+  authorUserId: string | null;
+  authorName: string;
+  tags: string[];
+  sourceCallId: string | null;
+  voteCount: number;
+  coachAnnotation: string | null;
+  featured: boolean;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  myVote: boolean;
+}
+
+export async function listPlaybookEntries(params: {
+  cursor?: number;
+  limit?: number;
+  tag?: string;
+  sortBy?: PlaybookSortBy;
+  userId?: string;
+}): Promise<{ items: PlaybookEntry[]; nextCursor: number | null } | { error: string }> {
+  try {
+    const qs = new URLSearchParams();
+    if (params.cursor !== undefined) qs.set('cursor', String(params.cursor));
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.tag) qs.set('tag', params.tag);
+    if (params.sortBy) qs.set('sortBy', params.sortBy);
+    if (params.userId) qs.set('userId', params.userId);
+    qs.set('_', String(Date.now()));
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/playbook/list?${qs}`);
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function createPlaybookEntry(params: {
+  coachUserId: string;
+  rebuttalText: string;
+  objectionText: string;
+  authorUserId?: string;
+  authorName: string;
+  tags?: string[];
+  sourceCallId?: string;
+  coachAnnotation?: string;
+  featured?: boolean;
+}): Promise<{ entryId: string } | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/playbook/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function updatePlaybookEntry(params: {
+  entryId: string;
+  coachUserId: string;
+  coachAnnotation?: string;
+  featured?: boolean;
+  tags?: string[];
+  rebuttalText?: string;
+  objectionText?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/playbook/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
+  }
+}
+
+export async function deletePlaybookEntry(
+  entryId: string,
+  coachUserId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/playbook/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entryId, coachUserId }),
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
+  }
+}
+
+export async function votePlaybookEntry(
+  entryId: string,
+  userId: string,
+): Promise<{ voted: boolean; voteCount: number; error?: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/playbook/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entryId, userId }),
+    });
+    return await res.json();
+  } catch {
+    return { voted: false, voteCount: 0, error: 'Network error' };
+  }
+}
+
 // ==================== B2C Personal Goal Tracker ====================
 
 export type GoalStatus = 'active' | 'completed' | 'expired' | 'cancelled';

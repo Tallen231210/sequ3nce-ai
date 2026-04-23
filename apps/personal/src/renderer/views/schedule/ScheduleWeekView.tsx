@@ -118,9 +118,11 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
                     />
                   ))}
 
-                  {/* Event blocks — laid out with overlap-aware columns +
-                      coaching events rendered as a thin ribbon anchored to
-                      their start time. If layout throws for any reason, fall
+                  {/* Event blocks — laid out with overlap-aware columns.
+                      Coaching events participate in the same column split as
+                      personal events but keep a distinct violet color so the
+                      block height reflects their actual duration (Google-
+                      Calendar style). If layout throws for any reason, fall
                       back to the flat render so the schedule never breaks. */}
                   {(() => {
                     let slots;
@@ -130,7 +132,6 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
                       console.error('[ScheduleWeekView] layoutEventsForDay failed:', err);
                       slots = dayEvents.map((e) => ({
                         event: e,
-                        lane: 'grid' as const,
                         columnIndex: 0,
                         columnCount: 1,
                       }));
@@ -139,7 +140,6 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
                       <WeekEventBlock
                         key={slot.event._id}
                         event={slot.event}
-                        lane={slot.lane}
                         columnIndex={slot.columnIndex}
                         columnCount={slot.columnCount}
                         now={now}
@@ -171,14 +171,12 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
 
 // ==================== Sub-components ====================
 
-// Sequ3nce-coaching ribbon color. Deliberately distinct from urgency colors
-// so the ribbon reads as a community event, not a personal commitment.
-const COACHING_RIBBON_COLOR = '#7c3aed'; // violet-600
-const COACHING_RIBBON_HEIGHT = 16;
+// Sequ3nce-coaching color. Deliberately distinct from urgency colors so
+// the block reads as a community event, not a personal commitment.
+const COACHING_COLOR = '#7c3aed'; // violet-600
 
 function WeekEventBlock({
   event,
-  lane,
   columnIndex,
   columnCount,
   now,
@@ -186,7 +184,6 @@ function WeekEventBlock({
   onClick,
 }: {
   event: CalendarEvent;
-  lane: 'grid' | 'ribbon';
   columnIndex: number;
   columnCount: number;
   now: number;
@@ -194,35 +191,12 @@ function WeekEventBlock({
   onClick: () => void;
 }) {
   const yOffset = eventYOffset(event);
-
-  // Sequ3nce-coaching ribbon — thin bar anchored to the call start, full
-  // column width, never competes with personal events for split-column space.
-  if (lane === 'ribbon') {
-    return (
-      <div
-        className="absolute left-[2px] right-[2px] rounded px-1.5 flex items-center gap-1 cursor-pointer hover:brightness-110 transition-all shadow-sm"
-        style={{
-          top: yOffset,
-          height: COACHING_RIBBON_HEIGHT,
-          backgroundColor: COACHING_RIBBON_COLOR,
-          zIndex: 5, // above grid events so it reads as an overlay
-        }}
-        onClick={onClick}
-        title={`Sequ3nce Coaching: ${event.title}`}
-      >
-        <span className="text-white/90 text-[9px] font-bold uppercase tracking-wider leading-none">
-          SQ
-        </span>
-        <span className="text-white text-[10px] font-semibold truncate leading-none">
-          {event.title}
-        </span>
-      </div>
-    );
-  }
-
-  // Grid event — competes for column width when overlapping.
+  const isCoaching = !!event.coachingCallId;
   const urgency = getEventUrgency(event, now);
-  const color = getUrgencyBlockColor(urgency);
+  // Coaching events ignore urgency colors — their identity is brand, not
+  // deadline. Personal events still use the urgency palette for the "call
+  // starting soon" cue.
+  const color = isCoaching ? COACHING_COLOR : getUrgencyBlockColor(urgency);
   const height = eventBlockHeight(event);
   const platform = detectPlatform(event.meetingUrl);
   const prospect = getProspectAttendee(event, closerEmail);
@@ -248,10 +222,15 @@ function WeekEventBlock({
         borderLeft: `3px solid ${color}`,
       }}
       onClick={onClick}
-      title={event.title}
+      title={isCoaching ? `Sequ3nce Coaching: ${event.title}` : event.title}
     >
-      <p className="text-white text-[10px] font-semibold truncate leading-tight">
-        {event.title}
+      <p className="text-white text-[10px] font-semibold truncate leading-tight flex items-center gap-1">
+        {isCoaching && (
+          <span className="shrink-0 px-1 py-[1px] rounded bg-white/20 text-[8px] font-bold uppercase tracking-wider leading-none">
+            SQ
+          </span>
+        )}
+        <span className="truncate">{event.title}</span>
       </p>
       {!isNarrow && height > 24 && prospect && (
         <p className="text-white/70 text-[9px] truncate">

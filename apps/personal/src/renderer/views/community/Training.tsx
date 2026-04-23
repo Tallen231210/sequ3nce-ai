@@ -4,6 +4,7 @@ import type { CloserInfo, TrainingModule } from '../../convex';
 import { ModuleCard } from './ModuleCard';
 import { LessonList } from './LessonList';
 import { PastCoachingCallsList } from './coaching/PastCoachingCallsList';
+import { ObjectionPlaybookList } from './playbook/ObjectionPlaybookList';
 
 interface TrainingProps {
   closerInfo?: CloserInfo;
@@ -70,9 +71,12 @@ export function Training({ closerInfo }: TrainingProps = {}) {
     );
   }
 
-  // Grid view — past coaching calls on top, then training modules
+  // Grid view — Objection Playbook on top (fresher, interactive), then past
+  // coaching calls, then training modules.
   return (
     <div className="space-y-8">
+      <ObjectionPlaybookList closerInfo={closerInfo} />
+
       <section>
         <h2 className="text-[13px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
           Past coaching calls

@@ -1665,4 +1665,35 @@ export default defineSchema({
   })
     .index("by_email", ["email"])
     .index("by_sync_status", ["ghlSyncStatus"]),
+
+  // ==================== Objection Playbook ====================
+  // Community library of sales rebuttals. Populated by the Objection Battle
+  // Royale in-call game (winner auto-saves) and by coach manual additions.
+  b2cObjectionPlaybook: defineTable({
+    rebuttalText: v.string(),                          // <= 1000 chars
+    objectionText: v.string(),                         // <= 500 chars — the prompt this rebuttal answers
+    authorUserId: v.optional(v.id("b2cUsers")),        // null if coach added a "classic" rebuttal manually
+    authorName: v.string(),                            // denormalized for display
+    tags: v.array(v.string()),                         // ["price", "timing", "authority", "competitor", ...]
+    sourceCallId: v.optional(v.id("b2cCoachingCalls")), // the coaching call a Battle Royale ran in
+    voteCount: v.number(),                             // denormalized counter (source of truth = b2cPlaybookVotes)
+    coachAnnotation: v.optional(v.string()),           // <= 500 chars — coach's context/framing
+    featured: v.boolean(),                             // coach pin — stays at top of default list
+    createdBy: v.id("b2cUsers"),                       // the coach who saved it (not necessarily the author)
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_featured_created", ["featured", "createdAt"])
+    .index("by_votes", ["voteCount"])
+    .index("by_created", ["createdAt"]),
+
+  // Vote dedup — one row per (entry, user). voteCount on the entry is the
+  // denormalized running total, atomically updated in the vote mutation.
+  b2cPlaybookVotes: defineTable({
+    entryId: v.id("b2cObjectionPlaybook"),
+    userId: v.id("b2cUsers"),
+    at: v.number(),
+  })
+    .index("by_entry_user", ["entryId", "userId"])
+    .index("by_user", ["userId"]),
 });

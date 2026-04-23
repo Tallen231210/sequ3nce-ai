@@ -28,6 +28,8 @@ import { ResourcesView } from './ResourcesView';
 import { SettingsView } from './SettingsView';
 import { ProfileView } from './ProfileView';
 import { CommunityView } from './CommunityView';
+import { CoachingSessionProvider, useCoachingSession } from './community/coaching/CoachingSessionContext';
+import { CoachingCallLayer } from './community/coaching/CoachingCallLayer';
 import { JobBoardView } from './JobBoardView';
 import { DirectMessagesView } from './DirectMessagesView';
 import { HighlightsView } from './HighlightsView';
@@ -191,7 +193,19 @@ interface MeetingBotHubProps {
   onLogout: () => void;
 }
 
-export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
+// Outer wrapper — provides CoachingSessionContext so any descendant (including
+// ScheduleView and CommunityView→CoachingView) can start/stop/minimize a
+// coaching call without prop-drilling, and the CoachingCallLayer survives
+// tab navigation because it mounts here, not inside a tab view.
+export function MeetingBotHub(props: MeetingBotHubProps) {
+  return (
+    <CoachingSessionProvider>
+      <MeetingBotHubInner {...props} />
+    </CoachingSessionProvider>
+  );
+}
+
+function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
   const { theme, toggleTheme } = useTheme();
   const [selectedItem, setSelectedItem] = useState<SidebarItem>('dashboard');
 
@@ -776,6 +790,11 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
           </>
         )}
       </div>
+
+      {/* Floating coaching-call layer — renders full overlay or PiP mini
+          when a session is active. Lives at hub level so it survives tab
+          navigation (the Daily callObject stays alive). */}
+      <CoachingCallLayerMount currentUserId={closerInfo.b2cUserId || ''} />
     </div>
   );
 }
@@ -841,6 +860,14 @@ function renderContent(
     default:
       return <PlaceholderView name={NAV_ITEMS.find((i) => i.id === item)?.label || item} />;
   }
+}
+
+// Thin wrapper — reads the coaching-session context and passes an onLeave
+// that clears the active session (which unmounts CoachingCallLayer and tears
+// down the Daily callObject cleanly).
+function CoachingCallLayerMount({ currentUserId }: { currentUserId: string }) {
+  const { setActiveSession } = useCoachingSession();
+  return <CoachingCallLayer currentUserId={currentUserId} onLeave={() => setActiveSession(null)} />;
 }
 
 // Temporary placeholder view for sections not yet built
