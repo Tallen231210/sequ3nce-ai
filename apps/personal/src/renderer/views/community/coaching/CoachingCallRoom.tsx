@@ -66,15 +66,66 @@ function CoachingCallRoomInner({
   onLeave,
 }: CoachingCallRoomProps) {
   const daily = useDaily();
-  const [joined, setJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Local media state — declared early so call-on acceptance can flip mic on.
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [screenSharing, setScreenSharing] = useState(false);
+
+  // Join lifecycle phases:
+  //   'preview'  — callObject has camera on but hasn't joined the room yet
+  //                (shows PreCallMirror so users can fix hair/lighting first)
+  //   'joining'  — daily.join() in flight
+  //   'joined'   — live in the room
+  const [preJoinPhase, setPreJoinPhase] = useState<'preview' | 'joining' | 'joined'>('preview');
+
+  // UI panels (only one side panel visible at a time; for coach, queue wins
+  // when both are open so critical workflow takes priority).
   const [showChat, setShowChat] = useState(false);
+  const [showHandQueue, setShowHandQueue] = useState(false);
+
+  // Video layout mode. Speaker is the default — most of a coaching call is
+  // the coach teaching; active-speaker follow handles the rest.
+  const [viewMode, setViewMode] = useState<'speaker' | 'gallery'>('speaker');
+
   // Chat state lives here (not inside ChatPanel) so closing the panel doesn't
   // wipe the history. The app-message listener likewise stays mounted for the
   // life of the overlay so messages that arrive while chat is hidden are kept.
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
+  // Raised-hand queue. Keyed by sessionId for O(1) lookup; serialized to
+  // array for the queue UI. Stays accurate across panel toggles.
+  const [raisedHands, setRaisedHands] = useState<Record<string, {
+    sessionId: string;
+    userName: string;
+    at: number;
+  }>>({});
+
+  // Active speaker (session id of whoever Daily says is currently speaking).
+  // Debounced 800ms to avoid jarring swaps when people briefly talk over
+  // each other. Used by speaker-view layout for focus-tile selection.
+  const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null);
+  const activeSpeakerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Spotlight — coach-driven override. When set, speaker view locks onto
+  // this sessionId regardless of who's talking. Broadcast via app-message.
+  const [spotlightedId, setSpotlightedId] = useState<string | null>(null);
+
+  // Floating emoji reactions. Purely ephemeral; garbage-collected after 2.5s.
+  const [liveReactions, setLiveReactions] = useState<Array<{
+    id: string;
+    sessionId: string;
+    emoji: string;
+  }>>([]);
+
+  // "Coach asked you to speak" prompt. Set when this user's sessionId is
+  // named in a `called-on` broadcast. Modal shows Unmute/Decline.
+  const [callOnPrompt, setCallOnPrompt] = useState<{ from: string } | null>(null);
+
   const recordingStartedRef = useRef(false);
   const isCoach = call.coachUserId === currentUserId;
+
   // Anchor the live-duration timer to a stable value. `call.actualStartTime`
   // is authoritative once set; if the host's activeSession briefly lacks it
   // (shouldn't happen post-fix, but belt-and-suspenders), we capture Date.now()
@@ -84,20 +135,106 @@ function CoachingCallRoomInner({
     [call.actualStartTime]
   );
 
-  // Broadcast chat receiver — stays mounted for the whole overlay session.
+  // Broadcast receiver — stays mounted for the whole overlay session.
+  // All app-message payloads come through here and route by `kind`. Every
+  // incoming payload is field-validated before state mutation so a malformed
+  // message from a future-client version can't crash the listener.
   useDailyEvent('app-message', (ev) => {
-    const payload = ev?.data as { kind?: string; body?: string; from?: string };
-    if (payload?.kind === 'chat' && payload.body) {
+    const payload = ev?.data as Record<string, unknown> | undefined;
+    if (!payload || typeof payload.kind !== 'string') return;
+
+    if (payload.kind === 'chat' && typeof payload.body === 'string') {
+      const from = typeof payload.from === 'string' ? payload.from : 'Anon';
       setChatMessages((prev) => [
         ...prev,
         {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          from: payload.from || 'Anon',
-          body: payload.body,
+          from,
+          body: payload.body as string,
           at: Date.now(),
         },
       ]);
+      return;
     }
+
+    if (payload.kind === 'hand-raise' && typeof payload.sessionId === 'string') {
+      const sessionId = payload.sessionId as string;
+      const userName = typeof payload.userName === 'string' ? payload.userName : 'Guest';
+      const at = typeof payload.at === 'number' ? payload.at : Date.now();
+      setRaisedHands((prev) => ({ ...prev, [sessionId]: { sessionId, userName, at } }));
+      return;
+    }
+
+    if (payload.kind === 'hand-lower' && typeof payload.sessionId === 'string') {
+      const sessionId = payload.sessionId as string;
+      setRaisedHands((prev) => {
+        if (!prev[sessionId]) return prev;
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      });
+      return;
+    }
+
+    if (payload.kind === 'called-on' && typeof payload.sessionId === 'string') {
+      // Only surface the prompt if we're the target.
+      const myId = daily?.participants().local?.session_id;
+      if (myId && payload.sessionId === myId) {
+        const from = typeof payload.from === 'string' ? payload.from : 'the coach';
+        setCallOnPrompt({ from });
+      }
+      return;
+    }
+
+    if (payload.kind === 'spotlight' && typeof payload.sessionId === 'string') {
+      setSpotlightedId(payload.sessionId as string);
+      return;
+    }
+
+    if (payload.kind === 'spotlight-clear') {
+      setSpotlightedId(null);
+      return;
+    }
+
+    if (
+      payload.kind === 'reaction' &&
+      typeof payload.sessionId === 'string' &&
+      typeof payload.emoji === 'string' &&
+      typeof payload.id === 'string'
+    ) {
+      const reaction = {
+        id: payload.id as string,
+        sessionId: payload.sessionId as string,
+        emoji: payload.emoji as string,
+      };
+      setLiveReactions((prev) => [...prev, reaction]);
+      setTimeout(() => {
+        setLiveReactions((prev) => prev.filter((r) => r.id !== reaction.id));
+      }, 2500);
+      return;
+    }
+  });
+
+  // Active-speaker-change — Daily fires this when the dominant speaker flips.
+  // Debounce UI swaps so we don't hop tiles during brief cross-talk.
+  useDailyEvent('active-speaker-change', (ev) => {
+    const next = (ev as { activeSpeaker?: { peerId?: string } })?.activeSpeaker?.peerId;
+    if (!next) return;
+    if (activeSpeakerTimerRef.current) clearTimeout(activeSpeakerTimerRef.current);
+    activeSpeakerTimerRef.current = setTimeout(() => setActiveSpeakerId(next), 800);
+  });
+
+  // Participant-left — sweep any stale hand-raised entries so the queue
+  // doesn't point at people who already left the room.
+  useDailyEvent('participant-left', (ev) => {
+    const sessionId = (ev as { participant?: { session_id?: string } })?.participant?.session_id;
+    if (!sessionId) return;
+    setRaisedHands((prev) => {
+      if (!prev[sessionId]) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
   });
 
   function sendChat(body: string) {
@@ -106,72 +243,217 @@ function CoachingCallRoomInner({
     daily.sendAppMessage({ kind: 'chat', body, from: myName }, '*');
     setChatMessages((prev) => [
       ...prev,
-      {
-        id: `${Date.now()}-local`,
-        from: myName,
-        body,
-        at: Date.now(),
-      },
+      { id: `${Date.now()}-local`, from: myName, body, at: Date.now() },
     ]);
   }
 
-  // Join the Daily room once on mount. Immediately after join completes, we
-  // publish our Sequ3nce profile photo via setUserData so other participants
-  // can render it on our tile when our camera is off. If the current user is
-  // the coach (owner), we also kick off cloud recording — Daily requires an
-  // explicit startRecording() call even when the room has enable_recording:"cloud".
+  // Toggle our own raised-hand state + broadcast. Immediate local state
+  // update means the button reflects intent even if the broadcast is slow.
+  function toggleRaiseHand() {
+    if (!daily) return;
+    const local = daily.participants().local;
+    const myId = local?.session_id;
+    if (!myId) return;
+    const raised = !!raisedHands[myId];
+    try {
+      if (raised) {
+        daily.sendAppMessage({ kind: 'hand-lower', sessionId: myId }, '*');
+        setRaisedHands((prev) => {
+          const next = { ...prev };
+          delete next[myId];
+          return next;
+        });
+      } else {
+        const userName = local?.user_name || 'You';
+        const at = Date.now();
+        daily.sendAppMessage({ kind: 'hand-raise', sessionId: myId, userName, at }, '*');
+        setRaisedHands((prev) => ({ ...prev, [myId]: { sessionId: myId, userName, at } }));
+      }
+    } catch (err) {
+      console.error('[CoachingCallRoom] toggleRaiseHand failed:', err);
+    }
+  }
+
+  // Coach-only. Sends `called-on`; the named attendee's client handles the
+  // prompt. Coach's local queue clears immediately so the UI doesn't wait
+  // for a round-trip — if the attendee declines, nothing else happens.
+  function callOn(sessionId: string) {
+    if (!daily || !isCoach) return;
+    const coachName = daily.participants().local?.user_name || 'Coach';
+    try {
+      daily.sendAppMessage({ kind: 'called-on', sessionId, from: coachName }, '*');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to call on participant');
+      return;
+    }
+    setRaisedHands((prev) => {
+      if (!prev[sessionId]) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+  }
+
+  // Coach dismisses a hand from the queue locally — does not broadcast, so
+  // the attendee's hand stays up from their POV. Intentional: prevents
+  // accidental dismiss from looking like the coach rejected them.
+  function dismissHand(sessionId: string) {
+    setRaisedHands((prev) => {
+      if (!prev[sessionId]) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+  }
+
+  // Called-on prompt handlers — runs on the attendee who was called on.
+  async function acceptCallOn() {
+    if (!daily) { setCallOnPrompt(null); return; }
+    const myId = daily.participants().local?.session_id;
+    try {
+      await daily.setLocalAudio(true);
+      setMicOn(true);
+      if (myId) {
+        daily.sendAppMessage({ kind: 'hand-lower', sessionId: myId }, '*');
+        setRaisedHands((prev) => {
+          if (!prev[myId]) return prev;
+          const next = { ...prev };
+          delete next[myId];
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error('[CoachingCallRoom] acceptCallOn failed:', err);
+    }
+    setCallOnPrompt(null);
+  }
+
+  function declineCallOn() {
+    if (!daily) { setCallOnPrompt(null); return; }
+    const myId = daily.participants().local?.session_id;
+    if (myId) {
+      daily.sendAppMessage({ kind: 'hand-lower', sessionId: myId }, '*');
+      setRaisedHands((prev) => {
+        if (!prev[myId]) return prev;
+        const next = { ...prev };
+        delete next[myId];
+        return next;
+      });
+    }
+    setCallOnPrompt(null);
+  }
+
+  // Coach-only spotlight controls.
+  function spotlight(sessionId: string) {
+    if (!daily || !isCoach) return;
+    try {
+      daily.sendAppMessage({ kind: 'spotlight', sessionId }, '*');
+      setSpotlightedId(sessionId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to spotlight');
+    }
+  }
+  function clearSpotlight() {
+    if (!daily || !isCoach) return;
+    try {
+      daily.sendAppMessage({ kind: 'spotlight-clear' }, '*');
+      setSpotlightedId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear spotlight');
+    }
+  }
+
+  // Send a reaction. Fire-and-forget — reactions fading for a sender is fine
+  // if the broadcast fails, because locally we also render immediately.
+  function sendReaction(emoji: string) {
+    if (!daily) return;
+    const myId = daily.participants().local?.session_id;
+    if (!myId) return;
+    const reactionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      daily.sendAppMessage(
+        { kind: 'reaction', emoji, sessionId: myId, id: reactionId },
+        '*'
+      );
+    } catch (err) {
+      console.error('[CoachingCallRoom] sendReaction broadcast failed:', err);
+    }
+    const reaction = { id: reactionId, sessionId: myId, emoji };
+    setLiveReactions((prev) => [...prev, reaction]);
+    setTimeout(() => {
+      setLiveReactions((prev) => prev.filter((r) => r.id !== reaction.id));
+    }, 2500);
+  }
+
+  // Two-phase join: start camera on mount for the pre-call mirror, then
+  // daily.join() only when the user clicks "Join now." Sharing one callObject
+  // across both phases means no double media-permission prompt.
   useEffect(() => {
     let cancelled = false;
-    async function join() {
+    async function startPreview() {
       if (!daily) return;
       try {
-        await daily.join({ url: roomUrl, token });
+        await daily.startCamera();
         if (cancelled) return;
-        // setUserData is a per-participant broadcast — other clients see it
-        // via participant.userData. Safe to call repeatedly; Daily dedups.
-        if (selfPhotoUrl) {
-          try {
-            daily.setUserData({ photoUrl: selfPhotoUrl });
-          } catch {
-            // non-fatal; avatars just fall back to the initial-letter state
-          }
-        }
-        // Coach starts cloud recording. Only the call owner has permission;
-        // attendees calling this would get a permission error from Daily.
-        // Guard with a ref so React strict-mode double-mount doesn't double-fire.
-        if (isCoach && !recordingStartedRef.current) {
-          recordingStartedRef.current = true;
-          try {
-            await daily.startRecording();
-          } catch (recErr) {
-            console.error('[CoachingCallRoom] startRecording failed:', recErr);
-            // Don't block the call — user experience is that recording silently
-            // fails to start, which is still better than blocking the whole call.
-          }
-        }
-        setJoined(true);
+        // Mic starts unmuted by default — user can pre-mute via the mirror
+        // controls. `daily.setLocalAudio(true)` at this point guarantees the
+        // audio track is live so the mic meter can register level.
+        try { await daily.setLocalAudio(true); } catch { /* non-fatal */ }
       } catch (err) {
+        // Camera unavailable or permission issue — skip preview and go
+        // straight to join so the user isn't blocked. They'll get an error
+        // from daily.join() if this is a permission-level problem.
+        console.error('[CoachingCallRoom] startCamera failed:', err);
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to join call');
+          void joinRoom();
         }
       }
     }
-    void join();
+    void startPreview();
     return () => {
       cancelled = true;
-      daily?.leave();
     };
-  }, [daily, roomUrl, token, selfPhotoUrl, isCoach]);
+  }, [daily]);
+
+  // Actually join the Daily room. Triggered by the user from PreCallMirror
+  // (or automatically if startCamera fails). After join, coach starts cloud
+  // recording and every user publishes their profile photo.
+  async function joinRoom() {
+    if (!daily) return;
+    setPreJoinPhase('joining');
+    try {
+      await daily.join({ url: roomUrl, token });
+      if (selfPhotoUrl) {
+        try {
+          daily.setUserData({ photoUrl: selfPhotoUrl });
+        } catch {
+          // non-fatal; avatars just fall back to the initial-letter state
+        }
+      }
+      // Coach starts cloud recording. Only the call owner has permission;
+      // attendees calling this would get a permission error from Daily.
+      // Guard with a ref so React strict-mode double-mount doesn't double-fire.
+      if (isCoach && !recordingStartedRef.current) {
+        recordingStartedRef.current = true;
+        try {
+          await daily.startRecording();
+        } catch (recErr) {
+          console.error('[CoachingCallRoom] startRecording failed:', recErr);
+          // Don't block the call — user experience is that recording silently
+          // fails to start, which is still better than blocking the whole call.
+        }
+      }
+      setPreJoinPhase('joined');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join call');
+      setPreJoinPhase('preview');
+    }
+  }
 
   // If the coach ends the call, Daily emits 'left-meeting' for everyone
   useDailyEvent('left-meeting', () => {
     onLeave();
   });
-
-  // Mic / cam toggle helpers
-  const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
-  const [screenSharing, setScreenSharing] = useState(false);
 
   async function toggleMic() {
     if (!daily) return;
@@ -213,6 +495,26 @@ function CoachingCallRoomInner({
     onLeave();
   }
 
+  // While in preview phase, render the mirror instead of the live room.
+  if (preJoinPhase === 'preview') {
+    return (
+      <PreCallMirror
+        call={call}
+        micOn={micOn}
+        camOn={camOn}
+        onToggleMic={toggleMic}
+        onToggleCam={toggleCam}
+        onJoin={joinRoom}
+        onCancel={onLeave}
+      />
+    );
+  }
+
+  // Coach gets the hand-queue button; attendees don't need it.
+  const handQueueCount = Object.keys(raisedHands).length;
+  const myLocalSessionId = daily?.participants().local?.session_id ?? null;
+  const myHandRaised = myLocalSessionId ? !!raisedHands[myLocalSessionId] : false;
+
   return (
     <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex flex-col font-sans">
       {/* Top bar — 3 zones: meta left, brand center, status right.
@@ -241,14 +543,43 @@ function CoachingCallRoomInner({
           />
         </div>
 
-        {/* Right: timer + count + chat toggle */}
+        {/* Right: view toggle + timer + count + (clear-spotlight) + hand queue + chat */}
         <div className="flex items-center justify-end gap-3">
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+          <span className="text-white/30">·</span>
           <LiveDurationPill startMs={startMs} />
-
           <span className="text-white/30">·</span>
           <ParticipantCountPill />
+          {isCoach && spotlightedId && (
+            <button
+              onClick={clearSpotlight}
+              className="ml-1 px-2.5 py-1 rounded-lg text-[11px] font-mono uppercase tracking-wider bg-amber-500/20 text-amber-200 hover:bg-amber-500/30 transition-colors"
+              title="Clear spotlight"
+            >
+              Clear spotlight
+            </button>
+          )}
+          {isCoach && (
+            <button
+              onClick={() => { setShowHandQueue((v) => !v); if (!showHandQueue) setShowChat(false); }}
+              aria-label={showHandQueue ? 'Hide hand queue' : 'Show hand queue'}
+              className={`ml-1 relative p-2 rounded-lg transition-colors ${
+                showHandQueue
+                  ? 'bg-white text-black'
+                  : 'bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              title="Raised hands"
+            >
+              <Icon name="hand" className="w-4 h-4" />
+              {handQueueCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 flex items-center justify-center rounded-full bg-amber-400 text-black text-[9px] font-bold">
+                  {handQueueCount}
+                </span>
+              )}
+            </button>
+          )}
           <button
-            onClick={() => setShowChat(!showChat)}
+            onClick={() => { setShowChat((v) => !v); if (!showChat) setShowHandQueue(false); }}
             aria-label={showChat ? 'Hide chat' : 'Show chat'}
             className={`ml-1 p-2 rounded-lg transition-colors ${
               showChat
@@ -268,16 +599,35 @@ function CoachingCallRoomInner({
         </div>
       )}
 
-      {/* Main content: video grid + optional chat panel */}
+      {/* Main content: video area + optional side panel */}
       <div className="flex-1 flex min-h-0 relative">
-        <div className="flex-1 p-6 overflow-hidden">
-          {joined ? (
-            <VideoGrid coachUserId={call.coachUserId} isCoachView={isCoach} callId={call._id} currentUserId={currentUserId} onKickError={setError} />
+        <div className="flex-1 p-6 overflow-hidden relative">
+          {preJoinPhase === 'joined' ? (
+            <VideoGrid
+              coachUserId={call.coachUserId}
+              isCoachView={isCoach}
+              callId={call._id}
+              currentUserId={currentUserId}
+              viewMode={viewMode}
+              spotlightedId={spotlightedId}
+              activeSpeakerId={activeSpeakerId}
+              raisedHands={raisedHands}
+              liveReactions={liveReactions}
+              onSpotlight={spotlight}
+              onKickError={setError}
+            />
           ) : (
             <ConnectingState />
           )}
         </div>
-        {showChat && <ChatPanel messages={chatMessages} onSend={sendChat} />}
+        {showChat && !showHandQueue && <ChatPanel messages={chatMessages} onSend={sendChat} />}
+        {isCoach && showHandQueue && (
+          <HandQueuePanel
+            raisedHands={raisedHands}
+            onCallOn={callOn}
+            onDismiss={dismissHand}
+          />
+        )}
 
         {/* Watermark — signature icon mark bottom-left of the video pane.
             No opacity filter — that was washing the inverted white against the
@@ -298,6 +648,15 @@ function CoachingCallRoomInner({
         {isCoach && (
           <CtrlButton active={screenSharing} onClick={toggleScreenShare} iconName="screen" label={screenSharing ? 'Stop sharing' : 'Share screen'} />
         )}
+        {!isCoach && (
+          <CtrlButton
+            active={myHandRaised}
+            onClick={toggleRaiseHand}
+            iconName="hand"
+            label={myHandRaised ? 'Lower hand' : 'Raise hand'}
+          />
+        )}
+        <ReactionButton onReact={sendReaction} />
         <div className="w-3" />
         <button
           onClick={handleLeave}
@@ -316,6 +675,15 @@ function CoachingCallRoomInner({
           </button>
         )}
       </div>
+
+      {/* "Coach asked you to speak" — appears only for the called-on user */}
+      {callOnPrompt && (
+        <CallOnModal
+          from={callOnPrompt.from}
+          onAccept={acceptCallOn}
+          onDecline={declineCallOn}
+        />
+      )}
 
       {/* Daily audio — must be rendered once to hear participants */}
       <DailyAudio />
@@ -336,7 +704,12 @@ type IconName =
   | 'end-call'
   | 'chat'
   | 'send'
-  | 'kick';
+  | 'kick'
+  | 'hand'
+  | 'smile'
+  | 'grid'
+  | 'speaker'
+  | 'spotlight';
 
 function Icon({ name, className = 'w-4 h-4' }: { name: IconName; className?: string }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -371,6 +744,21 @@ function Icon({ name, className = 'w-4 h-4' }: { name: IconName; className?: str
     ),
     'kick': (
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    ),
+    'hand': (
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.05 4.575a1.575 1.575 0 1 0-3.15 0v3m3.15-3v-1.5a1.575 1.575 0 0 1 3.15 0v1.5m-3.15 0 .075 5.925m3.075.75V4.575m0 0a1.575 1.575 0 0 1 3.15 0V15M6.9 7.575a1.575 1.575 0 1 0-3.15 0v8.175a6.75 6.75 0 0 0 6.75 6.75h2.018a5.25 5.25 0 0 0 3.712-1.538l1.732-1.732a5.25 5.25 0 0 0 1.538-3.712l.003-2.024a.668.668 0 0 1 .198-.471 1.575 1.575 0 1 0-2.228-2.228 3.818 3.818 0 0 0-1.12 2.687M6.9 7.575V12m9.075 5.625v-8.25" />
+    ),
+    'smile': (
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
+    ),
+    'grid': (
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+    ),
+    'speaker': (
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v9A2.25 2.25 0 0 1 18 17.25h-4.5m-9 0h4.5M7.5 20.25l2.25-3m0 0h4.5m-4.5 0 2.25 3" />
+    ),
+    'spotlight': (
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
     ),
   };
   return (
@@ -458,37 +846,31 @@ function ParticipantCountPill() {
   );
 }
 
-function VideoGrid({
-  coachUserId,
-  isCoachView,
-  callId,
-  currentUserId,
-  onKickError,
-}: {
+interface VideoGridProps {
   coachUserId: string;
   isCoachView: boolean;
   callId: string;
   currentUserId: string;
+  viewMode: 'speaker' | 'gallery';
+  spotlightedId: string | null;
+  activeSpeakerId: string | null;
+  raisedHands: Record<string, { sessionId: string; userName: string; at: number }>;
+  liveReactions: Array<{ id: string; sessionId: string; emoji: string }>;
+  onSpotlight: (sessionId: string) => void;
   onKickError: (msg: string) => void;
-}) {
+}
+
+function VideoGrid(props: VideoGridProps) {
   const ids = useParticipantIds({ sort: 'joined_at' });
 
-  // Solo state — center the single tile at a sensible size + add a waiting hint
-  // so the coach has something to look at while attendees trickle in.
+  // Solo state — a single tile centered with a waiting hint. Same in both
+  // view modes; no point having a "speaker view" with one participant.
   if (ids.length <= 1) {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center gap-6">
         <div className="w-[min(560px,100%)]">
           {ids.map((id) => (
-            <ParticipantTile
-              key={id}
-              sessionId={id}
-              callId={callId}
-              isCoachView={isCoachView}
-              currentUserId={currentUserId}
-              coachUserId={coachUserId}
-              onKickError={onKickError}
-            />
+            <ParticipantTileWrapped key={id} sessionId={id} {...props} />
           ))}
         </div>
         <div className="text-center">
@@ -500,20 +882,86 @@ function VideoGrid({
     );
   }
 
+  // Speaker view — focus tile takes the top ~70%, remainders strip below.
+  // Focus-tile selection:
+  //   1) spotlighted (coach override) — wins
+  //   2) active speaker (last non-null)
+  //   3) find the participant tied to the coach (stable fallback; no jitter)
+  //   4) first participant
+  if (props.viewMode === 'speaker') {
+    const sessionIdsSet = new Set(ids);
+    const coachSessionId = ids[0] && ids.find((id) => {
+      // We can't easily map sessionId → b2cUsers ID without a handshake,
+      // so use joined_at order: coach starts the call so they're typically
+      // first. This is a deliberate simplification; stable behavior.
+      return id === ids[0];
+    });
+    let focusId =
+      (props.spotlightedId && sessionIdsSet.has(props.spotlightedId) && props.spotlightedId) ||
+      (props.activeSpeakerId && sessionIdsSet.has(props.activeSpeakerId) && props.activeSpeakerId) ||
+      coachSessionId ||
+      ids[0];
+
+    const otherIds = ids.filter((id) => id !== focusId);
+    return (
+      <div className="h-full w-full flex flex-col gap-3">
+        <div className="flex-1 min-h-0">
+          <ParticipantTileWrapped
+            sessionId={focusId}
+            isFocus
+            {...props}
+          />
+        </div>
+        {otherIds.length > 0 && (
+          <div className="shrink-0 grid grid-flow-col auto-cols-[minmax(140px,1fr)] gap-3 max-h-[22%] overflow-x-auto">
+            {otherIds.map((id) => (
+              <ParticipantTileWrapped key={id} sessionId={id} {...props} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Gallery view — uniform grid (unchanged from v1.12.2 behavior).
   return (
     <div className="h-full w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 auto-rows-min">
       {ids.map((id) => (
-        <ParticipantTile
-          key={id}
-          sessionId={id}
-          callId={callId}
-          isCoachView={isCoachView}
-          currentUserId={currentUserId}
-          coachUserId={coachUserId}
-          onKickError={onKickError}
-        />
+        <ParticipantTileWrapped key={id} sessionId={id} {...props} />
       ))}
     </div>
+  );
+}
+
+// Thin wrapper to pass the new props through to ParticipantTile without
+// threading a dozen positional arguments at every call site.
+function ParticipantTileWrapped({
+  sessionId,
+  isFocus,
+  callId,
+  isCoachView,
+  currentUserId,
+  coachUserId,
+  spotlightedId,
+  raisedHands,
+  liveReactions,
+  onSpotlight,
+  onKickError,
+}: VideoGridProps & { sessionId: string; isFocus?: boolean }) {
+  return (
+    <ParticipantTile
+      sessionId={sessionId}
+      isFocus={isFocus}
+      callId={callId}
+      isCoachView={isCoachView}
+      currentUserId={currentUserId}
+      coachUserId={coachUserId}
+      isSpotlighted={spotlightedId === sessionId}
+      handRaised={!!raisedHands[sessionId]}
+      reactions={liveReactions.filter((r) => r.sessionId === sessionId)}
+      onSpotlight={onSpotlight}
+      onKickError={onKickError}
+    />
   );
 }
 
@@ -523,6 +971,11 @@ function ParticipantTile({
   isCoachView,
   currentUserId,
   coachUserId,
+  isFocus,
+  isSpotlighted,
+  handRaised,
+  reactions,
+  onSpotlight,
   onKickError,
 }: {
   sessionId: string;
@@ -530,6 +983,14 @@ function ParticipantTile({
   isCoachView: boolean;
   currentUserId: string;
   coachUserId: string;
+  /** True when this tile is the large focus tile in Speaker view. Shown
+   *  with a slightly different chrome (bigger avatar fallback, prominent
+   *  border if spotlighted). */
+  isFocus?: boolean;
+  isSpotlighted: boolean;
+  handRaised: boolean;
+  reactions: Array<{ id: string; sessionId: string; emoji: string }>;
+  onSpotlight: (sessionId: string) => void;
   onKickError: (msg: string) => void;
 }) {
   const daily = useDaily();
@@ -588,8 +1049,20 @@ function ParticipantTile({
     }
   }
 
+  // Spotlighted tiles get a subtle amber border so everyone knows they're
+  // the one being featured. Focus tiles in speaker view get a thin brand
+  // accent to separate them from the strip below.
+  const borderClass = isSpotlighted
+    ? 'border-amber-400/80 ring-1 ring-amber-400/40'
+    : isFocus
+    ? 'border-white/25'
+    : 'border-white/10';
+
+  const avatarSize = isFocus ? 'w-28 h-28' : 'w-20 h-20';
+  const initialsSize = isFocus ? 'w-20 h-20 text-3xl' : 'w-14 h-14 text-xl';
+
   return (
-    <div className="relative aspect-video bg-zinc-950 rounded-xl overflow-hidden border border-white/10 group">
+    <div className={`relative aspect-video bg-zinc-950 rounded-xl overflow-hidden border ${borderClass} group transition-colors`}>
       {participant?.video ? (
         <DailyVideo
           sessionId={sessionId}
@@ -603,15 +1076,37 @@ function ParticipantTile({
             <img
               src={photoUrl}
               alt={name}
-              className="w-20 h-20 rounded-full object-cover border border-white/20"
+              className={`${avatarSize} rounded-full object-cover border border-white/20`}
             />
           ) : (
-            <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-white/80 text-xl font-semibold">
+            <div className={`${initialsSize} rounded-full bg-white/10 flex items-center justify-center text-white/80 font-semibold`}>
               {name.charAt(0).toUpperCase()}
             </div>
           )}
         </div>
       )}
+
+      {/* Raised-hand badge — top-left so it doesn't collide with host actions */}
+      {handRaised && (
+        <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-amber-400 text-black text-[10px] font-bold flex items-center gap-1 shadow-lg">
+          <Icon name="hand" className="w-3 h-3" />
+          Hand up
+        </div>
+      )}
+
+      {/* Spotlight label — top-center when locked so the person knows */}
+      {isSpotlighted && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-amber-400/90 text-black text-[10px] font-bold uppercase tracking-wider">
+          Spotlight
+        </div>
+      )}
+
+      {/* Floating reactions — stack up from the bottom of the tile */}
+      <div className="absolute inset-x-0 bottom-0 pointer-events-none overflow-hidden" style={{ height: '70%' }}>
+        {reactions.map((r, i) => (
+          <FloatingReaction key={r.id} emoji={r.emoji} offsetIndex={i} />
+        ))}
+      </div>
 
       {/* Gradient overlay with name — replaces the heavy black bubble */}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pt-6 pb-2 px-3 flex items-center justify-between gap-2">
@@ -632,8 +1127,19 @@ function ParticipantTile({
         )}
       </div>
 
+      {/* Coach-only per-tile controls: spotlight / mute / kick. */}
       {isCoachView && !isLocal && (
         <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onSpotlight(sessionId)}
+            className={`p-1.5 rounded-md text-white hover:bg-black/90 ${
+              isSpotlighted ? 'bg-amber-500/90' : 'bg-black/70'
+            }`}
+            title={isSpotlighted ? 'Spotlighted' : 'Spotlight participant'}
+            aria-label="Spotlight participant"
+          >
+            <Icon name="spotlight" className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={handleToggleMute}
             className="p-1.5 rounded-md bg-black/70 text-white hover:bg-black/90"
@@ -653,6 +1159,24 @@ function ParticipantTile({
         </div>
       )}
     </div>
+  );
+}
+
+// Small animated emoji that floats up over the participant's tile.
+// Purely decorative; removed from state by its parent after 2.5s.
+function FloatingReaction({ emoji, offsetIndex }: { emoji: string; offsetIndex: number }) {
+  return (
+    <span
+      className="absolute text-4xl"
+      style={{
+        left: `${50 + (offsetIndex % 5 - 2) * 12}%`,
+        bottom: 0,
+        transform: 'translateX(-50%)',
+        animation: 'sq-reaction-rise 2.4s ease-out forwards',
+      }}
+    >
+      {emoji}
+    </span>
   );
 }
 
@@ -749,3 +1273,375 @@ function ChatPanel({
     </div>
   );
 }
+
+// ==================== View mode toggle ====================
+
+function ViewModeToggle({
+  value,
+  onChange,
+}: {
+  value: 'speaker' | 'gallery';
+  onChange: (v: 'speaker' | 'gallery') => void;
+}) {
+  return (
+    <div className="flex items-center bg-white/5 rounded-lg p-0.5 border border-white/10">
+      <button
+        onClick={() => onChange('speaker')}
+        aria-label="Speaker view"
+        title="Speaker view"
+        className={`p-1.5 rounded-md transition-colors ${
+          value === 'speaker' ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+        }`}
+      >
+        <Icon name="speaker" className="w-3.5 h-3.5" />
+      </button>
+      <button
+        onClick={() => onChange('gallery')}
+        aria-label="Gallery view"
+        title="Gallery view"
+        className={`p-1.5 rounded-md transition-colors ${
+          value === 'gallery' ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+        }`}
+      >
+        <Icon name="grid" className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ==================== Reaction button + popover ====================
+
+const REACTION_EMOJI = ['👏', '❤️', '🔥', '😂', '🎉', '✨'] as const;
+
+function ReactionButton({ onReact }: { onReact: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (btnRef.current && !btnRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={btnRef} className="relative">
+      <CtrlButton
+        active={open}
+        onClick={() => setOpen((v) => !v)}
+        iconName="smile"
+        label="React"
+      />
+      {open && (
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 bg-zinc-900/95 border border-white/10 rounded-lg shadow-xl backdrop-blur">
+          {REACTION_EMOJI.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => {
+                onReact(emoji);
+                setOpen(false);
+              }}
+              className="text-xl px-1.5 py-1 rounded-md hover:bg-white/10 transition-colors"
+              aria-label={`React with ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== Hand queue panel (coach-only) ====================
+
+function HandQueuePanel({
+  raisedHands,
+  onCallOn,
+  onDismiss,
+}: {
+  raisedHands: Record<string, { sessionId: string; userName: string; at: number }>;
+  onCallOn: (sessionId: string) => void;
+  onDismiss: (sessionId: string) => void;
+}) {
+  // Sort by raise time — earliest first (FIFO queue).
+  const entries = Object.values(raisedHands).sort((a, b) => a.at - b.at);
+
+  return (
+    <div className="w-[320px] shrink-0 border-l border-white/10 flex flex-col">
+      <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+        <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-white/50">
+          Raised hands
+        </span>
+        <span className="text-[10px] font-mono text-white/40">
+          {entries.length} waiting
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+        {entries.length === 0 ? (
+          <div className="text-[11px] text-white/40 text-center pt-6 font-mono">
+            No hands up
+          </div>
+        ) : (
+          entries.map((h) => (
+            <div
+              key={h.sessionId}
+              className="p-3 rounded-lg border border-white/10 bg-white/[0.02]"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Icon name="hand" className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[13px] font-medium text-white truncate">{h.userName}</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onCallOn(h.sessionId)}
+                  className="flex-1 px-2 py-1 text-[11px] font-semibold bg-white text-black rounded-md hover:bg-white/90 transition-colors"
+                >
+                  Call on
+                </button>
+                <button
+                  onClick={() => onDismiss(h.sessionId)}
+                  className="px-2 py-1 text-[11px] font-medium bg-white/5 text-white/70 rounded-md hover:bg-white/10 transition-colors"
+                  title="Remove from queue (does not signal the attendee)"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== Call-on modal (target user's view) ====================
+
+function CallOnModal({
+  from,
+  onAccept,
+  onDecline,
+}: {
+  from: string;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="w-[min(420px,90vw)] rounded-xl bg-zinc-900 border border-white/10 shadow-2xl p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-amber-400/20 flex items-center justify-center">
+            <Icon name="hand" className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-wider text-white/50">
+              {from} asked you to speak
+            </div>
+            <div className="text-[16px] font-semibold text-white">Unmute your mic?</div>
+          </div>
+        </div>
+        <p className="text-[13px] text-white/60 leading-snug mb-5">
+          Your mic will turn on and the whole room will hear you. You can mute again anytime.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onDecline}
+            className="px-4 py-2 text-[13px] font-medium bg-white/5 text-white rounded-lg hover:bg-white/10 transition-colors"
+          >
+            Decline
+          </button>
+          <button
+            onClick={onAccept}
+            className="px-4 py-2 text-[13px] font-semibold bg-white text-black rounded-lg hover:bg-white/90 transition-colors"
+          >
+            Unmute
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== Pre-call mirror ====================
+
+interface PreCallMirrorProps {
+  call: CoachingCall;
+  micOn: boolean;
+  camOn: boolean;
+  onToggleMic: () => Promise<void> | void;
+  onToggleCam: () => Promise<void> | void;
+  onJoin: () => Promise<void> | void;
+  onCancel: () => void;
+}
+
+function PreCallMirror({ call, micOn, camOn, onToggleMic, onToggleCam, onJoin, onCancel }: PreCallMirrorProps) {
+  const localId = useLocalSessionId();
+  const local = useParticipant(localId ?? '');
+  const [joining, setJoining] = useState(false);
+
+  async function handleJoin() {
+    if (joining) return;
+    setJoining(true);
+    try {
+      await onJoin();
+    } finally {
+      // If onJoin bounces back to preview (join error), clear so the button works again.
+      setJoining(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-[#0a0a0a] flex flex-col items-center justify-center font-sans p-8">
+      <div className="w-full max-w-[640px] flex flex-col gap-4">
+        {/* Context: what call they're about to join */}
+        <div className="text-center">
+          <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-white/50 mb-1">
+            About to join
+          </div>
+          <div className="text-[20px] font-bold text-white">{call.title}</div>
+          <div className="text-[13px] text-white/50 mt-0.5">Hosted by Coach {call.coachName}</div>
+        </div>
+
+        {/* Camera preview */}
+        <div className="relative aspect-video bg-zinc-950 rounded-xl overflow-hidden border border-white/10">
+          {localId && local?.video ? (
+            <DailyVideo
+              sessionId={localId}
+              type="video"
+              automirror
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-900 to-black">
+              <div className="flex flex-col items-center gap-2">
+                <Icon name="camera-off" className="w-10 h-10 text-white/30" />
+                <span className="text-[11px] font-mono uppercase tracking-wider text-white/40">
+                  Camera off
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Mic meter — derived from Daily's local participant audio tracks */}
+          <div className="absolute bottom-3 left-3">
+            <MicMeter active={micOn} />
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center justify-center gap-2">
+          <CtrlButton
+            active={!micOn}
+            onClick={onToggleMic}
+            iconName={micOn ? 'mic' : 'mic-off'}
+            label={micOn ? 'Mute' : 'Unmute'}
+          />
+          <CtrlButton
+            active={!camOn}
+            onClick={onToggleCam}
+            iconName={camOn ? 'camera' : 'camera-off'}
+            label={camOn ? 'Camera off' : 'Camera on'}
+          />
+        </div>
+
+        {/* Primary CTA */}
+        <div className="flex items-center justify-center gap-3 mt-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-[13px] font-medium bg-white/5 text-white rounded-lg hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleJoin}
+            disabled={joining}
+            className="px-6 py-2.5 text-[14px] font-semibold bg-white text-black rounded-lg hover:bg-white/90 disabled:opacity-50 disabled:cursor-wait transition-colors"
+          >
+            {joining ? 'Joining…' : 'Join now'}
+          </button>
+        </div>
+      </div>
+
+      {/* Daily audio mount — needed so the session has an audio output node
+          even during preview (belt-and-suspenders; some SDK builds emit
+          warnings if DailyAudio isn't in the tree while a call object exists) */}
+      <DailyAudio />
+    </div>
+  );
+}
+
+// Compact visual mic meter. Polls Daily's local audio level at 100ms.
+// Renders a vertical stack of bars that light up with volume.
+function MicMeter({ active }: { active: boolean }) {
+  const daily = useDaily();
+  const [level, setLevel] = useState(0);
+
+  useEffect(() => {
+    if (!daily || !active) {
+      setLevel(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      try {
+        // Daily exposes audio level on the local participant's audio track.
+        // `getInputSettings` / track-level APIs vary by SDK version; we use
+        // the simple `localAudio.getLevel`-style approach when available,
+        // falling back to zero. This is purely decorative.
+        const local = daily.participants().local;
+        // @ts-expect-error — `audioLevel` is a reasonable best-effort; SDK types don't universally expose it
+        const lvl = typeof local?.audioLevel === 'number' ? local.audioLevel : 0;
+        setLevel(Math.min(1, Math.max(0, lvl)));
+      } catch {
+        // ignore — meter just stays flat
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [daily, active]);
+
+  if (!active) {
+    return (
+      <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 border border-white/10">
+        <Icon name="mic-off" className="w-3 h-3 text-white/60" />
+        <span className="text-[10px] font-mono text-white/50">Muted</span>
+      </div>
+    );
+  }
+
+  const bars = 5;
+  const lit = Math.round(level * bars);
+  return (
+    <div className="flex items-end gap-[2px] px-2 py-1 rounded-md bg-black/60 border border-white/10">
+      <Icon name="mic" className="w-3 h-3 text-white/80 mr-1" />
+      {Array.from({ length: bars }).map((_, i) => (
+        <div
+          key={i}
+          className={`w-[3px] transition-colors ${i < lit ? 'bg-emerald-400' : 'bg-white/15'}`}
+          style={{ height: 3 + i * 2 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ==================== Global keyframes for reaction animation ====================
+// Injected once at module load. Uses a named keyframe so adjacent instances
+// can play independently without CSS class collisions.
+if (typeof document !== 'undefined' && !document.getElementById('sq-reaction-keyframes')) {
+  const style = document.createElement('style');
+  style.id = 'sq-reaction-keyframes';
+  style.textContent = `
+    @keyframes sq-reaction-rise {
+      0%   { transform: translateX(-50%) translateY(0)     scale(0.8); opacity: 0; }
+      15%  { transform: translateX(-50%) translateY(-10px) scale(1);   opacity: 1; }
+      85%  { transform: translateX(-50%) translateY(-120px) scale(1);  opacity: 1; }
+      100% { transform: translateX(-50%) translateY(-160px) scale(0.9); opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+

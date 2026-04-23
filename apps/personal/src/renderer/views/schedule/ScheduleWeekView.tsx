@@ -11,6 +11,7 @@ import {
   eventBlockHeight,
   currentTimeYOffset,
   getProspectAttendee,
+  layoutEventsForDay,
   HOUR_HEIGHT,
   GRID_START_HOUR,
   GRID_END_HOUR,
@@ -117,16 +118,36 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
                     />
                   ))}
 
-                  {/* Event blocks */}
-                  {dayEvents.map((event) => (
-                    <WeekEventBlock
-                      key={event._id}
-                      event={event}
-                      now={now}
-                      closerEmail={closerEmail}
-                      onClick={() => onEventClick(event)}
-                    />
-                  ))}
+                  {/* Event blocks — laid out with overlap-aware columns +
+                      coaching events rendered as a thin ribbon anchored to
+                      their start time. If layout throws for any reason, fall
+                      back to the flat render so the schedule never breaks. */}
+                  {(() => {
+                    let slots;
+                    try {
+                      slots = layoutEventsForDay(dayEvents);
+                    } catch (err) {
+                      console.error('[ScheduleWeekView] layoutEventsForDay failed:', err);
+                      slots = dayEvents.map((e) => ({
+                        event: e,
+                        lane: 'grid' as const,
+                        columnIndex: 0,
+                        columnCount: 1,
+                      }));
+                    }
+                    return slots.map((slot) => (
+                      <WeekEventBlock
+                        key={slot.event._id}
+                        event={slot.event}
+                        lane={slot.lane}
+                        columnIndex={slot.columnIndex}
+                        columnCount={slot.columnCount}
+                        now={now}
+                        closerEmail={closerEmail}
+                        onClick={() => onEventClick(slot.event)}
+                      />
+                    ));
+                  })()}
 
                   {/* Current time indicator */}
                   {isToday && <CurrentTimeIndicator now={now} />}
@@ -150,49 +171,99 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
 
 // ==================== Sub-components ====================
 
+// Sequ3nce-coaching ribbon color. Deliberately distinct from urgency colors
+// so the ribbon reads as a community event, not a personal commitment.
+const COACHING_RIBBON_COLOR = '#7c3aed'; // violet-600
+const COACHING_RIBBON_HEIGHT = 16;
+
 function WeekEventBlock({
   event,
+  lane,
+  columnIndex,
+  columnCount,
   now,
   closerEmail,
   onClick,
 }: {
   event: CalendarEvent;
+  lane: 'grid' | 'ribbon';
+  columnIndex: number;
+  columnCount: number;
   now: number;
   closerEmail?: string;
   onClick: () => void;
 }) {
+  const yOffset = eventYOffset(event);
+
+  // Sequ3nce-coaching ribbon — thin bar anchored to the call start, full
+  // column width, never competes with personal events for split-column space.
+  if (lane === 'ribbon') {
+    return (
+      <div
+        className="absolute left-[2px] right-[2px] rounded px-1.5 flex items-center gap-1 cursor-pointer hover:brightness-110 transition-all shadow-sm"
+        style={{
+          top: yOffset,
+          height: COACHING_RIBBON_HEIGHT,
+          backgroundColor: COACHING_RIBBON_COLOR,
+          zIndex: 5, // above grid events so it reads as an overlay
+        }}
+        onClick={onClick}
+        title={`Sequ3nce Coaching: ${event.title}`}
+      >
+        <span className="text-white/90 text-[9px] font-bold uppercase tracking-wider leading-none">
+          SQ
+        </span>
+        <span className="text-white text-[10px] font-semibold truncate leading-none">
+          {event.title}
+        </span>
+      </div>
+    );
+  }
+
+  // Grid event — competes for column width when overlapping.
   const urgency = getEventUrgency(event, now);
   const color = getUrgencyBlockColor(urgency);
-  const yOffset = eventYOffset(event);
   const height = eventBlockHeight(event);
   const platform = detectPlatform(event.meetingUrl);
   const prospect = getProspectAttendee(event, closerEmail);
+  const isNarrow = columnCount >= 3; // narrowest tier — hide secondary text
+
+  // With N columns, each column takes (100% / N) of the day column width,
+  // minus a 4px gutter (2px on each side) so adjacent blocks don't touch.
+  const widthStyle = columnCount === 1
+    ? { left: 2, right: 2 }
+    : {
+        left: `calc(${columnIndex} * (100% / ${columnCount}) + 2px)`,
+        width: `calc((100% / ${columnCount}) - 4px)`,
+      };
 
   return (
     <div
-      className="absolute left-[2px] right-[2px] rounded px-1.5 py-0.5 cursor-pointer overflow-hidden hover:brightness-95 transition-all"
+      className="absolute rounded px-1.5 py-0.5 cursor-pointer overflow-hidden hover:brightness-95 transition-all"
       style={{
+        ...widthStyle,
         top: yOffset,
         height: Math.max(height, 18),
         backgroundColor: `${color}E6`,
         borderLeft: `3px solid ${color}`,
       }}
       onClick={onClick}
+      title={event.title}
     >
       <p className="text-white text-[10px] font-semibold truncate leading-tight">
         {event.title}
       </p>
-      {height > 24 && prospect && (
+      {!isNarrow && height > 24 && prospect && (
         <p className="text-white/70 text-[9px] truncate">
           {prospect.name || prospect.email}
         </p>
       )}
-      {height > 30 && (
+      {!isNarrow && height > 30 && (
         <p className="text-white/80 text-[9px] font-mono">
           {formatTime(event.startTime)}
         </p>
       )}
-      {height > 50 && platform && (
+      {!isNarrow && height > 50 && platform && (
         <p className="text-white/80 text-[8px] flex items-center gap-0.5 mt-0.5">
           <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
             <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />

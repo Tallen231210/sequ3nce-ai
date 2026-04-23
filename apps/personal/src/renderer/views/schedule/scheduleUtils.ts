@@ -226,3 +226,134 @@ export function extractProspectName(
 
   return undefined;
 }
+
+// ==================== Overlap layout ====================
+
+// Max personal-event columns we split a time slot into before falling back to
+// stacking. 3 covers the realistic ceiling for our users (multi-calendar
+// closers + a Sequ3nce coaching ribbon = 2 columns + ribbon; 3 personal
+// overlaps = all 3 columns; 4+ is an edge case that stacks on column 2).
+const MAX_OVERLAP_COLUMNS = 3;
+
+/** Two events share time when their [start, end) ranges strictly intersect. */
+export function eventsOverlap(a: CalendarEvent, b: CalendarEvent): boolean {
+  return a.startTime < b.endTime && b.startTime < a.endTime;
+}
+
+export interface EventLayoutSlot {
+  event: CalendarEvent;
+  /** 'grid' = competes for column width with other grid events.
+   *  'ribbon' = Sequ3nce coaching event; pinned as a thin full-width bar at startTime. */
+  lane: 'grid' | 'ribbon';
+  /** 0-indexed column within the overlap cluster. Only meaningful when lane === 'grid'. */
+  columnIndex: number;
+  /** Total columns in this event's cluster (1..MAX_OVERLAP_COLUMNS). */
+  columnCount: number;
+}
+
+/**
+ * Bucket one day's events into layout slots. Coaching events (coachingCallId
+ * set) are extracted to a ribbon lane so they don't compete with personal
+ * events for split-column width. Personal events get a greedy column
+ * assignment; transitively-overlapping events share one cluster and all
+ * report the cluster's total columnCount (so their widths line up).
+ *
+ * Never throws — callers wrap in try/catch as a belt-and-suspenders, but this
+ * function handles empty arrays, bad timestamps, and pathological overlaps
+ * without propagating errors.
+ */
+export function layoutEventsForDay(events: CalendarEvent[]): EventLayoutSlot[] {
+  if (events.length === 0) return [];
+
+  const coaching: CalendarEvent[] = [];
+  const personal: CalendarEvent[] = [];
+  for (const e of events) {
+    if (e.coachingCallId) coaching.push(e);
+    else personal.push(e);
+  }
+
+  // Sort personal events by start time, tiebreak longer-first so long events
+  // anchor column 0 in their cluster.
+  const sorted = [...personal].sort((a, b) => {
+    if (a.startTime !== b.startTime) return a.startTime - b.startTime;
+    return (b.endTime - b.startTime) - (a.endTime - a.startTime);
+  });
+
+  // Greedy column assignment. `openCols[c]` is the endTime of the most recent
+  // event placed in column c; a new event can take column c if its startTime
+  // is >= that endTime.
+  const openCols: number[] = [];
+  const assigned = new Map<string, number>(); // event._id -> columnIndex
+  for (const ev of sorted) {
+    let placed = false;
+    for (let c = 0; c < openCols.length && c < MAX_OVERLAP_COLUMNS; c++) {
+      if (ev.startTime >= openCols[c]) {
+        openCols[c] = ev.endTime;
+        assigned.set(ev._id, c);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      if (openCols.length < MAX_OVERLAP_COLUMNS) {
+        openCols.push(ev.endTime);
+        assigned.set(ev._id, openCols.length - 1);
+      } else {
+        // Fallback: stack on the last column. Visually overlapping on col 2
+        // is the documented edge case for 4+ concurrent personal events.
+        assigned.set(ev._id, MAX_OVERLAP_COLUMNS - 1);
+      }
+    }
+  }
+
+  // Cluster events by transitive overlap so all events in an overlapping
+  // group report the same columnCount — this keeps their widths consistent.
+  // Union-find by id; N is small enough that a simple array implementation is fine.
+  const idToIdx = new Map<string, number>();
+  sorted.forEach((e, i) => idToIdx.set(e._id, i));
+  const parent = sorted.map((_, i) => i);
+  function find(i: number): number {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  }
+  function union(i: number, j: number) {
+    const ri = find(i), rj = find(j);
+    if (ri !== rj) parent[ri] = rj;
+  }
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      // Since sorted by startTime, j.start >= i.start. j overlaps i iff j.start < i.end.
+      if (sorted[j].startTime >= sorted[i].endTime) break;
+      union(i, j);
+    }
+  }
+  const clusterMaxCol = new Map<number, number>();
+  for (let i = 0; i < sorted.length; i++) {
+    const root = find(i);
+    const col = assigned.get(sorted[i]._id) ?? 0;
+    clusterMaxCol.set(root, Math.max(clusterMaxCol.get(root) ?? 0, col));
+  }
+
+  const gridSlots: EventLayoutSlot[] = sorted.map((ev, i) => {
+    const root = find(i);
+    const columnCount = Math.min((clusterMaxCol.get(root) ?? 0) + 1, MAX_OVERLAP_COLUMNS);
+    return {
+      event: ev,
+      lane: 'grid',
+      columnIndex: assigned.get(ev._id) ?? 0,
+      columnCount,
+    };
+  });
+
+  const ribbonSlots: EventLayoutSlot[] = coaching.map((ev) => ({
+    event: ev,
+    lane: 'ribbon',
+    columnIndex: 0,
+    columnCount: 1,
+  }));
+
+  return [...gridSlots, ...ribbonSlots];
+}
