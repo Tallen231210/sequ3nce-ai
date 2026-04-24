@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { DailyParticipant } from '@daily-co/daily-js';
 import {
-  DailyAudio,
   DailyVideo,
   useDaily,
   useParticipantIds,
@@ -18,6 +17,7 @@ import {
   type BreakoutGroup,
 } from '../../../convex';
 import { useCoachingSession } from './CoachingSessionContext';
+import { playNotificationChime } from '../../notificationSound';
 import type { BattleRoyaleState, BRSubmission, BRReveal } from './BattleRoyaleTypes';
 import { StartBattleRoyaleModal } from './StartBattleRoyaleModal';
 import { BattleRoyaleOverlay } from './BattleRoyaleOverlay';
@@ -181,8 +181,13 @@ export function CoachingCallRoom({
           at: Date.now(),
         },
       ]);
-      // Flag unread badge on the PiP mini if user is currently minimized.
-      if (sessionViewMode === 'mini') markChatUnread();
+      // Flag unread badge + play a chime on the PiP mini if minimized. The
+      // chime is how users find out about a new message without needing to
+      // watch the mini — they can be typing in another tab.
+      if (sessionViewMode === 'mini') {
+        markChatUnread();
+        playNotificationChime();
+      }
       return;
     }
 
@@ -191,8 +196,12 @@ export function CoachingCallRoom({
       const userName = typeof payload.userName === 'string' ? payload.userName : 'Guest';
       const at = typeof payload.at === 'number' ? payload.at : Date.now();
       setRaisedHands((prev) => ({ ...prev, [sessionId]: { sessionId, userName, at } }));
-      // Flag unread hand-queue badge on the PiP mini if minimized.
-      if (sessionViewMode === 'mini') markHandsUnread();
+      // Flag unread hand-queue badge + chime on the PiP mini if minimized.
+      // Coach needs to know immediately when someone raises a hand.
+      if (sessionViewMode === 'mini') {
+        markHandsUnread();
+        playNotificationChime();
+      }
       return;
     }
 
@@ -824,42 +833,52 @@ export function CoachingCallRoom({
   const brAuthorsRef = useRef<Map<string, BRSubmission>>(new Map());
 
   // Phase-timer transitions:
-  //   - submit timer ends on coach → auto-move to 'reviewing'
-  //   - submit timer ends on attendee → disable input + mark submitted (no-op for already-submitted)
-  //   - vote timer ends → attendees stay in voting-ended state; coach sees "End voting" button. We DO NOT
-  //     auto-end voting on the coach's side — coach confirms the winner.
+  //   - submit timer ends → BOTH coach + attendees move to 'reviewing'.
+  //     Coach sees the picker; attendees see "Coach is picking finalists…".
+  //     (Previously only the coach transitioned; attendees hung forever
+  //      waiting for br-reveal — v1.14.0 bug.)
+  //   - When there are ≤3 submissions total, coach's picker auto-selects
+  //     all of them so they can Reveal immediately (no point picking top-3
+  //     from a set of 2). With ≥4, coach has to manually select 3.
+  //   - Vote timer ends → attendees stay in voting-ended state; coach sees
+  //     "End voting" button. We DO NOT auto-end voting — coach confirms.
   useEffect(() => {
-    if (brState.phase === 'submitting' || brState.phase === 'submitting-coach') {
-      const remaining = brState.submitEndTime - Date.now();
-      if (remaining <= 0) {
-        if (brState.phase === 'submitting-coach') {
-          setBrState({
-            phase: 'reviewing',
-            objection: brState.objection,
-            voteSec: brState.voteSec,
-            received: brState.received,
-            selected: new Set(),
-          });
-        }
-        // Attendee: no auto-action; textarea becomes disabled once timer reaches 0 in the overlay's useCountdown.
-        return;
+    if (brState.phase !== 'submitting' && brState.phase !== 'submitting-coach') return;
+
+    const transitionNow = (prev: BattleRoyaleState): BattleRoyaleState => {
+      if (prev.phase === 'submitting-coach') {
+        const autoSelect = prev.received.length <= 3
+          ? new Set(prev.received.map((s) => s.id))
+          : new Set<string>();
+        return {
+          phase: 'reviewing',
+          objection: prev.objection,
+          voteSec: prev.voteSec,
+          received: prev.received,
+          selected: autoSelect,
+        };
       }
-      const timer = setTimeout(() => {
-        if (brState.phase === 'submitting-coach') {
-          setBrState((prev) => {
-            if (prev.phase !== 'submitting-coach') return prev;
-            return {
-              phase: 'reviewing',
-              objection: prev.objection,
-              voteSec: prev.voteSec,
-              received: prev.received,
-              selected: new Set(),
-            };
-          });
-        }
-      }, remaining);
-      return () => clearTimeout(timer);
+      if (prev.phase === 'submitting') {
+        return {
+          phase: 'reviewing',
+          objection: prev.objection,
+          voteSec: prev.voteSec,
+          received: [],
+          selected: new Set<string>(),
+        };
+      }
+      return prev;
+    };
+
+    const remaining = brState.submitEndTime - Date.now();
+    if (remaining <= 0) {
+      setBrState((prev) => transitionNow(prev));
+      return;
     }
+    const timer = setTimeout(() => {
+      setBrState((prev) => transitionNow(prev));
+    }, remaining);
+    return () => clearTimeout(timer);
   }, [brState]);
 
   // ---- Role Play Rooms (breakouts) handlers ----
@@ -1471,8 +1490,8 @@ export function CoachingCallRoom({
         />
       )}
 
-      {/* Daily audio — must be rendered once to hear participants */}
-      <DailyAudio />
+      {/* DailyAudio is rendered at CoachingCallLayer so audio output stays
+          attached across the full→mini transition. */}
     </div>
   );
 }
@@ -1662,7 +1681,7 @@ function VideoGrid(props: VideoGridProps) {
   if (ids.length <= 1) {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center gap-6">
-        <div className="w-[min(560px,100%)]">
+        <div className="w-[min(560px,100%)] aspect-video">
           {ids.map((id) => (
             <ParticipantTileWrapped key={id} sessionId={id} {...props} />
           ))}
@@ -1676,21 +1695,19 @@ function VideoGrid(props: VideoGridProps) {
     );
   }
 
-  // Speaker view — focus tile takes the top ~70%, remainders strip below.
-  // Focus-tile selection:
-  //   1) spotlighted (coach override) — wins
-  //   2) active speaker (last non-null)
-  //   3) find the participant tied to the coach (stable fallback; no jitter)
-  //   4) first participant
+  // Speaker view — one big focus tile on top, remaining tiles in a strip below.
+  // Layout rules that keep faces from being clipped at any window size:
+  //   - Focus slot: max-w-full max-h-full aspect-video centered within its
+  //     wrapper. The slot fits whichever dimension is most constraining
+  //     (height-limited on landscape, width-limited on portrait) while
+  //     preserving 16:9.
+  //   - Strip: explicit h-[22%] with overflow-hidden. Each strip slot is
+  //     h-full aspect-video so tiles compute width from the strip's fixed
+  //     height — never overflowing vertically.
   if (props.viewMode === 'speaker') {
     const sessionIdsSet = new Set(ids);
-    const coachSessionId = ids[0] && ids.find((id) => {
-      // We can't easily map sessionId → b2cUsers ID without a handshake,
-      // so use joined_at order: coach starts the call so they're typically
-      // first. This is a deliberate simplification; stable behavior.
-      return id === ids[0];
-    });
-    let focusId =
+    const coachSessionId = ids[0] && ids.find((id) => id === ids[0]);
+    const focusId =
       (props.spotlightedId && sessionIdsSet.has(props.spotlightedId) && props.spotlightedId) ||
       (props.activeSpeakerId && sessionIdsSet.has(props.activeSpeakerId) && props.activeSpeakerId) ||
       coachSessionId ||
@@ -1698,18 +1715,25 @@ function VideoGrid(props: VideoGridProps) {
 
     const otherIds = ids.filter((id) => id !== focusId);
     return (
-      <div className="h-full w-full flex flex-col gap-3">
-        <div className="flex-1 min-h-0">
-          <ParticipantTileWrapped
-            sessionId={focusId}
-            isFocus
-            {...props}
-          />
+      <div className="h-full w-full flex flex-col gap-3 overflow-hidden">
+        <div className="flex-1 min-h-0 flex items-center justify-center">
+          <div className="max-w-full max-h-full aspect-video">
+            <ParticipantTileWrapped sessionId={focusId} isFocus {...props} />
+          </div>
         </div>
         {otherIds.length > 0 && (
-          <div className="shrink-0 grid grid-flow-col auto-cols-[minmax(140px,1fr)] gap-3 max-h-[22%] overflow-x-auto">
+          // `justify-content: safe center` — centers the strip when it fits,
+          // falls back to start-aligned when content overflows so users can
+          // scroll back to the leftmost tile. Without `safe`, the scroll
+          // origin clamps at 0 and left-of-center tiles become unreachable.
+          <div
+            className="shrink-0 h-[22%] flex items-center gap-3 overflow-x-auto overflow-y-hidden"
+            style={{ justifyContent: 'safe center' }}
+          >
             {otherIds.map((id) => (
-              <ParticipantTileWrapped key={id} sessionId={id} {...props} />
+              <div key={id} className="h-full aspect-video shrink-0">
+                <ParticipantTileWrapped sessionId={id} {...props} />
+              </div>
             ))}
           </div>
         )}
@@ -1717,12 +1741,18 @@ function VideoGrid(props: VideoGridProps) {
     );
   }
 
-  // Gallery view — uniform grid (unchanged from v1.12.2 behavior).
+  // Gallery view — uniform grid. Each grid cell is 16:9 (aspect-video on the
+  // cell), and tiles fill cells. Grid scrolls vertically if needed so tiles
+  // are never clipped.
   return (
-    <div className="h-full w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 auto-rows-min">
-      {ids.map((id) => (
-        <ParticipantTileWrapped key={id} sessionId={id} {...props} />
-      ))}
+    <div className="h-full w-full overflow-y-auto">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        {ids.map((id) => (
+          <div key={id} className="aspect-video">
+            <ParticipantTileWrapped sessionId={id} {...props} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1856,7 +1886,7 @@ function ParticipantTile({
   const initialsSize = isFocus ? 'w-20 h-20 text-3xl' : 'w-14 h-14 text-xl';
 
   return (
-    <div className={`relative aspect-video bg-zinc-950 rounded-xl overflow-hidden border ${borderClass} group transition-colors`}>
+    <div className={`relative w-full h-full bg-zinc-950 rounded-xl overflow-hidden border ${borderClass} group transition-colors`}>
       {participant?.video ? (
         <DailyVideo
           sessionId={sessionId}
@@ -2361,10 +2391,7 @@ function PreCallMirror({ call, micOn, camOn, onToggleMic, onToggleCam, onJoin, o
         </div>
       </div>
 
-      {/* Daily audio mount — needed so the session has an audio output node
-          even during preview (belt-and-suspenders; some SDK builds emit
-          warnings if DailyAudio isn't in the tree while a call object exists) */}
-      <DailyAudio />
+      {/* DailyAudio rendered at CoachingCallLayer covers preview + joined. */}
     </div>
   );
 }

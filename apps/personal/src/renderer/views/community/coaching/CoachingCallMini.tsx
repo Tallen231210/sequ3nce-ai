@@ -19,7 +19,7 @@ import { useCoachingSession } from './CoachingSessionContext';
 // Daily hooks work identically.
 export function CoachingCallMini({ onLeave }: { onLeave: () => void }) {
   const daily = useDaily();
-  const { maximize, unreadChat, unreadHands } = useCoachingSession();
+  const { maximize, unreadChatCount, unreadHandsCount } = useCoachingSession();
 
   // Pick the focus participant: local if we're alone, otherwise the first
   // joined participant (coach is typically first via joined_at ordering).
@@ -88,11 +88,26 @@ export function CoachingCallMini({ onLeave }: { onLeave: () => void }) {
       {/* Subtle gradient so the controls read over any background */}
       <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
 
-      {/* Unread activity dot — top-left, visible without hover */}
-      {(unreadChat || unreadHands) && (
-        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-400 text-black text-[9px] font-bold uppercase tracking-wider shadow-md">
-          <span className="w-1.5 h-1.5 rounded-full bg-black/70 animate-pulse" />
-          {unreadHands && unreadChat ? 'New' : unreadHands ? 'Hand' : 'Chat'}
+      {/* Unread activity badges — top-left. Show per-channel counts so the
+          user knows whether they missed chat, a raised hand, or both. */}
+      {(unreadChatCount > 0 || unreadHandsCount > 0) && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 shadow-md">
+          {unreadChatCount > 0 && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[10px] font-bold uppercase tracking-wider">
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.25}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.068.157 2.148.279 3.238.364.466.037.893.281 1.153.671L12 21l2.652-3.978c.26-.39.687-.634 1.153-.67 1.09-.086 2.17-.208 3.238-.365 1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+              </svg>
+              {unreadChatCount}
+            </div>
+          )}
+          {unreadHandsCount > 0 && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[10px] font-bold uppercase tracking-wider">
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.25}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.05 4.575a1.575 1.575 0 1 0-3.15 0v3m3.15-3v-1.5a1.575 1.575 0 0 1 3.15 0v1.5m-3.15 0 .075 5.925m3.075.75V4.575m0 0a1.575 1.575 0 0 1 3.15 0V15M6.9 7.575a1.575 1.575 0 1 0-3.15 0v8.175a6.75 6.75 0 0 0 6.75 6.75h2.018a5.25 5.25 0 0 0 3.712-1.538l1.732-1.732a5.25 5.25 0 0 0 1.538-3.712l.003-2.024a.668.668 0 0 1 .198-.471 1.575 1.575 0 1 0-2.228-2.228 3.818 3.818 0 0 0-1.12 2.687M6.9 7.575V12m9.075 5.625v-8.25" />
+              </svg>
+              {unreadHandsCount}
+            </div>
+          )}
         </div>
       )}
 

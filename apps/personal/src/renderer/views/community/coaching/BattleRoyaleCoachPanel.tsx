@@ -30,16 +30,28 @@ export function BattleRoyaleCoachPanel({
   if (state.phase !== 'reviewing' && state.phase !== 'voting') return null;
 
   if (state.phase === 'reviewing') {
-    const canReveal = state.selected.size === 3;
+    // If fewer than 3 submissions arrived, everyone gets to be a "finalist"
+    // automatically (there's nothing to pick from). Coach's picker pre-selects
+    // all of them; the Reveal button uses a dynamic target instead of a hard 3.
+    const maxPick = Math.min(3, state.received.length);
+    const canReveal = state.selected.size === maxPick && maxPick > 0;
+    const noneReceived = state.received.length === 0;
+    const pickerLabel = state.received.length < 3
+      ? `Reveal all ${state.received.length}`
+      : `Pick top 3`;
+    const subLabel = state.received.length < 3
+      ? `${state.received.length} submission${state.received.length === 1 ? '' : 's'} — all will be revealed`
+      : `${state.received.length} submissions · selected ${state.selected.size}/3`;
+
     return (
       <div className="w-[340px] shrink-0 border-l border-white/10 flex flex-col bg-zinc-950/60">
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
           <div>
             <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-amber-200/80">
-              Pick top 3
+              {pickerLabel}
             </div>
             <div className="text-[12px] text-white/60">
-              {state.received.length} submission{state.received.length === 1 ? '' : 's'} · selected {state.selected.size}/3
+              {subLabel}
             </div>
           </div>
           <button
@@ -52,14 +64,14 @@ export function BattleRoyaleCoachPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-          {state.received.length === 0 ? (
-            <div className="text-[11px] text-white/40 text-center pt-6 font-mono">
-              No submissions received
+          {noneReceived ? (
+            <div className="text-[11px] text-white/40 text-center pt-6 font-mono leading-relaxed">
+              No submissions received.<br />Click Abort to end this round.
             </div>
           ) : (
             state.received.map((sub) => {
               const selected = state.selected.has(sub.id);
-              const canSelect = selected || state.selected.size < 3;
+              const canSelect = selected || state.selected.size < maxPick;
               return (
                 <button
                   key={sub.id}
@@ -93,11 +105,15 @@ export function BattleRoyaleCoachPanel({
             disabled={!canReveal}
             className="w-full px-4 py-2 text-[12px] font-semibold bg-white text-black rounded-lg hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
           >
-            Reveal top 3
+            {state.received.length < 3 && !noneReceived
+              ? `Reveal all ${state.received.length} for voting`
+              : 'Reveal top 3'}
           </button>
-          {!canReveal && (
+          {!canReveal && !noneReceived && (
             <div className="mt-1.5 text-[10px] text-white/40 text-center">
-              Select exactly 3 to reveal.
+              {state.received.length < 3
+                ? 'All submissions already pre-selected.'
+                : 'Select exactly 3 to reveal.'}
             </div>
           )}
         </div>

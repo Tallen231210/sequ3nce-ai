@@ -24,9 +24,9 @@ interface CoachingSessionContextValue {
   setViewMode: (mode: CoachingCallViewMode) => void;
   minimize: () => void;
   maximize: () => void;
-  /** Unread indicators shown on the mini. Cleared when user maximizes. */
-  unreadChat: boolean;
-  unreadHands: boolean;
+  /** Unread counters shown as number badges on the mini. Cleared on maximize. */
+  unreadChatCount: number;
+  unreadHandsCount: number;
   markChatUnread: () => void;
   markHandsUnread: () => void;
 }
@@ -39,16 +39,16 @@ const CoachingSessionContext = createContext<CoachingSessionContextValue | null>
 export function CoachingSessionProvider({ children }: { children: React.ReactNode }) {
   const [activeSession, setActiveSessionState] = useState<ActiveCoachingSession | null>(null);
   const [viewMode, setViewMode] = useState<CoachingCallViewMode>('full');
-  const [unreadChat, setUnreadChat] = useState(false);
-  const [unreadHands, setUnreadHands] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [unreadHandsCount, setUnreadHandsCount] = useState(0);
 
   // Reset view + unread state whenever a session starts or ends so a fresh
   // call always opens in full view with no leftover badges.
   const setActiveSession = useCallback((session: ActiveCoachingSession | null) => {
     setActiveSessionState(session);
     setViewMode('full');
-    setUnreadChat(false);
-    setUnreadHands(false);
+    setUnreadChatCount(0);
+    setUnreadHandsCount(0);
   }, []);
 
   const minimize = useCallback(() => setViewMode('mini'), []);
@@ -56,17 +56,17 @@ export function CoachingSessionProvider({ children }: { children: React.ReactNod
     setViewMode('full');
     // When the user maximizes, they're about to see chat + hand queue again,
     // so clear the unread indicators.
-    setUnreadChat(false);
-    setUnreadHands(false);
+    setUnreadChatCount(0);
+    setUnreadHandsCount(0);
   }, []);
 
   // Badges are only meaningful while minimized — events fired during full
   // view are already visible, no unread state needed.
   const markChatUnread = useCallback(() => {
-    setUnreadChat((prev) => prev || true);
+    setUnreadChatCount((prev) => prev + 1);
   }, []);
   const markHandsUnread = useCallback(() => {
-    setUnreadHands((prev) => prev || true);
+    setUnreadHandsCount((prev) => prev + 1);
   }, []);
 
   const value = useMemo<CoachingSessionContextValue>(
@@ -77,12 +77,12 @@ export function CoachingSessionProvider({ children }: { children: React.ReactNod
       setViewMode,
       minimize,
       maximize,
-      unreadChat,
-      unreadHands,
+      unreadChatCount,
+      unreadHandsCount,
       markChatUnread,
       markHandsUnread,
     }),
-    [activeSession, setActiveSession, viewMode, minimize, maximize, unreadChat, unreadHands, markChatUnread, markHandsUnread],
+    [activeSession, setActiveSession, viewMode, minimize, maximize, unreadChatCount, unreadHandsCount, markChatUnread, markHandsUnread],
   );
 
   return (

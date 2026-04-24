@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import DailyIframe from '@daily-co/daily-js';
-import { DailyProvider } from '@daily-co/daily-react';
+import { DailyAudio, DailyProvider } from '@daily-co/daily-react';
 import { useCoachingSession } from './CoachingSessionContext';
 import { CoachingCallRoom } from './CoachingCallRoom';
 import { CoachingCallMini } from './CoachingCallMini';
@@ -46,9 +46,18 @@ export function CoachingCallLayer({
 
   if (!activeSession || !callObject) return null;
 
+  // CRITICAL: both views are ALWAYS rendered. We toggle visibility via CSS
+  // `display: none` on whichever one isn't active. Conditionally mounting +
+  // unmounting them causes DailyAudio + all the in-room state (chat, raised
+  // hands, Battle Royale, listeners) to die on every minimize/maximize cycle,
+  // which is what broke audio + lost chat history in v1.14.0.
+  //
+  // `DailyAudio` is rendered once at this layer so remote-track audio output
+  // stays attached across the full→mini→full transition.
   return (
     <DailyProvider callObject={callObject}>
-      {viewMode === 'full' ? (
+      <DailyAudio />
+      <div style={{ display: viewMode === 'full' ? 'block' : 'none' }}>
         <CoachingCallRoom
           call={activeSession.call}
           currentUserId={currentUserId}
@@ -57,9 +66,10 @@ export function CoachingCallLayer({
           selfPhotoUrl={activeSession.selfPhotoUrl}
           onLeave={onLeave}
         />
-      ) : (
+      </div>
+      <div style={{ display: viewMode === 'mini' ? 'block' : 'none' }}>
         <CoachingCallMini onLeave={onLeave} />
-      )}
+      </div>
     </DailyProvider>
   );
 }
