@@ -51,7 +51,9 @@ export function PreCallMirror({ call, micOn, camOn, onToggleMic, onToggleCam, on
     void load();
     // Re-enumerate when devices are plugged/unplugged so a newly-connected
     // webcam shows up in the dropdown without a refresh.
-    const onChange = () => void load();
+    const onChange = (): void => {
+      void load();
+    };
     navigator.mediaDevices.addEventListener?.('devicechange', onChange);
     return () => {
       cancelled = true;
