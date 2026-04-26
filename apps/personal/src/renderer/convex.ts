@@ -4443,39 +4443,8 @@ export async function kickFromCoachingCall(
   }
 }
 
-// ==================== Role Play Rooms (breakouts) ====================
-
-export interface BreakoutGroup {
-  groupId: number;
-  roomName: string;
-  roomUrl: string;
-  members: Array<{ sessionId: string; userName: string; token: string }>;
-  coachToken: string;
-}
-
-export interface BreakoutStartResponse {
-  endsAt: number;
-  groups: BreakoutGroup[];
-}
-
-export async function startBreakouts(params: {
-  callId: string;
-  coachUserId: string;
-  groupSize: number;
-  durationMin: number;
-  attendees: Array<{ sessionId: string; userName: string }>;
-}): Promise<BreakoutStartResponse | { error: string }> {
-  try {
-    const res = await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/breakouts/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    return await res.json();
-  } catch {
-    return { error: 'Network error' };
-  }
-}
+// (Role Play Rooms / breakouts wrapper removed in v1.15 — replaced by
+// inline role-play in the main call. See FocusMode in CoachingCallRoom.)
 
 // ==================== Objection Playbook ====================
 

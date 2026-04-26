@@ -79,8 +79,13 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
   const upcoming = calls
     .filter((c) => c.status === 'scheduled')
     .sort((a, b) => a.scheduledStartTime - b.scheduledStartTime);
+  // Hide ended calls whose recording was manually deleted — they have nothing
+  // to offer in the Recent list (no replay, no preview), and a stack of
+  // "Recording deleted" rows is just visual noise. The full replay library
+  // (Community → Training → Past coaching calls) still keeps the historical
+  // record for anyone who wants to confirm a session ran.
   const past = calls
-    .filter((c) => c.status === 'ended')
+    .filter((c) => c.status === 'ended' && c.recordingStatus !== 'deleted')
     .sort((a, b) => b.scheduledStartTime - a.scheduledStartTime)
     .slice(0, 5);
 

@@ -98,6 +98,15 @@ let isReconnecting = false;
 
 // Live Chat state
 let chatPollingInterval: NodeJS.Timeout | null = null;
+
+// Pending display-media request — set by setDisplayMediaRequestHandler when
+// the renderer calls getDisplayMedia, cleared by the
+// 'app:select-display-media-source' IPC handler when the user picks (or
+// cancels) in ScreenSharePickerModal.
+let pendingDisplayMedia: {
+  callback: (streams: Electron.Streams) => void;
+  sources: Electron.DesktopCapturerSource[];
+} | null = null;
 let chatCloserId: string | null = null;
 let chatTeamId: string | null = null;
 let chatCloserName: string | null = null;
@@ -982,6 +991,67 @@ const setupIpcHandlers = (): void => {
     const camera = await systemPreferences.askForMediaAccess('camera');
     const microphone = await systemPreferences.askForMediaAccess('microphone');
     return { camera, microphone };
+  });
+
+  // Screen recording permission on macOS is a separate TCC gate from camera/mic.
+  // There's no askForMediaAccess('screen') API — the first getDisplayMedia()
+  // attempt registers the app in System Settings → Privacy & Security → Screen
+  // & System Audio Recording (default: denied). User must manually enable +
+  // restart the app. Without this check the share fails silently.
+  ipcMain.handle('app:get-screen-access-status', () => {
+    if (process.platform !== 'darwin') return 'granted';
+    return systemPreferences.getMediaAccessStatus('screen');
+  });
+
+  // Jump the user straight to the Screen Recording settings pane so they
+  // don't have to hunt through System Settings. Closer to one-click grant.
+  ipcMain.handle('app:open-screen-settings', () => {
+    if (process.platform !== 'darwin') return false;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { shell } = require('electron');
+    void shell.openExternal(
+      'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+    );
+    return true;
+  });
+
+  // Source list for the in-app screen-share picker. Returns thumbnails as
+  // data URLs so the renderer can render them without piping native image
+  // objects across the IPC boundary. Coaching-call screen share fetches
+  // sources via this handler, shows the picker, then passes the chosen
+  // source's id to Daily as `chromeMediaSourceId` — Daily then captures
+  // and publishes via its OWN pipeline (which is what was missing when we
+  // tried passing pre-captured streams to startScreenShare({ mediaStream })).
+  ipcMain.handle('app:get-screen-sources', async () => {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen', 'window'],
+      thumbnailSize: { width: 320, height: 200 },
+      fetchWindowIcons: true,
+    });
+    return sources.map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.id.startsWith('screen:') ? ('screen' as const) : ('window' as const),
+      thumbnail: s.thumbnail.toDataURL(),
+      appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+    }));
+  });
+
+  // Resolves any pending getDisplayMedia request. Kept as a safety net for
+  // code paths that call getDisplayMedia directly (none today, but future-
+  // proofs against e.g. a role-play feature using browser APIs). For the
+  // coaching screen share, the picker is shown via a different path — this
+  // handler is rarely invoked.
+  ipcMain.handle('app:select-display-media-source', (_evt, sourceId: string | null) => {
+    if (!pendingDisplayMedia) return;
+    const { callback, sources } = pendingDisplayMedia;
+    pendingDisplayMedia = null;
+    if (sourceId === null) {
+      callback({});
+      return;
+    }
+    const picked = sources.find((s) => s.id === sourceId);
+    callback(picked ? { video: picked } : {});
   });
 
   // Get app version
@@ -1887,27 +1957,55 @@ app.whenReady().then(() => {
     }
   );
 
-  // Screen-share source picker. When Daily's SDK calls getDisplayMedia() to
-  // screen-share, Electron's Chromium raises a display-media request that we
-  // must handle — otherwise it silently fails with no picker shown.
-  // `useSystemPicker: true` uses macOS 14+'s native screen picker (best UX).
-  // On older macOS / other platforms, we fall back to auto-picking the
-  // primary screen so the share still works without a picker UI.
+  // Display-media request handler — fires when the renderer calls
+  // navigator.mediaDevices.getDisplayMedia() (which Daily's startScreenShare
+  // does internally). We DEFER the callback: store it + the source list,
+  // notify the renderer via 'display-media:request' so it can show our
+  // ScreenSharePickerModal, then wait for the renderer to pick (or cancel)
+  // via the 'app:select-display-media-source' IPC handler above. That call
+  // fires the stored callback with the chosen source, which gives Daily a
+  // proper MediaStream and the share actually streams to viewers.
+  //
+  // useSystemPicker is FALSE because (a) it requires macOS 15 Sequoia and
+  // (b) when active it suppresses our callback entirely on macOS 15+. Our
+  // custom picker works the same on every macOS version.
   session.defaultSession.setDisplayMediaRequestHandler(
-    (_request, callback) => {
-      desktopCapturer
-        .getSources({ types: ['screen', 'window'] })
-        .then((sources) => {
-          // On macOS 14+ with useSystemPicker:true this callback is invoked
-          // AFTER the user picks via the native dialog, so sources[0] already
-          // reflects their choice. On older platforms we fall through to the
-          // first screen source.
-          const picked = sources[0];
-          callback(picked ? { video: picked } : {});
-        })
-        .catch(() => callback({}));
+    async (_request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen', 'window'],
+          thumbnailSize: { width: 320, height: 200 },
+          fetchWindowIcons: true,
+        });
+        // If a previous picker is still pending (e.g. user clicked Share
+        // twice) cancel it cleanly before replacing.
+        if (pendingDisplayMedia) {
+          pendingDisplayMedia.callback({});
+        }
+        pendingDisplayMedia = { callback, sources };
+        const win = mainWindow ?? BrowserWindow.getAllWindows()[0];
+        if (!win) {
+          // No renderer to ask — fall back to first source.
+          pendingDisplayMedia = null;
+          callback(sources[0] ? { video: sources[0] } : {});
+          return;
+        }
+        win.webContents.send(
+          'display-media:request',
+          sources.map((s) => ({
+            id: s.id,
+            name: s.name,
+            type: s.id.startsWith('screen:') ? 'screen' : 'window',
+            thumbnail: s.thumbnail.toDataURL(),
+            appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+          })),
+        );
+      } catch (err) {
+        console.error('[setDisplayMediaRequestHandler] failed:', err);
+        callback({});
+      }
     },
-    { useSystemPicker: true }
+    { useSystemPicker: false }
   );
 
   app.on('activate', () => {

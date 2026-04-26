@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
-import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem } from '../convex';
-import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting } from '../convex';
+import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem, CoachingCall } from '../convex';
+import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting, joinCoachingCall } from '../convex';
 import { extractProspectName } from './schedule/scheduleUtils';
 import { ScheduleMeetingModal } from './schedule/ScheduleMeetingModal';
 import { PersonalGoalWidget } from './dashboard/PersonalGoalWidget';
+import { JoinCoachingCallModal } from './community/coaching/JoinCoachingCallModal';
+import { useCoachingSession } from './community/coaching/CoachingSessionContext';
 
 interface DashboardViewProps {
   closerInfo: CloserInfo;
@@ -16,6 +18,8 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
   const [recentCalls, setRecentCalls] = useState<CallHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [coachingDetailsCallId, setCoachingDetailsCallId] = useState<string | null>(null);
+  const { setActiveSession: setActiveCoachingSession } = useCoachingSession();
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -61,12 +65,42 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
     }
   }
 
+  // Routes the Join button. Sequ3nce coaching events open the in-app
+  // coaching modal (no bot, no external browser). Everything else falls
+  // through to the regular sales-meeting confirmation modal.
+  function handleJoinRequest(event: CalendarEvent) {
+    if (event.coachingCallId) {
+      setCoachingDetailsCallId(event.coachingCallId);
+      return;
+    }
+    setSelectedEvent(event);
+  }
+
   async function handleJoinConfirm(event: CalendarEvent) {
     if (!event.meetingUrl) return;
     const prospectName = extractProspectName(event, closerInfo.email);
     await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, prospectName);
     window.open(event.meetingUrl, '_blank');
     setSelectedEvent(null);
+  }
+
+  // Called from JoinCoachingCallModal's Join button. Opens the in-app
+  // CoachingCallRoom overlay via the session context.
+  async function handleCoachingJoin(call: CoachingCall) {
+    const userId = closerInfo.b2cUserId;
+    if (!userId) return;
+    const joinRes = await joinCoachingCall(call._id, userId);
+    if ('error' in joinRes) {
+      console.error('[Dashboard] coaching join failed:', joinRes.error);
+      return;
+    }
+    setCoachingDetailsCallId(null);
+    setActiveCoachingSession({
+      call,
+      roomUrl: joinRes.roomUrl,
+      token: joinRes.token,
+      selfPhotoUrl: joinRes.selfPhotoUrl ?? null,
+    });
   }
 
   const greeting = getGreeting(closerInfo.name);
@@ -123,7 +157,7 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
             {todayEvents.slice(0, 5).map((event, i) => (
               <React.Fragment key={event._id || i}>
                 {i > 0 && <div className="border-t border-gray-200/60 mx-4" />}
-                <ScheduleRow event={event} onJoinRequest={setSelectedEvent} />
+                <ScheduleRow event={event} onJoinRequest={handleJoinRequest} />
               </React.Fragment>
             ))}
           </div>
@@ -150,12 +184,23 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
           </div>
         )}
       </div>
-      {/* Meeting confirmation modal */}
+      {/* Sales-meeting confirmation modal — sends a recording bot + opens
+          the meeting URL externally. Only used for non-coaching events. */}
       {selectedEvent && (
         <ScheduleMeetingModal
           event={selectedEvent}
           onConfirm={handleJoinConfirm}
           onClose={() => setSelectedEvent(null)}
+        />
+      )}
+
+      {/* Coaching-call details modal — its own Join CTA hands off to the
+          in-app CoachingCallRoom via setActiveCoachingSession. */}
+      {coachingDetailsCallId && (
+        <JoinCoachingCallModal
+          callId={coachingDetailsCallId}
+          onClose={() => setCoachingDetailsCallId(null)}
+          onJoin={handleCoachingJoin}
         />
       )}
     </div>

@@ -9565,51 +9565,7 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
-// POST /b2c/coaching-calls/breakouts/start — coach starts breakout rooms
-http.route({
-  path: "/b2c/coaching-calls/breakouts/start",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const body = await request.json();
-      if (
-        !body.callId ||
-        !body.coachUserId ||
-        typeof body.groupSize !== "number" ||
-        typeof body.durationMin !== "number" ||
-        !Array.isArray(body.attendees)
-      ) {
-        return b2cJsonResponse(
-          { error: "callId, coachUserId, groupSize, durationMin, attendees required" },
-          400
-        );
-      }
-      const result = await ctx.runAction(
-        api.b2cCoachingCallsDaily.startBreakouts,
-        {
-          callId: body.callId as Id<"b2cCoachingCalls">,
-          coachUserId: body.coachUserId as Id<"b2cUsers">,
-          groupSize: body.groupSize,
-          durationMin: body.durationMin,
-          attendees: body.attendees.map((a: { sessionId: string; userName: string }) => ({
-            sessionId: String(a.sessionId),
-            userName: String(a.userName),
-          })),
-        }
-      );
-      return b2cJsonResponse(result, 200, true);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Failed";
-      return b2cJsonResponse({ error: msg }, 400);
-    }
-  }),
-});
-
-http.route({
-  path: "/b2c/coaching-calls/breakouts/start",
-  method: "OPTIONS",
-  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
-});
+// (breakouts/start route removed in v1.15 — inline role-play replaced breakouts)
 
 // ==================== Objection Playbook ====================
 

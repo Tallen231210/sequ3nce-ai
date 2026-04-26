@@ -7,6 +7,19 @@ export interface AppAPI {
   themeChanged: (theme: string) => Promise<void>;
   setBadgeCount: (count: number) => Promise<void>;
   requestMediaAccess: () => Promise<{ camera: boolean; microphone: boolean }>;
+  getScreenAccessStatus: () => Promise<'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'>;
+  openScreenSettings: () => Promise<boolean>;
+  onDisplayMediaRequest: (handler: (sources: ScreenSource[]) => void) => () => void;
+  selectDisplayMediaSource: (sourceId: string | null) => Promise<void>;
+  getScreenSources: () => Promise<ScreenSource[]>;
+}
+
+export interface ScreenSource {
+  id: string;
+  name: string;
+  type: 'screen' | 'window';
+  thumbnail: string;
+  appIcon: string | null;
 }
 
 export interface AmmoAPI {

@@ -13,6 +13,43 @@ export interface AppAPI {
    * this). On other platforms, resolves true without prompting.
    */
   requestMediaAccess: () => Promise<{ camera: boolean; microphone: boolean }>;
+  /**
+   * Returns the current macOS Screen Recording TCC status. Possible values:
+   * 'not-determined' (first run, never asked), 'granted', 'denied',
+   * 'restricted', 'unknown'. On non-macOS platforms always returns 'granted'.
+   */
+  getScreenAccessStatus: () => Promise<'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'>;
+  /** Opens the macOS Screen Recording settings pane directly so the user can
+   *  grant permission without hunting through System Settings. No-op on other platforms. */
+  openScreenSettings: () => Promise<boolean>;
+  /**
+   * Subscribes to 'display-media:request' events from the main process. Fires
+   * whenever the renderer calls getDisplayMedia() and the main process needs
+   * the renderer to show a picker. Returns an unsubscribe function.
+   */
+  onDisplayMediaRequest: (handler: (sources: ScreenSource[]) => void) => () => void;
+  /**
+   * Resolves a deferred display-media request with the user's pick. Pass the
+   * source id to share that source, or null to cancel without sharing.
+   */
+  selectDisplayMediaSource: (sourceId: string | null) => Promise<void>;
+  /**
+   * Fetches the list of capturable screens + windows up front (without
+   * triggering any getDisplayMedia flow). Used by the coaching screen share
+   * to render a picker BEFORE calling daily.startScreenShare with the chosen
+   * source's id.
+   */
+  getScreenSources: () => Promise<ScreenSource[]>;
+}
+
+export interface ScreenSource {
+  id: string;
+  name: string;
+  type: 'screen' | 'window';
+  /** PNG data URL of the source preview, ~320x200. */
+  thumbnail: string;
+  /** PNG data URL of the application icon (windows only); null for whole screens. */
+  appIcon: string | null;
 }
 
 export interface AmmoAPI {
@@ -134,6 +171,16 @@ contextBridge.exposeInMainWorld('electron', {
     themeChanged: (theme: string) => ipcRenderer.invoke('app:theme-changed', theme),
     setBadgeCount: (count: number) => ipcRenderer.invoke('app:set-badge-count', count),
     requestMediaAccess: () => ipcRenderer.invoke('app:request-media-access'),
+    getScreenAccessStatus: () => ipcRenderer.invoke('app:get-screen-access-status'),
+    openScreenSettings: () => ipcRenderer.invoke('app:open-screen-settings'),
+    onDisplayMediaRequest: (handler: (sources: ScreenSource[]) => void) => {
+      const wrapped = (_evt: Electron.IpcRendererEvent, sources: ScreenSource[]) => handler(sources);
+      ipcRenderer.on('display-media:request', wrapped);
+      return () => ipcRenderer.off('display-media:request', wrapped);
+    },
+    selectDisplayMediaSource: (sourceId: string | null) =>
+      ipcRenderer.invoke('app:select-display-media-source', sourceId),
+    getScreenSources: () => ipcRenderer.invoke('app:get-screen-sources'),
   },
   ammo: {
     toggle: () => ipcRenderer.invoke('ammo:toggle'),

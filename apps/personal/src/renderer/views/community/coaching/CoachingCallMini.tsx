@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   DailyVideo,
   useDaily,
+  useDailyEvent,
   useLocalSessionId,
   useParticipantIds,
   useParticipant,
 } from '@daily-co/daily-react';
 import { useCoachingSession } from './CoachingSessionContext';
+import { resolveFocusTopIds } from './FocusModeTypes';
+import { findCoachSessionId, parseParticipants } from './CoachingCallRoom/participants';
 
 // The floating picture-in-picture tile that renders when the user minimizes
 // the full coaching-call overlay. Pinned to bottom-right; no drag in v1.
@@ -19,14 +22,38 @@ import { useCoachingSession } from './CoachingSessionContext';
 // Daily hooks work identically.
 export function CoachingCallMini({ onLeave }: { onLeave: () => void }) {
   const daily = useDaily();
-  const { maximize, unreadChatCount, unreadHandsCount } = useCoachingSession();
+  const { maximize, unreadChatCount, unreadHandsCount, activeSession, focusMode } = useCoachingSession();
 
-  // Pick the focus participant: local if we're alone, otherwise the first
-  // joined participant (coach is typically first via joined_at ordering).
   const ids = useParticipantIds({ sort: 'joined_at' });
   const localId = useLocalSessionId();
-  const focusId = ids.find((id) => id !== localId) ?? localId ?? ids[0];
-  const focusParticipant = useParticipant(focusId ?? '');
+
+  // Force a re-render when any participant updates their userData — that's
+  // how the coach session id gets resolved (via b2cUserId broadcast).
+  const [, bumpUserData] = useState(0);
+  useDailyEvent('participant-updated', () => bumpUserData((n) => n + 1));
+
+  // Resolve the top-slot tile(s) from FocusMode. Mirrors CoachingCallRoom's
+  // layout so the mini and full view stay in sync: coach by default, or
+  // spotlight target, or 2 role-play tiles side-by-side.
+  const coachSessionId = useMemo(
+    () => findCoachSessionId(
+      parseParticipants(daily),
+      ids,
+      activeSession?.call.coachUserId ?? '',
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [daily, ids, activeSession?.call.coachUserId],
+  );
+
+  const topIds = useMemo(() => {
+    const idSet = new Set(ids);
+    const resolved = resolveFocusTopIds(focusMode, coachSessionId).filter((id) => idSet.has(id));
+    if (resolved.length > 0) return resolved;
+    // Fallback: first non-local participant, then local. Keeps the mini
+    // from going blank if nothing else matches (e.g., coach hasn't joined).
+    const fallback = ids.find((id) => id !== localId) ?? localId ?? ids[0];
+    return fallback ? [fallback] : [];
+  }, [focusMode, coachSessionId, ids, localId]);
 
   const [micOn, setMicOn] = useState(() => {
     // Read current mic state once on mount; after that, our toggle is source of truth.
@@ -65,23 +92,23 @@ export function CoachingCallMini({ onLeave }: { onLeave: () => void }) {
       aria-label="Maximize coaching call"
       title="Click to maximize"
     >
-      {focusId && focusParticipant?.video ? (
-        <DailyVideo
-          sessionId={focusId}
-          type="video"
-          automirror={focusId === localId}
-          className="w-full h-full object-cover"
-        />
+      {topIds.length === 2 ? (
+        // Role-play mode: 2 tiles split 50/50 inside the mini so the user
+        // can tell at a glance that a role-play is active.
+        <div className="flex w-full h-full">
+          {topIds.map((id) => (
+            <div key={id} className="flex-1 relative border-r border-white/10 last:border-r-0">
+              <MiniVideoFrame sessionId={id} isLocal={id === localId} />
+            </div>
+          ))}
+        </div>
+      ) : topIds.length === 1 ? (
+        <MiniVideoFrame sessionId={topIds[0]} isLocal={topIds[0] === localId} />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-900 to-black">
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/70 text-base font-semibold">
-              {(focusParticipant?.user_name || '?').charAt(0).toUpperCase()}
-            </div>
-            <span className="text-[9px] font-mono uppercase tracking-wider text-white/40">
-              {focusParticipant?.user_name || 'Waiting'}
-            </span>
-          </div>
+          <span className="text-[9px] font-mono uppercase tracking-wider text-white/40">
+            Waiting
+          </span>
         </div>
       )}
 
@@ -148,6 +175,36 @@ export function CoachingCallMini({ onLeave }: { onLeave: () => void }) {
 // ---- Small button + inline icons (kept local so the mini has no import coupling
 //      to the main CoachingCallRoom file's Icon component, which lives there for
 //      reasons tied to the main overlay's sizing). ----
+
+// One video frame inside the mini — renders DailyVideo when the participant
+// has video, falls back to an initials circle otherwise. Used for both the
+// single-tile view and each half of the role-play split view.
+function MiniVideoFrame({ sessionId, isLocal }: { sessionId: string; isLocal: boolean }) {
+  const participant = useParticipant(sessionId);
+  const name = participant?.user_name || '?';
+  if (participant?.video) {
+    return (
+      <DailyVideo
+        sessionId={sessionId}
+        type="video"
+        automirror={isLocal}
+        className="w-full h-full object-cover"
+      />
+    );
+  }
+  return (
+    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-900 to-black">
+      <div className="flex flex-col items-center gap-1">
+        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white/70 text-base font-semibold">
+          {name.charAt(0).toUpperCase()}
+        </div>
+        <span className="text-[9px] font-mono uppercase tracking-wider text-white/40 truncate max-w-full px-2">
+          {name}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 interface MiniControlProps {
   onClick: (e: React.MouseEvent) => void;

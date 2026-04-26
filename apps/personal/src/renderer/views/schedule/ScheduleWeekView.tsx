@@ -200,7 +200,12 @@ function WeekEventBlock({
   const height = eventBlockHeight(event);
   const platform = detectPlatform(event.meetingUrl);
   const prospect = getProspectAttendee(event, closerEmail);
-  const isNarrow = columnCount >= 3; // narrowest tier — hide secondary text
+  // Column-width tiers govern how much content we cram into the block:
+  //   1 col → everything fits
+  //   2 cols → hide platform row + SQ badge (color already signals coaching)
+  //   3 cols → only the title, no prospect/time/platform
+  const isNarrow = columnCount >= 2;
+  const isVeryNarrow = columnCount >= 3;
 
   // With N columns, each column takes (100% / N) of the day column width,
   // minus a 4px gutter (2px on each side) so adjacent blocks don't touch.
@@ -225,19 +230,19 @@ function WeekEventBlock({
       title={isCoaching ? `Sequ3nce Coaching: ${event.title}` : event.title}
     >
       <p className="text-white text-[10px] font-semibold truncate leading-tight flex items-center gap-1">
-        {isCoaching && (
+        {isCoaching && !isNarrow && (
           <span className="shrink-0 px-1 py-[1px] rounded bg-white/20 text-[8px] font-bold uppercase tracking-wider leading-none">
             SQ
           </span>
         )}
         <span className="truncate">{event.title}</span>
       </p>
-      {!isNarrow && height > 24 && prospect && (
+      {!isVeryNarrow && height > 24 && prospect && (
         <p className="text-white/70 text-[9px] truncate">
           {prospect.name || prospect.email}
         </p>
       )}
-      {!isNarrow && height > 30 && (
+      {!isVeryNarrow && height > 30 && (
         <p className="text-white/80 text-[9px] font-mono">
           {formatTime(event.startTime)}
         </p>

@@ -175,7 +175,10 @@ export function CoachingCallCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
-              {call.coachName} · {formatDateTime(call.scheduledStartTime)}
+              {/* For ended calls, prefer the actual time the call ran over the
+                  scheduled time — the scheduled time can be hours off if the
+                  coach started early or late. */}
+              {call.coachName} · {formatDateTime(call.actualStartTime ?? call.scheduledStartTime)}
             </div>
             <h3 className="text-[14px] font-semibold text-gray-700 dark:text-gray-300 truncate">
               {call.title}

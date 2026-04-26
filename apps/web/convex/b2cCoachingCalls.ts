@@ -330,6 +330,19 @@ export const _patchCallEnded = internalMutation({
       recordingStatus: "processing",
       updatedAt: now,
     });
+    // Remove the fanned-out calendar events. Once the call is over, it no
+    // longer belongs in attendees' Schedule tabs — the call's recording
+    // appears in PastCoachingCallsList instead. This also cleans up the
+    // common test case where a coach schedules a call for the future,
+    // starts it early, and ends it; without cleanup the phantom event
+    // sticks around in everyone's calendar at its original scheduled time.
+    const events = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_coaching_call", (q) => q.eq("coachingCallId", args.callId))
+      .collect();
+    for (const e of events) {
+      await ctx.db.delete(e._id);
+    }
   },
 });
 

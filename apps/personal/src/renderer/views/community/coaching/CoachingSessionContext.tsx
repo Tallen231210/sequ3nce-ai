@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { CoachingCall } from '../../../convex';
+import { DEFAULT_FOCUS_MODE, type FocusMode } from './FocusModeTypes';
 
 // Session state while the current user is inside a live call — holds the
 // Daily room URL + token so the overlay can connect, plus the user's own
@@ -29,6 +30,13 @@ interface CoachingSessionContextValue {
   unreadHandsCount: number;
   markChatUnread: () => void;
   markHandsUnread: () => void;
+  /** FocusMode — drives who appears in the classroom top slot AND what the
+   *  mini PiP renders. Lifted to this context so both the full Room and the
+   *  mini can react to the same source of truth. Mutated by the CoachingCallRoom
+   *  app-message listener + coach-driven senders. Accepts either a value or
+   *  an updater function, matching React's useState dispatcher. */
+  focusMode: FocusMode;
+  setFocusMode: React.Dispatch<React.SetStateAction<FocusMode>>;
 }
 
 const CoachingSessionContext = createContext<CoachingSessionContextValue | null>(null);
@@ -41,14 +49,16 @@ export function CoachingSessionProvider({ children }: { children: React.ReactNod
   const [viewMode, setViewMode] = useState<CoachingCallViewMode>('full');
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [unreadHandsCount, setUnreadHandsCount] = useState(0);
+  const [focusMode, setFocusMode] = useState<FocusMode>(DEFAULT_FOCUS_MODE);
 
-  // Reset view + unread state whenever a session starts or ends so a fresh
-  // call always opens in full view with no leftover badges.
+  // Reset view + unread + focus state whenever a session starts or ends so
+  // a fresh call always opens in full view with coach at top + no badges.
   const setActiveSession = useCallback((session: ActiveCoachingSession | null) => {
     setActiveSessionState(session);
     setViewMode('full');
     setUnreadChatCount(0);
     setUnreadHandsCount(0);
+    setFocusMode(DEFAULT_FOCUS_MODE);
   }, []);
 
   const minimize = useCallback(() => setViewMode('mini'), []);
@@ -81,8 +91,10 @@ export function CoachingSessionProvider({ children }: { children: React.ReactNod
       unreadHandsCount,
       markChatUnread,
       markHandsUnread,
+      focusMode,
+      setFocusMode,
     }),
-    [activeSession, setActiveSession, viewMode, minimize, maximize, unreadChatCount, unreadHandsCount, markChatUnread, markHandsUnread],
+    [activeSession, setActiveSession, viewMode, minimize, maximize, unreadChatCount, unreadHandsCount, markChatUnread, markHandsUnread, focusMode],
   );
 
   return (
