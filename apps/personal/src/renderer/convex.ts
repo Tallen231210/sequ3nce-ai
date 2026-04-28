@@ -5117,3 +5117,109 @@ export async function getVerificationRequestDetail(
     return { error: "Network error" };
   }
 }
+
+// ==================== Adoption Checklist ====================
+
+export interface AdoptionChecklistData {
+  state: {
+    firstSeenAt: number;
+    setupDismissedAt: number | null;
+    setupCompletedAt: number | null;
+    setupAutoOpenedAt: number | null;
+    earnRedDotLastSeenAt: number | null;
+  } | null;
+  setup: {
+    profile: boolean;
+    firstCall: boolean;
+    highlightClip: boolean;
+    coachingCall: boolean;
+    stream: boolean;
+  };
+  earn: {
+    moneyBells: {
+      optedIn: boolean;
+      currentRank: number | null;
+      totalParticipants: number;
+      daysRemaining: number;
+      monthLabel: string;
+    };
+    creatorCash: {
+      totalEarned: number;
+      approvedCount: number;
+    };
+    testimonial:
+      | { status: 'pending' | 'approved' | 'rejected' | 'paid'; submittedAt: number; paidAmount: number | null }
+      | null;
+  };
+}
+
+export async function getAdoptionChecklistData(
+  userId: string,
+): Promise<AdoptionChecklistData | { error: string }> {
+  try {
+    const res = await fetch(`${CONVEX_SITE_URL}/b2c/adoption-checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    return await res.json();
+  } catch {
+    return { error: 'Network error' };
+  }
+}
+
+export async function ensureAdoptionChecklistRow(userId: string): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/b2c/adoption-checklist/ensure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+  } catch {
+    /* non-fatal — UI degrades gracefully */
+  }
+}
+
+export async function markSetupAutoOpened(userId: string): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/b2c/adoption-checklist/mark-auto-opened`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+  } catch { /* non-fatal */ }
+}
+
+export async function dismissAdoptionSetup(userId: string): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/b2c/adoption-checklist/dismiss-setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+  } catch { /* non-fatal */ }
+}
+
+export async function markEarnSeen(userId: string): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/b2c/adoption-checklist/mark-earn-seen`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+  } catch { /* non-fatal */ }
+}
+
+export async function recordReplayProgress(
+  userId: string,
+  callId: string,
+  watchedSeconds: number,
+): Promise<void> {
+  try {
+    await fetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/replay-progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, callId, watchedSeconds }),
+    });
+  } catch { /* non-fatal */ }
+}
