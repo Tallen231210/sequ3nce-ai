@@ -1697,4 +1697,34 @@ export default defineSchema({
   })
     .index("by_entry_user", ["entryId", "userId"])
     .index("by_user", ["userId"]),
+
+  // Per-user metadata for the adoption-checklist widget. Task COMPLETION is
+  // not stored here — it's derived live from source-of-truth tables (profile,
+  // calls, highlights, coaching attendance, stream entries). This row only
+  // tracks UI lifecycle: when the user first encountered the widget, whether
+  // they dismissed Setup, whether the popover has auto-opened yet, and the
+  // last time the user "saw" Earn (used to decide red-dot visibility).
+  b2cAdoptionChecklist: defineTable({
+    userId: v.id("b2cUsers"),
+    firstSeenAt: v.number(),
+    setupDismissedAt: v.optional(v.number()),
+    setupCompletedAt: v.optional(v.number()),
+    setupAutoOpenedAt: v.optional(v.number()),
+    earnRedDotLastSeenAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"]),
+
+  // Tracks replay-watch progress per (user, coaching call). Used by the
+  // adoption-checklist "join coaching call OR watch a replay" task. The
+  // ReplayPlayerModal fires a throttled upsert every 10s while playing.
+  // A row with watchedSeconds >= 30 satisfies the task.
+  b2cCoachingReplayWatched: defineTable({
+    userId: v.id("b2cUsers"),
+    callId: v.id("b2cCoachingCalls"),
+    watchedSeconds: v.number(),
+    firstWatchedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_call", ["userId", "callId"]),
 });
