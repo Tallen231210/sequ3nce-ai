@@ -37,6 +37,8 @@ import { ContentSubmissionsView } from './ContentSubmissionsView';
 import { ContentReviewView } from './ContentReviewView';
 import { NotificationsView } from './notifications/NotificationsView';
 import { StatsVerificationReviewView } from './statsVerification/StatsVerificationReviewView';
+import { AdoptionChecklistButton } from './adoption-checklist/AdoptionChecklistButton';
+import type { CtaTarget } from './adoption-checklist/types';
 
 // Sidebar navigation items for Sequ3nce Personal (B2C)
 type SidebarItem =
@@ -542,6 +544,35 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
     });
   }, [closerInfo]);
 
+  // Routes the deep-link target from an adoption-checklist task CTA.
+  // Tabs: switch active sidebar tab. Modals: open the relevant modal.
+  // Subviews: switch tab AND set a hash param the destination tab reads.
+  function handleAdoptionCta(target: CtaTarget) {
+    if (target.kind === 'tab') {
+      setSelectedItem(target.tabId as SidebarItem);
+      window.location.hash = `#tab=${target.tabId}&setup=${tabIdToTaskId(target.tabId)}`;
+    } else if (target.kind === 'subview') {
+      setSelectedItem(target.tabId as SidebarItem);
+      window.location.hash = `#tab=${target.tabId}&subview=${target.subview}&setup=${target.subview}`;
+    } else if (target.kind === 'modal') {
+      if (target.modalId === 'quickBot') {
+        window.location.hash = '#setup=firstCall';
+        setShowQuickBot(true);
+      } else if (target.modalId === 'stream') {
+        window.location.hash = '#setup=stream';
+        setShowStream(true);
+      }
+    }
+  }
+
+  // Maps a tabId to its corresponding setup task id, so the destination view
+  // can read `?setup=<taskId>` and render the correct banner.
+  function tabIdToTaskId(tabId: string): string {
+    if (tabId === 'profile') return 'profile';
+    if (tabId === 'calls') return 'highlightClip';
+    return tabId;
+  }
+
   return (
     <div className="h-screen flex bg-white text-black">
       {/* Calendar onboarding overlay */}
@@ -656,6 +687,11 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
       <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Draggable titlebar region across content with Messages + Quick Bot buttons */}
         <div className="titlebar h-14 border-b border-gray-100 flex items-center justify-end px-5 gap-2">
+          {/* Adoption Checklist button — phase-driven Get Started / Earn */}
+          <AdoptionChecklistButton
+            userId={closerInfo.b2cUserId}
+            onCta={handleAdoptionCta}
+          />
           {/* Messages button */}
           <button
             onClick={() => setShowMessages(!showMessages)}
