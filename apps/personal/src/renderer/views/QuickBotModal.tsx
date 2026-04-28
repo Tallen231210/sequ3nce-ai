@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { CloserInfo } from '../convex';
 import { createQuickBot } from '../convex';
+import { TaskHintBanner } from './adoption-checklist/TaskHintBanner';
 
 interface QuickBotModalProps {
   closerInfo: CloserInfo;
@@ -68,6 +69,8 @@ export function QuickBotModal({ closerInfo, onClose }: QuickBotModalProps) {
             </svg>
           </button>
         </div>
+
+        <TaskHintBanner taskId="firstCall" />
 
         <p className="px-5 text-[13px] text-gray-500 mb-5">
           Paste a meeting URL to send a bot to record and coach you.

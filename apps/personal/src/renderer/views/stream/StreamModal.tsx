@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { CloserInfo } from '../../convex';
 import { StreamHistoryTab } from './StreamHistoryTab';
+import { TaskHintBanner } from '../adoption-checklist/TaskHintBanner';
 import { StreamSettingsTab } from './StreamSettingsTab';
 import {
   fetchStreamSettings,
@@ -207,6 +208,8 @@ export function StreamModal({ closerInfo, onClose, streamEnabled, onStreamEnable
             </button>
           </div>
         </div>
+
+        <TaskHintBanner taskId="stream" />
 
         {/* Tab bar */}
         <div className="flex items-center px-5 border-b border-gray-200 shrink-0">

@@ -13,6 +13,7 @@ import {
 } from './ProfileFormSections';
 import { ProfileVideoInputs } from './ProfileVideoInputs';
 import { HighlightReelEditor } from './HighlightReelEditor';
+import { TaskHintBanner } from './adoption-checklist/TaskHintBanner';
 
 interface ProfileViewProps {
   closerInfo: CloserInfo;
@@ -163,6 +164,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
 
   return (
     <div className="h-full flex flex-col">
+      <TaskHintBanner taskId="profile" />
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
         <div>

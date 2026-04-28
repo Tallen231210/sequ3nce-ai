@@ -12,6 +12,7 @@ import { CoachingCallCard } from './CoachingCallCard';
 import { ScheduleCoachingCallModal } from './ScheduleCoachingCallModal';
 import { ReplayPlayerModal } from './ReplayPlayerModal';
 import { useCoachingSession } from './CoachingSessionContext';
+import { TaskHintBanner } from '../../adoption-checklist/TaskHintBanner';
 
 const POLL_MS = 30_000;
 
@@ -163,6 +164,7 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
 
   return (
     <div className="h-full flex flex-col">
+      <TaskHintBanner taskId="coachingCall" />
       {/* Header */}
       <div className="px-6 pt-6 pb-3 flex items-start justify-between gap-3">
         <div>

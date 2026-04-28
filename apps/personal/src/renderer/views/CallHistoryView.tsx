@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import type { CloserInfo, CallHistoryItem } from '../convex';
 import { getCallHistory, getPendingQuestionnaireInfo, dismissOrphanedQuestionnaires } from '../convex';
 import { CallDetailSheet } from './CallDetailSheet';
+import { TaskHintBanner } from './adoption-checklist/TaskHintBanner';
 
 type OutcomeFilter = 'all' | 'closed' | 'lost' | 'no_show' | 'follow_up';
 
@@ -84,6 +85,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
 
   return (
     <div className="flex flex-col h-full">
+      <TaskHintBanner taskId="highlightClip" />
       {/* Call Detail Sheet (overlay) */}
       {selectedCall && (
         <CallDetailSheet
