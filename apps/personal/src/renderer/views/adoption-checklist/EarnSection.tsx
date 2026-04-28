@@ -14,8 +14,11 @@ interface EarnSectionProps {
 // because the opportunities recur monthly / continuously.
 export function EarnSection({ earn, onCta }: EarnSectionProps) {
   const moneyBellsCta = { kind: 'subview' as const, tabId: 'community', subview: 'moneyBells' };
-  const creatorCashCta = { kind: 'tab' as const, tabId: 'rewards' };
-  const testimonialCta = { kind: 'tab' as const, tabId: 'rewards' };
+  // Rewards / content submissions live under the 'submissions' SidebarItem
+  // (see SidebarItem union in MeetingBotHub.tsx). Routing to a non-existent
+  // tab id falls through to a default state.
+  const creatorCashCta = { kind: 'tab' as const, tabId: 'submissions' };
+  const testimonialCta = { kind: 'tab' as const, tabId: 'submissions' };
 
   // ----- Money Bells row -----
   const mb = earn.moneyBells;
