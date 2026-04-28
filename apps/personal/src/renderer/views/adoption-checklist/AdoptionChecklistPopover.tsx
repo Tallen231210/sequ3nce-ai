@@ -13,7 +13,7 @@ interface AdoptionChecklistPopoverProps {
 }
 
 const SETUP_PROMINENT_DAYS = 14;
-const SETUP_HIDDEN_DAY = 30;
+const SETUP_HIDDEN_DAY = 31;
 
 // Computes which lifecycle phase Setup is in based on the spec's Approach C
 // rules: prominent for 14 days from firstSeenAt, collapsed days 15–30,

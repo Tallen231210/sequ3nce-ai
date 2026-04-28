@@ -553,7 +553,7 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
       window.location.hash = `#tab=${target.tabId}&setup=${tabIdToTaskId(target.tabId)}`;
     } else if (target.kind === 'subview') {
       setSelectedItem(target.tabId as SidebarItem);
-      window.location.hash = `#tab=${target.tabId}&subview=${target.subview}&setup=${target.subview}`;
+      window.location.hash = `#tab=${target.tabId}&subview=${target.subview}&setup=${tabIdToTaskId(target.subview)}`;
     } else if (target.kind === 'modal') {
       if (target.modalId === 'quickBot') {
         window.location.hash = '#setup=firstCall';
@@ -565,12 +565,13 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
     }
   }
 
-  // Maps a tabId to its corresponding setup task id, so the destination view
-  // can read `?setup=<taskId>` and render the correct banner.
-  function tabIdToTaskId(tabId: string): string {
-    if (tabId === 'profile') return 'profile';
-    if (tabId === 'calls') return 'highlightClip';
-    return tabId;
+  // Maps a tabId or subview to its corresponding setup task id, so the
+  // destination view can read `?setup=<taskId>` and render the correct banner.
+  function tabIdToTaskId(idOrSubview: string): string {
+    if (idOrSubview === 'profile') return 'profile';
+    if (idOrSubview === 'calls') return 'highlightClip';
+    if (idOrSubview === 'coaching') return 'coachingCall';
+    return idOrSubview;
   }
 
   return (

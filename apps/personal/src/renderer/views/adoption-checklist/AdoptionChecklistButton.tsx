@@ -58,7 +58,7 @@ export function AdoptionChecklistButton({ userId, onCta }: AdoptionChecklistButt
   const setupHidden =
     setupAllDone ||
     !!data.state?.setupDismissedAt ||
-    ageDays >= 30;
+    ageDays >= 31;
 
   // Label.
   const label = setupHidden ? 'Earn' : 'Get started';
