@@ -27,10 +27,14 @@ export function EarnSection({ earn, onCta }: EarnSectionProps) {
       ? `Money Bells · ${mb.monthLabel} · #${mb.currentRank} of ${mb.totalParticipants}`
       : `Money Bells · ${mb.monthLabel} · Not on the leaderboard yet`
     : 'Money Bells';
+  // Post-opt-in: the broadcast moment lives in the post-call form (auto-
+  // prompted after every closed deal), so the Earn row's job is now ambient
+  // leaderboard awareness — "where do I stand?" — rather than re-prompting
+  // an action they already get nudged toward elsewhere.
   const moneyBellsDescription = mb.optedIn
-    ? `${mb.daysRemaining}d left this month — broadcast another deal to climb`
+    ? `${mb.daysRemaining}d left this month — keep closing to climb`
     : 'Opt in and broadcast closed deals to compete for monthly cash prizes';
-  const moneyBellsCtaLabel = mb.optedIn ? 'Broadcast →' : 'Opt in →';
+  const moneyBellsCtaLabel = mb.optedIn ? 'View leaderboard →' : 'Opt in →';
 
   // ----- Creator Cash row -----
   const cc = earn.creatorCash;
