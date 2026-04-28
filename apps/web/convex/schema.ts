@@ -837,6 +837,7 @@ export default defineSchema({
     source: v.string(), // "calendar" | "quick_bot"
     failureReason: v.optional(v.string()), // Why the bot failed (if status === "failed")
     closerName: v.optional(v.string()), // For webhook transcript speaker identification
+    closerParticipantId: v.optional(v.union(v.number(), v.string())), // Recall participant.id pinned once we identify the closer — locks per-call speaker consistency
     createdAt: v.number(),
   })
     .index("by_closer", ["closerId"])

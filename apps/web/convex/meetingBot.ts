@@ -304,6 +304,23 @@ export const updateBotCloserName = internalMutation({
   },
 });
 
+// Pin Recall's participant.id of the closer onto the bot row. Idempotent — once
+// pinned, later high-confidence decisions don't overwrite it. The webhook handler
+// uses this to lock per-call speaker labeling consistency: once we've confidently
+// identified the closer's participant.id, every subsequent segment for that call
+// inherits the same label without re-running the decision tree.
+export const pinCloserParticipantId = internalMutation({
+  args: {
+    botId: v.id("meetingBots"),
+    closerParticipantId: v.union(v.number(), v.string()),
+  },
+  handler: async (ctx, args) => {
+    const bot = await ctx.db.get(args.botId);
+    if (!bot || bot.closerParticipantId !== undefined) return;
+    await ctx.db.patch(args.botId, { closerParticipantId: args.closerParticipantId });
+  },
+});
+
 // Update a meeting bot with the Recall.ai bot UUID
 export const setBotRecallId = internalMutation({
   args: {

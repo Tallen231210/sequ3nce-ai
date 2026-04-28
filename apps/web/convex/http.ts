@@ -3243,10 +3243,39 @@ http.route({
         return new Response(JSON.stringify({ error: "Call not linked yet" }), { status: 500, headers: { "Content-Type": "application/json" } });
       }
 
-      // Determine speaker: match participant name to closer name
+      // Speaker identification — see decideSpeaker() at the bottom of this file for the
+      // full decision tree. Reads Recall's structured signals (participant.is_host,
+      // pinned participant.id) before falling back to name matching.
+      const participantObj = transcriptData?.participant;
       const closerName = bot.closerName || "";
-      const isCloser = closerName && participantName.toLowerCase().includes(closerName.toLowerCase().substring(0, Math.min(closerName.length, 5)));
-      const speaker = isCloser ? "closer" : "prospect";
+      const decision = decideSpeaker({
+        participant: participantObj,
+        closerName,
+        pinnedCloserParticipantId: bot.closerParticipantId,
+      });
+      const speaker = decision.speaker;
+
+      // Pin participant.id on the FIRST segment that meets the high-confidence threshold
+      // (is_host: true AND name tokens overlap). Subsequent segments hit Layer 1 and
+      // inherit consistent labeling for the rest of the call.
+      if (decision.shouldPin && participantObj?.id !== undefined) {
+        await ctx.runMutation(internal.meetingBot.pinCloserParticipantId, {
+          botId: bot._id,
+          closerParticipantId: participantObj.id,
+        });
+      }
+
+      // Defense-in-depth: empty closerName was the historical "Mode 2" failure pattern
+      // (self-resolved Apr 9 2026). Surface immediately if it ever recurs so we don't
+      // silently mislabel calls again.
+      if (!closerName) {
+        console.warn(`[TranscriptWebhook] bot.closerName empty callId=${bot.callId} fallback=${decision.source}`);
+      }
+      // is_host says closer but name doesn't match — likely the prospect-schedules-the-meeting
+      // edge case. We expect this to be rare; first time it fires we should investigate.
+      if (decision.disagreement) {
+        console.warn(`[TranscriptWebhook] is_host vs name disagree callId=${bot.callId} chose=${decision.speaker} source=${decision.source}`);
+      }
 
       // Save transcript segment
       await ctx.runMutation(api.calls.addTranscriptSegment, {
@@ -10613,3 +10642,86 @@ http.route({
 });
 
 export default http;
+
+// ============================================
+// Transcript speaker decision helper
+// ============================================
+// Pure function — no I/O, deterministic output for a given input. Used by the
+// /recall-transcript-webhook handler to decide closer vs prospect for each segment.
+//
+// Decision priority (top wins):
+//   1. Pinned participant.id on the bot row — once we've confidently identified
+//      the closer in this call, subsequent segments inherit the label.
+//   2. participant.is_host boolean — Sequ3nce bots join meetings the closer
+//      scheduled, so the closer is the meeting host on Zoom/Meet/Teams.
+//   3. Token-overlap on names — split closerName on whitespace, declare match if
+//      any token of length >= 3 appears in participant.name. More permissive than
+//      the previous 5-char-prefix matcher (catches Joshua/Josh via "neale").
+//   4. Default "prospect".
+
+type ParticipantLike = {
+  id?: number | string;
+  name?: string;
+  is_host?: boolean | null;
+};
+
+interface SpeakerDecision {
+  speaker: "closer" | "prospect";
+  source: "pinned_id" | "is_host" | "name_tokens" | "default";
+  // True when both is_host AND name tokens agree on the closer (high confidence).
+  shouldPin: boolean;
+  // True when is_host: true but name tokens don't match closerName — surfaces
+  // the prospect-schedules-the-meeting edge case via a warning log.
+  disagreement: boolean;
+}
+
+function decideSpeaker(args: {
+  participant: ParticipantLike | undefined;
+  closerName: string;
+  pinnedCloserParticipantId: number | string | undefined;
+}): SpeakerDecision {
+  const { participant, closerName, pinnedCloserParticipantId } = args;
+  if (!participant) {
+    return { speaker: "prospect", source: "default", shouldPin: false, disagreement: false };
+  }
+
+  // Layer 1: pinned id wins absolutely.
+  if (pinnedCloserParticipantId !== undefined && participant.id !== undefined) {
+    return {
+      speaker: participant.id === pinnedCloserParticipantId ? "closer" : "prospect",
+      source: "pinned_id",
+      shouldPin: false,
+      disagreement: false,
+    };
+  }
+
+  const nameMatch = closerName ? tokenOverlap(closerName, participant.name || "") : false;
+
+  // Layer 2: is_host boolean. typeof check rejects null/undefined cleanly.
+  if (typeof participant.is_host === "boolean") {
+    const speaker: "closer" | "prospect" = participant.is_host ? "closer" : "prospect";
+    const shouldPin =
+      participant.id !== undefined && participant.is_host && nameMatch;
+    const disagreement = participant.is_host && closerName !== "" && !nameMatch;
+    return { speaker, source: "is_host", shouldPin, disagreement };
+  }
+
+  // Layer 3: token-overlap fallback (no is_host on this payload).
+  if (nameMatch) {
+    return {
+      speaker: "closer",
+      source: "name_tokens",
+      shouldPin: participant.id !== undefined,
+      disagreement: false,
+    };
+  }
+
+  // Layer 4: default.
+  return { speaker: "prospect", source: "default", shouldPin: false, disagreement: false };
+}
+
+function tokenOverlap(a: string, b: string): boolean {
+  const aTokens = a.toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+  const bLower = b.toLowerCase();
+  return aTokens.some((t) => bLower.includes(t));
+}
