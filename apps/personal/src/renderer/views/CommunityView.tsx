@@ -76,6 +76,26 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
     return () => { mountedRef.current = false; };
   }, []);
 
+  // Honor a `subview=<id>` URL hash param so deep-links from the adoption
+  // checklist (e.g., the "Join coaching call" CTA) actually land on the
+  // requested subview instead of the default 'feed'. Listens for hashchange
+  // too so subsequent CTAs work while the user is already on Community.
+  useEffect(() => {
+    function applyHashSubview() {
+      const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const subview = params.get('subview');
+      if (!subview) return;
+      // Only honor it if it matches a known special view — channel IDs
+      // (Convex doc IDs) shouldn't be deep-linkable via this path.
+      if (SPECIAL_VIEWS.has(subview)) {
+        setSelectedView(subview);
+      }
+    }
+    applyHashSubview();
+    window.addEventListener('hashchange', applyHashSubview);
+    return () => window.removeEventListener('hashchange', applyHashSubview);
+  }, []);
+
   // Poll for pending friend request count
   useEffect(() => {
     if (!userId) return;

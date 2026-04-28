@@ -13,7 +13,7 @@ interface EarnSectionProps {
 // testimonial review status). Rows never display a "complete" checkmark
 // because the opportunities recur monthly / continuously.
 export function EarnSection({ earn, onCta }: EarnSectionProps) {
-  const moneyBellsCta = { kind: 'subview' as const, tabId: 'community', subview: 'moneyBells' };
+  const moneyBellsCta = { kind: 'subview' as const, tabId: 'community', subview: 'money-bells' };
   // Rewards / content submissions live under the 'submissions' SidebarItem
   // (see SidebarItem union in MeetingBotHub.tsx). Routing to a non-existent
   // tab id falls through to a default state.
