@@ -300,6 +300,7 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
         <ReplayPlayerModal
           call={replayCall}
           onClose={() => setReplayCall(null)}
+          currentUserId={userId}
         />
       )}
     </div>

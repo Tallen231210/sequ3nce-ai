@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { CoachingCall } from '../../../convex';
+import { recordReplayProgress } from '../../../convex';
 
 interface ReplayPlayerModalProps {
   call: CoachingCall;
   onClose: () => void;
+  /** b2cUserId of the viewer — used to track watch progress for the
+   *  adoption-checklist "watch a coaching replay" task.  Optional: if
+   *  undefined, telemetry is silently skipped. */
+  currentUserId?: string;
 }
 
 function formatDate(ts: number): string {
@@ -14,7 +19,25 @@ function formatDate(ts: number): string {
   });
 }
 
-export function ReplayPlayerModal({ call, onClose }: ReplayPlayerModalProps) {
+export function ReplayPlayerModal({ call, onClose, currentUserId }: ReplayPlayerModalProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Reports replay progress every 10 s while the user is actively watching.
+  // Used by the adoption-checklist "watch a coaching replay" task — the task
+  // is satisfied when watchedSeconds >= 30 for any (user, call) row.
+  useEffect(() => {
+    if (!currentUserId || !call._id) return;
+    const interval = setInterval(() => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (v.paused || v.ended) return;
+      const seconds = Math.floor(v.currentTime);
+      if (seconds <= 0) return;
+      void recordReplayProgress(currentUserId, call._id, seconds);
+    }, 10_000);
+    return () => clearInterval(interval);
+  }, [currentUserId, call._id]);
+
   if (!call.recordingUrl) return null;
 
   return (
@@ -51,6 +74,7 @@ export function ReplayPlayerModal({ call, onClose }: ReplayPlayerModalProps) {
         </div>
         <div className="flex-1 bg-black flex items-center justify-center min-h-0">
           <video
+            ref={videoRef}
             src={call.recordingUrl}
             controls
             autoPlay

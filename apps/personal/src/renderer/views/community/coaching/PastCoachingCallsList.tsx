@@ -149,6 +149,7 @@ export function PastCoachingCallsList({ closerInfo }: PastCoachingCallsListProps
         <ReplayPlayerModal
           call={replayCall}
           onClose={() => setReplayCall(null)}
+          currentUserId={userId}
         />
       )}
     </div>
