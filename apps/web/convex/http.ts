@@ -10641,6 +10641,182 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// ==================== Adoption Checklist ====================
+
+// POST /b2c/adoption-checklist — get checklist data for a user
+http.route({
+  path: "/b2c/adoption-checklist",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId } = body as { userId: string };
+      if (!userId) {
+        return b2cJsonResponse({ error: "Missing userId" }, 400);
+      }
+      const data = await ctx.runQuery(api.b2cAdoptionChecklist.getChecklistData, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(data, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/adoption-checklist",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/adoption-checklist/ensure — create checklist row if missing
+http.route({
+  path: "/b2c/adoption-checklist/ensure",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId } = body as { userId: string };
+      if (!userId) {
+        return b2cJsonResponse({ error: "Missing userId" }, 400);
+      }
+      await ctx.runMutation(api.b2cAdoptionChecklist.ensureChecklistRow, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse({ success: true }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/adoption-checklist/ensure",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/adoption-checklist/mark-auto-opened — record that setup was auto-opened
+http.route({
+  path: "/b2c/adoption-checklist/mark-auto-opened",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId } = body as { userId: string };
+      if (!userId) {
+        return b2cJsonResponse({ error: "Missing userId" }, 400);
+      }
+      await ctx.runMutation(api.b2cAdoptionChecklist.markSetupAutoOpened, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse({ success: true }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/adoption-checklist/mark-auto-opened",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/adoption-checklist/dismiss-setup — user dismisses the setup checklist
+http.route({
+  path: "/b2c/adoption-checklist/dismiss-setup",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId } = body as { userId: string };
+      if (!userId) {
+        return b2cJsonResponse({ error: "Missing userId" }, 400);
+      }
+      await ctx.runMutation(api.b2cAdoptionChecklist.dismissSetup, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse({ success: true }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/adoption-checklist/dismiss-setup",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/adoption-checklist/mark-earn-seen — user has seen the earn section
+http.route({
+  path: "/b2c/adoption-checklist/mark-earn-seen",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId } = body as { userId: string };
+      if (!userId) {
+        return b2cJsonResponse({ error: "Missing userId" }, 400);
+      }
+      await ctx.runMutation(api.b2cAdoptionChecklist.markEarnSeen, {
+        userId: userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse({ success: true }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/adoption-checklist/mark-earn-seen",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// POST /b2c/coaching-calls/replay-progress — record replay watch progress
+http.route({
+  path: "/b2c/coaching-calls/replay-progress",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { userId, callId, watchedSeconds } = body as {
+        userId: string;
+        callId: string;
+        watchedSeconds: number;
+      };
+      if (!userId || !callId || typeof watchedSeconds !== "number") {
+        return b2cJsonResponse({ error: "Missing args" }, 400);
+      }
+      await ctx.runMutation(api.b2cCoachingReplayWatched.recordReplayProgress, {
+        userId: userId as Id<"b2cUsers">,
+        callId: callId as Id<"b2cCoachingCalls">,
+        watchedSeconds,
+      });
+      return b2cJsonResponse({ success: true }, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/replay-progress",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 export default http;
 
 // ============================================
