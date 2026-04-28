@@ -80,18 +80,21 @@ export function EarnSection({ earn, onCta }: EarnSectionProps) {
       <div className="px-1 pb-2">
         <TaskRow
           complete={false}
+          hideStatus
           title={moneyBellsTitle}
           description={moneyBellsDescription}
           cta={{ label: moneyBellsCtaLabel, onClick: () => onCta(moneyBellsCta) }}
         />
         <TaskRow
           complete={false}
+          hideStatus
           title={creatorCashTitle}
           description={creatorCashDescription}
           cta={{ label: 'Submit →', onClick: () => onCta(creatorCashCta) }}
         />
         <TaskRow
           complete={false}
+          hideStatus
           title={testimonialTitle}
           description={testimonialDescription}
           cta={
