@@ -65,8 +65,11 @@ export function AdoptionChecklistButton({ userId, onCta }: AdoptionChecklistButt
   const showCount = !setupHidden;
   const countText = `${setupCompleted}/${setupTotal}`;
 
-  // Pulse — first 7 days only.
-  const showPulse = !!data.state && ageDays < PULSE_DAYS && !open;
+  // Pulse — first 7 days only AND only while Setup is still active. Once the
+  // user dismisses or completes Setup, the button shifts to "Earn" mode and
+  // the pulse becomes background noise (there's nothing left to attract
+  // attention to). Stops immediately on dismiss/complete regardless of age.
+  const showPulse = !!data.state && ageDays < PULSE_DAYS && !open && !setupHidden;
 
   // Red dot — for now: any non-paid recent activity in the Earn surface,
   // computed against earnRedDotLastSeenAt. For v1 we surface the dot when

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TaskRow } from './TaskRow';
 import { SETUP_TASKS } from './tasks';
+import { DismissSetupConfirmModal } from './DismissSetupConfirmModal';
 import type { AdoptionChecklistData } from '../../convex';
 import type { CtaTarget } from './types';
 
@@ -16,9 +17,11 @@ interface SetupSectionProps {
 }
 
 export function SetupSection({ setup, phase, onCta, onDismiss }: SetupSectionProps) {
+  const [confirming, setConfirming] = useState(false);
   const completed = SETUP_TASKS.filter((t) => setup[t.id]).length;
   const total = SETUP_TASKS.length;
   const percent = Math.round((completed / total) * 100);
+  const remaining = total - completed;
 
   if (phase === 'collapsed') {
     // Compact one-line summary. User can click to expand by re-opening
@@ -43,7 +46,7 @@ export function SetupSection({ setup, phase, onCta, onDismiss }: SetupSectionPro
           </div>
         </div>
         <button
-          onClick={onDismiss}
+          onClick={() => setConfirming(true)}
           className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
           title="Hide setup checklist"
         >
@@ -70,6 +73,16 @@ export function SetupSection({ setup, phase, onCta, onDismiss }: SetupSectionPro
           />
         ))}
       </div>
+      {confirming && (
+        <DismissSetupConfirmModal
+          remainingCount={remaining}
+          onConfirm={() => {
+            setConfirming(false);
+            onDismiss();
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
     </div>
   );
 }
