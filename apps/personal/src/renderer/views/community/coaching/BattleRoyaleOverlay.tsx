@@ -62,14 +62,9 @@ export function BattleRoyaleOverlay({
             tone="coach"
           />
         )}
-        {state.phase === 'reviewing' && (
-          <WaitingCard
-            title="Coach is picking finalists"
-            subtitle="Hang tight — 3 rebuttals are about to go up for a vote."
-            objection={state.objection}
-            tone="attendee"
-          />
-        )}
+        {/* 'reviewing' phase intentionally has no overlay — early-returned
+            above. Coach has BattleRoyaleCoachPanel; attendees get the popup
+            out of their way until voting opens. */}
         {state.phase === 'voting' && (
           <VotingCard
             objection={state.objection}
