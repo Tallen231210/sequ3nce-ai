@@ -1950,8 +1950,13 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionRequestHandler(
     (_webContents, permission, callback) => {
       const allowed = new Set([
-        'media',            // camera + mic (getUserMedia)
-        'display-capture',  // screen sharing (getDisplayMedia)
+        'media',                      // camera + mic (getUserMedia)
+        'display-capture',            // screen sharing (getDisplayMedia)
+        // navigator.clipboard.writeText() — without this, the share-modal
+        // Copy button silently fails when Chromium routes the write through
+        // the permission system (post-await timing in handleGenerate, focus
+        // edge cases). Restores the pre-handler default-grant for clipboard.
+        'clipboard-sanitized-write',
       ]);
       callback(allowed.has(permission));
     }
