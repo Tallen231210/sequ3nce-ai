@@ -25,6 +25,20 @@ export function BattleRoyaleOverlay({
 }: BattleRoyaleOverlayProps) {
   if (state.phase === 'idle') return null;
 
+  // Once the attendee has submitted their rebuttal, get the popup out of
+  // their way — they don't need to see anything until voting opens. Without
+  // this, the overlay sits on screen the entire round (submit → reviewing →
+  // voting → complete), which feels like an unkillable modal to the user.
+  if (state.phase === 'submitting' && state.mySubmissionId !== null) {
+    return null;
+  }
+  // Reviewing is dead time for attendees (coach is picking) and the coach
+  // already has BattleRoyaleCoachPanel as a side panel — the overlay's
+  // "Coach is picking finalists" card adds nothing for either role.
+  if (state.phase === 'reviewing') {
+    return null;
+  }
+
   // Every phase is a visually similar card; phase-specific content inside.
   return (
     <div className="absolute inset-x-0 top-4 z-[20] flex justify-center pointer-events-none">

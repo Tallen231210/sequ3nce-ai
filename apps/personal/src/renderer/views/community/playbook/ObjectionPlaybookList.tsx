@@ -83,6 +83,17 @@ export function ObjectionPlaybookList({ closerInfo }: ObjectionPlaybookListProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tag, sortBy]);
 
+  // Refetch when a Battle Royale winner is saved while this list is mounted
+  // (e.g., user is in mini-mode coaching call with Training open in the
+  // background, or navigates to Training and back without unmount).
+  useEffect(() => {
+    const handler = (): void => {
+      void load();
+    };
+    window.addEventListener('br:playbook-saved', handler);
+    return () => window.removeEventListener('br:playbook-saved', handler);
+  }, [load]);
+
   // Reset scroll + list when filter/sort changes — load() replaces `entries`
   // when called with no cursor (first page).
 
