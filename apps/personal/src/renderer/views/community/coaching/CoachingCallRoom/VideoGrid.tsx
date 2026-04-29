@@ -138,7 +138,15 @@ export function VideoGrid(rawProps: VideoGridProps) {
   // was too jumpy in real testing — every cough flipped the view. Coaching
   // calls have a clear anchor (the coach) and don't need peer-symmetric
   // switching. See plan doc v1.15 for the full reasoning.
-  if (props.viewMode === 'speaker') {
+  //
+  // Screen-share lock: when someone's sharing, force speaker layout so the
+  // share gets a dedicated dominant slot. In gallery view, the share would
+  // otherwise be one cell among many — too small for users to actually read
+  // what's on the screen.
+  const effectiveViewMode: 'speaker' | 'gallery' =
+    screenShareSessionId ? 'speaker' : props.viewMode;
+
+  if (effectiveViewMode === 'speaker') {
     const sessionIdsSet = new Set(ids);
     const rawFocusIds = resolveFocusTopIds(props.focusMode, coachSessionId)
       .filter((id) => sessionIdsSet.has(id));
@@ -155,12 +163,18 @@ export function VideoGrid(rawProps: VideoGridProps) {
     const showWaitingPlaceholder = !screenShareSessionId &&
       (topIds.length === 0 || (props.focusMode.kind === 'coach' && !coachJoined));
 
+    // When a screen share is active, give the share 75% of vertical space
+    // and shrink the participant strip to 25%. Without this the share is
+    // 50/50 with cameras, which is too small for closers to read text on
+    // the coach's screen.
+    const topHeightClass = screenShareSessionId ? 'h-3/4' : 'h-1/2';
+    const bottomHeightClass = screenShareSessionId ? 'h-1/4' : 'h-1/2';
+
     return (
       <div className="h-full w-full flex flex-col gap-3 overflow-hidden">
         {/* Top slot — screen share takes priority when active; otherwise
-            coach by default, or spotlight / role-play override. 50% height
-            of the video area. */}
-        <div className="h-1/2 min-h-0 flex items-center justify-center gap-3">
+            coach by default, or spotlight / role-play override. */}
+        <div className={`${topHeightClass} min-h-0 flex items-center justify-center gap-3`}>
           {screenShareSessionId ? (
             <div className="max-w-full max-h-full aspect-video w-full h-full flex items-center justify-center">
               <div className="max-w-full max-h-full w-full h-full">
@@ -171,9 +185,14 @@ export function VideoGrid(rawProps: VideoGridProps) {
             <ClassroomWaitingForCoach />
           ) : topIds.length === 2 ? (
             // Role-play: two tiles side-by-side, each ~50% width, same height.
-            // Each fits within the top slot as a 16:9 rectangle.
+            // `min-w-0` is critical — without it, a flex item's content can
+            // push the item wider than its flex-1 share (e.g., when one user's
+            // video track has loaded with intrinsic dimensions and the other
+            // is still showing the avatar placeholder). That caused transient
+            // size mismatch between the two role-play tiles for ~30s until
+            // both tracks stabilized.
             topIds.map((id) => (
-              <div key={id} className="flex-1 max-w-[48%] h-full flex items-center justify-center">
+              <div key={id} className="flex-1 min-w-0 max-w-[48%] h-full flex items-center justify-center">
                 <div className="max-w-full max-h-full aspect-video">
                   <ParticipantTileWrapped sessionId={id} isFocus {...props} />
                 </div>
@@ -193,7 +212,7 @@ export function VideoGrid(rawProps: VideoGridProps) {
             balanced as the strip scrolls. */}
         {bottomIds.length > 0 && (
           <div
-            className="h-1/2 grid grid-rows-2 grid-flow-col auto-cols-max gap-3 overflow-x-auto overflow-y-hidden"
+            className={`${bottomHeightClass} grid grid-rows-2 grid-flow-col auto-cols-max gap-3 overflow-x-auto overflow-y-hidden`}
             style={{ justifyContent: 'safe center' }}
           >
             {bottomIds.map((id) => (
@@ -212,16 +231,12 @@ export function VideoGrid(rawProps: VideoGridProps) {
   // always at position 0,0 with an amber border + "COACH" badge; spotlight/
   // role-play targets get their own highlighted border colors so viewers can
   // instantly see who's being featured even in the flat grid layout.
-  // When someone's sharing, the screen takes the first cell of the grid.
+  // (Note: when someone's sharing, effectiveViewMode forces speaker view
+  // above, so this branch never renders alongside a screen share.)
   const gallerySortedIds = sortIdsForGallery(ids, coachSessionId, props.focusMode);
   return (
     <div className="h-full w-full overflow-y-auto">
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {screenShareSessionId && (
-          <div key={`screen-${screenShareSessionId}`} className="aspect-video col-span-2 sm:col-span-3 md:col-span-2">
-            <ScreenShareTile sessionId={screenShareSessionId} />
-          </div>
-        )}
         {gallerySortedIds.map((id) => (
           <div key={id} className="aspect-video">
             <ParticipantTileWrapped sessionId={id} {...props} />

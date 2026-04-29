@@ -74,6 +74,14 @@ export function CoachingCallRoom({
     setFocusMode,
   } = useCoachingSession();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Auto-clear positive notices so they don't pile up on screen.
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   // Local media state — declared early so call-on acceptance can flip mic on.
   const [micOn, setMicOn] = useState(true);
@@ -880,8 +888,10 @@ export function CoachingCallRoom({
       setBrState({ phase: 'idle' });
     }, 6000);
 
-    // Auto-save to Playbook. Fail-safe: if the mutation errors, surface a
-    // toast + copy text to clipboard so the coach can add it manually.
+    // Auto-save to Playbook. Surface success explicitly so the coach knows
+    // the round persisted; without it the absence of an error toast is
+    // ambiguous (did it save? was the toast missed?). On error, fall back
+    // to clipboard so the text isn't lost.
     try {
       const res = await createPlaybookEntry({
         coachUserId: currentUserId,
@@ -891,6 +901,11 @@ export function CoachingCallRoom({
         sourceCallId: call._id,
       });
       if ('error' in res) throw new Error(res.error);
+      console.info('[CoachingCallRoom] createPlaybookEntry saved entry', res.entryId);
+      setNotice('Winner saved to Objection Playbook ✓');
+      // Tell any mounted Training/Playbook list to refetch so the new entry
+      // appears without requiring a full tab remount.
+      window.dispatchEvent(new CustomEvent('br:playbook-saved'));
     } catch (err) {
       console.error('[CoachingCallRoom] createPlaybookEntry failed:', err);
       try {
@@ -1390,6 +1405,13 @@ export function CoachingCallRoom({
       {error && (
         <div className="mx-6 mt-3 px-3 py-2 bg-red-950/60 border border-red-900 text-red-200 rounded-lg text-[12px]">
           {error}
+        </div>
+      )}
+
+      {/* Success / notice toast — auto-clears after 5s */}
+      {notice && (
+        <div className="mx-6 mt-3 px-3 py-2 bg-emerald-950/60 border border-emerald-900 text-emerald-200 rounded-lg text-[12px]">
+          {notice}
         </div>
       )}
 
