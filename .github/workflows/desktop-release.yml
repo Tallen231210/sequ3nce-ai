@@ -33,9 +33,15 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
+      # Mac on CI builds arm64-only. The signed/notarized universal binary
+      # comes from the local `npm run build:mac` step in /release-desktop and
+      # replaces this CI artifact during release. CI's --arch=universal fails
+      # because Apple Silicon's mandatory ad-hoc arm64 signing creates files
+      # the unsigned x64 build lacks, breaking @electron/universal's lipo
+      # merge. Local build avoids this because osxSign signs both archs.
       - name: Build macOS app
         working-directory: apps/desktop
-        run: npm run make -- --platform darwin --arch=universal
+        run: npm run make -- --platform darwin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

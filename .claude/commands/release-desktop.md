@@ -57,14 +57,14 @@ gh release edit desktop-vX.Y.Z --repo Tallen231210/sequ3nce-ai --draft=false
 
 ### Step 5: Build Signed macOS App Locally
 
-**CRITICAL:** CI macOS builds are unsigned. Auto-update will silently fail on macOS with unsigned builds. You MUST build locally where the Developer ID certificate and `sequ3nce-notarize` keychain profile exist.
+**CRITICAL:** CI macOS builds are unsigned AND arm64-only. Auto-update silently fails on unsigned builds, and Intel Macs cannot run an arm64-only binary. You MUST build locally where the Developer ID certificate and `sequ3nce-notarize` keychain profile exist.
 
 ```bash
 cd /Users/tylerallen/Desktop/sequ3nce-ai/apps/desktop
-npm run make -- --platform darwin
+npm run build:mac
 ```
 
-This builds a **signed and notarized** `.dmg` and `.zip` using the local Keychain credentials.
+This builds a **signed, notarized, universal** `.dmg` and `.zip` (both arm64 + x64 slices via `lipo`-merge) using the local Keychain credentials. The `build:mac` script in `package.json` carries `--arch=universal`; do not use `npm run make -- --platform darwin` directly, as that defaults to host-arch only.
 
 ### Step 6: Replace macOS Assets on the Release
 
@@ -73,12 +73,12 @@ Remove the unsigned CI-built macOS artifacts and upload the signed local builds:
 ```bash
 # Remove unsigned CI builds
 gh release delete-asset desktop-vX.Y.Z Sequ3nce.dmg --repo Tallen231210/sequ3nce-ai --yes
-gh release delete-asset desktop-vX.Y.Z Sequ3nce-darwin-arm64-X.Y.Z.zip --repo Tallen231210/sequ3nce-ai --yes
+gh release delete-asset desktop-vX.Y.Z Sequ3nce-darwin-universal-X.Y.Z.zip --repo Tallen231210/sequ3nce-ai --yes
 
 # Upload signed local builds
 gh release upload desktop-vX.Y.Z \
   "apps/desktop/out/make/Sequ3nce.dmg" \
-  "apps/desktop/out/make/zip/darwin/arm64/Sequ3nce-darwin-arm64-X.Y.Z.zip" \
+  "apps/desktop/out/make/zip/darwin/universal/Sequ3nce-darwin-universal-X.Y.Z.zip" \
   --repo Tallen231210/sequ3nce-ai
 ```
 
@@ -88,19 +88,19 @@ The `latest-mac.yml` manifest must match the signed ZIP's SHA512 hash and file s
 
 ```bash
 # Get SHA512 of signed ZIP
-SHA512=$(shasum -a 512 "apps/desktop/out/make/zip/darwin/arm64/Sequ3nce-darwin-arm64-X.Y.Z.zip" | awk '{print $1}' | xxd -r -p | base64)
+SHA512=$(shasum -a 512 "apps/desktop/out/make/zip/darwin/universal/Sequ3nce-darwin-universal-X.Y.Z.zip" | awk '{print $1}' | xxd -r -p | base64)
 
 # Get file size
-SIZE=$(stat -f%z "apps/desktop/out/make/zip/darwin/arm64/Sequ3nce-darwin-arm64-X.Y.Z.zip")
+SIZE=$(stat -f%z "apps/desktop/out/make/zip/darwin/universal/Sequ3nce-darwin-universal-X.Y.Z.zip")
 
 # Create manifest
 cat > /tmp/latest-mac.yml << MANIFEST
 version: X.Y.Z
 files:
-  - url: Sequ3nce-darwin-arm64-X.Y.Z.zip
+  - url: Sequ3nce-darwin-universal-X.Y.Z.zip
     sha512: ${SHA512}
     size: ${SIZE}
-path: Sequ3nce-darwin-arm64-X.Y.Z.zip
+path: Sequ3nce-darwin-universal-X.Y.Z.zip
 sha512: ${SHA512}
 releaseDate: '$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'
 MANIFEST
@@ -118,7 +118,7 @@ gh release view desktop-vX.Y.Z --repo Tallen231210/sequ3nce-ai --json assets --j
 
 Expected files:
 - `Sequ3nce.dmg` — macOS installer (SIGNED)
-- `Sequ3nce-darwin-arm64-X.Y.Z.zip` — macOS auto-update archive (SIGNED)
+- `Sequ3nce-darwin-universal-X.Y.Z.zip` — macOS auto-update archive (SIGNED)
 - `latest-mac.yml` — macOS auto-update manifest (matches signed ZIP)
 - `Sequ3nce-X.Y.Z.Setup.exe` — Windows installer
 - `latest.yml` — Windows auto-update manifest
@@ -145,7 +145,7 @@ gh run view <run-id> --repo Tallen231210/sequ3nce-ai --log-failed
 ```bash
 # Download and check
 gh release download desktop-vX.Y.Z --pattern '*.zip' --dir /tmp/update-check --repo Tallen231210/sequ3nce-ai
-unzip -q /tmp/update-check/Sequ3nce-darwin-arm64-X.Y.Z.zip -d /tmp/update-check/
+unzip -q /tmp/update-check/Sequ3nce-darwin-universal-X.Y.Z.zip -d /tmp/update-check/
 codesign -v --deep /tmp/update-check/Sequ3nce.app
 ```
 2. Verify the `latest-mac.yml` SHA512 matches the signed ZIP (not the unsigned CI build).
