@@ -1,7 +1,7 @@
 {
   "name": "sequ3nce-desktop",
   "productName": "Sequ3nce",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "description": "Sequ3nce desktop app for sales closers - real-time ammo tracking",
   "main": ".webpack/main",
   "scripts": {
@@ -11,7 +11,7 @@
     "publish": "electron-forge publish && ./scripts/upload-update-manifest.sh",
     "publish:draft": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "build:mac": "electron-forge make --platform darwin",
+    "build:mac": "electron-forge make --platform darwin --arch=universal",
     "build:win": "electron-forge make --platform win32",
     "build:linux": "electron-forge make --platform linux",
     "build:all": "electron-forge make --platform darwin,win32,linux"

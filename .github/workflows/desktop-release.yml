@@ -35,7 +35,7 @@ jobs:
 
       - name: Build macOS app
         working-directory: apps/desktop
-        run: npm run make -- --platform darwin
+        run: npm run make -- --platform darwin --arch=universal
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
