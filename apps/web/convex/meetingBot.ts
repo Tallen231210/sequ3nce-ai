@@ -1356,11 +1356,14 @@ export const getBotCallId = query({
     }
 
     // Recently auto-completed call (race condition from WebSocket reconnection).
-    // When a bot reconnects, createCall's safety guard may auto-complete the existing
-    // call before getBotCallId runs. Detect this by checking for the auto-complete
-    // marker note (set in calls:createCall) within a 2-minute window.
+    // When a bot reconnects, either createCall's safety guard or completeCall's
+    // WebSocket-close handler may have auto-completed the existing call before
+    // getBotCallId runs. Both paths set wasAutoCompleted: true. Legacy fallback
+    // checks the notes marker (older data without the boolean field).
     const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
-    const wasAutoCompleted = call.notes?.includes("[Auto-completed: new call started]");
+    const wasAutoCompleted =
+      (call as { wasAutoCompleted?: boolean }).wasAutoCompleted === true ||
+      call.notes?.includes("[Auto-completed: new call started]");
     if (wasAutoCompleted && call.endedAt && call.endedAt > twoMinutesAgo) {
       return { callId: bot.callId.toString(), wasAutoCompleted: true };
     }

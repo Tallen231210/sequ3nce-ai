@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState } from "react";
 
 interface TranscriptSegment {
   speaker: string;
@@ -23,48 +23,50 @@ export function PublicTranscript({
   startSeconds,
   endSeconds,
 }: PublicTranscriptProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
   const [userScrolling, setUserScrolling] = useState(false);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastActiveIndex = useRef(-1);
 
   const isClip = startSeconds != null && endSeconds != null;
 
-  // Detect manual scroll — pause auto-scroll for 3 seconds
-  const handleScroll = useCallback(() => {
-    setUserScrolling(true);
-    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-    scrollTimeoutRef.current = setTimeout(() => {
-      setUserScrolling(false);
-    }, 3000);
-  }, []);
-
-  // Find the current active segment
+  // Find the current active segment.
   const activeIndex = segments.findLastIndex((s) => s.timestamp <= currentTime);
 
-  // Auto-scroll when active segment changes
+  // Detect user scroll (any scroll, any container — capture-phase). Pauses
+  // auto-scroll for 3 seconds so the user isn't fought when they manually
+  // scroll back to read earlier text.
   useEffect(() => {
-    if (userScrolling) return;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const onScroll = () => {
+      setUserScrolling(true);
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => setUserScrolling(false), 3000);
+    };
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      if (timeout) clearTimeout(timeout);
+    };
+  }, []);
+
+  // Auto-scroll the active segment into view as the video plays. Desktop only —
+  // on mobile, the page itself is the scroll ancestor and scrolling would yank
+  // the video player out of view. The active-segment highlight still renders
+  // on mobile; users can manually scroll to follow along.
+  useEffect(() => {
     if (activeIndex === lastActiveIndex.current) return;
     lastActiveIndex.current = activeIndex;
+    if (userScrolling) return;
 
-    if (activeRef.current && containerRef.current) {
-      const container = containerRef.current;
-      const active = activeRef.current;
-      const containerRect = container.getBoundingClientRect();
-      const activeRect = active.getBoundingClientRect();
+    const active = activeRef.current;
+    if (!active) return;
 
-      // Only scroll if the active segment is out of view
-      if (
-        activeRect.top < containerRect.top ||
-        activeRect.bottom > containerRect.bottom
-      ) {
-        const offset =
-          active.offsetTop - container.offsetTop - container.clientHeight / 2 + active.clientHeight / 2;
-        container.scrollTo({ top: offset, behavior: "smooth" });
-      }
-    }
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 1024px)").matches) return;
+
+    // scrollIntoView walks up to the nearest scroll ancestor and scrolls just
+    // enough to bring the element into view. If already visible, no scroll.
+    active.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [activeIndex, userScrolling]);
 
   if (segments.length === 0) {
@@ -76,11 +78,7 @@ export function PublicTranscript({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="overflow-y-auto flex-1 p-3 space-y-1"
-      onScroll={handleScroll}
-    >
+    <div className="p-3 space-y-1">
       {segments.map((segment, index) => {
         const isActive = index === activeIndex;
         const isSpeakerCloser = segment.speaker === "closer";

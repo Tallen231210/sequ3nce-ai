@@ -33,6 +33,8 @@ export const createCall = mutation({
       await ctx.db.patch(existingCall._id, {
         status: "completed",
         endedAt: Date.now(),
+        wasAutoCompleted: true,
+        // notes marker preserved for backward-compat with existing data the dedup falls back to.
         notes: (existingCall.notes || "") + "\n[Auto-completed: new call started]",
       });
     }
@@ -297,6 +299,10 @@ export const completeCall = mutation({
     // Only transition status forward, never revert from "completed"
     if (call.status !== "completed") {
       patch.status = args.status;
+      // Mark as auto-completed so getBotCallId's 2-minute reconnect-dedup window
+      // can recover this call if Recall reconnects (network blip, etc). Hidden
+      // boolean — UI never displays it (notes is rendered, this is not).
+      patch.wasAutoCompleted = true;
     }
 
     if (Object.keys(patch).length > 0) {

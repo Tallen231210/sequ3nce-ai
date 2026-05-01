@@ -257,6 +257,9 @@ export default defineSchema({
     })),
     // Post-call data (from closer questionnaire)
     notes: v.optional(v.string()), // Optional notes from closer
+    // Hidden marker — read by getBotCallId's reconnect-dedup window. UI never displays this.
+    // Set when a call ends via either createCall's safety guard OR completeCall's WebSocket-close path.
+    wasAutoCompleted: v.optional(v.boolean()),
     completedAt: v.optional(v.number()), // Timestamp when closer submitted questionnaire
     // AI-generated summary
     summary: v.optional(v.string()), // AI summary of the call for quick manager review
