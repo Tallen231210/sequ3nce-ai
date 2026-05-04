@@ -48,6 +48,13 @@ export function createStreamOverlay(): BrowserWindow {
 
   overlayWindow.loadURL(STREAM_OVERLAY_WEBPACK_ENTRY);
 
+  // Exclude the dictation overlay from screen-share / screen-record APIs —
+  // same protection as the ammo tracker. Without this, the pill renders on
+  // top of whatever the user is sharing in Zoom/Meet/Teams, since it's
+  // alwaysOnTop + visibleOnFullScreen during use. User still sees the
+  // overlay normally on their own display.
+  overlayWindow.setContentProtection(true);
+
   // NOTE: Do NOT showInactive()+hide() here for pre-rendering. That pattern
   // breaks the app's macOS dock indicator and activation state — the app loses
   // its dock dot and can't be focused via Cmd+Tab. The overlay renders on
