@@ -269,6 +269,15 @@ const createAmmoTrackerWindow = (): void => {
     ammoTrackerWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
 
+  // Exclude this overlay from screen-capture / screen-share APIs. Without
+  // this, Zoom/Meet/Teams enumerate the window in their share-picker AND
+  // composite it into "Share Screen" framebuffers — closers were
+  // accidentally sharing a blank Sequ3nce panel instead of the document
+  // they intended (see v1.11.0 ammo-fullscreen change for the regression
+  // that exposed this). Closer still sees the overlay normally on their
+  // own display; capture APIs see a black/transparent surface.
+  ammoTrackerWindow.setContentProtection(true);
+
   // Show window when ready
   ammoTrackerWindow.once('ready-to-show', () => {
     ammoTrackerWindow?.showInactive(); // Show without focusing
@@ -371,6 +380,10 @@ const createPostCallWindow = (data: { callId: string; closerId: string; closerNa
   });
 
   postCallWindow.loadURL(POST_CALL_WEBPACK_ENTRY);
+
+  // Same screen-capture exclusion as the ammo tracker: post-call notes are
+  // private to the closer and shouldn't leak into back-to-back screen shares.
+  postCallWindow.setContentProtection(true);
 
   // Show window when ready and send call data
   postCallWindow.once('ready-to-show', () => {
