@@ -73,6 +73,7 @@ import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
 import type * as setterGhlOauth from "../setterGhlOauth.js";
 import type * as setterGhlOauthActions from "../setterGhlOauthActions.js";
+import type * as setterGhlWebhooks from "../setterGhlWebhooks.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
 import type * as stream from "../stream.js";
@@ -153,6 +154,7 @@ declare const fullApi: ApiFromModules<{
   rolePlayRoom: typeof rolePlayRoom;
   setterGhlOauth: typeof setterGhlOauth;
   setterGhlOauthActions: typeof setterGhlOauthActions;
+  setterGhlWebhooks: typeof setterGhlWebhooks;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
   stream: typeof stream;
