@@ -55,6 +55,57 @@ export const getInstallationByLocation = internalQuery({
   },
 });
 
+/**
+ * Find installations the deep-backfill cron should pick up. We return up
+ * to `limit` rows that are:
+ *   - status = "active"
+ *   - fastBackfillCompletedAt IS NOT NULL (deep follows fast)
+ *   - deepBackfillCompletedAt IS NULL (haven't finished 12 months yet)
+ *   - deepBackfillError IS NULL (skip rows that need manual recovery)
+ *
+ * The cron throttles to a small batch per tick so a slow GHL response
+ * for one customer doesn't drag down the others.
+ */
+export const getInstallationsNeedingDeepBackfill = internalQuery({
+  args: { limit: v.number() },
+  handler: async (ctx, args) => {
+    // The candidate set is small (one row per customer), so a full-table
+    // scan with filters is cheaper than maintaining additional indexes
+    // for this rare path. We post-filter for the active+fast-complete+
+    // no-error+not-yet-deep-complete combo.
+    const all = await ctx.db.query("setterGhlInstallations").collect();
+    const candidates = all.filter(
+      (inst) =>
+        inst.status === "active" &&
+        inst.fastBackfillCompletedAt !== undefined &&
+        inst.deepBackfillCompletedAt === undefined &&
+        !inst.deepBackfillError,
+    );
+    return candidates.slice(0, args.limit);
+  },
+});
+
+/**
+ * Find active installations the reconcile cron should sweep. Active +
+ * fast-backfill-complete only — no point reconciling an install whose
+ * initial sync hasn't finished yet (the fast backfill is still
+ * populating that data).
+ */
+export const getInstallationsForReconcile = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("setterGhlInstallations")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("status"), "active"),
+          q.neq(q.field("fastBackfillCompletedAt"), undefined),
+        ),
+      )
+      .collect();
+  },
+});
+
 // ----------------------------------------------------------------------------
 // INTERNAL WRITES (called by actions to persist OAuth state)
 // ----------------------------------------------------------------------------

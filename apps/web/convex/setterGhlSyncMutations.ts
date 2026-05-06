@@ -120,3 +120,82 @@ export const patchInstallationLocationName = internalMutation({
     });
   },
 });
+
+/**
+ * Advance deep-backfill progress for an installation. Called by the
+ * deep-backfill cron after a successful month tick:
+ *   - completedMonth ≤ 11 → patch deepBackfillLastCompletedMonth
+ *   - completedMonth = 12 → also stamp deepBackfillCompletedAt so the
+ *     "Extending history..." UI banner disappears and the cron stops
+ *     selecting this installation.
+ *
+ * Idempotent: no-op if completedMonth ≤ existing value (handles the rare
+ * case where two cron ticks race for the same installation).
+ */
+export const advanceDeepBackfill = internalMutation({
+  args: {
+    installationId: v.id("setterGhlInstallations"),
+    completedMonth: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const inst = await ctx.db.get(args.installationId);
+    if (!inst) return;
+    if (
+      inst.deepBackfillLastCompletedMonth !== undefined &&
+      args.completedMonth <= inst.deepBackfillLastCompletedMonth
+    ) {
+      return;
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.installationId, {
+      deepBackfillLastCompletedMonth: args.completedMonth,
+      lastSyncedAt: now,
+      ...(args.completedMonth >= 12 ? { deepBackfillCompletedAt: now } : {}),
+      // Successful tick clears any prior transient error.
+      deepBackfillError: undefined,
+    });
+  },
+});
+
+/**
+ * Stamp a deep-backfill error on the installation. Future cron ticks
+ * skip this installation (errored rows are excluded from the candidate
+ * query) until a manual reset clears the error — surfaced in the
+ * Settings UI with a "Resume backfill" button.
+ */
+export const setDeepBackfillError = internalMutation({
+  args: {
+    installationId: v.id("setterGhlInstallations"),
+    errorMessage: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.installationId, {
+      deepBackfillError: args.errorMessage,
+    });
+  },
+});
+
+/**
+ * Prune setterWebhookEvents rows older than the given cutoff. Called by
+ * the daily audit-prune cron. Convex limits the number of writes per
+ * mutation, so we cap the batch — if more rows need pruning, the cron
+ * will catch them on the next run.
+ */
+export const pruneOldWebhookEvents = internalMutation({
+  args: {
+    olderThan: v.number(), // unix ms; rows with receivedAt < this are deleted
+    limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const stale = await ctx.db
+      .query("setterWebhookEvents")
+      .withIndex("by_received_at", (q) => q.lt("receivedAt", args.olderThan))
+      .take(args.limit);
+
+    for (const row of stale) {
+      await ctx.db.delete(row._id);
+    }
+
+    return { deleted: stale.length };
+  },
+});

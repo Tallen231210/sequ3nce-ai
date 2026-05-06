@@ -27,6 +27,18 @@ import { ghlFetch } from "./setterGhlClient";
 const FAST_BACKFILL_DAYS = 90;
 const CONTACTS_PAGE_SIZE = 100;
 
+// Deep backfill walks one month per cron tick per installation. 12 total
+// months gives us a year of history when combined with the fast-backfill
+// 90-day window (months 0-3).
+const DEEP_BACKFILL_TARGET_MONTHS = 12;
+const DEEP_BACKFILL_BATCH_SIZE = 5; // max installations per cron tick
+const APPROX_MS_PER_MONTH = 30 * 24 * 60 * 60 * 1000;
+
+// Reconciliation overlaps the polling window slightly (90 min for an
+// hourly cron) so a webhook that arrived right before the previous
+// reconcile tick is caught if it was somehow missed.
+const RECONCILE_OVERLAP_MINUTES = 90;
+
 // Per-invocation time budget. Convex caps actions at ~10 min; we yield
 // well before that to give scheduling overhead breathing room.
 const TIME_BUDGET_MS = 7 * 60 * 1000;
@@ -355,3 +367,309 @@ async function syncContactsPage(
     processed: contacts.length,
   };
 }
+
+// ============================================================================
+// deepBackfillStep — cron-driven, extends history backward month-by-month
+// ============================================================================
+//
+// Runs every 30 min (registered in crons.ts). Each tick picks up to 5
+// installations whose fast backfill has completed but who haven't yet
+// reached 12 months of deep history. For each, it pulls one additional
+// month's worth of contacts and dispatches them through the webhook
+// pipeline. Eventually each installation hits month 12 and is marked
+// complete; the cron stops selecting it.
+//
+// Phase 1 scope: contacts only (lead skeletons). Historical messages
+// arrive from webhooks for the post-install timeline, and a future
+// dedicated cron can backfill historical messages if needed.
+// ============================================================================
+
+export const deepBackfillStep = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const candidates = await ctx.runQuery(
+      internal.setterGhlOauth.getInstallationsNeedingDeepBackfill,
+      { limit: DEEP_BACKFILL_BATCH_SIZE },
+    );
+
+    if (candidates.length === 0) {
+      return { processed: 0 };
+    }
+
+    let processed = 0;
+    for (const installation of candidates) {
+      const lastMonth = installation.deepBackfillLastCompletedMonth ?? 3;
+      const nextMonth = lastMonth + 1;
+      try {
+        await syncMonthOfContacts(ctx, {
+          installationId: installation._id,
+          locationId: installation.locationId,
+          teamId: installation.teamId,
+          monthIndex: nextMonth,
+        });
+        await ctx.runMutation(internal.setterGhlSyncMutations.advanceDeepBackfill, {
+          installationId: installation._id,
+          completedMonth: nextMonth,
+        });
+        processed++;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[deepBackfillStep] Error for installation ${installation._id} at month ${nextMonth}:`,
+          message,
+        );
+        // Stamp the error so future ticks skip this installation until
+        // a manual recovery clears it.
+        await ctx.runMutation(internal.setterGhlSyncMutations.setDeepBackfillError, {
+          installationId: installation._id,
+          errorMessage: `Month ${nextMonth}: ${message}`,
+        });
+      }
+    }
+
+    return { processed };
+  },
+});
+
+interface SyncMonthArgs {
+  installationId: string;
+  locationId: string;
+  teamId: string;
+  monthIndex: number; // 4..12 — month 0 = "now", monthN = "N months ago"
+}
+
+async function syncMonthOfContacts(ctx: ActionCtx, args: SyncMonthArgs): Promise<void> {
+  const now = Date.now();
+  const windowEnd = now - (args.monthIndex - 1) * APPROX_MS_PER_MONTH;
+  const windowStart = now - args.monthIndex * APPROX_MS_PER_MONTH;
+
+  const startIso = new Date(windowStart).toISOString();
+  const endIso = new Date(windowEnd).toISOString();
+
+  let page = 1;
+  // Soft cap on pages per month per tick — we only need to be done by
+  // the time DEEP_BACKFILL_TARGET_MONTHS × 30min < 6h, well within
+  // budget even for the largest customers.
+  const MAX_PAGES_PER_MONTH = 50;
+
+  while (page <= MAX_PAGES_PER_MONTH) {
+    const response = await ghlFetch<GhlContactsSearchResponse>(
+      ctx,
+      args.installationId as never,
+      "/contacts/search",
+      {
+        method: "POST",
+        body: {
+          locationId: args.locationId,
+          filters: [
+            { field: "dateAdded", operator: "gte", value: startIso },
+            { field: "dateAdded", operator: "lt", value: endIso },
+          ],
+          sort: [{ field: "dateAdded", direction: "desc" }],
+          pageSize: CONTACTS_PAGE_SIZE,
+          page,
+        },
+      },
+    );
+
+    const contacts = response.contacts ?? [];
+
+    for (const contact of contacts) {
+      if (!contact.id) continue;
+      const auditId = await ctx.runMutation(
+        internal.setterGhlWebhooks.recordIncomingWebhook,
+        {
+          locationId: args.locationId,
+          eventType: "Contact.Create",
+          ghlEventId: undefined,
+          signatureValid: true,
+          processed: false,
+          payload: {
+            type: "Contact.Create",
+            locationId: args.locationId,
+            contact: {
+              id: contact.id,
+              firstName: contact.firstName,
+              lastName: contact.lastName,
+              name: contact.contactName,
+              email: contact.email,
+              phone: contact.phone,
+              source: contact.source,
+              tags: contact.tags,
+              assignedTo: contact.assignedTo,
+              dateAdded: contact.dateAdded,
+            },
+          },
+          teamId: args.teamId as never,
+        },
+      );
+      await ctx.scheduler.runAfter(0, internal.setterGhlWebhooks.dispatch, {
+        auditId,
+      });
+    }
+
+    const totalSoFar = (page - 1) * CONTACTS_PAGE_SIZE + contacts.length;
+    const hasMore =
+      typeof response.total === "number"
+        ? totalSoFar < response.total
+        : contacts.length === CONTACTS_PAGE_SIZE;
+    if (!hasMore) break;
+    page++;
+  }
+}
+
+// ============================================================================
+// reconcile — hourly safety net
+// ============================================================================
+//
+// Webhooks can be missed (GHL retries 3x then gives up; network blips
+// happen; our deploys briefly drop in-flight events). An hourly pass
+// fetches all contacts modified in the last 90 minutes and routes them
+// through the same dispatch pipeline. Idempotency at the lead-events
+// level (ghlEventKey) means re-processing is safe.
+// ============================================================================
+
+export const reconcile = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const installations = await ctx.runQuery(
+      internal.setterGhlOauth.getInstallationsForReconcile,
+      {},
+    );
+    if (installations.length === 0) return { processed: 0 };
+
+    let processed = 0;
+    for (const installation of installations) {
+      try {
+        await reconcileInstallation(ctx, installation);
+        await ctx.runMutation(
+          internal.setterGhlSyncMutations.markInstallationSynced,
+          { installationId: installation._id },
+        );
+        processed++;
+      } catch (err) {
+        // Reconcile errors are non-fatal — log and skip; next tick retries.
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[reconcile] Error for installation ${installation._id}:`,
+          message,
+        );
+      }
+    }
+    return { processed };
+  },
+});
+
+interface InstallationDoc {
+  _id: string;
+  locationId: string;
+  teamId: string;
+}
+
+async function reconcileInstallation(
+  ctx: ActionCtx,
+  installation: InstallationDoc,
+): Promise<void> {
+  const since = Date.now() - RECONCILE_OVERLAP_MINUTES * 60 * 1000;
+  const sinceIso = new Date(since).toISOString();
+
+  // Filter on dateUpdated rather than dateAdded so we catch contacts
+  // that were modified (assignment changes, tag additions, etc.) since
+  // the last reconcile.
+  let page = 1;
+  const MAX_PAGES = 20; // safety cap — typical orgs see <500 modifications/90min
+
+  while (page <= MAX_PAGES) {
+    const response = await ghlFetch<GhlContactsSearchResponse>(
+      ctx,
+      installation._id as never,
+      "/contacts/search",
+      {
+        method: "POST",
+        body: {
+          locationId: installation.locationId,
+          filters: [
+            { field: "dateUpdated", operator: "gte", value: sinceIso },
+          ],
+          sort: [{ field: "dateUpdated", direction: "desc" }],
+          pageSize: CONTACTS_PAGE_SIZE,
+          page,
+        },
+      },
+    );
+    const contacts = response.contacts ?? [];
+
+    for (const contact of contacts) {
+      if (!contact.id) continue;
+      const auditId = await ctx.runMutation(
+        internal.setterGhlWebhooks.recordIncomingWebhook,
+        {
+          locationId: installation.locationId,
+          eventType: "Contact.Update",
+          ghlEventId: undefined,
+          signatureValid: true,
+          processed: false,
+          payload: {
+            type: "Contact.Update",
+            locationId: installation.locationId,
+            contact: {
+              id: contact.id,
+              firstName: contact.firstName,
+              lastName: contact.lastName,
+              name: contact.contactName,
+              email: contact.email,
+              phone: contact.phone,
+              source: contact.source,
+              tags: contact.tags,
+              assignedTo: contact.assignedTo,
+              dateAdded: contact.dateAdded,
+            },
+          },
+          teamId: installation.teamId as never,
+        },
+      );
+      await ctx.scheduler.runAfter(0, internal.setterGhlWebhooks.dispatch, {
+        auditId,
+      });
+    }
+
+    const totalSoFar = (page - 1) * CONTACTS_PAGE_SIZE + contacts.length;
+    const hasMore =
+      typeof response.total === "number"
+        ? totalSoFar < response.total
+        : contacts.length === CONTACTS_PAGE_SIZE;
+    if (!hasMore) break;
+    page++;
+  }
+}
+
+// ============================================================================
+// pruneWebhookAudit — daily, deletes setterWebhookEvents older than 30 days
+// ============================================================================
+
+const AUDIT_RETENTION_DAYS = 30;
+const AUDIT_PRUNE_BATCH_SIZE = 1000;
+
+export const pruneWebhookAudit = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - AUDIT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+    // Loop until a batch is non-full, signalling we've drained the
+    // expired rows. Capped at 50 batches per run as a safety net so a
+    // runaway audit table can't tie up the cron forever.
+    let totalDeleted = 0;
+    for (let i = 0; i < 50; i++) {
+      const result = await ctx.runMutation(
+        internal.setterGhlSyncMutations.pruneOldWebhookEvents,
+        { olderThan: cutoff, limit: AUDIT_PRUNE_BATCH_SIZE },
+      );
+      totalDeleted += result.deleted;
+      if (result.deleted < AUDIT_PRUNE_BATCH_SIZE) break;
+    }
+    if (totalDeleted > 0) {
+      console.log(`[pruneWebhookAudit] Deleted ${totalDeleted} expired audit rows`);
+    }
+    return { deleted: totalDeleted };
+  },
+});
