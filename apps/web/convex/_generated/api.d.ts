@@ -71,6 +71,8 @@ import type * as meetingBot from "../meetingBot.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
+import type * as setterGhlOauth from "../setterGhlOauth.js";
+import type * as setterGhlOauthActions from "../setterGhlOauthActions.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
 import type * as stream from "../stream.js";
@@ -149,6 +151,8 @@ declare const fullApi: ApiFromModules<{
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
+  setterGhlOauth: typeof setterGhlOauth;
+  setterGhlOauthActions: typeof setterGhlOauthActions;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
   stream: typeof stream;
