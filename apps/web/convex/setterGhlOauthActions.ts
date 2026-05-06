@@ -95,21 +95,29 @@ export const exchangeCodeForTokens = action({
       ? tokenResponse.scope.split(/\s+/).filter(Boolean)
       : Array.from(PHASE_1_SCOPES);
 
-    await ctx.runMutation(internal.setterGhlOauth.upsertInstallation, {
-      teamId: args.teamId,
-      locationId,
-      // GHL doesn't return locationName on the token response — we'll fetch
-      // it from /locations/:id during the first sync. Leave undefined here.
-      locationName: undefined,
-      companyId: tokenResponse.companyId,
-      encryptedAccessToken,
-      encryptedRefreshToken,
-      expiresAt,
-      scopes: grantedScopes,
-    });
+    const installationId = await ctx.runMutation(
+      internal.setterGhlOauth.upsertInstallation,
+      {
+        teamId: args.teamId,
+        locationId,
+        // GHL doesn't return locationName on the token response — we fetch
+        // it from /locations/:id during the first sync. Leave undefined.
+        locationName: undefined,
+        companyId: tokenResponse.companyId,
+        encryptedAccessToken,
+        encryptedRefreshToken,
+        expiresAt,
+        scopes: grantedScopes,
+      },
+    );
 
-    // TODO (Phase 1.6): schedule fast backfill once setterGhlSync is built.
-    // ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, { ... });
+    // Kick off the fast backfill (last 90 days) asynchronously. The action
+    // is chunked + resumable so it survives the per-action time limit
+    // even for large orgs; the user can use the dashboard immediately
+    // and watch backfill progress via the BackfillBanner.
+    await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
+      installationId,
+    });
 
     return {
       success: true,
