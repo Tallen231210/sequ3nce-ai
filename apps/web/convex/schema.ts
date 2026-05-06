@@ -119,13 +119,34 @@ export default defineSchema({
     hyrosApiKey: v.optional(v.string()),
     hyrosEnabled: v.optional(v.boolean()),
     hyrosConnectedAt: v.optional(v.number()),
-    // GoHighLevel CRM integration
+    // GoHighLevel CRM integration (legacy API-key flow — disposition sync)
+    // Kept for backwards compatibility; the new Setter Data feature uses
+    // OAuth tokens via setterGhlInstallations instead. Phase 3 will rebuild
+    // disposition sync on top of OAuth and this field becomes obsolete.
     ghlApiKey: v.optional(v.string()),
     ghlEnabled: v.optional(v.boolean()),
     ghlConnectedAt: v.optional(v.number()),
     ghlLocationId: v.optional(v.string()),
     ghlCreateContacts: v.optional(v.boolean()),
     ghlAddNotes: v.optional(v.boolean()),
+
+    // Setter Data feature — admin override flag (default unset = visible).
+    // Set to false explicitly to hide the tab for a specific team (emergency
+    // kill switch). The tab is otherwise always shown to B2B admins; the
+    // ConnectionGate component handles the not-yet-installed state.
+    setterDataEnabled: v.optional(v.boolean()),
+
+    // "Connection" definition — a call lasting >= this many seconds counts
+    // as a connect for show-rate / connection-rate metrics. Default 60.
+    // Configurable per team because some sales orgs use 90 or 120.
+    setterConnectionThresholdSec: v.optional(v.number()),
+
+    // Daily Scorecard Slack/Discord notification config
+    setterDailyScorecardEnabled: v.optional(v.boolean()),
+    setterDailyScorecardChannel: v.optional(v.string()), // "slack" | "discord"
+    setterDailyScorecardSlackChannelId: v.optional(v.string()),
+    setterDailyScorecardDiscordWebhookUrl: v.optional(v.string()),
+    setterDailyScorecardHourLocal: v.optional(v.number()), // 0-23 in team.timezone
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -809,15 +830,22 @@ export default defineSchema({
     .index("by_closer", ["closerId"])
     .index("by_team", ["teamId"]),
 
-  // Slack Notifications (tracking sent notifications to prevent duplicates)
+  // Slack Notifications (tracking sent notifications to prevent duplicates).
+  // Used by both call-based notifications (with callId) and feature-level
+  // notifications like Setter Data daily scorecard (with dedupKey instead).
   slackNotifications: defineTable({
     teamId: v.id("teams"),
     callId: v.optional(v.id("calls")),
-    type: v.string(), // "call_started" | "summary_30" | "summary_60" | "reinforcement" | "call_going_long"
+    type: v.string(), // see slack.ts validTypes for the canonical list
     sentAt: v.number(),
+    // Generic dedup key for non-call notifications. Format depends on type:
+    //   "setter_daily_scorecard" → `${teamId}_scorecard_${YYYY-MM-DD}`
+    //   "setter_untouched_alert" → `${teamId}_untouched_${ghlContactId}_${15minBucket}`
+    dedupKey: v.optional(v.string()),
   })
     .index("by_call_and_type", ["callId", "type"])
-    .index("by_team", ["teamId"]),
+    .index("by_team", ["teamId"])
+    .index("by_dedup_key", ["dedupKey"]),
 
   // Meeting Bots (bots that auto-join video calls via Meeting BaaS)
   meetingBots: defineTable({
@@ -1730,4 +1758,176 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_call", ["userId", "callId"]),
+
+  // ============================================================================
+  // Setter Data — B2B feature for sales managers to track setter performance
+  // via a private GoHighLevel Marketplace App. See docs/SETTER-DATA-SPEC.md.
+  // ============================================================================
+
+  // OAuth tokens for the GHL Marketplace App, one row per team. Tokens are
+  // encrypted via lib/encrypt.ts. The two-phase backfill progress fields let
+  // us show "5 of 12 months synced" UI and let the deep-backfill cron find
+  // pending work without scanning every installation.
+  setterGhlInstallations: defineTable({
+    teamId: v.id("teams"),
+    // GHL identifiers
+    locationId: v.string(),                // sub-account ID
+    locationName: v.optional(v.string()),
+    companyId: v.optional(v.string()),
+    // OAuth tokens — both encrypted (AES-256-GCM via encryptApiKey)
+    accessToken: v.string(),
+    refreshToken: v.string(),
+    expiresAt: v.number(),                 // Unix ms — when access_token expires
+    // Scopes granted at install (lets us detect a re-install with different scopes)
+    scopes: v.array(v.string()),
+    // Lifecycle
+    installedAt: v.number(),
+    lastRefreshedAt: v.optional(v.number()),
+    lastSyncedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("error"),
+      v.literal("uninstalled"),
+    ),
+    errorMessage: v.optional(v.string()),
+    errorAt: v.optional(v.number()),
+    // Two-phase backfill progress. fastBackfill (last 90 days) runs on install
+    // and gets the dashboard usable in 5–10 min. deepBackfill extends backward
+    // one month at a time up to 12 months total via a cron — gives new
+    // customers a year of history within 24–48h without blocking install.
+    fastBackfillCompletedAt: v.optional(v.number()),
+    deepBackfillLastCompletedMonth: v.optional(v.number()), // 0–12 (3 = 90d done)
+    deepBackfillCompletedAt: v.optional(v.number()),
+    deepBackfillError: v.optional(v.string()),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_location", ["locationId"])
+    .index("by_team_and_status", ["teamId", "status"])
+    // Used by the deep-backfill extender cron to find installations with
+    // pending work — query for null deepBackfillCompletedAt where status=active.
+    .index("by_status_and_deep_backfill_completed", [
+      "status",
+      "deepBackfillCompletedAt",
+    ]),
+
+  // Synced GHL users (sub-account members). Setters are identified here by
+  // their GHL user id; we never have a Sequ3nce user record for them.
+  // isActive flips false when a user disappears from GHL between syncs;
+  // we keep the row so historical metrics still resolve their name.
+  setterReps: defineTable({
+    teamId: v.id("teams"),
+    ghlUserId: v.string(),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    ghlRole: v.optional(v.string()),
+    isActive: v.boolean(),
+    lastSeenInSyncAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_ghl_user_id", ["teamId", "ghlUserId"]),
+
+  // Synced GHL contacts (the "leads" the setters work). Snapshot fields are
+  // denormalized projections of setterLeadEvents — they're recomputed on
+  // every event-driven mutation so reads (the leads table view) stay fast.
+  // Source-of-truth is the events table; this is the read model.
+  setterLeads: defineTable({
+    teamId: v.id("teams"),
+    ghlContactId: v.string(),
+    // Identity
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    // GHL metadata
+    dateAdded: v.number(),                 // GHL-side timestamp, NOT receipt time
+    source: v.optional(v.string()),
+    sourceDetail: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    assignedToGhlUserId: v.optional(v.string()),
+    assignedToName: v.optional(v.string()),
+    // Computed snapshot fields (rebuilt by event handlers, not by upserts)
+    dialCount: v.number(),
+    firstDialAt: v.optional(v.number()),
+    lastDialAt: v.optional(v.number()),
+    smsOutboundCount: v.number(),
+    smsInboundCount: v.number(),
+    smsStatus: v.union(
+      v.literal("none"),    // no SMS either way
+      v.literal("sent"),    // outbound sent, no inbound reply yet
+      v.literal("replied"), // inbound after outbound
+    ),
+    isConnected: v.boolean(),              // any call >= team threshold sec
+    connectedAt: v.optional(v.number()),
+    connectedCallDurationSec: v.optional(v.number()),
+    appointmentCount: v.number(),          // populated in Phase 2 (setterAppointments)
+    showedCount: v.number(),
+    noShowCount: v.number(),
+    // Bookkeeping
+    lastActivityAt: v.optional(v.number()),
+    lastSyncedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_assigned", ["teamId", "assignedToGhlUserId"])
+    .index("by_team_and_connected", ["teamId", "isConnected"])
+    .index("by_team_and_date_added", ["teamId", "dateAdded"])
+    .index("by_team_and_ghl_contact_id", ["teamId", "ghlContactId"])
+    .index("by_team_and_last_activity", ["teamId", "lastActivityAt"]),
+
+  // Append-only event log. Source of truth for all per-lead activity. Powers
+  // time-series reports (working hours heatmap, source attribution trends,
+  // per-setter funnel over time) that snapshot fields can't express.
+  // Idempotency: ghlEventKey holds the GHL message/event id where available;
+  // by_ghl_event_key index lets handlers skip duplicate webhook deliveries.
+  setterLeadEvents: defineTable({
+    teamId: v.id("teams"),
+    ghlContactId: v.string(),
+    // Denormalized lead pointer — null until the lead row exists (rare race
+    // when an event arrives before Contact.Create is processed).
+    setterLeadId: v.optional(v.id("setterLeads")),
+    eventType: v.union(
+      v.literal("dial_outbound"),
+      v.literal("call_inbound"),
+      v.literal("sms_outbound"),
+      v.literal("sms_inbound"),
+      v.literal("connected"),                 // first call >= threshold
+      v.literal("appointment_booked"),        // Phase 2
+      v.literal("appointment_status_change"), // Phase 2
+      v.literal("opportunity_stage_change"),  // Phase 3
+      v.literal("contact_assigned"),
+    ),
+    occurredAt: v.number(),                   // GHL timestamp, NOT receipt
+    ghlUserId: v.optional(v.string()),        // who performed the action
+    // Polymorphic payload — shape depends on eventType. Examples:
+    //   dial_outbound      → { callDurationSec, conversationId, messageId }
+    //   sms_outbound       → { conversationId, messageId, body? }
+    //   appointment_booked → { appointmentId, calendarId, startTime, status }
+    details: v.optional(v.any()),
+    // Idempotency: GHL message/event id where applicable. Looked up via
+    // by_ghl_event_key before insert — duplicate deliveries become no-ops.
+    ghlEventKey: v.optional(v.string()),
+  })
+    .index("by_team_and_contact", ["teamId", "ghlContactId"])
+    .index("by_team_and_type_and_time", ["teamId", "eventType", "occurredAt"])
+    .index("by_team_and_setter_and_time", ["teamId", "ghlUserId", "occurredAt"])
+    .index("by_ghl_event_key", ["ghlEventKey"]),
+
+  // Raw webhook payload audit log — forensic only, NOT a data source for
+  // reports. Pruned at 30 days by a daily cron. signatureValid is set false
+  // for any payload that fails Ed25519 verification (those rows are kept
+  // longer-term forensic value: did someone try to spoof us?).
+  setterWebhookEvents: defineTable({
+    teamId: v.optional(v.id("teams")),         // null if locationId didn't resolve
+    locationId: v.string(),
+    ghlEventId: v.optional(v.string()),
+    receivedAt: v.number(),
+    eventType: v.string(),
+    signatureValid: v.boolean(),
+    processed: v.boolean(),
+    processingError: v.optional(v.string()),
+    processingDurationMs: v.optional(v.number()),
+    payload: v.any(),                          // full body, capped at ~1MB
+  })
+    .index("by_received_at", ["receivedAt"])
+    .index("by_team_and_received_at", ["teamId", "receivedAt"])
+    .index("by_processed", ["processed"]),
 });
