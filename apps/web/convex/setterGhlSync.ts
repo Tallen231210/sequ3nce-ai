@@ -560,6 +560,52 @@ export const reconcile = internalAction({
   },
 });
 
+/**
+ * Per-installation reconcile variant for the Settings-tab "Refresh now"
+ * button. Same logic as reconcile() but scoped to a single team so one
+ * customer's manual refresh doesn't sweep every other customer's data.
+ */
+export const reconcileSingleInstallation = internalAction({
+  args: {
+    installationId: v.id("setterGhlInstallations"),
+  },
+  handler: async (ctx, args) => {
+    const installation = await ctx.runQuery(
+      internal.setterGhlOauth.getInstallationById,
+      { installationId: args.installationId },
+    );
+    if (!installation) {
+      console.warn(
+        "[reconcileSingleInstallation] Installation not found:",
+        args.installationId,
+      );
+      return { processed: 0 };
+    }
+    if (installation.status !== "active") {
+      console.warn(
+        `[reconcileSingleInstallation] Installation status is ${installation.status} — skipping`,
+      );
+      return { processed: 0 };
+    }
+
+    try {
+      await reconcileInstallation(ctx, installation);
+      await ctx.runMutation(
+        internal.setterGhlSyncMutations.markInstallationSynced,
+        { installationId: installation._id },
+      );
+      return { processed: 1 };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[reconcileSingleInstallation] Error for ${installation._id}:`,
+        message,
+      );
+      throw err; // surface to UI via mutation rejection
+    }
+  },
+});
+
 interface InstallationDoc {
   _id: string;
   locationId: string;

@@ -43,22 +43,25 @@ export interface ScorecardData {
 }
 
 /**
- * Compute scorecard aggregates for a team over a date range. Both
- * `rangeStart` and `rangeEnd` are Unix ms (UTC). The "yesterday in
- * team timezone" calculation lives in the caller — this query is
- * timezone-agnostic and just operates on the bounds it's given.
+ * Plain helper — exported so both internal queries (scorecard cron) AND
+ * public queries (dashboard's getOverview) can reuse the same math.
+ * Convex queries cannot call other queries via ctx.runQuery, so a
+ * shared async helper is the only way to avoid duplicating logic.
+ *
+ * Both `rangeStart` and `rangeEnd` are Unix ms (UTC). Timezone-agnostic
+ * by design — callers (e.g. the cron's "yesterday in team tz" calc)
+ * own the boundary computation.
  */
-export const getScorecardData = internalQuery({
-  args: {
-    teamId: v.id("teams"),
-    rangeStart: v.number(),
-    rangeEnd: v.number(),
-  },
-  handler: async (ctx, args): Promise<ScorecardData> => {
+export async function computeScorecard(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: { teamId: string; rangeStart: number; rangeEnd: number },
+): Promise<ScorecardData> {
     // Pull every lead whose dateAdded falls in [rangeStart, rangeEnd).
     // For a single team's daily window this is a small set (typical
-    // ~50 leads/day).
-    const leads = await ctx.db
+    // ~50 leads/day). Cast collect() result since the loose ctx.db: any
+    // type erases the inference Convex would give us.
+    const leads: Doc<"setterLeads">[] = await ctx.db
       .query("setterLeads")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team_and_date_added", (q: any) =>
@@ -96,22 +99,23 @@ export const getScorecardData = internalQuery({
 
     // Per-setter aggregation. We need rep names — fetch the rep list
     // once and look up by ghlUserId.
-    const reps = await ctx.db
+    const reps: Doc<"setterReps">[] = await ctx.db
       .query("setterReps")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
       .collect();
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
-    const perSetterMap = new Map<string, ScorecardSetterRow & { _speeds: number[] }>();
+    type AccumRow = ScorecardSetterRow & { _speeds: number[] };
+    const perSetterMap = new Map<string, AccumRow>();
 
     for (const lead of leads) {
       const setterId = lead.assignedToGhlUserId;
       if (!setterId) continue;
 
       let row = perSetterMap.get(setterId);
-      if (!row) {
-        row = {
+      if (row === undefined) {
+        const created: AccumRow = {
           ghlUserId: setterId,
           name: repNameByGhlUserId.get(setterId) ?? "Unknown setter",
           leadCount: 0,
@@ -120,7 +124,8 @@ export const getScorecardData = internalQuery({
           avgSpeedMs: null,
           _speeds: [],
         };
-        perSetterMap.set(setterId, row);
+        perSetterMap.set(setterId, created);
+        row = created;
       }
 
       row.leadCount += 1;
@@ -165,5 +170,19 @@ export const getScorecardData = internalQuery({
       p90SpeedMs,
       perSetter,
     };
+}
+
+/**
+ * Internal-query wrapper around computeScorecard. Used by the scorecard
+ * cron (an action), which can only access query data via ctx.runQuery.
+ */
+export const getScorecardData = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args): Promise<ScorecardData> => {
+    return await computeScorecard(ctx, args);
   },
 });
