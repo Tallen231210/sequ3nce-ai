@@ -176,6 +176,52 @@ export const setDeepBackfillError = internalMutation({
 });
 
 /**
+ * Upsert pipeline metadata. Called by the pipelines sync helper during
+ * fastBackfill + reconcile. Pipelines change rarely, so we just patch
+ * the cached row in place — no dedicated event log needed.
+ */
+export const upsertPipeline = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    ghlPipelineId: v.string(),
+    name: v.string(),
+    stages: v.array(
+      v.object({
+        ghlStageId: v.string(),
+        name: v.string(),
+        position: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("setterPipelines")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_pipeline_id", (q: any) =>
+        q.eq("teamId", args.teamId).eq("ghlPipelineId", args.ghlPipelineId),
+      )
+      .first();
+
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        name: args.name,
+        stages: args.stages,
+        lastSyncedAt: now,
+      });
+      return existing._id;
+    }
+    return await ctx.db.insert("setterPipelines", {
+      teamId: args.teamId,
+      ghlPipelineId: args.ghlPipelineId,
+      name: args.name,
+      stages: args.stages,
+      lastSyncedAt: now,
+    });
+  },
+});
+
+/**
  * Prune setterWebhookEvents rows older than the given cutoff. Called by
  * the daily audit-prune cron. Convex limits the number of writes per
  * mutation, so we cap the batch — if more rows need pruning, the cron

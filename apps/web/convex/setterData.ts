@@ -371,6 +371,85 @@ export const getMySettings = query({
 });
 
 // ----------------------------------------------------------------------------
+// getPipelineStageDistribution — Phase 3 pipeline funnel on Overview tab
+// ----------------------------------------------------------------------------
+
+/**
+ * Returns each pipeline's stages with the current count of open
+ * opportunities in each. Powers the Pipeline Funnel chart on Overview.
+ *
+ * "Current" means: opportunities with status="open" right now,
+ * regardless of when they entered. Won/lost/abandoned are excluded
+ * since they've left the active pipeline.
+ *
+ * Date-range-bounded "stage transitions in the last X days" is a
+ * separate metric that the Trends/per-setter views can use later;
+ * this query intentionally keeps the funnel simple — current-state
+ * snapshot only.
+ */
+export const getPipelineStageDistribution = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await resolveAuthUser(ctx);
+    if (!isAdmin(user)) return null;
+    const teamId = user!.teamId as Id<"teams">;
+
+    const pipelines = (await ctx.db
+      .query("setterPipelines")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .collect()) as Doc<"setterPipelines">[];
+
+    if (pipelines.length === 0) return [];
+
+    // Pull all opportunities for this team. Typical org has hundreds,
+    // not thousands; full collect is fine. If we ever need to scale,
+    // add a per-pipeline by_team_and_pipeline_and_status index.
+    const opps = (await ctx.db
+      .query("setterOpportunities")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .collect()) as Doc<"setterOpportunities">[];
+
+    return pipelines
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((pipeline) => {
+        // Count opportunities per stage, open status only.
+        const counts = new Map<string, number>();
+        let totalOpen = 0;
+        let totalValue = 0;
+        for (const opp of opps) {
+          if (opp.ghlPipelineId !== pipeline.ghlPipelineId) continue;
+          if (opp.status !== "open") continue;
+          totalOpen += 1;
+          if (typeof opp.monetaryValue === "number") {
+            totalValue += opp.monetaryValue;
+          }
+          counts.set(opp.ghlStageId, (counts.get(opp.ghlStageId) ?? 0) + 1);
+        }
+
+        const stages = pipeline.stages
+          .slice()
+          .sort((a, b) => a.position - b.position)
+          .map((s) => ({
+            ghlStageId: s.ghlStageId,
+            name: s.name,
+            position: s.position,
+            count: counts.get(s.ghlStageId) ?? 0,
+          }));
+
+        return {
+          ghlPipelineId: pipeline.ghlPipelineId,
+          name: pipeline.name,
+          totalOpen,
+          totalValue,
+          stages,
+        };
+      });
+  },
+});
+
+// ----------------------------------------------------------------------------
 // getReps — used by Leads-tab "Filter by setter" dropdown
 // ----------------------------------------------------------------------------
 

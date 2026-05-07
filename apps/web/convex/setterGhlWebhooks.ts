@@ -149,6 +149,16 @@ export const dispatch = internalMutation({
         case "Appointment.Update":
           await handleAppointmentUpsert(ctx, ctxArgs, body, "update");
           break;
+        case "OpportunityCreate":
+        case "Opportunity.Create":
+          await handleOpportunityUpsert(ctx, ctxArgs, body, "create");
+          break;
+        case "OpportunityUpdate":
+        case "Opportunity.Update":
+        case "OpportunityStatusUpdate":
+        case "Opportunity.StatusChanged":
+          await handleOpportunityUpsert(ctx, ctxArgs, body, "update");
+          break;
         default:
           // Unsubscribed / future / unknown event types — record but don't
           // fail. We may add handlers later as scope expands.
@@ -537,6 +547,169 @@ async function recomputeLeadAppointmentCounts(
 }
 
 // ----------------------------------------------------------------------------
+// Opportunities — Phase 3
+// ----------------------------------------------------------------------------
+
+async function handleOpportunityUpsert(
+  ctx: MutationCtx,
+  args: HandlerCtx,
+  body: GhlWebhookBody,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _kind: "create" | "update",
+): Promise<void> {
+  // GHL's opportunity payloads vary across event versions. Check both
+  // body.opportunity and top-level for the data we need.
+  const opp = (body.opportunity ?? body) as GhlOpportunityPayload;
+  const ghlOpportunityId = opp.id || opp.opportunityId;
+  if (!ghlOpportunityId) {
+    throw new Error("Opportunity webhook missing opportunity id");
+  }
+
+  const ghlContactId = opp.contactId;
+  if (!ghlContactId) {
+    throw new Error("Opportunity webhook missing contactId");
+  }
+
+  const ghlPipelineId = opp.pipelineId;
+  const ghlStageId = opp.pipelineStageId || opp.stageId;
+  if (!ghlPipelineId || !ghlStageId) {
+    throw new Error("Opportunity webhook missing pipelineId or stageId");
+  }
+
+  const status = opp.status || "open";
+  const monetaryValue = typeof opp.monetaryValue === "number"
+    ? opp.monetaryValue
+    : undefined;
+  const dateAdded = parseTimestamp(opp.dateAdded) ?? Date.now();
+  const lastUpdatedAt = parseTimestamp(opp.dateUpdated) ?? Date.now();
+
+  // Upsert the opportunity, recording stage transition if stageId changed.
+  const existing = await findOpportunity(ctx, args.teamId, ghlOpportunityId);
+
+  if (existing) {
+    const stageChanged = existing.ghlStageId !== ghlStageId;
+    await ctx.db.patch(existing._id, {
+      ghlContactId,
+      ghlPipelineId,
+      ghlStageId,
+      status,
+      monetaryValue,
+      assignedToGhlUserId: opp.assignedTo ?? existing.assignedToGhlUserId,
+      name: opp.name ?? existing.name,
+      source: opp.source ?? existing.source,
+      lastUpdatedAt,
+    });
+
+    if (stageChanged) {
+      // Log the transition. fromStageId comes from the existing row;
+      // duration is the time between the previous transition (or
+      // dateAdded if first transition) and now.
+      const prevTransitionAt = await getLatestTransitionTimestamp(
+        ctx,
+        args.teamId,
+        ghlOpportunityId,
+      );
+      const previousStageStartedAt = prevTransitionAt ?? existing.dateAdded;
+      const durationSec = Math.max(
+        0,
+        Math.floor((lastUpdatedAt - previousStageStartedAt) / 1000),
+      );
+
+      await ctx.db.insert("setterStageTransitions", {
+        teamId: args.teamId,
+        ghlOpportunityId,
+        ghlContactId,
+        ghlPipelineId,
+        fromStageId: existing.ghlStageId,
+        toStageId: ghlStageId,
+        transitionedAt: lastUpdatedAt,
+        durationInPreviousStageSec: durationSec,
+        triggeredByGhlUserId: opp.assignedTo,
+      });
+    }
+  } else {
+    await ctx.db.insert("setterOpportunities", {
+      teamId: args.teamId,
+      ghlOpportunityId,
+      ghlContactId,
+      ghlPipelineId,
+      ghlStageId,
+      status,
+      monetaryValue,
+      assignedToGhlUserId: opp.assignedTo,
+      name: opp.name,
+      source: opp.source,
+      dateAdded,
+      lastUpdatedAt,
+    });
+
+    // Record the initial "stage entry" so durationInPreviousStageSec
+    // works correctly on the first transition out of this stage.
+    await ctx.db.insert("setterStageTransitions", {
+      teamId: args.teamId,
+      ghlOpportunityId,
+      ghlContactId,
+      ghlPipelineId,
+      fromStageId: undefined,
+      toStageId: ghlStageId,
+      transitionedAt: dateAdded,
+      durationInPreviousStageSec: undefined,
+      triggeredByGhlUserId: opp.assignedTo,
+    });
+  }
+
+  // Emit a lead-event for the timeline so opportunity moves show up
+  // alongside dials/SMS/appointments in the lead drilldown.
+  const lead = await ensureLead(ctx, args.teamId, ghlContactId);
+  await ctx.db.insert("setterLeadEvents", {
+    teamId: args.teamId,
+    ghlContactId,
+    setterLeadId: lead._id,
+    eventType: "opportunity_stage_change",
+    occurredAt: lastUpdatedAt,
+    ghlUserId: opp.assignedTo,
+    details: {
+      ghlOpportunityId,
+      ghlPipelineId,
+      ghlStageId,
+      status,
+      monetaryValue,
+    },
+    ghlEventKey: `opp:${ghlOpportunityId}:${ghlStageId}:${lastUpdatedAt}`,
+  });
+}
+
+async function findOpportunity(
+  ctx: MutationCtx,
+  teamId: Id<"teams">,
+  ghlOpportunityId: string,
+) {
+  return await ctx.db
+    .query("setterOpportunities")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_opp_id", (q: any) =>
+      q.eq("teamId", teamId).eq("ghlOpportunityId", ghlOpportunityId),
+    )
+    .first();
+}
+
+async function getLatestTransitionTimestamp(
+  ctx: MutationCtx,
+  teamId: Id<"teams">,
+  ghlOpportunityId: string,
+): Promise<number | null> {
+  const last = await ctx.db
+    .query("setterStageTransitions")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_opportunity", (q: any) =>
+      q.eq("teamId", teamId).eq("ghlOpportunityId", ghlOpportunityId),
+    )
+    .order("desc")
+    .first();
+  return last?.transitionedAt ?? null;
+}
+
+// ----------------------------------------------------------------------------
 // Calls / SMS — Phase 1
 // ----------------------------------------------------------------------------
 
@@ -769,6 +942,7 @@ interface GhlWebhookBody {
   locationId?: string;
   contact?: GhlContactPayload;
   appointment?: GhlAppointmentPayload;
+  opportunity?: GhlOpportunityPayload;
   // Top-level fields for InboundMessage / OutboundMessage events
   contactId?: string;
   conversationId?: string;
@@ -806,6 +980,22 @@ interface GhlMessagePayload extends GhlWebhookBody {
   callDuration?: number;
   conversationId?: string;
   dateAdded?: string | number;
+}
+
+interface GhlOpportunityPayload {
+  id?: string;
+  opportunityId?: string;
+  contactId?: string;
+  pipelineId?: string;
+  pipelineStageId?: string;
+  stageId?: string;
+  status?: string;
+  monetaryValue?: number;
+  assignedTo?: string;
+  name?: string;
+  source?: string;
+  dateAdded?: string | number;
+  dateUpdated?: string | number;
 }
 
 interface GhlAppointmentPayload {

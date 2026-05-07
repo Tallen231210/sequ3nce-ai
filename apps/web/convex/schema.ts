@@ -1981,4 +1981,78 @@ export default defineSchema({
     // Idempotency for webhook redeliveries — handlers look up by
     // ghlAppointmentId before insert.
     .index("by_team_and_appointment_id", ["teamId", "ghlAppointmentId"]),
+
+  // Phase 3 — Cached pipeline metadata. Pipelines and their stages
+  // change rarely; we cache the names so the UI doesn't have to make
+  // a per-render API call to render a funnel chart with stage labels.
+  // The full sync refreshes this table whenever opportunities are
+  // synced and discovers a stageId we don't have a name for yet.
+  setterPipelines: defineTable({
+    teamId: v.id("teams"),
+    ghlPipelineId: v.string(),
+    name: v.string(),
+    stages: v.array(
+      v.object({
+        ghlStageId: v.string(),
+        name: v.string(),
+        position: v.number(),
+      }),
+    ),
+    lastSyncedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_pipeline_id", ["teamId", "ghlPipelineId"]),
+
+  // Phase 3 — Synced GHL opportunities. The current-state mirror for
+  // pipeline stage funnels. Stage transitions over time are tracked in
+  // setterStageTransitions (separate append-only table) — this row is
+  // patched in place as the opportunity moves through the pipeline.
+  setterOpportunities: defineTable({
+    teamId: v.id("teams"),
+    ghlOpportunityId: v.string(),
+    ghlContactId: v.string(),
+    ghlPipelineId: v.string(),
+    ghlStageId: v.string(),
+    // GHL's opportunity status enum: open / won / lost / abandoned.
+    // Stored as v.string() rather than a strict union so we don't need
+    // a schema migration if GHL ever adds a new status.
+    status: v.string(),
+    monetaryValue: v.optional(v.number()),
+    assignedToGhlUserId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    source: v.optional(v.string()),
+    dateAdded: v.number(),
+    lastUpdatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_pipeline", ["teamId", "ghlPipelineId"])
+    .index("by_team_and_setter", ["teamId", "assignedToGhlUserId"])
+    .index("by_team_and_contact", ["teamId", "ghlContactId"])
+    .index("by_team_and_stage", ["teamId", "ghlStageId"])
+    .index("by_team_and_status", ["teamId", "status"])
+    // Idempotency for webhook redeliveries.
+    .index("by_team_and_opp_id", ["teamId", "ghlOpportunityId"]),
+
+  // Phase 3 — Append-only stage transition log. GHL doesn't expose a
+  // stage-history endpoint, so we synthesize one from Opportunity.Update
+  // webhooks: when stageId changes, we record the transition with the
+  // duration the opportunity spent in the previous stage. Powers the
+  // "average time in each stage" metric and stage-progression-over-time
+  // charts that current-state opportunities can't answer.
+  setterStageTransitions: defineTable({
+    teamId: v.id("teams"),
+    ghlOpportunityId: v.string(),
+    ghlContactId: v.string(),
+    ghlPipelineId: v.string(),
+    fromStageId: v.optional(v.string()),  // null on creation
+    toStageId: v.string(),
+    transitionedAt: v.number(),
+    durationInPreviousStageSec: v.optional(v.number()),
+    triggeredByGhlUserId: v.optional(v.string()),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_opportunity", ["teamId", "ghlOpportunityId"])
+    .index("by_team_and_pipeline", ["teamId", "ghlPipelineId"])
+    .index("by_team_and_to_stage", ["teamId", "toStageId"])
+    .index("by_team_and_transitioned_at", ["teamId", "transitionedAt"]),
 });

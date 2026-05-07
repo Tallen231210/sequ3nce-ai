@@ -60,6 +60,7 @@ export const fastBackfill = internalAction({
         v.literal("users"),
         v.literal("contacts"),
         v.literal("appointments"),
+        v.literal("opportunities"),
         v.literal("complete"),
       ),
     ),
@@ -152,6 +153,23 @@ export const fastBackfill = internalAction({
           // Pull future appointments through 60 days out so booked-but-
           // not-yet-occurred slots are visible immediately.
           rangeEndMs: Date.now() + 60 * 24 * 60 * 60 * 1000,
+        });
+        await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
+          installationId: args.installationId,
+          phase: "opportunities",
+        });
+        return;
+      }
+
+      if (phase === "opportunities") {
+        // First sync pipeline metadata (cheap, infrequent), then walk
+        // opportunities across all known pipelines. GHL's opportunities/
+        // search is per-pipeline.
+        await syncPipelines(ctx, args.installationId, installation);
+        await syncOpportunitiesAllPipelines(ctx, {
+          installationId: args.installationId,
+          locationId: installation.locationId,
+          teamId: installation.teamId,
         });
         await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
           installationId: args.installationId,
@@ -657,6 +675,191 @@ async function syncAppointmentsRange(
   }
 }
 
+// ----------------------------------------------------------------------------
+// Phase: opportunities + pipelines (Phase 3)
+// ----------------------------------------------------------------------------
+
+interface GhlPipelineStage {
+  id?: string;
+  name?: string;
+  position?: number;
+}
+
+interface GhlPipeline {
+  id?: string;
+  name?: string;
+  stages?: GhlPipelineStage[];
+}
+
+interface GhlPipelinesResponse {
+  pipelines?: GhlPipeline[];
+}
+
+interface GhlOpportunity {
+  id?: string;
+  contactId?: string;
+  pipelineId?: string;
+  pipelineStageId?: string;
+  status?: string;
+  monetaryValue?: number;
+  assignedTo?: string;
+  name?: string;
+  source?: string;
+  dateAdded?: string;
+  dateUpdated?: string;
+}
+
+interface GhlOpportunitySearchResponse {
+  opportunities?: GhlOpportunity[];
+  meta?: { total?: number; nextPage?: number; currentPage?: number };
+}
+
+interface InstallationLite {
+  locationId: string;
+  teamId: string;
+}
+
+/**
+ * Sync pipeline metadata. GHL returns all pipelines for a location in one
+ * call. We upsert each into setterPipelines so the funnel UI can render
+ * stage names without per-render API hits.
+ */
+async function syncPipelines(
+  ctx: ActionCtx,
+  installationId: string,
+  installation: InstallationLite,
+): Promise<string[]> {
+  const response = await ghlFetch<GhlPipelinesResponse>(
+    ctx,
+    installationId as never,
+    "/opportunities/pipelines",
+    { query: { locationId: installation.locationId } },
+  );
+  const pipelines = response.pipelines ?? [];
+
+  const pipelineIds: string[] = [];
+  for (const p of pipelines) {
+    if (!p.id) continue;
+    const stages = (p.stages ?? [])
+      .filter((s): s is { id: string; name?: string; position?: number } => !!s.id)
+      .map((s, idx) => ({
+        ghlStageId: s.id,
+        name: s.name || `Stage ${idx + 1}`,
+        position: typeof s.position === "number" ? s.position : idx,
+      }));
+    await ctx.runMutation(internal.setterGhlSyncMutations.upsertPipeline, {
+      teamId: installation.teamId as never,
+      ghlPipelineId: p.id,
+      name: p.name || "Pipeline",
+      stages,
+    });
+    pipelineIds.push(p.id);
+  }
+  return pipelineIds;
+}
+
+interface SyncOpportunitiesArgs {
+  installationId: string;
+  locationId: string;
+  teamId: string;
+}
+
+/**
+ * Walk every pipeline and dispatch every opportunity in it as a synthetic
+ * Opportunity.Create webhook. Same architectural pattern as contacts +
+ * appointments: dispatch handles dedup via the existing webhook handler.
+ */
+async function syncOpportunitiesAllPipelines(
+  ctx: ActionCtx,
+  args: SyncOpportunitiesArgs,
+): Promise<void> {
+  // First fetch the pipelines list. We could read from setterPipelines
+  // (just synced) but going to the source avoids a runQuery hop.
+  const pipelinesResp = await ghlFetch<GhlPipelinesResponse>(
+    ctx,
+    args.installationId as never,
+    "/opportunities/pipelines",
+    { query: { locationId: args.locationId } },
+  );
+  const pipelines = pipelinesResp.pipelines ?? [];
+
+  for (const pipeline of pipelines) {
+    if (!pipeline.id) continue;
+    await syncOpportunitiesForPipeline(ctx, args, pipeline.id);
+  }
+}
+
+async function syncOpportunitiesForPipeline(
+  ctx: ActionCtx,
+  args: SyncOpportunitiesArgs,
+  pipelineId: string,
+): Promise<void> {
+  let page = 1;
+  const PAGE_SIZE = 100;
+  const MAX_PAGES_PER_PIPELINE = 50; // 5,000 opportunities per pipeline cap
+
+  while (page <= MAX_PAGES_PER_PIPELINE) {
+    const response = await ghlFetch<GhlOpportunitySearchResponse>(
+      ctx,
+      args.installationId as never,
+      "/opportunities/search",
+      {
+        query: {
+          location_id: args.locationId,
+          pipeline_id: pipelineId,
+          limit: PAGE_SIZE,
+          page,
+        },
+      },
+    );
+    const opps = response.opportunities ?? [];
+    if (opps.length === 0) break;
+
+    for (const opp of opps) {
+      if (!opp.id || !opp.contactId || !opp.pipelineId) continue;
+      const auditId = await ctx.runMutation(
+        internal.setterGhlWebhooks.recordIncomingWebhook,
+        {
+          locationId: args.locationId,
+          eventType: "Opportunity.Create",
+          ghlEventId: undefined,
+          signatureValid: true,
+          processed: false,
+          payload: {
+            type: "Opportunity.Create",
+            locationId: args.locationId,
+            opportunity: {
+              id: opp.id,
+              contactId: opp.contactId,
+              pipelineId: opp.pipelineId,
+              pipelineStageId: opp.pipelineStageId,
+              status: opp.status,
+              monetaryValue: opp.monetaryValue,
+              assignedTo: opp.assignedTo,
+              name: opp.name,
+              source: opp.source,
+              dateAdded: opp.dateAdded,
+              dateUpdated: opp.dateUpdated,
+            },
+          },
+          teamId: args.teamId as never,
+        },
+      );
+      await ctx.scheduler.runAfter(0, internal.setterGhlWebhooks.dispatch, {
+        auditId,
+      });
+    }
+
+    const totalSoFar = (page - 1) * PAGE_SIZE + opps.length;
+    const hasMore =
+      typeof response.meta?.total === "number"
+        ? totalSoFar < response.meta.total
+        : opps.length === PAGE_SIZE;
+    if (!hasMore) break;
+    page++;
+  }
+}
+
 // ============================================================================
 // reconcile — hourly safety net
 // ============================================================================
@@ -838,6 +1041,16 @@ async function reconcileInstallation(
     teamId: installation.teamId,
     rangeStartMs: since,
     rangeEndMs: Date.now() + 30 * 24 * 60 * 60 * 1000,
+  });
+
+  // Also walk pipelines + opportunities. Pipeline metadata refresh is
+  // cheap; opportunities re-walk catches any stage transitions that
+  // webhooks missed. Dispatch dedupes by ghlEventKey on
+  // setterStageTransitions so re-processing is safe.
+  await syncOpportunitiesAllPipelines(ctx, {
+    installationId: installation._id,
+    locationId: installation.locationId,
+    teamId: installation.teamId,
   });
 }
 

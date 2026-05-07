@@ -7,6 +7,7 @@ import { KpiStrip } from "./KpiStrip";
 import { ActionQueue } from "./ActionQueue";
 import { SourceMix } from "./SourceMix";
 import { FunnelChart } from "./FunnelChart";
+import { PipelineFunnel } from "./PipelineFunnel";
 import { Loader2 } from "lucide-react";
 
 interface OverviewTabProps {
@@ -35,6 +36,7 @@ export function OverviewTab({
   onDrillToLeads,
 }: OverviewTabProps) {
   const data = useQuery(api.setterData.getOverview, { rangeStart, rangeEnd });
+  const pipelines = useQuery(api.setterData.getPipelineStageDistribution);
 
   return (
     <div className="space-y-6 pb-12">
@@ -70,6 +72,9 @@ export function OverviewTab({
         <>
           <KpiStrip data={data} onUntouchedClick={() => onDrillToLeads("untouched")} />
           <FunnelChart data={data} />
+          {pipelines && pipelines.length > 0 && (
+            <PipelineFunnel pipelines={pipelines} />
+          )}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ActionQueue
               actionQueue={data.actionQueue}
