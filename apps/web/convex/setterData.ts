@@ -366,6 +366,131 @@ export const getMySettings = query({
 // getReps — used by Leads-tab "Filter by setter" dropdown
 // ----------------------------------------------------------------------------
 
+// ----------------------------------------------------------------------------
+// getSetterDetail — Setters tab drilldown panel (Phase 2)
+// ----------------------------------------------------------------------------
+
+/**
+ * Per-setter drilldown for the Setters tab. Returns the setter's
+ * scorecard row, their recent leads, their recent appointments, and
+ * recent dial activity in the date range. The drilldown UI renders
+ * this as a side panel when a leaderboard row is clicked.
+ */
+export const getSetterDetail = query({
+  args: {
+    ghlUserId: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx);
+    if (!isAdmin(user)) return null;
+    const teamId = user!.teamId as Id<"teams">;
+
+    // Setter identity. We allow null here — historical activity
+    // attributed to a since-removed GHL user still resolves.
+    const rep = (await ctx.db
+      .query("setterReps")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_ghl_user_id", (q: any) =>
+        q.eq("teamId", teamId).eq("ghlUserId", args.ghlUserId),
+      )
+      .first()) as Doc<"setterReps"> | null;
+
+    // Reuse the scorecard helper, then pluck out this setter's row.
+    const scorecard = await computeScorecard(ctx, {
+      teamId,
+      rangeStart: args.rangeStart,
+      rangeEnd: args.rangeEnd,
+    });
+    const myRow =
+      scorecard.perSetter.find((r) => r.ghlUserId === args.ghlUserId) ?? null;
+
+    // Leads assigned to this setter in the date range.
+    const leads = (await ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_assigned", (q: any) =>
+        q.eq("teamId", teamId).eq("assignedToGhlUserId", args.ghlUserId),
+      )
+      .collect()) as Doc<"setterLeads">[];
+    const leadsInRange = leads
+      .filter(
+        (l) => l.dateAdded >= args.rangeStart && l.dateAdded < args.rangeEnd,
+      )
+      .sort((a, b) => b.dateAdded - a.dateAdded)
+      .slice(0, 50);
+
+    // Appointments booked by this setter in the date range.
+    const appts = (await ctx.db
+      .query("setterAppointments")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_setter", (q: any) =>
+        q.eq("teamId", teamId).eq("bookedByGhlUserId", args.ghlUserId),
+      )
+      .collect()) as Doc<"setterAppointments">[];
+    const apptsInRange = appts
+      .filter((a) => a.bookedAt >= args.rangeStart && a.bookedAt < args.rangeEnd)
+      .sort((a, b) => b.bookedAt - a.bookedAt)
+      .slice(0, 50);
+
+    // Recent dial events by this setter (for the activity timeline).
+    const events = (await ctx.db
+      .query("setterLeadEvents")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_setter_and_time", (q: any) =>
+        q
+          .eq("teamId", teamId)
+          .eq("ghlUserId", args.ghlUserId)
+          .gte("occurredAt", args.rangeStart)
+          .lt("occurredAt", args.rangeEnd),
+      )
+      .order("desc")
+      .take(100)) as Doc<"setterLeadEvents">[];
+
+    return {
+      setter: rep
+        ? {
+            ghlUserId: rep.ghlUserId,
+            name: rep.name,
+            email: rep.email,
+            phone: rep.phone,
+            isActive: rep.isActive,
+          }
+        : { ghlUserId: args.ghlUserId, name: "Unknown setter" },
+      scorecardRow: myRow,
+      leads: leadsInRange.map((l) => ({
+        leadId: l._id,
+        ghlContactId: l.ghlContactId,
+        name: l.name,
+        email: l.email,
+        phone: l.phone,
+        dateAdded: l.dateAdded,
+        dialCount: l.dialCount,
+        firstDialAt: l.firstDialAt,
+        isConnected: l.isConnected,
+        appointmentCount: l.appointmentCount,
+        showedCount: l.showedCount,
+      })),
+      appointments: apptsInRange.map((a) => ({
+        appointmentId: a._id,
+        ghlAppointmentId: a.ghlAppointmentId,
+        ghlContactId: a.ghlContactId,
+        startTime: a.startTime,
+        status: a.status,
+        bookedAt: a.bookedAt,
+      })),
+      events: events.map((e) => ({
+        eventId: e._id,
+        eventType: e.eventType,
+        occurredAt: e.occurredAt,
+        ghlContactId: e.ghlContactId,
+        details: e.details,
+      })),
+    };
+  },
+});
+
 export const getReps = query({
   args: {},
   handler: async (ctx) => {

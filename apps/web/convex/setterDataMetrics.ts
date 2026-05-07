@@ -25,6 +25,13 @@ export interface ScorecardSetterRow {
   /** Average ms from lead.dateAdded → lead.firstDialAt for this setter's
    *  leads in the window. null if the setter had no dialed leads. */
   avgSpeedMs: number | null;
+  /** Phase 2 — appointments BOOKED by this setter where bookedAt falls
+   *  in the window. Cancelled/Invalid statuses excluded. */
+  appointmentCount: number;
+  /** Phase 2 — of those appointments, how many resulted in Showed. */
+  showedCount: number;
+  /** Phase 2 — Showed / (Showed + No Show). null if no settled appts. */
+  showRate: number | null;
 }
 
 export interface ScorecardData {
@@ -37,6 +44,12 @@ export interface ScorecardData {
   avgSpeedMs: number | null;
   p50SpeedMs: number | null;
   p90SpeedMs: number | null;
+  /** Phase 2 — team-wide appointment rollup. */
+  totalAppointments: number;
+  totalShowed: number;
+  totalNoShow: number;
+  /** Showed / (Showed + No Show). null if no settled appts in window. */
+  showRate: number | null;
   /** Per-setter rows, sorted fastest avg-speed first. Setters with
    *  null avgSpeedMs (no dials in the window) are pushed to the end. */
   perSetter: ScorecardSetterRow[];
@@ -106,7 +119,7 @@ export async function computeScorecard(
       .collect();
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
-    type AccumRow = ScorecardSetterRow & { _speeds: number[] };
+    type AccumRow = ScorecardSetterRow & { _speeds: number[]; _noShowCount: number };
     const perSetterMap = new Map<string, AccumRow>();
 
     for (const lead of leads) {
@@ -122,7 +135,11 @@ export async function computeScorecard(
           dialCount: 0,
           connectedCount: 0,
           avgSpeedMs: null,
+          appointmentCount: 0,
+          showedCount: 0,
+          showRate: null,
           _speeds: [],
+          _noShowCount: 0,
         };
         perSetterMap.set(setterId, created);
         row = created;
@@ -136,11 +153,69 @@ export async function computeScorecard(
       }
     }
 
+    // Phase 2 — Appointments aggregation. We attribute appointments by
+    // bookedByGhlUserId (the setter who booked it), filtered by bookedAt
+    // within the date range. Cancelled and Invalid don't count.
+    const appts: Doc<"setterAppointments">[] = await ctx.db
+      .query("setterAppointments")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .collect();
+
+    let totalAppointments = 0;
+    let totalShowed = 0;
+    let totalNoShow = 0;
+
+    for (const apt of appts) {
+      if (apt.bookedAt < args.rangeStart || apt.bookedAt >= args.rangeEnd) continue;
+      if (apt.status === "Cancelled" || apt.status === "Invalid") continue;
+      totalAppointments += 1;
+      if (apt.status === "Showed") totalShowed += 1;
+      else if (apt.status === "No Show") totalNoShow += 1;
+
+      const setterId = apt.bookedByGhlUserId;
+      if (!setterId) continue;
+      let row = perSetterMap.get(setterId);
+      if (row === undefined) {
+        // Setter booked appointments but had no leads in window — still
+        // include them in the leaderboard so their show-rate shows up.
+        const created: AccumRow = {
+          ghlUserId: setterId,
+          name: repNameByGhlUserId.get(setterId) ?? "Unknown setter",
+          leadCount: 0,
+          dialCount: 0,
+          connectedCount: 0,
+          avgSpeedMs: null,
+          appointmentCount: 0,
+          showedCount: 0,
+          showRate: null,
+          _speeds: [],
+          _noShowCount: 0,
+        };
+        perSetterMap.set(setterId, created);
+        row = created;
+      }
+      row.appointmentCount += 1;
+      if (apt.status === "Showed") row.showedCount += 1;
+      else if (apt.status === "No Show") row._noShowCount += 1;
+    }
+
+    // Settled appointments = Showed + No Show. Confirmed/Unconfirmed in
+    // the future are excluded — they haven't yielded an outcome yet.
+    const settledTotal = totalShowed + totalNoShow;
+    const showRate = settledTotal > 0 ? totalShowed / settledTotal : null;
+
     const perSetter: ScorecardSetterRow[] = Array.from(perSetterMap.values()).map((row) => {
       const avg =
         row._speeds.length > 0
           ? row._speeds.reduce((sum, x) => sum + x, 0) / row._speeds.length
           : null;
+      // Per-setter show rate: Showed / (Showed + No Show), bounded to
+      // this setter's bookings. Confirmed/Unconfirmed in the future are
+      // excluded — they haven't settled. Null when no settled appts so
+      // the UI shows "—" instead of a misleading 0% / 100% badge.
+      const settled = row.showedCount + row._noShowCount;
+      const setterShowRate = settled > 0 ? row.showedCount / settled : null;
       return {
         ghlUserId: row.ghlUserId,
         name: row.name,
@@ -148,6 +223,9 @@ export async function computeScorecard(
         dialCount: row.dialCount,
         connectedCount: row.connectedCount,
         avgSpeedMs: avg,
+        appointmentCount: row.appointmentCount,
+        showedCount: row.showedCount,
+        showRate: setterShowRate,
       };
     });
 
@@ -168,6 +246,10 @@ export async function computeScorecard(
       avgSpeedMs,
       p50SpeedMs,
       p90SpeedMs,
+      totalAppointments,
+      totalShowed,
+      totalNoShow,
+      showRate,
       perSetter,
     };
 }
