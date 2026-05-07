@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Phone, MessageSquare, CheckCircle2, CalendarCheck, Calendar } from "lucide-react";
+import { WorkingHoursHeatmap } from "./WorkingHoursHeatmap";
+import { SetterSourceMix } from "./SetterSourceMix";
 
 interface SetterDrillPanelProps {
   ghlUserId: string | null;
@@ -119,6 +121,19 @@ export function SetterDrillPanel({
                   }
                 />
               </div>
+            )}
+
+            {/* Working hours heatmap */}
+            {data.heatmap && (
+              <WorkingHoursHeatmap
+                heatmap={data.heatmap}
+                timezone={data.timezone}
+              />
+            )}
+
+            {/* Source attribution */}
+            {data.sourceMix && data.sourceMix.length > 0 && (
+              <SetterSourceMix rows={data.sourceMix} />
             )}
 
             {/* Recent appointments */}

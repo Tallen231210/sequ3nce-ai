@@ -442,8 +442,11 @@ export const getSetterDetail = query({
       .sort((a, b) => b.bookedAt - a.bookedAt)
       .slice(0, 50);
 
-    // Recent dial events by this setter (for the activity timeline).
-    const events = (await ctx.db
+    // ALL dial events by this setter — used by the heatmap (which buckets
+    // them by team-tz day-of-week × hour-of-day) and the timeline (most
+    // recent 100). Capped at 5000 to keep a single query response under
+    // Convex's payload limit even for very high-volume setters.
+    const eventsAll = (await ctx.db
       .query("setterLeadEvents")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team_and_setter_and_time", (q: any) =>
@@ -454,7 +457,21 @@ export const getSetterDetail = query({
           .lt("occurredAt", args.rangeEnd),
       )
       .order("desc")
-      .take(100)) as Doc<"setterLeadEvents">[];
+      .take(5000)) as Doc<"setterLeadEvents">[];
+
+    // Look up team timezone for heatmap bucketing. Falls back to
+    // America/New_York to match the daily-scorecard cron's default.
+    const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
+    const timezone = team?.timezone || "America/New_York";
+
+    // 7×24 grid of dial-outbound counts. Bucketed in team timezone so
+    // "9-10am Mon" means 9-10am in the team's local clock, not UTC.
+    const heatmap = bucketDialEventsByDayHour(eventsAll, timezone);
+
+    // Per-source breakdown for this setter's leads in range. Lets the
+    // drilldown answer "this setter is great with referrals but
+    // terrible with cold inbound" type questions.
+    const sourceMix = computeSourceMixForLeads(leadsInRange);
 
     return {
       setter: rep
@@ -467,6 +484,9 @@ export const getSetterDetail = query({
           }
         : { ghlUserId: args.ghlUserId, name: "Unknown setter" },
       scorecardRow: myRow,
+      timezone,
+      heatmap,
+      sourceMix,
       leads: leadsInRange.map((l) => ({
         leadId: l._id,
         ghlContactId: l.ghlContactId,
@@ -488,7 +508,7 @@ export const getSetterDetail = query({
         status: a.status,
         bookedAt: a.bookedAt,
       })),
-      events: events.map((e) => ({
+      events: eventsAll.slice(0, 100).map((e) => ({
         eventId: e._id,
         eventType: e.eventType,
         occurredAt: e.occurredAt,
@@ -498,6 +518,96 @@ export const getSetterDetail = query({
     };
   },
 });
+
+// ----------------------------------------------------------------------------
+// Helpers used by getSetterDetail (kept private to this file)
+// ----------------------------------------------------------------------------
+
+/**
+ * Bucket dial-outbound events into a 7×24 grid in the given IANA
+ * timezone. Index 0 = Sunday so the rendered grid follows the standard
+ * week-starts-Sunday convention managers expect.
+ */
+function bucketDialEventsByDayHour(
+  events: Array<{ occurredAt: number; eventType: string }>,
+  timezone: string,
+): number[][] {
+  const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+  const dowMap: Record<string, number> = {
+    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+  };
+  for (const ev of events) {
+    if (ev.eventType !== "dial_outbound") continue;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+      hour: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(ev.occurredAt));
+    const weekday = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+    const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+    // Intl with hour12=false sometimes returns "24" at midnight.
+    const hour = parseInt(hourStr, 10) % 24;
+    const dow = dowMap[weekday];
+    if (dow !== undefined) grid[dow][hour]++;
+  }
+  return grid;
+}
+
+/**
+ * Compute per-source aggregates for a list of leads. Returns top 10
+ * sources by lead count, with connect rate per source. Phase 3 — the
+ * Setters drilldown surfaces "this setter is best with [source]" by
+ * eyeballing this list.
+ */
+function computeSourceMixForLeads(
+  leads: Array<{
+    source?: string;
+    isConnected: boolean;
+    appointmentCount: number;
+    showedCount: number;
+  }>,
+): Array<{
+  source: string;
+  leadCount: number;
+  connectedCount: number;
+  appointmentCount: number;
+  showedCount: number;
+  connectRate: number | null;
+}> {
+  const map = new Map<
+    string,
+    {
+      leadCount: number;
+      connectedCount: number;
+      appointmentCount: number;
+      showedCount: number;
+    }
+  >();
+  for (const lead of leads) {
+    const source = lead.source || "Unknown";
+    const entry = map.get(source) ?? {
+      leadCount: 0,
+      connectedCount: 0,
+      appointmentCount: 0,
+      showedCount: 0,
+    };
+    entry.leadCount += 1;
+    if (lead.isConnected) entry.connectedCount += 1;
+    entry.appointmentCount += lead.appointmentCount;
+    entry.showedCount += lead.showedCount;
+    map.set(source, entry);
+  }
+  return Array.from(map.entries())
+    .map(([source, data]) => ({
+      source,
+      ...data,
+      connectRate:
+        data.leadCount > 0 ? data.connectedCount / data.leadCount : null,
+    }))
+    .sort((a, b) => b.leadCount - a.leadCount)
+    .slice(0, 10);
+}
 
 export const getReps = query({
   args: {},
