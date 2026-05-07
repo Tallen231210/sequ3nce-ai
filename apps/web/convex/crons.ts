@@ -89,4 +89,16 @@ crons.daily(
   internal.setterGhlSync.pruneWebhookAudit,
 );
 
+// Daily Scorecard: runs hourly + filters per team based on their
+// configured local-tz delivery hour. Sends yesterday's KPIs (speed-to-
+// lead, connections, untouched count, top setter performers) to
+// whichever channel (slack/discord) the team has configured. Dedupes
+// via slackNotifications.dedupKey so a team gets at most one scorecard
+// per local day.
+crons.interval(
+  "setter-daily-scorecard",
+  { hours: 1 },
+  internal.setterDataNotifications.runScorecards,
+);
+
 export default crons;

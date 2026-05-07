@@ -71,6 +71,8 @@ import type * as meetingBot from "../meetingBot.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
+import type * as setterDataMetrics from "../setterDataMetrics.js";
+import type * as setterDataNotifications from "../setterDataNotifications.js";
 import type * as setterGhlClient from "../setterGhlClient.js";
 import type * as setterGhlOauth from "../setterGhlOauth.js";
 import type * as setterGhlOauthActions from "../setterGhlOauthActions.js";
@@ -155,6 +157,8 @@ declare const fullApi: ApiFromModules<{
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
+  setterDataMetrics: typeof setterDataMetrics;
+  setterDataNotifications: typeof setterDataNotifications;
   setterGhlClient: typeof setterGhlClient;
   setterGhlOauth: typeof setterGhlOauth;
   setterGhlOauthActions: typeof setterGhlOauthActions;
