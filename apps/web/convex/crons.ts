@@ -101,4 +101,14 @@ crons.interval(
   internal.setterDataNotifications.runScorecards,
 );
 
+// Untouched-lead alert sweep (Phase 2): runs every 2 minutes. Per-team
+// gating + per-lead 15-min dedup buckets keep noise low. Off by default
+// — only fires for teams that have explicitly opted into real-time
+// alerts in Settings.
+crons.interval(
+  "setter-untouched-alert-sweep",
+  { minutes: 2 },
+  internal.setterDataNotifications.runUntouchedAlertSweep,
+);
+
 export default crons;

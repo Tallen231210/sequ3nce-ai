@@ -74,6 +74,139 @@ export const runScorecards = internalAction({
   },
 });
 
+// ============================================================================
+// runUntouchedAlertSweep — every 2 min cron entry (Phase 2)
+// ============================================================================
+//
+// Finds leads that have been sitting untouched longer than the team's
+// configured threshold. Posts a Slack/Discord alert with the lead name +
+// assigned setter. Dedup uses 15-min buckets — a lead crossing the
+// threshold gets one alert per 15-min window, not one every 2 min while
+// it sits there.
+// ============================================================================
+
+const UNTOUCHED_DEDUP_BUCKET_MS = 15 * 60 * 1000;
+
+export const runUntouchedAlertSweep = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    teamsChecked: number;
+    leadsAlerted: number;
+    teamsErrored: number;
+  }> => {
+    const teams = (await ctx.runQuery(
+      internal.setterDataNotifications.getEnabledUntouchedAlertTeams,
+      {},
+    )) as TeamDoc[];
+
+    let leadsAlerted = 0;
+    let teamsErrored = 0;
+
+    for (const team of teams) {
+      try {
+        const count = await sweepUntouchedAlertsForTeam(ctx, team);
+        leadsAlerted += count;
+      } catch (err) {
+        teamsErrored++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[runUntouchedAlertSweep] Error for team ${team._id}: ${message}`,
+          err,
+        );
+      }
+    }
+
+    return { teamsChecked: teams.length, leadsAlerted, teamsErrored };
+  },
+});
+
+interface UntouchedLead {
+  leadId: string;
+  ghlContactId: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  dateAdded: number;
+  assignedToName?: string;
+  assignedToGhlUserId?: string;
+}
+
+async function sweepUntouchedAlertsForTeam(
+  ctx: ActionCtx,
+  team: TeamDoc,
+): Promise<number> {
+  const thresholdMin = team.setterUntouchedAlertThresholdMinutes ?? 5;
+  const cutoff = Date.now() - thresholdMin * 60 * 1000;
+
+  const leads = (await ctx.runQuery(
+    internal.setterDataNotifications.getUntouchedLeadsForTeam,
+    { teamId: team._id, olderThanMs: cutoff },
+  )) as UntouchedLead[];
+
+  if (leads.length === 0) return 0;
+
+  // Pre-flight: where would the alerts go? Skip cleanly if config is
+  // incomplete rather than firing into the void.
+  const channel = team.setterUntouchedAlertChannel;
+  if (channel !== "slack" && channel !== "discord") return 0;
+
+  let alertsSent = 0;
+  const bucket = Math.floor(Date.now() / UNTOUCHED_DEDUP_BUCKET_MS);
+
+  for (const lead of leads) {
+    const dedupKey = `${team._id}_untouched_${lead.ghlContactId}_${bucket}`;
+    const alreadyAlerted = await ctx.runQuery(
+      internal.setterDataNotifications.hasNotificationByDedupKey,
+      { dedupKey },
+    );
+    if (alreadyAlerted) continue;
+
+    const minutesUntouched = Math.floor(
+      (Date.now() - lead.dateAdded) / 60_000,
+    );
+
+    if (channel === "slack") {
+      const slackChannelId =
+        team.setterUntouchedAlertSlackChannelId || team.slackChannelId;
+      if (!team.slackAccessToken || !slackChannelId) continue;
+      const result = await postSlackMessage({
+        accessToken: team.slackAccessToken,
+        channelId: slackChannelId,
+        text: `⚠️ Untouched lead alert`,
+        blocks: buildUntouchedAlertSlackBlocks({ lead, minutesUntouched }),
+      });
+      if (!result.ok) {
+        throw new Error(`Slack post failed: ${result.error}`);
+      }
+    } else {
+      const webhookUrl = team.setterUntouchedAlertDiscordWebhookUrl;
+      if (!webhookUrl) continue;
+      const result = await postDiscordWebhook({
+        webhookUrl,
+        content: `⚠️ Untouched lead — ${lead.name || lead.email || lead.phone || "Unnamed"}`,
+        embed: buildUntouchedAlertDiscordEmbed({ lead, minutesUntouched }),
+      });
+      if (!result.ok) {
+        throw new Error(`Discord post failed: ${result.error}`);
+      }
+    }
+
+    await ctx.runMutation(
+      internal.setterDataNotifications.recordSentNotification,
+      {
+        teamId: team._id,
+        type: "setter_untouched_alert",
+        dedupKey,
+      },
+    );
+    alertsSent++;
+  }
+
+  return alertsSent;
+}
+
 // ----------------------------------------------------------------------------
 // Per-team gating + send orchestration
 // ----------------------------------------------------------------------------
@@ -207,6 +340,67 @@ export const getEnabledScorecardTeams = internalQuery({
         t.setterDailyScorecardEnabled === true &&
         typeof t.setterDailyScorecardHourLocal === "number",
     );
+  },
+});
+
+/**
+ * Find all teams that have setter data enabled AND untouched-lead
+ * alerts enabled. Off by default per Phase 2 design — some teams love
+ * real-time alerts, others find them noisy.
+ */
+export const getEnabledUntouchedAlertTeams = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("teams").collect();
+    return all.filter(
+      (t) =>
+        t.setterDataEnabled !== false &&
+        t.setterUntouchedAlertEnabled === true,
+    );
+  },
+});
+
+/**
+ * Find leads that have crossed the team's untouched threshold but still
+ * have zero contact attempts. Bounded to leads added within the last
+ * 7 days so a freshly-enabled alert config doesn't fire a flood of
+ * historical notifications.
+ */
+export const getUntouchedLeadsForTeam = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    olderThanMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const candidates = await ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date_added", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .gte("dateAdded", sevenDaysAgo)
+          .lt("dateAdded", args.olderThanMs),
+      )
+      .collect();
+
+    return candidates
+      .filter(
+        (l) =>
+          l.dialCount === 0 &&
+          l.smsOutboundCount === 0 &&
+          l.lastActivityAt === undefined,
+      )
+      .map((l) => ({
+        leadId: l._id,
+        ghlContactId: l.ghlContactId,
+        name: l.name,
+        email: l.email,
+        phone: l.phone,
+        dateAdded: l.dateAdded,
+        assignedToName: l.assignedToName,
+        assignedToGhlUserId: l.assignedToGhlUserId,
+      }));
   },
 });
 
@@ -475,6 +669,87 @@ function formatSetterLine(row: ScorecardSetterRow): string {
       ? `${row.connectedCount}/${row.leadCount} connected`
       : "0 leads";
   return `• *${row.name}* — ${speed}, ${conn}`;
+}
+
+// ----------------------------------------------------------------------------
+// Untouched-lead alert formatters
+// ----------------------------------------------------------------------------
+
+interface UntouchedAlertFormatArgs {
+  lead: UntouchedLead;
+  minutesUntouched: number;
+}
+
+function buildUntouchedAlertSlackBlocks(
+  args: UntouchedAlertFormatArgs,
+): unknown[] {
+  const { lead, minutesUntouched } = args;
+  const displayName = lead.name || lead.email || lead.phone || "Unnamed lead";
+  const contactBits: string[] = [];
+  if (lead.name && lead.email) contactBits.push(lead.email);
+  if (lead.phone) contactBits.push(lead.phone);
+
+  return [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `⚠️ Untouched lead — ${minutesUntouched}m`,
+      },
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: [
+          `*${displayName}*`,
+          contactBits.length > 0 ? contactBits.join(" · ") : null,
+          lead.assignedToName
+            ? `Assigned to *${lead.assignedToName}*`
+            : "Unassigned",
+          `Sitting for ${minutesUntouched} minutes with no contact attempts.`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      },
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "<https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched|View untouched leads →>",
+        },
+      ],
+    },
+  ];
+}
+
+function buildUntouchedAlertDiscordEmbed(
+  args: UntouchedAlertFormatArgs,
+): unknown {
+  const { lead, minutesUntouched } = args;
+  const displayName = lead.name || lead.email || lead.phone || "Unnamed lead";
+
+  const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
+  if (lead.email) {
+    fields.push({ name: "Email", value: lead.email, inline: true });
+  }
+  if (lead.phone) {
+    fields.push({ name: "Phone", value: lead.phone, inline: true });
+  }
+  if (lead.assignedToName) {
+    fields.push({ name: "Assigned", value: lead.assignedToName, inline: true });
+  }
+
+  return {
+    title: `⚠️ Untouched lead — ${minutesUntouched}m`,
+    description: `**${displayName}** has been sitting for ${minutesUntouched} minutes with no contact attempts.`,
+    url: "https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched",
+    color: 0xf59e0b, // amber
+    fields,
+    footer: { text: "Sequ3nce Setter Data" },
+  };
 }
 
 // ----------------------------------------------------------------------------
