@@ -56,7 +56,12 @@ export const fastBackfill = internalAction({
     // State machine cursor — undefined on first call, then carried via
     // scheduler.runAfter recursion until backfill completes.
     phase: v.optional(
-      v.union(v.literal("users"), v.literal("contacts"), v.literal("complete")),
+      v.union(
+        v.literal("users"),
+        v.literal("contacts"),
+        v.literal("appointments"),
+        v.literal("complete"),
+      ),
     ),
     contactsPage: v.optional(v.number()),
   },
@@ -102,10 +107,10 @@ export const fastBackfill = internalAction({
         });
 
         if (!result.hasMore) {
-          // All pages done — move to complete phase.
+          // All pages done — move to appointments phase.
           await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
             installationId: args.installationId,
-            phase: "complete",
+            phase: "appointments",
           });
           return;
         }
@@ -128,6 +133,29 @@ export const fastBackfill = internalAction({
           installationId: args.installationId,
           phase: "contacts",
           contactsPage: result.nextPage,
+        });
+        return;
+      }
+
+      if (phase === "appointments") {
+        // GHL's calendar events endpoint returns the full date-range result
+        // in a single response (no per-page cursor in the same way as
+        // contacts/search). For typical orgs in 90 days that's a few
+        // hundred rows — well within a single action invocation.
+        // If a customer ever has 10k+ appointments in 90 days, we can
+        // chunk by date here without changing the dispatch flow.
+        await syncAppointmentsRange(ctx, {
+          installationId: args.installationId,
+          locationId: installation.locationId,
+          teamId: installation.teamId,
+          rangeStartMs: Date.now() - FAST_BACKFILL_DAYS * 24 * 60 * 60 * 1000,
+          // Pull future appointments through 60 days out so booked-but-
+          // not-yet-occurred slots are visible immediately.
+          rangeEndMs: Date.now() + 60 * 24 * 60 * 60 * 1000,
+        });
+        await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
+          installationId: args.installationId,
+          phase: "complete",
         });
         return;
       }
@@ -516,6 +544,117 @@ async function syncMonthOfContacts(ctx: ActionCtx, args: SyncMonthArgs): Promise
     if (!hasMore) break;
     page++;
   }
+
+  // Also sync appointments within this month's window. Same date filter
+  // applies to GHL's calendar events. Synthesizes Appointment.Create
+  // payloads + dispatches through the webhook pipeline.
+  await syncAppointmentsRange(ctx, {
+    installationId: args.installationId,
+    locationId: args.locationId,
+    teamId: args.teamId,
+    rangeStartMs: windowStart,
+    rangeEndMs: windowEnd,
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Phase: appointments
+// ----------------------------------------------------------------------------
+
+interface GhlAppointment {
+  id?: string;
+  contactId?: string;
+  calendarId?: string;
+  createdBy?: string;
+  assignedUserId?: string;
+  userId?: string;
+  startTime?: string | number;
+  endTime?: string | number;
+  appointmentStatus?: string;
+  status?: string;
+  dateAdded?: string | number;
+  dateUpdated?: string | number;
+}
+
+interface GhlCalendarEventsResponse {
+  events?: GhlAppointment[];
+}
+
+interface SyncAppointmentsRangeArgs {
+  installationId: string;
+  locationId: string;
+  teamId: string;
+  rangeStartMs: number;
+  rangeEndMs: number;
+}
+
+/**
+ * Fetch all calendar events for a location in a date range and
+ * dispatch each as a synthetic Appointment.Create webhook. Idempotency
+ * at the dispatch level (handler dedupes by ghlAppointmentId) means
+ * re-running this for an overlapping range is a no-op for already-known
+ * appointments and an upsert for any with newer status changes.
+ *
+ * GHL's calendar events endpoint returns the full result in one response
+ * for typical date ranges. For very large ranges with thousands of
+ * events we'd need to chunk by date — punted until we see a customer
+ * actually hit it.
+ */
+async function syncAppointmentsRange(
+  ctx: ActionCtx,
+  args: SyncAppointmentsRangeArgs,
+): Promise<void> {
+  const response = await ghlFetch<GhlCalendarEventsResponse>(
+    ctx,
+    args.installationId as never,
+    "/calendars/events",
+    {
+      query: {
+        locationId: args.locationId,
+        startTime: args.rangeStartMs,
+        endTime: args.rangeEndMs,
+      },
+    },
+  );
+
+  const events = response.events ?? [];
+
+  for (const event of events) {
+    if (!event.id || !event.contactId) continue;
+
+    const auditId = await ctx.runMutation(
+      internal.setterGhlWebhooks.recordIncomingWebhook,
+      {
+        locationId: args.locationId,
+        eventType: "Appointment.Create",
+        ghlEventId: undefined,
+        signatureValid: true,
+        processed: false,
+        payload: {
+          type: "Appointment.Create",
+          locationId: args.locationId,
+          appointment: {
+            id: event.id,
+            contactId: event.contactId,
+            calendarId: event.calendarId,
+            createdBy: event.createdBy,
+            assignedUserId: event.assignedUserId,
+            userId: event.userId,
+            startTime: event.startTime,
+            endTime: event.endTime,
+            appointmentStatus: event.appointmentStatus ?? event.status,
+            status: event.status,
+            dateAdded: event.dateAdded,
+            dateUpdated: event.dateUpdated,
+          },
+        },
+        teamId: args.teamId as never,
+      },
+    );
+    await ctx.scheduler.runAfter(0, internal.setterGhlWebhooks.dispatch, {
+      auditId,
+    });
+  }
 }
 
 // ============================================================================
@@ -687,6 +826,19 @@ async function reconcileInstallation(
     if (!hasMore) break;
     page++;
   }
+
+  // Also reconcile appointments updated in the same window. Catches any
+  // status transitions (Confirmed → Showed / No Show) that webhooks
+  // missed. The dispatch dedupes on transition so re-running is safe.
+  // Window extends 30 days into the future so reconcile picks up newly-
+  // booked appointments scheduled in advance.
+  await syncAppointmentsRange(ctx, {
+    installationId: installation._id,
+    locationId: installation.locationId,
+    teamId: installation.teamId,
+    rangeStartMs: since,
+    rangeEndMs: Date.now() + 30 * 24 * 60 * 60 * 1000,
+  });
 }
 
 // ============================================================================

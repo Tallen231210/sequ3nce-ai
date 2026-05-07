@@ -147,6 +147,16 @@ export default defineSchema({
     setterDailyScorecardSlackChannelId: v.optional(v.string()),
     setterDailyScorecardDiscordWebhookUrl: v.optional(v.string()),
     setterDailyScorecardHourLocal: v.optional(v.number()), // 0-23 in team.timezone
+
+    // Untouched-lead alert config (Phase 2). Off by default — some teams
+    // love real-time alerts, some hate the noise. When enabled, the
+    // sweep cron pings the configured channel any time a lead has been
+    // sitting > thresholdMinutes with zero contact attempts.
+    setterUntouchedAlertEnabled: v.optional(v.boolean()),
+    setterUntouchedAlertThresholdMinutes: v.optional(v.number()), // default 5
+    setterUntouchedAlertChannel: v.optional(v.string()), // "slack" | "discord"
+    setterUntouchedAlertSlackChannelId: v.optional(v.string()),
+    setterUntouchedAlertDiscordWebhookUrl: v.optional(v.string()),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
@@ -1930,4 +1940,45 @@ export default defineSchema({
     .index("by_received_at", ["receivedAt"])
     .index("by_team_and_received_at", ["teamId", "receivedAt"])
     .index("by_processed", ["processed"]),
+
+  // Phase 2 — Synced GHL appointments. Setter "show rate" is computed
+  // off this table: of the appointments a setter booked, how many
+  // resulted in status=Showed vs No Show. Lead-level snapshot fields
+  // (appointmentCount, showedCount, noShowCount on setterLeads) are
+  // recomputed by the appointment webhook handlers on every status
+  // transition.
+  //
+  // bookedByGhlUserId vs assignedToGhlUserId: in GHL's data model the
+  // person who BOOKED the appointment (typically the setter) and the
+  // person it's ASSIGNED to (typically the closer who runs the call)
+  // can be different. We track both — show rate metrics use bookedBy.
+  setterAppointments: defineTable({
+    teamId: v.id("teams"),
+    ghlAppointmentId: v.string(),
+    ghlContactId: v.string(),
+    ghlCalendarId: v.optional(v.string()),
+    bookedByGhlUserId: v.optional(v.string()),
+    assignedToGhlUserId: v.optional(v.string()),
+    startTime: v.number(),
+    endTime: v.optional(v.number()),
+    // GHL appointment statuses — verbatim from their workflow doc.
+    status: v.union(
+      v.literal("Confirmed"),
+      v.literal("Showed"),
+      v.literal("No Show"),
+      v.literal("Cancelled"),
+      v.literal("Invalid"),
+      v.literal("Unconfirmed"),
+    ),
+    bookedAt: v.number(),
+    lastUpdatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_setter", ["teamId", "bookedByGhlUserId"])
+    .index("by_team_and_status", ["teamId", "status"])
+    .index("by_team_and_contact", ["teamId", "ghlContactId"])
+    .index("by_team_and_start_time", ["teamId", "startTime"])
+    // Idempotency for webhook redeliveries — handlers look up by
+    // ghlAppointmentId before insert.
+    .index("by_team_and_appointment_id", ["teamId", "ghlAppointmentId"]),
 });

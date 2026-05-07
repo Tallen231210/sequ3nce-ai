@@ -141,6 +141,14 @@ export const dispatch = internalMutation({
         case "InboundMessage":
           await handleInboundMessage(ctx, ctxArgs, body);
           break;
+        case "AppointmentCreate":
+        case "Appointment.Create":
+          await handleAppointmentUpsert(ctx, ctxArgs, body, "create");
+          break;
+        case "AppointmentUpdate":
+        case "Appointment.Update":
+          await handleAppointmentUpsert(ctx, ctxArgs, body, "update");
+          break;
         default:
           // Unsubscribed / future / unknown event types — record but don't
           // fail. We may add handlers later as scope expands.
@@ -342,6 +350,194 @@ async function handleInboundMessage(
 
 // ----------------------------------------------------------------------------
 // Event recording + snapshot updates
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// Appointments — Phase 2
+// ----------------------------------------------------------------------------
+
+const VALID_APPOINTMENT_STATUSES = [
+  "Confirmed",
+  "Showed",
+  "No Show",
+  "Cancelled",
+  "Invalid",
+  "Unconfirmed",
+] as const;
+type AppointmentStatus = (typeof VALID_APPOINTMENT_STATUSES)[number];
+
+function isValidAppointmentStatus(s: unknown): s is AppointmentStatus {
+  return (
+    typeof s === "string" &&
+    VALID_APPOINTMENT_STATUSES.includes(s as AppointmentStatus)
+  );
+}
+
+async function handleAppointmentUpsert(
+  ctx: MutationCtx,
+  args: HandlerCtx,
+  body: GhlWebhookBody,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _kind: "create" | "update",
+): Promise<void> {
+  // GHL's appointment payload shape varies a bit between Create and Update —
+  // sometimes the data is at body.appointment, sometimes top-level. Try both.
+  const apt = (body.appointment ?? body) as GhlAppointmentPayload;
+  const ghlAppointmentId = apt.id || apt.appointmentId;
+  if (!ghlAppointmentId) {
+    throw new Error("Appointment webhook missing appointment id");
+  }
+
+  const ghlContactId = apt.contactId;
+  if (!ghlContactId) {
+    throw new Error("Appointment webhook missing contactId");
+  }
+
+  // Default to "Confirmed" if GHL doesn't send a status — happens on
+  // some Create events. Update events always have one.
+  const rawStatus = apt.appointmentStatus ?? apt.status ?? "Confirmed";
+  const status: AppointmentStatus = isValidAppointmentStatus(rawStatus)
+    ? rawStatus
+    : "Confirmed";
+
+  const startTime = parseTimestamp(apt.startTime) ?? Date.now();
+  const endTime = parseTimestamp(apt.endTime);
+  const lastUpdatedAt = parseTimestamp(apt.dateUpdated) ?? Date.now();
+  const bookedAt = parseTimestamp(apt.dateAdded) ?? lastUpdatedAt;
+
+  // Upsert the appointment row. Idempotency: lookup by
+  // (teamId, ghlAppointmentId) — same key used to dedupe redeliveries.
+  const existing = await findAppointment(ctx, args.teamId, ghlAppointmentId);
+
+  let prevStatus: AppointmentStatus | null = null;
+  if (existing) {
+    prevStatus = isValidAppointmentStatus(existing.status)
+      ? existing.status
+      : null;
+    await ctx.db.patch(existing._id, {
+      ghlContactId,
+      ghlCalendarId: apt.calendarId ?? existing.ghlCalendarId,
+      bookedByGhlUserId: apt.createdBy ?? existing.bookedByGhlUserId,
+      assignedToGhlUserId:
+        apt.assignedUserId ?? apt.userId ?? existing.assignedToGhlUserId,
+      startTime,
+      endTime,
+      status,
+      lastUpdatedAt,
+    });
+  } else {
+    await ctx.db.insert("setterAppointments", {
+      teamId: args.teamId,
+      ghlAppointmentId,
+      ghlContactId,
+      ghlCalendarId: apt.calendarId,
+      bookedByGhlUserId: apt.createdBy,
+      assignedToGhlUserId: apt.assignedUserId ?? apt.userId,
+      startTime,
+      endTime,
+      status,
+      bookedAt,
+      lastUpdatedAt,
+    });
+  }
+
+  // Emit a lead event for the timeline. New appointments → "appointment_booked";
+  // status changes → "appointment_status_change". The lead-events table
+  // is the source of truth for the drilldown timeline.
+  const lead = await ensureLead(ctx, args.teamId, ghlContactId);
+  if (!existing) {
+    await ctx.db.insert("setterLeadEvents", {
+      teamId: args.teamId,
+      ghlContactId,
+      setterLeadId: lead._id,
+      eventType: "appointment_booked",
+      occurredAt: bookedAt,
+      ghlUserId: apt.createdBy,
+      details: {
+        ghlAppointmentId,
+        calendarId: apt.calendarId,
+        startTime,
+        status,
+      },
+      ghlEventKey: `appt-booked:${ghlAppointmentId}`,
+    });
+  } else if (prevStatus !== status) {
+    await ctx.db.insert("setterLeadEvents", {
+      teamId: args.teamId,
+      ghlContactId,
+      setterLeadId: lead._id,
+      eventType: "appointment_status_change",
+      occurredAt: lastUpdatedAt,
+      ghlUserId: apt.createdBy,
+      details: {
+        ghlAppointmentId,
+        from: prevStatus,
+        to: status,
+      },
+      // Include status in the dedup key — handlers deduplicate on the
+      // exact transition so a redelivered Update is a no-op but a fresh
+      // Update from a different state is recorded.
+      ghlEventKey: `appt-status:${ghlAppointmentId}:${status}:${lastUpdatedAt}`,
+    });
+  }
+
+  // Recompute lead snapshot counts from the current setterAppointments rows.
+  // Cheap (typical lead has < 3 appointments), keeps the snapshot in sync
+  // even when GHL reorders status events.
+  await recomputeLeadAppointmentCounts(ctx, args.teamId, ghlContactId);
+}
+
+async function findAppointment(
+  ctx: MutationCtx,
+  teamId: Id<"teams">,
+  ghlAppointmentId: string,
+) {
+  return await ctx.db
+    .query("setterAppointments")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_appointment_id", (q: any) =>
+      q.eq("teamId", teamId).eq("ghlAppointmentId", ghlAppointmentId),
+    )
+    .first();
+}
+
+async function recomputeLeadAppointmentCounts(
+  ctx: MutationCtx,
+  teamId: Id<"teams">,
+  ghlContactId: string,
+): Promise<void> {
+  const lead = await findLead(ctx, teamId, ghlContactId);
+  if (!lead) return;
+
+  const appts = await ctx.db
+    .query("setterAppointments")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_contact", (q: any) =>
+      q.eq("teamId", teamId).eq("ghlContactId", ghlContactId),
+    )
+    .collect();
+
+  let appointmentCount = 0;
+  let showedCount = 0;
+  let noShowCount = 0;
+  for (const a of appts) {
+    // Cancelled / Invalid don't count toward booking activity.
+    if (a.status === "Cancelled" || a.status === "Invalid") continue;
+    appointmentCount += 1;
+    if (a.status === "Showed") showedCount += 1;
+    else if (a.status === "No Show") noShowCount += 1;
+  }
+
+  await ctx.db.patch(lead._id, {
+    appointmentCount,
+    showedCount,
+    noShowCount,
+    lastActivityAt: maxTime(lead.lastActivityAt, Date.now()),
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Calls / SMS — Phase 1
 // ----------------------------------------------------------------------------
 
 interface CallEventArgs {
@@ -572,6 +768,7 @@ interface GhlWebhookBody {
   type: string;
   locationId?: string;
   contact?: GhlContactPayload;
+  appointment?: GhlAppointmentPayload;
   // Top-level fields for InboundMessage / OutboundMessage events
   contactId?: string;
   conversationId?: string;
@@ -609,4 +806,23 @@ interface GhlMessagePayload extends GhlWebhookBody {
   callDuration?: number;
   conversationId?: string;
   dateAdded?: string | number;
+}
+
+interface GhlAppointmentPayload {
+  id?: string;
+  appointmentId?: string;
+  contactId?: string;
+  calendarId?: string;
+  // GHL uses different field names depending on webhook version. We
+  // probe both — `createdBy` on newer payloads, `userId` on older ones.
+  createdBy?: string;
+  assignedUserId?: string;
+  userId?: string;
+  startTime?: string | number;
+  endTime?: string | number;
+  // GHL sometimes calls this `appointmentStatus`, sometimes plain `status`.
+  appointmentStatus?: string;
+  status?: string;
+  dateAdded?: string | number;
+  dateUpdated?: string | number;
 }
