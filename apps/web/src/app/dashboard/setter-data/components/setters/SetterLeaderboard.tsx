@@ -17,27 +17,40 @@ interface SetterRow {
   dialCount: number;
   connectedCount: number;
   avgSpeedMs: number | null;
+  appointmentCount: number;
+  showedCount: number;
+  showRate: number | null;
 }
 
 interface SetterLeaderboardProps {
   rows: SetterRow[];
+  onRowClick?: (ghlUserId: string) => void;
 }
 
-export function SetterLeaderboard({ rows }: SetterLeaderboardProps) {
+export function SetterLeaderboard({
+  rows,
+  onRowClick,
+}: SetterLeaderboardProps) {
   return (
     <Card className="overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[8%] text-right tabular-nums">#</TableHead>
-            <TableHead className="w-[28%]">Setter</TableHead>
-            <TableHead className="w-[14%] text-right tabular-nums">Leads</TableHead>
-            <TableHead className="w-[14%] text-right tabular-nums">Dials</TableHead>
-            <TableHead className="w-[18%] text-right tabular-nums">
-              Connection rate
+            <TableHead className="w-[6%] text-right tabular-nums">#</TableHead>
+            <TableHead className="w-[22%]">Setter</TableHead>
+            <TableHead className="w-[10%] text-right tabular-nums">Leads</TableHead>
+            <TableHead className="w-[10%] text-right tabular-nums">Dials</TableHead>
+            <TableHead className="w-[14%] text-right tabular-nums">
+              Connect rate
             </TableHead>
-            <TableHead className="w-[18%] text-right tabular-nums">
-              Avg speed to lead
+            <TableHead className="w-[12%] text-right tabular-nums">
+              Appts
+            </TableHead>
+            <TableHead className="w-[12%] text-right tabular-nums">
+              Show rate
+            </TableHead>
+            <TableHead className="w-[14%] text-right tabular-nums">
+              Avg speed
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -45,8 +58,13 @@ export function SetterLeaderboard({ rows }: SetterLeaderboardProps) {
           {rows.map((row, idx) => {
             const connectRate =
               row.leadCount > 0 ? row.connectedCount / row.leadCount : null;
+            const isClickable = !!onRowClick;
             return (
-              <TableRow key={row.ghlUserId}>
+              <TableRow
+                key={row.ghlUserId}
+                className={isClickable ? "cursor-pointer hover:bg-muted/50" : ""}
+                onClick={isClickable ? () => onRowClick!(row.ghlUserId) : undefined}
+              >
                 <TableCell className="text-right text-muted-foreground tabular-nums">
                   {idx + 1}
                 </TableCell>
@@ -60,11 +78,32 @@ export function SetterLeaderboard({ rows }: SetterLeaderboardProps) {
                 <TableCell className="text-right tabular-nums">
                   {connectRate !== null ? (
                     <>
-                      {row.connectedCount}/{row.leadCount}
-                      <span className="ml-2 text-muted-foreground">
-                        ({Math.round(connectRate * 100)}%)
+                      {Math.round(connectRate * 100)}%
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        ({row.connectedCount}/{row.leadCount})
                       </span>
                     </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {row.appointmentCount > 0 ? (
+                    <>
+                      {row.appointmentCount}
+                      {row.showedCount > 0 && (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({row.showedCount} showed)
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {row.showRate !== null ? (
+                    `${Math.round(row.showRate * 100)}%`
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}

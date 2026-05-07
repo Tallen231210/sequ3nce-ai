@@ -118,6 +118,81 @@ export const updateScorecardConfig = mutation({
 });
 
 // ----------------------------------------------------------------------------
+// updateUntouchedAlertConfig — Settings tab Untouched Alert config (Phase 2)
+// ----------------------------------------------------------------------------
+
+/**
+ * Update any subset of untouched-alert config fields. Same sparse-update
+ * pattern as updateScorecardConfig — UI emits one mutation per field
+ * change rather than re-sending the entire config each time.
+ *
+ * Threshold capped at [1, 240] minutes — finer than 1 min would create
+ * redundant alerts (the cron only runs every 2 min anyway), and longer
+ * than 4 hours becomes a "daily summary" use case the scorecard already
+ * covers.
+ */
+export const updateUntouchedAlertConfig = mutation({
+  args: {
+    enabled: v.optional(v.boolean()),
+    thresholdMinutes: v.optional(v.number()),
+    channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
+    slackChannelId: v.optional(v.string()),
+    discordWebhookUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx);
+    const teamId = user.teamId as Id<"teams">;
+
+    if (args.thresholdMinutes !== undefined) {
+      if (
+        !Number.isInteger(args.thresholdMinutes) ||
+        args.thresholdMinutes < 1 ||
+        args.thresholdMinutes > 240
+      ) {
+        throw new Error("thresholdMinutes must be an integer 1-240");
+      }
+    }
+
+    if (args.slackChannelId !== undefined && args.slackChannelId.trim() === "") {
+      throw new Error("slackChannelId cannot be empty");
+    }
+
+    if (args.discordWebhookUrl !== undefined) {
+      const trimmed = args.discordWebhookUrl.trim();
+      if (trimmed === "") {
+        throw new Error("discordWebhookUrl cannot be empty");
+      }
+      if (
+        !trimmed.startsWith("https://discord.com/api/webhooks/") &&
+        !trimmed.startsWith("https://discordapp.com/api/webhooks/")
+      ) {
+        throw new Error("discordWebhookUrl must be a Discord webhook URL");
+      }
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (args.enabled !== undefined) {
+      patch.setterUntouchedAlertEnabled = args.enabled;
+    }
+    if (args.thresholdMinutes !== undefined) {
+      patch.setterUntouchedAlertThresholdMinutes = args.thresholdMinutes;
+    }
+    if (args.channel !== undefined) {
+      patch.setterUntouchedAlertChannel = args.channel;
+    }
+    if (args.slackChannelId !== undefined) {
+      patch.setterUntouchedAlertSlackChannelId = args.slackChannelId;
+    }
+    if (args.discordWebhookUrl !== undefined) {
+      patch.setterUntouchedAlertDiscordWebhookUrl = args.discordWebhookUrl;
+    }
+
+    await ctx.db.patch(teamId, patch);
+    return { success: true };
+  },
+});
+
+// ----------------------------------------------------------------------------
 // updateConnectionThreshold — Settings tab connection threshold slider
 // ----------------------------------------------------------------------------
 

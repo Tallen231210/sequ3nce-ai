@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { SetterLeaderboard } from "./SetterLeaderboard";
+import { SetterDrillPanel } from "./SetterDrillPanel";
 import { Loader2 } from "lucide-react";
 
 interface SettersTabProps {
@@ -13,9 +15,8 @@ interface SettersTabProps {
 }
 
 /**
- * Phase 1 Setters tab: leaderboard only. Phase 2 expands this with
- * per-setter drilldown (funnel, working hours heatmap, source mix)
- * once appointment data is in scope.
+ * Setters tab — leaderboard sorted by speed-to-lead. Click a row to open
+ * the per-setter drilldown panel with their appointments + activity.
  */
 export function SettersTab({
   rangeStart,
@@ -23,6 +24,7 @@ export function SettersTab({
   onRangeChange,
 }: SettersTabProps) {
   const data = useQuery(api.setterData.getOverview, { rangeStart, rangeEnd });
+  const [selectedSetterId, setSelectedSetterId] = useState<string | null>(null);
 
   return (
     <div className="space-y-4 pb-12">
@@ -30,8 +32,8 @@ export function SettersTab({
         <div>
           <h2 className="text-lg font-semibold">Setters</h2>
           <p className="text-sm text-muted-foreground">
-            Leaderboard sorted by speed-to-lead. Per-setter drilldowns
-            arrive in Phase 2 with appointment data.
+            Click a row to see per-setter detail: appointments, activity
+            timeline, and breakdown.
           </p>
         </div>
         <DateRangeSelect
@@ -58,8 +60,18 @@ export function SettersTab({
       )}
 
       {data && data.perSetter.length > 0 && (
-        <SetterLeaderboard rows={data.perSetter} />
+        <SetterLeaderboard
+          rows={data.perSetter}
+          onRowClick={(id) => setSelectedSetterId(id)}
+        />
       )}
+
+      <SetterDrillPanel
+        ghlUserId={selectedSetterId}
+        rangeStart={rangeStart}
+        rangeEnd={rangeEnd}
+        onClose={() => setSelectedSetterId(null)}
+      />
     </div>
   );
 }

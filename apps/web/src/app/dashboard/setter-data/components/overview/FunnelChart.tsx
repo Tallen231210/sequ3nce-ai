@@ -15,40 +15,62 @@ interface FunnelChartProps {
   data: {
     totalLeads: number;
     connectedLeads: number;
+    totalAppointments: number;
+    totalShowed: number;
   };
 }
 
 /**
- * Phase 1 funnel — just lead count → connected count. Phase 2 expands
- * this to a proper four-stage funnel (dial → connect → appt → showed)
- * once appointment data is in scope.
+ * Four-stage funnel: Total leads → Connected → Appointments → Showed.
+ * Each stage uses progressively lighter shades of the primary color so
+ * the funnel "narrows" visually even when stage counts are similar.
  */
 export function FunnelChart({ data }: FunnelChartProps) {
   const chartData = [
-    { stage: "Total leads", count: data.totalLeads, fill: "hsl(var(--primary))" },
+    {
+      stage: "Total leads",
+      count: data.totalLeads,
+      fill: "hsl(var(--primary))",
+    },
     {
       stage: "Connected",
       count: data.connectedLeads,
-      fill: "hsl(var(--primary) / 0.6)",
+      fill: "hsl(var(--primary) / 0.78)",
+    },
+    {
+      stage: "Appointments",
+      count: data.totalAppointments,
+      fill: "hsl(var(--primary) / 0.56)",
+    },
+    {
+      stage: "Showed",
+      count: data.totalShowed,
+      fill: "hsl(var(--primary) / 0.34)",
     },
   ];
 
   return (
     <Card>
       <CardContent className="px-4 py-5">
-        <div className="mb-4">
-          <h3 className="text-sm font-semibold">Funnel</h3>
-          <p className="text-xs text-muted-foreground">
-            Total leads → Connected (call ≥ threshold). Phase 2 will add
-            Appointments → Show.
-          </p>
+        <div className="mb-4 flex items-baseline justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Funnel</h3>
+            <p className="text-xs text-muted-foreground">
+              Lead → Connect → Appointment → Show. Connect = call ≥ team
+              threshold. Show counts only settled appointments (excludes
+              upcoming Confirmed/Unconfirmed).
+            </p>
+          </div>
+          {data.totalLeads > 0 && (
+            <ConversionRates data={data} />
+          )}
         </div>
-        <div className="h-48 w-full">
+        <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
               data={chartData}
               layout="vertical"
-              margin={{ top: 4, right: 24, bottom: 4, left: 100 }}
+              margin={{ top: 4, right: 36, bottom: 4, left: 110 }}
             >
               <CartesianGrid horizontal={false} stroke="hsl(var(--border))" />
               <XAxis
@@ -74,5 +96,44 @@ export function FunnelChart({ data }: FunnelChartProps) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Three small conversion-rate badges across the top — connect rate,
+ * connect-to-appointment rate, appointment-to-show rate. Helps managers
+ * spot which stage is leaking without doing arithmetic in their head.
+ */
+function ConversionRates({ data }: FunnelChartProps) {
+  const connectRate =
+    data.totalLeads > 0 ? data.connectedLeads / data.totalLeads : null;
+  const apptRate =
+    data.connectedLeads > 0
+      ? data.totalAppointments / data.connectedLeads
+      : null;
+  const showRate =
+    data.totalAppointments > 0
+      ? data.totalShowed / data.totalAppointments
+      : null;
+
+  return (
+    <div className="hidden gap-4 text-xs sm:flex">
+      <RateBadge label="Connect" rate={connectRate} />
+      <RateBadge label="→ Appt" rate={apptRate} />
+      <RateBadge label="→ Show" rate={showRate} />
+    </div>
+  );
+}
+
+function RateBadge({ label, rate }: { label: string; rate: number | null }) {
+  return (
+    <div className="text-right">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="font-mono text-sm font-semibold tabular-nums">
+        {rate !== null ? `${Math.round(rate * 100)}%` : "—"}
+      </div>
+    </div>
   );
 }

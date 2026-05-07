@@ -1,0 +1,208 @@
+"use client";
+
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../../../../../convex/_generated/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface UntouchedAlertSettings {
+  enabled: boolean;
+  thresholdMinutes?: number;
+  channel?: "slack" | "discord";
+  slackChannelId?: string;
+  discordWebhookUrl?: string;
+}
+
+interface UntouchedAlertConfigProps {
+  settings: UntouchedAlertSettings;
+}
+
+const THRESHOLD_OPTIONS = [
+  { value: 5, label: "5 minutes" },
+  { value: 10, label: "10 minutes" },
+  { value: 15, label: "15 minutes" },
+  { value: 30, label: "30 minutes" },
+  { value: 60, label: "60 minutes" },
+];
+
+export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
+  const updateConfig = useMutation(
+    api.setterDataMutations.updateUntouchedAlertConfig,
+  );
+
+  const [enabled, setEnabled] = useState(settings.enabled);
+  const [thresholdMinutes, setThresholdMinutes] = useState<string>(
+    String(settings.thresholdMinutes ?? 5),
+  );
+  const [channel, setChannel] = useState<"slack" | "discord" | "">(
+    settings.channel ?? "",
+  );
+  const [slackChannelId, setSlackChannelId] = useState(
+    settings.slackChannelId ?? "",
+  );
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState(
+    settings.discordWebhookUrl ?? "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const args: Record<string, unknown> = { enabled };
+      const thr = parseInt(thresholdMinutes, 10);
+      if (!Number.isNaN(thr)) {
+        args.thresholdMinutes = thr;
+      }
+      if (channel === "slack" || channel === "discord") {
+        args.channel = channel;
+      }
+      if (channel === "slack" && slackChannelId.trim()) {
+        args.slackChannelId = slackChannelId.trim();
+      }
+      if (channel === "discord" && discordWebhookUrl.trim()) {
+        args.discordWebhookUrl = discordWebhookUrl.trim();
+      }
+      await updateConfig(args);
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="mb-4">
+          <h3 className="text-base font-semibold">Untouched-lead alerts</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Get a Slack or Discord ping when a fresh lead has been sitting
+            with zero contact attempts longer than your threshold. Off by
+            default — useful for high-ticket teams where every minute
+            matters; noisy for higher-volume teams.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {/* Enabled toggle */}
+          <div className="flex items-center gap-3">
+            <input
+              id="untouched-enabled"
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-input"
+            />
+            <Label htmlFor="untouched-enabled" className="cursor-pointer">
+              Send real-time alerts
+            </Label>
+          </div>
+
+          {enabled && (
+            <>
+              {/* Threshold */}
+              <div className="space-y-2">
+                <Label htmlFor="untouched-threshold">Alert threshold</Label>
+                <Select
+                  value={thresholdMinutes}
+                  onValueChange={setThresholdMinutes}
+                >
+                  <SelectTrigger id="untouched-threshold" className="w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {THRESHOLD_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Alert fires once per lead per 15-min window — won't spam
+                  if a lead stays untouched.
+                </p>
+              </div>
+
+              {/* Channel picker */}
+              <div className="space-y-2">
+                <Label htmlFor="untouched-channel">Send to</Label>
+                <Select
+                  value={channel}
+                  onValueChange={(v) => setChannel(v as "slack" | "discord")}
+                >
+                  <SelectTrigger id="untouched-channel">
+                    <SelectValue placeholder="Choose Slack or Discord" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="slack">Slack</SelectItem>
+                    <SelectItem value="discord">Discord</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Slack-specific */}
+              {channel === "slack" && (
+                <div className="space-y-2">
+                  <Label htmlFor="untouched-slack">Slack channel ID</Label>
+                  <Input
+                    id="untouched-slack"
+                    placeholder="C01234567"
+                    value={slackChannelId}
+                    onChange={(e) => setSlackChannelId(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Falls back to your default Slack channel if blank.
+                  </p>
+                </div>
+              )}
+
+              {/* Discord-specific */}
+              {channel === "discord" && (
+                <div className="space-y-2">
+                  <Label htmlFor="untouched-discord">
+                    Discord webhook URL
+                  </Label>
+                  <Input
+                    id="untouched-discord"
+                    type="url"
+                    placeholder="https://discord.com/api/webhooks/..."
+                    value={discordWebhookUrl}
+                    onChange={(e) => setDiscordWebhookUrl(e.target.value)}
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Save */}
+          <div className="flex items-center gap-3 pt-2">
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+            {savedAt && !error && (
+              <span className="text-xs text-muted-foreground">
+                Saved {new Date(savedAt).toLocaleTimeString()}
+              </span>
+            )}
+            {error && <span className="text-xs text-destructive">{error}</span>}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

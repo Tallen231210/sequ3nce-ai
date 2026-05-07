@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Zap, Phone, Clock, AlertCircle } from "lucide-react";
+import { Phone, Clock, AlertCircle, CalendarCheck } from "lucide-react";
 
 interface KpiStripData {
   totalLeads: number;
@@ -11,6 +11,11 @@ interface KpiStripData {
   avgSpeedMs: number | null;
   p50SpeedMs: number | null;
   p90SpeedMs: number | null;
+  // Phase 2 — appointment rollup
+  totalAppointments: number;
+  totalShowed: number;
+  totalNoShow: number;
+  showRate: number | null;
 }
 
 interface KpiStripProps {
@@ -19,9 +24,10 @@ interface KpiStripProps {
 }
 
 /**
- * Four-card KPI strip at the top of the Overview tab. The Untouched card
- * is clickable — drills to the Leads tab pre-filtered. Other cards are
- * informational; trends + drill-downs come in Phase 2 with appointments.
+ * Four-card KPI strip. Phase 2 swaps "Total leads" for a Show Rate card
+ * since show rate is a top-tier setter metric and lead count is already
+ * visible on the Connections card. Untouched is clickable → drills to
+ * Leads tab pre-filtered.
  */
 export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
   return (
@@ -49,22 +55,26 @@ export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
         }
       />
       <KpiCard
+        icon={CalendarCheck}
+        label="Show rate"
+        value={
+          data.showRate !== null ? `${Math.round(data.showRate * 100)}%` : "—"
+        }
+        sub={
+          data.totalShowed + data.totalNoShow > 0
+            ? `${data.totalShowed} of ${data.totalShowed + data.totalNoShow} settled`
+            : data.totalAppointments > 0
+              ? `${data.totalAppointments} booked, none settled yet`
+              : "No appointments yet"
+        }
+      />
+      <KpiCard
         icon={AlertCircle}
         label="Untouched"
         value={String(data.untouchedLeads)}
         sub={data.untouchedLeads > 0 ? "Tap to view →" : "All leads worked"}
         tone={data.untouchedLeads > 0 ? "warning" : "default"}
         onClick={data.untouchedLeads > 0 ? onUntouchedClick : undefined}
-      />
-      <KpiCard
-        icon={Zap}
-        label="Total leads"
-        value={String(data.totalLeads)}
-        sub={
-          data.p90SpeedMs !== null
-            ? `P90 speed ${formatDuration(data.p90SpeedMs)}`
-            : ""
-        }
       />
     </div>
   );

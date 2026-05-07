@@ -356,6 +356,14 @@ export const getMySettings = query({
         discordWebhookUrl: team.setterDailyScorecardDiscordWebhookUrl,
         hourLocal: team.setterDailyScorecardHourLocal,
       },
+      // Untouched-lead alert config (Phase 2). Off by default.
+      untouchedAlert: {
+        enabled: team.setterUntouchedAlertEnabled ?? false,
+        thresholdMinutes: team.setterUntouchedAlertThresholdMinutes,
+        channel: team.setterUntouchedAlertChannel,
+        slackChannelId: team.setterUntouchedAlertSlackChannelId,
+        discordWebhookUrl: team.setterUntouchedAlertDiscordWebhookUrl,
+      },
       // Team timezone (read-only here — set elsewhere in account settings).
       timezone: team.timezone,
     };
