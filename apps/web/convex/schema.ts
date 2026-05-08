@@ -157,6 +157,12 @@ export default defineSchema({
     setterUntouchedAlertChannel: v.optional(v.string()), // "slack" | "discord"
     setterUntouchedAlertSlackChannelId: v.optional(v.string()),
     setterUntouchedAlertDiscordWebhookUrl: v.optional(v.string()),
+
+    // Phase 3 — Disposition sync toggle. When true AND a setterGhlInstallations
+    // row exists for this team, post-call disposition sync routes through the
+    // new OAuth flow instead of the legacy ghlApiKey path. Off by default;
+    // teams with no OAuth install fall through to legacy as before.
+    setterDispositionSyncEnabled: v.optional(v.boolean()),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 

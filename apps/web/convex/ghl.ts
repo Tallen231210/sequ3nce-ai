@@ -221,6 +221,10 @@ export const getGhlPushData = internalQuery({
         ghlLocationId: team.ghlLocationId,
         ghlCreateContacts: team.ghlCreateContacts ?? true,
         ghlAddNotes: team.ghlAddNotes ?? true,
+        // Phase 3c — Disposition Sync routing flag. When true AND a
+        // setterGhlInstallations row exists, syncCallToGhl delegates
+        // to the OAuth-flavored path instead of the legacy api-key flow.
+        setterDispositionSyncEnabled: team.setterDispositionSyncEnabled ?? false,
       },
       call: {
         _id: call._id,

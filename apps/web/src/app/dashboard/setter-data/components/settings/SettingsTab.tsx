@@ -6,6 +6,7 @@ import { GhlConnectionCard } from "./GhlConnectionCard";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
 import { ConnectionThresholdConfig } from "./ConnectionThresholdConfig";
+import { DispositionSyncConfig } from "./DispositionSyncConfig";
 import { Loader2 } from "lucide-react";
 
 export function SettingsTab() {
@@ -57,6 +58,10 @@ export function SettingsTab() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       <GhlConnectionCard installation={installation} />
+      <DispositionSyncConfig
+        enabled={settings.dispositionSync.enabled}
+        hasInstallation={installation.connected && installation.status === "active"}
+      />
       <ScorecardConfig scorecard={scorecard} teamTimezone={settings.timezone} />
       <UntouchedAlertConfig settings={untouchedAlert} />
       <ConnectionThresholdConfig

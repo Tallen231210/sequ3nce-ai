@@ -364,6 +364,12 @@ export const getMySettings = query({
         slackChannelId: team.setterUntouchedAlertSlackChannelId,
         discordWebhookUrl: team.setterUntouchedAlertDiscordWebhookUrl,
       },
+      // Disposition sync toggle (Phase 3c). When true AND a setterGhl
+      // installation exists, post-call disposition routes via OAuth
+      // tokens instead of the legacy api-key path.
+      dispositionSync: {
+        enabled: team.setterDispositionSyncEnabled ?? false,
+      },
       // Team timezone (read-only here — set elsewhere in account settings).
       timezone: team.timezone,
     };

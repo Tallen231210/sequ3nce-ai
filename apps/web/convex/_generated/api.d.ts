@@ -76,6 +76,7 @@ import type * as setterDataMetrics from "../setterDataMetrics.js";
 import type * as setterDataMutations from "../setterDataMutations.js";
 import type * as setterDataNotifications from "../setterDataNotifications.js";
 import type * as setterGhlClient from "../setterGhlClient.js";
+import type * as setterGhlDispositionSync from "../setterGhlDispositionSync.js";
 import type * as setterGhlOauth from "../setterGhlOauth.js";
 import type * as setterGhlOauthActions from "../setterGhlOauthActions.js";
 import type * as setterGhlSync from "../setterGhlSync.js";
@@ -164,6 +165,7 @@ declare const fullApi: ApiFromModules<{
   setterDataMutations: typeof setterDataMutations;
   setterDataNotifications: typeof setterDataNotifications;
   setterGhlClient: typeof setterGhlClient;
+  setterGhlDispositionSync: typeof setterGhlDispositionSync;
   setterGhlOauth: typeof setterGhlOauth;
   setterGhlOauthActions: typeof setterGhlOauthActions;
   setterGhlSync: typeof setterGhlSync;

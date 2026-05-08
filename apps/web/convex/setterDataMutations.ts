@@ -193,6 +193,35 @@ export const updateUntouchedAlertConfig = mutation({
 });
 
 // ----------------------------------------------------------------------------
+// updateDispositionSyncConfig — Phase 3c toggle in Settings
+// ----------------------------------------------------------------------------
+
+/**
+ * Toggle disposition sync via OAuth tokens. When enabled, the
+ * post-call sync routes through the new Marketplace App connection
+ * (assuming one exists). When disabled, post-call sync falls back to
+ * the legacy ghlApiKey flow if configured, or no-ops otherwise.
+ *
+ * Pre-flight check: enabling without a connected Marketplace App is
+ * allowed (UI flow may want to flip the flag before guiding through
+ * install) but the actual sync action returns "not configured" until
+ * an installation row exists.
+ */
+export const updateDispositionSyncConfig = mutation({
+  args: {
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx);
+    const teamId = user.teamId as Id<"teams">;
+    await ctx.db.patch(teamId, {
+      setterDispositionSyncEnabled: args.enabled,
+    });
+    return { success: true };
+  },
+});
+
+// ----------------------------------------------------------------------------
 // updateConnectionThreshold — Settings tab connection threshold slider
 // ----------------------------------------------------------------------------
 

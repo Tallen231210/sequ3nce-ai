@@ -263,14 +263,35 @@ export const syncCallToGhl = internalAction({
 
       const { team, call, closerName, prospectEmail } = data;
 
-      // Skip if GHL not configured
-      if (!team.ghlEnabled || !team.ghlApiKey || !team.ghlLocationId) {
-        return { success: false, error: "GHL not configured" };
-      }
-
-      // Already synced — skip silently
+      // Already synced (legacy or OAuth) — skip silently before any
+      // routing decision so duplicate scheduler invocations are no-ops.
       if (call.ghlSyncedAt) {
         return { success: true };
+      }
+
+      // Phase 3c routing — if the team has the GHL Marketplace App
+      // installed AND the new disposition-sync flag is on, delegate to
+      // the OAuth flow. Otherwise fall through to the legacy API-key
+      // path below for backward compat with existing customers.
+      if (team.setterDispositionSyncEnabled) {
+        const installation = await ctx.runQuery(
+          internal.setterGhlOauth.getInstallationByTeam,
+          { teamId: team._id },
+        );
+        if (installation && installation.status === "active") {
+          return await ctx.runAction(
+            internal.setterGhlDispositionSync.syncCallToGhlOAuth,
+            { callId: args.callId },
+          );
+        }
+        // Flag is on but no install — fall through to legacy if it's
+        // configured, otherwise return an explicit error so the UI
+        // can surface "you flipped the toggle but never installed".
+      }
+
+      // Skip if legacy GHL not configured
+      if (!team.ghlEnabled || !team.ghlApiKey || !team.ghlLocationId) {
+        return { success: false, error: "GHL not configured" };
       }
 
       // Need email to find/create contact
