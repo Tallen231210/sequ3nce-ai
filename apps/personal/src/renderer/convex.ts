@@ -3935,6 +3935,12 @@ export interface PublicJob {
   applyUrl: string;
   source?: string;
   status: string;
+  // Bulk-import fields (May 2026 — VA-scraped batch). Optional because
+  // older rows added through the manual form may not have them set.
+  remote?: boolean;
+  jobType?: string;
+  experienceLevel?: string;
+  datePosted?: number;
   createdAt: number;
   tracking: {
     saved: boolean;

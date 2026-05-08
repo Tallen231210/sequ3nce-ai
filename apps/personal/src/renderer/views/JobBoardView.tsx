@@ -10,7 +10,9 @@ type Tab = 'public' | 'internal';
 
 const INDUSTRIES = [
   'Solar', 'Insurance', 'Real Estate', 'SaaS', 'Coaching',
-  'Agency', 'Info Products', 'E-Commerce', 'Financial Services', 'Other',
+  'Agency', 'Info Products', 'E-Commerce', 'Financial Services',
+  'Health', // Added May 2026 — VA-scraped job batch surfaced this category
+  'Other',
 ];
 
 const SOURCES = ['LinkedIn', 'Indeed', 'Direct', 'Other'];
@@ -36,6 +38,7 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
   const [jobs, setJobs] = useState<PublicJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [industry, setIndustry] = useState('');
+  const [remoteOnly, setRemoteOnly] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
 
   const userId = closerInfo.b2cUserId;
@@ -48,6 +51,14 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
     setJobs(data);
     setIsLoading(false);
   }, [userId, industry]);
+
+  // Apply the Remote-only filter client-side. Server query already filtered
+  // by industry; remote is a snapshot field on the lead so a JS filter is
+  // cheap and avoids adding another query parameter.
+  const visibleJobs = useMemo(
+    () => (remoteOnly ? jobs.filter((j) => j.remote === true) : jobs),
+    [jobs, remoteOnly],
+  );
 
   useEffect(() => { if (activeTab === 'public') loadJobs(); }, [activeTab, loadJobs]);
 
@@ -78,14 +89,14 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
   }, [userId, loadJobs]);
 
   // Per-user stats computed from the already-loaded jobs array (no extra query).
-  // Reflects whatever filter is currently active (e.g. industry) so counts
-  // match what the user is actually looking at.
+  // Reflects whatever filter is currently active (e.g. industry, remote-only)
+  // so counts match what the user is actually looking at.
   const stats = useMemo(() => ({
-    active: jobs.length,
-    saved: jobs.filter((j) => j.tracking?.saved).length,
-    applied: jobs.filter((j) => j.tracking?.applied).length,
-    interviewed: jobs.filter((j) => j.tracking?.interviewed).length,
-  }), [jobs]);
+    active: visibleJobs.length,
+    saved: visibleJobs.filter((j) => j.tracking?.saved).length,
+    applied: visibleJobs.filter((j) => j.tracking?.applied).length,
+    interviewed: visibleJobs.filter((j) => j.tracking?.interviewed).length,
+  }), [visibleJobs]);
 
   return (
     <div className="h-full flex flex-col">
@@ -150,6 +161,17 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
                     <option key={ind} value={ind}>{ind}</option>
                   ))}
                 </select>
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={remoteOnly}
+                    onChange={(e) => setRemoteOnly(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-gray-300 text-black focus:ring-black/20"
+                  />
+                  <span className="text-[12px] font-medium text-gray-600 dark:text-gray-400">
+                    Remote only
+                  </span>
+                </label>
               </div>
               {isFounder && (
                 <button
@@ -174,14 +196,18 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
               <div className="flex justify-center py-12">
                 <div className="w-5 h-5 border-2 border-gray-200 border-t-black rounded-full animate-spin" />
               </div>
-            ) : jobs.length === 0 ? (
+            ) : visibleJobs.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-[14px] font-medium text-gray-600 mb-1">No jobs posted yet</p>
-                <p className="text-[12px] text-gray-400">Check back soon for opportunities</p>
+                <p className="text-[14px] font-medium text-gray-600 mb-1">
+                  {jobs.length > 0 && remoteOnly ? 'No remote jobs in this view' : 'No jobs posted yet'}
+                </p>
+                <p className="text-[12px] text-gray-400">
+                  {jobs.length > 0 && remoteOnly ? 'Try clearing the Remote filter' : 'Check back soon for opportunities'}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {jobs.map((job) => (
+                {visibleJobs.map((job) => (
                   <JobCard key={job._id} job={job} isFounder={!!isFounder} onTracking={handleTracking} onClose={handleClose} onDelete={handleDelete} />
                 ))}
               </div>
@@ -222,9 +248,9 @@ function JobCard({ job, isFounder, onTracking, onClose, onDelete }: {
   return (
     <div className="p-4 bg-white dark:bg-zinc-900 rounded-xl border border-gray-100 dark:border-zinc-800">
       <div className="flex items-start justify-between mb-2">
-        <div>
+        <div className="flex-1 min-w-0">
           <h3 className="text-[14px] font-semibold text-black dark:text-white">{job.title}</h3>
-          <div className="flex items-center gap-2 mt-0.5 text-[12px] text-gray-500">
+          <div className="flex items-center gap-2 mt-0.5 text-[12px] text-gray-500 flex-wrap">
             <span className="font-medium">{job.companyName}</span>
             <span>&middot;</span>
             <span>{job.location}</span>
@@ -235,12 +261,34 @@ function JobCard({ job, isFounder, onTracking, onClose, onDelete }: {
               </>
             )}
             <span>&middot;</span>
-            <span className="text-gray-400">{formatRelative(job.createdAt)}</span>
+            {/* Prefer the original posted date when the import script
+                captured it; fall back to our row's createdAt for jobs
+                added through the manual form (which doesn't track
+                datePosted separately). */}
+            <span className="text-gray-400">{formatRelative(job.datePosted ?? job.createdAt)}</span>
           </div>
         </div>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-500 shrink-0">
-          {job.industry}
-        </span>
+        {/* Tag stack — industry + optional remote/jobType/level chips */}
+        <div className="flex flex-wrap items-center gap-1 shrink-0 ml-2 max-w-[40%] justify-end">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-500">
+            {job.industry}
+          </span>
+          {job.remote === true && (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400">
+              Remote
+            </span>
+          )}
+          {job.experienceLevel && (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400">
+              {job.experienceLevel}
+            </span>
+          )}
+          {job.jobType && (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400">
+              {job.jobType}
+            </span>
+          )}
+        </div>
       </div>
 
       {job.description && (

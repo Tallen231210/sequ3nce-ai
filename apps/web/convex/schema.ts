@@ -1552,6 +1552,13 @@ export default defineSchema({
     source: v.optional(v.string()),    // "LinkedIn", "Indeed", "Direct", "Other"
     addedBy: v.id("b2cUsers"),
     status: v.string(),                // "active" | "closed"
+    // Bulk-import additions (May 2026 — VA-scraped job batch). All
+    // optional so existing rows added through the manual form continue
+    // to validate without backfill.
+    remote: v.optional(v.boolean()),
+    jobType: v.optional(v.string()),         // "Full-time" | "1099" | "Contract" | "Part-time"
+    experienceLevel: v.optional(v.string()), // "Entry" | "Mid" | "Senior"
+    datePosted: v.optional(v.number()),      // Unix ms — when the company posted, not when we imported
     createdAt: v.number(),
     updatedAt: v.number(),
   })

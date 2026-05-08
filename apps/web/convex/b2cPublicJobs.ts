@@ -10,7 +10,9 @@ const MAX_URL = 500;
 
 const VALID_INDUSTRIES = [
   "Solar", "Insurance", "Real Estate", "SaaS", "Coaching",
-  "Agency", "Info Products", "E-Commerce", "Financial Services", "Other",
+  "Agency", "Info Products", "E-Commerce", "Financial Services",
+  "Health", // Added May 2026 — VA-scraped job batch surfaced this category
+  "Other",
 ];
 
 function isFounder(user: any): boolean {
@@ -68,6 +70,120 @@ export const addJob = mutation({
     });
 
     return id;
+  },
+});
+
+/**
+ * Bulk-import a batch of pre-validated jobs. Founder-only. Used by the
+ * Node import script in apps/web/scripts/import-jobs.mjs after it parses
+ * a CSV from the VA's Google Sheet. Per-job validation mirrors addJob —
+ * we don't trust the script-side parser to have caught everything.
+ *
+ * Idempotency: dedupes by applyUrl. If a row's URL already exists in
+ * setterPublicJobs, we skip it and increment `skipped`. Re-running the
+ * importer on the same CSV is safe.
+ *
+ * Atomicity: all rows are written in a single Convex mutation, so
+ * either the whole batch lands or none of it does. The script chunks
+ * batches of 100 to stay under Convex's per-mutation write limits.
+ */
+export const addJobsBulk = mutation({
+  args: {
+    founderUserId: v.id("b2cUsers"),
+    jobs: v.array(
+      v.object({
+        companyName: v.string(),
+        title: v.string(),
+        location: v.string(),
+        salaryRange: v.optional(v.string()),
+        industry: v.string(),
+        description: v.optional(v.string()),
+        applyUrl: v.string(),
+        source: v.optional(v.string()),
+        remote: v.optional(v.boolean()),
+        jobType: v.optional(v.string()),
+        experienceLevel: v.optional(v.string()),
+        datePosted: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    inserted: number;
+    skipped: number;
+    errors: Array<{ row: number; companyName: string; message: string }>;
+  }> => {
+    const user = await ctx.db.get(args.founderUserId);
+    if (!user || !isFounder(user)) {
+      throw new Error("Only founders can bulk-import jobs");
+    }
+
+    // Pre-fetch existing applyUrls so dedup is O(N) per batch instead of
+    // O(N) per-row. The active-jobs index already exists, but this dedup
+    // path also catches closed rows so an inadvertently-closed-and-then-
+    // re-imported job still gets skipped.
+    const allExisting = await ctx.db.query("b2cPublicJobs").collect();
+    const existingUrls = new Set(allExisting.map((j) => j.applyUrl));
+
+    const errors: Array<{ row: number; companyName: string; message: string }> = [];
+    let inserted = 0;
+    let skipped = 0;
+    const now = Date.now();
+
+    for (let i = 0; i < args.jobs.length; i++) {
+      const j = args.jobs[i];
+      const company = j.companyName.trim();
+      const title = j.title.trim();
+      const location = j.location.trim();
+      const applyUrl = j.applyUrl.trim();
+
+      try {
+        // Same validators as addJob — script may pass invalid data even
+        // after its own pre-checks. We're the last line of defense.
+        if (!company || company.length > MAX_COMPANY) throw new Error(`Company name required (max ${MAX_COMPANY} chars)`);
+        if (!title || title.length > MAX_TITLE) throw new Error(`Job title required (max ${MAX_TITLE} chars)`);
+        if (!location || location.length > MAX_LOCATION) throw new Error(`Location required (max ${MAX_LOCATION} chars)`);
+        if (!applyUrl || !applyUrl.startsWith("https://")) throw new Error("Apply URL must start with https://");
+        if (applyUrl.length > MAX_URL) throw new Error(`URL too long (max ${MAX_URL} chars)`);
+        if (!VALID_INDUSTRIES.includes(j.industry)) throw new Error(`Invalid industry: ${j.industry}`);
+        if (j.description && j.description.length > MAX_DESCRIPTION) throw new Error(`Description too long (max ${MAX_DESCRIPTION} chars)`);
+        if (j.salaryRange && j.salaryRange.length > MAX_SALARY) throw new Error(`Salary range too long (max ${MAX_SALARY} chars)`);
+
+        if (existingUrls.has(applyUrl)) {
+          skipped++;
+          continue;
+        }
+
+        await ctx.db.insert("b2cPublicJobs", {
+          companyName: company,
+          title,
+          location,
+          salaryRange: j.salaryRange?.trim() || undefined,
+          industry: j.industry,
+          description: j.description?.trim() || undefined,
+          applyUrl,
+          source: j.source?.trim() || undefined,
+          addedBy: args.founderUserId,
+          status: "active",
+          remote: j.remote,
+          jobType: j.jobType?.trim() || undefined,
+          experienceLevel: j.experienceLevel?.trim() || undefined,
+          datePosted: j.datePosted,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        existingUrls.add(applyUrl); // Within-batch dedup — same URL twice = first wins
+        inserted++;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        errors.push({ row: i, companyName: company || "(unknown)", message });
+      }
+    }
+
+    return { inserted, skipped, errors };
   },
 });
 
