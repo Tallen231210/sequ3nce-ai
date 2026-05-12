@@ -7,7 +7,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel";
 // GoHighLevel Marketplace App — OAuth callback route.
 //
 // GHL redirects here after the user authorizes the install on their side:
-//   https://sequ3nce.ai/api/ghl-marketplace/oauth/callback?code=<code>&state=<teamId>
+//   https://sequ3nce.ai/api/setter-data-marketplace/oauth/callback?code=<code>&state=<teamId>
 //
 // We hand the code off to a Convex action that exchanges it for tokens,
 // encrypts them, and persists the install. This route just orchestrates

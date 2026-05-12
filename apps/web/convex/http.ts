@@ -3343,7 +3343,7 @@ http.route({
 //   body:   raw JSON, signed with GHL's Ed25519 private key
 
 http.route({
-  path: "/webhooks/ghl-marketplace",
+  path: "/webhooks/setter-data-marketplace",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const signatureHeader = request.headers.get("x-ghl-signature");

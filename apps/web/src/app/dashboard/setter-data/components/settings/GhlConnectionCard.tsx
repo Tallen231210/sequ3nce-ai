@@ -186,7 +186,7 @@ export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
                   url.searchParams.set("redirect_uri", redirectUri);
                   url.searchParams.set(
                     "scope",
-                    "contacts.readonly conversations.readonly conversations/message.readonly users.readonly locations.readonly",
+                    "contacts.readonly conversations.readonly conversations/message.readonly users.readonly locations.readonly opportunities.readonly calendars/events.readonly",
                   );
                   window.location.href = url.toString();
                 }}

@@ -16,14 +16,16 @@ import { encryptApiKey, decryptApiKey } from "./lib/encrypt";
 const GHL_TOKEN_ENDPOINT = "https://services.leadconnectorhq.com/oauth/token";
 
 // Tokens we ask for at install time. Phase 1 needs read access to contacts,
-// conversations, and users. Calendars + opportunities are added in Phase 2/3
-// (the user re-authorizes when we expand scopes — same OAuth flow).
+// conversations, users, opportunities (pipeline depth in Phase 3b), and
+// calendars (appointment events in Phase 3+).
 const PHASE_1_SCOPES = [
   "contacts.readonly",
   "conversations.readonly",
   "conversations/message.readonly",
   "users.readonly",
   "locations.readonly",
+  "opportunities.readonly",
+  "calendars/events.readonly",
 ] as const;
 
 // ----------------------------------------------------------------------------
@@ -47,7 +49,7 @@ export const exchangeCodeForTokens = action({
     const clientSecret = process.env.GHL_CLIENT_SECRET;
     const redirectUri =
       process.env.GHL_REDIRECT_URI ||
-      "https://sequ3nce.ai/api/ghl-marketplace/oauth/callback";
+      "https://sequ3nce.ai/api/setter-data-marketplace/oauth/callback";
 
     if (!clientId || !clientSecret) {
       console.error("[GHL OAuth] Missing client credentials in env");

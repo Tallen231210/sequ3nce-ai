@@ -13,6 +13,8 @@ const PHASE_1_SCOPES = [
   "conversations/message.readonly",
   "users.readonly",
   "locations.readonly",
+  "opportunities.readonly",
+  "calendars/events.readonly",
 ];
 
 interface ConnectionGateProps {
