@@ -33,9 +33,10 @@ async function resolveAuthUser(ctx: {
 }
 
 async function requireAdmin(ctx: Parameters<typeof resolveAuthUser>[0]) {
+  // Web-dashboard users are sales managers / business owners sharing
+  // one login per team — authentication itself is the admin gate.
   const user = await resolveAuthUser(ctx);
   if (!user) throw new Error("Not authenticated");
-  if (user.role !== "admin") throw new Error("Admins only");
   return user;
 }
 

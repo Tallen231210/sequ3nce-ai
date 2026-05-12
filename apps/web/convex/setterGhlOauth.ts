@@ -265,9 +265,6 @@ export const disconnectInstallation = mutation({
     if (!user) {
       throw new Error("Not authenticated");
     }
-    if (user.role !== "admin") {
-      throw new Error("Only admins can disconnect GoHighLevel");
-    }
 
     const installation = await ctx.db
       .query("setterGhlInstallations")
@@ -291,13 +288,14 @@ export const disconnectInstallation = mutation({
 /**
  * Read the current installation status for the calling user's team.
  * Returns a sanitized view — no tokens, just metadata the UI needs to
- * render the ConnectionGate / Settings tab. Admin-only.
+ * render the ConnectionGate / Settings tab. Authentication itself is
+ * the gate (every web-dashboard user is a manager/owner).
  */
 export const getMyInstallationStatus = query({
   args: {},
   handler: async (ctx) => {
     const user = await resolveAuthUser(ctx);
-    if (!user || user.role !== "admin") {
+    if (!user) {
       return null;
     }
 

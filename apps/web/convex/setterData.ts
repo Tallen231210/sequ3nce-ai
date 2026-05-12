@@ -36,7 +36,11 @@ async function resolveAuthUser(ctx: {
 }
 
 function isAdmin(user: { role?: string } | null | undefined): boolean {
-  return user?.role === "admin";
+  // Every B2B web-dashboard user is by definition a sales manager or
+  // business owner sharing the team's single login — there are no
+  // non-admin web-dashboard accounts. So authentication itself is the
+  // gate; no role check needed.
+  return !!user;
 }
 
 // ----------------------------------------------------------------------------

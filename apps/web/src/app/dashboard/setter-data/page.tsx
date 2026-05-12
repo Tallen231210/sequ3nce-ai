@@ -78,17 +78,19 @@ function SetterDataPageInner() {
     );
   }
 
-  // Access denied — non-admin user.
+  // Not authenticated — Convex couldn't resolve the user. Clerk should
+  // have redirected to sign-in upstream, so this is mostly a safety
+  // fallback for an auth race during navigation.
   if (installation === null) {
     return (
       <>
         <Header title="Setter Data" />
         <div className="px-6 py-12">
           <div className="mx-auto max-w-xl rounded-lg border border-border bg-card p-8 text-center">
-            <h2 className="text-lg font-semibold">Admin access required</h2>
+            <h2 className="text-lg font-semibold">Sign in to continue</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Only admins can view Setter Data. Ask your team admin if you
-              need access to this section.
+              Your session couldn&apos;t be verified. Refresh the page or
+              sign in again.
             </p>
           </div>
         </div>
