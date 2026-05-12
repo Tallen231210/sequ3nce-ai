@@ -20,6 +20,7 @@ import {
   MessageSquareText,
   Zap,
   Briefcase,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
@@ -33,6 +34,10 @@ const baseNavigation = [
   { name: "Call Reviews", href: "/dashboard/call-reviews", icon: MessageSquareText },
   { name: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
+  // Setter Data tab — always visible to B2B admins. ConnectionGate inside
+  // handles the not-yet-installed state. Hidden only when an admin
+  // explicitly sets team.setterDataEnabled = false (kill switch).
+  { name: "Setter Data", href: "/dashboard/setter-data", icon: UserCheck },
   { name: "Playbook", href: "/dashboard/playbook", icon: BookMarked },
   { name: "Resources", href: "/dashboard/resources", icon: FileText },
   { name: "Recruiting", href: "/dashboard/recruiting", icon: Briefcase },
@@ -57,21 +62,25 @@ export function Sidebar() {
 
   const callReviewsBadge = (flaggedCount?.count ?? 0) + (unreadReplyCount?.count ?? 0);
 
-  // Build navigation dynamically — add integration sync pages before Billing when enabled
+  // Build navigation dynamically — add integration sync pages before Billing when enabled.
+  // GHL Sync is intentionally hidden — its UI was non-functional and is being absorbed
+  // into the new Setter Data tab. The underlying disposition-sync code remains in place
+  // and will be rebuilt on top of OAuth tokens in Phase 3.
   const integrationItems: typeof baseNavigation = [];
   if (team?.hyrosEnabled) {
     integrationItems.push({ name: "Hyros Sync", href: "/dashboard/hyros-sync", icon: Zap });
   }
-  if (team?.ghlEnabled) {
-    integrationItems.push({ name: "GHL Sync", href: "/dashboard/ghl-sync", icon: Zap });
-  }
+  // Filter out Setter Data tab if explicitly disabled (admin kill switch).
+  const filteredBase = team?.setterDataEnabled === false
+    ? baseNavigation.filter((item) => item.href !== "/dashboard/setter-data")
+    : baseNavigation;
   const navigation = integrationItems.length > 0
     ? [
-        ...baseNavigation.slice(0, 10), // Dashboard through Team
+        ...filteredBase.slice(0, 11), // Dashboard through Team (now includes Setter Data)
         ...integrationItems,
-        ...baseNavigation.slice(10), // Billing, Settings
+        ...filteredBase.slice(11), // Billing, Settings
       ]
-    : baseNavigation;
+    : filteredBase;
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-background">

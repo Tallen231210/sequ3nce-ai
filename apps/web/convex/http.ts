@@ -3321,6 +3321,209 @@ http.route({
 });
 
 // ============================================
+// GOHIGHLEVEL MARKETPLACE APP WEBHOOK HANDLER
+// ============================================
+//
+// GHL fires events here for every Contact/Message/Appointment/Opportunity
+// change inside any sub-account that's installed our Marketplace App.
+//
+// Critical differences from the Recall handler below:
+//   1. We MUST verify the Ed25519 signature BEFORE parsing JSON (the
+//      signature is over the byte-identical raw body). request.json()
+//      would consume the body as parsed objects — instead we call
+//      request.text() once and parse manually after verification.
+//   2. We persist to setterWebhookEvents for forensic audit on every
+//      request, including invalid-signature requests (so we can detect
+//      spoofing attempts).
+//   3. Fast-ack: 200 immediately, schedule the dispatch internal
+//      mutation via runAfter(0) to do the work asynchronously.
+//
+// Payload signature:
+//   header: X-GHL-Signature: <base64 signature>
+//   body:   raw JSON, signed with GHL's Ed25519 private key
+
+http.route({
+  path: "/webhooks/setter-data-marketplace",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const signatureHeader = request.headers.get("x-ghl-signature");
+    let rawBody: string;
+    try {
+      rawBody = await request.text();
+    } catch (error) {
+      console.error("[ghl-webhook] Failed to read body:", error);
+      return new Response(JSON.stringify({ error: "Invalid body" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Try to extract the event type + locationId for the audit row even
+    // BEFORE we verify the signature. Lets us record spoofing attempts
+    // with usable metadata. If JSON parsing fails, we still record a row
+    // (with empty fields) so signature-failure forensics are complete.
+    let parsedBody: Record<string, unknown> | null = null;
+    try {
+      parsedBody = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      parsedBody = null;
+    }
+
+    const signatureValid = signatureHeader
+      ? await verifyGhlEd25519Signature(rawBody, signatureHeader)
+      : false;
+
+    if (!signatureValid) {
+      // Forensic audit: log spoofing attempts (or signature key rotation)
+      // with the parsed body if we got it. Don't process anything.
+      try {
+        await ctx.runMutation(
+          internal.setterGhlWebhooks.recordIncomingWebhook,
+          {
+            locationId: (parsedBody?.locationId as string) ?? "",
+            eventType: (parsedBody?.type as string) ?? "unknown",
+            ghlEventId: undefined,
+            signatureValid: false,
+            processed: true, // nothing to process
+            payload: parsedBody ?? { raw: rawBody.slice(0, 4096) },
+            teamId: undefined,
+          },
+        );
+      } catch (err) {
+        console.error("[ghl-webhook] Failed to record invalid-sig event:", err);
+      }
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Signature OK — record audit row (processed=false), schedule
+    // dispatch, ack 200. The dispatch mutation patches processed=true
+    // when it finishes (or processingError on failure).
+    if (!parsedBody) {
+      // Signature was valid but body wasn't valid JSON. Record + reject.
+      await ctx.runMutation(internal.setterGhlWebhooks.recordIncomingWebhook, {
+        locationId: "",
+        eventType: "unknown",
+        ghlEventId: undefined,
+        signatureValid: true,
+        processed: true,
+        processingError: "Body was not valid JSON despite valid signature",
+        payload: { raw: rawBody.slice(0, 4096) },
+        teamId: undefined,
+      } as never);
+      return new Response(JSON.stringify({ error: "Invalid JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const auditId = await ctx.runMutation(
+      internal.setterGhlWebhooks.recordIncomingWebhook,
+      {
+        locationId: (parsedBody.locationId as string) ?? "",
+        eventType: (parsedBody.type as string) ?? "unknown",
+        ghlEventId: undefined,
+        signatureValid: true,
+        processed: false,
+        payload: parsedBody,
+        teamId: undefined,
+      },
+    );
+
+    // Schedule the dispatch immediately. The httpAction returns 200 below
+    // while dispatch runs asynchronously in the background.
+    await ctx.scheduler.runAfter(0, internal.setterGhlWebhooks.dispatch, {
+      auditId,
+    });
+
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
+/**
+ * Verify a GoHighLevel Ed25519 webhook signature using the Web Crypto API.
+ * Returns true on a valid signature, false on any error or mismatch.
+ *
+ * Operates on the byte-identical raw body — the signature is computed by
+ * GHL over the exact bytes they sent, so we must NOT re-serialize the
+ * body before verifying. The httpAction always reads raw text, never
+ * .json(), and passes the raw string in here.
+ *
+ * Public key format: PEM-encoded SPKI in env GHL_WEBHOOK_PUBLIC_KEY.
+ */
+async function verifyGhlEd25519Signature(
+  rawBody: string,
+  signatureBase64: string,
+): Promise<boolean> {
+  const publicKeyPem = process.env.GHL_WEBHOOK_PUBLIC_KEY;
+  if (!publicKeyPem) {
+    console.error("[ghl-webhook] GHL_WEBHOOK_PUBLIC_KEY env var not set");
+    return false;
+  }
+
+  let derBytes: Uint8Array;
+  let signatureBytes: Uint8Array;
+  try {
+    derBytes = pemToDer(publicKeyPem);
+    signatureBytes = base64ToBytes(signatureBase64);
+  } catch (err) {
+    console.error("[ghl-webhook] Failed to decode key/signature:", err);
+    return false;
+  }
+
+  try {
+    // Cast through BufferSource — TypeScript's Uint8Array generic defaults
+    // to ArrayBufferLike, which crypto.subtle's overloads (looking for
+    // ArrayBufferView<ArrayBuffer>) reject under newer lib versions.
+    // The runtime value is unambiguously fine; this is a pure type fix.
+    const key = await crypto.subtle.importKey(
+      "spki",
+      derBytes as BufferSource,
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    return await crypto.subtle.verify(
+      "Ed25519",
+      key,
+      signatureBytes as BufferSource,
+      new TextEncoder().encode(rawBody) as BufferSource,
+    );
+  } catch (err) {
+    console.error("[ghl-webhook] Ed25519 verify error:", err);
+    return false;
+  }
+}
+
+function pemToDer(pem: string): Uint8Array {
+  const base64 = pem
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/\s+/g, "");
+  return base64ToBytes(base64);
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  // Allocate over a fresh ArrayBuffer (NOT ArrayBufferLike) so the returned
+  // Uint8Array satisfies the BufferSource type that crypto.subtle expects
+  // under newer TS lib defaults — without an explicit ArrayBuffer backing
+  // the inferred type is Uint8Array<ArrayBufferLike> which the verify()
+  // overload rejects.
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// ============================================
 // RECALL.AI WEBHOOK HANDLER
 // ============================================
 
