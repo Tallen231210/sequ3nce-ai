@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ export function ScorecardConfig({
   scorecard,
   teamTimezone,
 }: ScorecardConfigProps) {
+  const { clerkId } = useTeam();
   const updateConfig = useMutation(api.setterDataMutations.updateScorecardConfig);
 
   const [enabled, setEnabled] = useState(scorecard.enabled);
@@ -50,10 +52,12 @@ export function ScorecardConfig({
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
+    if (!clerkId) return;
     setSaving(true);
     setError(null);
     try {
       const args: Record<string, unknown> = {
+        clerkId,
         enabled,
       };
       if (channel === "slack" || channel === "discord") {
@@ -69,7 +73,8 @@ export function ScorecardConfig({
       if (!Number.isNaN(hourNum)) {
         args.hourLocal = hourNum;
       }
-      await updateConfig(args);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await updateConfig(args as any);
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ const THRESHOLD_OPTIONS = [
 ];
 
 export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
+  const { clerkId } = useTeam();
   const updateConfig = useMutation(
     api.setterDataMutations.updateUntouchedAlertConfig,
   );
@@ -58,10 +60,11 @@ export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
+    if (!clerkId) return;
     setSaving(true);
     setError(null);
     try {
-      const args: Record<string, unknown> = { enabled };
+      const args: Record<string, unknown> = { clerkId, enabled };
       const thr = parseInt(thresholdMinutes, 10);
       if (!Number.isNaN(thr)) {
         args.thresholdMinutes = thr;
@@ -75,7 +78,8 @@ export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
       if (channel === "discord" && discordWebhookUrl.trim()) {
         args.discordWebhookUrl = discordWebhookUrl.trim();
       }
-      await updateConfig(args);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await updateConfig(args as any);
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");

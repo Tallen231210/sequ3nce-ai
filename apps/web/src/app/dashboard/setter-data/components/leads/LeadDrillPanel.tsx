@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import {
   Dialog,
   DialogContent,
@@ -39,9 +40,10 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 export function LeadDrillPanel({ leadId, onClose }: LeadDrillPanelProps) {
+  const { clerkId } = useTeam();
   const data = useQuery(
     api.setterData.getLeadActivity,
-    leadId ? { leadId } : "skip",
+    leadId && clerkId ? { clerkId, leadId } : "skip",
   );
 
   return (

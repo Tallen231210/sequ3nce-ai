@@ -19,28 +19,23 @@ import { computeScorecard } from "./setterDataMetrics";
 // AUTH HELPER (mirrors apps/web/convex/ghl.ts:9-20)
 // ----------------------------------------------------------------------------
 
-async function resolveAuthUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any;
-}) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) return null;
-  const clerkId = identity.subject;
+// Resolve the calling user by their Clerk ID (passed explicitly by the
+// frontend). Convex + Clerk auth context isn't wired up app-wide, so we
+// follow the dominant codebase pattern of taking clerkId as an arg
+// (mirrors apps/web/convex/hyros.ts, slack.ts, refgrow.ts, etc).
+async function resolveAuthUser(
+  ctx: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    db: any;
+  },
+  clerkId: string,
+) {
   const user = await ctx.db
     .query("users")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", clerkId))
     .first();
   return user;
-}
-
-function isAdmin(user: { role?: string } | null | undefined): boolean {
-  // Every B2B web-dashboard user is by definition a sales manager or
-  // business owner sharing the team's single login — there are no
-  // non-admin web-dashboard accounts. So authentication itself is the
-  // gate; no role check needed.
-  return !!user;
 }
 
 // ----------------------------------------------------------------------------
@@ -58,13 +53,14 @@ function isAdmin(user: { role?: string } | null | undefined): boolean {
  */
 export const getOverview = query({
   args: {
+    clerkId: v.string(),
     rangeStart: v.number(),
     rangeEnd: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await resolveAuthUser(ctx);
-    if (!isAdmin(user)) return null;
-    const teamId = user!.teamId as Id<"teams">;
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
 
     const scorecard = await computeScorecard(ctx, {
       teamId,
@@ -141,6 +137,7 @@ export const getOverview = query({
  */
 export const getLeads = query({
   args: {
+    clerkId: v.string(),
     rangeStart: v.number(),
     rangeEnd: v.number(),
     filter: v.optional(
@@ -157,9 +154,9 @@ export const getLeads = query({
     pageSize: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await resolveAuthUser(ctx);
-    if (!isAdmin(user)) return null;
-    const teamId = user!.teamId as Id<"teams">;
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
 
     const pageSize = clamp(args.pageSize ?? 50, 1, 200);
     const page = Math.max(1, args.page ?? 1);
@@ -256,11 +253,11 @@ export const getLeads = query({
  * trusted to belong to the right team without checking).
  */
 export const getLeadActivity = query({
-  args: { leadId: v.id("setterLeads") },
+  args: { clerkId: v.string(), leadId: v.id("setterLeads") },
   handler: async (ctx, args) => {
-    const user = await resolveAuthUser(ctx);
-    if (!isAdmin(user)) return null;
-    const teamId = user!.teamId as Id<"teams">;
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
 
     const lead = (await ctx.db.get(args.leadId)) as Doc<"setterLeads"> | null;
     if (!lead || lead.teamId !== teamId) return null;
@@ -338,11 +335,11 @@ export const getLeadActivity = query({
  * connection-specific state, that one for the connection status card).
  */
 export const getMySettings = query({
-  args: {},
-  handler: async (ctx) => {
-    const user = await resolveAuthUser(ctx);
-    if (!isAdmin(user)) return null;
-    const teamId = user!.teamId as Id<"teams">;
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
 
     const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
     if (!team) return null;
@@ -398,11 +395,11 @@ export const getMySettings = query({
  * snapshot only.
  */
 export const getPipelineStageDistribution = query({
-  args: {},
-  handler: async (ctx) => {
-    const user = await resolveAuthUser(ctx);
-    if (!isAdmin(user)) return null;
-    const teamId = user!.teamId as Id<"teams">;
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
 
     const pipelines = (await ctx.db
       .query("setterPipelines")
@@ -475,14 +472,15 @@ export const getPipelineStageDistribution = query({
  */
 export const getSetterDetail = query({
   args: {
+    clerkId: v.string(),
     ghlUserId: v.string(),
     rangeStart: v.number(),
     rangeEnd: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await resolveAuthUser(ctx);
-    if (!isAdmin(user)) return null;
-    const teamId = user!.teamId as Id<"teams">;
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
 
     // Setter identity. We allow null here — historical activity
     // attributed to a since-removed GHL user still resolves.
@@ -699,11 +697,11 @@ function computeSourceMixForLeads(
 }
 
 export const getReps = query({
-  args: {},
-  handler: async (ctx) => {
-    const user = await resolveAuthUser(ctx);
-    if (!isAdmin(user)) return [];
-    const teamId = user!.teamId as Id<"teams">;
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return [];
+    const teamId = user.teamId as Id<"teams">;
 
     const reps = (await ctx.db
       .query("setterReps")

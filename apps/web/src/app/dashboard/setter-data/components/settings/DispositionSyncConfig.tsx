@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ export function DispositionSyncConfig({
   enabled: initialEnabled,
   hasInstallation,
 }: DispositionSyncConfigProps) {
+  const { clerkId } = useTeam();
   const updateConfig = useMutation(
     api.setterDataMutations.updateDispositionSyncConfig,
   );
@@ -40,10 +42,11 @@ export function DispositionSyncConfig({
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
+    if (!clerkId) return;
     setSaving(true);
     setError(null);
     try {
-      await updateConfig({ enabled });
+      await updateConfig({ clerkId, enabled });
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");

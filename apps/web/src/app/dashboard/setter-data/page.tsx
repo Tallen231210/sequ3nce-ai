@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
+import { useTeam } from "@/hooks/useTeam";
 import { ConnectionGate } from "./components/ConnectionGate";
 import { BackfillBanner } from "./components/BackfillBanner";
 import { ErrorBanner } from "./components/ErrorBanner";
@@ -31,7 +32,11 @@ function isTabId(value: string | null): value is TabId {
 function SetterDataPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const installation = useQuery(api.setterGhlOauth.getMyInstallationStatus);
+  const { clerkId } = useTeam();
+  const installation = useQuery(
+    api.setterGhlOauth.getMyInstallationStatus,
+    clerkId ? { clerkId } : "skip",
+  );
 
   // Tab state — persisted to URL so links + browser-back work naturally.
   const tabParam = searchParams.get("tab");

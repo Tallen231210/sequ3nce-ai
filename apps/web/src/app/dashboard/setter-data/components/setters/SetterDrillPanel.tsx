@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import {
   Dialog,
   DialogContent,
@@ -41,9 +42,12 @@ export function SetterDrillPanel({
   rangeEnd,
   onClose,
 }: SetterDrillPanelProps) {
+  const { clerkId } = useTeam();
   const data = useQuery(
     api.setterData.getSetterDetail,
-    ghlUserId ? { ghlUserId, rangeStart, rangeEnd } : "skip",
+    ghlUserId && clerkId
+      ? { clerkId, ghlUserId, rangeStart, rangeEnd }
+      : "skip",
   );
 
   return (

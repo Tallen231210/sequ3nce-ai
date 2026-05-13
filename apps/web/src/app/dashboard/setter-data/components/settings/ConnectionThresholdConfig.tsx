@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -29,6 +30,7 @@ const THRESHOLD_OPTIONS = [
 export function ConnectionThresholdConfig({
   thresholdSec,
 }: ConnectionThresholdConfigProps) {
+  const { clerkId } = useTeam();
   const updateThreshold = useMutation(
     api.setterDataMutations.updateConnectionThreshold,
   );
@@ -39,10 +41,11 @@ export function ConnectionThresholdConfig({
   const [error, setError] = useState<string | null>(null);
 
   async function handleSave() {
+    if (!clerkId) return;
     setSaving(true);
     setError(null);
     try {
-      await updateThreshold({ thresholdSec: parseInt(value, 10) });
+      await updateThreshold({ clerkId, thresholdSec: parseInt(value, 10) });
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");

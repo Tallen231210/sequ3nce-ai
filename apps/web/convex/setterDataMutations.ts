@@ -16,14 +16,15 @@ import type { Doc, Id } from "./_generated/dataModel";
 // AUTH HELPER
 // ----------------------------------------------------------------------------
 
-async function resolveAuthUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any;
-}) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) return null;
-  const clerkId = identity.subject;
+// Resolve the calling user by their Clerk ID (passed explicitly by the
+// frontend — matches the dominant codebase pattern in hyros.ts, slack.ts).
+async function resolveAuthUser(
+  ctx: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    db: any;
+  },
+  clerkId: string,
+) {
   const user = await ctx.db
     .query("users")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,10 +33,13 @@ async function resolveAuthUser(ctx: {
   return user;
 }
 
-async function requireAdmin(ctx: Parameters<typeof resolveAuthUser>[0]) {
+async function requireAdmin(
+  ctx: Parameters<typeof resolveAuthUser>[0],
+  clerkId: string,
+) {
   // Web-dashboard users are sales managers / business owners sharing
-  // one login per team — authentication itself is the admin gate.
-  const user = await resolveAuthUser(ctx);
+  // one login per team — authentication itself is the gate.
+  const user = await resolveAuthUser(ctx, clerkId);
   if (!user) throw new Error("Not authenticated");
   return user;
 }
@@ -57,6 +61,7 @@ async function requireAdmin(ctx: Parameters<typeof resolveAuthUser>[0]) {
  */
 export const updateScorecardConfig = mutation({
   args: {
+    clerkId: v.string(),
     enabled: v.optional(v.boolean()),
     channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
     slackChannelId: v.optional(v.string()),
@@ -64,7 +69,7 @@ export const updateScorecardConfig = mutation({
     hourLocal: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAdmin(ctx);
+    const user = await requireAdmin(ctx, args.clerkId);
     const teamId = user.teamId as Id<"teams">;
 
     if (args.hourLocal !== undefined) {
@@ -134,6 +139,7 @@ export const updateScorecardConfig = mutation({
  */
 export const updateUntouchedAlertConfig = mutation({
   args: {
+    clerkId: v.string(),
     enabled: v.optional(v.boolean()),
     thresholdMinutes: v.optional(v.number()),
     channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
@@ -141,7 +147,7 @@ export const updateUntouchedAlertConfig = mutation({
     discordWebhookUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAdmin(ctx);
+    const user = await requireAdmin(ctx, args.clerkId);
     const teamId = user.teamId as Id<"teams">;
 
     if (args.thresholdMinutes !== undefined) {
@@ -210,10 +216,11 @@ export const updateUntouchedAlertConfig = mutation({
  */
 export const updateDispositionSyncConfig = mutation({
   args: {
+    clerkId: v.string(),
     enabled: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const user = await requireAdmin(ctx);
+    const user = await requireAdmin(ctx, args.clerkId);
     const teamId = user.teamId as Id<"teams">;
     await ctx.db.patch(teamId, {
       setterDispositionSyncEnabled: args.enabled,
@@ -238,10 +245,11 @@ export const updateDispositionSyncConfig = mutation({
  */
 export const updateConnectionThreshold = mutation({
   args: {
+    clerkId: v.string(),
     thresholdSec: v.number(),
   },
   handler: async (ctx, args) => {
-    const user = await requireAdmin(ctx);
+    const user = await requireAdmin(ctx, args.clerkId);
     const teamId = user.teamId as Id<"teams">;
 
     if (
@@ -273,9 +281,9 @@ export const updateConnectionThreshold = mutation({
  * within a few seconds as the action runs and patches lastSyncedAt.
  */
 export const triggerManualSync = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await requireAdmin(ctx);
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx, args.clerkId);
     const teamId = user.teamId as Id<"teams">;
 
     const installation = (await ctx.db
@@ -313,9 +321,9 @@ export const triggerManualSync = mutation({
  * after we've manually fixed the underlying problem.
  */
 export const clearDeepBackfillError = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await requireAdmin(ctx);
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx, args.clerkId);
     const teamId = user.teamId as Id<"teams">;
 
     const installation = (await ctx.db

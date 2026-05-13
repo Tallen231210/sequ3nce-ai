@@ -259,9 +259,9 @@ export const markInstallationUninstalled = internalMutation({
  * marketplace settings and our UNINSTALL webhook handler runs.
  */
 export const disconnectInstallation = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const user = await resolveAuthUser(ctx);
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
     if (!user) {
       throw new Error("Not authenticated");
     }
@@ -292,9 +292,9 @@ export const disconnectInstallation = mutation({
  * the gate (every web-dashboard user is a manager/owner).
  */
 export const getMyInstallationStatus = query({
-  args: {},
-  handler: async (ctx) => {
-    const user = await resolveAuthUser(ctx);
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
     if (!user) {
       return null;
     }
@@ -326,18 +326,18 @@ export const getMyInstallationStatus = query({
 });
 
 // ----------------------------------------------------------------------------
-// AUTH HELPER (mirrors apps/web/convex/ghl.ts:9-20)
+// AUTH HELPER — takes clerkId explicitly to match the codebase pattern
+// in hyros.ts / slack.ts / refgrow.ts (ConvexProviderWithClerk isn't
+// wired up app-wide, so auth context can't be used).
 // ----------------------------------------------------------------------------
 
-async function resolveAuthUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any;
-}) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) return null;
-
-  const clerkId = identity.subject;
+async function resolveAuthUser(
+  ctx: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    db: any;
+  },
+  clerkId: string,
+) {
   const user = await ctx.db
     .query("users")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

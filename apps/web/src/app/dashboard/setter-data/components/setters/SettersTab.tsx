@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { SetterLeaderboard } from "./SetterLeaderboard";
 import { SetterDrillPanel } from "./SetterDrillPanel";
@@ -23,7 +24,11 @@ export function SettersTab({
   rangeEnd,
   onRangeChange,
 }: SettersTabProps) {
-  const data = useQuery(api.setterData.getOverview, { rangeStart, rangeEnd });
+  const { clerkId } = useTeam();
+  const data = useQuery(
+    api.setterData.getOverview,
+    clerkId ? { clerkId, rangeStart, rangeEnd } : "skip",
+  );
   const [selectedSetterId, setSelectedSetterId] = useState<string | null>(null);
 
   return (

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ interface GhlConnectionCardProps {
 }
 
 export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
+  const { clerkId } = useTeam();
   const triggerSync = useMutation(api.setterDataMutations.triggerManualSync);
   const disconnect = useMutation(api.setterGhlOauth.disconnectInstallation);
   const clearBackfillError = useMutation(api.setterDataMutations.clearDeepBackfillError);
@@ -52,9 +54,10 @@ export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
   const hasError = installation.status === "error";
 
   async function handleSync() {
+    if (!clerkId) return;
     setSyncing(true);
     try {
-      await triggerSync();
+      await triggerSync({ clerkId });
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : "Sync failed");
@@ -64,9 +67,10 @@ export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
   }
 
   async function handleDisconnect() {
+    if (!clerkId) return;
     setDisconnecting(true);
     try {
-      await disconnect();
+      await disconnect({ clerkId });
       setConfirmDisconnect(false);
       // Page will reflow because the underlying installation query updates.
     } catch (err) {
@@ -78,8 +82,9 @@ export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
   }
 
   async function handleClearBackfillError() {
+    if (!clerkId) return;
     try {
-      await clearBackfillError();
+      await clearBackfillError({ clerkId });
     } catch (err) {
       console.error(err);
     }

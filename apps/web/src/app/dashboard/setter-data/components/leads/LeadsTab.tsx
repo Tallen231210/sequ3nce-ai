@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { LeadFilterBar } from "./LeadFilterBar";
 import { LeadTable } from "./LeadTable";
@@ -43,17 +44,27 @@ export function LeadsTab({
     setPage(1);
   }, [filter, assignedTo, search, rangeStart, rangeEnd]);
 
-  const leads = useQuery(api.setterData.getLeads, {
-    rangeStart,
-    rangeEnd,
-    filter,
-    assignedToGhlUserId: assignedTo,
-    search: search.trim() || undefined,
-    page,
-    pageSize: 50,
-  });
+  const { clerkId } = useTeam();
+  const leads = useQuery(
+    api.setterData.getLeads,
+    clerkId
+      ? {
+          clerkId,
+          rangeStart,
+          rangeEnd,
+          filter,
+          assignedToGhlUserId: assignedTo,
+          search: search.trim() || undefined,
+          page,
+          pageSize: 50,
+        }
+      : "skip",
+  );
 
-  const reps = useQuery(api.setterData.getReps);
+  const reps = useQuery(
+    api.setterData.getReps,
+    clerkId ? { clerkId } : "skip",
+  );
 
   return (
     <div className="space-y-4 pb-12">

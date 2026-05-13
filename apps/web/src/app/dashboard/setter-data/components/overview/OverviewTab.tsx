@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { KpiStrip } from "./KpiStrip";
 import { ActionQueue } from "./ActionQueue";
@@ -35,8 +36,15 @@ export function OverviewTab({
   onRangeChange,
   onDrillToLeads,
 }: OverviewTabProps) {
-  const data = useQuery(api.setterData.getOverview, { rangeStart, rangeEnd });
-  const pipelines = useQuery(api.setterData.getPipelineStageDistribution);
+  const { clerkId } = useTeam();
+  const data = useQuery(
+    api.setterData.getOverview,
+    clerkId ? { clerkId, rangeStart, rangeEnd } : "skip",
+  );
+  const pipelines = useQuery(
+    api.setterData.getPipelineStageDistribution,
+    clerkId ? { clerkId } : "skip",
+  );
 
   return (
     <div className="space-y-6 pb-12">

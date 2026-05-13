@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
+import { useTeam } from "@/hooks/useTeam";
 import { GhlConnectionCard } from "./GhlConnectionCard";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
@@ -10,8 +11,15 @@ import { DispositionSyncConfig } from "./DispositionSyncConfig";
 import { Loader2 } from "lucide-react";
 
 export function SettingsTab() {
-  const settings = useQuery(api.setterData.getMySettings);
-  const installation = useQuery(api.setterGhlOauth.getMyInstallationStatus);
+  const { clerkId } = useTeam();
+  const settings = useQuery(
+    api.setterData.getMySettings,
+    clerkId ? { clerkId } : "skip",
+  );
+  const installation = useQuery(
+    api.setterGhlOauth.getMyInstallationStatus,
+    clerkId ? { clerkId } : "skip",
+  );
 
   if (settings === undefined || installation === undefined) {
     return (
