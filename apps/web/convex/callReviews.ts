@@ -20,13 +20,42 @@ export const getCallsForReview = query({
   handler: async (ctx, args) => {
     const limit = args.limit ?? 50;
 
-    // Get all completed calls with video recordings for this team
-    let callsQuery = ctx.db
-      .query("calls")
-      .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
-      .order("desc");
-
-    const allCalls = await callsQuery.collect();
+    // Pick the narrowest index for the requested status. Earlier the
+    // query collect()'d every call for the team and filtered in JS;
+    // on high-volume teams that exceeded Convex's 16 MiB per-query
+    // read limit and crashed the page.
+    let allCalls;
+    try {
+      if (args.status === "flagged") {
+        allCalls = await ctx.db
+          .query("calls")
+          .withIndex("by_team_and_flagged", (q) =>
+            q.eq("teamId", args.teamId).eq("flaggedForReview", true),
+          )
+          .order("desc")
+          .take(Math.max(limit * 4, 200));
+      } else if (args.status === "reviewed") {
+        allCalls = await ctx.db
+          .query("calls")
+          .withIndex("by_team_and_review_status", (q) =>
+            q.eq("teamId", args.teamId).eq("reviewStatus", "reviewed"),
+          )
+          .order("desc")
+          .take(Math.max(limit * 4, 200));
+      } else {
+        // "all" — cap at a generous multiple of the page limit so the
+        // most recent N rows are always returned without blowing the
+        // read budget.
+        allCalls = await ctx.db
+          .query("calls")
+          .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
+          .order("desc")
+          .take(Math.max(limit * 4, 200));
+      }
+    } catch (err) {
+      console.error("[getCallsForReview] Read limit exceeded:", err);
+      return [];
+    }
 
     // Filter to completed calls with video recordings
     let filtered = allCalls.filter(
@@ -41,13 +70,10 @@ export const getCallsForReview = query({
       filtered = filtered.filter((c) => c.closerId === args.closerId);
     }
 
-    // Apply status filter
+    // Re-apply status filter — the index narrowed the scan, but flagged
+    // calls may also need the reviewStatus !== "reviewed" guard.
     if (args.status === "flagged") {
-      filtered = filtered.filter(
-        (c) => c.flaggedForReview === true && c.reviewStatus !== "reviewed"
-      );
-    } else if (args.status === "reviewed") {
-      filtered = filtered.filter((c) => c.reviewStatus === "reviewed");
+      filtered = filtered.filter((c) => c.reviewStatus !== "reviewed");
     }
 
     // Limit results
