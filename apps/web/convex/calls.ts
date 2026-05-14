@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalAction, internalQuery } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { Id, Doc } from "./_generated/dataModel";
 import { buildCallStartedBlocks } from "./slack";
 
 // Create a new call record (called by audio processor when call starts)
@@ -336,7 +336,16 @@ export const getCallsByTeam = query({
   },
 });
 
-// Get dashboard stats (calls today, live now, close rate, no-shows)
+// Get dashboard stats (calls today, live now, close rate, no-shows).
+//
+// Earlier versions collect()ed every call for the team and filtered in
+// JS. Call rows carry transcript + analysis blobs and run tens of KB
+// each, so on high-volume teams the total bytes read exceeded
+// Convex's 16 MiB per-query limit and the dashboard crashed.
+//
+// New approach: range-scan the last 7 days via the by_team_and_date
+// index (covers all required stats since today + week-window are both
+// subsets of "last 7 days"). Cap at 1000 rows and degrade gracefully.
 export const getDashboardStats = query({
   args: {
     teamId: v.id("teams"),
@@ -346,46 +355,61 @@ export const getDashboardStats = query({
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayStartMs = todayStart.getTime();
-
     const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-    // Get all calls for this team
-    const allCalls = await ctx.db
-      .query("calls")
-      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
-      .collect();
+    let weekCalls: Doc<"calls">[] = [];
+    try {
+      weekCalls = await ctx.db
+        .query("calls")
+        .withIndex("by_team_and_date", (q) =>
+          q.eq("teamId", args.teamId).gte("createdAt", weekAgo),
+        )
+        .take(1000);
+    } catch (err) {
+      console.error("[getDashboardStats] Week scan exceeded read limit:", err);
+      return { callsToday: 0, liveNow: 0, closeRateWeek: 0, noShowsWeek: 0 };
+    }
 
-    // Calls today (any call that started today)
-    const callsToday = allCalls.filter(
-      (call) => call.startedAt && call.startedAt >= todayStartMs
+    // Live calls — separate small query on the status index. waiting +
+    // on_call rows are bounded by concurrent capacity, so this stays
+    // tiny even on huge teams.
+    let liveNow = 0;
+    try {
+      const waiting = await ctx.db
+        .query("calls")
+        .withIndex("by_team_and_status", (q) =>
+          q.eq("teamId", args.teamId).eq("status", "waiting"),
+        )
+        .collect();
+      const onCall = await ctx.db
+        .query("calls")
+        .withIndex("by_team_and_status", (q) =>
+          q.eq("teamId", args.teamId).eq("status", "on_call"),
+        )
+        .collect();
+      liveNow = waiting.length + onCall.length;
+    } catch (err) {
+      console.error("[getDashboardStats] Live scan failed:", err);
+    }
+
+    const callsToday = weekCalls.filter(
+      (call) => call.startedAt && call.startedAt >= todayStartMs,
     ).length;
 
-    // Live calls (waiting or on_call status)
-    const liveNow = allCalls.filter(
-      (call) => call.status === "waiting" || call.status === "on_call"
-    ).length;
-
-    // Calls from last 7 days with outcomes
-    const weekCalls = allCalls.filter(
-      (call) =>
-        call.startedAt &&
-        call.startedAt >= weekAgo &&
-        call.outcome != null
+    const outcomeCalls = weekCalls.filter(
+      (call) => call.startedAt && call.startedAt >= weekAgo && call.outcome != null,
     );
 
-    // Close rate calculation
-    const closedCalls = weekCalls.filter(
-      (call) => call.outcome === "closed"
+    const closedCalls = outcomeCalls.filter(
+      (call) => call.outcome === "closed",
     ).length;
-    const totalOutcomeCalls = weekCalls.length;
     const closeRateWeek =
-      totalOutcomeCalls > 0
-        ? Math.round((closedCalls / totalOutcomeCalls) * 100)
+      outcomeCalls.length > 0
+        ? Math.round((closedCalls / outcomeCalls.length) * 100)
         : 0;
 
-    // No-shows this week
-    const noShowsWeek = weekCalls.filter(
-      (call) => call.outcome === "no_show"
+    const noShowsWeek = outcomeCalls.filter(
+      (call) => call.outcome === "no_show",
     ).length;
 
     return {
