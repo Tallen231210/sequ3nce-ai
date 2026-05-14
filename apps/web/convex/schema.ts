@@ -414,7 +414,12 @@ export default defineSchema({
     .index("by_closer", ["closerId"])
     .index("by_team_and_status", ["teamId", "status"])
     .index("by_team_and_date", ["teamId", "createdAt"])
-    .index("by_closer_and_startedAt", ["closerId", "startedAt"]),
+    .index("by_closer_and_startedAt", ["closerId", "startedAt"])
+    // Narrow scans for sidebar badge counters — without these indexes,
+    // the badge queries collect() over every call for a team and blow
+    // past Convex's 16 MiB per-query read limit on high-volume teams.
+    .index("by_team_and_flagged", ["teamId", "flaggedForReview"])
+    .index("by_team_and_review_status", ["teamId", "reviewStatus"]),
 
   // Ammo (key moments extracted from calls)
   ammo: defineTable({

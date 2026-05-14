@@ -346,26 +346,32 @@ export const getCallForReview = query({
 
 /**
  * Count flagged (pending review) calls for a team (for sidebar badge).
+ *
+ * Scans only flagged rows via the by_team_and_flagged index — earlier
+ * versions collect()'d every call for the team and blew the 16 MiB
+ * per-query read limit on high-volume teams. The remaining JS filters
+ * (status / recordingUrl / reviewStatus) operate on the narrow set.
  */
 export const getFlaggedCallCount = query({
   args: {
     teamId: v.id("teams"),
   },
   handler: async (ctx, args) => {
-    const calls = await ctx.db
+    const flaggedCalls = await ctx.db
       .query("calls")
-      .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
+      .withIndex("by_team_and_flagged", (q) =>
+        q.eq("teamId", args.teamId).eq("flaggedForReview", true),
+      )
       .collect();
 
-    const flaggedCount = calls.filter(
+    const count = flaggedCalls.filter(
       (c) =>
         c.status === "completed" &&
         c.recordingUrl &&
-        c.flaggedForReview === true &&
-        c.reviewStatus !== "reviewed"
+        c.reviewStatus !== "reviewed",
     ).length;
 
-    return { count: flaggedCount };
+    return { count };
   },
 });
 
@@ -378,14 +384,28 @@ export const getUnreadReplyCount = query({
     teamId: v.id("teams"),
   },
   handler: async (ctx, args) => {
-    const calls = await ctx.db
-      .query("calls")
-      .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
-      .collect();
+    // Cap the scan at the most recent 100 calls to stay under Convex's
+    // 16 MiB per-query read limit on high-volume teams. Call rows on
+    // this codebase carry transcript + analysis blobs and average tens
+    // of KB each, so the cap stays low. Unread replies older than the
+    // most recent 100 calls are stale anyway — managers care about
+    // recent activity, not weeks-old comments. The badge degrades
+    // gracefully to 0 if the scan still trips the limit.
+    let recentCalls;
+    try {
+      recentCalls = await ctx.db
+        .query("calls")
+        .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
+        .order("desc")
+        .take(100);
+    } catch (err) {
+      console.error("[getUnreadReplyCount] Read limit exceeded:", err);
+      return { count: 0 };
+    }
 
     let unreadCount = 0;
 
-    for (const call of calls) {
+    for (const call of recentCalls) {
       if (call.status !== "completed" || (call.commentCount ?? 0) === 0)
         continue;
 
