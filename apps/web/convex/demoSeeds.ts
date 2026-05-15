@@ -202,6 +202,28 @@ export const cleanupZionDemoCallsAfter = mutation({
 });
 
 /**
+ * Flip Zion's "Verified by Sequ3nce" badge on or off. Normally set by
+ * an admin after pay-stub review (b2cStatsVerification flow) — this is
+ * the demo shortcut.
+ */
+export const setZionDemoVerified = mutation({
+  args: { verified: v.boolean() },
+  handler: async (ctx, args) => {
+    const ZION_USER_ID = "nh74tpqnzbz97atsww7390dstn82vpg3" as Id<"b2cUsers">;
+
+    const profile = await ctx.db
+      .query("b2cProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", ZION_USER_ID))
+      .first();
+
+    if (!profile) throw new Error("Zion's profile not found");
+
+    await ctx.db.patch(profile._id, { isManuallyVerified: args.verified });
+    return { isManuallyVerified: args.verified };
+  },
+});
+
+/**
  * Patch Zion's profile manualStats with the demo numbers. Designed to
  * be called repeatedly with whatever subset of fields we want to
  * update — sparse patch, leaves unset fields alone.
