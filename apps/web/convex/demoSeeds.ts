@@ -202,6 +202,45 @@ export const cleanupZionDemoCallsAfter = mutation({
 });
 
 /**
+ * Patch Zion's profile manualStats with the demo numbers. Designed to
+ * be called repeatedly with whatever subset of fields we want to
+ * update — sparse patch, leaves unset fields alone.
+ */
+export const patchZionDemoProfileStats = mutation({
+  args: {
+    callsCompleted: v.optional(v.number()),
+    cashCollected: v.optional(v.number()),
+    closeRate: v.optional(v.number()),
+    avgDealSize: v.optional(v.number()),
+    avgDuration: v.optional(v.number()), // seconds
+    talkRatio: v.optional(v.number()), // 0-100, % closer talk time
+  },
+  handler: async (ctx, args) => {
+    const ZION_USER_ID = "nh74tpqnzbz97atsww7390dstn82vpg3" as Id<"b2cUsers">;
+
+    const profile = await ctx.db
+      .query("b2cProfiles")
+      .withIndex("by_user", (q) => q.eq("userId", ZION_USER_ID))
+      .first();
+
+    if (!profile) throw new Error("Zion's profile not found");
+
+    const existing = profile.manualStats ?? {};
+    const next = {
+      callsCompleted: args.callsCompleted ?? existing.callsCompleted,
+      cashCollected: args.cashCollected ?? existing.cashCollected,
+      closeRate: args.closeRate ?? existing.closeRate,
+      avgDealSize: args.avgDealSize ?? existing.avgDealSize,
+      avgDuration: args.avgDuration ?? existing.avgDuration,
+      talkRatio: args.talkRatio ?? existing.talkRatio,
+    };
+
+    await ctx.db.patch(profile._id, { manualStats: next });
+    return { manualStats: next };
+  },
+});
+
+/**
  * List Zion's demo calls created after a timestamp. Pure read,
  * useful for sanity-checking before running the destructive cleanup.
  */
