@@ -180,8 +180,8 @@ export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
                 size="sm"
                 onClick={() => {
                   // Re-trigger install flow.
-                  const clientId = process.env.NEXT_PUBLIC_GHL_CLIENT_ID;
-                  const redirectUri = process.env.NEXT_PUBLIC_GHL_REDIRECT_URI;
+                  const clientId = process.env.NEXT_PUBLIC_GHL_CLIENT_ID?.trim();
+                  const redirectUri = process.env.NEXT_PUBLIC_GHL_REDIRECT_URI?.trim();
                   if (!clientId || !redirectUri) return;
                   const url = new URL(
                     "https://marketplace.leadconnectorhq.com/oauth/chooselocation",

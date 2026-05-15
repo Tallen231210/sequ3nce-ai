@@ -36,8 +36,13 @@ interface ConnectionGateProps {
  */
 export function ConnectionGate({ teamId }: ConnectionGateProps) {
   function handleInstall() {
-    const clientId = process.env.NEXT_PUBLIC_GHL_CLIENT_ID;
-    const redirectUri = process.env.NEXT_PUBLIC_GHL_REDIRECT_URI;
+    // Defensive .trim() — env vars set via `echo "..." | vercel env add`
+    // pick up a trailing newline that gets URL-encoded as %0A and breaks
+    // the OAuth install with "Invalid parameter: client_id". Belt-and-
+    // suspenders so a future env-var typo doesn't burn another debug
+    // session.
+    const clientId = process.env.NEXT_PUBLIC_GHL_CLIENT_ID?.trim();
+    const redirectUri = process.env.NEXT_PUBLIC_GHL_REDIRECT_URI?.trim();
 
     if (!clientId || !redirectUri) {
       console.error(
