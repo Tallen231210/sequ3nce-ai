@@ -1,12 +1,26 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 function SubscribeContent() {
   const searchParams = useSearchParams();
   const success = searchParams.get("success") === "true";
   const canceled = searchParams.get("canceled") === "true";
+
+  // Fire Meta Subscribe event once when the Stripe success redirect
+  // lands here. $99/mo first-100 / $129.99/mo after — using $99 as the
+  // floor so Meta optimizes for paid signups not just one-off events.
+  useEffect(() => {
+    if (success) {
+      void trackMetaEvent("Subscribe", {
+        product: "b2c",
+        value: 99,
+        currency: "USD",
+      });
+    }
+  }, [success]);
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-6">

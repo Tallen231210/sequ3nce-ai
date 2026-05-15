@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 interface CalendlyModalProps {
   isOpen: boolean;
@@ -123,7 +124,16 @@ export function BookDemoButton({ children, className, size = "default" }: BookDe
   return (
     <>
       <button
-        onClick={() => setIsModalOpen(true)}
+        onClick={() => {
+          // Fire Meta Lead event on intent — the booking happens inside
+          // an opaque GHL iframe we can't observe, so click-intent is
+          // the strongest signal we can capture from our side.
+          // Schedule event (actual booking confirmation) fires
+          // server-side via the GHL webhook → CAPI route once that's
+          // wired up.
+          void trackMetaEvent("Lead", { product: "b2b" });
+          setIsModalOpen(true);
+        }}
         className={cn(
           "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors",
           "bg-zinc-900 text-white hover:bg-zinc-800",

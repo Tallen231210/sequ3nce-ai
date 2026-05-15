@@ -8,6 +8,7 @@ import { api } from "../../../convex/_generated/api";
 import { Check, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { useTeam } from "@/hooks/useTeam";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 function SubscribeContent() {
   const { user, isLoaded: isUserLoaded } = useUser();
@@ -40,6 +41,28 @@ function SubscribeContent() {
       }
     }
   }, [wasSuccess, billing, router]);
+
+  // Fire Meta Purchase event once when the Stripe success redirect lands
+  // here. B2B is the call-funnel side — Purchase fires after a paid
+  // contract closes via Stripe. Value gets refined later when we hook
+  // the Stripe webhook into CAPI directly for accurate deal sizes.
+  useEffect(() => {
+    if (wasSuccess) {
+      void trackMetaEvent(
+        "Purchase",
+        { product: "b2b" },
+        user?.emailAddresses[0]?.emailAddress
+          ? {
+              email: user.emailAddresses[0].emailAddress,
+              firstName: user.firstName ?? undefined,
+              lastName: user.lastName ?? undefined,
+            }
+          : undefined,
+      );
+    }
+    // We only want this to fire once on success — not refire on user/billing changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wasSuccess]);
 
   const handleSubscribe = async () => {
     setIsLoading(true);

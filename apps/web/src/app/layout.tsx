@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "@/components/providers/ConvexClientProvider";
+import { MetaPixel } from "@/components/MetaPixel";
 import Script from "next/script";
 import "./globals.css";
 
@@ -33,6 +34,7 @@ export default function RootLayout({
       <html lang="en" className={GeistSans.className}>
         <body className="antialiased">
           <ConvexClientProvider>{children}</ConvexClientProvider>
+          <MetaPixel />
           <Script
             src="https://scripts.refgrowcdn.com/latest.js"
             data-project-id="733"

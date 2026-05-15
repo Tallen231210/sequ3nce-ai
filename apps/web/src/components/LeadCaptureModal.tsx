@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -88,7 +89,22 @@ export function LeadCaptureModal({ onClose, source, refParam }: LeadCaptureModal
         throw new Error((body as any).error || "Failed to save. Please try again.");
       }
 
-      // 3. Redirect to download page
+      // 3. Fire Meta Lead event (browser pixel + CAPI dedup).
+      // Don't await — let it fire in the background so the redirect
+      // isn't gated on Meta's response. trackMetaEvent uses
+      // keepalive:true so the request survives the page nav.
+      void trackMetaEvent(
+        "Lead",
+        { product: "b2c" },
+        {
+          email: trimmedEmail,
+          phone: trimmedPhone,
+          firstName: trimmedFirst,
+          lastName: trimmedLast,
+        },
+      );
+
+      // 4. Redirect to download page
       router.push("/personal/download");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
