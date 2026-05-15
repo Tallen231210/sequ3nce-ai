@@ -4,8 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Zap, ExternalLink } from "lucide-react";
 
+// Canonical OAuth authorization URL is on marketplace.leadconnectorhq.com.
+// The old marketplace.gohighlevel.com host renders the account picker but
+// silently rejects the client_id at the next step with "Invalid parameter:
+// client_id" — confirmed against GHL's official OAuth 2.0 docs.
 const GHL_INSTALL_BASE =
-  "https://marketplace.gohighlevel.com/oauth/chooselocation";
+  "https://marketplace.leadconnectorhq.com/oauth/chooselocation";
 
 const PHASE_1_SCOPES = [
   "contacts.readonly",

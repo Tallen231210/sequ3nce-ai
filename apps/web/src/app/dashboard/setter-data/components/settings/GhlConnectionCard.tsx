@@ -184,7 +184,7 @@ export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
                   const redirectUri = process.env.NEXT_PUBLIC_GHL_REDIRECT_URI;
                   if (!clientId || !redirectUri) return;
                   const url = new URL(
-                    "https://marketplace.gohighlevel.com/oauth/chooselocation",
+                    "https://marketplace.leadconnectorhq.com/oauth/chooselocation",
                   );
                   url.searchParams.set("response_type", "code");
                   url.searchParams.set("client_id", clientId);
