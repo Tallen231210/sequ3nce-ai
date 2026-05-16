@@ -638,20 +638,52 @@ async function syncAppointmentsRange(
   ctx: ActionCtx,
   args: SyncAppointmentsRangeArgs,
 ): Promise<void> {
-  const response = await ghlFetch<GhlCalendarEventsResponse>(
-    ctx,
-    args.installationId as never,
-    "/calendars/events",
-    {
-      query: {
-        locationId: args.locationId,
-        startTime: args.rangeStartMs,
-        endTime: args.rangeEndMs,
-      },
-    },
+  // GHL's /calendars/events REQUIRES one of userId / calendarId /
+  // groupId — locationId alone returns 422. We loop per setter rep
+  // (already in the DB from the users phase) so each appointment
+  // is automatically attributed to its assigned user.
+  const userIds = await ctx.runQuery(
+    internal.setterGhlSyncMutations.listRepGhlUserIdsForTeam,
+    { teamId: args.teamId as never },
   );
 
-  const events = response.events ?? [];
+  if (userIds.length === 0) {
+    // No reps in the DB yet — appointments phase has nothing to scope
+    // a per-user query on. Skip silently; next fast backfill (after
+    // users phase runs again) will pick up appointments.
+    console.warn(
+      "[syncAppointmentsRange] No setter reps for team — skipping appointments phase",
+    );
+    return;
+  }
+
+  const events: GhlAppointment[] = [];
+  for (const userId of userIds) {
+    try {
+      const response = await ghlFetch<GhlCalendarEventsResponse>(
+        ctx,
+        args.installationId as never,
+        "/calendars/events",
+        {
+          query: {
+            locationId: args.locationId,
+            userId,
+            startTime: args.rangeStartMs,
+            endTime: args.rangeEndMs,
+          },
+        },
+      );
+      events.push(...(response.events ?? []));
+    } catch (err) {
+      // Per-user failures shouldn't kill the whole appointments phase
+      // for the rest of the team. Log and continue; the next
+      // reconcile tick retries.
+      console.error(
+        `[syncAppointmentsRange] Failed to fetch events for userId=${userId}:`,
+        err,
+      );
+    }
+  }
 
   for (const event of events) {
     if (!event.id || !event.contactId) continue;

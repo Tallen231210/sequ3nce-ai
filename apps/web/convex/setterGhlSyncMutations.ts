@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 
 // ============================================================================
 // Setter Data — sync-side mutations.
@@ -243,5 +243,25 @@ export const pruneOldWebhookEvents = internalMutation({
     }
 
     return { deleted: stale.length };
+  },
+});
+
+
+/**
+ * List the GHL user IDs (setter reps) attached to a team. Used by
+ * the appointments-sync action to iterate per user — GHL's
+ * /calendars/events endpoint rejects requests scoped only to a
+ * locationId; you have to pass userId, calendarId, or groupId.
+ */
+export const listRepGhlUserIdsForTeam = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const reps = await ctx.db
+      .query("setterReps")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    return reps
+      .map((r) => r.ghlUserId)
+      .filter((id): id is string => !!id);
   },
 });
