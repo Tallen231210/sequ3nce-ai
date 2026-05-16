@@ -154,6 +154,11 @@ export const upsertInstallation = internalMutation({
         scopes: args.scopes,
         installedAt: now,
         lastRefreshedAt: now,
+        // Treat the install handshake as the first sync so the
+        // Settings card shows "synced just now" instead of "never"
+        // during the gap before the fast backfill completes. Backfill
+        // will overwrite with its own timestamp.
+        lastSyncedAt: now,
         status: "active",
         errorMessage: undefined,
         errorAt: undefined,
@@ -179,6 +184,12 @@ export const upsertInstallation = internalMutation({
       expiresAt: args.expiresAt,
       scopes: args.scopes,
       installedAt: now,
+      // Initialize both timestamp fields on fresh installs too — the
+      // re-install path already does this; missing them on the insert
+      // path was a wiring inconsistency that left the UI showing "never
+      // synced" / "never refreshed" until the fast backfill completed.
+      lastRefreshedAt: now,
+      lastSyncedAt: now,
       status: "active",
     });
   },
