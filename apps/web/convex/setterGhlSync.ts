@@ -188,15 +188,21 @@ export const fastBackfill = internalAction({
         return;
       }
     } catch (err) {
-      // Don't crash the whole sync on transient errors. Log and stop;
-      // the next cron-driven reconcile pass will pick up where we left
-      // off (since fastBackfillCompletedAt is still null).
+      // Persist the error so it's visible in the UI (Settings tab
+      // banner), in support queries, and to the hourly reconcile cron
+      // which will retry. Without this, fastBackfill failures were
+      // logged to ephemeral console output and then forgotten — the
+      // dashboard would show "connected, no data" with no explanation.
       const message = err instanceof Error ? err.message : String(err);
       console.error(
         `[fastBackfill] Error in phase=${phase}:`,
         message,
         err,
       );
+      await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+        installationId: args.installationId,
+        errorMessage: `fastBackfill phase=${phase}: ${message}`.slice(0, 500),
+      });
     }
   },
 });
@@ -890,12 +896,18 @@ export const reconcile = internalAction({
         );
         processed++;
       } catch (err) {
-        // Reconcile errors are non-fatal — log and skip; next tick retries.
+        // Persist + log. Reconcile errors are non-fatal (next tick
+        // retries), but they need to be visible in the UI so customers
+        // / support know data isn't flowing.
         const message = err instanceof Error ? err.message : String(err);
         console.error(
           `[reconcile] Error for installation ${installation._id}:`,
           message,
         );
+        await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+          installationId: installation._id,
+          errorMessage: `reconcile: ${message}`.slice(0, 500),
+        });
       }
     }
     return { processed };
@@ -943,6 +955,12 @@ export const reconcileSingleInstallation = internalAction({
         `[reconcileSingleInstallation] Error for ${installation._id}:`,
         message,
       );
+      // Persist before re-throwing so the install record reflects the
+      // failure even after the UI toast disappears.
+      await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+        installationId: installation._id,
+        errorMessage: `manual reconcile: ${message}`.slice(0, 500),
+      });
       throw err; // surface to UI via mutation rejection
     }
   },
