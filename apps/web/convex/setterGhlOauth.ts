@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // ============================================================================
 // Setter Data — GoHighLevel OAuth installation state.
@@ -192,6 +193,39 @@ export const upsertInstallation = internalMutation({
       lastSyncedAt: now,
       status: "active",
     });
+  },
+});
+
+/**
+ * Re-trigger fastBackfill for an installation. Recovers from a silent
+ * fastBackfill failure where the install shows "connected" but the
+ * 90-day historical sync never completed. Clears any prior errorMessage
+ * so the new attempt's outcome (success or persisted error) is what
+ * shows. Callable via `npx convex run` for ops/recovery.
+ */
+export const retryFastBackfill = mutation({
+  args: { installationId: v.id("setterGhlInstallations") },
+  handler: async (ctx, args) => {
+    const installation = await ctx.db.get(args.installationId);
+    if (!installation) throw new Error("Installation not found");
+
+    await ctx.db.patch(args.installationId, {
+      status: "active",
+      errorMessage: undefined,
+      errorAt: undefined,
+      // Reset backfill progress so the retry walks the full 90-day
+      // window from scratch (matches re-install behavior).
+      fastBackfillCompletedAt: undefined,
+      deepBackfillLastCompletedMonth: undefined,
+      deepBackfillCompletedAt: undefined,
+      deepBackfillError: undefined,
+    });
+
+    await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
+      installationId: args.installationId,
+    });
+
+    return { scheduled: true };
   },
 });
 

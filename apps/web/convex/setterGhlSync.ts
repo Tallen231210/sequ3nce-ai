@@ -345,13 +345,21 @@ async function syncContactsPage(
         locationId: args.locationId,
         filters: [
           {
+            // GHL's contacts/search v2 range operator expects ms-epoch
+            // numbers, not ISO strings. ISO strings return 422
+            // "Invalid value for 'range' operator for 'dateAdded' field".
             field: "dateAdded",
-            operator: "gte",
-            value: since,
+            operator: "range",
+            value: {
+              gte: Date.now() - FAST_BACKFILL_DAYS * 24 * 60 * 60 * 1000,
+              lte: Date.now(),
+            },
           },
         ],
         sort: [{ field: "dateAdded", direction: "desc" }],
-        pageSize: CONTACTS_PAGE_SIZE,
+        // GHL's contacts/search renamed pageSize → pageLimit. Sending
+        // pageSize now returns 422 "property pageSize should not exist".
+        pageLimit: CONTACTS_PAGE_SIZE,
         page: args.page,
       },
     },
@@ -518,7 +526,9 @@ async function syncMonthOfContacts(ctx: ActionCtx, args: SyncMonthArgs): Promise
             { field: "dateAdded", operator: "lt", value: endIso },
           ],
           sort: [{ field: "dateAdded", direction: "desc" }],
-          pageSize: CONTACTS_PAGE_SIZE,
+          // GHL's contacts/search renamed pageSize → pageLimit. Sending
+        // pageSize now returns 422 "property pageSize should not exist".
+        pageLimit: CONTACTS_PAGE_SIZE,
           page,
         },
       },
@@ -998,7 +1008,9 @@ async function reconcileInstallation(
             { field: "dateUpdated", operator: "gte", value: sinceIso },
           ],
           sort: [{ field: "dateUpdated", direction: "desc" }],
-          pageSize: CONTACTS_PAGE_SIZE,
+          // GHL's contacts/search renamed pageSize → pageLimit. Sending
+        // pageSize now returns 422 "property pageSize should not exist".
+        pageLimit: CONTACTS_PAGE_SIZE,
           page,
         },
       },
