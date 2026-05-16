@@ -2,6 +2,14 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
+// Convex's `v.optional(v.string())` validator means "field absent" — it
+// rejects explicit `null`. GHL freely sends null for unset fields like
+// source, assignedTo, etc. Coerce null → undefined at every write site
+// where we forward raw GHL fields to ctx.db.insert/patch.
+function nn<T>(v: T | null | undefined): T | undefined {
+  return v ?? undefined;
+}
+
 // ============================================================================
 // Setter Data — GoHighLevel webhook event handlers.
 //
@@ -260,14 +268,14 @@ async function handleContactUpsert(
   await ctx.db.insert("setterLeads", {
     teamId: args.teamId,
     ghlContactId,
-    name: contact.name ?? buildName(contact),
-    email: contact.email,
-    phone: contact.phone,
+    name: nn(contact.name) ?? buildName(contact),
+    email: nn(contact.email),
+    phone: nn(contact.phone),
     dateAdded,
-    source: contact.source,
-    sourceDetail: contact.sourceDetail,
-    tags: contact.tags,
-    assignedToGhlUserId: contact.assignedTo,
+    source: nn(contact.source),
+    sourceDetail: nn(contact.sourceDetail),
+    tags: nn(contact.tags),
+    assignedToGhlUserId: nn(contact.assignedTo),
     assignedToName: undefined,
     dialCount: 0,
     firstDialAt: undefined,
@@ -440,9 +448,9 @@ async function handleAppointmentUpsert(
       teamId: args.teamId,
       ghlAppointmentId,
       ghlContactId,
-      ghlCalendarId: apt.calendarId,
-      bookedByGhlUserId: apt.createdBy,
-      assignedToGhlUserId: apt.assignedUserId ?? apt.userId,
+      ghlCalendarId: nn(apt.calendarId),
+      bookedByGhlUserId: nn(apt.createdBy),
+      assignedToGhlUserId: nn(apt.assignedUserId) ?? nn(apt.userId),
       startTime,
       endTime,
       status,
@@ -636,9 +644,9 @@ async function handleOpportunityUpsert(
       ghlStageId,
       status,
       monetaryValue,
-      assignedToGhlUserId: opp.assignedTo,
-      name: opp.name,
-      source: opp.source,
+      assignedToGhlUserId: nn(opp.assignedTo),
+      name: nn(opp.name),
+      source: nn(opp.source),
       dateAdded,
       lastUpdatedAt,
     });
