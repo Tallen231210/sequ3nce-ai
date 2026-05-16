@@ -32,7 +32,7 @@ function isTabId(value: string | null): value is TabId {
 function SetterDataPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { clerkId } = useTeam();
+  const { clerkId, team } = useTeam();
   const installation = useQuery(
     api.setterGhlOauth.getMyInstallationStatus,
     clerkId ? { clerkId } : "skip",
@@ -109,7 +109,7 @@ function SetterDataPageInner() {
       <>
         <Header title="Setter Data" />
         <div className="px-6 py-8">
-          <ConnectionGate />
+          <ConnectionGate teamId={team?._id} />
           <ConnectionRedirectFlash />
         </div>
       </>

@@ -54,14 +54,25 @@ export function ConnectionGate({ teamId }: ConnectionGateProps) {
       return;
     }
 
+    // teamId is REQUIRED — our OAuth callback refuses to exchange the
+    // code without a state value to pin the install to. Without this
+    // guard, an install attempt with teamId=undefined (e.g. team still
+    // loading) sent a stateless URL, GHL didn't echo state back, and
+    // our callback redirected with "missing_params". Block instead.
+    if (!teamId) {
+      console.error("[ConnectionGate] No teamId — refusing to start install");
+      alert(
+        "Workspace still loading — refresh the page and try again in a moment.",
+      );
+      return;
+    }
+
     const url = new URL(GHL_INSTALL_BASE);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("scope", PHASE_1_SCOPES.join(" "));
-    if (teamId) {
-      url.searchParams.set("state", teamId);
-    }
+    url.searchParams.set("state", teamId);
 
     window.location.href = url.toString();
   }

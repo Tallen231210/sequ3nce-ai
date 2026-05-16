@@ -4,6 +4,19 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
+// Same constants as ConnectionGate so the reconnect button matches the
+// initial install URL exactly.
+const GHL_INSTALL_BASE =
+  "https://marketplace.leadconnectorhq.com/oauth/chooselocation";
+const PHASE_1_SCOPES = [
+  "contacts.readonly",
+  "conversations.readonly",
+  "conversations/message.readonly",
+  "users.readonly",
+  "locations.readonly",
+  "opportunities.readonly",
+  "calendars/events.readonly",
+];
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +52,7 @@ interface GhlConnectionCardProps {
 }
 
 export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
-  const { clerkId } = useTeam();
+  const { clerkId, team } = useTeam();
   const triggerSync = useMutation(api.setterDataMutations.triggerManualSync);
   const disconnect = useMutation(api.setterGhlOauth.disconnectInstallation);
   const clearBackfillError = useMutation(api.setterDataMutations.clearDeepBackfillError);
@@ -183,16 +196,18 @@ export function GhlConnectionCard({ installation }: GhlConnectionCardProps) {
                   const clientId = process.env.NEXT_PUBLIC_GHL_CLIENT_ID?.trim();
                   const redirectUri = process.env.NEXT_PUBLIC_GHL_REDIRECT_URI?.trim();
                   if (!clientId || !redirectUri) return;
-                  const url = new URL(
-                    "https://marketplace.leadconnectorhq.com/oauth/chooselocation",
-                  );
+                  const url = new URL(GHL_INSTALL_BASE);
                   url.searchParams.set("response_type", "code");
                   url.searchParams.set("client_id", clientId);
                   url.searchParams.set("redirect_uri", redirectUri);
-                  url.searchParams.set(
-                    "scope",
-                    "contacts.readonly conversations.readonly conversations/message.readonly users.readonly locations.readonly opportunities.readonly calendars/events.readonly",
-                  );
+                  url.searchParams.set("scope", PHASE_1_SCOPES.join(" "));
+                  // state=teamId is REQUIRED — our OAuth callback
+                  // refuses to exchange the code if it can't pin the
+                  // install to a team. Skipping the install attempt
+                  // when team isn't loaded prevents a guaranteed
+                  // missing_params error.
+                  if (!team?._id) return;
+                  url.searchParams.set("state", team._id);
                   window.location.href = url.toString();
                 }}
               >
