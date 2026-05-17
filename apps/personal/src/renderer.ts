@@ -4,6 +4,12 @@
  * because Clerk's dynamic script loading doesn't work well in Electron
  */
 
+// Sentry renderer SDK piggybacks on the main-process SDK via IPC, so
+// no DSN config needed here — just init() to register the error
+// handler that forwards thrown React/window errors back to main.
+import * as Sentry from '@sentry/electron/renderer';
+Sentry.init({});
+
 import './index.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';

@@ -174,7 +174,7 @@ const config: ForgeConfig = {
     // Copies webpack externals (electron-updater) into packaged node_modules
     // so runtime require() can find them after Electron Packager prunes node_modules
     new ForgeExternalsPlugin({
-      externals: ['electron-updater'],
+      externals: ['electron-updater', '@sentry/electron'],
       includeDeps: true,
     }),
     // Fuses are used to enable/disable various Electron functionality

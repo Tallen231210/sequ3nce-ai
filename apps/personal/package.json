@@ -67,6 +67,7 @@
     "@clerk/clerk-react": "^5.58.1",
     "@daily-co/daily-js": "^0.89.1",
     "@daily-co/daily-react": "^0.25.0",
+    "@sentry/electron": "^7.13.0",
     "@tailwindcss/postcss": "^4.1.17",
     "convex": "^1.31.0",
     "electron-audio-loopback": "^1.0.6",

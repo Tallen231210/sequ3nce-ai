@@ -1,4 +1,10 @@
 // Main process entry point
+
+// Sentry init runs first so we catch crashes in the rest of bootstrap
+// (autoUpdater wiring, native dylib loads, IPC setup, window creation).
+import { initSentry } from './sentry';
+initSentry();
+
 import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, globalShortcut, clipboard, dialog, Notification, screen, powerMonitor } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as os from 'os';
