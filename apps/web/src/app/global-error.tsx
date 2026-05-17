@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 // Global error boundary — catches anything that escapes nested error.tsx
 // boundaries, including errors in the root layout and providers. Must
@@ -15,6 +16,9 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error("[global-error]", error);
+    // Forward to Sentry so we see it in the dashboard with full
+    // stack + breadcrumbs, not just in our local UI fallback.
+    Sentry.captureException(error);
   }, [error]);
 
   return (
