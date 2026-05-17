@@ -30,10 +30,5 @@ export const mainConfig: Configuration = {
     'electron-updater': 'commonjs2 electron-updater',
     'bufferutil': 'commonjs2 bufferutil',
     'utf-8-validate': 'commonjs2 utf-8-validate',
-    // @sentry/electron has native crashpad bindings + dynamic requires
-    // that webpack can't bundle. Forge externals plugin copies the
-    // node_modules entry back into the packaged app.
-    '@sentry/electron': 'commonjs2 @sentry/electron',
-    '@sentry/electron/main': 'commonjs2 @sentry/electron/main',
   },
 };

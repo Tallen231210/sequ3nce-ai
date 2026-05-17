@@ -21,10 +21,5 @@ export const mainConfig: Configuration = {
   // because it uses dynamic requires, lazy-val, and native fs/https operations
   externals: {
     'electron-updater': 'commonjs2 electron-updater',
-    // @sentry/electron has native crashpad bindings + dynamic requires
-    // that webpack can't bundle. Forge externals plugin copies the
-    // node_modules entry back into the packaged app.
-    '@sentry/electron': 'commonjs2 @sentry/electron',
-    '@sentry/electron/main': 'commonjs2 @sentry/electron/main',
   },
 };
