@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as Sentry from '@sentry/electron/renderer';
 import {
   loginCloser,
   signupB2CUser,
@@ -112,6 +113,15 @@ function AppContent() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(info));
     setCloserInfo(info);
     setAuthState('authenticated');
+
+    // Tag every subsequent Sentry event with which closer is logged in.
+    // Single biggest debugging force-multiplier — when an error fires,
+    // we see exactly which user hit it (not "anonymous").
+    Sentry.setUser({
+      id: info.closerId,
+      email: info.email,
+      username: info.name,
+    });
 
     window.electron?.training?.setCloserId(info.closerId);
     window.electron?.ammo?.setTeamId(info.teamId);
@@ -337,6 +347,10 @@ function AppContent() {
     setEmail('');
     setPassword('');
     setAuthState('login');
+
+    // Clear Sentry user so subsequent errors aren't attributed to the
+    // logged-out closer.
+    Sentry.setUser(null);
 
     // Clear closer ID for the training window
     window.electron?.training?.setCloserId(null);

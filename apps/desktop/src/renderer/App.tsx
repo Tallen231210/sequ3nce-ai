@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as Sentry from '@sentry/electron/renderer';
 import {
   loginCloser,
   logClientError,
@@ -94,6 +95,13 @@ function AppContent() {
         setCloserInfo(info);
         setAuthState('authenticated');
 
+        // Tag every subsequent Sentry event with which closer is logged in.
+        Sentry.setUser({
+          id: info.closerId,
+          email: info.email,
+          username: info.name,
+        });
+
         // Set closer ID for the training window
         window.electron.training?.setCloserId(info.closerId);
         // Set team ID for resources in ammo tracker
@@ -140,6 +148,13 @@ function AppContent() {
         setCloserInfo(result.closer);
         setAuthState('authenticated');
 
+        // Tag every subsequent Sentry event with which closer is logged in.
+        Sentry.setUser({
+          id: result.closer.closerId,
+          email: result.closer.email,
+          username: result.closer.name,
+        });
+
         // Set closer ID for the training window
         window.electron.training?.setCloserId(result.closer.closerId);
         // Set team ID for resources in ammo tracker
@@ -175,6 +190,10 @@ function AppContent() {
     setEmail('');
     setPassword('');
     setAuthState('login');
+
+    // Clear Sentry user so subsequent errors aren't attributed to the
+    // logged-out closer.
+    Sentry.setUser(null);
 
     // Clear closer ID for the training window
     window.electron.training?.setCloserId(null);
