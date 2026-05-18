@@ -522,8 +522,14 @@ async function syncMonthOfContacts(ctx: ActionCtx, args: SyncMonthArgs): Promise
         body: {
           locationId: args.locationId,
           filters: [
-            { field: "dateAdded", operator: "gte", value: startIso },
-            { field: "dateAdded", operator: "lt", value: endIso },
+            {
+              // GHL's v2 only accepts the "range" operator for date
+              // fields — "gte" / "lt" return 422. Value is a {gte,lte}
+              // object of ms-epoch numbers (not ISO strings).
+              field: "dateAdded",
+              operator: "range",
+              value: { gte: windowStart, lte: windowEnd },
+            },
           ],
           sort: [{ field: "dateAdded", direction: "desc" }],
           // GHL's contacts/search renamed pageSize → pageLimit. Sending
@@ -1019,7 +1025,6 @@ async function reconcileInstallation(
   installation: InstallationDoc,
 ): Promise<void> {
   const since = Date.now() - RECONCILE_OVERLAP_MINUTES * 60 * 1000;
-  const sinceIso = new Date(since).toISOString();
 
   // Filter on dateUpdated rather than dateAdded so we catch contacts
   // that were modified (assignment changes, tag additions, etc.) since
@@ -1037,7 +1042,14 @@ async function reconcileInstallation(
         body: {
           locationId: installation.locationId,
           filters: [
-            { field: "dateUpdated", operator: "gte", value: sinceIso },
+            {
+              // GHL's v2 only accepts the "range" operator for date
+              // fields — "gte" returns 422 "Invalid Operator". Value
+              // is {gte,lte} ms-epoch numbers (not ISO strings).
+              field: "dateUpdated",
+              operator: "range",
+              value: { gte: since, lte: Date.now() },
+            },
           ],
           sort: [{ field: "dateUpdated", direction: "desc" }],
           // GHL's contacts/search renamed pageSize → pageLimit. Sending
