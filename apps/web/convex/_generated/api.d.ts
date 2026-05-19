@@ -66,6 +66,7 @@ import type * as http from "../http.js";
 import type * as hyros from "../hyros.js";
 import type * as hyrosActions from "../hyrosActions.js";
 import type * as lib_encrypt from "../lib/encrypt.js";
+import type * as lib_sentry from "../lib/sentry.js";
 import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
 import type * as meetingBot from "../meetingBot.js";
@@ -156,6 +157,7 @@ declare const fullApi: ApiFromModules<{
   hyros: typeof hyros;
   hyrosActions: typeof hyrosActions;
   "lib/encrypt": typeof lib_encrypt;
+  "lib/sentry": typeof lib_sentry;
   liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
   meetingBot: typeof meetingBot;

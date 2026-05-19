@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { ghlFetch } from "./setterGhlClient";
+import { captureAndPersist } from "./lib/sentry";
 
 // ============================================================================
 // Setter Data — REST sync actions.
@@ -199,10 +200,20 @@ export const fastBackfill = internalAction({
         message,
         err,
       );
-      await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
-        installationId: args.installationId,
-        errorMessage: `fastBackfill phase=${phase}: ${message}`.slice(0, 500),
-      });
+      await captureAndPersist(
+        err,
+        async () => {
+          await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+            installationId: args.installationId,
+            errorMessage: `fastBackfill phase=${phase}: ${message}`.slice(0, 500),
+          });
+        },
+        {
+          feature: "fastBackfill",
+          integration: "ghl-marketplace",
+          extra: { phase, installationId: args.installationId },
+        },
+      );
     }
   },
 });
@@ -952,10 +963,20 @@ export const reconcile = internalAction({
           `[reconcile] Error for installation ${installation._id}:`,
           message,
         );
-        await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
-          installationId: installation._id,
-          errorMessage: `reconcile: ${message}`.slice(0, 500),
-        });
+        await captureAndPersist(
+          err,
+          async () => {
+            await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+              installationId: installation._id,
+              errorMessage: `reconcile: ${message}`.slice(0, 500),
+            });
+          },
+          {
+            feature: "reconcile",
+            integration: "ghl-marketplace",
+            extra: { installationId: installation._id },
+          },
+        );
       }
     }
     return { processed };
@@ -1005,10 +1026,20 @@ export const reconcileSingleInstallation = internalAction({
       );
       // Persist before re-throwing so the install record reflects the
       // failure even after the UI toast disappears.
-      await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
-        installationId: installation._id,
-        errorMessage: `manual reconcile: ${message}`.slice(0, 500),
-      });
+      await captureAndPersist(
+        err,
+        async () => {
+          await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+            installationId: installation._id,
+            errorMessage: `manual reconcile: ${message}`.slice(0, 500),
+          });
+        },
+        {
+          feature: "reconcileSingleInstallation",
+          integration: "ghl-marketplace",
+          extra: { installationId: installation._id },
+        },
+      );
       throw err; // surface to UI via mutation rejection
     }
   },
