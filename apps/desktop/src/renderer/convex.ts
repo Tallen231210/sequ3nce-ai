@@ -1,6 +1,8 @@
 // Convex client for the desktop app
 // Using HTTP Action endpoint instead of WebSocket (more reliable in Electron)
 
+import * as Sentry from "@sentry/electron/renderer";
+
 // HTTP Action endpoint - hosted at .convex.site (not .convex.cloud)
 const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
@@ -58,6 +60,9 @@ export async function loginCloser(email: string, password: string): Promise<Logi
     return result as LoginResult;
   } catch (error) {
     console.error("[Convex] Failed to login closer:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "loginCloser", integration: "convex" },
+    });
     return { success: false, error: "Network error. Please check your connection." };
   }
 }
@@ -86,6 +91,9 @@ export async function getCloserByEmail(email: string): Promise<CloserInfo | null
     return result as CloserInfo | null;
   } catch (error) {
     console.error("[Convex] Failed to get closer by email:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCloserByEmail", integration: "convex" },
+    });
     return null;
   }
 }
@@ -113,6 +121,9 @@ export async function activateCloser(email: string): Promise<boolean> {
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to activate closer:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "activateCloser", integration: "convex" },
+    });
     return false;
   }
 }
@@ -146,6 +157,9 @@ export async function findMatchingScheduledCall(
     return result as ScheduledCallMatch | null;
   } catch (error) {
     console.error("[Convex] Failed to find matching scheduled call:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "findMatchingScheduledCall", integration: "convex" },
+    });
     return null;
   }
 }
@@ -183,6 +197,9 @@ export async function updateProspectName(data: {
     return { success: true };
   } catch (error) {
     console.error("[Convex] Failed to update prospect name:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "updateProspectName", integration: "convex" },
+    });
     return { success: false, error: "Network error" };
   }
 }
@@ -236,6 +253,9 @@ export async function completeCallWithOutcome(data: {
     return { success: true };
   } catch (error) {
     console.error("[Convex] Failed to complete call:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "completeCallWithOutcome", integration: "convex" },
+    });
     return { success: false, error: "Network error" };
   }
 }
@@ -265,6 +285,9 @@ export async function getPendingQuestionnaireInfo(closerId: string): Promise<{
     };
   } catch (error) {
     console.error("[Convex] Failed to get pending questionnaires:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getPendingQuestionnaireInfo", integration: "convex" },
+    });
     return { count: 0 };
   }
 }
@@ -281,6 +304,9 @@ export async function dismissOrphanedQuestionnaires(closerId: string): Promise<{
     return await response.json();
   } catch (error) {
     console.error("[Convex] Failed to dismiss orphaned questionnaires:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "dismissOrphanedQuestionnaires", integration: "convex" },
+    });
     return { dismissed: 0 };
   }
 }
@@ -319,6 +345,9 @@ export async function changePassword(
     return { success: true };
   } catch (error) {
     console.error("[Convex] Failed to change password:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "changePassword", integration: "convex" },
+    });
     return { success: false, error: "Network error. Please check your connection." };
   }
 }
@@ -385,6 +414,9 @@ export async function isMeetingBotEnabled(teamId: string): Promise<boolean> {
     return result.enabled === true;
   } catch (error) {
     console.error("[Convex] Failed to check meeting bot:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "isMeetingBotEnabled", integration: "convex" },
+    });
     return false;
   }
 }
@@ -412,6 +444,9 @@ export async function needsCalendarOnboarding(closerId: string): Promise<boolean
     return result.needsOnboarding === true;
   } catch (error) {
     console.error("[Convex] Failed to check calendar onboarding:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "needsCalendarOnboarding", integration: "convex" },
+    });
     return false;
   }
 }
@@ -436,7 +471,10 @@ export async function endCallManually(closerId: string): Promise<{ success: bool
     });
     if (!response.ok) return { success: false };
     return await response.json();
-  } catch {
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "endCallManually", integration: "convex" },
+    });
     return { success: false };
   }
 }
@@ -485,6 +523,9 @@ export async function createBotForMeeting(
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to create bot:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "createBotForMeeting", integration: "convex" },
+    });
     return false;
   }
 }
@@ -507,6 +548,9 @@ export async function createQuickBot(
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to create quick bot:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "createQuickBot", integration: "convex" },
+    });
     return false;
   }
 }
@@ -524,6 +568,9 @@ export async function cancelBot(botId: string): Promise<boolean> {
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to cancel bot:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "cancelBot", integration: "convex" },
+    });
     return false;
   }
 }
@@ -541,6 +588,9 @@ export async function getUpcomingBotsForCloser(closerId: string): Promise<Record
     return Array.isArray(result) ? result : result.bots || [];
   } catch (error) {
     console.error("[Convex] Failed to get upcoming bots:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getUpcomingBotsForCloser", integration: "convex" },
+    });
     return [];
   }
 }
@@ -560,6 +610,9 @@ export async function excludeCalendarEvent(
     return response.ok;
   } catch (error) {
     console.error("[Convex] Failed to exclude event:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "excludeCalendarEvent", integration: "convex" },
+    });
     return false;
   }
 }
@@ -583,6 +636,9 @@ export async function requestReinforcement(
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to request reinforcement:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "requestReinforcement", integration: "convex" },
+    });
     return false;
   }
 }
@@ -605,6 +661,9 @@ export async function callGoingLong(
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to notify call going long:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "callGoingLong", integration: "convex" },
+    });
     return false;
   }
 }
@@ -627,6 +686,9 @@ export async function getTranscriptSegments(callId: string): Promise<TranscriptS
     return Array.isArray(result) ? result : [];
   } catch (error) {
     console.error("[Convex] Failed to get transcript:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getTranscriptSegments", integration: "convex" },
+    });
     return [];
   }
 }
@@ -664,6 +726,9 @@ export async function getAmmoAnalysis(callId: string): Promise<AmmoV2Analysis | 
     return null;
   } catch (error) {
     console.error("[Convex] Failed to get ammo analysis:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getAmmoAnalysis", integration: "convex" },
+    });
     return null;
   }
 }
@@ -676,6 +741,9 @@ export async function isAmmoV2Enabled(teamId: string): Promise<boolean> {
     const result = await response.json();
     return result.enabled === true;
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "isAmmoV2Enabled", integration: "convex" },
+    });
     return false;
   }
 }
@@ -691,6 +759,9 @@ export async function updateCallNotes(callId: string, notes: string): Promise<bo
     return response.ok;
   } catch (error) {
     console.error("[Convex] Failed to update notes:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "updateCallNotes", integration: "convex" },
+    });
     return false;
   }
 }
@@ -713,6 +784,9 @@ export async function getActiveResources(teamId: string): Promise<TeamResource[]
     return Array.isArray(result) ? result : [];
   } catch (error) {
     console.error("[Convex] Failed to get resources:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getActiveResources", integration: "convex" },
+    });
     return [];
   }
 }
@@ -727,6 +801,9 @@ export async function saveMeetingPlatform(closerId: string, platform: string): P
     });
     return response.ok;
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "saveMeetingPlatform", integration: "convex" },
+    });
     return false;
   }
 }
@@ -741,6 +818,9 @@ export async function markOnboardingCompleted(closerId: string): Promise<boolean
     });
     return response.ok;
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "markOnboardingCompleted", integration: "convex" },
+    });
     return false;
   }
 }
@@ -760,6 +840,9 @@ export async function connectCalendar(
     return response.ok;
   } catch (error) {
     console.error("[Convex] Failed to connect calendar:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "connectCalendar", integration: "convex" },
+    });
     return false;
   }
 }
@@ -775,6 +858,9 @@ export async function syncCalendar(email: string, teamId: string): Promise<boole
     return response.ok;
   } catch (error) {
     console.error("[Convex] Failed to sync calendar:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "syncCalendar", integration: "convex" },
+    });
     return false;
   }
 }
@@ -822,6 +908,9 @@ export async function getCloserStats(closerId: string, period: string, customSta
     return await response.json();
   } catch (error) {
     console.error("[Convex] Failed to get closer stats:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCloserStats", integration: "convex" },
+    });
     return null;
   }
 }
@@ -860,6 +949,9 @@ export async function getAnalyticsSummary(closerId: string, teamId: string, peri
     return await response.json();
   } catch (error) {
     console.error("[Convex] Failed to get analytics summary:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getAnalyticsSummary", integration: "convex" },
+    });
     return null;
   }
 }
@@ -895,6 +987,9 @@ export async function getLostDealsByObjection(closerId: string, teamId: string, 
     return await response.json();
   } catch (error) {
     console.error("[Convex] Failed to get lost deals:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getLostDealsByObjection", integration: "convex" },
+    });
     return null;
   }
 }
@@ -938,6 +1033,9 @@ export async function getObjectionAnalysis(closerId: string, teamId: string, per
     return await response.json();
   } catch (error) {
     console.error("[Convex] Failed to get objection analysis:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getObjectionAnalysis", integration: "convex" },
+    });
     return null;
   }
 }
@@ -977,6 +1075,9 @@ export async function getCalendarEvents(
     return Array.isArray(result) ? result : [];
   } catch (error) {
     console.error("[Convex] Failed to get calendar events:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCalendarEvents", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1043,6 +1144,9 @@ export async function getCallHistory(closerId: string, limit?: number): Promise<
     return Array.isArray(result.calls) ? result.calls : [];
   } catch (error) {
     console.error("[Convex] Failed to get call history:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCallHistory", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1056,6 +1160,9 @@ export async function getCallAnalysis(callId: string): Promise<CallAnalysis | nu
     return result.callAnalysis ?? null;
   } catch (error) {
     console.error("[Convex] Failed to get call analysis:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCallAnalysis", integration: "convex" },
+    });
     return null;
   }
 }
@@ -1080,6 +1187,9 @@ export async function getCalendarStatus(email: string, teamId: string): Promise<
     return await response.json();
   } catch (error) {
     console.error("[Convex] Failed to get calendar status:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCalendarStatus", integration: "convex" },
+    });
     return null;
   }
 }
@@ -1094,6 +1204,9 @@ export async function disconnectCalendar(email: string, teamId: string): Promise
     return response.ok;
   } catch (error) {
     console.error("[Convex] Failed to disconnect calendar:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "disconnectCalendar", integration: "convex" },
+    });
     return false;
   }
 }
@@ -1116,6 +1229,9 @@ export async function submitDiagnosticReport(data: Record<string, unknown>): Pro
     return { success: true, reportId: result.reportId };
   } catch (error) {
     console.error("[Convex] Failed to submit diagnostics:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "submitDiagnosticReport", integration: "convex" },
+    });
     return { success: false, error: "Network error" };
   }
 }
@@ -1144,6 +1260,9 @@ export async function getFeedbackForCloser(closerId: string): Promise<FeedbackCa
     return Array.isArray(result) ? result : result.calls || [];
   } catch (error) {
     console.error("[Convex] Failed to get feedback:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getFeedbackForCloser", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1172,6 +1291,9 @@ export async function getCommentsForCall(callId: string): Promise<CallComment[]>
     return Array.isArray(result) ? result : result.comments || [];
   } catch (error) {
     console.error("[Convex] Failed to get comments:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCommentsForCall", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1196,6 +1318,9 @@ export async function addCallComment(
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to add comment:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "addCallComment", integration: "convex" },
+    });
     return false;
   }
 }
@@ -1223,6 +1348,9 @@ export async function getSharedMoments(closerId: string): Promise<SharedMoment[]
     return Array.isArray(result) ? result : result.moments || [];
   } catch (error) {
     console.error("[Convex] Failed to get shared moments:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getSharedMoments", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1239,6 +1367,9 @@ export async function getUnreadFeedbackCount(closerId: string): Promise<number> 
     const result = await response.json();
     return result.count || 0;
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "getUnreadFeedbackCount", integration: "convex" },
+    });
     return 0;
   }
 }
@@ -1254,6 +1385,9 @@ export async function getUnreadSharedMomentsCount(closerId: string): Promise<num
     const result = await response.json();
     return result.count || 0;
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "getUnreadSharedMomentsCount", integration: "convex" },
+    });
     return 0;
   }
 }
@@ -1267,6 +1401,9 @@ export async function markFeedbackRead(callId: string, closerId: string): Promis
     });
     return response.ok;
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "markFeedbackRead", integration: "convex" },
+    });
     return false;
   }
 }
@@ -1280,6 +1417,9 @@ export async function markSharedMomentsSeen(closerId: string): Promise<boolean> 
     });
     return response.ok;
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "markSharedMomentsSeen", integration: "convex" },
+    });
     return false;
   }
 }
@@ -1299,6 +1439,9 @@ export async function flagCallForReview(callId: string, closerId: string): Promi
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to flag call:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "flagCallForReview", integration: "convex" },
+    });
     return false;
   }
 }
@@ -1316,6 +1459,9 @@ export async function unflagCall(callId: string, closerId: string): Promise<bool
     return result.success === true;
   } catch (error) {
     console.error("[Convex] Failed to unflag call:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "unflagCall", integration: "convex" },
+    });
     return false;
   }
 }
@@ -1333,6 +1479,9 @@ export async function refreshRecordingUrl(callId: string): Promise<string | null
     return result.recordingUrl || null;
   } catch (error) {
     console.error("[Convex] Failed to refresh recording URL:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "refreshRecordingUrl", integration: "convex" },
+    });
     return null;
   }
 }
@@ -1367,6 +1516,9 @@ export async function createSharedLink(
     return null;
   } catch (error) {
     console.error("[Convex] Failed to create shared link:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "createSharedLink", integration: "convex" },
+    });
     return null;
   }
 }
@@ -1387,6 +1539,9 @@ export async function getAmmoByCall(callId: string): Promise<AmmoItem[]> {
     return Array.isArray(result) ? result : [];
   } catch (error) {
     console.error("[Convex] Failed to get ammo items:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getAmmoByCall", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1427,6 +1582,9 @@ export async function getOrCreateRolePlayRoom(teamId: string): Promise<RolePlayR
     return result as RolePlayRoomResponse;
   } catch (error) {
     console.error("[Convex] Failed to get role play room:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getOrCreateRolePlayRoom", integration: "convex" },
+    });
     return null;
   }
 }
@@ -1462,6 +1620,9 @@ export async function joinRolePlayRoom(
     return { success: true };
   } catch (error) {
     console.error("[Convex] Failed to join role play room:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "joinRolePlayRoom", integration: "convex" },
+    });
     return { success: false, error: "Network error" };
   }
 }
@@ -1496,6 +1657,9 @@ export async function leaveRolePlayRoom(
     return { success: true };
   } catch (error) {
     console.error("[Convex] Failed to leave role play room:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "leaveRolePlayRoom", integration: "convex" },
+    });
     return { success: false, error: "Network error" };
   }
 }
@@ -1515,6 +1679,9 @@ export async function getRolePlayRoomParticipants(teamId: string): Promise<RoleP
     return result as RolePlayRoomParticipant[];
   } catch (error) {
     console.error("[Convex] Failed to get role play room participants:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getRolePlayRoomParticipants", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1541,6 +1708,9 @@ export async function getMessagesForCloser(closerId: string, limit = 100): Promi
     return await response.json();
   } catch (error) {
     console.error("[Convex] Failed to get messages:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getMessagesForCloser", integration: "convex" },
+    });
     return [];
   }
 }
@@ -1567,6 +1737,9 @@ export async function sendMessageFromCloser(
     return response.ok;
   } catch (error) {
     console.error("[Convex] Failed to send message:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "sendMessageFromCloser", integration: "convex" },
+    });
     return false;
   }
 }
@@ -1580,6 +1753,9 @@ export async function markAllMessagesRead(closerId: string): Promise<void> {
     });
   } catch (error) {
     console.error("[Convex] Failed to mark messages as read:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "markAllMessagesRead", integration: "convex" },
+    });
   }
 }
 
@@ -1592,6 +1768,9 @@ export async function getUnreadMessageCount(closerId: string): Promise<number> {
     return data.count || 0;
   } catch (error) {
     console.error("[Convex] Failed to get unread message count:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getUnreadMessageCount", integration: "convex" },
+    });
     return 0;
   }
 }
