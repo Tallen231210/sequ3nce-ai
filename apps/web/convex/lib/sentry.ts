@@ -13,6 +13,8 @@
 // imports + initializes + flushes cleanly inside Convex's Node runtime;
 // see git history for the spike file if the question comes up again.
 
+import { v } from "convex/values";
+import { internalAction } from "../_generated/server";
 import type { CaptureContext } from "@sentry/core";
 
 // Singleton init — Convex isolates may reuse this module across actions,
@@ -123,3 +125,51 @@ export async function captureAndPersist(
     console.error("[Sentry] captureAndPersist failed:", sentryErr);
   }
 }
+
+/**
+ * V8-isolate friendly bridge: schedule this internal action from a
+ * mutation/query catch block to fire Sentry without needing @sentry/node
+ * in the V8 sandbox. Errors aren't serializable across the scheduler
+ * boundary, so the caller passes the already-stringified message.
+ *
+ * Pattern in V8 isolate:
+ *
+ *   } catch (err) {
+ *     await ctx.db.patch(rowId, { lastError: String(err) }); // persist
+ *     await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+ *       message: err instanceof Error ? err.message : String(err),
+ *       feature: "<function name>",
+ *       integration: "<integration>",
+ *     });
+ *   }
+ *
+ * The action returns immediately; persistence in the V8 isolate is what
+ * makes the failure visible to the UI, Sentry on top of it just paged
+ * someone.
+ */
+export const captureFromIsolate = internalAction({
+  args: {
+    message: v.string(),
+    feature: v.optional(v.string()),
+    integration: v.optional(v.string()),
+    extra: v.optional(v.any()),
+  },
+  handler: async (_ctx, args) => {
+    try {
+      const Sentry = await getSentry();
+      if (!Sentry) return;
+
+      const tags: Record<string, string> = {};
+      if (args.feature) tags.feature = args.feature;
+      if (args.integration) tags.integration = args.integration;
+
+      Sentry.captureException(new Error(args.message), {
+        tags,
+        extra: args.extra,
+      });
+      await Sentry.flush(3000);
+    } catch (sentryErr) {
+      console.error("[Sentry] captureFromIsolate failed:", sentryErr);
+    }
+  },
+});

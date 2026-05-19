@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { encryptApiKey, decryptApiKey } from "./lib/encrypt";
+import { captureAndPersist } from "./lib/sentry";
 
 // ============================================
 // HYROS API CONFIG
@@ -319,7 +320,17 @@ export const pushCallToHyros = action({
           errors.push(`Lead upsert failed: ${leadResponse.status} ${text}`);
         }
       } catch (e) {
-        errors.push(`Lead upsert error: ${String(e)}`);
+        await captureAndPersist(
+          e,
+          async () => {
+            errors.push(`Lead upsert error: ${String(e)}`);
+          },
+          {
+            feature: "pushCallToHyros:leadUpsert",
+            integration: "hyros",
+            extra: { callId: args.callId },
+          },
+        );
       }
 
       // 2. Create call record
@@ -339,7 +350,17 @@ export const pushCallToHyros = action({
           errors.push(`Call creation failed: ${callResponse.status} ${text}`);
         }
       } catch (e) {
-        errors.push(`Call creation error: ${String(e)}`);
+        await captureAndPersist(
+          e,
+          async () => {
+            errors.push(`Call creation error: ${String(e)}`);
+          },
+          {
+            feature: "pushCallToHyros:callCreation",
+            integration: "hyros",
+            extra: { callId: args.callId },
+          },
+        );
       }
 
       // 3. Create sale (only for closed deals)
@@ -359,7 +380,17 @@ export const pushCallToHyros = action({
             errors.push(`Sale creation failed: ${saleResponse.status} ${text}`);
           }
         } catch (e) {
-          errors.push(`Sale creation error: ${String(e)}`);
+          await captureAndPersist(
+            e,
+            async () => {
+              errors.push(`Sale creation error: ${String(e)}`);
+            },
+            {
+              feature: "pushCallToHyros:saleCreation",
+              integration: "hyros",
+              extra: { callId: args.callId },
+            },
+          );
         }
       }
 
@@ -387,7 +418,17 @@ export const pushCallToHyros = action({
           errors.push(`Event creation failed: ${eventResponse.status} ${text}`);
         }
       } catch (e) {
-        errors.push(`Event creation error: ${String(e)}`);
+        await captureAndPersist(
+          e,
+          async () => {
+            errors.push(`Event creation error: ${String(e)}`);
+          },
+          {
+            feature: "pushCallToHyros:eventCreation",
+            integration: "hyros",
+            extra: { callId: args.callId },
+          },
+        );
       }
 
       // Mark sync result

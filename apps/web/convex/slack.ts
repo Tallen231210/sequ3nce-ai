@@ -171,6 +171,11 @@ export const getSlackChannels = action({
       return { channels: allChannels };
     } catch (error) {
       console.error("[Slack] Error fetching channels:", error);
+      await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+        message: error instanceof Error ? error.message : String(error),
+        feature: "getSlackChannels",
+        integration: "slack",
+      });
       return { error: String(error) };
     }
   },
@@ -213,6 +218,12 @@ export const joinSlackChannel = action({
       }
       return { success: true };
     } catch (error) {
+      await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+        message: error instanceof Error ? error.message : String(error),
+        feature: "joinSlackChannel",
+        integration: "slack",
+        extra: { channelId: args.channelId },
+      });
       return { success: false, error: String(error) };
     }
   },
@@ -514,6 +525,12 @@ export const sendSlackNotification = internalAction({
       return { success: true, skipped: true, reason: "No Slack configured" };
     } catch (error) {
       console.error("[Slack] Error sending notification:", error);
+      await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+        message: error instanceof Error ? error.message : String(error),
+        feature: "sendSlackNotification",
+        integration: "slack",
+        extra: { teamId: args.teamId, callId: args.callId, type: args.type },
+      });
       return { success: false, error: String(error) };
     }
   },
@@ -1041,6 +1058,12 @@ export const sendCallStartedNotification = internalAction({
       return result;
     } catch (error) {
       console.error("[Slack] Error sending call started notification:", error);
+      await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+        message: error instanceof Error ? error.message : String(error),
+        feature: "sendCallStartedNotification",
+        integration: "slack",
+        extra: { callId: args.callId },
+      });
       return { success: false, error: String(error) };
     }
   },

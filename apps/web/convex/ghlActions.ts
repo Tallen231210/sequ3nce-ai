@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { encryptApiKey, decryptApiKey } from "./lib/encrypt";
+import { captureAndPersist } from "./lib/sentry";
 
 // ============================================
 // GHL API CONFIG
@@ -382,7 +383,17 @@ export const syncCallToGhl = internalAction({
           contactId = contactData.contact?.id;
         }
       } catch (e) {
-        errors.push(`Contact upsert error: ${String(e)}`);
+        await captureAndPersist(
+          e,
+          async () => {
+            errors.push(`Contact upsert error: ${String(e)}`);
+          },
+          {
+            feature: "syncCallToGhl:contactUpsert",
+            integration: "ghl-legacy",
+            extra: { callId: args.callId },
+          },
+        );
       }
 
       // --- 2. Add tags ---
@@ -399,7 +410,17 @@ export const syncCallToGhl = internalAction({
             errors.push(`Tag add failed: ${tagResp.status} ${text}`);
           }
         } catch (e) {
-          errors.push(`Tag add error: ${String(e)}`);
+          await captureAndPersist(
+            e,
+            async () => {
+              errors.push(`Tag add error: ${String(e)}`);
+            },
+            {
+              feature: "syncCallToGhl:tagAdd",
+              integration: "ghl-legacy",
+              extra: { callId: args.callId, contactId },
+            },
+          );
         }
       }
 
@@ -425,7 +446,17 @@ export const syncCallToGhl = internalAction({
             errors.push(`Note add failed: ${noteResp.status} ${text}`);
           }
         } catch (e) {
-          errors.push(`Note add error: ${String(e)}`);
+          await captureAndPersist(
+            e,
+            async () => {
+              errors.push(`Note add error: ${String(e)}`);
+            },
+            {
+              feature: "syncCallToGhl:noteAdd",
+              integration: "ghl-legacy",
+              extra: { callId: args.callId, contactId },
+            },
+          );
         }
       }
 

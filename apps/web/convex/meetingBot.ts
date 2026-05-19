@@ -114,6 +114,12 @@ export const fetchBotRecording = internalAction({
           delayMs: args.attempt * 30000,
         });
       }
+      await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+        message: error instanceof Error ? error.message : String(error),
+        feature: "fetchBotRecording",
+        integration: "recall",
+        extra: { recallBotId: args.recallBotId, attempt: args.attempt },
+      });
     }
   },
 });
@@ -531,6 +537,12 @@ export const createBot = action({
       return { botId, recallBotId };
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
+        await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+          message: error instanceof Error ? error.message : String(error),
+          feature: "createBot",
+          integration: "recall",
+          extra: { botId },
+        });
         throw error;
       }
 
@@ -540,6 +552,12 @@ export const createBot = action({
       await ctx.runMutation(internal.meetingBot.markBotFailed, {
         botId,
         failureReason,
+      });
+      await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+        message: error instanceof Error ? error.message : String(error),
+        feature: "createBot",
+        integration: "recall",
+        extra: { botId },
       });
       throw error;
     }
@@ -622,6 +640,12 @@ export const cancelBot = action({
       } catch (error) {
         console.error(`[cancelBot] Failed to call Recall.ai API:`, error);
         // Continue with local cancellation even if API call fails
+        await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+          message: error instanceof Error ? error.message : String(error),
+          feature: "cancelBot",
+          integration: "recall",
+          extra: { botId: args.botId, recallBotId: bot.recallBotId },
+        });
       }
     }
 
@@ -780,6 +804,12 @@ export const createQuickBot = action({
       return { botId, recallBotId };
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
+        await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+          message: error instanceof Error ? error.message : String(error),
+          feature: "createQuickBot",
+          integration: "recall",
+          extra: { botId },
+        });
         throw error;
       }
 
@@ -789,6 +819,12 @@ export const createQuickBot = action({
       await ctx.runMutation(internal.meetingBot.markBotFailed, {
         botId,
         failureReason,
+      });
+      await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
+        message: error instanceof Error ? error.message : String(error),
+        feature: "createQuickBot",
+        integration: "recall",
+        extra: { botId },
       });
       throw error;
     }
