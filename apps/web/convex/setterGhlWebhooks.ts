@@ -10,6 +10,16 @@ function nn<T>(v: T | null | undefined): T | undefined {
   return v ?? undefined;
 }
 
+// GHL sometimes sends an object instead of a string for "user-id-shaped"
+// fields when the appointment/opportunity was created by a third-party
+// integration (e.g. Calendly returns `createdBy: {source: "calendly"}`).
+// Our schema expects `v.optional(v.string())` for these fields, which
+// rejects both null and non-string objects. Use this at every write site
+// that forwards a GHL-supplied user id to ctx.db.insert/patch.
+function nnStr(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+
 // ============================================================================
 // Setter Data — GoHighLevel webhook event handlers.
 //
@@ -259,7 +269,7 @@ async function handleContactUpsert(
       source: contact.source ?? existing.source,
       sourceDetail: contact.sourceDetail ?? existing.sourceDetail,
       tags: contact.tags ?? existing.tags,
-      assignedToGhlUserId: contact.assignedTo ?? existing.assignedToGhlUserId,
+      assignedToGhlUserId: nnStr(contact.assignedTo) ?? existing.assignedToGhlUserId,
       lastSyncedAt: now,
     });
     return;
@@ -275,7 +285,7 @@ async function handleContactUpsert(
     source: nn(contact.source),
     sourceDetail: nn(contact.sourceDetail),
     tags: nn(contact.tags),
-    assignedToGhlUserId: nn(contact.assignedTo),
+    assignedToGhlUserId: nnStr(contact.assignedTo),
     assignedToName: undefined,
     dialCount: 0,
     firstDialAt: undefined,
@@ -434,10 +444,12 @@ async function handleAppointmentUpsert(
       : null;
     await ctx.db.patch(existing._id, {
       ghlContactId,
-      ghlCalendarId: apt.calendarId ?? existing.ghlCalendarId,
-      bookedByGhlUserId: apt.createdBy ?? existing.bookedByGhlUserId,
+      ghlCalendarId: nnStr(apt.calendarId) ?? existing.ghlCalendarId,
+      bookedByGhlUserId: nnStr(apt.createdBy) ?? existing.bookedByGhlUserId,
       assignedToGhlUserId:
-        apt.assignedUserId ?? apt.userId ?? existing.assignedToGhlUserId,
+        nnStr(apt.assignedUserId) ??
+        nnStr(apt.userId) ??
+        existing.assignedToGhlUserId,
       startTime,
       endTime,
       status,
@@ -448,9 +460,9 @@ async function handleAppointmentUpsert(
       teamId: args.teamId,
       ghlAppointmentId,
       ghlContactId,
-      ghlCalendarId: nn(apt.calendarId),
-      bookedByGhlUserId: nn(apt.createdBy),
-      assignedToGhlUserId: nn(apt.assignedUserId) ?? nn(apt.userId),
+      ghlCalendarId: nnStr(apt.calendarId),
+      bookedByGhlUserId: nnStr(apt.createdBy),
+      assignedToGhlUserId: nnStr(apt.assignedUserId) ?? nnStr(apt.userId),
       startTime,
       endTime,
       status,
@@ -470,7 +482,7 @@ async function handleAppointmentUpsert(
       setterLeadId: lead._id,
       eventType: "appointment_booked",
       occurredAt: bookedAt,
-      ghlUserId: apt.createdBy,
+      ghlUserId: nnStr(apt.createdBy),
       details: {
         ghlAppointmentId,
         calendarId: apt.calendarId,
@@ -486,7 +498,7 @@ async function handleAppointmentUpsert(
       setterLeadId: lead._id,
       eventType: "appointment_status_change",
       occurredAt: lastUpdatedAt,
-      ghlUserId: apt.createdBy,
+      ghlUserId: nnStr(apt.createdBy),
       details: {
         ghlAppointmentId,
         from: prevStatus,
@@ -602,9 +614,9 @@ async function handleOpportunityUpsert(
       ghlStageId,
       status,
       monetaryValue,
-      assignedToGhlUserId: opp.assignedTo ?? existing.assignedToGhlUserId,
-      name: opp.name ?? existing.name,
-      source: opp.source ?? existing.source,
+      assignedToGhlUserId: nnStr(opp.assignedTo) ?? existing.assignedToGhlUserId,
+      name: nn(opp.name) ?? existing.name,
+      source: nn(opp.source) ?? existing.source,
       lastUpdatedAt,
     });
 
@@ -632,7 +644,7 @@ async function handleOpportunityUpsert(
         toStageId: ghlStageId,
         transitionedAt: lastUpdatedAt,
         durationInPreviousStageSec: durationSec,
-        triggeredByGhlUserId: opp.assignedTo,
+        triggeredByGhlUserId: nnStr(opp.assignedTo),
       });
     }
   } else {
@@ -644,7 +656,7 @@ async function handleOpportunityUpsert(
       ghlStageId,
       status,
       monetaryValue,
-      assignedToGhlUserId: nn(opp.assignedTo),
+      assignedToGhlUserId: nnStr(opp.assignedTo),
       name: nn(opp.name),
       source: nn(opp.source),
       dateAdded,
@@ -662,7 +674,7 @@ async function handleOpportunityUpsert(
       toStageId: ghlStageId,
       transitionedAt: dateAdded,
       durationInPreviousStageSec: undefined,
-      triggeredByGhlUserId: opp.assignedTo,
+      triggeredByGhlUserId: nnStr(opp.assignedTo),
     });
   }
 
@@ -675,7 +687,7 @@ async function handleOpportunityUpsert(
     setterLeadId: lead._id,
     eventType: "opportunity_stage_change",
     occurredAt: lastUpdatedAt,
-    ghlUserId: opp.assignedTo,
+    ghlUserId: nnStr(opp.assignedTo),
     details: {
       ghlOpportunityId,
       ghlPipelineId,
