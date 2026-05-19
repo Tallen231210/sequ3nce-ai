@@ -9,6 +9,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { ConnectionGate } from "./components/ConnectionGate";
 import { BackfillBanner } from "./components/BackfillBanner";
 import { ErrorBanner } from "./components/ErrorBanner";
+import { HistoricalActivityNote } from "./components/HistoricalActivityNote";
 import { OverviewTab } from "./components/overview/OverviewTab";
 import { LeadsTab } from "./components/leads/LeadsTab";
 import { SettersTab } from "./components/setters/SettersTab";
@@ -141,6 +142,15 @@ function SetterDataPageInner() {
               monthsCompleted={installation.deepBackfillLastCompletedMonth ?? 3}
               monthsTarget={12}
             />
+          )}
+
+        {/* Activity-data scope disclosure. Backfill imports historical
+            leads but NOT historical conversation activity, so dial/SMS/
+            connection metrics are forward-looking from the install date. */}
+        {installation.installedAt &&
+          installation.status !== "error" &&
+          tab !== "settings" && (
+            <HistoricalActivityNote installedAt={installation.installedAt} />
           )}
 
         {/* Tab nav */}
