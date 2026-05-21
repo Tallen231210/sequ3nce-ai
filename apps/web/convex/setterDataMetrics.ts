@@ -122,10 +122,11 @@ export async function computeScorecard(
     type AccumRow = ScorecardSetterRow & { _speeds: number[]; _noShowCount: number };
     const perSetterMap = new Map<string, AccumRow>();
 
-    for (const lead of leads) {
-      const setterId = lead.assignedToGhlUserId;
-      if (!setterId) continue;
-
+    // Helper: create-or-get a setter accumulator. Used by every aggregation
+    // pass below — leads-assigned, dials-by-doer, connects-by-doer, and
+    // appointments-by-booker — since each pass can independently surface a
+    // setter who didn't appear in earlier passes.
+    function ensureRow(setterId: string): AccumRow {
       let row = perSetterMap.get(setterId);
       if (row === undefined) {
         const created: AccumRow = {
@@ -144,13 +145,88 @@ export async function computeScorecard(
         perSetterMap.set(setterId, created);
         row = created;
       }
+      return row;
+    }
 
-      row.leadCount += 1;
-      row.dialCount += lead.dialCount;
-      if (lead.isConnected) row.connectedCount += 1;
-      if (typeof lead.firstDialAt === "number") {
-        row._speeds.push(lead.firstDialAt - lead.dateAdded);
+    // Pass 1: lead-count attribution. Lead assignment in GHL is how
+    // managers think about "this setter owns this lead" — keep counting
+    // leads by assignment.
+    for (const lead of leads) {
+      const setterId = lead.assignedToGhlUserId;
+      if (!setterId) continue;
+      ensureRow(setterId).leadCount += 1;
+    }
+
+    // Build a ghlContactId → dateAdded lookup for the in-range leads so
+    // we can compute per-setter speed-to-lead from dial events below.
+    const leadDateByContactId = new Map<string, number>();
+    for (const lead of leads) {
+      leadDateByContactId.set(lead.ghlContactId, lead.dateAdded);
+    }
+
+    // Pass 2: dials + connects attribution by the actor (ghlUserId on
+    // the event), NOT by lead assignment. This fixes a bug where setters
+    // who dial leads they aren't assigned to — including unassigned
+    // leads, which is most of them for inbound-Calendly funnels —
+    // showed up as having made zero dials.
+    const dialEvents: Doc<"setterLeadEvents">[] = await ctx.db
+      .query("setterLeadEvents")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_type_and_time", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .eq("eventType", "dial_outbound")
+          .gte("occurredAt", args.rangeStart)
+          .lt("occurredAt", args.rangeEnd),
+      )
+      .collect();
+
+    const connectedEvents: Doc<"setterLeadEvents">[] = await ctx.db
+      .query("setterLeadEvents")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_type_and_time", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .eq("eventType", "connected")
+          .gte("occurredAt", args.rangeStart)
+          .lt("occurredAt", args.rangeEnd),
+      )
+      .collect();
+
+    // Earliest dial per contact, attributed to whoever placed it. Powers
+    // per-setter speed-to-lead (we credit the dialer who first reached
+    // the lead, not whoever the lead happened to be assigned to).
+    const firstDialByContact = new Map<
+      string,
+      { ghlUserId: string; occurredAt: number }
+    >();
+
+    for (const ev of dialEvents) {
+      if (!ev.ghlUserId) continue;
+      ensureRow(ev.ghlUserId).dialCount += 1;
+
+      const existing = firstDialByContact.get(ev.ghlContactId);
+      if (!existing || ev.occurredAt < existing.occurredAt) {
+        firstDialByContact.set(ev.ghlContactId, {
+          ghlUserId: ev.ghlUserId,
+          occurredAt: ev.occurredAt,
+        });
       }
+    }
+
+    for (const ev of connectedEvents) {
+      if (!ev.ghlUserId) continue;
+      ensureRow(ev.ghlUserId).connectedCount += 1;
+    }
+
+    // Speed-to-lead: for each first-dial-on-a-lead, attribute the gap
+    // (lead.dateAdded → first dial) to the dialer. Only counts leads
+    // whose dateAdded is in the same window (matches the team-level
+    // speed-to-lead calculation done above).
+    for (const [ghlContactId, first] of firstDialByContact) {
+      const dateAdded = leadDateByContactId.get(ghlContactId);
+      if (dateAdded === undefined) continue;
+      ensureRow(first.ghlUserId)._speeds.push(first.occurredAt - dateAdded);
     }
 
     // Phase 2 — Appointments aggregation. We attribute appointments by
@@ -175,26 +251,7 @@ export async function computeScorecard(
 
       const setterId = apt.bookedByGhlUserId;
       if (!setterId) continue;
-      let row = perSetterMap.get(setterId);
-      if (row === undefined) {
-        // Setter booked appointments but had no leads in window — still
-        // include them in the leaderboard so their show-rate shows up.
-        const created: AccumRow = {
-          ghlUserId: setterId,
-          name: repNameByGhlUserId.get(setterId) ?? "Unknown setter",
-          leadCount: 0,
-          dialCount: 0,
-          connectedCount: 0,
-          avgSpeedMs: null,
-          appointmentCount: 0,
-          showedCount: 0,
-          showRate: null,
-          _speeds: [],
-          _noShowCount: 0,
-        };
-        perSetterMap.set(setterId, created);
-        row = created;
-      }
+      const row = ensureRow(setterId);
       row.appointmentCount += 1;
       if (apt.status === "Showed") row.showedCount += 1;
       else if (apt.status === "No Show") row._noShowCount += 1;
