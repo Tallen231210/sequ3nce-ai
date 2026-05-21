@@ -439,6 +439,7 @@ export const getCloserStats = query({
     customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<CloserStats[]> => {
+    try {
     // Get the user to find their team
     const user = await ctx.db
       .query("users")
@@ -539,15 +540,50 @@ export const getCloserStats = query({
       ammoPerCall.set(ammo.callId, current + 1);
     }
 
+    // Compute the widest date floor we need: the selected period, the
+    // previous period (for trends), AND the rolling week/month windows
+    // that always render. We range-scan from this floor via the
+    // by_team_and_date index so we never read calls older than anything
+    // we'd display.
+    //
+    // Hard floor of 1 year prevents "all_time" from collecting every
+    // historical call — calls carry transcript + AI analysis blobs and
+    // average tens of KB, so a high-volume team's full history easily
+    // exceeds Convex's 16 MiB per-query read limit (the bug this fix
+    // addresses; same class as commit 04c9ed3).
+    const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
+    let scanFloor = Math.min(
+      filterDate || oneYearAgo,
+      previousPeriodStart || oneYearAgo,
+      startOfWeek.getTime(),
+      startOfMonth.getTime(),
+    );
+    if (scanFloor < oneYearAgo) scanFloor = oneYearAgo;
+
+    // One team-wide range scan, then bucket by closer in JS. The
+    // by_team_and_date index lets the storage layer reject older rows
+    // before they're read — earlier per-closer-collect-all approach
+    // pulled every historical call for every closer (16 MiB limit
+    // breaker on high-volume teams).
+    const teamCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q) =>
+        q.eq("teamId", user.teamId).gte("createdAt", scanFloor),
+      )
+      .collect();
+
+    const callsByCloser = new Map<string, typeof teamCalls>();
+    for (const c of teamCalls) {
+      const list = callsByCloser.get(c.closerId);
+      if (list) list.push(c);
+      else callsByCloser.set(c.closerId, [c]);
+    }
+
     // Calculate stats for each closer
     const closerStatsMap = new Map<string, CloserStats>();
 
     for (const closer of activeClosers) {
-      // Query calls directly for this closer using index (ensures Convex reactivity)
-      const closerCalls = await ctx.db
-        .query("calls")
-        .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
-        .collect();
+      const closerCalls = callsByCloser.get(closer._id) ?? [];
 
       // Current period calls
       const periodCalls = closerCalls.filter(
@@ -744,6 +780,19 @@ export const getCloserStats = query({
     }
 
     return statsArray;
+    } catch (err) {
+      // The most likely failure here is Convex's 16 MiB per-query read
+      // limit on extreme-history teams (calls carry transcript + AI
+      // analysis blobs). We log and return an empty array so the
+      // dashboard renders an empty state instead of throwing into the
+      // useQuery propagation chain and crashing the entire page —
+      // same defensive pattern callReviews:getUnreadReplyCount uses.
+      // TODO: long-term fix is splitting transcript + callAnalysis
+      // off the calls table into a sibling table joined by callId so
+      // stat queries don't pay the blob-read cost.
+      console.error("[closers.getCloserStats] failed:", err);
+      return [];
+    }
   },
 });
 
