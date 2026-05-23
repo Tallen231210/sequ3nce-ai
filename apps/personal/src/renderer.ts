@@ -8,7 +8,41 @@
 // no DSN config needed here — just init() to register the error
 // handler that forwards thrown React/window errors back to main.
 import * as Sentry from '@sentry/electron/renderer';
-Sentry.init({});
+
+// Capture launch time at module load so beforeSend can suppress network
+// errors that fire before the OS has finished bringing wifi up on a
+// cold boot. Observed in production: app launched within ~1s of OS
+// boot fired 5+ "Failed to fetch" errors at startup because the
+// network stack wasn't ready yet. None were real bugs.
+const APP_LAUNCH_TIME = Date.now();
+const LAUNCH_NETWORK_GRACE_MS = 15_000;
+
+Sentry.init({
+  // Drop "Failed to fetch" errors when the device is in a transient
+  // network state — offline, mid-sleep/wake, or freshly launched
+  // before the network stack is up. The existing graceful-degrade UX
+  // (every silent catch returns null/empty and the UI shows a retry
+  // affordance) already handles these for the user; sending them to
+  // Sentry just produces noise. Real fetch failures while online AND
+  // past the launch grace still flow through.
+  beforeSend(event, hint) {
+    const err = hint?.originalException;
+    const message =
+      err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+
+    if (err instanceof TypeError && /Failed to fetch/i.test(message)) {
+      const offline =
+        typeof navigator !== 'undefined' && navigator.onLine === false;
+      const justLaunched =
+        Date.now() - APP_LAUNCH_TIME < LAUNCH_NETWORK_GRACE_MS;
+      if (offline || justLaunched) {
+        return null;
+      }
+    }
+
+    return event;
+  },
+});
 
 import './index.css';
 import React from 'react';
