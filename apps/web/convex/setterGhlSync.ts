@@ -60,6 +60,7 @@ export const fastBackfill = internalAction({
       v.union(
         v.literal("users"),
         v.literal("contacts"),
+        v.literal("messages"),
         v.literal("appointments"),
         v.literal("opportunities"),
         v.literal("complete"),
@@ -109,10 +110,13 @@ export const fastBackfill = internalAction({
         });
 
         if (!result.hasMore) {
-          // All pages done — move to appointments phase.
+          // All pages done — move to messages phase (calls + SMS).
+          // Messages run BEFORE appointments because the dashboard's
+          // primary KPIs (speed-to-lead, dial counts, connection rate)
+          // are message-driven.
           await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
             installationId: args.installationId,
-            phase: "appointments",
+            phase: "messages",
           });
           return;
         }
@@ -135,6 +139,30 @@ export const fastBackfill = internalAction({
           installationId: args.installationId,
           phase: "contacts",
           contactsPage: result.nextPage,
+        });
+        return;
+      }
+
+      if (phase === "messages") {
+        // Pull call + SMS messages from GHL's conversations/messages
+        // REST API. Webhooks alone are not a complete source of truth —
+        // observed in a per-contact audit against AICom's install,
+        // ~30% of TYPE_CALL messages in GHL's conversation history
+        // never reached our dispatch path via OutboundMessage /
+        // InboundMessage webhooks. Synthesize the same webhook payload
+        // shape so dispatch routes through handleOutboundMessage /
+        // handleInboundMessage → recordCallEvent / recordSmsEvent,
+        // which already dedupe on ghlEventKey: msg:<messageId>.
+        await syncMessagesRange(ctx, {
+          installationId: args.installationId,
+          locationId: installation.locationId,
+          teamId: installation.teamId,
+          rangeStartMs: Date.now() - FAST_BACKFILL_DAYS * 24 * 60 * 60 * 1000,
+          rangeEndMs: Date.now(),
+        });
+        await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
+          installationId: args.installationId,
+          phase: "appointments",
         });
         return;
       }
@@ -606,6 +634,17 @@ async function syncMonthOfContacts(ctx: ActionCtx, args: SyncMonthArgs): Promise
     rangeStartMs: windowStart,
     rangeEndMs: windowEnd,
   });
+
+  // And the call/SMS messages for this month's window. Catches anything
+  // the OutboundMessage / InboundMessage webhooks missed during the
+  // historical month. Dedupes against existing rows by msg:<messageId>.
+  await syncMessagesRange(ctx, {
+    installationId: args.installationId,
+    locationId: args.locationId,
+    teamId: args.teamId,
+    rangeStartMs: windowStart,
+    rangeEndMs: windowEnd,
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -738,6 +777,261 @@ async function syncAppointmentsRange(
       auditId,
     });
   }
+}
+
+// ----------------------------------------------------------------------------
+// Phase: messages (calls + SMS) — REST pull to supplement webhooks
+// ----------------------------------------------------------------------------
+
+interface GhlConversationSummary {
+  id?: string;
+  contactId?: string;
+  lastMessageDate?: number;
+}
+
+interface GhlConversationSearchResponse {
+  conversations?: GhlConversationSummary[];
+  total?: number;
+}
+
+interface GhlConversationMessage {
+  id?: string;
+  type?: number;
+  messageType?: string;
+  direction?: string;
+  dateAdded?: string | number;
+  contactId?: string;
+  conversationId?: string;
+  userId?: string;
+  callDuration?: number;
+  body?: string;
+}
+
+interface GhlMessagesResponse {
+  messages?: { messages?: GhlConversationMessage[]; nextPage?: boolean };
+}
+
+interface SyncMessagesRangeArgs {
+  installationId: string;
+  locationId: string;
+  teamId: string;
+  rangeStartMs: number;
+  rangeEndMs: number;
+}
+
+// Cap how much work a single sync invocation does. These bounds avoid
+// the case where a customer with thousands of stale conversations
+// blows past Convex's 10-min action timeout. Anything that doesn't
+// fit gets caught by the next reconcile tick — the dedup key means
+// re-running is safe.
+const MESSAGES_MAX_CONVERSATIONS = 500;
+const MESSAGES_PER_CONVERSATION_LIMIT = 100;
+const MESSAGES_CONVERSATIONS_PAGE_SIZE = 100;
+
+/**
+ * Pull TYPE_CALL + TYPE_SMS messages from GHL's conversations/messages
+ * REST API for a given date window, then synthesize Outbound/Inbound
+ * Message webhook payloads and dispatch them through the same handler
+ * pipeline that real webhooks use. This catches calls/SMS that GHL's
+ * webhook delivery missed — observed in a per-contact audit against
+ * the AICom install, ~30% of TYPE_CALL messages in conversation
+ * history never reached us via the OutboundMessage / InboundMessage
+ * webhooks.
+ *
+ * Idempotency: dispatch's recordCallEvent / recordSmsEvent dedupe by
+ * ghlEventKey = "msg:<messageId>" via the by_ghl_event_key index, so
+ * messages already captured by the webhook path are silent no-ops
+ * here.
+ *
+ * Field mapping nit: the conversation REST API returns messageType as
+ * "TYPE_CALL" / "TYPE_SMS", while live webhooks send "CALL" / "SMS".
+ * We normalize to the webhook shape before recording so the dispatch
+ * handler sees the same payload regardless of source.
+ */
+async function syncMessagesRange(
+  ctx: ActionCtx,
+  args: SyncMessagesRangeArgs,
+): Promise<void> {
+  // 1. Page through conversations sorted by last_message_date desc.
+  //    Stop when last_message_date crosses below the window floor.
+  const conversations: GhlConversationSummary[] = [];
+  let startAfter: string | undefined = undefined;
+  let conversationPagesFetched = 0;
+
+  outer: while (conversations.length < MESSAGES_MAX_CONVERSATIONS) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const query: Record<string, any> = {
+      locationId: args.locationId,
+      sortBy: "last_message_date",
+      sort: "desc",
+      limit: MESSAGES_CONVERSATIONS_PAGE_SIZE,
+    };
+    if (startAfter) query.startAfter = startAfter;
+
+    let resp: GhlConversationSearchResponse;
+    try {
+      resp = await ghlFetch<GhlConversationSearchResponse>(
+        ctx,
+        args.installationId as never,
+        "/conversations/search",
+        { query },
+      );
+    } catch (err) {
+      // Surface for the catch-and-persist wrapper in fastBackfill —
+      // the messages phase will be retried on the next reconcile tick.
+      throw new Error(
+        `[syncMessagesRange] conversations/search failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    const page = resp.conversations ?? [];
+    if (page.length === 0) break;
+
+    let crossedFloor = false;
+    for (const c of page) {
+      conversations.push(c);
+      if (
+        c.lastMessageDate !== undefined &&
+        c.lastMessageDate < args.rangeStartMs
+      ) {
+        crossedFloor = true;
+      }
+      if (conversations.length >= MESSAGES_MAX_CONVERSATIONS) break outer;
+    }
+
+    if (crossedFloor) break;
+
+    conversationPagesFetched++;
+    const lastId = page[page.length - 1]?.id;
+    if (!lastId || lastId === startAfter) break;
+    startAfter = lastId;
+  }
+
+  console.log(
+    `[syncMessagesRange] team=${args.teamId} conversations=${conversations.length} (${conversationPagesFetched} pages) window=${new Date(args.rangeStartMs).toISOString()}..${new Date(args.rangeEndMs).toISOString()}`,
+  );
+
+  // 2. For each conversation, pull messages and dispatch the ones in
+  //    range. We bound messages-per-conversation to keep worst-case
+  //    work predictable; if a contact has more than this in the window
+  //    we'll catch the older ones on the next reconcile (the message
+  //    dedup index makes that safe).
+  let dispatched = 0;
+  let skippedOutOfWindow = 0;
+  let skippedWrongType = 0;
+  let skippedNoId = 0;
+
+  for (const conv of conversations) {
+    if (!conv.id) continue;
+
+    let messages: GhlConversationMessage[] = [];
+    try {
+      const resp = await ghlFetch<GhlMessagesResponse>(
+        ctx,
+        args.installationId as never,
+        `/conversations/${conv.id}/messages`,
+        { query: { limit: MESSAGES_PER_CONVERSATION_LIMIT } },
+      );
+      messages = resp.messages?.messages ?? [];
+    } catch (err) {
+      // Per-conversation failures don't kill the whole phase. Most
+      // common cause is a conversation that got deleted between the
+      // search and the messages call.
+      console.error(
+        `[syncMessagesRange] messages fetch failed for conversation=${conv.id}:`,
+        err,
+      );
+      continue;
+    }
+
+    for (const m of messages) {
+      // Normalize messageType to the webhook shape ("CALL" / "SMS").
+      // The REST API returns "TYPE_CALL" / "TYPE_SMS"; numeric `type`
+      // fields are also possible (25 = call, 1/2 = SMS) so check both.
+      let normalizedType: "CALL" | "SMS" | null = null;
+      if (
+        m.messageType === "TYPE_CALL" ||
+        m.messageType === "CALL" ||
+        (typeof m.type === "number" && m.type === 25)
+      ) {
+        normalizedType = "CALL";
+      } else if (
+        m.messageType === "TYPE_SMS" ||
+        m.messageType === "SMS" ||
+        (typeof m.type === "number" && (m.type === 1 || m.type === 2))
+      ) {
+        normalizedType = "SMS";
+      }
+      if (!normalizedType) {
+        skippedWrongType++;
+        continue;
+      }
+
+      if (!m.id) {
+        skippedNoId++;
+        continue;
+      }
+
+      const dateMs =
+        typeof m.dateAdded === "string"
+          ? Date.parse(m.dateAdded)
+          : (m.dateAdded as number | undefined);
+      if (
+        dateMs === undefined ||
+        Number.isNaN(dateMs) ||
+        dateMs < args.rangeStartMs ||
+        dateMs > args.rangeEndMs
+      ) {
+        skippedOutOfWindow++;
+        continue;
+      }
+
+      const contactId = m.contactId ?? conv.contactId;
+      if (!contactId) {
+        // Without a contactId the dispatch handler throws — skip rather
+        // than create a useless audit row.
+        skippedNoId++;
+        continue;
+      }
+
+      const isInbound = m.direction === "inbound";
+      const eventType = isInbound ? "InboundMessage" : "OutboundMessage";
+
+      const auditId = await ctx.runMutation(
+        internal.setterGhlWebhooks.recordIncomingWebhook,
+        {
+          locationId: args.locationId,
+          eventType,
+          ghlEventId: undefined,
+          signatureValid: true,
+          processed: false,
+          payload: {
+            type: eventType,
+            locationId: args.locationId,
+            contactId,
+            messageId: m.id,
+            messageType: normalizedType,
+            userId: m.userId,
+            callDuration: m.callDuration,
+            conversationId: m.conversationId ?? conv.id,
+            dateAdded: m.dateAdded,
+            direction: m.direction,
+          },
+          teamId: args.teamId as never,
+        },
+      );
+      await ctx.scheduler.runAfter(0, internal.setterGhlWebhooks.dispatch, {
+        auditId,
+      });
+      dispatched++;
+    }
+  }
+
+  console.log(
+    `[syncMessagesRange] team=${args.teamId} dispatched=${dispatched} skippedOutOfWindow=${skippedOutOfWindow} skippedWrongType=${skippedWrongType} skippedNoId=${skippedNoId}`,
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -1146,6 +1440,18 @@ async function reconcileInstallation(
     teamId: installation.teamId,
     rangeStartMs: since,
     rangeEndMs: Date.now() + 30 * 24 * 60 * 60 * 1000,
+  });
+
+  // Reconcile call + SMS messages in the same overlap window. Catches
+  // any OutboundMessage / InboundMessage webhook deliveries that
+  // failed since the last reconcile tick. recordCallEvent /
+  // recordSmsEvent dedupe by msg:<messageId> so re-running is safe.
+  await syncMessagesRange(ctx, {
+    installationId: installation._id,
+    locationId: installation.locationId,
+    teamId: installation.teamId,
+    rangeStartMs: since,
+    rangeEndMs: Date.now(),
   });
 
   // Also walk pipelines + opportunities. Pipeline metadata refresh is

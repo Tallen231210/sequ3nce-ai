@@ -56,7 +56,6 @@ import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
 import type * as dataMigrations from "../dataMigrations.js";
 import type * as demoSeeds from "../demoSeeds.js";
-import type * as diagnoseMessageTypes from "../diagnoseMessageTypes.js";
 import type * as diagnostics from "../diagnostics.js";
 import type * as discord from "../discord.js";
 import type * as ghl from "../ghl.js";
@@ -148,7 +147,6 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   dataMigrations: typeof dataMigrations;
   demoSeeds: typeof demoSeeds;
-  diagnoseMessageTypes: typeof diagnoseMessageTypes;
   diagnostics: typeof diagnostics;
   discord: typeof discord;
   ghl: typeof ghl;
