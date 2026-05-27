@@ -98,8 +98,16 @@ export const markInstallationSynced = internalMutation({
     installationId: v.id("setterGhlInstallations"),
   },
   handler: async (ctx, args) => {
+    // A successful reconcile auto-heals any previously-stuck error
+    // state. Without this clear, a single transient failure (e.g. a
+    // 524 from GHL's opportunities/search) left the install banner up
+    // forever even after subsequent reconciles succeeded — see the
+    // AICom install on 2026-05-26 / -27 for a real example.
     await ctx.db.patch(args.installationId, {
       lastSyncedAt: Date.now(),
+      status: "active",
+      errorMessage: undefined,
+      errorAt: undefined,
     });
   },
 });

@@ -47,6 +47,34 @@ const TIME_BUDGET_MS = 7 * 60 * 1000;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ActionCtx = any;
 
+/**
+ * Distinguish "transient" GHL-side failures (502/503/504/524, 429,
+ * network resets) from hard failures that need user attention (auth
+ * dead, scope revoked, malformed response). Transient errors get
+ * Sentry-captured but DON'T mark the install as `status: "error"` —
+ * the cron will retry on the next tick and most likely succeed.
+ *
+ * Real-world case: AICom's install on 2026-05-26 hit a 524 from
+ * GHL's /opportunities/search (Cloudflare gateway timeout on a large
+ * dataset). Before this distinction existed, the install got stuck
+ * in error state forever because the hourly cron's filter excluded
+ * status="error" installs from retry. Now: transient errors stay
+ * transient, hard errors still escalate.
+ */
+function isTransientGhlError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  // GHL upstream HTTP 5xx / Cloudflare gateway errors
+  if (/GHL API 5\d\d/.test(msg)) return true;
+  // GHL rate limit (retry honor already lives in ghlFetch, but a
+  // post-retry 429 can still surface — treat as transient).
+  if (/GHL API 429/.test(msg)) return true;
+  // Generic fetch failures from Node's runtime (DNS, connection
+  // reset, timeout). Common when GHL or our network has a blip.
+  if (/fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(msg))
+    return true;
+  return false;
+}
+
 // ----------------------------------------------------------------------------
 // fastBackfill — internal action, chunked + resumable
 // ----------------------------------------------------------------------------
@@ -1249,28 +1277,43 @@ export const reconcile = internalAction({
         );
         processed++;
       } catch (err) {
-        // Persist + log. Reconcile errors are non-fatal (next tick
-        // retries), but they need to be visible in the UI so customers
-        // / support know data isn't flowing.
         const message = err instanceof Error ? err.message : String(err);
         console.error(
           `[reconcile] Error for installation ${installation._id}:`,
           message,
         );
-        await captureAndPersist(
-          err,
-          async () => {
-            await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
-              installationId: installation._id,
-              errorMessage: `reconcile: ${message}`.slice(0, 500),
-            });
-          },
-          {
-            feature: "reconcile",
+        if (isTransientGhlError(err)) {
+          // GHL had a hiccup (524 / 503 / 429 / network reset). Earlier
+          // phases that ran before the throw already wrote their data.
+          // Capture to Sentry for visibility but DON'T mark the install
+          // as error — the next reconcile tick will retry, and the
+          // user-facing banner stays clean. The install record was
+          // already auto-healed (status active, errorMessage cleared)
+          // by any prior successful reconcile via markInstallationSynced.
+          await captureAndPersist(err, async () => {}, {
+            feature: "reconcile.transient",
             integration: "ghl-marketplace",
-            extra: { installationId: installation._id },
-          },
-        );
+            extra: { installationId: installation._id, message },
+          });
+        } else {
+          // Hard error — auth dead, scope revoked, malformed response,
+          // schema validation failure. Mark the install so the customer
+          // can see something needs attention.
+          await captureAndPersist(
+            err,
+            async () => {
+              await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+                installationId: installation._id,
+                errorMessage: `reconcile: ${message}`.slice(0, 500),
+              });
+            },
+            {
+              feature: "reconcile",
+              integration: "ghl-marketplace",
+              extra: { installationId: installation._id },
+            },
+          );
+        }
       }
     }
     return { processed };
@@ -1298,9 +1341,15 @@ export const reconcileSingleInstallation = internalAction({
       );
       return { processed: 0 };
     }
-    if (installation.status !== "active") {
+    // Don't short-circuit on status==="error" — the whole point of the
+    // user clicking "Refresh now" from the UI is to recover from a
+    // stuck error state. If the underlying issue was transient, this
+    // reconcile attempt succeeds and markInstallationSynced clears the
+    // banner. If it's a hard error (auth dead), the catch below
+    // re-records it.
+    if (installation.status === "uninstalled") {
       console.warn(
-        `[reconcileSingleInstallation] Installation status is ${installation.status} — skipping`,
+        `[reconcileSingleInstallation] Installation uninstalled — skipping`,
       );
       return { processed: 0 };
     }
@@ -1318,22 +1367,34 @@ export const reconcileSingleInstallation = internalAction({
         `[reconcileSingleInstallation] Error for ${installation._id}:`,
         message,
       );
-      // Persist before re-throwing so the install record reflects the
-      // failure even after the UI toast disappears.
-      await captureAndPersist(
-        err,
-        async () => {
-          await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
-            installationId: installation._id,
-            errorMessage: `manual reconcile: ${message}`.slice(0, 500),
-          });
-        },
-        {
-          feature: "reconcileSingleInstallation",
+      if (isTransientGhlError(err)) {
+        // Transient — Sentry-capture only, don't touch install state.
+        // Throw so the manual-refresh UI shows the user something
+        // went wrong (so they don't think the click did nothing); the
+        // next cron tick will retry.
+        await captureAndPersist(err, async () => {}, {
+          feature: "reconcileSingleInstallation.transient",
           integration: "ghl-marketplace",
-          extra: { installationId: installation._id },
-        },
-      );
+          extra: { installationId: installation._id, message },
+        });
+      } else {
+        // Hard error — persist before re-throwing so the install
+        // record reflects the failure for support / UI banner.
+        await captureAndPersist(
+          err,
+          async () => {
+            await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+              installationId: installation._id,
+              errorMessage: `manual reconcile: ${message}`.slice(0, 500),
+            });
+          },
+          {
+            feature: "reconcileSingleInstallation",
+            integration: "ghl-marketplace",
+            extra: { installationId: installation._id },
+          },
+        );
+      }
       throw err; // surface to UI via mutation rejection
     }
   },
