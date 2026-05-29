@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 
 // Convex's `v.optional(v.string())` validator means "field absent" — it
@@ -748,6 +749,46 @@ async function recordCallEvent(
   args: HandlerCtx,
   ev: CallEventArgs,
 ): Promise<void> {
+  // Ensure a pending transcript row exists for this call BEFORE the
+  // dedup early-return. Reason: when syncMessagesRange replays
+  // historical messages via the dispatch pipeline, the call event row
+  // is already in setterLeadEvents (dedup hit) and the rest of this
+  // function short-circuits — but we still need the transcript fetch
+  // to be scheduled for those historical calls. The upsert is keyed
+  // by (teamId, ghlMessageId) so duplicates don't accumulate.
+  if (ev.ghlEventKey?.startsWith("msg:")) {
+    const ghlMessageId = ev.ghlEventKey.slice(4);
+    const existingTranscriptRow = await ctx.db
+      .query("setterCallTranscripts")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_message", (q: any) =>
+        q.eq("teamId", args.teamId).eq("ghlMessageId", ghlMessageId),
+      )
+      .first();
+    let transcriptRowId = existingTranscriptRow?._id;
+    if (!transcriptRowId) {
+      transcriptRowId = await ctx.db.insert("setterCallTranscripts", {
+        teamId: args.teamId,
+        ghlContactId: ev.ghlContactId,
+        ghlMessageId,
+        direction: ev.direction,
+        occurredAt: ev.occurredAt,
+        durationSec: ev.durationSec,
+        transcriptionStatus: "pending",
+        fetchAttempts: 0,
+      });
+    }
+    if (
+      !existingTranscriptRow ||
+      existingTranscriptRow.transcriptionStatus === "pending" ||
+      existingTranscriptRow.transcriptionStatus === "failed"
+    ) {
+      await ctx.scheduler.runAfter(0, internal.ai.fetchAndProcessTranscript, {
+        transcriptRowId,
+      });
+    }
+  }
+
   // Idempotency: skip if we've already recorded this exact GHL message id.
   if (ev.ghlEventKey && (await isDuplicateEvent(ctx, ev.ghlEventKey))) {
     return;
@@ -808,6 +849,7 @@ async function recordCallEvent(
       lastActivityAt: maxTime(lead.lastActivityAt, ev.occurredAt),
     });
   }
+
 }
 
 interface SmsEventArgs {

@@ -1524,6 +1524,25 @@ async function reconcileInstallation(
     locationId: installation.locationId,
     teamId: installation.teamId,
   });
+
+  // Pick up any transcript fetches that failed transiently (network /
+  // 5xx) AND any successful fetches whose AI summary attempt failed.
+  // Bounded so a long-broken install doesn't flood the scheduler.
+  const TRANSCRIPT_RETRY_LIMIT = 50;
+  const retries = await ctx.runQuery(
+    internal.setterCallTranscriptsMutations.listTranscriptsNeedingRetry,
+    { teamId: installation.teamId, limit: TRANSCRIPT_RETRY_LIMIT },
+  );
+  for (const rowId of retries.fetchRetries) {
+    await ctx.scheduler.runAfter(0, internal.ai.fetchAndProcessTranscript, {
+      transcriptRowId: rowId,
+    });
+  }
+  for (const rowId of retries.summaryRetries) {
+    await ctx.scheduler.runAfter(0, internal.ai.generateSetterCallSummary, {
+      transcriptRowId: rowId,
+    });
+  }
 }
 
 // ============================================================================

@@ -443,3 +443,458 @@ export const redactTranscript = internalAction({
     }
   },
 });
+
+// ============================================================================
+// SETTER CALL TRANSCRIPTS — fetched from GHL's transcription endpoint and
+// summarized for the Setter Data dashboard's lead + setter drilldowns.
+// ============================================================================
+
+// Prompt tuned for QUALIFYING calls (setter ↔ prospect), not closer sales
+// calls. The voice differs: setters are screening fit + scheduling, not
+// closing a deal. Manager wants to see "did the prospect qualify, what
+// did they say they care about, what's the next step?" — not the full
+// 8-bullet sales analysis we do for closer calls.
+const SETTER_SUMMARY_PROMPT = `You are summarizing a brief qualifying call between a sales setter and a prospect, for a sales manager reviewing setter activity.
+
+Generate exactly these bullet points (use • character):
+
+• Outcome: [One sentence — did the call connect? did the setter book an appointment? was it a voicemail? was it disqualified?]
+• Prospect interest: [One sentence — gauge from prospect's tone and what they said. Use plain language like "Highly interested", "Curious but cautious", "Not interested", "No conversation (voicemail)"]
+• Key objection: [One sentence — the main pushback or hesitation the prospect raised, or "None raised"]
+• Next step: [One sentence — what was agreed at the end. e.g. "Booked appointment for Tuesday", "Setter to follow up next week", "Prospect agreed to receive case study email", "No next step — closed out"]
+
+RULES:
+- Each bullet should be ONE concise sentence.
+- If the call was a voicemail (typically very short, only one speaker, no conversation), say so clearly in the Outcome and leave the other bullets as "N/A — voicemail".
+- Plain language, no sales jargon.
+- If something isn't clear from the transcript, write "Unclear from transcript".
+- Return ONLY the four bullets, nothing else.`;
+
+interface GhlTranscriptWord {
+  word?: string;
+  speaker?: number;
+  start?: number;
+  end?: number;
+  confidence?: number;
+  speakerConfidence?: number;
+}
+
+interface GhlTranscriptSentence {
+  speaker?: number;
+  mediaChannel?: number;
+  sentenceIndex?: number;
+  transcript?: string;
+  startTime?: number;
+  endTime?: number;
+  words?: GhlTranscriptWord[];
+}
+
+type GhlTranscript = GhlTranscriptSentence[];
+
+/**
+ * Compute total speaking time per speaker (seconds) from per-word
+ * timestamps. Falls back to sentence-level start/end if word-level
+ * data is missing. Returns 0/0 if the transcript is unparseable.
+ */
+function computeTalkTimes(transcript: GhlTranscript): {
+  speaker0Sec: number;
+  speaker1Sec: number;
+} {
+  let s0 = 0;
+  let s1 = 0;
+  for (const sentence of transcript) {
+    const words = sentence.words ?? [];
+    if (words.length > 0) {
+      for (const w of words) {
+        if (typeof w.start !== "number" || typeof w.end !== "number") continue;
+        const dur = Math.max(0, w.end - w.start);
+        if (w.speaker === 0) s0 += dur;
+        else if (w.speaker === 1) s1 += dur;
+      }
+    } else if (
+      typeof sentence.startTime === "number" &&
+      typeof sentence.endTime === "number"
+    ) {
+      const dur = Math.max(0, sentence.endTime - sentence.startTime);
+      if (sentence.speaker === 0) s0 += dur;
+      else if (sentence.speaker === 1) s1 += dur;
+    }
+  }
+  return { speaker0Sec: s0, speaker1Sec: s1 };
+}
+
+/**
+ * Heuristic to guess which speaker index (0 or 1) is the setter. We
+ * don't get this labeled by GHL. For outbound calls the prospect
+ * usually says "hello?" first (very short), then the setter introduces
+ * themselves (longer). For inbound calls it's the reverse.
+ *
+ * Returns null when the heuristic can't decide confidently — UI then
+ * renders "Speaker A / Speaker B" instead of setter/prospect labels.
+ */
+function guessSetterSpeakerIndex(
+  transcript: GhlTranscript,
+  direction: "outbound" | "inbound",
+): 0 | 1 | null {
+  // Count words spoken by each speaker in the first 8 seconds. The
+  // intro pattern dominates here; later word counts drown out the signal.
+  let s0Words = 0;
+  let s1Words = 0;
+  for (const sentence of transcript) {
+    for (const w of sentence.words ?? []) {
+      if (typeof w.start !== "number" || w.start > 8) continue;
+      if (w.speaker === 0) s0Words++;
+      else if (w.speaker === 1) s1Words++;
+    }
+  }
+
+  // Abstain if we don't have enough words to discriminate.
+  if (s0Words + s1Words < 5) return null;
+
+  // Abstain if both speakers say roughly equal amounts in the intro —
+  // the heuristic only works when one is clearly the "hello?" speaker.
+  const ratio = Math.min(s0Words, s1Words) / Math.max(s0Words, s1Words);
+  if (ratio > 0.6) return null;
+
+  // In the first 8 sec, the speaker with FEWER words is usually the
+  // one who said "hello?" — i.e. the receiver. The receiver is the
+  // PROSPECT on outbound, the SETTER on inbound.
+  const fewer: 0 | 1 = s0Words < s1Words ? 0 : 1;
+  const more: 0 | 1 = fewer === 0 ? 1 : 0;
+  return direction === "outbound" ? more : fewer;
+}
+
+/**
+ * Classify whether an error from GHL or Anthropic is transient (we
+ * should retry on the next reconcile tick) vs hard (the call needs a
+ * code change to fix). Mirrors `isTransientGhlError` in setterGhlSync.ts;
+ * adding it here so ai.ts stays self-contained.
+ */
+function isTransientUpstreamError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  // GHL upstream 5xx / Cloudflare 524 / rate limit
+  if (/GHL API 5\d\d/.test(msg)) return true;
+  if (/GHL API 429/.test(msg)) return true;
+  // Anthropic API transient signals
+  if (/HTTP 429|HTTP 5\d\d|overloaded_error|rate_limit_error/i.test(msg)) {
+    return true;
+  }
+  // Generic Node fetch / network errors
+  if (/fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(msg)) {
+    return true;
+  }
+  return false;
+}
+
+const TRANSCRIPT_MAX_FETCH_ATTEMPTS = 5;
+
+/**
+ * Fetch a single call's transcript from GHL, parse it, compute
+ * talk-time metrics, persist, and schedule the AI summary. Called via
+ * scheduler.runAfter from setterGhlWebhooks.recordCallEvent the moment
+ * a new call event is dispatched. Idempotent at the row level — the
+ * caller is responsible for upserting the row first, this action
+ * patches it.
+ */
+export const fetchAndProcessTranscript = internalAction({
+  args: {
+    transcriptRowId: v.id("setterCallTranscripts"),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const { ghlFetch } = await import("./setterGhlClient");
+    const { captureAndPersist } = await import("./lib/sentry");
+
+    const row = await ctx.runQuery(
+      internal.setterCallTranscriptsMutations.getTranscriptRow,
+      { rowId: args.transcriptRowId },
+    );
+    if (!row) {
+      console.warn(
+        `[fetchAndProcessTranscript] Row not found: ${args.transcriptRowId}`,
+      );
+      return;
+    }
+
+    // Idempotency: if we already have a final state (available /
+    // not_available) and the row isn't being retried (status=failed),
+    // there's nothing to do.
+    if (
+      row.transcriptionStatus === "available" ||
+      row.transcriptionStatus === "not_available"
+    ) {
+      return;
+    }
+
+    // Cap retries so a chronically-failing fetch doesn't loop forever.
+    if ((row.fetchAttempts ?? 0) >= TRANSCRIPT_MAX_FETCH_ATTEMPTS) {
+      console.warn(
+        `[fetchAndProcessTranscript] Max attempts reached for row ${args.transcriptRowId} — giving up`,
+      );
+      return;
+    }
+
+    // Find the active installation for this team. The schema doesn't
+    // pin transcripts to a specific installationId — we look it up so
+    // a re-install of GHL doesn't strand pending rows.
+    const installation = await ctx.runQuery(
+      internal.setterGhlOauth.getActiveInstallationForTeam,
+      { teamId: row.teamId },
+    );
+    if (!installation) {
+      console.warn(
+        `[fetchAndProcessTranscript] No active installation for team ${row.teamId}`,
+      );
+      // Leave the row in pending — if the customer reinstalls later
+      // the reconcile cron will pick it up.
+      return;
+    }
+
+    // Skip if we've already learned this team doesn't have transcription
+    // enabled (and the 7-day re-detection window hasn't elapsed).
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    if (
+      installation.transcriptionDisabled === true &&
+      (installation.transcriptionDisabledAt ?? 0) >
+        Date.now() - SEVEN_DAYS_MS
+    ) {
+      await ctx.runMutation(
+        internal.setterCallTranscriptsMutations.markTranscriptNotAvailable,
+        { rowId: args.transcriptRowId },
+      );
+      return;
+    }
+
+    try {
+      const transcriptJson = await ghlFetch<GhlTranscript>(
+        ctx,
+        installation._id,
+        `/conversations/locations/${installation.locationId}/messages/${row.ghlMessageId}/transcription`,
+      );
+
+      // Some short calls / voicemails return an empty array (200 OK,
+      // body = []). Treat that as "not_available" — there's nothing
+      // useful for the dashboard.
+      if (!Array.isArray(transcriptJson) || transcriptJson.length === 0) {
+        await ctx.runMutation(
+          internal.setterCallTranscriptsMutations.markTranscriptNotAvailable,
+          { rowId: args.transcriptRowId },
+        );
+        return;
+      }
+
+      const { speaker0Sec, speaker1Sec } = computeTalkTimes(transcriptJson);
+      const setterSpeakerIndex = guessSetterSpeakerIndex(
+        transcriptJson,
+        row.direction,
+      );
+
+      let setterTalkTimeSec: number | undefined;
+      let prospectTalkTimeSec: number | undefined;
+      if (setterSpeakerIndex !== null) {
+        setterTalkTimeSec =
+          setterSpeakerIndex === 0 ? speaker0Sec : speaker1Sec;
+        prospectTalkTimeSec =
+          setterSpeakerIndex === 0 ? speaker1Sec : speaker0Sec;
+      }
+
+      await ctx.runMutation(
+        internal.setterCallTranscriptsMutations.markTranscriptAvailable,
+        {
+          rowId: args.transcriptRowId,
+          transcriptJson: JSON.stringify(transcriptJson),
+          setterTalkTimeSec,
+          prospectTalkTimeSec,
+          setterSpeakerIndex: setterSpeakerIndex ?? undefined,
+        },
+      );
+
+      // If this team was previously flagged as not-transcribing, clear
+      // the flag — they've enabled it (or always had it on and we
+      // mis-detected). Re-detection is cheap.
+      if (installation.transcriptionDisabled) {
+        await ctx.runMutation(
+          internal.setterGhlSyncMutations.clearTranscriptionDisabled,
+          { installationId: installation._id },
+        );
+      }
+
+      // Schedule the summary on the same tick. Summary failures don't
+      // block the transcript being viewable in the UI.
+      await ctx.scheduler.runAfter(0, internal.ai.generateSetterCallSummary, {
+        transcriptRowId: args.transcriptRowId,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const is400 = /GHL API 400/.test(message);
+
+      if (is400) {
+        // "Transcription does not exist" — call too short, or customer
+        // doesn't have transcription enabled. Either way, no point
+        // retrying. NOT captured to Sentry (expected case).
+        await ctx.runMutation(
+          internal.setterCallTranscriptsMutations.markTranscriptNotAvailable,
+          { rowId: args.transcriptRowId },
+        );
+        // Increment the consecutive-not-available counter for this team
+        // so we can auto-flag the install as transcription-disabled.
+        await ctx.runMutation(
+          internal.setterGhlSyncMutations.bumpTranscriptionNotAvailableCount,
+          { installationId: installation._id },
+        );
+        return;
+      }
+
+      console.error(
+        `[fetchAndProcessTranscript] error for row ${args.transcriptRowId}:`,
+        message,
+      );
+
+      const transient = isTransientUpstreamError(err);
+      await captureAndPersist(
+        err,
+        async () => {
+          await ctx.runMutation(
+            internal.setterCallTranscriptsMutations.markTranscriptFailed,
+            {
+              rowId: args.transcriptRowId,
+              lastFetchError: message.slice(0, 300),
+            },
+          );
+        },
+        {
+          feature: transient
+            ? "fetchAndProcessTranscript.transient"
+            : "fetchAndProcessTranscript",
+          integration: "ghl-marketplace",
+          extra: {
+            transcriptRowId: String(args.transcriptRowId),
+            messageId: row.ghlMessageId,
+          },
+        },
+      );
+    }
+  },
+});
+
+const SETTER_SUMMARY_MIN_TRANSCRIPT_CHARS = 100;
+
+/**
+ * Run a transcript through Claude and persist the summary. Called via
+ * scheduler.runAfter from fetchAndProcessTranscript once a transcript
+ * is successfully fetched. Failures here are recoverable — the
+ * transcript stays available in the UI, the summary just shows as
+ * "unavailable" until the next retry pass picks it up.
+ */
+export const generateSetterCallSummary = internalAction({
+  args: {
+    transcriptRowId: v.id("setterCallTranscripts"),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const { captureAndPersist } = await import("./lib/sentry");
+
+    const row = await ctx.runQuery(
+      internal.setterCallTranscriptsMutations.getTranscriptRow,
+      { rowId: args.transcriptRowId },
+    );
+    if (!row) return;
+    if (row.aiSummary) return; // already summarized
+    if (row.transcriptionStatus !== "available" || !row.transcriptJson) {
+      return; // nothing to summarize
+    }
+
+    // Flatten the structured transcript into a plain-text dialogue so
+    // Claude can read it efficiently. Use "Speaker N:" prefixes — the
+    // exact identity (setter vs prospect) is captured separately on the
+    // row via setterSpeakerIndex; the prompt doesn't need it.
+    let dialogueText: string;
+    try {
+      const parsed = JSON.parse(row.transcriptJson) as GhlTranscript;
+      dialogueText = parsed
+        .map((s) => {
+          const speaker = s.speaker ?? "?";
+          const text = (s.transcript ?? "").trim();
+          return text ? `Speaker ${speaker}: ${text}` : null;
+        })
+        .filter((line): line is string => line !== null)
+        .join("\n");
+    } catch (err) {
+      // Malformed transcript JSON. Capture as hard error — this means
+      // GHL changed their response shape and our parser needs an update.
+      console.error(
+        `[generateSetterCallSummary] transcript JSON parse failed for row ${args.transcriptRowId}:`,
+        err,
+      );
+      await captureAndPersist(err, async () => {}, {
+        feature: "generateSetterCallSummary",
+        integration: "ghl-marketplace",
+        extra: { transcriptRowId: String(args.transcriptRowId) },
+      });
+      return;
+    }
+
+    // Very short transcripts (voicemails, hang-ups) get a stock summary
+    // rather than a Claude call. Saves cost + gives a cleaner UI than
+    // an LLM straining to summarize 5 words.
+    if (dialogueText.length < SETTER_SUMMARY_MIN_TRANSCRIPT_CHARS) {
+      const stockSummary =
+        "• Outcome: Brief call — likely a voicemail or short hang-up.\n" +
+        "• Prospect interest: N/A — voicemail.\n" +
+        "• Key objection: N/A — voicemail.\n" +
+        "• Next step: N/A — voicemail.";
+      await ctx.runMutation(
+        internal.setterCallTranscriptsMutations.markTranscriptSummary,
+        { rowId: args.transcriptRowId, summary: stockSummary },
+      );
+      return;
+    }
+
+    try {
+      const message = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 500,
+        system: SETTER_SUMMARY_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Here is a qualifying call transcript between a sales setter and a prospect:\n\n${dialogueText}`,
+          },
+        ],
+      });
+
+      const summary =
+        message.content?.[0]?.type === "text"
+          ? message.content[0].text.trim()
+          : "";
+
+      if (!summary) {
+        console.error(
+          `[generateSetterCallSummary] empty Anthropic response for row ${args.transcriptRowId}`,
+        );
+        // Leave aiSummary unset; the retry pass will pick it up.
+        return;
+      }
+
+      await ctx.runMutation(
+        internal.setterCallTranscriptsMutations.markTranscriptSummary,
+        { rowId: args.transcriptRowId, summary },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[generateSetterCallSummary] error for row ${args.transcriptRowId}:`,
+        message,
+      );
+
+      const transient = isTransientUpstreamError(err);
+      await captureAndPersist(err, async () => {}, {
+        feature: transient
+          ? "generateSetterCallSummary.transient"
+          : "generateSetterCallSummary",
+        integration: "anthropic",
+        extra: { transcriptRowId: String(args.transcriptRowId) },
+      });
+      // Leave the row's aiSummary unset. The reconcile retry pass picks
+      // up `transcriptionStatus: available + !aiSummary` rows after 15 min.
+    }
+  },
+});

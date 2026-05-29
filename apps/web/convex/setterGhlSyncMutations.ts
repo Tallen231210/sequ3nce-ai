@@ -273,3 +273,56 @@ export const listRepGhlUserIdsForTeam = internalQuery({
       .filter((id): id is string => !!id);
   },
 });
+
+/**
+ * Mark an installation as "transcription disabled" — we've seen too
+ * many consecutive `not_available` results from GHL's transcription
+ * endpoint to keep wasting API calls. Cleared automatically by
+ * clearTranscriptionDisabled the next time a transcript IS returned
+ * (customer enabled it) OR after 7 days (handled in the fetch action's
+ * re-detection guard).
+ */
+export const bumpTranscriptionNotAvailableCount = internalMutation({
+  args: { installationId: v.id("setterGhlInstallations") },
+  handler: async (ctx, args) => {
+    const install = await ctx.db.get(args.installationId);
+    if (!install) return;
+    if (install.transcriptionDisabled) return;
+
+    // Check whether the last 10 transcript attempts for this team are
+    // ALL not_available. If yes, flip the flag. Avoids a single 400 on
+    // a freshly-installed account flipping the flag prematurely.
+    const recent = await ctx.db
+      .query("setterCallTranscripts")
+      .withIndex("by_team_and_contact_and_time", (q) =>
+        q.eq("teamId", install.teamId),
+      )
+      .order("desc")
+      .take(10);
+    if (recent.length < 10) return;
+    const allNotAvailable = recent.every(
+      (r) => r.transcriptionStatus === "not_available",
+    );
+    if (!allNotAvailable) return;
+
+    await ctx.db.patch(args.installationId, {
+      transcriptionDisabled: true,
+      transcriptionDisabledAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Clear the transcription-disabled flag. Called when a transcript
+ * fetch comes back successfully — proves the customer has it on now
+ * (whether they just enabled it or we earlier mis-detected).
+ */
+export const clearTranscriptionDisabled = internalMutation({
+  args: { installationId: v.id("setterGhlInstallations") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.installationId, {
+      transcriptionDisabled: undefined,
+      transcriptionDisabledAt: undefined,
+    });
+  },
+});

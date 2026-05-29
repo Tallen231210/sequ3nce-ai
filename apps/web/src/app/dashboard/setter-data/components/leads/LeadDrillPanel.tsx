@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
@@ -10,8 +11,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, MessageSquare, CheckCircle2, UserPlus } from "lucide-react";
+import {
+  Loader2,
+  Phone,
+  MessageSquare,
+  CheckCircle2,
+  UserPlus,
+  ChevronRight,
+  ChevronDown,
+} from "lucide-react";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { CallEventDetailPanel } from "../CallEventDetailPanel";
 
 interface LeadDrillPanelProps {
   leadId: Id<"setterLeads"> | null;
@@ -45,6 +55,18 @@ export function LeadDrillPanel({ leadId, onClose }: LeadDrillPanelProps) {
     api.setterData.getLeadActivity,
     leadId && clerkId ? { clerkId, leadId } : "skip",
   );
+  // Track which events are expanded so the user can drill into multiple
+  // calls' transcripts in sequence without each click collapsing the
+  // last one.
+  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+  function toggleEvent(eventId: string) {
+    setExpandedEvents((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+  }
 
   return (
     <Dialog open={leadId !== null} onOpenChange={(open) => !open && onClose()}>
@@ -117,32 +139,63 @@ export function LeadDrillPanel({ leadId, onClose }: LeadDrillPanelProps) {
                 <ul className="space-y-2">
                   {data.events.map((event) => {
                     const Icon = EVENT_ICONS[event.eventType] ?? Phone;
+                    const isCallEvent =
+                      event.eventType === "dial_outbound" ||
+                      event.eventType === "call_inbound";
+                    const isExpandable = isCallEvent && !!event.transcript;
+                    const isExpanded = expandedEvents.has(event.eventId);
                     return (
                       <li
                         key={event.eventId}
-                        className="flex gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-sm"
+                        className="rounded-md border border-border bg-card px-3 py-2.5 text-sm"
                       >
-                        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium">
-                            {EVENT_LABELS[event.eventType] ?? event.eventType}
+                        <button
+                          type="button"
+                          onClick={
+                            isExpandable
+                              ? () => toggleEvent(event.eventId)
+                              : undefined
+                          }
+                          disabled={!isExpandable}
+                          className={`flex w-full gap-3 text-left ${
+                            isExpandable
+                              ? "cursor-pointer"
+                              : "cursor-default"
+                          }`}
+                        >
+                          {isExpandable ? (
+                            isExpanded ? (
+                              <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            )
+                          ) : (
+                            <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium">
+                              {EVENT_LABELS[event.eventType] ?? event.eventType}
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {new Date(event.occurredAt).toLocaleString()}
+                              {event.setterName && ` · ${event.setterName}`}
+                              {(event.details as { callDurationSec?: number })
+                                ?.callDurationSec !== undefined && (
+                                <>
+                                  {" "}
+                                  ·{" "}
+                                  {formatCallDuration(
+                                    (event.details as { callDurationSec: number })
+                                      .callDurationSec,
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {new Date(event.occurredAt).toLocaleString()}
-                            {event.setterName && ` · ${event.setterName}`}
-                            {(event.details as { callDurationSec?: number })
-                              ?.callDurationSec !== undefined && (
-                              <>
-                                {" "}
-                                ·{" "}
-                                {formatCallDuration(
-                                  (event.details as { callDurationSec: number })
-                                    .callDurationSec,
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
+                        </button>
+                        {isExpandable && isExpanded && event.transcript && (
+                          <CallEventDetailPanel transcript={event.transcript} />
+                        )}
                       </li>
                     );
                   })}

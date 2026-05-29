@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
@@ -10,9 +11,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, MessageSquare, CheckCircle2, CalendarCheck, Calendar } from "lucide-react";
+import {
+  Loader2,
+  Phone,
+  MessageSquare,
+  CheckCircle2,
+  CalendarCheck,
+  Calendar,
+  ChevronRight,
+  ChevronDown,
+} from "lucide-react";
 import { WorkingHoursHeatmap } from "./WorkingHoursHeatmap";
 import { SetterSourceMix } from "./SetterSourceMix";
+import { CallEventDetailPanel } from "../CallEventDetailPanel";
 
 interface SetterDrillPanelProps {
   ghlUserId: string | null;
@@ -43,6 +54,15 @@ export function SetterDrillPanel({
   onClose,
 }: SetterDrillPanelProps) {
   const { clerkId } = useTeam();
+  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+  function toggleEvent(eventId: string) {
+    setExpandedEvents((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+  }
   const data = useQuery(
     api.setterData.getSetterDetail,
     ghlUserId && clerkId
@@ -173,31 +193,62 @@ export function SetterDrillPanel({
                 <ul className="space-y-1.5">
                   {data.events.slice(0, 15).map((event) => {
                     const Icon = eventIcon(event.eventType);
+                    const isCallEvent =
+                      event.eventType === "dial_outbound" ||
+                      event.eventType === "call_inbound";
+                    const isExpandable = isCallEvent && !!event.transcript;
+                    const isExpanded = expandedEvents.has(event.eventId);
                     return (
                       <li
                         key={event.eventId}
-                        className="flex items-start gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm"
+                        className="rounded-md border border-border bg-card px-3 py-2 text-sm"
                       >
-                        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium">
-                            {eventLabel(event.eventType)}
+                        <button
+                          type="button"
+                          onClick={
+                            isExpandable
+                              ? () => toggleEvent(event.eventId)
+                              : undefined
+                          }
+                          disabled={!isExpandable}
+                          className={`flex w-full items-start gap-3 text-left ${
+                            isExpandable
+                              ? "cursor-pointer"
+                              : "cursor-default"
+                          }`}
+                        >
+                          {isExpandable ? (
+                            isExpanded ? (
+                              <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            )
+                          ) : (
+                            <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium">
+                              {eventLabel(event.eventType)}
+                            </div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {new Date(event.occurredAt).toLocaleString()}
+                              {(event.details as { callDurationSec?: number })
+                                ?.callDurationSec !== undefined && (
+                                <>
+                                  {" "}
+                                  ·{" "}
+                                  {formatCallDuration(
+                                    (event.details as { callDurationSec: number })
+                                      .callDurationSec,
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {new Date(event.occurredAt).toLocaleString()}
-                            {(event.details as { callDurationSec?: number })
-                              ?.callDurationSec !== undefined && (
-                              <>
-                                {" "}
-                                ·{" "}
-                                {formatCallDuration(
-                                  (event.details as { callDurationSec: number })
-                                    .callDurationSec,
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
+                        </button>
+                        {isExpandable && isExpanded && event.transcript && (
+                          <CallEventDetailPanel transcript={event.transcript} />
+                        )}
                       </li>
                     );
                   })}

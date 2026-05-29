@@ -284,6 +284,23 @@ export const getLeadActivity = query({
       .collect()) as Doc<"setterReps">[];
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
+    // Look up transcripts for this lead's calls so the activity timeline
+    // can show summary + talk ratio on each dial without a per-row
+    // additional query. We fetch by (teamId, ghlContactId) which covers
+    // every call on this lead. We DON'T include the full transcriptJson
+    // — that's served separately via getCallTranscript when the user
+    // clicks "Show full transcript" — payload size matters.
+    const transcripts = (await ctx.db
+      .query("setterCallTranscripts")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_contact_and_time", (q: any) =>
+        q.eq("teamId", teamId).eq("ghlContactId", lead.ghlContactId),
+      )
+      .collect()) as Doc<"setterCallTranscripts">[];
+    const transcriptByMessageId = new Map(
+      transcripts.map((t) => [t.ghlMessageId, t]),
+    );
+
     return {
       lead: {
         leadId: lead._id,
@@ -308,14 +325,34 @@ export const getLeadActivity = query({
         connectedCallDurationSec: lead.connectedCallDurationSec,
         lastActivityAt: lead.lastActivityAt,
       },
-      events: events.map((e) => ({
-        eventId: e._id,
-        eventType: e.eventType,
-        occurredAt: e.occurredAt,
-        ghlUserId: e.ghlUserId,
-        setterName: e.ghlUserId ? repNameByGhlUserId.get(e.ghlUserId) : undefined,
-        details: e.details,
-      })),
+      events: events.map((e) => {
+        const messageId = e.ghlEventKey?.startsWith("msg:")
+          ? e.ghlEventKey.slice(4)
+          : null;
+        const transcript = messageId
+          ? transcriptByMessageId.get(messageId)
+          : null;
+        return {
+          eventId: e._id,
+          eventType: e.eventType,
+          occurredAt: e.occurredAt,
+          ghlUserId: e.ghlUserId,
+          setterName: e.ghlUserId ? repNameByGhlUserId.get(e.ghlUserId) : undefined,
+          details: e.details,
+          transcript: transcript
+            ? {
+                transcriptRowId: transcript._id,
+                status: transcript.transcriptionStatus,
+                aiSummary: transcript.aiSummary,
+                setterTalkTimeSec: transcript.setterTalkTimeSec,
+                prospectTalkTimeSec: transcript.prospectTalkTimeSec,
+                setterSpeakerIndex: transcript.setterSpeakerIndex,
+                hasFullTranscript:
+                  transcript.transcriptionStatus === "available",
+              }
+            : null,
+        };
+      }),
       setterIdsCount: setterIds.size,
     };
   },
@@ -595,13 +632,41 @@ export const getSetterDetail = query({
         status: a.status,
         bookedAt: a.bookedAt,
       })),
-      events: eventsAll.slice(0, 100).map((e) => ({
-        eventId: e._id,
-        eventType: e.eventType,
-        occurredAt: e.occurredAt,
-        ghlContactId: e.ghlContactId,
-        details: e.details,
-      })),
+      events: await Promise.all(
+        eventsAll.slice(0, 100).map(async (e) => {
+          const messageId = e.ghlEventKey?.startsWith("msg:")
+            ? e.ghlEventKey.slice(4)
+            : null;
+          const transcript = messageId
+            ? ((await ctx.db
+                .query("setterCallTranscripts")
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .withIndex("by_team_and_message", (q: any) =>
+                  q.eq("teamId", teamId).eq("ghlMessageId", messageId),
+                )
+                .first()) as Doc<"setterCallTranscripts"> | null)
+            : null;
+          return {
+            eventId: e._id,
+            eventType: e.eventType,
+            occurredAt: e.occurredAt,
+            ghlContactId: e.ghlContactId,
+            details: e.details,
+            transcript: transcript
+              ? {
+                  transcriptRowId: transcript._id,
+                  status: transcript.transcriptionStatus,
+                  aiSummary: transcript.aiSummary,
+                  setterTalkTimeSec: transcript.setterTalkTimeSec,
+                  prospectTalkTimeSec: transcript.prospectTalkTimeSec,
+                  setterSpeakerIndex: transcript.setterSpeakerIndex,
+                  hasFullTranscript:
+                    transcript.transcriptionStatus === "available",
+                }
+              : null,
+          };
+        }),
+      ),
     };
   },
 });

@@ -87,6 +87,26 @@ export const getInstallationsNeedingDeepBackfill = internalQuery({
 });
 
 /**
+ * Look up the active installation for a team. Used by background
+ * actions that need to make API calls but only have a teamId in scope
+ * (e.g. transcript fetch actions). Returns null if the team has no
+ * install or it's in uninstalled state — both cases the caller should
+ * silently skip.
+ */
+export const getActiveInstallationForTeam = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const install = await ctx.db
+      .query("setterGhlInstallations")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .first();
+    if (!install) return null;
+    if (install.status === "uninstalled") return null;
+    return install;
+  },
+});
+
+/**
  * Find active installations the reconcile cron should sweep. Active +
  * fast-backfill-complete only — no point reconciling an install whose
  * initial sync hasn't finished yet (the fast backfill is still

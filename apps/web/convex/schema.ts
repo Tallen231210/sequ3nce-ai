@@ -1827,6 +1827,13 @@ export default defineSchema({
     deepBackfillLastCompletedMonth: v.optional(v.number()), // 0–12 (3 = 90d done)
     deepBackfillCompletedAt: v.optional(v.number()),
     deepBackfillError: v.optional(v.string()),
+    // Auto-detected after consecutive `not_available` results from GHL's
+    // transcription endpoint. When true, fetchAndProcessTranscript skips
+    // scheduling new fetches for this team to save API calls. Cleared
+    // automatically when a transcript IS returned later (customer flipped
+    // it on in GHL) or after 7 days (re-detect in case settings changed).
+    transcriptionDisabled: v.optional(v.boolean()),
+    transcriptionDisabledAt: v.optional(v.number()),
   })
     .index("by_team", ["teamId"])
     .index("by_location", ["locationId"])
@@ -1938,6 +1945,60 @@ export default defineSchema({
     .index("by_team_and_type_and_time", ["teamId", "eventType", "occurredAt"])
     .index("by_team_and_setter_and_time", ["teamId", "ghlUserId", "occurredAt"])
     .index("by_ghl_event_key", ["ghlEventKey"]),
+
+  // Per-call transcripts pulled from GHL's
+  // /conversations/locations/:locationId/messages/:messageId/transcription
+  // endpoint. Stored in a separate table (NOT inline on setterLeadEvents)
+  // so the existing aggregate queries on dial activity don't pay the
+  // blob-read cost — same lesson as the getCloserStats 16 MiB fix
+  // (commit f52e382). Each row is keyed by the GHL messageId so
+  // re-running the fetch is idempotent.
+  //
+  // A row is inserted with transcriptionStatus="pending" the moment a
+  // dial_outbound or call_inbound event is recorded. A scheduled action
+  // (internal.ai.fetchAndProcessTranscript) then attempts the GHL fetch
+  // and flips the status. Transcription is a paid GHL add-on, so many
+  // calls will legitimately return 400 "Transcription does not exist"
+  // — those rows stay at status="not_available" forever (not a retry).
+  setterCallTranscripts: defineTable({
+    teamId: v.id("teams"),
+    ghlContactId: v.string(),
+    ghlMessageId: v.string(),                 // joins to setterLeadEvents.ghlEventKey = "msg:<id>"
+    direction: v.union(v.literal("outbound"), v.literal("inbound")),
+    occurredAt: v.number(),
+    durationSec: v.optional(v.number()),
+    // Raw GHL transcript JSON serialized as a string (typical size 5-100KB).
+    // Stored verbatim so we never re-fetch even if our parsing changes.
+    transcriptJson: v.optional(v.string()),
+    transcriptionStatus: v.union(
+      v.literal("pending"),                   // fetch scheduled, not yet attempted
+      v.literal("available"),                 // fetched + parsed + stored
+      v.literal("not_available"),             // GHL returned 400 — customer hasn't enabled transcription
+      v.literal("failed"),                    // transient (5xx / network) — retried by reconcile cron
+    ),
+    fetchedAt: v.optional(v.number()),
+    fetchAttempts: v.optional(v.number()),    // bounded retries — give up after ~5
+    lastFetchError: v.optional(v.string()),
+    // AI summary (3-5 bullet points) generated from the transcript by
+    // internal.ai.generateSetterCallSummary. Populated asynchronously
+    // after transcriptionStatus flips to "available"; UI gracefully
+    // degrades to "Summary unavailable" when missing.
+    aiSummary: v.optional(v.string()),
+    aiSummaryAt: v.optional(v.number()),
+    // Talk-time data, units matching the closer-side calls.closerTalkTime
+    // for future cross-feature consistency. Computed from per-word
+    // start/end timings in the raw transcript.
+    setterTalkTimeSec: v.optional(v.number()),
+    prospectTalkTimeSec: v.optional(v.number()),
+    // Heuristic guess of which GHL speaker index is the setter (0 or 1).
+    // Null when the heuristic abstained (no clear signal from the first
+    // few seconds); the UI renders "Speaker A / Speaker B" without
+    // setter/prospect labels in that case.
+    setterSpeakerIndex: v.optional(v.union(v.literal(0), v.literal(1))),
+  })
+    .index("by_team_and_message", ["teamId", "ghlMessageId"])
+    .index("by_team_and_contact_and_time", ["teamId", "ghlContactId", "occurredAt"])
+    .index("by_team_and_status", ["teamId", "transcriptionStatus"]),
 
   // Raw webhook payload audit log — forensic only, NOT a data source for
   // reports. Pruned at 30 days by a daily cron. signatureValid is set false

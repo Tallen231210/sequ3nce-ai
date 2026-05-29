@@ -73,6 +73,7 @@ import type * as meetingBot from "../meetingBot.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
+import type * as setterCallTranscriptsMutations from "../setterCallTranscriptsMutations.js";
 import type * as setterData from "../setterData.js";
 import type * as setterDataMetrics from "../setterDataMetrics.js";
 import type * as setterDataMutations from "../setterDataMutations.js";
@@ -164,6 +165,7 @@ declare const fullApi: ApiFromModules<{
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
+  setterCallTranscriptsMutations: typeof setterCallTranscriptsMutations;
   setterData: typeof setterData;
   setterDataMetrics: typeof setterDataMetrics;
   setterDataMutations: typeof setterDataMutations;
