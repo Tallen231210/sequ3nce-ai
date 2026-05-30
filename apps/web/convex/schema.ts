@@ -1979,6 +1979,12 @@ export default defineSchema({
     fetchedAt: v.optional(v.number()),
     fetchAttempts: v.optional(v.number()),    // bounded retries — give up after ~5
     lastFetchError: v.optional(v.string()),
+    // First time we got GHL 400 "Transcription does not exist" for this row.
+    // GHL transcribes calls asynchronously and can lag behind the webhook by
+    // minutes-to-hours, so we keep retrying not_available rows for up to 24h
+    // before accepting the verdict permanently. Preserved across retries so
+    // the 24h window is anchored to the first 400, not the most recent.
+    notAvailableFirstSeenAt: v.optional(v.number()),
     // AI summary (3-5 bullet points) generated from the transcript by
     // internal.ai.generateSetterCallSummary. Populated asynchronously
     // after transcriptionStatus flips to "available"; UI gracefully

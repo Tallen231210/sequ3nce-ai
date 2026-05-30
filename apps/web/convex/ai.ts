@@ -4,6 +4,7 @@
 import { v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({
@@ -615,14 +616,21 @@ export const fetchAndProcessTranscript = internalAction({
       return;
     }
 
-    // Idempotency: if we already have a final state (available /
-    // not_available) and the row isn't being retried (status=failed),
-    // there's nothing to do.
-    if (
-      row.transcriptionStatus === "available" ||
-      row.transcriptionStatus === "not_available"
-    ) {
+    // Idempotency:
+    // - "available" rows have a transcript; nothing to do.
+    // - "not_available" rows USED to be a permanent verdict, but we
+    //   discovered GHL transcribes async — early 400s often resolve to
+    //   real transcripts within hours. So now we re-attempt them too,
+    //   gated by fetchAttempts + the 24h notAvailableFirstSeenAt window.
+    //   Outside the window or over the attempt cap → permanent.
+    if (row.transcriptionStatus === "available") {
       return;
+    }
+    if (row.transcriptionStatus === "not_available") {
+      const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+      const firstSeen = row.notAvailableFirstSeenAt ?? row.fetchedAt ?? 0;
+      const outsideWindow = firstSeen <= Date.now() - TWENTY_FOUR_HOURS_MS;
+      if (outsideWindow) return;
     }
 
     // Cap retries so a chronically-failing fetch doesn't loop forever.
@@ -896,5 +904,29 @@ export const generateSetterCallSummary = internalAction({
       // Leave the row's aiSummary unset. The reconcile retry pass picks
       // up `transcriptionStatus: available + !aiSummary` rows after 15 min.
     }
+  },
+});
+
+/**
+ * One-shot backfill orchestrator: resets all not_available transcript
+ * rows for a team into the retry window and schedules a fresh fetch for
+ * each. Used to recover rows that were marked permanently not_available
+ * before the async-transcription retry fix landed. Safe to re-run —
+ * `fetchAndProcessTranscript`'s idempotency check keeps already-resolved
+ * rows from being re-processed.
+ */
+export const backfillRetryNotAvailable = internalAction({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args): Promise<{ scheduled: number }> => {
+    const rowIds: Array<Id<"setterCallTranscripts">> = await ctx.runMutation(
+      internal.setterCallTranscriptsMutations.resetNotAvailableForRetry,
+      { teamId: args.teamId },
+    );
+    for (const rowId of rowIds) {
+      await ctx.scheduler.runAfter(0, internal.ai.fetchAndProcessTranscript, {
+        transcriptRowId: rowId,
+      });
+    }
+    return { scheduled: rowIds.length };
   },
 });

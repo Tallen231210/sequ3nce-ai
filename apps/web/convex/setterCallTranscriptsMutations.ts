@@ -89,7 +89,11 @@ export const markTranscriptAvailable = internalMutation({
 
 /**
  * Mark a row as not_available — GHL returned 400 "Transcription does
- * not exist", or the transcript came back empty. Never retried.
+ * not exist" (or empty body). GHL transcribes async and can lag the
+ * webhook by minutes-to-hours, so the reconcile pass keeps retrying
+ * these for 24h before treating the verdict as permanent. The first
+ * 400's timestamp is preserved on subsequent retries so the 24h window
+ * anchors to the initial sighting.
  */
 export const markTranscriptNotAvailable = internalMutation({
   args: { rowId: v.id("setterCallTranscripts") },
@@ -101,6 +105,7 @@ export const markTranscriptNotAvailable = internalMutation({
       fetchedAt: Date.now(),
       fetchAttempts: (row.fetchAttempts ?? 0) + 1,
       lastFetchError: undefined,
+      notAvailableFirstSeenAt: row.notAvailableFirstSeenAt ?? Date.now(),
     });
   },
 });
@@ -148,6 +153,10 @@ export const markTranscriptSummary = internalMutation({
  * Find transcript rows that need a retry. Used by the reconcile cron
  * pass added to setterGhlSync.reconcileInstallation. Returns:
  *   - failed rows (retry the fetch)
+ *   - not_available rows that are still inside the 24h re-check window
+ *     and haven't burned through their fetch-attempt budget — GHL
+ *     transcribes async so an early 400 may resolve to a real transcript
+ *     within hours
  *   - available rows without an aiSummary that are >15min old (retry
  *     the summary — the action probably hit a transient Anthropic error)
  *
@@ -161,7 +170,9 @@ export const listTranscriptsNeedingRetry = internalQuery({
   },
   handler: async (ctx, args) => {
     const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
     const summaryGraceAt = Date.now() - FIFTEEN_MIN_MS;
+    const notAvailableWindowStart = Date.now() - TWENTY_FOUR_HOURS_MS;
 
     const failed = await ctx.db
       .query("setterCallTranscripts")
@@ -169,6 +180,26 @@ export const listTranscriptsNeedingRetry = internalQuery({
         q.eq("teamId", args.teamId).eq("transcriptionStatus", "failed"),
       )
       .take(args.limit);
+
+    // Not-available rows inside the 24h re-check window. The fetch action
+    // gates on fetchAttempts so we don't strictly need to filter here, but
+    // doing it server-side keeps the scheduler queue tight on long-broken
+    // installs that have accumulated hundreds of expired not_available rows.
+    const notAvailable = await ctx.db
+      .query("setterCallTranscripts")
+      .withIndex("by_team_and_status", (q) =>
+        q
+          .eq("teamId", args.teamId)
+          .eq("transcriptionStatus", "not_available"),
+      )
+      .take(args.limit * 4);
+
+    const notAvailableRetries = notAvailable.filter((r) => {
+      const firstSeen = r.notAvailableFirstSeenAt ?? r.fetchedAt ?? 0;
+      const insideWindow = firstSeen > notAvailableWindowStart;
+      const underAttemptCap = (r.fetchAttempts ?? 0) < 5;
+      return insideWindow && underAttemptCap;
+    });
 
     const available = await ctx.db
       .query("setterCallTranscripts")
@@ -181,10 +212,45 @@ export const listTranscriptsNeedingRetry = internalQuery({
       (r) => !r.aiSummary && (r.fetchedAt ?? 0) < summaryGraceAt,
     );
 
+    const fetchRetryIds = [
+      ...failed.map((r) => r._id),
+      ...notAvailableRetries.map((r) => r._id),
+    ].slice(0, args.limit);
+
     return {
-      fetchRetries: failed.map((r) => r._id),
+      fetchRetries: fetchRetryIds,
       summaryRetries: summaryRetries.slice(0, args.limit).map((r) => r._id),
     };
+  },
+});
+
+/**
+ * One-shot backfill: reset all not_available rows for a team so they
+ * re-enter the 24h retry window. Used to re-process rows that were
+ * permanently marked not_available before the async-transcription retry
+ * fix landed. The fetch action will mark them appropriately on the
+ * next attempt — available if GHL has the transcript now, back to
+ * not_available (with a fresh 24h clock) if not.
+ */
+export const resetNotAvailableForRetry = internalMutation({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("setterCallTranscripts")
+      .withIndex("by_team_and_status", (q) =>
+        q
+          .eq("teamId", args.teamId)
+          .eq("transcriptionStatus", "not_available"),
+      )
+      .collect();
+    const now = Date.now();
+    for (const row of rows) {
+      await ctx.db.patch(row._id, {
+        notAvailableFirstSeenAt: now,
+        fetchAttempts: 0,
+      });
+    }
+    return rows.map((r) => r._id);
   },
 });
 

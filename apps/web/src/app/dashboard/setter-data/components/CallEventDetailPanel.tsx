@@ -54,9 +54,11 @@ export function CallEventDetailPanel({ transcript }: CallEventDetailPanelProps) 
   if (transcript.status === "not_available") {
     return (
       <div className="mt-2 rounded-lg bg-zinc-50 p-3 text-xs text-muted-foreground">
-        No transcript available for this call. Likely a voicemail, very
-        short call, or call transcription isn&apos;t enabled in your GHL
-        Phone Settings.
+        No transcript for this call. GHL only transcribes calls with a
+        usable two-way recording, so this is usually a no-answer, busy
+        signal, voicemail, or call too brief to transcribe. If the call
+        was substantive, GHL may still be processing — we&apos;ll check
+        again for the next 24 hours.
       </div>
     );
   }
