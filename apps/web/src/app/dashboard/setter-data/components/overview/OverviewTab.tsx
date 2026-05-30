@@ -8,6 +8,7 @@ import { KpiStrip } from "./KpiStrip";
 import { ActionQueue } from "./ActionQueue";
 import { SourceMix } from "./SourceMix";
 import { FunnelChart } from "./FunnelChart";
+import { LeadAgeDecayCurve } from "./LeadAgeDecayCurve";
 import { PipelineFunnel } from "./PipelineFunnel";
 import { Loader2 } from "lucide-react";
 
@@ -80,6 +81,7 @@ export function OverviewTab({
         <>
           <KpiStrip data={data} onUntouchedClick={() => onDrillToLeads("untouched")} />
           <FunnelChart data={data} />
+          <LeadAgeDecayCurve rangeStart={rangeStart} rangeEnd={rangeEnd} />
           {pipelines && pipelines.length > 0 && (
             <PipelineFunnel pipelines={pipelines} />
           )}

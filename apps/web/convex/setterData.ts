@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { internalQuery, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { computeScorecard } from "./setterDataMetrics";
 
@@ -408,6 +408,18 @@ export const getMySettings = query({
       dispositionSync: {
         enabled: team.setterDispositionSyncEnabled ?? false,
       },
+      // Dashboard Phase 1 — per-lead speed-to-lead ping config. Off by
+      // default; opt-in per team.
+      speedToLead: {
+        enabled: team.setterSpeedToLeadEnabled ?? false,
+        channel: team.setterSpeedToLeadChannel,
+        slackChannelId: team.setterSpeedToLeadSlackChannelId,
+        discordWebhookUrl: team.setterSpeedToLeadDiscordWebhookUrl,
+        slowThresholdMinutes:
+          team.setterSpeedToLeadSlowThresholdMs !== undefined
+            ? Math.round(team.setterSpeedToLeadSlowThresholdMs / 60000)
+            : undefined,
+      },
       // Team timezone (read-only here — set elsewhere in account settings).
       timezone: team.timezone,
     };
@@ -782,6 +794,139 @@ export const getReps = query({
         email: r.email,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+// ----------------------------------------------------------------------------
+// Lead-age decay curve — connect rate by speed-to-lead bucket
+// ----------------------------------------------------------------------------
+
+// Fixed buckets — chosen to give visual density in the 0–60min window where
+// the steepest decay happens, then coarser bins for the long tail.
+const DECAY_BUCKETS: Array<{ label: string; minMs: number; maxMs: number }> = [
+  { label: "<1m",    minMs: 0,                      maxMs: 60_000 },
+  { label: "1-5m",   minMs: 60_000,                 maxMs: 5 * 60_000 },
+  { label: "5-15m",  minMs: 5 * 60_000,             maxMs: 15 * 60_000 },
+  { label: "15-60m", minMs: 15 * 60_000,            maxMs: 60 * 60_000 },
+  { label: "1-4h",   minMs: 60 * 60_000,            maxMs: 4 * 60 * 60_000 },
+  { label: "4-24h",  minMs: 4 * 60 * 60_000,        maxMs: 24 * 60 * 60_000 },
+  { label: "1-3d",   minMs: 24 * 60 * 60_000,       maxMs: 3 * 24 * 60 * 60_000 },
+  { label: ">3d",    minMs: 3 * 24 * 60 * 60_000,   maxMs: Number.POSITIVE_INFINITY },
+];
+
+const MAX_DECAY_RANGE_MS = 90 * 24 * 60 * 60_000;
+// Outliers: a lead "re-engaged" months/years after creation skews the curve.
+// Drop anything where speedMs > 30d from the aggregation (and exclude that
+// row from totalLeads too — it's data hygiene, not a measurement).
+const DECAY_SPEED_OUTLIER_MS = 30 * 24 * 60 * 60_000;
+
+export function pickDecayBucketLabel(speedMs: number): string | null {
+  if (!Number.isFinite(speedMs) || speedMs < 0) return null;
+  for (const b of DECAY_BUCKETS) {
+    if (speedMs >= b.minMs && speedMs < b.maxMs) return b.label;
+  }
+  return null;
+}
+
+async function computeDecayCurve(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  teamId: Id<"teams">,
+  rangeStart: number,
+  rangeEnd: number,
+) {
+  // Server-side clamp — protects against a manager picking a 6-month range
+  // on a high-volume team and blowing the 16 MiB read limit.
+  const effectiveStart = Math.max(rangeStart, rangeEnd - MAX_DECAY_RANGE_MS);
+
+  const leads = (await ctx.db
+    .query("setterLeads")
+    .withIndex("by_team_and_date_added", (q: any) =>
+      q.eq("teamId", teamId).gte("dateAdded", effectiveStart).lt("dateAdded", rangeEnd),
+    )
+    .collect()) as Doc<"setterLeads">[];
+
+  const bucketRows = DECAY_BUCKETS.map((b) => ({
+    label: b.label,
+    minMs: b.minMs,
+    // Replace Infinity with null for JSON cleanliness on the wire
+    maxMs: Number.isFinite(b.maxMs) ? b.maxMs : null,
+    leadCount: 0,
+    connectedCount: 0,
+    rate: 0,
+  }));
+  const speeds: number[] = [];
+
+  for (const lead of leads) {
+    if (lead.firstDialAt == null) continue;
+    const speedMs = lead.firstDialAt - lead.dateAdded;
+    if (speedMs < 0) continue;                              // dial-before-create race; ignore
+    if (speedMs > DECAY_SPEED_OUTLIER_MS) continue;         // re-engaged old lead; outlier
+    const idx = DECAY_BUCKETS.findIndex(
+      (b) => speedMs >= b.minMs && speedMs < b.maxMs,
+    );
+    if (idx === -1) continue;
+    bucketRows[idx].leadCount += 1;
+    if (lead.isConnected) bucketRows[idx].connectedCount += 1;
+    speeds.push(speedMs);
+  }
+
+  for (const b of bucketRows) {
+    b.rate = b.leadCount > 0 ? b.connectedCount / b.leadCount : 0;
+  }
+
+  speeds.sort((a, b) => a - b);
+  const medianSpeedMs =
+    speeds.length > 0 ? speeds[Math.floor(speeds.length * 0.5)] : null;
+  const p90SpeedMs =
+    speeds.length > 0 ? speeds[Math.floor(speeds.length * 0.9)] : null;
+
+  return {
+    buckets: bucketRows,
+    medianSpeedMs,
+    p90SpeedMs,
+    totalLeads: speeds.length,
+    rangeClampedTo90Days: effectiveStart > rangeStart,
+  };
+}
+
+/**
+ * Public query — feeds the LeadAgeDecayCurve panel on the Overview tab.
+ * Returns the speed-to-lead bucket histogram + median/p90 for the team's
+ * leads created in the date range. Range capped server-side at 90 days
+ * to keep the read bounded for high-volume teams.
+ */
+export const getLeadAgeDecayCurve = query({
+  args: {
+    clerkId: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    return computeDecayCurve(
+      ctx,
+      user.teamId as Id<"teams">,
+      args.rangeStart,
+      args.rangeEnd,
+    );
+  },
+});
+
+/**
+ * Internal variant — same logic, takes teamId directly (no clerkId auth).
+ * Used by sendSpeedToLeadNotification in setterDataNotifications to look
+ * up the team's historical decay rate when building the per-lead Slack ping.
+ */
+export const getLeadAgeDecayCurveInternal = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return computeDecayCurve(ctx, args.teamId, args.rangeStart, args.rangeEnd);
   },
 });
 

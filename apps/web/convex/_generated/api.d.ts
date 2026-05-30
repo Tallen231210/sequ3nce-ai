@@ -85,6 +85,7 @@ import type * as setterGhlOauthActions from "../setterGhlOauthActions.js";
 import type * as setterGhlSync from "../setterGhlSync.js";
 import type * as setterGhlSyncMutations from "../setterGhlSyncMutations.js";
 import type * as setterGhlWebhooks from "../setterGhlWebhooks.js";
+import type * as setterSpeedToLeadDispatcher from "../setterSpeedToLeadDispatcher.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
 import type * as stream from "../stream.js";
@@ -177,6 +178,7 @@ declare const fullApi: ApiFromModules<{
   setterGhlSync: typeof setterGhlSync;
   setterGhlSyncMutations: typeof setterGhlSyncMutations;
   setterGhlWebhooks: typeof setterGhlWebhooks;
+  setterSpeedToLeadDispatcher: typeof setterSpeedToLeadDispatcher;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
   stream: typeof stream;

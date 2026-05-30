@@ -6,6 +6,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { GhlConnectionCard } from "./GhlConnectionCard";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
+import { SpeedToLeadConfig } from "./SpeedToLeadConfig";
 import { ConnectionThresholdConfig } from "./ConnectionThresholdConfig";
 import { DispositionSyncConfig } from "./DispositionSyncConfig";
 import { Loader2 } from "lucide-react";
@@ -63,6 +64,19 @@ export function SettingsTab() {
     discordWebhookUrl: settings.untouchedAlert.discordWebhookUrl,
   };
 
+  const narrowedSpeedToLeadChannel: "slack" | "discord" | undefined =
+    settings.speedToLead.channel === "slack" ||
+    settings.speedToLead.channel === "discord"
+      ? settings.speedToLead.channel
+      : undefined;
+  const speedToLead = {
+    enabled: settings.speedToLead.enabled,
+    channel: narrowedSpeedToLeadChannel,
+    slackChannelId: settings.speedToLead.slackChannelId,
+    discordWebhookUrl: settings.speedToLead.discordWebhookUrl,
+    slowThresholdMinutes: settings.speedToLead.slowThresholdMinutes,
+  };
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       <GhlConnectionCard installation={installation} />
@@ -72,6 +86,7 @@ export function SettingsTab() {
       />
       <ScorecardConfig scorecard={scorecard} teamTimezone={settings.timezone} />
       <UntouchedAlertConfig settings={untouchedAlert} />
+      <SpeedToLeadConfig settings={speedToLead} />
       <ConnectionThresholdConfig
         thresholdSec={settings.setterConnectionThresholdSec}
       />

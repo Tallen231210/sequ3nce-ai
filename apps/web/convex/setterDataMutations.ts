@@ -200,6 +200,84 @@ export const updateUntouchedAlertConfig = mutation({
 });
 
 // ----------------------------------------------------------------------------
+// updateSpeedToLeadConfig — Dashboard Phase 1 per-lead Slack/Discord ping
+// ----------------------------------------------------------------------------
+
+/**
+ * Toggle + configure the per-lead speed-to-lead Slack/Discord ping that
+ * fires the moment a setter dials a brand-new lead for the first time.
+ *
+ * slowThresholdMinutes controls the ⚠️/🚨 badge in the message:
+ *   - speed < threshold → ✅
+ *   - threshold ≤ speed < 3× threshold → ⚠️
+ *   - speed ≥ 3× threshold → 🚨
+ * Default 30 min if unset. Capped at [1, 1440] minutes — anything above
+ * 24h doesn't make sense as a "speed-to-lead" target.
+ */
+export const updateSpeedToLeadConfig = mutation({
+  args: {
+    clerkId: v.string(),
+    enabled: v.optional(v.boolean()),
+    channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
+    slackChannelId: v.optional(v.string()),
+    discordWebhookUrl: v.optional(v.string()),
+    slowThresholdMinutes: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx, args.clerkId);
+    const teamId = user.teamId as Id<"teams">;
+
+    if (args.slowThresholdMinutes !== undefined) {
+      if (
+        !Number.isInteger(args.slowThresholdMinutes) ||
+        args.slowThresholdMinutes < 1 ||
+        args.slowThresholdMinutes > 1440
+      ) {
+        throw new Error("slowThresholdMinutes must be an integer 1-1440");
+      }
+    }
+
+    if (args.slackChannelId !== undefined && args.slackChannelId.trim() === "") {
+      throw new Error("slackChannelId cannot be empty");
+    }
+
+    if (args.discordWebhookUrl !== undefined) {
+      const trimmed = args.discordWebhookUrl.trim();
+      if (trimmed === "") {
+        throw new Error("discordWebhookUrl cannot be empty");
+      }
+      if (
+        !trimmed.startsWith("https://discord.com/api/webhooks/") &&
+        !trimmed.startsWith("https://discordapp.com/api/webhooks/")
+      ) {
+        throw new Error("discordWebhookUrl must be a Discord webhook URL");
+      }
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (args.enabled !== undefined) {
+      patch.setterSpeedToLeadEnabled = args.enabled;
+    }
+    if (args.channel !== undefined) {
+      patch.setterSpeedToLeadChannel = args.channel;
+    }
+    if (args.slackChannelId !== undefined) {
+      patch.setterSpeedToLeadSlackChannelId = args.slackChannelId;
+    }
+    if (args.discordWebhookUrl !== undefined) {
+      patch.setterSpeedToLeadDiscordWebhookUrl = args.discordWebhookUrl;
+    }
+    if (args.slowThresholdMinutes !== undefined) {
+      patch.setterSpeedToLeadSlowThresholdMs =
+        args.slowThresholdMinutes * 60 * 1000;
+    }
+
+    await ctx.db.patch(teamId, patch);
+    return { success: true };
+  },
+});
+
+// ----------------------------------------------------------------------------
 // updateDispositionSyncConfig — Phase 3c toggle in Settings
 // ----------------------------------------------------------------------------
 

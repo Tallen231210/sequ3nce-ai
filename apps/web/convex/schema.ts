@@ -163,6 +163,17 @@ export default defineSchema({
     // new OAuth flow instead of the legacy ghlApiKey path. Off by default;
     // teams with no OAuth install fall through to legacy as before.
     setterDispositionSyncEnabled: v.optional(v.boolean()),
+
+    // Dashboard Phase 1 — Per-lead speed-to-lead Slack/Discord ping config.
+    // Fires the moment a setter dials a brand-new lead for the first time.
+    // Off by default — opt-in per team.
+    setterSpeedToLeadEnabled: v.optional(v.boolean()),
+    setterSpeedToLeadChannel: v.optional(v.string()), // "slack" | "discord"
+    setterSpeedToLeadSlackChannelId: v.optional(v.string()),
+    setterSpeedToLeadDiscordWebhookUrl: v.optional(v.string()),
+    // Speed above which the ping renders with ⚠️ (and 3× above renders 🚨).
+    // Default 30 min if unset.
+    setterSpeedToLeadSlowThresholdMs: v.optional(v.number()),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 

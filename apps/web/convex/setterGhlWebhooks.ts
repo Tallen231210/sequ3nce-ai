@@ -817,6 +817,15 @@ async function recordCallEvent(
   // Outbound call → bump dial counters + maybe flip isConnected.
   if (ev.direction === "outbound") {
     const becameConnected = !lead.isConnected && isConnect;
+    // Capture first-dial transition BEFORE the patch so we can fire the
+    // speed-to-lead Slack ping. lead.firstDialAt is set on first dial via
+    // `?? ev.occurredAt` below, so reading the old value here gives us
+    // the truth about whether this is a brand-new lead's first dial.
+    // recordCallEvent only runs for call events; direction=outbound is
+    // sufficient to identify dial_outbound here.
+    const isFirstDialTransition =
+      lead.firstDialAt === undefined && ev.ghlUserId !== undefined;
+
     await ctx.db.patch(lead._id, {
       dialCount: lead.dialCount + 1,
       firstDialAt: lead.firstDialAt ?? ev.occurredAt,
@@ -843,6 +852,22 @@ async function recordCallEvent(
         details: { callDurationSec: durationSec },
         ghlEventKey: ev.ghlEventKey ? `${ev.ghlEventKey}:connected` : undefined,
       });
+    }
+
+    // Speed-to-lead Slack ping — scheduled (not awaited) so a slow Slack
+    // post doesn't block the webhook handler. The dispatcher checks the
+    // team's enabled flag + dedupes; safe to schedule unconditionally.
+    if (isFirstDialTransition && ev.ghlUserId !== undefined) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.setterSpeedToLeadDispatcher.sendSpeedToLeadNotification,
+        {
+          leadId: lead._id,
+          dialerGhlUserId: ev.ghlUserId,
+          firstDialAt: ev.occurredAt,
+          dateAdded: lead.dateAdded,
+        },
+      );
     }
   } else {
     await ctx.db.patch(lead._id, {

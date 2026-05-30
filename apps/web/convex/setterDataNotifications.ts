@@ -752,6 +752,45 @@ function buildUntouchedAlertDiscordEmbed(
   };
 }
 
+// ============================================================================
+// Speed-to-lead notification context query (V8 internalQuery).
+// The actual dispatcher action lives in setterSpeedToLeadDispatcher.ts
+// because it depends on @sentry/node (captureAndPersist) which forces
+// Node runtime. Keeping the V8 read here lets the dispatcher call back
+// via runQuery cheaply.
+// ============================================================================
+
+interface SpeedToLeadContext {
+  team: TeamDoc;
+  lead: Doc<"setterLeads">;
+  setterName: string | null;
+}
+
+export const getSpeedToLeadContext = internalQuery({
+  args: {
+    leadId: v.id("setterLeads"),
+    dialerGhlUserId: v.string(),
+  },
+  handler: async (ctx, args): Promise<SpeedToLeadContext | null> => {
+    const lead = await ctx.db.get(args.leadId);
+    if (!lead) return null;
+    const team = await ctx.db.get(lead.teamId);
+    if (!team) return null;
+    const rep = await ctx.db
+      .query("setterReps")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_ghl_user_id", (q: any) =>
+        q.eq("teamId", lead.teamId).eq("ghlUserId", args.dialerGhlUserId),
+      )
+      .first();
+    return {
+      team,
+      lead,
+      setterName: rep?.name ?? null,
+    };
+  },
+});
+
 // ----------------------------------------------------------------------------
 // Time / date helpers
 // ----------------------------------------------------------------------------
