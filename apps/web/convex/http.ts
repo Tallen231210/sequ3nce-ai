@@ -2053,6 +2053,82 @@ http.route({
 });
 
 // ============================================
+// Pre-call briefing for closers (Transcripts Roadmap Phase 3)
+// ============================================
+
+// GET endpoint for the Desktop app to fetch a pre-call briefing for an
+// upcoming closer appointment. Auth: closerEmail must belong to the team
+// (verified inside the called query via by_email index lookup + teamId
+// equality check). Returns CloserBriefing | { error } JSON envelope.
+http.route({
+  path: "/getCloserBriefing",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const closerEmail = url.searchParams.get("closerEmail");
+    const teamId = url.searchParams.get("teamId");
+    const calendarEventId = url.searchParams.get("calendarEventId");
+
+    if (!closerEmail || !teamId || !calendarEventId) {
+      return new Response(
+        JSON.stringify({
+          error: "closerEmail, teamId, and calendarEventId are required",
+        }),
+        {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+
+    try {
+      const briefing = await ctx.runQuery(
+        api.setterCloserBriefing.getBriefingForCalendarEventByCloserEmail,
+        {
+          closerEmail,
+          teamId: teamId as Id<"teams">,
+          calendarEventId: calendarEventId as Id<"calendarEvents">,
+        },
+      );
+      return new Response(JSON.stringify(briefing), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    } catch (error) {
+      console.error("[HTTP /getCloserBriefing] error:", error);
+      return new Response(JSON.stringify({ error: "Failed to get briefing" }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getCloserBriefing",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================
 // LIVE STREAMING ENDPOINTS (for audio processor and web dashboard)
 // ============================================
 

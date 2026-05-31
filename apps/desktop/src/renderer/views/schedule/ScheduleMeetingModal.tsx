@@ -1,20 +1,27 @@
 import React from 'react';
-import type { CalendarEvent } from '../../convex';
+import type { CalendarEvent, CloserInfo } from '../../convex';
 import { detectPlatform, formatTime } from './scheduleUtils';
+import { PreCallBriefingPanel } from './PreCallBriefingPanel';
 
 interface ScheduleMeetingModalProps {
   event: CalendarEvent;
+  closerInfo: CloserInfo;
   onConfirm: (event: CalendarEvent) => void;
   onClose: () => void;
 }
 
-export function ScheduleMeetingModal({ event, onConfirm, onClose }: ScheduleMeetingModalProps) {
+export function ScheduleMeetingModal({
+  event,
+  closerInfo,
+  onConfirm,
+  onClose,
+}: ScheduleMeetingModalProps) {
   const platform = detectPlatform(event.meetingUrl);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-[340px] overflow-hidden"
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-[420px] max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with close button */}
@@ -61,6 +68,12 @@ export function ScheduleMeetingModal({ event, onConfirm, onClose }: ScheduleMeet
               </span>
             </div>
           )}
+
+          {/* Pre-call briefing — silent skip when no qualifying setter call */}
+          <PreCallBriefingPanel
+            closerInfo={closerInfo}
+            calendarEventId={event._id}
+          />
 
           {/* Actions */}
           {event.meetingUrl ? (

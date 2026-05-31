@@ -1082,6 +1082,67 @@ export async function getCalendarEvents(
   }
 }
 
+// ===========================================================================
+// Pre-call briefing (Transcripts Roadmap Phase 3)
+// ===========================================================================
+
+export interface CloserBriefingResponse {
+  matchedSetterLead: {
+    setterLeadId: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+    source?: string;
+    tags: string[];
+  } | null;
+  transcript: {
+    transcriptRowId: string;
+    occurredAt: number;
+    direction: "outbound" | "inbound";
+    durationSec?: number;
+    aiSummary?: string;
+    setterTalkTimeSec?: number;
+    prospectTalkTimeSec?: number;
+    setterSpeakerIndex?: 0 | 1;
+    hasFullTranscript: boolean;
+  } | null;
+  setterName: string | null;
+  reason?:
+    | "no_calendar_event"
+    | "no_prospect_identity"
+    | "no_matching_setter_lead"
+    | "no_transcript_yet";
+}
+
+export async function getCloserBriefing(
+  closerEmail: string,
+  teamId: string,
+  calendarEventId: string,
+): Promise<CloserBriefingResponse | null> {
+  try {
+    const params = new URLSearchParams({
+      closerEmail,
+      teamId,
+      calendarEventId,
+    });
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/getCloserBriefing?${params}`,
+    );
+    if (!response.ok) return null;
+    const result = await response.json();
+    if (result && typeof result === "object" && "error" in result) {
+      return null;
+    }
+    return result as CloserBriefingResponse;
+  } catch (error) {
+    console.error("[Convex] Failed to get closer briefing:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCloserBriefing", integration: "convex" },
+    });
+    return null;
+  }
+}
+
 // Call analysis types (deep AI analysis with chapters + sales process scoring)
 export interface CallChapter {
   title: string;

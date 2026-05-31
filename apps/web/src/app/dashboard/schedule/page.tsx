@@ -25,6 +25,7 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Loader2,
   List,
   CalendarDays,
@@ -38,6 +39,7 @@ import {
 } from "lucide-react";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { UpcomingMeetingBriefing } from "./components/UpcomingMeetingBriefing";
 
 // Closer colors for calendar visualization
 const CLOSER_COLORS = [
@@ -200,6 +202,15 @@ function ListView({
   closerColorMap: Map<string, number>;
 }) {
   const groupedEvents = groupEventsByDay(events);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  function toggle(eventId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventId)) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+  }
 
   if (events.length === 0) {
     return (
@@ -231,58 +242,82 @@ function ListView({
             {dayEvents.map((event) => {
               const closerIndex = closerColorMap.get(event.closerId) ?? 0;
               const color = getCloserColor(closerIndex);
-
+              const eventId = String(event._id);
+              const isExpanded = expanded.has(eventId);
               return (
                 <div
-                  key={event._id}
-                  className="flex items-start gap-4 py-3 border-b border-border last:border-0"
+                  key={eventId}
+                  className="border-b border-border last:border-0"
                 >
-                  {/* Time */}
-                  <div className="w-24 flex-shrink-0">
-                    <p className="text-sm font-medium">
-                      {event.isAllDay ? "All day" : formatTime(event.startTime)}
-                    </p>
-                    {!event.isAllDay && (
-                      <p className="text-xs text-muted-foreground">
-                        {formatDuration(event.startTime, event.endTime)}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Closer indicator */}
-                  <div className="flex items-center gap-2 w-32 flex-shrink-0">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: color }}
+                  <button
+                    type="button"
+                    onClick={() => toggle(eventId)}
+                    className="flex w-full items-start gap-4 py-3 text-left transition-colors hover:bg-muted/30 px-1 -mx-1 rounded"
+                  >
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 mt-1 shrink-0 text-muted-foreground transition-transform",
+                        isExpanded ? "" : "-rotate-90",
+                      )}
                     />
-                    <Avatar className="h-6 w-6">
-                      <AvatarFallback
-                        className="text-xs"
-                        style={{ backgroundColor: `${color}20`, color }}
-                      >
-                        {event.closerInitials || "?"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-muted-foreground truncate">
-                      {event.closerName || "Unknown"}
-                    </span>
-                  </div>
+                    {/* Time */}
+                    <div className="w-24 flex-shrink-0">
+                      <p className="text-sm font-medium">
+                        {event.isAllDay
+                          ? "All day"
+                          : formatTime(event.startTime)}
+                      </p>
+                      {!event.isAllDay && (
+                        <p className="text-xs text-muted-foreground">
+                          {formatDuration(event.startTime, event.endTime)}
+                        </p>
+                      )}
+                    </div>
 
-                  {/* Event details */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{event.title}</p>
-                    {event.description && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">
-                        {event.description}
+                    {/* Closer indicator */}
+                    <div className="flex items-center gap-2 w-32 flex-shrink-0">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: color }}
+                      />
+                      <Avatar className="h-6 w-6">
+                        <AvatarFallback
+                          className="text-xs"
+                          style={{ backgroundColor: `${color}20`, color }}
+                        >
+                          {event.closerInitials || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm text-muted-foreground truncate">
+                        {event.closerName || "Unknown"}
+                      </span>
+                    </div>
+
+                    {/* Event details */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {event.title}
                       </p>
-                    )}
-                    {event.location && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                        <MapPin className="h-3 w-3" />
-                        {event.location}
-                      </p>
-                    )}
-                  </div>
+                      {event.description && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {event.description}
+                        </p>
+                      )}
+                      {event.location && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                          <MapPin className="h-3 w-3" />
+                          {event.location}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="pb-3 pl-8 pr-1">
+                      <UpcomingMeetingBriefing
+                        calendarEventId={event._id as Id<"calendarEvents">}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}

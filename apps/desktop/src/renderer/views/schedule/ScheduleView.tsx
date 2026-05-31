@@ -273,6 +273,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
       {selectedEvent && (
         <ScheduleMeetingModal
           event={selectedEvent}
+          closerInfo={closerInfo}
           onConfirm={handleJoinConfirm}
           onClose={() => setSelectedEvent(null)}
         />

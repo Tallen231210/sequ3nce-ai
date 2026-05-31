@@ -74,6 +74,7 @@ import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
 import type * as setterCallTranscriptsMutations from "../setterCallTranscriptsMutations.js";
+import type * as setterCloserBriefing from "../setterCloserBriefing.js";
 import type * as setterCloserMatcher from "../setterCloserMatcher.js";
 import type * as setterCloserMatcherBackfill from "../setterCloserMatcherBackfill.js";
 import type * as setterCloserMatcherBackfillQuery from "../setterCloserMatcherBackfillQuery.js";
@@ -170,6 +171,7 @@ declare const fullApi: ApiFromModules<{
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
   setterCallTranscriptsMutations: typeof setterCallTranscriptsMutations;
+  setterCloserBriefing: typeof setterCloserBriefing;
   setterCloserMatcher: typeof setterCloserMatcher;
   setterCloserMatcherBackfill: typeof setterCloserMatcherBackfill;
   setterCloserMatcherBackfillQuery: typeof setterCloserMatcherBackfillQuery;
