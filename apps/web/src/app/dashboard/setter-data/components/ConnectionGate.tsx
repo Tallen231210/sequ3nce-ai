@@ -49,7 +49,7 @@ export function ConnectionGate({ teamId }: ConnectionGateProps) {
         "[ConnectionGate] Missing GHL env vars (NEXT_PUBLIC_GHL_CLIENT_ID / NEXT_PUBLIC_GHL_REDIRECT_URI)",
       );
       alert(
-        "GoHighLevel install URL is not configured. Contact support@sequ3nce.ai.",
+        "GoHighLevel install URL is not configured. Contact team@sequ3nce.ai.",
       );
       return;
     }

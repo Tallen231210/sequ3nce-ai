@@ -26,7 +26,7 @@ export default function SetterDataError({
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Something failed while rendering this tab. Screenshot the error
-          details below and send them to support@sequ3nce.ai.
+          details below and send them to team@sequ3nce.ai.
         </p>
         <div className="mt-4 rounded-md border border-border bg-background p-3 font-mono text-xs">
           <div className="font-semibold">{error.name}: {error.message}</div>

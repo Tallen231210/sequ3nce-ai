@@ -30,7 +30,7 @@ export default function GlobalError({
           </h2>
           <p style={{ fontSize: 14, color: "#525252", marginBottom: 24 }}>
             Screenshot the error details below and send them to
-            support@sequ3nce.ai.
+            team@sequ3nce.ai.
           </p>
           <div style={{ background: "#fafafa", border: "1px solid #e5e5e5", borderRadius: 8, padding: 16, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>

@@ -143,10 +143,17 @@ export const getHyrosConfig = query({
 export const getPendingHyrosCalls = query({
   args: { teamId: v.id("teams") },
   handler: async (ctx, args) => {
+    // Calls carry transcript blobs (~30-100KB each); a full team
+    // .collect() blows the 16 MiB read limit on high-volume teams. Scan
+    // only the most recent 500 by createdAt — pending Hyros calls are
+    // by definition recent (older closed deals would already be pushed
+    // or intentionally skipped), and the UI paginates anyway.
     const calls = await ctx.db
       .query("calls")
-      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
-      .collect();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date", (q: any) => q.eq("teamId", args.teamId))
+      .order("desc")
+      .take(100);
 
     const pendingCalls = calls.filter(
       (c) => c.status === "completed" && c.outcome && !c.hyrosSyncedAt
@@ -207,10 +214,15 @@ export const getHyrosSyncHistory = query({
   handler: async (ctx, args) => {
     const maxResults = args.limit ?? 20;
 
+    // Same 16 MiB constraint as getPendingHyrosCalls — bound the scan to
+    // the most recent 500 calls by createdAt. Recently-synced calls are
+    // by definition recent.
     const calls = await ctx.db
       .query("calls")
-      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
-      .collect();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date", (q: any) => q.eq("teamId", args.teamId))
+      .order("desc")
+      .take(100);
 
     const syncedCalls = calls
       .filter((c) => c.hyrosSyncedAt)

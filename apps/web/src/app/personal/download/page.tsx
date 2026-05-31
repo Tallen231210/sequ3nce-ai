@@ -246,7 +246,7 @@ export default function PersonalDownloadPage() {
           <p>
             Need help?{" "}
             <a
-              href="mailto:support@sequ3nce.ai"
+              href="mailto:team@sequ3nce.ai"
               className="text-zinc-900 hover:underline"
             >
               Contact support
