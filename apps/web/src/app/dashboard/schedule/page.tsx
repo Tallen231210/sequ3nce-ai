@@ -193,6 +193,66 @@ function getMonthDates(date: Date): Date[] {
   return dates;
 }
 
+// ----------------------------------------------------------------------------
+// Overlap layout: split same-time events into side-by-side columns so they
+// don't visually stack on top of each other in Day/Week views.
+//
+// Algorithm: group events into clusters of transitively-overlapping windows,
+// then greedily assign each event to the leftmost column where it fits.
+// Each cluster's events share the same columnCount so a single overlap
+// group lays out cleanly.
+// ----------------------------------------------------------------------------
+interface PositionedEvent {
+  event: CalendarEvent;
+  columnIndex: number;
+  columnCount: number;
+}
+
+function layoutEventsInColumns(events: CalendarEvent[]): PositionedEvent[] {
+  if (events.length === 0) return [];
+  const sorted = [...events].sort((a, b) => {
+    if (a.startTime !== b.startTime) return a.startTime - b.startTime;
+    return b.endTime - a.endTime;
+  });
+
+  // Build clusters of transitively overlapping events.
+  const clusters: CalendarEvent[][] = [];
+  let currentCluster: CalendarEvent[] = [];
+  let clusterMaxEnd = -Infinity;
+  for (const event of sorted) {
+    if (currentCluster.length === 0 || event.startTime < clusterMaxEnd) {
+      currentCluster.push(event);
+      clusterMaxEnd = Math.max(clusterMaxEnd, event.endTime);
+    } else {
+      clusters.push(currentCluster);
+      currentCluster = [event];
+      clusterMaxEnd = event.endTime;
+    }
+  }
+  if (currentCluster.length > 0) clusters.push(currentCluster);
+
+  const out: PositionedEvent[] = [];
+  for (const cluster of clusters) {
+    const columnEnds: number[] = [];
+    const placed: Array<{ event: CalendarEvent; columnIndex: number }> = [];
+    for (const event of cluster) {
+      let col = columnEnds.findIndex((end) => end <= event.startTime);
+      if (col === -1) {
+        col = columnEnds.length;
+        columnEnds.push(event.endTime);
+      } else {
+        columnEnds[col] = event.endTime;
+      }
+      placed.push({ event, columnIndex: col });
+    }
+    const columnCount = columnEnds.length;
+    for (const p of placed) {
+      out.push({ ...p, columnCount });
+    }
+  }
+  return out;
+}
+
 // ListView component
 function ListView({
   events,
@@ -372,43 +432,53 @@ function DayView({
             </div>
           ))}
 
-          {/* Events */}
-          {dayEvents.map((event) => {
-            const startDate = new Date(event.startTime);
-            const startHour = startDate.getHours() + startDate.getMinutes() / 60;
-            const endDate = new Date(event.endTime);
-            const endHour = endDate.getHours() + endDate.getMinutes() / 60;
-            const duration = endHour - startHour;
+          {/* Events — laid out in side-by-side columns when they overlap */}
+          {layoutEventsInColumns(dayEvents).map(
+            ({ event, columnIndex, columnCount }) => {
+              const startDate = new Date(event.startTime);
+              const startHour =
+                startDate.getHours() + startDate.getMinutes() / 60;
+              const endDate = new Date(event.endTime);
+              const endHour = endDate.getHours() + endDate.getMinutes() / 60;
+              const duration = endHour - startHour;
 
-            const top = (startHour - 6) * 60;
-            const height = Math.max(duration * 60, 24);
+              const top = (startHour - 6) * 60;
+              const height = Math.max(duration * 60, 24);
 
-            const closerIndex = closerColorMap.get(event.closerId) ?? 0;
-            const color = getCloserColor(closerIndex);
+              const closerIndex = closerColorMap.get(event.closerId) ?? 0;
+              const color = getCloserColor(closerIndex);
 
-            return (
-              <div
-                key={event._id}
-                className="absolute left-16 right-4 rounded-md px-2 py-1 overflow-hidden"
-                style={{
-                  top: `${top}px`,
-                  height: `${height}px`,
-                  backgroundColor: `${color}20`,
-                  borderLeft: `3px solid ${color}`,
-                }}
-              >
-                <p className="text-xs font-medium truncate">{event.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatTime(event.startTime)} - {formatTime(event.endTime)}
-                </p>
-                {event.closerName && (
+              // Day column starts at left-16 (64px) and runs to right-4 (16px
+              // gap). Within that, split into columnCount equal slots.
+              const left = `calc(4rem + (100% - 4rem - 1rem) * ${columnIndex / columnCount})`;
+              const width = `calc((100% - 4rem - 1rem) / ${columnCount} - 2px)`;
+
+              return (
+                <div
+                  key={event._id}
+                  className="absolute rounded-md px-2 py-1 overflow-hidden"
+                  style={{
+                    top: `${top}px`,
+                    height: `${height}px`,
+                    left,
+                    width,
+                    backgroundColor: `${color}20`,
+                    borderLeft: `3px solid ${color}`,
+                  }}
+                >
+                  <p className="text-xs font-medium truncate">{event.title}</p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {event.closerName}
+                    {formatTime(event.startTime)} - {formatTime(event.endTime)}
                   </p>
-                )}
-              </div>
-            );
-          })}
+                  {event.closerName && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      {event.closerName}
+                    </p>
+                  )}
+                </div>
+              );
+            },
+          )}
         </div>
       </CardContent>
     </Card>
@@ -494,48 +564,58 @@ function WeekView({
               </div>
             ))}
 
-            {/* Events */}
-            {events.map((event) => {
-              const startDate = new Date(event.startTime);
-              const dayIndex = weekDates.findIndex(
-                (d) => d.toDateString() === startDate.toDateString()
+            {/* Events — lay out per-day with overlap columns. Each day's
+               *  events get their own column layout so an overlap in Monday
+               *  doesn't squeeze Tuesday. */}
+            {weekDates.flatMap((d, dayIndex) => {
+              const dayEvents = events.filter(
+                (e) =>
+                  new Date(e.startTime).toDateString() === d.toDateString(),
               );
-              if (dayIndex === -1) return null;
+              return layoutEventsInColumns(dayEvents).map(
+                ({ event, columnIndex, columnCount }) => {
+                  const startDate = new Date(event.startTime);
+                  const startHour =
+                    startDate.getHours() + startDate.getMinutes() / 60;
+                  const endDate = new Date(event.endTime);
+                  const endHour =
+                    endDate.getHours() + endDate.getMinutes() / 60;
+                  const duration = endHour - startHour;
 
-              const startHour =
-                startDate.getHours() + startDate.getMinutes() / 60;
-              const endDate = new Date(event.endTime);
-              const endHour = endDate.getHours() + endDate.getMinutes() / 60;
-              const duration = endHour - startHour;
+                  const top = (startHour - 6) * 60;
+                  const height = Math.max(duration * 60, 24);
+                  // Each day gets 1/7 of the area right of the hour gutter.
+                  // Inside the day, split into columnCount equal sub-slots.
+                  const dayWidthExpr = "((100% - 4rem) / 7)";
+                  const left = `calc(4rem + ${dayWidthExpr} * ${dayIndex} + ${dayWidthExpr} * ${columnIndex / columnCount} + 1px)`;
+                  const width = `calc(${dayWidthExpr} / ${columnCount} - 2px)`;
 
-              const top = (startHour - 6) * 60;
-              const height = Math.max(duration * 60, 24);
-              const left = `calc(4rem + ${(dayIndex / 7) * 100}% + 2px)`;
-              const width = `calc(${100 / 7}% - 4px)`;
+                  const closerIndex =
+                    closerColorMap.get(event.closerId) ?? 0;
+                  const color = getCloserColor(closerIndex);
 
-              const closerIndex = closerColorMap.get(event.closerId) ?? 0;
-              const color = getCloserColor(closerIndex);
-
-              return (
-                <div
-                  key={event._id}
-                  className="absolute rounded-md px-1 py-0.5 overflow-hidden text-xs"
-                  style={{
-                    top: `${top}px`,
-                    height: `${height}px`,
-                    left,
-                    width,
-                    backgroundColor: `${color}20`,
-                    borderLeft: `2px solid ${color}`,
-                  }}
-                >
-                  <p className="font-medium truncate">{event.title}</p>
-                  {event.closerName && (
-                    <p className="text-muted-foreground truncate">
-                      {event.closerName}
-                    </p>
-                  )}
-                </div>
+                  return (
+                    <div
+                      key={event._id}
+                      className="absolute rounded-md px-1 py-0.5 overflow-hidden text-xs"
+                      style={{
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        left,
+                        width,
+                        backgroundColor: `${color}20`,
+                        borderLeft: `2px solid ${color}`,
+                      }}
+                    >
+                      <p className="font-medium truncate">{event.title}</p>
+                      {event.closerName && (
+                        <p className="text-muted-foreground truncate">
+                          {event.closerName}
+                        </p>
+                      )}
+                    </div>
+                  );
+                },
               );
             })}
           </div>
