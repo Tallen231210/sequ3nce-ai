@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
@@ -398,91 +398,116 @@ function DayView({
   date: Date;
   closerColorMap: Map<string, number>;
 }) {
-  const hours = Array.from({ length: 16 }, (_, i) => i + 6); // 6 AM to 9 PM
+  // Full 24-hour grid (0am-11pm). The container is scrollable + clipped so
+  // early-morning and late-night events don't bleed into the page header.
+  // We auto-scroll to ~7am on mount so the typical workday is visible.
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const HOUR_PX = 60;
+  const DEFAULT_SCROLL_HOUR = 7;
+  const VISIBLE_HEIGHT_PX = 14 * HOUR_PX; // show 14 hours at a time
 
-  // Filter events for this day
   const dayStart = new Date(date);
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(date);
   dayEnd.setHours(23, 59, 59, 999);
-
   const dayEvents = events.filter(
     (e) => e.startTime >= dayStart.getTime() && e.startTime <= dayEnd.getTime()
   );
 
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = DEFAULT_SCROLL_HOUR * HOUR_PX;
+    }
+  }, []);
+
   return (
     <Card>
       <CardContent className="p-0">
-        <div className="relative" style={{ height: `${hours.length * 60}px` }}>
-          {/* Hour lines */}
-          {hours.map((hour) => (
-            <div
-              key={hour}
-              className="absolute left-0 right-0 border-t border-border flex"
-              style={{ top: `${(hour - 6) * 60}px` }}
-            >
-              <div className="w-16 pr-2 text-xs text-muted-foreground text-right py-1 flex-shrink-0">
-                {hour === 12
-                  ? "12 PM"
-                  : hour > 12
-                    ? `${hour - 12} PM`
-                    : `${hour} AM`}
-              </div>
-              <div className="flex-1" />
-            </div>
-          ))}
-
-          {/* Events — laid out in side-by-side columns when they overlap */}
-          {layoutEventsInColumns(dayEvents).map(
-            ({ event, columnIndex, columnCount }) => {
-              const startDate = new Date(event.startTime);
-              const startHour =
-                startDate.getHours() + startDate.getMinutes() / 60;
-              const endDate = new Date(event.endTime);
-              const endHour = endDate.getHours() + endDate.getMinutes() / 60;
-              const duration = endHour - startHour;
-
-              const top = (startHour - 6) * 60;
-              const height = Math.max(duration * 60, 24);
-
-              const closerIndex = closerColorMap.get(event.closerId) ?? 0;
-              const color = getCloserColor(closerIndex);
-
-              // Day column starts at left-16 (64px) and runs to right-4 (16px
-              // gap). Within that, split into columnCount equal slots.
-              const left = `calc(4rem + (100% - 4rem - 1rem) * ${columnIndex / columnCount})`;
-              const width = `calc((100% - 4rem - 1rem) / ${columnCount} - 2px)`;
-
-              return (
-                <div
-                  key={event._id}
-                  className="absolute rounded-md px-2 py-1 overflow-hidden"
-                  style={{
-                    top: `${top}px`,
-                    height: `${height}px`,
-                    left,
-                    width,
-                    backgroundColor: `${color}20`,
-                    borderLeft: `3px solid ${color}`,
-                  }}
-                >
-                  <p className="text-xs font-medium truncate">{event.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {formatTime(event.startTime)} - {formatTime(event.endTime)}
-                  </p>
-                  {event.closerName && (
-                    <p className="text-xs text-muted-foreground truncate">
-                      {event.closerName}
-                    </p>
-                  )}
+        <div
+          ref={scrollRef}
+          className="overflow-y-auto"
+          style={{ maxHeight: `${VISIBLE_HEIGHT_PX}px` }}
+        >
+          <div
+            className="relative"
+            style={{ height: `${hours.length * HOUR_PX}px` }}
+          >
+            {/* Hour lines */}
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="absolute left-0 right-0 border-t border-border flex"
+                style={{ top: `${hour * HOUR_PX}px` }}
+              >
+                <div className="w-16 pr-2 text-xs text-muted-foreground text-right py-1 flex-shrink-0">
+                  {hourLabel(hour)}
                 </div>
-              );
-            },
-          )}
+                <div className="flex-1" />
+              </div>
+            ))}
+
+            {/* Events — laid out in side-by-side columns when they overlap */}
+            {layoutEventsInColumns(dayEvents).map(
+              ({ event, columnIndex, columnCount }) => {
+                const startDate = new Date(event.startTime);
+                const startHour =
+                  startDate.getHours() + startDate.getMinutes() / 60;
+                const endDate = new Date(event.endTime);
+                const endHour =
+                  endDate.getHours() + endDate.getMinutes() / 60;
+                const duration = endHour - startHour;
+
+                const top = startHour * HOUR_PX;
+                const height = Math.max(duration * HOUR_PX, 24);
+
+                const closerIndex = closerColorMap.get(event.closerId) ?? 0;
+                const color = getCloserColor(closerIndex);
+
+                const left = `calc(4rem + (100% - 4rem - 1rem) * ${columnIndex / columnCount})`;
+                const width = `calc((100% - 4rem - 1rem) / ${columnCount} - 2px)`;
+
+                return (
+                  <div
+                    key={event._id}
+                    className="absolute rounded-md px-2 py-1 overflow-hidden"
+                    style={{
+                      top: `${top}px`,
+                      height: `${height}px`,
+                      left,
+                      width,
+                      backgroundColor: `${color}20`,
+                      borderLeft: `3px solid ${color}`,
+                    }}
+                  >
+                    <p className="text-xs font-medium truncate">
+                      {event.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {formatTime(event.startTime)} - {formatTime(event.endTime)}
+                    </p>
+                    {event.closerName && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {event.closerName}
+                      </p>
+                    )}
+                  </div>
+                );
+              },
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
   );
+}
+
+// Format a 24-hour hour-of-day as a US 12-hour label. Used by Day/Week views.
+function hourLabel(hour: number): string {
+  if (hour === 0) return "12 AM";
+  if (hour === 12) return "12 PM";
+  if (hour < 12) return `${hour} AM`;
+  return `${hour - 12} PM`;
 }
 
 // WeekView component
@@ -496,7 +521,17 @@ function WeekView({
   closerColorMap: Map<string, number>;
 }) {
   const weekDates = getWeekDates(date);
-  const hours = Array.from({ length: 16 }, (_, i) => i + 6); // 6 AM to 9 PM
+  // Same 24-hour grid as the Day view with overflow clip + auto-scroll to 7am.
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const HOUR_PX = 60;
+  const DEFAULT_SCROLL_HOUR = 7;
+  const VISIBLE_HEIGHT_PX = 14 * HOUR_PX;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = DEFAULT_SCROLL_HOUR * HOUR_PX;
+    }
+  }, []);
 
   return (
     <Card>
@@ -537,53 +572,57 @@ function WeekView({
             })}
           </div>
 
-          {/* Time grid */}
-          <div className="relative" style={{ height: `${hours.length * 60}px` }}>
-            {/* Hour lines */}
-            {hours.map((hour) => (
-              <div
-                key={hour}
-                className="absolute left-0 right-0 border-t border-border flex"
-                style={{ top: `${(hour - 6) * 60}px` }}
-              >
-                <div className="w-16 pr-2 text-xs text-muted-foreground text-right py-1 flex-shrink-0">
-                  {hour === 12
-                    ? "12 PM"
-                    : hour > 12
-                      ? `${hour - 12} PM`
-                      : `${hour} AM`}
+          {/* Time grid (scrollable, full 24h) */}
+          <div
+            ref={scrollRef}
+            className="overflow-y-auto"
+            style={{ maxHeight: `${VISIBLE_HEIGHT_PX}px` }}
+          >
+            <div
+              className="relative"
+              style={{ height: `${hours.length * HOUR_PX}px` }}
+            >
+              {/* Hour lines */}
+              {hours.map((hour) => (
+                <div
+                  key={hour}
+                  className="absolute left-0 right-0 border-t border-border flex"
+                  style={{ top: `${hour * HOUR_PX}px` }}
+                >
+                  <div className="w-16 pr-2 text-xs text-muted-foreground text-right py-1 flex-shrink-0">
+                    {hourLabel(hour)}
+                  </div>
+                  <div className="flex-1 flex">
+                    {weekDates.map((d) => (
+                      <div
+                        key={d.toISOString()}
+                        className="flex-1 border-l border-border"
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex-1 flex">
-                  {weekDates.map((d) => (
-                    <div
-                      key={d.toISOString()}
-                      className="flex-1 border-l border-border"
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
+              ))}
 
-            {/* Events — lay out per-day with overlap columns. Each day's
-               *  events get their own column layout so an overlap in Monday
-               *  doesn't squeeze Tuesday. */}
-            {weekDates.flatMap((d, dayIndex) => {
-              const dayEvents = events.filter(
-                (e) =>
-                  new Date(e.startTime).toDateString() === d.toDateString(),
-              );
-              return layoutEventsInColumns(dayEvents).map(
-                ({ event, columnIndex, columnCount }) => {
-                  const startDate = new Date(event.startTime);
-                  const startHour =
-                    startDate.getHours() + startDate.getMinutes() / 60;
-                  const endDate = new Date(event.endTime);
-                  const endHour =
-                    endDate.getHours() + endDate.getMinutes() / 60;
-                  const duration = endHour - startHour;
+              {/* Events — lay out per-day with overlap columns. Each day's
+                 *  events get their own column layout so an overlap in Monday
+                 *  doesn't squeeze Tuesday. */}
+              {weekDates.flatMap((d, dayIndex) => {
+                const dayEvents = events.filter(
+                  (e) =>
+                    new Date(e.startTime).toDateString() === d.toDateString(),
+                );
+                return layoutEventsInColumns(dayEvents).map(
+                  ({ event, columnIndex, columnCount }) => {
+                    const startDate = new Date(event.startTime);
+                    const startHour =
+                      startDate.getHours() + startDate.getMinutes() / 60;
+                    const endDate = new Date(event.endTime);
+                    const endHour =
+                      endDate.getHours() + endDate.getMinutes() / 60;
+                    const duration = endHour - startHour;
 
-                  const top = (startHour - 6) * 60;
-                  const height = Math.max(duration * 60, 24);
+                    const top = startHour * HOUR_PX;
+                    const height = Math.max(duration * HOUR_PX, 24);
                   // Each day gets 1/7 of the area right of the hour gutter.
                   // Inside the day, split into columnCount equal sub-slots.
                   const dayWidthExpr = "((100% - 4rem) / 7)";
@@ -618,6 +657,7 @@ function WeekView({
                 },
               );
             })}
+            </div>
           </div>
         </div>
       </CardContent>
