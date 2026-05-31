@@ -55,7 +55,7 @@ export function encryptApiKey(plaintext: string): string {
 export function decryptApiKey(value: string): string {
   // Backward-compat: plaintext values pass through unchanged
   if (!isEncrypted(value)) {
-    return value;
+    return sanitizeApiKey(value);
   }
 
   const key = getEncryptionKey();
@@ -77,5 +77,34 @@ export function decryptApiKey(value: string): string {
     decipher.final(),
   ]);
 
-  return decrypted.toString("utf8");
+  return sanitizeApiKey(decrypted.toString("utf8"));
+}
+
+/**
+ * Strip non-ASCII characters and leading/trailing whitespace from an API
+ * key. Users sometimes paste keys from formatted documents (Slack, email,
+ * Notion) that wrap the key in invisible Unicode formatting characters
+ * (e.g., U+2068/U+2069 directional isolates, zero-width spaces) or
+ * prefix it with mention syntax like "@user". This sanitizer extracts
+ * the actual API key pattern.
+ *
+ * Conservative: drop anything outside printable ASCII (0x21-0x7E), then
+ * trim. If the result contains an obvious API key pattern (alphanumerics
+ * and underscores after a prefix like "API_"), extract that.
+ */
+export function sanitizeApiKey(raw: string): string {
+  if (!raw) return raw;
+  // Drop non-printable + non-ASCII characters
+  const cleaned = raw
+    .split("")
+    .filter((ch) => {
+      const c = ch.charCodeAt(0);
+      return c >= 0x21 && c <= 0x7e; // printable ASCII excluding space
+    })
+    .join("");
+  // If the cleaned string contains an "API_" pattern, take everything
+  // from there to the end (the API key proper).
+  const apiMatch = cleaned.match(/API_[A-Za-z0-9_-]+/);
+  if (apiMatch) return apiMatch[0];
+  return cleaned;
 }

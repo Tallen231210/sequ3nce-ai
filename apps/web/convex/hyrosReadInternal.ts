@@ -20,9 +20,12 @@ export const fetchPendingLeads = internalQuery({
   args: {
     teamId: v.id("teams"),
     limit: v.number(),
-    bailoutBeforeMs: v.number(),
+    bailoutBeforeMs: v.optional(v.number()), // legacy arg, no longer used
   },
   handler: async (ctx, args) => {
+    // No age-based bailout — the pending→found/not_found state machine
+    // is what prevents repolling. Backfilled historical leads have old
+    // dateAdded values but should still be polled once.
     const pending = await ctx.db
       .query("setterLeads")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,7 +34,6 @@ export const fetchPendingLeads = internalQuery({
       )
       .take(args.limit);
     return pending
-      .filter((l) => l.dateAdded > args.bailoutBeforeMs)
       .filter((l): l is Doc<"setterLeads"> & { email: string } => !!l.email)
       .map((l) => ({ id: l._id, email: l.email }));
   },
