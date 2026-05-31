@@ -17,15 +17,30 @@ interface FunnelChartProps {
     connectedLeads: number;
     totalAppointments: number;
     totalShowed: number;
+    bookings?: {
+      source: "setterAppointments" | "calendarEvents" | "none";
+      total: number;
+    };
   };
 }
 
 /**
- * Four-stage funnel: Total leads → Connected → Appointments → Showed.
- * Each stage uses progressively lighter shades of the primary color so
- * the funnel "narrows" visually even when stage counts are similar.
+ * Four-stage funnel: Total leads → Connected → Appointments/Bookings → Showed.
+ * When the bookings computation has data (calendarEvents-based for self-book
+ * customers, setterAppointments-based for GHL-native), the third stage swaps
+ * to "Bookings" so customers without GHL appointment tracking still see a
+ * populated funnel.
  */
 export function FunnelChart({ data }: FunnelChartProps) {
+  const useBookings =
+    data.bookings &&
+    data.bookings.source !== "none" &&
+    data.bookings.total > 0;
+  const thirdStageLabel = useBookings ? "Bookings" : "Appointments";
+  const thirdStageCount = useBookings
+    ? data.bookings!.total
+    : data.totalAppointments;
+
   const chartData = [
     {
       stage: "Total leads",
@@ -38,8 +53,8 @@ export function FunnelChart({ data }: FunnelChartProps) {
       fill: "hsl(var(--primary) / 0.78)",
     },
     {
-      stage: "Appointments",
-      count: data.totalAppointments,
+      stage: thirdStageLabel,
+      count: thirdStageCount,
       fill: "hsl(var(--primary) / 0.56)",
     },
     {

@@ -121,4 +121,15 @@ crons.interval(
   internal.setterDataNotifications.runCoverageGapDigest,
 );
 
+// Booking Flow Detection (Dashboard Phase 4): daily sweep. For each team
+// with stale (>7 day old) or missing flow detection, recompute by
+// comparing lead.firstDialAt vs matched calendar event creation time
+// over the last 60 days. Result drives whether the dashboard shows
+// Tier 2 attribution stats prominently or de-emphasizes them.
+crons.daily(
+  "setter-booking-flow-detection",
+  { hourUTC: 8, minuteUTC: 0 },
+  internal.setterDataNotifications.runBookingFlowDetectionSweep,
+);
+
 export default crons;

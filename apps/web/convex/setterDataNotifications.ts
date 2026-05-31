@@ -7,6 +7,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { ScorecardData, ScorecardSetterRow } from "./setterDataMetrics";
+import { buildBookingMatcherIndex } from "./setterCloserBookings";
 
 // ============================================================================
 // Setter Data — daily scorecard notification cron.
@@ -1162,3 +1163,149 @@ function formatDuration(ms: number): string {
   const min = totalMin % 60;
   return min === 0 ? `${hours}h` : `${hours}h ${min}m`;
 }
+
+// ============================================================================
+// runBookingFlowDetectionSweep — Dashboard Phase 4 cron entry.
+// Recomputes setterBookingFlowDetected for teams whose detection is >7 days
+// stale (or missing). Classifies by comparing lead.firstDialAt to the matched
+// booking's calendarEvent._creationTime: setter-touched-first dominant →
+// setter_drives; booking-first dominant → self_book; else mixed or unknown.
+// ============================================================================
+
+const BOOKING_FLOW_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const BOOKING_FLOW_DETECT_RANGE_MS = 60 * 24 * 60 * 60 * 1000;
+const BOOKING_FLOW_MIN_SAMPLE = 20;
+const BOOKING_FLOW_THRESHOLD = 0.70;
+const BOOKING_FLOW_MIN_GAP_MS = 10 * 60 * 1000; // dial-vs-booking within 10min is too tight to classify
+
+export const runBookingFlowDetectionSweep = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{ processed: number; updated: number; errored: number }> => {
+    const teams = (await ctx.runQuery(
+      internal.setterDataNotifications.getTeamsNeedingBookingFlowDetection,
+      {},
+    )) as TeamDoc[];
+    let processed = 0;
+    let updated = 0;
+    let errored = 0;
+    for (const team of teams) {
+      processed++;
+      try {
+        const result = await detectFlowForTeam(ctx, team);
+        if (result.changed) updated++;
+      } catch (err) {
+        errored++;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[runBookingFlowDetectionSweep] team ${team._id}: ${msg}`,
+        );
+      }
+    }
+    return { processed, updated, errored };
+  },
+});
+
+export const getTeamsNeedingBookingFlowDetection = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("teams").collect();
+    const now = Date.now();
+    return all.filter(
+      (t) =>
+        t.setterDataEnabled !== false &&
+        (t.setterBookingFlowDetectedAt === undefined ||
+          now - t.setterBookingFlowDetectedAt > BOOKING_FLOW_STALE_MS),
+    );
+  },
+});
+
+async function detectFlowForTeam(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  team: TeamDoc,
+): Promise<{ changed: boolean }> {
+  const now = Date.now();
+  const result = await ctx.runQuery(
+    internal.setterDataNotifications.classifyBookingFlowForTeam,
+    {
+      teamId: team._id,
+      rangeStart: now - BOOKING_FLOW_DETECT_RANGE_MS,
+      rangeEnd: now,
+    },
+  );
+  await ctx.runMutation(
+    internal.setterDataNotifications.applyBookingFlowDetection,
+    {
+      teamId: team._id,
+      detected: result.flowType,
+      detectedAt: now,
+    },
+  );
+  const prev = team.setterBookingFlowDetected;
+  return { changed: prev !== result.flowType };
+}
+
+export const classifyBookingFlowForTeam = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ flowType: "setter_drives" | "self_book" | "mixed" | "unknown" }> => {
+    const matcher = await buildBookingMatcherIndex(
+      ctx,
+      args.teamId,
+      args.rangeStart,
+      args.rangeEnd,
+    );
+    let setterDrove = 0;
+    let selfBooked = 0;
+    let classified = 0;
+    for (const b of matcher.bookings) {
+      if (b.leadFirstDialAt === undefined) continue;
+      const gap = b.calendarEventCreationTime - b.leadFirstDialAt;
+      if (Math.abs(gap) < BOOKING_FLOW_MIN_GAP_MS) continue;
+      classified++;
+      if (gap > 0) {
+        setterDrove++; // dial came BEFORE booking
+      } else {
+        selfBooked++; // booking came BEFORE dial
+      }
+    }
+    if (classified < BOOKING_FLOW_MIN_SAMPLE) {
+      return { flowType: "unknown" };
+    }
+    const pctSetterDrove = setterDrove / classified;
+    if (pctSetterDrove >= BOOKING_FLOW_THRESHOLD) {
+      return { flowType: "setter_drives" };
+    }
+    if (pctSetterDrove <= 1 - BOOKING_FLOW_THRESHOLD) {
+      return { flowType: "self_book" };
+    }
+    return { flowType: "mixed" };
+  },
+});
+
+export const applyBookingFlowDetection = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    detected: v.union(
+      v.literal("setter_drives"),
+      v.literal("self_book"),
+      v.literal("mixed"),
+      v.literal("unknown"),
+    ),
+    detectedAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.teamId, {
+      setterBookingFlowDetected: args.detected,
+      setterBookingFlowDetectedAt: args.detectedAt,
+    });
+  },
+});

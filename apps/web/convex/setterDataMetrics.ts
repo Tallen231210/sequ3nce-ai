@@ -2,6 +2,10 @@ import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { buildMatcherIndex, findCallsForLead } from "./setterCloserMatcher";
+import {
+  buildBookingMatcherIndex,
+  type MatchedBooking,
+} from "./setterCloserBookings";
 
 // ============================================================================
 // Setter Data — pure metrics queries.
@@ -99,6 +103,46 @@ export interface ScorecardData {
     // of a generic "—".
     unavailableReason?: "range_too_wide";
   };
+  /**
+   * Dashboard Phase 4 — universal bookings rollup. Sources from
+   * setterAppointments (GHL-native, when populated) or calendarEvents
+   * (synced via Google Calendar OAuth, the universal fallback). Tier 2
+   * stats only populate when the detected/overridden flow is
+   * setter-driven or mixed — self-book flow customers (AICom) see
+   * Tier 1 + the pre-call qualification rate prominently.
+   */
+  bookings: BookingsData;
+}
+
+export type BookingFlowType =
+  | "setter_drives"
+  | "self_book"
+  | "mixed"
+  | "unknown";
+
+export type BookingFlowOverride =
+  | "auto"
+  | "setter_drives"
+  | "self_book"
+  | "mixed";
+
+export interface BookingsData {
+  source: "setterAppointments" | "calendarEvents" | "none";
+  total: number;
+  futureScheduled: number;
+  medianTimeToBookMs: number | null;
+  byDayOfWeek: number[]; // length 7, [Sun..Sat]
+  preCallQualificationRate: number | null;
+  preCallQualifiedCount: number;
+  perSetter: Array<{
+    ghlUserId: string;
+    name: string;
+    bookingCount: number;
+  }>;
+  connectionsToBookingsRate: number | null;
+  flowType: BookingFlowType;
+  flowOverride: BookingFlowOverride;
+  rangeClampedToDays?: number;
 }
 
 /**
@@ -437,6 +481,22 @@ export async function computeScorecard(
       rangeEnd: args.rangeEnd,
     });
 
+    const team = (await ctx.db.get(args.teamId as Id<"teams">)) as
+      | Doc<"teams">
+      | null;
+    const bookings = await computeBookings(ctx, {
+      teamId: args.teamId,
+      rangeStart: args.rangeStart,
+      rangeEnd: args.rangeEnd,
+      team,
+      perSetterNames: new Map(
+        perSetter.map((s) => [s.ghlUserId, s.name]),
+      ),
+      connectedSetterLeadIds: new Set(
+        leads.filter((l) => l.isConnected).map((l) => String(l._id)),
+      ),
+    });
+
     return {
       totalLeads,
       connectedLeads,
@@ -451,7 +511,317 @@ export async function computeScorecard(
       showRate,
       perSetter,
       closerSide,
+      bookings,
     };
+}
+
+// ============================================================================
+// Dashboard Phase 4 — bookings computation
+// ============================================================================
+
+async function computeBookings(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: {
+    teamId: string;
+    rangeStart: number;
+    rangeEnd: number;
+    team: Doc<"teams"> | null;
+    perSetterNames: Map<string, string>;
+    connectedSetterLeadIds: Set<string>;
+  },
+): Promise<BookingsData> {
+  const empty: BookingsData = {
+    source: "none",
+    total: 0,
+    futureScheduled: 0,
+    medianTimeToBookMs: null,
+    byDayOfWeek: [0, 0, 0, 0, 0, 0, 0],
+    preCallQualificationRate: null,
+    preCallQualifiedCount: 0,
+    perSetter: [],
+    connectionsToBookingsRate: null,
+    flowType: resolveFlowType(args.team),
+    flowOverride: (args.team?.setterBookingFlowOverride ?? "auto") as BookingFlowOverride,
+  };
+
+  // Source 1: setterAppointments (GHL-native). Use if there are ≥10 in range.
+  const apptSamples = (await ctx.db
+    .query("setterAppointments")
+    .withIndex("by_team_and_start_time", (q: any) =>
+      q
+        .eq("teamId", args.teamId)
+        .gte("startTime", args.rangeStart)
+        .lt("startTime", args.rangeEnd),
+    )
+    .take(11)) as Doc<"setterAppointments">[];
+
+  if (apptSamples.length >= 10) {
+    return computeBookingsFromGhlAppointments(ctx, args, empty);
+  }
+
+  // Source 2: calendarEvents (universal fallback).
+  return computeBookingsFromCalendarEvents(ctx, args, empty);
+}
+
+function resolveFlowType(team: Doc<"teams"> | null): BookingFlowType {
+  if (!team) return "unknown";
+  const override = team.setterBookingFlowOverride;
+  if (override && override !== "auto") return override as BookingFlowType;
+  return (team.setterBookingFlowDetected as BookingFlowType) ?? "unknown";
+}
+
+async function computeBookingsFromGhlAppointments(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: {
+    teamId: string;
+    rangeStart: number;
+    rangeEnd: number;
+    team: Doc<"teams"> | null;
+    perSetterNames: Map<string, string>;
+    connectedSetterLeadIds: Set<string>;
+  },
+  base: BookingsData,
+): Promise<BookingsData> {
+  const tz = args.team?.timezone || "America/New_York";
+  const allAppts = (await ctx.db
+    .query("setterAppointments")
+    .withIndex("by_team_and_start_time", (q: any) =>
+      q
+        .eq("teamId", args.teamId)
+        .gte("startTime", args.rangeStart)
+        .lt("startTime", args.rangeEnd),
+    )
+    .collect()) as Doc<"setterAppointments">[];
+
+  const valid = allAppts.filter(
+    (a) => a.status !== "Cancelled" && a.status !== "Invalid",
+  );
+
+  const total = valid.length;
+  const now = Date.now();
+  const futureScheduled = valid.filter((a) => a.startTime > now).length;
+
+  // Time-to-book is from the lead's dateAdded (need to look up). Skip — we'd
+  // need a setterLeads join keyed by ghlContactId which is doable but adds
+  // a per-appointment read. For the GHL appointments source we have
+  // bookedAt directly, but no easy dateAdded lookup. Mark as null for v1.
+  const medianTimeToBookMs: number | null = null;
+
+  const byDayOfWeek = [0, 0, 0, 0, 0, 0, 0];
+  for (const a of valid) {
+    const dow = dayOfWeekInTz(a.bookedAt, tz);
+    byDayOfWeek[dow]++;
+  }
+
+  // Per-setter attribution from bookedByGhlUserId (when present).
+  const bookingsByUser = new Map<string, number>();
+  for (const a of valid) {
+    if (!a.bookedByGhlUserId) continue;
+    bookingsByUser.set(
+      a.bookedByGhlUserId,
+      (bookingsByUser.get(a.bookedByGhlUserId) ?? 0) + 1,
+    );
+  }
+  const perSetter = Array.from(bookingsByUser.entries())
+    .map(([ghlUserId, bookingCount]) => ({
+      ghlUserId,
+      name: args.perSetterNames.get(ghlUserId) ?? "Unknown setter",
+      bookingCount,
+    }))
+    .sort((a, b) => b.bookingCount - a.bookingCount);
+
+  return {
+    ...base,
+    source: "setterAppointments",
+    total,
+    futureScheduled,
+    medianTimeToBookMs,
+    byDayOfWeek,
+    // setterAppointments doesn't easily expose pre-call qualification
+    // (would require joining setterLeadEvents per appointment). Leave
+    // unset for the GHL path; surfaces only on calendarEvents path for v1.
+    preCallQualificationRate: null,
+    preCallQualifiedCount: 0,
+    perSetter,
+  };
+}
+
+async function computeBookingsFromCalendarEvents(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: {
+    teamId: string;
+    rangeStart: number;
+    rangeEnd: number;
+    team: Doc<"teams"> | null;
+    perSetterNames: Map<string, string>;
+    connectedSetterLeadIds: Set<string>;
+  },
+  base: BookingsData,
+): Promise<BookingsData> {
+  const tz = args.team?.timezone || "America/New_York";
+  const matcher = await buildBookingMatcherIndex(
+    ctx,
+    args.teamId as Id<"teams">,
+    args.rangeStart,
+    args.rangeEnd,
+  );
+
+  if (matcher.bookings.length === 0) {
+    return {
+      ...base,
+      source: matcher.externalAttendeeEventCount > 0 ? "calendarEvents" : "none",
+      rangeClampedToDays: matcher.rangeClampedToDays,
+    };
+  }
+
+  const total = matcher.bookings.length;
+  const now = Date.now();
+  const futureScheduled = matcher.bookings.filter(
+    (b) => b.startTime > now,
+  ).length;
+
+  // Time-to-book — median of (creationTime - dateAdded). Outlier cap at
+  // 90 days to suppress historical sync artifacts where the event existed
+  // before Sequ3nce was connected.
+  const TIME_TO_BOOK_CAP_MS = 90 * 24 * 60 * 60_000;
+  const speeds = matcher.bookings
+    .map((b) => b.calendarEventCreationTime - b.leadDateAdded)
+    .filter((d) => d >= 0 && d <= TIME_TO_BOOK_CAP_MS)
+    .sort((a, b) => a - b);
+  const medianTimeToBookMs =
+    speeds.length > 0 ? speeds[Math.floor(speeds.length * 0.5)] : null;
+
+  const byDayOfWeek = [0, 0, 0, 0, 0, 0, 0];
+  for (const b of matcher.bookings) {
+    const dow = dayOfWeekInTz(b.calendarEventCreationTime, tz);
+    byDayOfWeek[dow]++;
+  }
+
+  // Pre-call qualification + per-setter attribution. Both need per-contact
+  // event lookups. Batch the reads to avoid blowing the 16 MiB limit on
+  // teams with lots of bookings.
+  //
+  // Pre-call: fetch all dial_outbound + sms_outbound events for the team
+  // in the booking-range lookback window, group by ghlContactId →
+  // earliest event timestamp. Then check per-booking in memory.
+  const BOOKING_LOOKBACK_MS = 60 * 24 * 60 * 60_000;
+  const lookbackStart = args.rangeStart - BOOKING_LOOKBACK_MS;
+  const [dials, smsOut] = await Promise.all([
+    ctx.db
+      .query("setterLeadEvents")
+      .withIndex("by_team_and_type_and_time", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .eq("eventType", "dial_outbound")
+          .gte("occurredAt", lookbackStart)
+          .lt("occurredAt", args.rangeEnd),
+      )
+      .take(50_000),
+    ctx.db
+      .query("setterLeadEvents")
+      .withIndex("by_team_and_type_and_time", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .eq("eventType", "sms_outbound")
+          .gte("occurredAt", lookbackStart)
+          .lt("occurredAt", args.rangeEnd),
+      )
+      .take(50_000),
+  ]);
+  const earliestTouchByContact = new Map<string, number>();
+  for (const ev of [...dials, ...smsOut] as Array<{
+    ghlContactId: string;
+    occurredAt: number;
+  }>) {
+    const prev = earliestTouchByContact.get(ev.ghlContactId);
+    if (prev === undefined || ev.occurredAt < prev) {
+      earliestTouchByContact.set(ev.ghlContactId, ev.occurredAt);
+    }
+  }
+
+  let preCallQualifiedCount = 0;
+  for (const booking of matcher.bookings) {
+    const earliest = earliestTouchByContact.get(booking.ghlContactId);
+    if (earliest !== undefined && earliest < booking.calendarEventCreationTime) {
+      preCallQualifiedCount++;
+    }
+  }
+  const preCallQualificationRate =
+    total > 0 ? preCallQualifiedCount / total : null;
+
+  // Per-setter attribution. Group dial events by ghlContactId → first dialer
+  // (the lead's primary setter, same pattern as firstDialByContact above).
+  // For booked leads, count credit per primary setter.
+  const firstDialerByContact = new Map<string, string>();
+  for (const ev of dials as Array<{
+    ghlContactId: string;
+    ghlUserId?: string;
+    occurredAt: number;
+  }>) {
+    if (!ev.ghlUserId) continue;
+    const existing = firstDialerByContact.get(ev.ghlContactId);
+    if (!existing) firstDialerByContact.set(ev.ghlContactId, ev.ghlUserId);
+  }
+  const perSetterCounts = new Map<string, number>();
+  for (const booking of matcher.bookings) {
+    const setterId =
+      firstDialerByContact.get(booking.ghlContactId) ??
+      booking.leadAssignedToGhlUserId ??
+      null;
+    if (!setterId) continue;
+    perSetterCounts.set(
+      setterId,
+      (perSetterCounts.get(setterId) ?? 0) + 1,
+    );
+  }
+  const perSetter = Array.from(perSetterCounts.entries())
+    .map(([ghlUserId, bookingCount]) => ({
+      ghlUserId,
+      name: args.perSetterNames.get(ghlUserId) ?? "Unknown setter",
+      bookingCount,
+    }))
+    .sort((a, b) => b.bookingCount - a.bookingCount);
+
+  // Connections → bookings %: matched leads with ≥1 connection AND ≥1 booking
+  // divided by matched leads with ≥1 connection.
+  const bookedLeadIds = new Set(
+    matcher.bookings.map((b) => String(b.setterLeadId)),
+  );
+  const connectedCount = args.connectedSetterLeadIds.size;
+  const connectedAndBookedCount = Array.from(
+    args.connectedSetterLeadIds,
+  ).filter((id) => bookedLeadIds.has(id)).length;
+  const connectionsToBookingsRate =
+    connectedCount > 0 ? connectedAndBookedCount / connectedCount : null;
+
+  return {
+    ...base,
+    source: "calendarEvents",
+    total,
+    futureScheduled,
+    medianTimeToBookMs,
+    byDayOfWeek,
+    preCallQualificationRate,
+    preCallQualifiedCount,
+    perSetter,
+    connectionsToBookingsRate,
+    rangeClampedToDays: matcher.rangeClampedToDays,
+  };
+}
+
+function dayOfWeekInTz(ts: number, tz: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "short",
+  }).formatToParts(new Date(ts));
+  const wd = parts.find((p) => p.type === "weekday")?.value ?? "Sun";
+  return ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 } as Record<
+    string,
+    number
+  >)[wd];
 }
 
 // 14-day forward window: a lead added on day 0 may have a closer call

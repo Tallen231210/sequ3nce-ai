@@ -179,6 +179,28 @@ export default defineSchema({
     // windows where leads arrived but didn't get dialed for an unusually
     // long time (≥3× the team's 30-day baseline median time-to-first-dial).
     // Sent next-morning at hourLocal (default 9). Off by default.
+    // Dashboard Phase 4 — auto-detected booking flow type. Recomputed daily
+    // by setter-booking-flow-detection cron. Customers can override in
+    // Settings. The dashboard uses the override when set, otherwise the
+    // detected value, otherwise "unknown" (treated as self_book for display).
+    setterBookingFlowDetected: v.optional(
+      v.union(
+        v.literal("setter_drives"),
+        v.literal("self_book"),
+        v.literal("mixed"),
+        v.literal("unknown"),
+      ),
+    ),
+    setterBookingFlowDetectedAt: v.optional(v.number()),
+    setterBookingFlowOverride: v.optional(
+      v.union(
+        v.literal("auto"),
+        v.literal("setter_drives"),
+        v.literal("self_book"),
+        v.literal("mixed"),
+      ),
+    ),
+
     setterCoverageGapEnabled: v.optional(v.boolean()),
     setterCoverageGapChannel: v.optional(v.string()), // "slack" | "discord"
     setterCoverageGapSlackChannelId: v.optional(v.string()),
