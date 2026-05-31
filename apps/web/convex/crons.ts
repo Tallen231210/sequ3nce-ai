@@ -121,6 +121,17 @@ crons.interval(
   internal.setterDataNotifications.runCoverageGapDigest,
 );
 
+// Hyros Attribution Poll (Phase 5 read direction): every 30 min, bounded
+// per-team at 100 leads. Reconciliation backstop for the webhook path —
+// if a webhook never fires or arrives delayed, the poll catches up. Only
+// fires for teams that have configured a Hyros API key. No-op for the
+// many teams without Hyros integrated.
+crons.interval(
+  "setter-hyros-attribution-poll",
+  { minutes: 30 },
+  internal.hyrosReadActions.runHyrosAttributionPoll,
+);
+
 // Booking Flow Detection (Dashboard Phase 4): daily sweep. For each team
 // with stale (>7 day old) or missing flow detection, recompute by
 // comparing lead.firstDialAt vs matched calendar event creation time

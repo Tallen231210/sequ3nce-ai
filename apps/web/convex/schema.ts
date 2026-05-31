@@ -119,6 +119,10 @@ export default defineSchema({
     hyrosApiKey: v.optional(v.string()),
     hyrosEnabled: v.optional(v.boolean()),
     hyrosConnectedAt: v.optional(v.number()),
+    // Hyros read direction (Phase 5) — shared-secret for verifying inbound
+    // webhook signatures. Encrypted via lib/encrypt the same way hyrosApiKey is.
+    hyrosWebhookSecret: v.optional(v.string()),
+    hyrosWebhookConfiguredAt: v.optional(v.number()),
     // GoHighLevel CRM integration (legacy API-key flow — disposition sync)
     // Kept for backwards compatibility; the new Setter Data feature uses
     // OAuth tokens via setterGhlInstallations instead. Phase 3 will rebuild
@@ -1951,13 +1955,56 @@ export default defineSchema({
     // Bookkeeping
     lastActivityAt: v.optional(v.number()),
     lastSyncedAt: v.number(),
+    // Hyros read direction (Phase 5) — denormalized first-touch and
+    // last-touch attribution from Hyros. Populated by either the inbound
+    // hyrosWebhook handler (real-time on lead.opted.in) or the
+    // setter-hyros-attribution-poll cron (reconciliation backstop). UI
+    // groups the Lead Sources panel by trafficSource when present,
+    // falling back to lead.source for non-Hyros customers.
+    hyrosFirstSource: v.optional(
+      v.object({
+        trafficSource: v.string(),
+        trafficSourceCategory: v.optional(v.string()),
+        adSourceId: v.optional(v.string()),
+        adSourcePlatform: v.optional(v.string()),
+        adAccountId: v.optional(v.string()),
+        sourceLinkId: v.optional(v.string()),
+        sourceLinkName: v.optional(v.string()),
+        sourceLinkAdId: v.optional(v.string()),
+        clickDate: v.optional(v.number()),
+        organic: v.optional(v.boolean()),
+      }),
+    ),
+    hyrosLastSource: v.optional(
+      v.object({
+        trafficSource: v.string(),
+        trafficSourceCategory: v.optional(v.string()),
+        adSourceId: v.optional(v.string()),
+        adSourcePlatform: v.optional(v.string()),
+        adAccountId: v.optional(v.string()),
+        sourceLinkId: v.optional(v.string()),
+        sourceLinkName: v.optional(v.string()),
+        sourceLinkAdId: v.optional(v.string()),
+        clickDate: v.optional(v.number()),
+        organic: v.optional(v.boolean()),
+      }),
+    ),
+    hyrosAttributionFetchedAt: v.optional(v.number()),
+    hyrosAttributionStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("found"),
+        v.literal("not_found"),
+      ),
+    ),
   })
     .index("by_team", ["teamId"])
     .index("by_team_and_assigned", ["teamId", "assignedToGhlUserId"])
     .index("by_team_and_connected", ["teamId", "isConnected"])
     .index("by_team_and_date_added", ["teamId", "dateAdded"])
     .index("by_team_and_ghl_contact_id", ["teamId", "ghlContactId"])
-    .index("by_team_and_last_activity", ["teamId", "lastActivityAt"]),
+    .index("by_team_and_last_activity", ["teamId", "lastActivityAt"])
+    .index("by_team_and_hyros_status", ["teamId", "hyrosAttributionStatus"]),
 
   // Append-only event log. Source of truth for all per-lead activity. Powers
   // time-series reports (working hours heatmap, source attribution trends,
@@ -2076,6 +2123,26 @@ export default defineSchema({
     .index("by_received_at", ["receivedAt"])
     .index("by_team_and_received_at", ["teamId", "receivedAt"])
     .index("by_processed", ["processed"]),
+
+  // Hyros webhook audit log (Phase 5 read direction). Raw payload is
+  // stored BEFORE any parsing logic so we can iterate on shape mismatches
+  // without losing data. Mirrors setterWebhookEvents's pattern. Pruned at
+  // 30 days by a follow-up cron (same pattern as pruneWebhookAudit).
+  hyrosWebhookEvents: defineTable({
+    teamId: v.optional(v.id("teams")),
+    eventType: v.string(),
+    rawPayload: v.string(),
+    signatureValid: v.boolean(),
+    receivedAt: v.number(),
+    processed: v.boolean(),
+    processError: v.optional(v.string()),
+    // Dedup hash so retried deliveries become no-ops. sha256 of payload.
+    payloadHash: v.optional(v.string()),
+  })
+    .index("by_received_at", ["receivedAt"])
+    .index("by_team_and_received_at", ["teamId", "receivedAt"])
+    .index("by_processed", ["processed"])
+    .index("by_payload_hash", ["payloadHash"]),
 
   // Phase 2 — Synced GHL appointments. Setter "show rate" is computed
   // off this table: of the appointments a setter booked, how many

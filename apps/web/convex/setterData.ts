@@ -82,16 +82,36 @@ export const getOverview = query({
       )
       .collect()) as Doc<"setterLeads">[];
 
-    // Top-5 lead sources by count.
-    const sourceCounts = new Map<string, number>();
-    for (const lead of leads) {
-      const key = lead.source || "Unknown";
-      sourceCounts.set(key, (sourceCounts.get(key) ?? 0) + 1);
+    // Top-5 lead sources by count. Source-priority: Hyros attribution
+    // (from the Phase 5 read direction) wins when present, falling back
+    // to GHL's source field. Mixed coverage renders both kinds of rows
+    // in the same list with origin tags so the UI can badge them.
+    interface SourceRow {
+      source: string;
+      count: number;
+      origin: "hyros" | "ghl";
     }
-    const sourceMix = Array.from(sourceCounts.entries())
-      .map(([source, count]) => ({ source, count }))
+    const sourceMap = new Map<string, SourceRow>();
+    let hyrosCount = 0;
+    for (const lead of leads) {
+      const fromHyros = lead.hyrosFirstSource?.trafficSource;
+      if (fromHyros) hyrosCount++;
+      const key = fromHyros || lead.source || "Unknown";
+      const origin: "hyros" | "ghl" = fromHyros ? "hyros" : "ghl";
+      const existing = sourceMap.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        sourceMap.set(key, { source: key, count: 1, origin });
+      }
+    }
+    const sourceMix = Array.from(sourceMap.values())
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
+    const sourceMixCoverage = {
+      hyrosCount,
+      totalLeadsWithSource: leads.length,
+    };
 
     // Action queue: top-5 untouched leads, oldest first ("stalest first
     // wins" — managers want to know what's been waiting longest).
@@ -120,6 +140,7 @@ export const getOverview = query({
     return {
       ...scorecard,
       sourceMix,
+      sourceMixCoverage,
       actionQueue,
     };
   },

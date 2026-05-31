@@ -100,7 +100,11 @@ export function OverviewTab({
               actionQueue={data.actionQueue}
               onViewAll={() => onDrillToLeads("untouched")}
             />
-            <SourceMix sources={data.sourceMix} totalLeads={data.totalLeads} />
+            <SourceMix
+              sources={data.sourceMix}
+              totalLeads={data.totalLeads}
+              coverage={data.sourceMixCoverage}
+            />
           </div>
         </>
       )}
