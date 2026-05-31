@@ -25,6 +25,7 @@ interface KpiStripData {
     showRate: number | null;
     activeClosers: number;
     available: boolean;
+    unavailableReason?: "range_too_wide";
   };
 }
 
@@ -141,6 +142,12 @@ function pickShowRateDisplay(data: KpiStripData): {
     return {
       value: `${Math.round(cs.showRate * 100)}%`,
       sub: `${cs.showed} of ${cs.matched} matched · ${cs.closed} closed`,
+    };
+  }
+  if (cs.unavailableReason === "range_too_wide") {
+    return {
+      value: "—",
+      sub: "Pick 60 days or fewer to compute",
     };
   }
   if (cs.activeClosers === 0) {
