@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
+import { buildMatcherIndex, findCallsForLead } from "./setterCloserMatcher";
 
 // ============================================================================
 // Setter Data — pure metrics queries.
@@ -15,6 +16,25 @@ import type { Doc } from "./_generated/dataModel";
 // public read paths live in setterData.ts (Phase 1.9) and do their own
 // auth before fanning out.
 // ============================================================================
+
+/**
+ * Dashboard Phase 2 — per-setter dial cadence aggregation.
+ * "Are they persistent or are they giving up too fast?"
+ */
+export interface ScorecardSetterCadence {
+  /** Distinct leads this setter dialed in the date range. */
+  leadsWithDials: number;
+  /** Mean dials per lead, suppressed (null) when leadsWithDials < 5
+   *  (small-sample noise). */
+  avgDialsPerLead: number | null;
+  /** Percent (0-1) of this setter's in-range leads that received ≥3
+   *  dial attempts. Suppressed (null) when leadsWithDials < 5. */
+  pctLeadsThreeOrMoreAttempts: number | null;
+  /** Median (lastDial - firstDial) per lead, in days. Only computed for
+   *  leads with ≥2 dials — single-dial leads have no "pattern." Null
+   *  when no qualifying leads. */
+  medianPursuitDays: number | null;
+}
 
 export interface ScorecardSetterRow {
   ghlUserId: string;
@@ -32,6 +52,8 @@ export interface ScorecardSetterRow {
   showedCount: number;
   /** Phase 2 — Showed / (Showed + No Show). null if no settled appts. */
   showRate: number | null;
+  /** Dashboard Phase 2 — dial cadence aggregates. */
+  cadence: ScorecardSetterCadence;
 }
 
 export interface ScorecardData {
@@ -53,6 +75,22 @@ export interface ScorecardData {
   /** Per-setter rows, sorted fastest avg-speed first. Setters with
    *  null avgSpeedMs (no dials in the window) are pushed to the end. */
   perSetter: ScorecardSetterRow[];
+  /**
+   * Dashboard Phase 2 — show-rate computed from our own closer-side calls
+   * table instead of GHL appointment objects. Works regardless of whether
+   * the customer uses iClosed/Calendly/spreadsheet/GHL Calendar — we
+   * match leads to closer calls by prospect email/phone (see
+   * setterCloserMatcher). Null when the team has no active closers OR
+   * the matcher found no matches.
+   */
+  closerSide: {
+    matched: number;           // leads that matched at least one closer call
+    showed: number;            // matched leads with at least one settled call != no_show/rescheduled
+    closed: number;            // matched leads with at least one outcome === "closed"
+    showRate: number | null;   // showed / matched, or null when matched === 0
+    activeClosers: number;     // closers in "active" status on the team
+    available: boolean;        // true when activeClosers > 0 AND matched > 0
+  };
 }
 
 /**
@@ -139,6 +177,12 @@ export async function computeScorecard(
           appointmentCount: 0,
           showedCount: 0,
           showRate: null,
+          cadence: {
+            leadsWithDials: 0,
+            avgDialsPerLead: null,
+            pctLeadsThreeOrMoreAttempts: null,
+            medianPursuitDays: null,
+          },
           _speeds: [],
           _noShowCount: 0,
         };
@@ -229,6 +273,41 @@ export async function computeScorecard(
       ensureRow(first.ghlUserId)._speeds.push(first.occurredAt - dateAdded);
     }
 
+    // Dashboard Phase 2 — dial cadence aggregation. For each setter, group
+    // their dial events by lead (ghlContactId) and compute per-lead stats.
+    // The aggregator is keyed by (setter, lead) so multiple setters dialing
+    // the same lead get independent metrics.
+    interface PerLeadCadence {
+      dialCount: number;
+      firstDialAt: number;
+      lastDialAt: number;
+    }
+    const cadenceMap = new Map<string, Map<string, PerLeadCadence>>();
+    for (const ev of dialEvents) {
+      if (!ev.ghlUserId) continue;
+      let leadMap = cadenceMap.get(ev.ghlUserId);
+      if (!leadMap) {
+        leadMap = new Map();
+        cadenceMap.set(ev.ghlUserId, leadMap);
+      }
+      const existing = leadMap.get(ev.ghlContactId);
+      if (existing) {
+        existing.dialCount += 1;
+        if (ev.occurredAt < existing.firstDialAt) {
+          existing.firstDialAt = ev.occurredAt;
+        }
+        if (ev.occurredAt > existing.lastDialAt) {
+          existing.lastDialAt = ev.occurredAt;
+        }
+      } else {
+        leadMap.set(ev.ghlContactId, {
+          dialCount: 1,
+          firstDialAt: ev.occurredAt,
+          lastDialAt: ev.occurredAt,
+        });
+      }
+    }
+
     // Phase 2 — Appointments aggregation. We attribute appointments by
     // bookedByGhlUserId (the setter who booked it), filtered by bookedAt
     // within the date range. Cancelled and Invalid don't count.
@@ -273,6 +352,42 @@ export async function computeScorecard(
       // the UI shows "—" instead of a misleading 0% / 100% badge.
       const settled = row.showedCount + row._noShowCount;
       const setterShowRate = settled > 0 ? row.showedCount / settled : null;
+
+      // Per-setter cadence aggregation. Pull from the cadenceMap built
+      // above. Small-sample suppression for the rate-style metrics.
+      const leadMap = cadenceMap.get(row.ghlUserId) ?? new Map();
+      const leadCadenceValues: PerLeadCadence[] = Array.from(leadMap.values());
+      const leadsWithDials = leadCadenceValues.length;
+
+      let avgDialsPerLead: number | null = null;
+      let pctLeadsThreeOrMoreAttempts: number | null = null;
+      if (leadsWithDials >= 5) {
+        const totalDials = leadCadenceValues.reduce(
+          (s, v) => s + v.dialCount,
+          0,
+        );
+        avgDialsPerLead = totalDials / leadsWithDials;
+        pctLeadsThreeOrMoreAttempts =
+          leadCadenceValues.filter((v) => v.dialCount >= 3).length /
+          leadsWithDials;
+      }
+
+      const pursuitDays: number[] = leadCadenceValues
+        .filter((v) => v.dialCount >= 2)
+        .map((v) => (v.lastDialAt - v.firstDialAt) / (24 * 60 * 60_000));
+      pursuitDays.sort((a, b) => a - b);
+      const medianPursuitDays =
+        pursuitDays.length > 0
+          ? pursuitDays[Math.floor(pursuitDays.length * 0.5)]
+          : null;
+
+      const cadence: ScorecardSetterCadence = {
+        leadsWithDials,
+        avgDialsPerLead,
+        pctLeadsThreeOrMoreAttempts,
+        medianPursuitDays,
+      };
+
       return {
         ghlUserId: row.ghlUserId,
         name: row.name,
@@ -283,6 +398,7 @@ export async function computeScorecard(
         appointmentCount: row.appointmentCount,
         showedCount: row.showedCount,
         showRate: setterShowRate,
+        cadence,
       };
     });
 
@@ -293,6 +409,16 @@ export async function computeScorecard(
       if (a.avgSpeedMs === null) return 1;
       if (b.avgSpeedMs === null) return -1;
       return a.avgSpeedMs - b.avgSpeedMs;
+    });
+
+    // Closer-side show-rate. Uses our own calls table as ground truth so it
+    // works for customers whose appointment data lives outside GHL (iClosed,
+    // Calendly, spreadsheets — see `aicom-ghl-data-shape` memory).
+    const closerSide = await computeCloserSideShowRate(ctx, {
+      teamId: args.teamId,
+      leads,
+      rangeStart: args.rangeStart,
+      rangeEnd: args.rangeEnd,
     });
 
     return {
@@ -308,7 +434,89 @@ export async function computeScorecard(
       totalNoShow,
       showRate,
       perSetter,
+      closerSide,
     };
+}
+
+// 14-day forward window: a lead added on day 0 may have a closer call
+// anywhere from immediately to ~2 weeks out. Wider than that and we start
+// matching unrelated future calls; narrower and we miss legitimate
+// followups.
+const CLOSER_MATCH_LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
+
+async function computeCloserSideShowRate(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: {
+    teamId: string;
+    leads: Doc<"setterLeads">[];
+    rangeStart: number;
+    rangeEnd: number;
+  },
+): Promise<ScorecardData["closerSide"]> {
+  const empty: ScorecardData["closerSide"] = {
+    matched: 0,
+    showed: 0,
+    closed: 0,
+    showRate: null,
+    activeClosers: 0,
+    available: false,
+  };
+
+  // Count active closers — used by the UI to decide between empty-state
+  // copy ("connect Desktop to enable this view") vs the populated stats.
+  const closersAll = await ctx.db
+    .query("closers")
+    .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+    .collect();
+  const activeClosers = closersAll.filter(
+    (c: { status?: string }) => c.status === "active",
+  ).length;
+
+  if (activeClosers === 0 || args.leads.length === 0) {
+    return { ...empty, activeClosers };
+  }
+
+  const index = await buildMatcherIndex(
+    ctx,
+    args.teamId as Id<"teams">,
+    args.rangeStart,
+    args.rangeEnd + CLOSER_MATCH_LOOKAHEAD_MS,
+  );
+
+  let matched = 0;
+  let showed = 0;
+  let closed = 0;
+  for (const lead of args.leads) {
+    const calls = findCallsForLead(index, {
+      email: lead.email,
+      phone: lead.phone,
+    });
+    if (calls.length === 0) continue;
+    matched += 1;
+    // Showed = at least one settled call that wasn't a no-show or reschedule.
+    if (
+      calls.some(
+        (c) =>
+          c.status === "completed" &&
+          c.outcome != null &&
+          c.outcome !== "no_show" &&
+          c.outcome !== "rescheduled",
+      )
+    ) {
+      showed += 1;
+    }
+    if (calls.some((c) => c.outcome === "closed")) closed += 1;
+  }
+
+  return {
+    matched,
+    showed,
+    closed,
+    showRate: matched > 0 ? showed / matched : null,
+    activeClosers,
+    available: matched > 0,
+  };
 }
 
 /**

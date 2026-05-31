@@ -11,11 +11,21 @@ interface KpiStripData {
   avgSpeedMs: number | null;
   p50SpeedMs: number | null;
   p90SpeedMs: number | null;
-  // Phase 2 — appointment rollup
+  // Phase 2 — appointment rollup (from GHL appointment data)
   totalAppointments: number;
   totalShowed: number;
   totalNoShow: number;
   showRate: number | null;
+  // Dashboard Phase 2 — show-rate computed from our own closer-side
+  // calls table. Preferred over GHL data when available.
+  closerSide: {
+    matched: number;
+    showed: number;
+    closed: number;
+    showRate: number | null;
+    activeClosers: number;
+    available: boolean;
+  };
 }
 
 interface KpiStripProps {
@@ -57,16 +67,8 @@ export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
       <KpiCard
         icon={CalendarCheck}
         label="Show rate"
-        value={
-          data.showRate !== null ? `${Math.round(data.showRate * 100)}%` : "—"
-        }
-        sub={
-          data.totalShowed + data.totalNoShow > 0
-            ? `${data.totalShowed} of ${data.totalShowed + data.totalNoShow} settled`
-            : data.totalAppointments > 0
-              ? `${data.totalAppointments} booked, none settled yet`
-              : "No appointments yet"
-        }
+        value={pickShowRateDisplay(data).value}
+        sub={pickShowRateDisplay(data).sub}
       />
       <KpiCard
         icon={AlertCircle}
@@ -121,6 +123,52 @@ function KpiCard({ icon: Icon, label, value, sub, tone, onClick }: KpiCardProps)
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Decide which show-rate source to display. Closer-side (our calls table)
+ * wins when available because it's not dependent on the customer putting
+ * appointment data into GHL. Falls back to GHL appointment objects when
+ * the closer-side hasn't matched anything yet. Final fallback is the
+ * empty/onboarding state.
+ */
+function pickShowRateDisplay(data: KpiStripData): {
+  value: string;
+  sub: string;
+} {
+  const cs = data.closerSide;
+  if (cs.available && cs.showRate !== null) {
+    return {
+      value: `${Math.round(cs.showRate * 100)}%`,
+      sub: `${cs.showed} of ${cs.matched} matched · ${cs.closed} closed`,
+    };
+  }
+  if (cs.activeClosers === 0) {
+    return {
+      value: "—",
+      sub: "Connect a closer to populate",
+    };
+  }
+  if (cs.matched === 0) {
+    return {
+      value: "—",
+      sub: "No closer calls matched yet",
+    };
+  }
+  // Closer-side has matches but none settled — fall to GHL data as a backstop.
+  if (data.showRate !== null) {
+    return {
+      value: `${Math.round(data.showRate * 100)}%`,
+      sub: `${data.totalShowed} of ${data.totalShowed + data.totalNoShow} settled (GHL)`,
+    };
+  }
+  if (data.totalAppointments > 0) {
+    return {
+      value: "—",
+      sub: `${data.totalAppointments} booked, none settled yet`,
+    };
+  }
+  return { value: "—", sub: "No appointments yet" };
 }
 
 function formatDuration(ms: number): string {

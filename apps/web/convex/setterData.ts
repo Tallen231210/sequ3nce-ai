@@ -931,6 +931,135 @@ export const getLeadAgeDecayCurveInternal = internalQuery({
 });
 
 // ----------------------------------------------------------------------------
+// Best-time-to-call heatmap — 7×24 grid of connect rate by hour-of-day +
+// day-of-week. Universal-signal (no GHL appointment data needed).
+// ----------------------------------------------------------------------------
+
+const HEATMAP_MAX_RANGE_MS = 30 * 24 * 60 * 60_000;
+const HEATMAP_EVENT_TAKE = 50_000;
+const HEATMAP_MIN_DIALS_FOR_RATE = 5;
+
+interface HeatmapCell {
+  dialCount: number;
+  connectedCount: number;
+  rate: number | null;
+}
+
+function emptyHeatmapGrid(): HeatmapCell[][] {
+  return Array.from({ length: 7 }, () =>
+    Array.from({ length: 24 }, () => ({
+      dialCount: 0,
+      connectedCount: 0,
+      rate: null as number | null,
+    })),
+  );
+}
+
+const DOW_MAP: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+function bucketLocal(
+  ts: number,
+  timezone: string,
+): { dow: number; hour: number } | null {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(ts));
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "Mon";
+  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const hour = parseInt(hourStr, 10) % 24;
+  const dow = DOW_MAP[weekday];
+  if (dow === undefined) return null;
+  return { dow, hour };
+}
+
+export const getBestTimeToCallHeatmap = query({
+  args: {
+    clerkId: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
+    const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
+    const timezone = team?.timezone || "America/New_York";
+
+    const requestedStart = args.rangeStart;
+    const effectiveStart = Math.max(
+      requestedStart,
+      args.rangeEnd - HEATMAP_MAX_RANGE_MS,
+    );
+    const rangeClampedTo30Days = effectiveStart > requestedStart;
+
+    // Fetch dial + connected events in parallel using the type-and-time index.
+    // Each query is bounded by HEATMAP_EVENT_TAKE; we surface sampleCapHit so
+    // the UI can show a "trimmed" warning if a high-volume team blows the cap.
+    const [dials, connects] = await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ctx.db
+        .query("setterLeadEvents")
+        .withIndex("by_team_and_type_and_time", (q: any) =>
+          q
+            .eq("teamId", teamId)
+            .eq("eventType", "dial_outbound")
+            .gte("occurredAt", effectiveStart)
+            .lt("occurredAt", args.rangeEnd),
+        )
+        .take(HEATMAP_EVENT_TAKE),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ctx.db
+        .query("setterLeadEvents")
+        .withIndex("by_team_and_type_and_time", (q: any) =>
+          q
+            .eq("teamId", teamId)
+            .eq("eventType", "connected")
+            .gte("occurredAt", effectiveStart)
+            .lt("occurredAt", args.rangeEnd),
+        )
+        .take(HEATMAP_EVENT_TAKE),
+    ]);
+
+    const grid = emptyHeatmapGrid();
+    for (const ev of dials as Array<{ occurredAt: number }>) {
+      const b = bucketLocal(ev.occurredAt, timezone);
+      if (!b) continue;
+      grid[b.dow][b.hour].dialCount += 1;
+    }
+    for (const ev of connects as Array<{ occurredAt: number }>) {
+      const b = bucketLocal(ev.occurredAt, timezone);
+      if (!b) continue;
+      grid[b.dow][b.hour].connectedCount += 1;
+    }
+    for (let d = 0; d < 7; d++) {
+      for (let h = 0; h < 24; h++) {
+        const cell = grid[d][h];
+        cell.rate =
+          cell.dialCount >= HEATMAP_MIN_DIALS_FOR_RATE
+            ? cell.connectedCount / cell.dialCount
+            : null;
+      }
+    }
+
+    return {
+      grid,
+      timezone,
+      totalDials: dials.length,
+      totalConnects: connects.length,
+      rangeClampedTo30Days,
+      sampleCapHit:
+        dials.length === HEATMAP_EVENT_TAKE ||
+        connects.length === HEATMAP_EVENT_TAKE,
+    };
+  },
+});
+
+// ----------------------------------------------------------------------------
 // utility
 // ----------------------------------------------------------------------------
 

@@ -282,6 +282,13 @@ export default defineSchema({
     teamId: v.id("teams"),
     scheduledCallId: v.optional(v.id("scheduledCalls")), // Link to calendar event
     prospectName: v.optional(v.string()),
+    // Dashboard Phase 2 — denormalized for the setter↔closer matcher.
+    // Populated at call-create time from the linked calendar event when
+    // available; backfilled for older rows via backfillCallProspectIdentity.
+    // NORMALIZED form: emails lowercased + trimmed; phones digits-only
+    // with US country code stripped (per setterCloserMatcher's helpers).
+    prospectEmail: v.optional(v.string()),
+    prospectPhone: v.optional(v.string()),
     status: v.string(), // "scheduled", "waiting", "on_call", "completed", "no_show", "cancelled"
     outcome: v.optional(v.string()), // "closed", "not_closed", "no_show", "rescheduled"
     dealValue: v.optional(v.number()), // Legacy field - kept for backward compatibility
