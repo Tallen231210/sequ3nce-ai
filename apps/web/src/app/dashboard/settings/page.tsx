@@ -1886,7 +1886,8 @@ export default function SettingsPage() {
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Push call intelligence to Hyros for ad attribution
+                      Surface real ad-source attribution in your lead reports
+                      and push call intelligence to Hyros.
                     </p>
                   </div>
                 </div>
@@ -1965,13 +1966,29 @@ export default function SettingsPage() {
                     <li>Go to <strong>Settings</strong> &rarr; <strong>API</strong></li>
                     <li>Copy your API key and paste it above</li>
                   </ol>
-                  <p className="mt-2 text-blue-500">
-                    Once enabled, go to <strong>Hyros Sync</strong> in the sidebar to review and push call data.
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+                  <p className="font-medium mb-1">
+                    What Hyros gives your dashboard (automatic):
+                  </p>
+                  <p className="mb-1">
+                    Once your API key is saved, your Setter Data dashboard&apos;s
+                    Lead Sources panel switches from CRM source names (calendar
+                    titles, form names) to real ad-source attribution from
+                    Hyros — &ldquo;Facebook Ads 38%&rdquo;, &ldquo;Google Ads 22%&rdquo;,
+                    actual ad creative names.
+                  </p>
+                  <p className="text-emerald-700">
+                    New leads start appearing with attribution within 30 minutes.
+                    No additional Hyros-side configuration required.
                   </p>
                 </div>
 
                 <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-zinc-600">
-                  <p className="font-medium mb-1">What gets pushed to Hyros:</p>
+                  <p className="font-medium mb-1">
+                    What you can push back to Hyros (manual):
+                  </p>
                   <ul className="list-disc list-inside space-y-0.5">
                     <li>Lead profiles with rich tags (outcome, objections, engagement, belief scores)</li>
                     <li>Call records (qualified/unqualified)</li>
@@ -1979,7 +1996,9 @@ export default function SettingsPage() {
                     <li>Custom events (call completed, no-show, follow-up)</li>
                   </ul>
                   <p className="mt-2 text-zinc-500">
-                    All data is reviewed by a manager before being pushed — nothing is sent automatically.
+                    Go to <strong>Hyros Sync</strong> in the sidebar to handpick
+                    which deals to push. All data is reviewed by a manager before
+                    being pushed — nothing is sent automatically.
                   </p>
                 </div>
               </div>
