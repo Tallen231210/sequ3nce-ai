@@ -278,6 +278,91 @@ export const updateSpeedToLeadConfig = mutation({
 });
 
 // ----------------------------------------------------------------------------
+// updateCoverageGapConfig — Dashboard Phase 3 daily coverage-gap digest
+// ----------------------------------------------------------------------------
+
+/**
+ * Toggle + configure the daily coverage-gap digest. Sent next-morning at
+ * hourLocal (default 9 in team timezone). Lists yesterday's worst lead-
+ * coverage windows. Off by default — opt-in per team.
+ *
+ * minLeads must be in [1, 50]. Below 1 every hour with any lead becomes
+ * a "gap"; above 50 the digest becomes too coarse to be useful.
+ */
+export const updateCoverageGapConfig = mutation({
+  args: {
+    clerkId: v.string(),
+    enabled: v.optional(v.boolean()),
+    channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
+    slackChannelId: v.optional(v.string()),
+    discordWebhookUrl: v.optional(v.string()),
+    hourLocal: v.optional(v.number()),
+    minLeads: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx, args.clerkId);
+    const teamId = user.teamId as Id<"teams">;
+
+    if (args.hourLocal !== undefined) {
+      if (
+        !Number.isInteger(args.hourLocal) ||
+        args.hourLocal < 0 ||
+        args.hourLocal > 23
+      ) {
+        throw new Error("hourLocal must be an integer 0-23");
+      }
+    }
+    if (args.minLeads !== undefined) {
+      if (
+        !Number.isInteger(args.minLeads) ||
+        args.minLeads < 1 ||
+        args.minLeads > 50
+      ) {
+        throw new Error("minLeads must be an integer 1-50");
+      }
+    }
+    if (args.slackChannelId !== undefined && args.slackChannelId.trim() === "") {
+      throw new Error("slackChannelId cannot be empty");
+    }
+    if (args.discordWebhookUrl !== undefined) {
+      const trimmed = args.discordWebhookUrl.trim();
+      if (trimmed === "") {
+        throw new Error("discordWebhookUrl cannot be empty");
+      }
+      if (
+        !trimmed.startsWith("https://discord.com/api/webhooks/") &&
+        !trimmed.startsWith("https://discordapp.com/api/webhooks/")
+      ) {
+        throw new Error("discordWebhookUrl must be a Discord webhook URL");
+      }
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (args.enabled !== undefined) {
+      patch.setterCoverageGapEnabled = args.enabled;
+    }
+    if (args.channel !== undefined) {
+      patch.setterCoverageGapChannel = args.channel;
+    }
+    if (args.slackChannelId !== undefined) {
+      patch.setterCoverageGapSlackChannelId = args.slackChannelId;
+    }
+    if (args.discordWebhookUrl !== undefined) {
+      patch.setterCoverageGapDiscordWebhookUrl = args.discordWebhookUrl;
+    }
+    if (args.hourLocal !== undefined) {
+      patch.setterCoverageGapHourLocal = args.hourLocal;
+    }
+    if (args.minLeads !== undefined) {
+      patch.setterCoverageGapMinLeadsThreshold = args.minLeads;
+    }
+
+    await ctx.db.patch(teamId, patch);
+    return { success: true };
+  },
+});
+
+// ----------------------------------------------------------------------------
 // updateDispositionSyncConfig — Phase 3c toggle in Settings
 // ----------------------------------------------------------------------------
 

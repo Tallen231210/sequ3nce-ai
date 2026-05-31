@@ -111,4 +111,14 @@ crons.interval(
   internal.setterDataNotifications.runUntouchedAlertSweep,
 );
 
+// Coverage Gap Digest (Dashboard Phase 3): hourly cron + per-team gating
+// on local-tz delivery hour (default 9am). Surfaces yesterday's worst
+// lead-coverage windows in a Slack/Discord digest. Empty-state aware:
+// teams with no gaps don't get pinged. Off by default.
+crons.interval(
+  "setter-coverage-gap-digest",
+  { hours: 1 },
+  internal.setterDataNotifications.runCoverageGapDigest,
+);
+
 export default crons;

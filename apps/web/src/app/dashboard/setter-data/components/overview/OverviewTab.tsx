@@ -11,6 +11,8 @@ import { FunnelChart } from "./FunnelChart";
 import { LeadAgeDecayCurve } from "./LeadAgeDecayCurve";
 import { BestTimeToCallHeatmap } from "./BestTimeToCallHeatmap";
 import { DialCadencePanel } from "./DialCadencePanel";
+import { CoverageGapPanel } from "./CoverageGapPanel";
+import { ConnectRateAnomalyBanner } from "./ConnectRateAnomalyBanner";
 import { PipelineFunnel } from "./PipelineFunnel";
 import { Loader2 } from "lucide-react";
 
@@ -81,11 +83,13 @@ export function OverviewTab({
       {/* Loaded with data */}
       {data && data.totalLeads > 0 && (
         <>
+          <ConnectRateAnomalyBanner />
           <KpiStrip data={data} onUntouchedClick={() => onDrillToLeads("untouched")} />
           <FunnelChart data={data} />
           <LeadAgeDecayCurve rangeStart={rangeStart} rangeEnd={rangeEnd} />
           <BestTimeToCallHeatmap rangeStart={rangeStart} rangeEnd={rangeEnd} />
           <DialCadencePanel perSetter={data.perSetter} />
+          <CoverageGapPanel />
           {pipelines && pipelines.length > 0 && (
             <PipelineFunnel pipelines={pipelines} />
           )}

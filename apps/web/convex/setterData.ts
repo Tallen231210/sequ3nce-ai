@@ -420,6 +420,15 @@ export const getMySettings = query({
             ? Math.round(team.setterSpeedToLeadSlowThresholdMs / 60000)
             : undefined,
       },
+      // Dashboard Phase 3 — daily coverage-gap digest config. Off by default.
+      coverageGap: {
+        enabled: team.setterCoverageGapEnabled ?? false,
+        channel: team.setterCoverageGapChannel,
+        slackChannelId: team.setterCoverageGapSlackChannelId,
+        discordWebhookUrl: team.setterCoverageGapDiscordWebhookUrl,
+        hourLocal: team.setterCoverageGapHourLocal,
+        minLeads: team.setterCoverageGapMinLeadsThreshold,
+      },
       // Team timezone (read-only here — set elsewhere in account settings).
       timezone: team.timezone,
     };
@@ -1058,6 +1067,526 @@ export const getBestTimeToCallHeatmap = query({
     };
   },
 });
+
+// ----------------------------------------------------------------------------
+// Dashboard Phase 3 — Connect-rate anomaly detection
+// ----------------------------------------------------------------------------
+
+const ANOMALY_THIS_WEEK_MS = 7 * 24 * 60 * 60_000;
+const ANOMALY_BASELINE_WEEKS = 4;
+const ANOMALY_BASELINE_MS = ANOMALY_BASELINE_WEEKS * ANOMALY_THIS_WEEK_MS;
+// Sample-size floors prevent false positives on low-volume weeks.
+const ANOMALY_MIN_THIS_WEEK_DIALS = 50;
+const ANOMALY_MIN_BASELINE_DIALS = 200;
+// Significance threshold — a drop is only flagged when this severe.
+const ANOMALY_RELATIVE_DROP_THRESHOLD = 0.30;
+const ANOMALY_TOP_CONTRIBUTORS_N = 3;
+
+interface ConnectRateAnomaly {
+  thisWeekRate: number;
+  baselineRate: number;
+  relativeDropPct: number;
+  absoluteDropPts: number;
+  thisWeekDials: number;
+  baselineDials: number;
+  topContributors: Array<{
+    ghlUserId: string;
+    name: string;
+    thisWeekRate: number | null;
+    baselineRate: number | null;
+    dropPts: number;
+  }>;
+}
+
+export const getConnectRateAnomaly = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args): Promise<ConnectRateAnomaly | null> => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
+
+    const now = Date.now();
+    const thisWeekStart = now - ANOMALY_THIS_WEEK_MS;
+    const baselineStart = now - ANOMALY_THIS_WEEK_MS - ANOMALY_BASELINE_MS;
+    const baselineEnd = thisWeekStart;
+
+    // Pull dial + connected events for the full 5-week window in a single
+    // pass per event type — cheaper than two separate queries.
+    const fullWindowStart = baselineStart;
+    const [allDials, allConnects] = await Promise.all([
+      ctx.db
+        .query("setterLeadEvents")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_team_and_type_and_time", (q: any) =>
+          q
+            .eq("teamId", teamId)
+            .eq("eventType", "dial_outbound")
+            .gte("occurredAt", fullWindowStart)
+            .lt("occurredAt", now),
+        )
+        .take(50_000),
+      ctx.db
+        .query("setterLeadEvents")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_team_and_type_and_time", (q: any) =>
+          q
+            .eq("teamId", teamId)
+            .eq("eventType", "connected")
+            .gte("occurredAt", fullWindowStart)
+            .lt("occurredAt", now),
+        )
+        .take(50_000),
+    ]);
+
+    let thisWeekDials = 0;
+    let thisWeekConnects = 0;
+    let baselineDials = 0;
+    let baselineConnects = 0;
+    const setterStats = new Map<
+      string,
+      { tDials: number; tConnects: number; bDials: number; bConnects: number }
+    >();
+    function ensureSetter(id: string) {
+      let s = setterStats.get(id);
+      if (!s) {
+        s = { tDials: 0, tConnects: 0, bDials: 0, bConnects: 0 };
+        setterStats.set(id, s);
+      }
+      return s;
+    }
+
+    for (const ev of allDials as Array<{
+      occurredAt: number;
+      ghlUserId?: string;
+    }>) {
+      const isThisWeek = ev.occurredAt >= thisWeekStart;
+      const isBaseline =
+        ev.occurredAt >= baselineStart && ev.occurredAt < baselineEnd;
+      if (isThisWeek) thisWeekDials += 1;
+      else if (isBaseline) baselineDials += 1;
+      if (ev.ghlUserId) {
+        const s = ensureSetter(ev.ghlUserId);
+        if (isThisWeek) s.tDials += 1;
+        else if (isBaseline) s.bDials += 1;
+      }
+    }
+    for (const ev of allConnects as Array<{
+      occurredAt: number;
+      ghlUserId?: string;
+    }>) {
+      const isThisWeek = ev.occurredAt >= thisWeekStart;
+      const isBaseline =
+        ev.occurredAt >= baselineStart && ev.occurredAt < baselineEnd;
+      if (isThisWeek) thisWeekConnects += 1;
+      else if (isBaseline) baselineConnects += 1;
+      if (ev.ghlUserId) {
+        const s = ensureSetter(ev.ghlUserId);
+        if (isThisWeek) s.tConnects += 1;
+        else if (isBaseline) s.bConnects += 1;
+      }
+    }
+
+    // Sample-size suppression — avoid flagging variance on low-volume teams.
+    if (
+      thisWeekDials < ANOMALY_MIN_THIS_WEEK_DIALS ||
+      baselineDials < ANOMALY_MIN_BASELINE_DIALS
+    ) {
+      return null;
+    }
+
+    const thisWeekRate = thisWeekConnects / thisWeekDials;
+    const baselineRate = baselineConnects / baselineDials;
+    if (baselineRate === 0) return null;
+    const relativeDropPct = (baselineRate - thisWeekRate) / baselineRate;
+    if (relativeDropPct < ANOMALY_RELATIVE_DROP_THRESHOLD) return null;
+
+    // Per-setter top contributors (largest absolute drop in pts).
+    const reps = (await ctx.db
+      .query("setterReps")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .collect()) as Doc<"setterReps">[];
+    const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
+
+    const contributors: Array<{
+      ghlUserId: string;
+      name: string;
+      thisWeekRate: number | null;
+      baselineRate: number | null;
+      dropPts: number;
+    }> = [];
+    for (const [ghlUserId, s] of setterStats) {
+      // Require a meaningful sample on both sides — a setter with 2 baseline
+      // dials and 0 this-week creates noisy "top contributor" rows.
+      if (s.bDials < 20 || s.tDials < 5) continue;
+      const tr = s.tDials > 0 ? s.tConnects / s.tDials : null;
+      const br = s.bDials > 0 ? s.bConnects / s.bDials : null;
+      if (tr === null || br === null) continue;
+      const drop = br - tr;
+      if (drop <= 0) continue; // not a contributor to the drop
+      contributors.push({
+        ghlUserId,
+        name: repNameByGhlUserId.get(ghlUserId) ?? "Unknown",
+        thisWeekRate: tr,
+        baselineRate: br,
+        dropPts: drop,
+      });
+    }
+    contributors.sort((a, b) => b.dropPts - a.dropPts);
+
+    return {
+      thisWeekRate,
+      baselineRate,
+      relativeDropPct,
+      absoluteDropPts: baselineRate - thisWeekRate,
+      thisWeekDials,
+      baselineDials,
+      topContributors: contributors.slice(0, ANOMALY_TOP_CONTRIBUTORS_N),
+    };
+  },
+});
+
+// ----------------------------------------------------------------------------
+// Dashboard Phase 3 — Coverage gap detection
+// ----------------------------------------------------------------------------
+
+const COVERAGE_GAP_BASELINE_DAYS = 30;
+const COVERAGE_GAP_MIN_LEADS_DEFAULT = 3;
+const COVERAGE_GAP_BASELINE_MULTIPLIER = 3;        // gap = median >= 3× baseline
+const COVERAGE_GAP_ABSOLUTE_FLOOR_MS = 60 * 60_000; // …AND ≥ 60 minutes
+const COVERAGE_GAP_TOP_N = 5;
+
+const DAY_LABELS_FULL = [
+  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+];
+
+interface CoverageGapWindow {
+  dayLabel: string;
+  dow: number;
+  startHour: number;
+  endHour: number;
+  leadCount: number;
+  medianTimeToFirstDialMs: number | null;
+  neverDialedCount: number;
+}
+
+interface CoverageGapDigest {
+  date: string;                   // "YYYY-MM-DD" in team timezone
+  timezone: string;
+  windows: CoverageGapWindow[];
+  baselineMedianMs: number | null;
+  totalLeadsInDay: number;
+}
+
+async function computeCoverageGapDigest(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  teamId: Id<"teams">,
+  forDate: { year: number; month: number; day: number },
+  timezone: string,
+  minLeadsThreshold: number,
+): Promise<CoverageGapDigest> {
+  // Resolve the [start, end) UTC ms range for the target local date.
+  const dateStr = `${forDate.year}-${String(forDate.month).padStart(2, "0")}-${String(forDate.day).padStart(2, "0")}`;
+  const targetRange = getLocalDateRangeUtcLocal(dateStr, timezone);
+
+  // Pull yesterday's leads + 30-day baseline leads in parallel.
+  const [dayLeads, baselineLeads] = await Promise.all([
+    ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date_added", (q: any) =>
+        q
+          .eq("teamId", teamId)
+          .gte("dateAdded", targetRange.startMs)
+          .lt("dateAdded", targetRange.endMs),
+      )
+      .collect(),
+    ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date_added", (q: any) =>
+        q
+          .eq("teamId", teamId)
+          .gte(
+            "dateAdded",
+            targetRange.startMs -
+              COVERAGE_GAP_BASELINE_DAYS * 24 * 60 * 60_000,
+          )
+          .lt("dateAdded", targetRange.startMs),
+      )
+      .collect(),
+  ]);
+
+  const empty: CoverageGapDigest = {
+    date: dateStr,
+    timezone,
+    windows: [],
+    baselineMedianMs: null,
+    totalLeadsInDay: 0,
+  };
+  if (!dayLeads || dayLeads.length === 0) return empty;
+
+  // Baseline median time-to-first-dial across the prior 30 days.
+  const baselineSpeeds = (baselineLeads as Doc<"setterLeads">[])
+    .filter((l) => typeof l.firstDialAt === "number")
+    .map((l) => (l.firstDialAt as number) - l.dateAdded)
+    .filter((ms) => ms >= 0 && ms <= 30 * 24 * 60 * 60_000)
+    .sort((a, b) => a - b);
+  const baselineMedianMs =
+    baselineSpeeds.length > 0
+      ? baselineSpeeds[Math.floor(baselineSpeeds.length * 0.5)]
+      : null;
+
+  // Bucket day's leads by hour-of-arrival in team timezone.
+  interface HourBucket {
+    speeds: number[];
+    leadCount: number;
+    neverDialedCount: number;
+  }
+  const hourBuckets: HourBucket[] = Array.from({ length: 24 }, () => ({
+    speeds: [],
+    leadCount: 0,
+    neverDialedCount: 0,
+  }));
+  let dayDow = -1;
+  for (const lead of dayLeads as Doc<"setterLeads">[]) {
+    const local = bucketLocal(lead.dateAdded, timezone);
+    if (!local) continue;
+    if (dayDow === -1) dayDow = local.dow;
+    const bucket = hourBuckets[local.hour];
+    bucket.leadCount += 1;
+    if (typeof lead.firstDialAt === "number") {
+      const speed = lead.firstDialAt - lead.dateAdded;
+      if (speed >= 0) bucket.speeds.push(speed);
+    } else {
+      bucket.neverDialedCount += 1;
+    }
+  }
+
+  // Identify gap hours: leadCount >= threshold AND median time-to-first-dial
+  // exceeds the gap threshold. Never-dialed leads also raise concern even if
+  // no median can be computed — treat all-never-dialed hours as gaps too.
+  const gapThresholdMs = baselineMedianMs
+    ? Math.max(
+        baselineMedianMs * COVERAGE_GAP_BASELINE_MULTIPLIER,
+        COVERAGE_GAP_ABSOLUTE_FLOOR_MS,
+      )
+    : COVERAGE_GAP_ABSOLUTE_FLOOR_MS;
+
+  const gapHours: Array<{
+    hour: number;
+    leadCount: number;
+    medianMs: number | null;
+    neverDialedCount: number;
+  }> = [];
+  for (let h = 0; h < 24; h++) {
+    const b = hourBuckets[h];
+    if (b.leadCount < minLeadsThreshold) continue;
+    const sortedSpeeds = b.speeds.slice().sort((a, b) => a - b);
+    const median =
+      sortedSpeeds.length > 0
+        ? sortedSpeeds[Math.floor(sortedSpeeds.length * 0.5)]
+        : null;
+    // Pull leads with no dial yet count as the worst possible gap signal.
+    const allNeverDialed = b.neverDialedCount === b.leadCount;
+    const isGap = allNeverDialed || (median !== null && median >= gapThresholdMs);
+    if (isGap) {
+      gapHours.push({
+        hour: h,
+        leadCount: b.leadCount,
+        medianMs: median,
+        neverDialedCount: b.neverDialedCount,
+      });
+    }
+  }
+
+  // Cluster adjacent gap hours into windows.
+  const windows: CoverageGapWindow[] = [];
+  let cur: CoverageGapWindow | null = null;
+  for (const g of gapHours) {
+    if (cur && cur.endHour === g.hour) {
+      cur.endHour = g.hour + 1;
+      cur.leadCount += g.leadCount;
+      cur.neverDialedCount += g.neverDialedCount;
+      // Recompute median across the window? Keep the worst (max) hour's
+      // median as the displayed signal — manager cares about the floor.
+      if (
+        g.medianMs !== null &&
+        (cur.medianTimeToFirstDialMs === null ||
+          g.medianMs > cur.medianTimeToFirstDialMs)
+      ) {
+        cur.medianTimeToFirstDialMs = g.medianMs;
+      }
+    } else {
+      cur = {
+        dayLabel: dayDow >= 0 ? DAY_LABELS_FULL[dayDow] : "—",
+        dow: dayDow,
+        startHour: g.hour,
+        endHour: g.hour + 1,
+        leadCount: g.leadCount,
+        medianTimeToFirstDialMs: g.medianMs,
+        neverDialedCount: g.neverDialedCount,
+      };
+      windows.push(cur);
+    }
+  }
+
+  // Rank by impact: leadCount × (median/baseline ratio). Higher = worse.
+  windows.sort((a, b) => {
+    const ratioA =
+      a.medianTimeToFirstDialMs !== null && baselineMedianMs !== null
+        ? a.medianTimeToFirstDialMs / baselineMedianMs
+        : a.neverDialedCount > 0
+          ? Number.POSITIVE_INFINITY
+          : 1;
+    const ratioB =
+      b.medianTimeToFirstDialMs !== null && baselineMedianMs !== null
+        ? b.medianTimeToFirstDialMs / baselineMedianMs
+        : b.neverDialedCount > 0
+          ? Number.POSITIVE_INFINITY
+          : 1;
+    const impactA = a.leadCount * (Number.isFinite(ratioA) ? ratioA : 100);
+    const impactB = b.leadCount * (Number.isFinite(ratioB) ? ratioB : 100);
+    return impactB - impactA;
+  });
+
+  return {
+    date: dateStr,
+    timezone,
+    windows: windows.slice(0, COVERAGE_GAP_TOP_N),
+    baselineMedianMs,
+    totalLeadsInDay: dayLeads.length,
+  };
+}
+
+/**
+ * Public query — feeds the CoverageGapPanel on the Overview tab. Defaults
+ * to yesterday in team timezone if no targetDate provided.
+ */
+export const getCoverageGapDigest = query({
+  args: {
+    clerkId: v.string(),
+    targetDate: v.optional(v.string()), // "YYYY-MM-DD" in team timezone
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
+    const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
+    if (!team) return null;
+    const timezone = team.timezone || "America/New_York";
+
+    const minLeads =
+      team.setterCoverageGapMinLeadsThreshold ?? COVERAGE_GAP_MIN_LEADS_DEFAULT;
+
+    const forDate = args.targetDate
+      ? parseDateStringSafe(args.targetDate)
+      : yesterdayInTimezone(timezone);
+    if (!forDate) return null;
+
+    return computeCoverageGapDigest(ctx, teamId, forDate, timezone, minLeads);
+  },
+});
+
+/**
+ * Internal variant — used by the daily coverage-gap cron. Same logic,
+ * takes teamId + the target date + timezone directly.
+ */
+export const getCoverageGapDigestInternal = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    targetYear: v.number(),
+    targetMonth: v.number(),
+    targetDay: v.number(),
+    timezone: v.string(),
+    minLeadsThreshold: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return computeCoverageGapDigest(
+      ctx,
+      args.teamId,
+      {
+        year: args.targetYear,
+        month: args.targetMonth,
+        day: args.targetDay,
+      },
+      args.timezone,
+      args.minLeadsThreshold,
+    );
+  },
+});
+
+// ----------------------------------------------------------------------------
+// Date helpers for coverage gap (mirror setterDataNotifications timezone math
+// but kept local so this file stays V8-runtime independent of the cron file).
+// ----------------------------------------------------------------------------
+
+function yesterdayInTimezone(tz: string): {
+  year: number;
+  month: number;
+  day: number;
+} {
+  const now = Date.now();
+  const yesterday = now - 24 * 60 * 60_000;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(yesterday));
+  const get = (type: string) =>
+    parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
+function parseDateStringSafe(s: string): {
+  year: number;
+  month: number;
+  day: number;
+} | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  return {
+    year: parseInt(m[1], 10),
+    month: parseInt(m[2], 10),
+    day: parseInt(m[3], 10),
+  };
+}
+
+function getLocalDateRangeUtcLocal(
+  dateStr: string,
+  tz: string,
+): { startMs: number; endMs: number } {
+  const [y, m, d] = dateStr.split("-").map((s) => parseInt(s, 10));
+  // Compute offset for local midnight on this date in this timezone.
+  const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(utcGuess));
+  const localHour =
+    parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10) % 24;
+  const localMinute = parseInt(
+    parts.find((p) => p.type === "minute")?.value ?? "0",
+    10,
+  );
+  const localSecond = parseInt(
+    parts.find((p) => p.type === "second")?.value ?? "0",
+    10,
+  );
+  // Compute the diff between local hour and 0 (midnight target) to find the
+  // offset. e.g., if local hour reads 20:00, we're 4 hours west; offsetMs = +4h.
+  const offsetMs = (localHour * 60 + localMinute) * 60_000 + localSecond * 1000;
+  const startMs = utcGuess - offsetMs;
+  return { startMs, endMs: startMs + 24 * 60 * 60_000 };
+}
 
 // ----------------------------------------------------------------------------
 // utility

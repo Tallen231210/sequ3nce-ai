@@ -7,6 +7,7 @@ import { GhlConnectionCard } from "./GhlConnectionCard";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
 import { SpeedToLeadConfig } from "./SpeedToLeadConfig";
+import { CoverageGapConfig } from "./CoverageGapConfig";
 import { ConnectionThresholdConfig } from "./ConnectionThresholdConfig";
 import { DispositionSyncConfig } from "./DispositionSyncConfig";
 import { Loader2 } from "lucide-react";
@@ -77,6 +78,20 @@ export function SettingsTab() {
     slowThresholdMinutes: settings.speedToLead.slowThresholdMinutes,
   };
 
+  const narrowedCoverageGapChannel: "slack" | "discord" | undefined =
+    settings.coverageGap.channel === "slack" ||
+    settings.coverageGap.channel === "discord"
+      ? settings.coverageGap.channel
+      : undefined;
+  const coverageGap = {
+    enabled: settings.coverageGap.enabled,
+    channel: narrowedCoverageGapChannel,
+    slackChannelId: settings.coverageGap.slackChannelId,
+    discordWebhookUrl: settings.coverageGap.discordWebhookUrl,
+    hourLocal: settings.coverageGap.hourLocal,
+    minLeads: settings.coverageGap.minLeads,
+  };
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       <GhlConnectionCard installation={installation} />
@@ -87,6 +102,10 @@ export function SettingsTab() {
       <ScorecardConfig scorecard={scorecard} teamTimezone={settings.timezone} />
       <UntouchedAlertConfig settings={untouchedAlert} />
       <SpeedToLeadConfig settings={speedToLead} />
+      <CoverageGapConfig
+        settings={coverageGap}
+        teamTimezone={settings.timezone || "America/New_York"}
+      />
       <ConnectionThresholdConfig
         thresholdSec={settings.setterConnectionThresholdSec}
       />

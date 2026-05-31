@@ -14,6 +14,8 @@ interface SetterCadenceRow {
   ghlUserId: string;
   name: string;
   cadence: Cadence;
+  dialsPerConnect: number | null;
+  connectedCount: number;
 }
 
 interface DialCadencePanelProps {
@@ -94,8 +96,14 @@ export function DialCadencePanel({ perSetter }: DialCadencePanelProps) {
 
 function CadenceRow({ row }: { row: SetterCadenceRow }) {
   const { cadence } = row;
+  const dpcTooltip =
+    row.dialsPerConnect === null
+      ? row.connectedCount === 0
+        ? "No connects yet"
+        : "Need 3+ connects to compute"
+      : undefined;
   return (
-    <div className="grid grid-cols-12 gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-sm">
+    <div className="grid grid-cols-[repeat(14,minmax(0,1fr))] gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-sm">
       <div className="col-span-4 font-medium">{row.name}</div>
       <div className="col-span-2 text-right">
         <div className="font-semibold tabular-nums">
@@ -123,6 +131,16 @@ function CadenceRow({ row }: { row: SetterCadenceRow }) {
         </div>
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
           median pursuit
+        </div>
+      </div>
+      <div className="col-span-2 text-right" title={dpcTooltip}>
+        <div className="font-semibold tabular-nums">
+          {row.dialsPerConnect !== null
+            ? row.dialsPerConnect.toFixed(1)
+            : "—"}
+        </div>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          dials/connect
         </div>
       </div>
     </div>

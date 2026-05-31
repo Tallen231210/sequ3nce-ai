@@ -174,6 +174,17 @@ export default defineSchema({
     // Speed above which the ping renders with ⚠️ (and 3× above renders 🚨).
     // Default 30 min if unset.
     setterSpeedToLeadSlowThresholdMs: v.optional(v.number()),
+
+    // Dashboard Phase 3 — daily coverage-gap digest config. Surfaces hour
+    // windows where leads arrived but didn't get dialed for an unusually
+    // long time (≥3× the team's 30-day baseline median time-to-first-dial).
+    // Sent next-morning at hourLocal (default 9). Off by default.
+    setterCoverageGapEnabled: v.optional(v.boolean()),
+    setterCoverageGapChannel: v.optional(v.string()), // "slack" | "discord"
+    setterCoverageGapSlackChannelId: v.optional(v.string()),
+    setterCoverageGapDiscordWebhookUrl: v.optional(v.string()),
+    setterCoverageGapHourLocal: v.optional(v.number()), // 0-23 in team.timezone, default 9
+    setterCoverageGapMinLeadsThreshold: v.optional(v.number()), // default 3
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 

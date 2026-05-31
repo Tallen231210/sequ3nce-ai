@@ -753,6 +753,270 @@ function buildUntouchedAlertDiscordEmbed(
 }
 
 // ============================================================================
+// runCoverageGapDigest — daily digest of yesterday's worst lead-coverage windows
+//
+// Runs hourly (cron). Per-team gated on enabled flag + local-tz delivery hour.
+// Dedup keyed by `{teamId}_coverage_gap_{yesterday-date-in-tz}` so a team gets
+// at most one digest per local day. Empty-state behavior: skip send entirely
+// when no gaps detected — managers aren't paged for "all clear."
+// ============================================================================
+
+export const runCoverageGapDigest = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    processed: number;
+    skipped: number;
+    errored: number;
+    candidateTeams: number;
+  }> => {
+    const now = Date.now();
+    const teams = (await ctx.runQuery(
+      internal.setterDataNotifications.getEnabledCoverageGapTeams,
+      {},
+    )) as TeamDoc[];
+
+    let processed = 0;
+    let skipped = 0;
+    let errored = 0;
+
+    for (const team of teams) {
+      try {
+        const result = await maybeSendCoverageGapForTeam(ctx, team, now);
+        if (result.sent) processed++;
+        else skipped++;
+      } catch (err) {
+        errored++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[runCoverageGapDigest] Error for team ${team._id}: ${message}`,
+          err,
+        );
+      }
+    }
+    return { processed, skipped, errored, candidateTeams: teams.length };
+  },
+});
+
+export const getEnabledCoverageGapTeams = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("teams").collect();
+    return all.filter(
+      (t) =>
+        t.setterDataEnabled !== false &&
+        t.setterCoverageGapEnabled === true,
+    );
+  },
+});
+
+async function maybeSendCoverageGapForTeam(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  team: TeamDoc,
+  nowMs: number,
+): Promise<{ sent: boolean; reason?: string }> {
+  const targetHour = team.setterCoverageGapHourLocal ?? 9;
+  const tz = team.timezone || DEFAULT_TIMEZONE;
+  const localNow = formatInTimeZone(new Date(nowMs), tz);
+  if (localNow.hour !== targetHour) {
+    return { sent: false, reason: `hour ${localNow.hour} != target ${targetHour}` };
+  }
+
+  // Compute yesterday's date in team timezone.
+  const yesterday = formatInTimeZone(new Date(nowMs - 24 * 60 * 60 * 1000), tz);
+  const yesterdayDateStr = `${yesterday.year}-${pad2(yesterday.month)}-${pad2(yesterday.day)}`;
+
+  const dedupKey = `${team._id}_coverage_gap_${yesterdayDateStr}`;
+  const alreadySent = await ctx.runQuery(
+    internal.setterDataNotifications.hasNotificationByDedupKey,
+    { dedupKey },
+  );
+  if (alreadySent) {
+    return { sent: false, reason: "already sent for this date" };
+  }
+
+  const minLeads = team.setterCoverageGapMinLeadsThreshold ?? 3;
+  const digest = await ctx.runQuery(
+    internal.setterData.getCoverageGapDigestInternal,
+    {
+      teamId: team._id,
+      targetYear: yesterday.year,
+      targetMonth: yesterday.month,
+      targetDay: yesterday.day,
+      timezone: tz,
+      minLeadsThreshold: minLeads,
+    },
+  );
+
+  // Empty state — skip the send entirely. We still record the dedup row
+  // so the cron doesn't redundantly re-check this team every hour all day.
+  if (!digest || digest.windows.length === 0) {
+    await ctx.runMutation(
+      internal.setterDataNotifications.recordSentNotification,
+      {
+        teamId: team._id,
+        type: "setter_coverage_gap_skip",
+        dedupKey,
+      },
+    );
+    return { sent: false, reason: "no gaps detected" };
+  }
+
+  const channel = team.setterCoverageGapChannel;
+  if (channel !== "slack" && channel !== "discord") {
+    return { sent: false, reason: "no notification channel configured" };
+  }
+
+  const fallbackText = `📍 Coverage gaps for ${humanReadableDate(yesterday)} — ${digest.windows.length} window${digest.windows.length === 1 ? "" : "s"}`;
+
+  if (channel === "slack") {
+    const slackChannelId =
+      team.setterCoverageGapSlackChannelId || team.slackChannelId;
+    if (!team.slackAccessToken || !slackChannelId) {
+      return { sent: false, reason: "slack not connected or no channel" };
+    }
+    const blocks = buildCoverageGapSlackBlocks({
+      digest,
+      yesterday,
+      yesterdayDateStr,
+    });
+    const result = await postSlackMessage({
+      accessToken: team.slackAccessToken,
+      channelId: slackChannelId,
+      text: fallbackText,
+      blocks,
+    });
+    if (!result.ok) {
+      throw new Error(`Slack post failed: ${result.error}`);
+    }
+  } else {
+    const webhookUrl = team.setterCoverageGapDiscordWebhookUrl;
+    if (!webhookUrl) {
+      return { sent: false, reason: "no discord webhook configured" };
+    }
+    const embed = buildCoverageGapDiscordEmbed({ digest, yesterday });
+    const result = await postDiscordWebhook({
+      webhookUrl,
+      content: fallbackText,
+      embed,
+    });
+    if (!result.ok) {
+      throw new Error(`Discord post failed: ${result.error}`);
+    }
+  }
+
+  await ctx.runMutation(
+    internal.setterDataNotifications.recordSentNotification,
+    {
+      teamId: team._id,
+      type: "setter_coverage_gap",
+      dedupKey,
+    },
+  );
+  return { sent: true };
+}
+
+interface CoverageGapDigestData {
+  date: string;
+  timezone: string;
+  windows: Array<{
+    dayLabel: string;
+    startHour: number;
+    endHour: number;
+    leadCount: number;
+    medianTimeToFirstDialMs: number | null;
+    neverDialedCount: number;
+  }>;
+  baselineMedianMs: number | null;
+  totalLeadsInDay: number;
+}
+
+function buildCoverageGapSlackBlocks(args: {
+  digest: CoverageGapDigestData;
+  yesterday: ZonedDate;
+  yesterdayDateStr: string;
+}): unknown[] {
+  const { digest, yesterday } = args;
+  const blocks: unknown[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `📍 Coverage gaps — ${humanReadableDate(yesterday)}`,
+        emoji: true,
+      },
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `${digest.totalLeadsInDay} leads yesterday · times in ${digest.timezone}${digest.baselineMedianMs !== null ? ` · 30-day baseline median ${formatDuration(digest.baselineMedianMs)}` : ""}`,
+        },
+      ],
+    },
+    { type: "divider" },
+  ];
+  for (const w of digest.windows) {
+    const hourLine = `*${w.dayLabel} ${formatHourSlack(w.startHour)}–${formatHourSlack(w.endHour)}*`;
+    const detailParts: string[] = [`${w.leadCount} ${w.leadCount === 1 ? "lead" : "leads"}`];
+    if (w.neverDialedCount > 0) {
+      detailParts.push(`${w.neverDialedCount} never dialed`);
+    }
+    if (w.medianTimeToFirstDialMs !== null) {
+      detailParts.push(`median time-to-dial ${formatDuration(w.medianTimeToFirstDialMs)}`);
+    }
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `${hourLine}\n${detailParts.join(" · ")}`,
+      },
+    });
+  }
+  return blocks;
+}
+
+function buildCoverageGapDiscordEmbed(args: {
+  digest: CoverageGapDigestData;
+  yesterday: ZonedDate;
+}): unknown {
+  const { digest, yesterday } = args;
+  const fields = digest.windows.map((w) => {
+    const detailParts: string[] = [
+      `${w.leadCount} ${w.leadCount === 1 ? "lead" : "leads"}`,
+    ];
+    if (w.neverDialedCount > 0) {
+      detailParts.push(`${w.neverDialedCount} never dialed`);
+    }
+    if (w.medianTimeToFirstDialMs !== null) {
+      detailParts.push(
+        `median ${formatDuration(w.medianTimeToFirstDialMs)}`,
+      );
+    }
+    return {
+      name: `${w.dayLabel} ${formatHourSlack(w.startHour)}–${formatHourSlack(w.endHour)}`,
+      value: detailParts.join(" · "),
+    };
+  });
+  return {
+    title: `📍 Coverage gaps — ${humanReadableDate(yesterday)}`,
+    color: 0xf59e0b,
+    fields,
+    footer: { text: `Sequ3nce Setter Data · ${digest.timezone}` },
+  };
+}
+
+function formatHourSlack(h: number): string {
+  if (h === 0) return "12am";
+  if (h === 12) return "12pm";
+  if (h < 12) return `${h}am`;
+  return `${h - 12}pm`;
+}
+
+// ============================================================================
 // Speed-to-lead notification context query (V8 internalQuery).
 // The actual dispatcher action lives in setterSpeedToLeadDispatcher.ts
 // because it depends on @sentry/node (captureAndPersist) which forces

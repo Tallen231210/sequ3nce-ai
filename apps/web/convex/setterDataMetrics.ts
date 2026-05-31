@@ -54,6 +54,9 @@ export interface ScorecardSetterRow {
   showRate: number | null;
   /** Dashboard Phase 2 — dial cadence aggregates. */
   cadence: ScorecardSetterCadence;
+  /** Dashboard Phase 3 — dials needed to reach one connect. Lower = more
+   *  efficient. Null when connectedCount < 3 (small sample) or === 0. */
+  dialsPerConnect: number | null;
 }
 
 export interface ScorecardData {
@@ -183,6 +186,7 @@ export async function computeScorecard(
             pctLeadsThreeOrMoreAttempts: null,
             medianPursuitDays: null,
           },
+          dialsPerConnect: null,
           _speeds: [],
           _noShowCount: 0,
         };
@@ -388,6 +392,12 @@ export async function computeScorecard(
         medianPursuitDays,
       };
 
+      // Dials-per-connect — productivity ratio. Suppressed below 3
+      // connects: with 1-2 connects, this ratio is too noisy to be
+      // actionable (1 lucky connect drops it dramatically).
+      const dialsPerConnect: number | null =
+        row.connectedCount >= 3 ? row.dialCount / row.connectedCount : null;
+
       return {
         ghlUserId: row.ghlUserId,
         name: row.name,
@@ -399,6 +409,7 @@ export async function computeScorecard(
         showedCount: row.showedCount,
         showRate: setterShowRate,
         cadence,
+        dialsPerConnect,
       };
     });
 
