@@ -22,7 +22,11 @@ import type { Id } from "./_generated/dataModel";
 import { decryptApiKey } from "./lib/encrypt";
 import { captureAndPersist } from "./lib/sentry";
 
-const HYROS_API_BASE = "https://api.hyros.com";
+// Hyros's actual API base path is /v1/api/v1.0/ (double v1 prefix). The
+// OpenAPI spec at api-docs.hyros.com elides the outer /v1, which led to
+// 404s before this was diagnosed live. Auth is via API-Key header, NOT
+// Bearer (which the push side uses incorrectly — separate fix).
+const HYROS_API_BASE = "https://api.hyros.com/v1/api/v1.0";
 const POLL_PAGE_SIZE = 100;
 const POLL_INTERVAL_BAILOUT_MS = 7 * 24 * 60 * 60 * 1000; // 7d — older leads aren't polled
 const POLL_PER_LEAD_TIMEOUT_MS = 8_000;
@@ -133,7 +137,10 @@ async function fetchHyrosAttribution(
   | "not_found"
   | null
 > {
-  const url = `${HYROS_API_BASE}/api/v1.0/leads/clicks?email=${encodeURIComponent(email)}`;
+  // /leads endpoint (not /leads/clicks) — returns the lead with
+  // firstSource + lastSource already resolved by Hyros's attribution
+  // model. Cleaner than walking the raw click stream ourselves.
+  const url = `${HYROS_API_BASE}/leads?emails=${encodeURIComponent(email)}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), POLL_PER_LEAD_TIMEOUT_MS);
   let resp: Response;
@@ -141,7 +148,7 @@ async function fetchHyrosAttribution(
     resp = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "API-Key": apiKey,
         Accept: "application/json",
       },
       signal: controller.signal,
@@ -158,38 +165,20 @@ async function fetchHyrosAttribution(
     throw new Error(`Hyros API ${resp.status} ${resp.statusText}`);
   }
   const body = await resp.json();
-  // GET /leads/clicks returns an array of click records, sorted by date.
-  // First-touch = earliest, last-touch = most recent.
-  const clicks = Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [];
-  if (clicks.length === 0) return "not_found";
-  const sorted = [...clicks].sort((a, b) => {
-    const da = typeof a.date === "number" ? a.date : Date.parse(a.date || "0") || 0;
-    const db = typeof b.date === "number" ? b.date : Date.parse(b.date || "0") || 0;
-    return da - db;
-  });
+  // GET /leads returns { result: Array<Lead> } where each Lead has
+  // firstSource + lastSource already resolved by Hyros's attribution
+  // model. We pick the first match by email — Hyros dedupes contacts.
+  const leads = Array.isArray(body?.result)
+    ? body.result
+    : Array.isArray(body)
+      ? body
+      : [];
+  if (leads.length === 0) return "not_found";
+  const lead = leads[0];
+  if (!lead?.firstSource && !lead?.lastSource) return "not_found";
   return {
-    firstSource: clickToSource(sorted[0]),
-    lastSource: clickToSource(sorted[sorted.length - 1]),
-  };
-}
-
-// Translate a Hyros click record into the shape our normalizeHyrosSource
-// helper expects. Pass-through; the V8 mutation does final normalization.
-function clickToSource(click: any): any {
-  if (!click) return null;
-  return {
-    trafficSource:
-      click.trafficSource ??
-      (click.sourceLinkName
-        ? { name: click.sourceLinkName }
-        : { name: click.adSpendType ?? "Unknown" }),
-    name: click.sourceLinkName,
-    category: click.category,
-    clickDate: click.date,
-    adSource: click.adSource,
-    sourceLinkId: click.sourceLinkId,
-    sourceLinkAd: click.sourceLinkAd,
-    organic: click.organic,
+    firstSource: lead.firstSource,
+    lastSource: lead.lastSource ?? lead.firstSource,
   };
 }
 

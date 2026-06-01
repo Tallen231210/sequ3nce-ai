@@ -10,7 +10,12 @@ import { captureAndPersist } from "./lib/sentry";
 // HYROS API CONFIG
 // ============================================
 
-const HYROS_API_BASE = "https://api.hyros.com";
+// Verified live against production Hyros (May 2026): the actual base path
+// is /v1/api/v1.0/ (double v1 prefix). The OpenAPI spec at
+// api-docs.hyros.com elides the outer /v1, which led to 404s before this
+// was diagnosed. Auth is API-Key header; Bearer is documented but doesn't
+// work in practice.
+const HYROS_API_BASE = "https://api.hyros.com/v1/api/v1.0";
 
 // ============================================
 // HELPER FUNCTIONS
@@ -176,36 +181,15 @@ export const testHyrosConnection = action({
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
 
     try {
-      // Try both auth header styles — official docs say Bearer, but some
-      // Hyros accounts use a custom API-Key header instead
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      // First try Bearer token (official docs)
-      headers["Authorization"] = `Bearer ${args.apiKey}`;
-      let response = await fetch(`${HYROS_API_BASE}/v1/leads`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          email: "test@sequ3nce.ai",
-          tags: ["sequ3nce_connection_test"],
-        }),
+      // Read-only probe: GET /user-info validates the key without touching
+      // the customer's lead/sale data. Push side stays handpick-only.
+      const response = await fetch(`${HYROS_API_BASE}/user-info`, {
+        method: "GET",
+        headers: {
+          "API-Key": args.apiKey,
+          Accept: "application/json",
+        },
       });
-
-      // If Bearer fails with 401/403, try API-Key header
-      if (response.status === 401 || response.status === 403) {
-        delete headers["Authorization"];
-        headers["API-Key"] = args.apiKey;
-        response = await fetch(`${HYROS_API_BASE}/v1/leads`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            email: "test@sequ3nce.ai",
-            tags: ["sequ3nce_connection_test"],
-          }),
-        });
-      }
 
       if (response.status === 401 || response.status === 403) {
         return { success: false, error: "Invalid API key. Check your Hyros API settings." };
@@ -274,9 +258,8 @@ export const pushCallToHyros = action({
 
       // Decrypt API key (handles both encrypted and plaintext for backward-compat)
       const apiKey = decryptApiKey(team.hyrosApiKey);
-      // Try Bearer first; fall back to API-Key header if 401/403
       const headers: Record<string, string> = {
-        Authorization: `Bearer ${apiKey}`,
+        "API-Key": apiKey,
         "Content-Type": "application/json",
       };
 
@@ -300,21 +283,11 @@ export const pushCallToHyros = action({
           tags,
           source: "sequ3nce",
         });
-        let leadResponse = await fetch(`${HYROS_API_BASE}/v1/leads`, {
+        const leadResponse = await fetch(`${HYROS_API_BASE}/leads`, {
           method: "POST",
           headers,
           body: leadBody,
         });
-        // If Bearer auth fails, switch to API-Key header for all remaining calls
-        if (leadResponse.status === 401 || leadResponse.status === 403) {
-          delete headers["Authorization"];
-          headers["API-Key"] = apiKey;
-          leadResponse = await fetch(`${HYROS_API_BASE}/v1/leads`, {
-            method: "POST",
-            headers,
-            body: leadBody,
-          });
-        }
         if (!leadResponse.ok) {
           const text = await leadResponse.text();
           errors.push(`Lead upsert failed: ${leadResponse.status} ${text}`);
@@ -336,7 +309,7 @@ export const pushCallToHyros = action({
       // 2. Create call record
       const isQualified = call.outcome === "closed" || call.outcome === "follow_up";
       try {
-        const callResponse = await fetch(`${HYROS_API_BASE}/v1/calls`, {
+        const callResponse = await fetch(`${HYROS_API_BASE}/calls`, {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -366,7 +339,7 @@ export const pushCallToHyros = action({
       // 3. Create sale (only for closed deals)
       if (call.outcome === "closed" && call.cashCollected) {
         try {
-          const saleResponse = await fetch(`${HYROS_API_BASE}/v1/sales`, {
+          const saleResponse = await fetch(`${HYROS_API_BASE}/sales`, {
             method: "POST",
             headers,
             body: JSON.stringify({
@@ -405,7 +378,7 @@ export const pushCallToHyros = action({
               : "call_not_closed";
 
       try {
-        const eventResponse = await fetch(`${HYROS_API_BASE}/v1/events`, {
+        const eventResponse = await fetch(`${HYROS_API_BASE}/events`, {
           method: "POST",
           headers,
           body: JSON.stringify({

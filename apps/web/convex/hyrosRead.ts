@@ -32,50 +32,72 @@ const KNOWN_EVENT_TYPES = new Set([
   "lead.origin.assigned",
 ]);
 
+// Hyros's actual source-object shape (verified live against AICom in May 2026):
+// {
+//   trafficSource: { id, name },     // e.g. { name: "youtube" } — THE attribution key
+//   category: { id, name },          // e.g. { name: "video" } — was string in docs, actually object
+//   goal: { id, name },              // e.g. { name: "all" }
+//   sourceLinkAd: { adSourceId, name }, // e.g. { adSourceId: "HYROS_AD_ID_123", name: "BeginnersGuide..." }
+//   sourceLinkId: string,
+//   clickDate / UTCClickDate: ISO string,
+//   tag: string, organic: boolean, disregarded: boolean
+// }
+// The docs claim a separate `adSource: { platform, adAccountId }` object; that
+// doesn't appear in live responses. Platform is implicit in trafficSource.name.
 interface HyrosSourceShape {
-  trafficSource?: { id?: string; name?: string };
+  trafficSource?: { id?: string; name?: string } | string;
   name?: string;
   tag?: string;
-  goal?: string;
-  category?: string;
+  goal?: { id?: string; name?: string } | string;
+  category?: { id?: string; name?: string } | string;
   clickDate?: string | number;
+  UTCClickDate?: string;
   organic?: boolean;
-  adSource?: {
-    platform?: string;
-    adSourceId?: string;
-    adAccountId?: string;
-  };
   sourceLinkId?: string;
-  sourceLinkAd?: { id?: string; name?: string };
+  sourceLinkAd?: {
+    id?: string;
+    name?: string;
+    adSourceId?: string;
+  };
+}
+
+function pickName(field: unknown): string | undefined {
+  if (typeof field === "string") return field || undefined;
+  if (field && typeof field === "object") {
+    const n = (field as { name?: unknown }).name;
+    return typeof n === "string" && n ? n : undefined;
+  }
+  return undefined;
 }
 
 /**
  * Defensively parse a Hyros source object (from firstSource / lastSource
- * on lead.opted.in, or per-item in attribution[] arrays) into our
- * denormalized shape. Returns null if the source object doesn't carry a
- * usable trafficSource name.
+ * on lead.opted.in, the /leads endpoint, or per-item in attribution[]
+ * arrays) into our denormalized string-only shape. Returns null if the
+ * source object doesn't carry a usable trafficSource name.
  */
 export function normalizeHyrosSource(
   raw: unknown,
 ): Doc<"setterLeads">["hyrosFirstSource"] | null {
   if (!raw || typeof raw !== "object") return null;
   const s = raw as HyrosSourceShape;
-  const trafficSource = s.trafficSource?.name ?? s.name ?? null;
+  const trafficSource = pickName(s.trafficSource) ?? s.name ?? null;
   if (!trafficSource) return null;
+  const clickDateRaw = s.clickDate ?? s.UTCClickDate;
   return {
     trafficSource,
-    trafficSourceCategory: s.category,
-    adSourceId: s.adSource?.adSourceId,
-    adSourcePlatform: s.adSource?.platform,
-    adAccountId: s.adSource?.adAccountId,
+    trafficSourceCategory: pickName(s.category),
+    adSourceId: s.sourceLinkAd?.adSourceId,
+    adSourcePlatform: undefined,
+    adAccountId: undefined,
     sourceLinkId: s.sourceLinkId,
-    sourceLinkName: s.sourceLinkAd?.name,
+    sourceLinkName: s.sourceLinkAd?.name ?? s.name,
     sourceLinkAdId: s.sourceLinkAd?.id,
     clickDate:
-      typeof s.clickDate === "number"
-        ? s.clickDate
-        : typeof s.clickDate === "string"
-          ? Date.parse(s.clickDate) || undefined
+      typeof clickDateRaw === "number"
+        ? clickDateRaw
+        : typeof clickDateRaw === "string"
+          ? Date.parse(clickDateRaw) || undefined
           : undefined,
     organic: s.organic,
   };
