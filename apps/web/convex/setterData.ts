@@ -214,23 +214,13 @@ export const getOverview = query({
       }
     }
 
-    // Wave 1: matcher lookup pass. Cap at the most recent 60 days of
-    // call activity to stay under the 16 MiB read limit (the calls
-    // table carries transcript blobs — same constraint as
-    // computeCloserSideShowRate). The lookahead absorbs follow-up
-    // calls that happen up to 14 days after the lead's range.
-    const HYROS_OUTCOME_MAX_RANGE_MS = 60 * 24 * 60 * 60 * 1000;
+    // Matcher lookup pass. No date cap any more — the calls table is
+    // lean post-callContent migration, so scanning is cheap regardless
+    // of range size. Lookahead absorbs follow-up calls scheduled up to
+    // 14 days after the lead's range.
     const CLOSER_MATCH_LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
-    const requestedRangeMs = args.rangeEnd - args.rangeStart;
-    const outcomeRangeStart = Math.max(
-      args.rangeStart,
-      args.rangeEnd - HYROS_OUTCOME_MAX_RANGE_MS,
-    );
+    const outcomeRangeStart = args.rangeStart;
     const outcomeRangeEnd = args.rangeEnd + CLOSER_MATCH_LOOKAHEAD_MS;
-    const outcomeWindowDays = Math.round(
-      (args.rangeEnd - outcomeRangeStart) / (24 * 60 * 60 * 1000),
-    );
-    const outcomeWindowCapped = requestedRangeMs > HYROS_OUTCOME_MAX_RANGE_MS;
 
     if (attributedCount > 0) {
       try {
@@ -241,11 +231,6 @@ export const getOverview = query({
           outcomeRangeEnd,
         );
         for (const entry of attributedLeadsForOutcomes) {
-          // Skip leads added before the capped outcome window — their
-          // calls weren't loaded into the matcher index, so any lookup
-          // would mis-report "no match" rather than honest "we don't
-          // know."
-          if (entry.lead.dateAdded < outcomeRangeStart) continue;
           const platformEntry = hyrosByPlatform.get(entry.platform);
           if (!platformEntry) continue;
           const adAcc = platformEntry.ads.get(entry.adName);
@@ -295,9 +280,9 @@ export const getOverview = query({
           }
         }
       } catch (err) {
-        // Belt-and-suspenders: if the matcher trips the 16 MiB limit
-        // anyway, leave outcome fields unset rather than failing the
-        // whole tab. UI just won't show the secondary metrics line.
+        // Belt-and-suspenders kept in place: if a future change
+        // re-introduces a heavy field on calls we'd at least degrade
+        // gracefully instead of crashing the whole tab.
         const msg = err instanceof Error ? err.message : String(err);
         if (!/16777216|read limit|too many bytes/i.test(msg)) {
           throw err;
@@ -386,15 +371,11 @@ export const getOverview = query({
 
     // team.hyrosEnabled drives the right panel's "not connected" empty
     // state vs "connected but no attributed leads yet" empty state.
-    // outcomeWindowDays + outcomeWindowCapped drive the footer caveat
-    // when the requested range exceeded the 60d outcome cap.
     const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
     const hyrosCoverage = {
       attributedCount,
       totalLeads: leads.length,
       hyrosEnabled: team?.hyrosEnabled === true,
-      outcomeWindowDays,
-      outcomeWindowCapped,
     };
 
     // Action queue: top-5 untouched leads, oldest first ("stalest first

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+import { getContentForCallTx } from "./callContent";
 
 // ──────────────────────────────────────────────
 // HELPERS
@@ -310,6 +311,8 @@ export const getSharedLinkByToken = internalQuery({
       }));
     }
 
+    const content = await getContentForCallTx(ctx, link.callId);
+
     return {
       revoked: false,
       callId: link.callId,
@@ -326,13 +329,13 @@ export const getSharedLinkByToken = internalQuery({
         startedAt: call.startedAt,
         recordingUrl: call.recordingUrl,
         recordingType: call.recordingType ?? "audio",
-        summary: call.summary,
-        callAnalysis: call.callAnalysis,
+        summary: content?.summary,
+        callAnalysis: content?.callAnalysis,
         closerTalkTime: call.closerTalkTime,
         prospectTalkTime: call.prospectTalkTime,
         outcome: call.outcome,
       },
-      chapters: call.callAnalysis?.chapters ?? undefined,
+      chapters: content?.callAnalysis?.chapters ?? undefined,
       transcript,
       comments,
     };

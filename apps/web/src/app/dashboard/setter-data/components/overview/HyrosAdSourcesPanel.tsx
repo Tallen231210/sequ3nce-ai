@@ -29,8 +29,6 @@ interface HyrosAdSourcesPanelProps {
     attributedCount: number;
     totalLeads: number;
     hyrosEnabled: boolean;
-    outcomeWindowDays: number;
-    outcomeWindowCapped: boolean;
   };
 }
 
@@ -255,14 +253,7 @@ export function HyrosAdSourcesPanel({ platforms, coverage }: HyrosAdSourcesPanel
         </ul>
 
         <p className="mt-4 text-[10px] text-muted-foreground">
-          {coverage.attributedCount} of {coverage.totalLeads} leads attributed via Hyros ({Math.round(coveragePct)}%)
-          {coverage.outcomeWindowCapped && (
-            <>
-              {" · outcomes from leads booked in the last "}
-              {coverage.outcomeWindowDays} days
-            </>
-          )}
-          .
+          {coverage.attributedCount} of {coverage.totalLeads} leads attributed via Hyros ({Math.round(coveragePct)}%).
         </p>
       </CardContent>
     </Card>

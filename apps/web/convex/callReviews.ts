@@ -85,9 +85,7 @@ export const getCallsForReview = query({
       filtered.map(async (call) => {
         const closer = await ctx.db.get(call.closerId);
 
-        // Pull summary from callContent sibling, falling back to the
-        // calls row during the migration window. Remove fallback in
-        // commit 2.
+        // Pull summary from callContent sibling.
         const content = await getContentForCallTx(ctx, call._id);
 
         // Check if there are closer comments newer than managerReadAt
@@ -126,7 +124,7 @@ export const getCallsForReview = query({
           createdAt: call.createdAt,
           startedAt: call.startedAt,
           endedAt: call.endedAt,
-          summary: content?.summary ?? call.summary,
+          summary: content?.summary,
         };
       })
     );
@@ -350,9 +348,7 @@ export const getCallForReview = query({
 
     const closer = await ctx.db.get(call.closerId);
 
-    // Migration-aware blob read — callContent wins when present, falls
-    // back to calls row for not-yet-backfilled rows. Remove fallback
-    // in commit 2.
+    // Blob fields live on the callContent sibling.
     const content = await getContentForCallTx(ctx, args.callId);
 
     return {
@@ -366,14 +362,14 @@ export const getCallForReview = query({
       duration: call.duration,
       recordingUrl: call.recordingUrl,
       recordingType: call.recordingType,
-      transcriptText: content?.transcriptText ?? call.transcriptText,
+      transcriptText: content?.transcriptText,
       flaggedForReview: call.flaggedForReview,
       flaggedAt: call.flaggedAt,
       reviewStatus: call.reviewStatus,
       reviewedAt: call.reviewedAt,
       commentCount: call.commentCount ?? 0,
-      summary: content?.summary ?? call.summary,
-      callAnalysis: content?.callAnalysis ?? call.callAnalysis,
+      summary: content?.summary,
+      callAnalysis: content?.callAnalysis,
       createdAt: call.createdAt,
       startedAt: call.startedAt,
       endedAt: call.endedAt,

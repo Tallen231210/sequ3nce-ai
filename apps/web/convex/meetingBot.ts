@@ -3,6 +3,7 @@ import { mutation, query, action, internalMutation, internalQuery, internalActio
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
+import { getContentForCallTx } from "./callContent";
 
 // Schedule a delayed fetch of the recording URL from Recall.ai API
 export const scheduleRecordingFetch = internalMutation({
@@ -1052,32 +1053,34 @@ export const completeCallFromBot = internalMutation({
 
     // Schedule AI summary generation with 60s delay to let transcript fully flush
     // Only schedule if not already generated (user may have submitted form first)
-    if (call.transcriptText) {
-      if (!call.summary) {
+    // Blobs live on the callContent sibling post-migration.
+    const content = await getContentForCallTx(ctx, args.callId);
+    if (content?.transcriptText) {
+      if (!content.summary) {
         await ctx.scheduler.runAfter(60000, internal.ai.generateCallSummary, {
           callId: args.callId,
-          transcript: call.transcriptText,
+          transcript: content.transcriptText,
           outcome: call.outcome || "unknown",
           prospectName: call.prospectName || "Prospect",
         });
       }
-      if (!call.callAnalysis) {
+      if (!content.callAnalysis) {
         await ctx.scheduler.runAfter(65000, internal.ai.generateCallAnalysis, {
           callId: args.callId,
-          transcript: call.transcriptText,
+          transcript: content.transcriptText,
           outcome: call.outcome || "unknown",
           prospectName: call.prospectName || "Prospect",
           duration: call.duration,
         });
       }
-      if (!call.summary || !call.callAnalysis) {
-        console.log(`[completeCallFromBot] Scheduled AI for call ${args.callId} (summary: ${!call.summary}, analysis: ${!call.callAnalysis})`);
+      if (!content.summary || !content.callAnalysis) {
+        console.log(`[completeCallFromBot] Scheduled AI for call ${args.callId} (summary: ${!content.summary}, analysis: ${!content.callAnalysis})`);
       } else {
         console.log(`[completeCallFromBot] AI already generated for call ${args.callId}, skipping`);
       }
     } else {
       // Transcript not ready — only schedule retry if AI hasn't already been generated
-      if (!call.summary && !call.callAnalysis) {
+      if (!content?.summary && !content?.callAnalysis) {
         await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
           callId: args.callId,
           attempt: 1,
@@ -1184,11 +1187,23 @@ export const retrySummaryGeneration = internalAction({
   },
 });
 
-// Internal query to get call by ID (used by retrySummaryGeneration)
+// Internal query to get call by ID (used by retrySummaryGeneration).
+// Includes callContent blob fields merged into the returned shape so
+// callers can reach `.transcriptText`, `.summary`, `.callAnalysis`,
+// `.ammoAnalysis` without doing a second round-trip.
 export const getCallByIdInternal = internalQuery({
   args: { callId: v.id("calls") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.callId);
+    const call = await ctx.db.get(args.callId);
+    if (!call) return null;
+    const content = await getContentForCallTx(ctx, args.callId);
+    return {
+      ...call,
+      transcriptText: content?.transcriptText,
+      summary: content?.summary,
+      callAnalysis: content?.callAnalysis,
+      ammoAnalysis: content?.ammoAnalysis,
+    };
   },
 });
 
@@ -1774,7 +1789,15 @@ export const getCallHistoryForCloser = query({
       .filter((c) => c.status === "completed" || c.status === "no_show")
       .slice(0, maxResults);
 
-    return calls.map((call) => ({
+    // Pull blob fields from callContent siblings — one row each.
+    const callsWithContent = await Promise.all(
+      calls.map(async (call) => ({
+        call,
+        content: await getContentForCallTx(ctx, call._id),
+      })),
+    );
+
+    return callsWithContent.map(({ call, content }) => ({
       _id: call._id,
       prospectName: call.prospectName,
       status: call.status,
@@ -1789,15 +1812,15 @@ export const getCallHistoryForCloser = query({
       meetingBotId: call.meetingBotId,
       closerTalkTime: call.closerTalkTime,
       prospectTalkTime: call.prospectTalkTime,
-      summary: call.summary,
+      summary: content?.summary,
       // Only send a short preview — full transcript fetched on demand via getTranscriptSegments
-      transcriptText: call.transcriptText
-        ? call.transcriptText.slice(0, 500) + (call.transcriptText.length > 500 ? "..." : "")
+      transcriptText: content?.transcriptText
+        ? content.transcriptText.slice(0, 500) + (content.transcriptText.length > 500 ? "..." : "")
         : undefined,
       flaggedForReview: call.flaggedForReview,
       reviewStatus: call.reviewStatus,
       commentCount: call.commentCount,
-      callAnalysis: call.callAnalysis,
+      callAnalysis: content?.callAnalysis,
     }));
   },
 });

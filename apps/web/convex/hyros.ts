@@ -176,10 +176,11 @@ export const getPendingHyrosCalls = query({
           }
         }
 
+        const content = await getContentForCallTx(ctx, call._id);
         const tags = buildHyrosTags(
           call,
-          call.ammoAnalysis as AmmoAnalysis | undefined,
-          call.callAnalysis as CallAnalysis | undefined
+          content?.ammoAnalysis as AmmoAnalysis | undefined,
+          content?.callAnalysis as CallAnalysis | undefined,
         );
 
         return {
@@ -323,9 +324,7 @@ export const getHyrosPushData = internalQuery({
     const call = await ctx.db.get(args.callId);
     if (!call) return null;
 
-    // Pull blob fields used in tag generation from callContent sibling
-    // (migration fallback to call.ammoAnalysis / call.callAnalysis
-    // covers any not-yet-backfilled rows).
+    // Pull blob fields used in tag generation from callContent sibling.
     const content = await getContentForCallTx(ctx, args.callId);
 
     let prospectEmail: string | null = null;
@@ -359,8 +358,8 @@ export const getHyrosPushData = internalQuery({
         prospectWasDecisionMaker: call.prospectWasDecisionMaker,
         primaryObjection: call.primaryObjection,
         budgetDiscussion: call.budgetDiscussion,
-        ammoAnalysis: content?.ammoAnalysis ?? call.ammoAnalysis,
-        callAnalysis: content?.callAnalysis ?? call.callAnalysis,
+        ammoAnalysis: content?.ammoAnalysis,
+        callAnalysis: content?.callAnalysis,
         hyrosSyncedAt: call.hyrosSyncedAt,
       },
       prospectEmail,

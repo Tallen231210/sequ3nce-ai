@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { getContentForCallTx } from "./callContent";
 
 // ============================================
 // AUTH HELPER
@@ -213,6 +214,8 @@ export const getGhlPushData = internalQuery({
       }
     }
 
+    const content = await getContentForCallTx(ctx, call._id);
+
     return {
       team: {
         _id: team._id,
@@ -236,7 +239,7 @@ export const getGhlPushData = internalQuery({
         leadQualityScore: call.leadQualityScore,
         prospectWasDecisionMaker: call.prospectWasDecisionMaker,
         primaryObjection: call.primaryObjection,
-        summary: call.summary,
+        summary: content?.summary,
         completedAt: call.completedAt,
         ghlSyncedAt: call.ghlSyncedAt,
       },

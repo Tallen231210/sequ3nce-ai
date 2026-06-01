@@ -863,43 +863,16 @@ async function computeCloserSideShowRate(
     return { ...empty, activeClosers };
   }
 
-  // Calls carry transcript blobs (~30-100KB each), so the matcher's call
-  // scan blows the 16 MiB read limit past ~60 days. Skip the closer-side
-  // computation when the requested range is too wide; the UI shows a
-  // dedicated empty state instead of crashing the whole tab.
-  const rangeMs =
-    args.rangeEnd + CLOSER_MATCH_LOOKAHEAD_MS - args.rangeStart;
-  const MAX_CLOSER_SIDE_RANGE_MS = 60 * 24 * 60 * 60 * 1000;
-  if (rangeMs > MAX_CLOSER_SIDE_RANGE_MS) {
-    return {
-      ...empty,
-      activeClosers,
-      unavailableReason: "range_too_wide",
-    };
-  }
-
-  let index;
-  try {
-    index = await buildMatcherIndex(
-      ctx,
-      args.teamId as Id<"teams">,
-      args.rangeStart,
-      args.rangeEnd + CLOSER_MATCH_LOOKAHEAD_MS,
-    );
-  } catch (err) {
-    // Belt-and-suspenders: even within the 60d cap, a particularly
-    // transcript-heavy team could still hit the limit. Fail the matcher
-    // gracefully rather than the whole tab.
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/16777216|read limit|too many bytes/i.test(msg)) {
-      return {
-        ...empty,
-        activeClosers,
-        unavailableReason: "range_too_wide",
-      };
-    }
-    throw err;
-  }
+  // The 60-day cap and the transcript-blob try/catch that used to live
+  // here are gone — heavy fields moved off the calls table into the
+  // callContent sibling, so the matcher's call scan is no longer
+  // size-bounded by transcript length. Any range is safe.
+  const index = await buildMatcherIndex(
+    ctx,
+    args.teamId as Id<"teams">,
+    args.rangeStart,
+    args.rangeEnd + CLOSER_MATCH_LOOKAHEAD_MS,
+  );
 
   let matched = 0;
   let showed = 0;

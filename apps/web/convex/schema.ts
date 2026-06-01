@@ -337,7 +337,7 @@ export default defineSchema({
     speakerCount: v.number(), // 1 = waiting, 2+ = on call
     recordingUrl: v.optional(v.string()), // S3 URL or Meeting BaaS video URL
     recordingType: v.optional(v.string()), // "audio" (legacy desktop) | "video" (meeting bot)
-    transcriptText: v.optional(v.string()), // Full transcript
+    // transcriptText moved to callContent sibling.
     meetingBotId: v.optional(v.id("meetingBots")), // Link to meeting bot that recorded this call
     // Talk-to-listen ratio (from Deepgram speaker diarization)
     closerTalkTime: v.optional(v.number()), // Closer talk time in seconds
@@ -353,54 +353,7 @@ export default defineSchema({
     // Set when a call ends via either createCall's safety guard OR completeCall's WebSocket-close path.
     wasAutoCompleted: v.optional(v.boolean()),
     completedAt: v.optional(v.number()), // Timestamp when closer submitted questionnaire
-    // AI-generated summary
-    summary: v.optional(v.string()), // AI summary of the call for quick manager review
-
-    // AI deep analysis (chapters + sales process scoring)
-    callAnalysis: v.optional(v.object({
-      chapters: v.array(v.object({
-        title: v.string(),
-        startTime: v.number(),   // seconds from call start
-        endTime: v.number(),
-        summary: v.string(),
-      })),
-      analysis: v.object({
-        opening: v.object({ score: v.string(), summary: v.string() }),
-        discovery: v.object({ score: v.string(), summary: v.string() }),
-        presentation: v.object({ score: v.string(), summary: v.string() }),
-        objectionHandling: v.object({ score: v.string(), summary: v.string() }),
-        closing: v.object({ score: v.string(), summary: v.string() }),
-      }),
-      callSequence: v.array(v.object({
-        phase: v.string(),
-        description: v.string(),
-      })),
-      analyzedAt: v.number(),
-    })),
-
-    // Ammo V2: Real-time AI analysis (replaces traditional ammo extraction)
-    ammoAnalysis: v.optional(v.object({
-      engagement: v.object({
-        level: v.string(), // "high" | "medium" | "low"
-        reason: v.string(), // Why this level was determined
-      }),
-      beliefs: v.object({
-        problem: v.number(),    // 0-100 - Do they believe they have the problem?
-        solution: v.number(),   // 0-100 - Do they believe a solution exists?
-        vehicle: v.number(),    // 0-100 - Do they believe YOUR solution is the vehicle?
-        self: v.number(),       // 0-100 - Do they believe they can do it?
-        time: v.number(),       // 0-100 - Do they believe now is the right time?
-        money: v.number(),      // 0-100 - Do they believe it's worth the investment?
-        urgency: v.number(),    // 0-100 - Is there urgency to act?
-      }),
-      objectionPrediction: v.array(v.object({
-        type: v.string(),       // "think_about_it", "spouse", "money", "time", etc.
-        probability: v.number(), // 0-100
-      })),
-      painPoints: v.array(v.string()), // Exact quotes from prospect about their pain
-      liveSummary: v.optional(v.string()), // Brief 2-3 sentence live summary of the call
-      analyzedAt: v.number(),   // Timestamp of last analysis
-    })),
+    // summary, callAnalysis, ammoAnalysis moved to callContent sibling.
 
     // Post-call questionnaire fields (enhanced)
     primaryObjection: v.optional(v.string()), // Selected objection from dropdown (for lost/follow_up)

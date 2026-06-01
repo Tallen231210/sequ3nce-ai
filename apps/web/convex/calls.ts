@@ -643,10 +643,10 @@ export const getCallDetails = query({
 
     return {
       ...call,
-      transcriptText: content?.transcriptText ?? call.transcriptText,
-      summary: content?.summary ?? call.summary,
-      callAnalysis: content?.callAnalysis ?? call.callAnalysis,
-      ammoAnalysis: content?.ammoAnalysis ?? call.ammoAnalysis,
+      transcriptText: content?.transcriptText,
+      summary: content?.summary,
+      callAnalysis: content?.callAnalysis,
+      ammoAnalysis: content?.ammoAnalysis,
       closer: closer ? { name: closer.name, email: closer.email } : null,
       teamName: team?.name || null,
       ammo,
@@ -877,25 +877,27 @@ export const completeCallWithOutcome = mutation({
 
     // Schedule AI summary + deep analysis (runs async, doesn't block completion)
     // Skip if already generated (prevents duplicate API calls when bot + questionnaire both trigger)
-    if (call.transcriptText) {
-      if (!call.summary) {
+    // Blobs live on the callContent sibling post-migration.
+    const content = await getContentForCallTx(ctx, args.callId);
+    if (content?.transcriptText) {
+      if (!content.summary) {
         await ctx.scheduler.runAfter(0, internal.ai.generateCallSummary, {
           callId: args.callId,
-          transcript: call.transcriptText,
+          transcript: content.transcriptText,
           outcome: args.outcome,
           prospectName: args.prospectName,
         });
       }
-      if (!call.callAnalysis) {
+      if (!content.callAnalysis) {
         await ctx.scheduler.runAfter(5000, internal.ai.generateCallAnalysis, {
           callId: args.callId,
-          transcript: call.transcriptText,
+          transcript: content.transcriptText,
           outcome: args.outcome,
           prospectName: args.prospectName,
           duration: call.duration,
         });
       }
-    } else if (!call.summary || !call.callAnalysis) {
+    } else if (!content?.summary || !content?.callAnalysis) {
       // Transcript not ready yet (user submitted form before bot finished).
       // Schedule retry — it will assemble transcriptText from webhook segments.
       await ctx.scheduler.runAfter(60000, internal.meetingBot.retrySummaryGeneration, {
@@ -907,7 +909,7 @@ export const completeCallWithOutcome = mutation({
 
     // If AI summary already generated but notification hasn't fired yet,
     // cancel the delayed notification and fire immediately with full data
-    if (call.summary) {
+    if (content?.summary) {
       const alreadySent = await ctx.db
         .query("slackNotifications")
         .withIndex("by_call_and_type", (q) =>
@@ -1035,28 +1037,12 @@ export const seedTestCallAuto = mutation({
         closerSpeaker: "speaker_0", // Speaker 1 = Closer
         confirmed: true,
       },
-      transcriptText: `[00:00:05] Speaker 1: Hi Sarah, thanks for taking the time to chat with me today. How are you doing?
-
-[00:00:12] Speaker 2: I'm doing well, thanks for asking. I've actually been looking forward to this call. I've been thinking about this for months now.
-
-[00:00:25] Speaker 1: That's great to hear! So tell me a little bit about what's been going on and what brought you to us.
-
-[00:00:35] Speaker 2: Well, honestly, I've been struggling with my business for the past year. The stress has been overwhelming and I feel like I'm working 70 hours a week but not seeing the results I want.
-
-[00:01:02] Speaker 1: I completely understand. That sounds really challenging. What would it mean for you if you could cut that down to 40 hours and actually see growth?
-
-[00:01:15] Speaker 2: Oh my god, that would be life-changing. I haven't taken a vacation in two years. My kids barely see me. I just want my life back.
-
-[00:01:45] Speaker 2: Money isn't really the issue here. It's more that I've been burned before by coaches who promised the world and delivered nothing.
-
-[00:02:15] Speaker 2: Last year I spent $5,000 on a program that was just recycled YouTube content. No personalization, no support. I felt like such an idiot.
-
-[00:03:00] Speaker 2: I appreciate that. What I really need is someone who can help me systematize my business so it doesn't depend on me for everything.
-
-[00:04:05] Speaker 2: Honestly? I'm at a 9. I can't keep going like this. Something has to change.
-
-[00:05:10] Speaker 2: You know what, yes. Let's do it. I'm ready to make this change.`,
       createdAt: now - callDuration * 1000,
+    });
+    await upsertCallContentTx(ctx, {
+      callId,
+      teamId: team._id,
+      transcriptText: `[00:00:05] Speaker 1: Hi Sarah, thanks for taking the time to chat with me today.\n[00:00:12] Speaker 2: I'm doing well — been thinking about this for months.\n[00:05:10] Speaker 2: You know what, yes. Let's do it.`,
     });
 
     // Add ammo items
@@ -1107,46 +1093,12 @@ export const seedTestCall = mutation({
       duration: callDuration,
       speakerCount: 2,
       recordingUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", // Sample audio for testing
-      transcriptText: `[00:00:05] Speaker 1: Hi Sarah, thanks for taking the time to chat with me today. How are you doing?
-
-[00:00:12] Speaker 2: I'm doing well, thanks for asking. I've actually been looking forward to this call. I've been thinking about this for months now.
-
-[00:00:25] Speaker 1: That's great to hear! So tell me a little bit about what's been going on and what brought you to us.
-
-[00:00:35] Speaker 2: Well, honestly, I've been struggling with my business for the past year. The stress has been overwhelming and I feel like I'm working 70 hours a week but not seeing the results I want.
-
-[00:01:02] Speaker 1: I completely understand. That sounds really challenging. What would it mean for you if you could cut that down to 40 hours and actually see growth?
-
-[00:01:15] Speaker 2: Oh my god, that would be life-changing. I haven't taken a vacation in two years. My kids barely see me. I just want my life back.
-
-[00:01:35] Speaker 1: I hear you. And what's held you back from making a change before now?
-
-[00:01:45] Speaker 2: Money isn't really the issue here. It's more that I've been burned before by coaches who promised the world and delivered nothing.
-
-[00:02:05] Speaker 1: That's a valid concern. Can you tell me more about that experience?
-
-[00:02:15] Speaker 2: Last year I spent $5,000 on a program that was just recycled YouTube content. No personalization, no support. I felt like such an idiot.
-
-[00:02:35] Speaker 1: I'm sorry you went through that. That's not what we do here. Let me explain how our program is different...
-
-[00:03:00] Speaker 2: I appreciate that. What I really need is someone who can help me systematize my business so it doesn't depend on me for everything.
-
-[00:03:20] Speaker 1: Exactly. That's precisely what we specialize in. Our clients typically see a 40% reduction in their working hours within the first 90 days.
-
-[00:03:40] Speaker 2: That sounds almost too good to be true. What's the investment for something like this?
-
-[00:03:50] Speaker 1: Before we get to that, I want to make sure this is the right fit. On a scale of 1-10, how committed are you to making a change right now?
-
-[00:04:05] Speaker 2: Honestly? I'm at a 9. I can't keep going like this. Something has to change.
-
-[00:04:20] Speaker 1: I love that energy. The program is $12,000 for the full six months, which includes weekly coaching calls, our entire course library, and unlimited email support.
-
-[00:04:40] Speaker 2: That's definitely an investment, but if it works, it would pay for itself many times over.
-
-[00:04:55] Speaker 1: Absolutely. Most of our clients see ROI within the first 60 days. Would you like to move forward today?
-
-[00:05:10] Speaker 2: You know what, yes. Let's do it. I'm ready to make this change.`,
       createdAt: now - callDuration * 1000,
+    });
+    await upsertCallContentTx(ctx, {
+      callId,
+      teamId: args.teamId,
+      transcriptText: `[00:00:05] Speaker 1: Hi Sarah, thanks for taking the time today.\n[00:00:12] Speaker 2: I'm doing well — been thinking about this for months.\n[00:05:10] Speaker 2: You know what, yes. Let's do it.`,
     });
 
     // Add ammo items
@@ -1746,11 +1698,7 @@ export const getCallAnalysis = query({
   args: { callId: v.id("calls") },
   handler: async (ctx, args) => {
     const content = await getContentForCallTx(ctx, args.callId);
-    if (content?.callAnalysis) return content.callAnalysis;
-    // Migration fallback: pre-backfill calls still carry callAnalysis
-    // on the calls row. Remove this branch in commit 2.
-    const call = await ctx.db.get(args.callId);
-    return call?.callAnalysis ?? null;
+    return content?.callAnalysis ?? null;
   },
 });
 
@@ -2061,10 +2009,8 @@ export const seedComprehensiveTestData = mutation({
         endedAt: callDate + duration * 1000,
         duration,
         speakerCount: 2,
-        transcriptText: `Sample transcript for call ${i}...`,
         closerTalkTime: Math.round(duration * 0.45),
         prospectTalkTime: Math.round(duration * 0.55),
-        summary: randomItem(SEED_SUMMARIES),
         primaryObjection,
         leadQualityScore: randomInRange(3, 10),
         prospectWasDecisionMaker: randomItem(["yes", "no", "unclear"]),
@@ -2076,6 +2022,12 @@ export const seedComprehensiveTestData = mutation({
         createdAt: callDate,
       });
       callIds.push(callId);
+      await upsertCallContentTx(ctx, {
+        callId,
+        teamId,
+        transcriptText: `Sample transcript for call ${i}...`,
+        summary: randomItem(SEED_SUMMARIES),
+      });
 
       // Add ammo
       const ammoCount = randomInRange(2, 4);
@@ -2443,10 +2395,8 @@ export const seedDemoData = mutation({
         endedAt: callDate + duration * 1000,
         duration,
         speakerCount: 2,
-        transcriptText: `Sample transcript for demo call ${i + 1}...`,
         closerTalkTime: Math.round(duration * (0.35 + Math.random() * 0.20)),
         prospectTalkTime: Math.round(duration * (0.45 + Math.random() * 0.20)),
-        summary: randomItem(DEMO_SUMMARIES),
         primaryObjection,
         leadQualityScore,
         prospectWasDecisionMaker,
@@ -2496,6 +2446,12 @@ export const seedDemoData = mutation({
         createdAt: callDate,
       });
       callIds.push(callId);
+      await upsertCallContentTx(ctx, {
+        callId,
+        teamId,
+        transcriptText: `Sample transcript for demo call ${i + 1}...`,
+        summary: randomItem(DEMO_SUMMARIES),
+      });
 
       // Add 2-4 ammo items per call
       const ammoCount = randomInRange(2, 4);
@@ -2844,12 +2800,8 @@ export const getAmmoAnalysis = query({
     callId: v.string(),
   },
   handler: async (ctx, args) => {
-    const callIdTyped = args.callId as Id<"calls">;
-    const content = await getContentForCallTx(ctx, callIdTyped);
-    if (content?.ammoAnalysis) return content.ammoAnalysis;
-    // Migration fallback — see getCallAnalysis. Remove in commit 2.
-    const call = await ctx.db.get(callIdTyped);
-    return call?.ammoAnalysis ?? null;
+    const content = await getContentForCallTx(ctx, args.callId as Id<"calls">);
+    return content?.ammoAnalysis ?? null;
   },
 });
 
@@ -2983,37 +2935,6 @@ export const fixLiveCallDurations = mutation({
     }
 
     return { updated: allLiveCalls.length };
-  },
-});
-
-// DEBUG: Check if any calls have ammoAnalysis data
-export const debugCheckAmmoAnalysis = query({
-  args: {},
-  handler: async (ctx) => {
-    // Get the most recent calls with analysis, sorted by analyzedAt
-    const recentCalls = await ctx.db.query("calls").order("desc").take(20);
-
-    const withAnalysis = recentCalls.filter(c => c.ammoAnalysis);
-
-    // Show the most recent calls with their liveSummary status
-    const recentAnalyses = await Promise.all(
-      withAnalysis.slice(0, 10).map(async c => {
-        const closer = await ctx.db.get(c.closerId);
-        return {
-          id: c._id,
-          closerName: closer?.name,
-          status: c.status,
-          analyzedAt: c.ammoAnalysis?.analyzedAt ? new Date(c.ammoAnalysis.analyzedAt).toISOString() : null,
-          hasLiveSummary: !!c.ammoAnalysis?.liveSummary,
-          liveSummaryPreview: c.ammoAnalysis?.liveSummary?.substring(0, 80),
-          engagementLevel: c.ammoAnalysis?.engagement?.level,
-        };
-      })
-    );
-
-    return {
-      recentAnalyses,
-    };
   },
 });
 

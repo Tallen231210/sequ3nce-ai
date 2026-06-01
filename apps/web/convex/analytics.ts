@@ -803,11 +803,8 @@ export const getObjectionPredictionAccuracy = query({
     }> = [];
 
     for (const call of lostCalls) {
-      // Migration-aware blob read: prefer callContent, fall back to
-      // call.ammoAnalysis (removed in commit 2).
       const content = await getContentForCallTx(ctx, call._id);
-      const ammoAnalysis = content?.ammoAnalysis ?? call.ammoAnalysis;
-      const predictions = ammoAnalysis?.objectionPrediction || [];
+      const predictions = content?.ammoAnalysis?.objectionPrediction || [];
       if (predictions.length === 0) continue;
       const actual = call.primaryObjection;
 
@@ -855,7 +852,8 @@ export const getObjectionPredictionAccuracy = query({
     return {
       summary: {
         totalCompletedCalls: calls.length,
-        callsWithAmmoAnalysis: calls.filter((c) => c.ammoAnalysis).length,
+        // callsWithAmmoAnalysis count needs a callContent join — diagnostic
+        // value isn't worth the per-call overhead. Omit.
         callsWithPrimaryObjection: calls.filter((c) => c.primaryObjection).length,
         lostCallsWithBothFields: totalWithData,
         exactMatchAccuracy: `${exactAccuracy}%`,

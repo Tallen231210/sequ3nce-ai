@@ -155,21 +155,14 @@ export const getContentForCall = internalQuery({
   },
 });
 
-/**
- * Backfill chunk for one team. For each calls row in the page that
- * still has any of the four blob fields populated:
- *   1. Insert/update a callContent row carrying those fields.
- *   2. Patch the original calls row to set those fields to undefined,
- *      which is what actually frees the bytes on disk.
- *
- * Both writes happen inside the same mutation — atomic per call. If
- * a chunk fails mid-team the backfill is safe to re-run; the per-row
- * "any blob field still set" check skips already-migrated rows.
- *
- * pageSize is conservative — until the calls row is purged it still
- * carries the heavy fields, so reading 100 rows at ~97 KB each is
- * ~9.7 MiB — safely under the 16 MiB per-mutation limit.
- */
+// Backfill code (chunked per-team migration of the four heavy fields)
+// is preserved here behind escape-hatch type casts so it compiles
+// against the trimmed calls schema. The fields it references are
+// removed in commit 2; the casts let the helper keep working when
+// run against rows that still carry the legacy data. After the final
+// purge run, this code is dead and can be deleted in a follow-up.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CallWithLegacy = Doc<"calls"> & { transcriptText?: any; summary?: any; callAnalysis?: any; ammoAnalysis?: any };
 export const backfillChunk = internalMutation({
   args: {
     teamId: v.id("teams"),
@@ -191,7 +184,7 @@ export const backfillChunk = internalMutation({
       })
       .order("desc");
 
-    const page = (await q.take(args.pageSize)) as Doc<"calls">[];
+    const page = (await q.take(args.pageSize)) as CallWithLegacy[];
     if (page.length === 0) return { processed: 0, migrated: 0, nextCursor: null };
 
     let migrated = 0;
@@ -225,16 +218,13 @@ export const backfillChunk = internalMutation({
         });
       }
 
-      // Purge the blob fields from the original calls row. Setting to
-      // undefined is what frees the bytes — schema removal alone
-      // wouldn't (Convex documents keep their on-disk bytes until the
-      // row is rewritten).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await ctx.db.patch(call._id, {
         transcriptText: undefined,
         summary: undefined,
         callAnalysis: undefined,
         ammoAnalysis: undefined,
-      });
+      } as any);
       migrated += 1;
     }
 
@@ -243,10 +233,6 @@ export const backfillChunk = internalMutation({
   },
 });
 
-/**
- * Backfill action for one team. Walks the calls table backward via
- * createdAt, populating callContent and purging blobs in bounded chunks.
- */
 export const backfillTeamCallContent = internalAction({
   args: {
     teamId: v.id("teams"),
@@ -290,9 +276,6 @@ export const listTeamIds = internalQuery({
   },
 });
 
-/**
- * Backfill ALL teams. Use sparingly — one-time migration only.
- */
 export const backfillAllTeamsCallContent = internalAction({
   args: { pageSize: v.optional(v.number()) },
   handler: async (
@@ -315,23 +298,14 @@ export const backfillAllTeamsCallContent = internalAction({
   },
 });
 
-/**
- * Diagnostic: count calls on this team that still have any of the
- * four blob fields populated. Should be 0 post-backfill — non-zero
- * means a chunk failed or a write site is still patching the old
- * fields directly. Used to verify before commit-2.
- */
 export const countUnmigratedCalls = internalQuery({
   args: { teamId: v.id("teams") },
   handler: async (ctx, args): Promise<{ scanned: number; remaining: number }> => {
-    // Bounded scan — we only need to know "is it 0 or not." If a team
-    // has thousands of unmigrated calls the take(500) will still find
-    // them in the first chunk.
     const sample = (await ctx.db
       .query("calls")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
-      .take(500)) as Doc<"calls">[];
+      .take(500)) as CallWithLegacy[];
     let remaining = 0;
     for (const c of sample) {
       if (
