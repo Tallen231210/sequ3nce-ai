@@ -476,6 +476,30 @@ export default defineSchema({
     .index("by_team_and_flagged", ["teamId", "flaggedForReview"])
     .index("by_team_and_review_status", ["teamId", "reviewStatus"]),
 
+  // Sidecar stats table — denormalizes only the fields stats queries
+  // need (no transcript / ammoAnalysis / callAnalysis blobs). Lets
+  // dashboard queries scan thousands of rows without hitting Convex's
+  // 16 MiB per-query read limit (a calls row averages ~97 KB; a
+  // callStats row is ~80 bytes). Kept in sync via the maintainCallStats
+  // hook in calls.ts on every create/patch/delete of the parent call.
+  callStats: defineTable({
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    closerId: v.string(),
+    createdAt: v.number(),
+    status: v.string(),
+    outcome: v.optional(v.string()),
+    dealValue: v.optional(v.number()),
+    contractValue: v.optional(v.number()),
+    cashCollected: v.optional(v.number()),
+    duration: v.optional(v.number()),
+  })
+    .index("by_call", ["callId"])
+    .index("by_team", ["teamId"])
+    .index("by_team_and_date", ["teamId", "createdAt"])
+    .index("by_closer", ["closerId"])
+    .index("by_closer_and_date", ["closerId", "createdAt"]),
+
   // Ammo (key moments extracted from calls)
   ammo: defineTable({
     callId: v.id("calls"),

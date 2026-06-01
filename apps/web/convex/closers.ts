@@ -540,33 +540,19 @@ export const getCloserStats = query({
       ammoPerCall.set(ammo.callId, current + 1);
     }
 
-    // Compute the widest date floor we need: the selected period, the
-    // previous period (for trends), AND the rolling week/month windows
-    // that always render. We range-scan from this floor via the
-    // by_team_and_date index so we never read calls older than anything
-    // we'd display.
-    //
-    // Hard floor of 1 year prevents "all_time" from collecting every
-    // historical call — calls carry transcript + AI analysis blobs and
-    // average tens of KB, so a high-volume team's full history easily
-    // exceeds Convex's 16 MiB per-query read limit (the bug this fix
-    // addresses; same class as commit 04c9ed3).
-    const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
-    let scanFloor = Math.min(
-      filterDate || oneYearAgo,
-      previousPeriodStart || oneYearAgo,
-      startOfWeek.getTime(),
-      startOfMonth.getTime(),
-    );
-    if (scanFloor < oneYearAgo) scanFloor = oneYearAgo;
-
-    // One team-wide range scan, then bucket by closer in JS. The
-    // by_team_and_date index lets the storage layer reject older rows
-    // before they're read — earlier per-closer-collect-all approach
-    // pulled every historical call for every closer (16 MiB limit
-    // breaker on high-volume teams).
+    // Read from callStats sidecar — see comment in getTeamStats. Scans
+    // are safe at any size because the sidecar has no transcript blobs.
+    const scanFloor =
+      args.dateRange === "all_time"
+        ? 0
+        : Math.min(
+            filterDate,
+            previousPeriodStart || filterDate,
+            startOfWeek.getTime(),
+            startOfMonth.getTime(),
+          );
     const teamCalls = await ctx.db
-      .query("calls")
+      .query("callStats")
       .withIndex("by_team_and_date", (q) =>
         q.eq("teamId", user.teamId).gte("createdAt", scanFloor),
       )
@@ -846,6 +832,7 @@ export const getTeamStats = query({
     customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<TeamStats | null> => {
+    try {
     // Get the user to find their team
     const user = await ctx.db
       .query("users")
@@ -919,10 +906,21 @@ export const getTeamStats = query({
       previousPeriodEnd = filterDate;
     }
 
-    // Get all calls for the team
+    // Read from the callStats sidecar instead of the calls table. The
+    // sidecar holds only the thin fields stats queries need (no
+    // transcript / ammoAnalysis / callAnalysis blobs), so even "all_time"
+    // scans on high-volume teams stay under Convex's 16 MiB per-query
+    // read limit. Kept in sync by the call-stats-reconcile cron in
+    // crons.ts (every 5 min, 2h window).
+    const scanFloor =
+      args.dateRange === "all_time"
+        ? 0
+        : Math.min(filterDate, previousPeriodStart || filterDate);
     const allCalls = await ctx.db
-      .query("calls")
-      .withIndex("by_team", (q) => q.eq("teamId", user.teamId))
+      .query("callStats")
+      .withIndex("by_team_and_date", (q) =>
+        q.eq("teamId", user.teamId).gte("createdAt", scanFloor),
+      )
       .collect();
 
     // Current period calls
@@ -1037,6 +1035,13 @@ export const getTeamStats = query({
       showRateTrend: calculateRateTrend(showRate, previousShowRate),
       contractValueTrend: calculateTrend(teamContractValue, previousContractValue),
     };
+    } catch (err) {
+      // Graceful degradation: log, return null. The Closer Stats tab
+      // renders an empty state instead of crashing the route. Same
+      // pattern as getCloserStats (commit f52e382).
+      console.error("[getTeamStats] failed:", err);
+      return null;
+    }
   },
 });
 

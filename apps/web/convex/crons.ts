@@ -132,6 +132,19 @@ crons.interval(
   internal.hyrosReadActions.runHyrosAttributionPoll,
 );
 
+// callStats sidecar reconcile: every 5 min, re-sync any calls created in
+// the last 2 hours into the callStats table. The sidecar holds only the
+// thin fields stats queries need (no transcript blobs), so
+// getCloserStats / getTeamStats can scan thousands of rows without
+// hitting Convex's 16 MiB per-query read limit. Drift-free without
+// hooking every individual calls mutation site.
+crons.interval(
+  "call-stats-reconcile",
+  { minutes: 5 },
+  internal.callStats.reconcileRecentCallStats,
+  { windowHours: 2 },
+);
+
 // Booking Flow Detection (Dashboard Phase 4): daily sweep. For each team
 // with stale (>7 day old) or missing flow detection, recompute by
 // comparing lead.firstDialAt vs matched calendar event creation time
