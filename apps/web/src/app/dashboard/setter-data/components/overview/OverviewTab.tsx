@@ -6,7 +6,8 @@ import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { KpiStrip } from "./KpiStrip";
 import { ActionQueue } from "./ActionQueue";
-import { SourceMix } from "./SourceMix";
+import { BookingFunnelPanel } from "./BookingFunnelPanel";
+import { HyrosAdSourcesPanel } from "./HyrosAdSourcesPanel";
 import { FunnelChart } from "./FunnelChart";
 import { LeadAgeDecayCurve } from "./LeadAgeDecayCurve";
 import { BestTimeToCallHeatmap } from "./BestTimeToCallHeatmap";
@@ -31,7 +32,8 @@ interface OverviewTabProps {
  *   1. Header bar with date-range select
  *   2. KPI strip (4 cards)
  *   3. Funnel chart (dial → connect)
- *   4. Two-column: Action queue (untouched leads) | Source mix
+ *   4. Action queue (full width)
+ *   5. Two-column: How leads booked | Where traffic came from (Hyros)
  *
  * All data comes from a single getOverview query — the queries layer
  * fans out internally so the UI stays simple.
@@ -95,15 +97,18 @@ export function OverviewTab({
           {pipelines && pipelines.length > 0 && (
             <PipelineFunnel pipelines={pipelines} />
           )}
+          <ActionQueue
+            actionQueue={data.actionQueue}
+            onViewAll={() => onDrillToLeads("untouched")}
+          />
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ActionQueue
-              actionQueue={data.actionQueue}
-              onViewAll={() => onDrillToLeads("untouched")}
-            />
-            <SourceMix
-              sources={data.sourceMix}
+            <BookingFunnelPanel
+              rows={data.bookingFunnel}
               totalLeads={data.totalLeads}
-              coverage={data.sourceMixCoverage}
+            />
+            <HyrosAdSourcesPanel
+              platforms={data.hyrosAdSources}
+              coverage={data.hyrosCoverage}
             />
           </div>
         </>

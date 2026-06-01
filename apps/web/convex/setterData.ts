@@ -38,6 +38,44 @@ async function resolveAuthUser(
   return user;
 }
 
+// Normalize Hyros's raw trafficSource strings to clean display names so
+// duplicate platform spellings ("facebook" + "Facebook Ads", "google" +
+// "google_v2") don't render as separate rows in the ad-attribution
+// panel. Hyros doesn't normalize these on their end — different
+// integrations / migrations leave the same platform under several
+// labels. Fallback: capitalize the raw value so unknown platforms still
+// render reasonably.
+function normalizeHyrosPlatform(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  if (
+    lower === "facebook" ||
+    lower === "facebook ads" ||
+    lower === "facebook_ads" ||
+    lower === "meta" ||
+    lower === "meta ads"
+  )
+    return "Facebook";
+  if (
+    lower === "google" ||
+    lower === "google ads" ||
+    lower === "google_ads" ||
+    lower === "google_v2" ||
+    lower === "adwords"
+  )
+    return "Google";
+  if (lower === "youtube" || lower === "youtube ads") return "YouTube";
+  if (lower === "tiktok" || lower === "tiktok ads") return "TikTok";
+  if (lower === "instagram" || lower === "instagram ads") return "Instagram";
+  if (lower === "twitter" || lower === "x" || lower === "x ads") return "Twitter / X";
+  if (lower === "linkedin" || lower === "linkedin ads") return "LinkedIn";
+  // Hyros tags traffic it can't tie to a paid click as "automatic" —
+  // covers email, direct, and organic. "Organic" reads better than
+  // the raw label.
+  if (lower === "automatic" || lower === "organic" || lower === "direct")
+    return "Organic";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 // ----------------------------------------------------------------------------
 // getOverview — Overview tab landing data
 // ----------------------------------------------------------------------------
@@ -82,35 +120,83 @@ export const getOverview = query({
       )
       .collect()) as Doc<"setterLeads">[];
 
-    // Top-5 lead sources by count. Source-priority: Hyros attribution
-    // (from the Phase 5 read direction) wins when present, falling back
-    // to GHL's source field. Mixed coverage renders both kinds of rows
-    // in the same list with origin tags so the UI can badge them.
-    interface SourceRow {
-      source: string;
-      count: number;
-      origin: "hyros" | "ghl";
-    }
-    const sourceMap = new Map<string, SourceRow>();
-    let hyrosCount = 0;
+    // Two independent groupings — the panel that consumes these was
+    // split (booking-funnel vs ad-attribution) because they answer
+    // orthogonal questions: how the lead booked vs. where their
+    // traffic originated. Mixing them into one ranked list (the old
+    // sourceMix shape) made both numbers misleading because a single
+    // lead is usually in both buckets simultaneously.
+
+    // 1. Booking funnel — every lead by lead.source. Top 7 + "Other"
+    //    bucket. Denominator = totalLeads. Counts every lead exactly
+    //    once regardless of Hyros status.
+    const bookingMap = new Map<string, number>();
+
+    // 2. Hyros ad sources — only leads with attribution resolved by
+    //    Hyros (status === "found"). Grouped by platform, then nested
+    //    by sourceLinkName (the specific ad/video/campaign). Denominator
+    //    = attributedCount (NOT totalLeads — the panel answers "of the
+    //    Hyros-attributed leads, where did they come from").
+    const hyrosByPlatform = new Map<
+      string,
+      { count: number; ads: Map<string, number> }
+    >();
+    let attributedCount = 0;
+
     for (const lead of leads) {
-      const fromHyros = lead.hyrosFirstSource?.trafficSource;
-      if (fromHyros) hyrosCount++;
-      const key = fromHyros || lead.source || "Unknown";
-      const origin: "hyros" | "ghl" = fromHyros ? "hyros" : "ghl";
-      const existing = sourceMap.get(key);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        sourceMap.set(key, { source: key, count: 1, origin });
+      bookingMap.set(
+        lead.source || "Unknown",
+        (bookingMap.get(lead.source || "Unknown") ?? 0) + 1,
+      );
+
+      if (
+        lead.hyrosAttributionStatus === "found" &&
+        lead.hyrosFirstSource?.trafficSource
+      ) {
+        attributedCount += 1;
+        const platform = normalizeHyrosPlatform(
+          lead.hyrosFirstSource.trafficSource,
+        );
+        const adName = lead.hyrosFirstSource.sourceLinkName ?? "Unspecified";
+        const entry = hyrosByPlatform.get(platform) ?? {
+          count: 0,
+          ads: new Map<string, number>(),
+        };
+        entry.count += 1;
+        entry.ads.set(adName, (entry.ads.get(adName) ?? 0) + 1);
+        hyrosByPlatform.set(platform, entry);
       }
     }
-    const sourceMix = Array.from(sourceMap.values())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-    const sourceMixCoverage = {
-      hyrosCount,
-      totalLeadsWithSource: leads.length,
+
+    const sortedBookings = Array.from(bookingMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+    const topBookings = sortedBookings.slice(0, 7);
+    const otherBookingCount = sortedBookings
+      .slice(7)
+      .reduce((sum, r) => sum + r.count, 0);
+    const bookingFunnel =
+      otherBookingCount > 0
+        ? [...topBookings, { name: "Other", count: otherBookingCount }]
+        : topBookings;
+
+    const hyrosAdSources = Array.from(hyrosByPlatform.entries())
+      .map(([platform, { count, ads }]) => ({
+        platform,
+        count,
+        ads: Array.from(ads.entries())
+          .map(([name, c]) => ({ name, count: c }))
+          .sort((a, b) => b.count - a.count),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    // team.hyrosEnabled drives the right panel's "not connected" empty
+    // state vs "connected but no attributed leads yet" empty state.
+    const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
+    const hyrosCoverage = {
+      attributedCount,
+      totalLeads: leads.length,
+      hyrosEnabled: team?.hyrosEnabled === true,
     };
 
     // Action queue: top-5 untouched leads, oldest first ("stalest first
@@ -139,8 +225,9 @@ export const getOverview = query({
 
     return {
       ...scorecard,
-      sourceMix,
-      sourceMixCoverage,
+      bookingFunnel,
+      hyrosAdSources,
+      hyrosCoverage,
       actionQueue,
     };
   },
