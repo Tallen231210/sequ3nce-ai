@@ -163,6 +163,20 @@ export const getOverview = query({
       string,
       { count: number; ads: Map<string, AdAccumulator> }
     >();
+    // Wave 2 routing rollups — per-(adName, operatorId) cells.
+    // closerByAd indexed by closerId (string from Id<"closers">).
+    // setterByAd indexed by setter's GHL user ID.
+    interface RoutingCell {
+      matched: number;
+      showed: number;
+      closed: number;
+      cashCollected: number;
+    }
+    const closerByAd = new Map<string, Map<string, RoutingCell>>();
+    const setterByAd = new Map<string, Map<string, RoutingCell>>();
+    // adName → platform (for emitting alongside routing rows so the UI
+    // can render the same platform context Wave 1 uses).
+    const adPlatformByName = new Map<string, string>();
     let attributedCount = 0;
     // Cache of attributed leads with their (platform, adName) keys so we
     // can do the matcher lookup pass without re-deriving normalization.
@@ -210,6 +224,7 @@ export const getOverview = query({
         }
         entry.ads.set(adName, adAcc);
         hyrosByPlatform.set(platform, entry);
+        adPlatformByName.set(adName, platform);
         attributedLeadsForOutcomes.push({ lead, platform, adName });
       }
     }
@@ -244,23 +259,71 @@ export const getOverview = query({
           adAcc.matched += 1;
           // "Showed" = at least one settled completed call that wasn't
           // a no_show or rescheduled. Matches computeCloserSideShowRate.
-          if (
-            matched.some(
-              (c) =>
-                c.status === "completed" &&
-                c.outcome != null &&
-                c.outcome !== "no_show" &&
-                c.outcome !== "rescheduled",
-            )
-          ) {
+          const adShowed = matched.some(
+            (c) =>
+              c.status === "completed" &&
+              c.outcome != null &&
+              c.outcome !== "no_show" &&
+              c.outcome !== "rescheduled",
+          );
+          if (adShowed) {
             adAcc.showed += 1;
           }
           const closedCalls = matched.filter((c) => c.outcome === "closed");
+          const adClosedSum = closedCalls.reduce(
+            (sum, c) => sum + (c.cashCollected ?? 0),
+            0,
+          );
           if (closedCalls.length > 0) {
             adAcc.closed += 1;
-            for (const c of closedCalls) {
-              adAcc.cashCollected += c.cashCollected ?? 0;
-            }
+            adAcc.cashCollected += adClosedSum;
+          }
+
+          // Wave 2 — routing rollups. Pick the most recent matched
+          // call by createdAt as the representative closer. Avoids
+          // splitting credit when multiple closers worked the same
+          // lead; matches Wave 1's single-representative convention.
+          const repCall = matched.reduce((a, b) =>
+            a.createdAt >= b.createdAt ? a : b,
+          );
+          const repCloserId = String(repCall.closerId);
+          const closerMap =
+            closerByAd.get(entry.adName) ?? new Map<string, RoutingCell>();
+          const closerCell = closerMap.get(repCloserId) ?? {
+            matched: 0,
+            showed: 0,
+            closed: 0,
+            cashCollected: 0,
+          };
+          closerCell.matched += 1;
+          if (adShowed) closerCell.showed += 1;
+          if (closedCalls.length > 0) {
+            closerCell.closed += 1;
+            closerCell.cashCollected += adClosedSum;
+          }
+          closerMap.set(repCloserId, closerCell);
+          closerByAd.set(entry.adName, closerMap);
+
+          // Setter rollup — indexed by the lead's qualifying setter.
+          // Skipped for leads with no assignedToGhlUserId (unassigned
+          // or pre-assignment-tracking leads).
+          const setterGhlUserId = entry.lead.assignedToGhlUserId;
+          if (setterGhlUserId) {
+            const setterMap =
+              setterByAd.get(entry.adName) ?? new Map<string, RoutingCell>();
+            const setterCell = setterMap.get(setterGhlUserId) ?? {
+              matched: 0,
+              showed: 0,
+              closed: 0,
+              cashCollected: 0,
+            };
+            setterCell.matched += 1;
+            if (adShowed) setterCell.showed += 1;
+            // Setter cells don't track closes / cash — those are closer
+            // attribution. Showing show-rate keeps the metric meaningful
+            // (qualifying-stage performance).
+            setterMap.set(setterGhlUserId, setterCell);
+            setterByAd.set(entry.adName, setterMap);
           }
           // Top objection — only count primaryObjection on lost /
           // follow_up calls. "other" and missing values are excluded
@@ -369,6 +432,182 @@ export const getOverview = query({
       }))
       .sort((a, b) => b.count - a.count);
 
+    // Load setter reps early — needed by both the routing rollup
+    // (Wave 2) and the action queue below.
+    const reps = (await ctx.db
+      .query("setterReps")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .collect()) as Doc<"setterReps">[];
+    const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
+
+    // Wave 2 — Routing performance per ad.
+    // Collapse the closerByAd / setterByAd accumulators into best/worst
+    // pairs per ad with sample-size gating. The MIN_AD_MATCHED_FOR_ROW
+    // threshold (5) matches the existing Wave 1 outcome-line gate.
+    // MIN_CELL_SAMPLE (3) gates which individual operators qualify for
+    // best/worst on a given ad. If only one operator qualifies per
+    // role, we emit it as a sole-performer instead of best/worst —
+    // avoids the misleading "best of one" framing.
+    const MIN_AD_MATCHED_FOR_ROW = 5;
+    const MIN_CELL_SAMPLE = 3;
+
+    interface RoutingPerf {
+      name: string;
+      matched: number;
+      // role-dependent: closer uses closed/closeRate, setter uses
+      // showed/showRate. Frontend reads whichever is present.
+      closed?: number;
+      closeRate?: number;
+      showed?: number;
+      showRate?: number;
+    }
+
+    // Pre-resolve closer names once per unique closerId (small set —
+    // AICom has 5 active closers).
+    const closerNameById = new Map<string, string>();
+    const uniqueCloserIds = new Set<string>();
+    for (const closerMap of closerByAd.values()) {
+      for (const id of closerMap.keys()) uniqueCloserIds.add(id);
+    }
+    for (const id of uniqueCloserIds) {
+      const closer = await ctx.db.get(id as Id<"closers">);
+      closerNameById.set(id, closer?.name ?? "Unknown closer");
+    }
+
+    function resolveSetterName(ghlUserId: string): string {
+      return repNameByGhlUserId.get(ghlUserId) ?? "Unknown setter";
+    }
+
+    // Deterministic tiebreaker: larger sample wins, then alphabetical
+    // — keeps the rendered best/worst stable across re-fetches.
+    function pickExtreme(
+      qualified: RoutingPerf[],
+      compare: (a: number, b: number) => number,
+      rateKey: "closeRate" | "showRate",
+    ): RoutingPerf | undefined {
+      if (qualified.length === 0) return undefined;
+      return [...qualified].sort((a, b) => {
+        const rateDiff = compare(b[rateKey] ?? 0, a[rateKey] ?? 0);
+        if (rateDiff !== 0) return rateDiff;
+        if (b.matched !== a.matched) return b.matched - a.matched;
+        return a.name.localeCompare(b.name);
+      })[0];
+    }
+
+    const hyrosRoutingPerAd: Array<{
+      adName: string;
+      platform: string;
+      matchedTotal: number;
+      bestCloser?: RoutingPerf;
+      worstCloser?: RoutingPerf;
+      closerSpreadPp?: number;
+      soleCloser?: RoutingPerf;
+      bestSetter?: RoutingPerf;
+      worstSetter?: RoutingPerf;
+      setterSpreadPp?: number;
+      soleSetter?: RoutingPerf;
+    }> = [];
+
+    // Build the per-ad rows. Iterate the union of ad keys from both
+    // maps (every ad in closerByAd is also in adPlatformByName, and
+    // setterByAd is a subset by construction).
+    const adsToConsider = new Set<string>();
+    for (const ad of closerByAd.keys()) adsToConsider.add(ad);
+    for (const ad of setterByAd.keys()) adsToConsider.add(ad);
+
+    for (const adName of adsToConsider) {
+      const closerCells = closerByAd.get(adName) ?? new Map();
+      const setterCells = setterByAd.get(adName) ?? new Map();
+
+      let matchedTotal = 0;
+      for (const cell of closerCells.values()) matchedTotal += cell.matched;
+      if (matchedTotal < MIN_AD_MATCHED_FOR_ROW) continue;
+
+      const closerPerfs: RoutingPerf[] = Array.from(closerCells.entries()).map(
+        ([id, cell]) => ({
+          name: closerNameById.get(id as string) ?? "Unknown closer",
+          matched: cell.matched,
+          closed: cell.closed,
+          closeRate: cell.matched > 0 ? (cell.closed / cell.matched) * 100 : 0,
+        }),
+      );
+      const setterPerfs: RoutingPerf[] = Array.from(setterCells.entries()).map(
+        ([id, cell]) => ({
+          name: resolveSetterName(id as string),
+          matched: cell.matched,
+          showed: cell.showed,
+          showRate: cell.matched > 0 ? (cell.showed / cell.matched) * 100 : 0,
+        }),
+      );
+
+      const qualifiedClosers = closerPerfs.filter(
+        (p) => p.matched >= MIN_CELL_SAMPLE,
+      );
+      const qualifiedSetters = setterPerfs.filter(
+        (p) => p.matched >= MIN_CELL_SAMPLE,
+      );
+
+      const row: (typeof hyrosRoutingPerAd)[number] = {
+        adName,
+        platform: adPlatformByName.get(adName) ?? "unknown",
+        matchedTotal,
+      };
+
+      if (qualifiedClosers.length >= 2) {
+        row.bestCloser = pickExtreme(
+          qualifiedClosers,
+          (a, b) => a - b,
+          "closeRate",
+        );
+        row.worstCloser = pickExtreme(
+          qualifiedClosers,
+          (a, b) => b - a,
+          "closeRate",
+        );
+        if (row.bestCloser && row.worstCloser) {
+          row.closerSpreadPp = Math.round(
+            (row.bestCloser.closeRate ?? 0) - (row.worstCloser.closeRate ?? 0),
+          );
+        }
+      } else if (qualifiedClosers.length === 1) {
+        row.soleCloser = qualifiedClosers[0];
+      }
+
+      if (qualifiedSetters.length >= 2) {
+        row.bestSetter = pickExtreme(
+          qualifiedSetters,
+          (a, b) => a - b,
+          "showRate",
+        );
+        row.worstSetter = pickExtreme(
+          qualifiedSetters,
+          (a, b) => b - a,
+          "showRate",
+        );
+        if (row.bestSetter && row.worstSetter) {
+          row.setterSpreadPp = Math.round(
+            (row.bestSetter.showRate ?? 0) - (row.worstSetter.showRate ?? 0),
+          );
+        }
+      } else if (qualifiedSetters.length === 1) {
+        row.soleSetter = qualifiedSetters[0];
+      }
+
+      hyrosRoutingPerAd.push(row);
+    }
+
+    hyrosRoutingPerAd.sort((a, b) => b.matchedTotal - a.matchedTotal);
+
+    // Count ads hidden by the threshold for the footer caption.
+    let routingAdsHidden = 0;
+    for (const adName of adsToConsider) {
+      const closerCells = closerByAd.get(adName) ?? new Map();
+      let total = 0;
+      for (const cell of closerCells.values()) total += cell.matched;
+      if (total > 0 && total < MIN_AD_MATCHED_FOR_ROW) routingAdsHidden += 1;
+    }
+
     // team.hyrosEnabled drives the right panel's "not connected" empty
     // state vs "connected but no attributed leads yet" empty state.
     const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
@@ -380,12 +619,6 @@ export const getOverview = query({
 
     // Action queue: top-5 untouched leads, oldest first ("stalest first
     // wins" — managers want to know what's been waiting longest).
-    const reps = (await ctx.db
-      .query("setterReps")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
-      .collect()) as Doc<"setterReps">[];
-    const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
     const actionQueue = leads
       .filter((l) => l.dialCount === 0 && l.smsOutboundCount === 0)
@@ -407,6 +640,8 @@ export const getOverview = query({
       bookingFunnel,
       hyrosAdSources,
       hyrosCoverage,
+      hyrosRoutingPerAd,
+      hyrosRoutingAdsHidden: routingAdsHidden,
       actionQueue,
     };
   },

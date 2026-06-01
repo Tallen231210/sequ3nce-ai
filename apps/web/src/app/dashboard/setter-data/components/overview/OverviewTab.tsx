@@ -8,6 +8,7 @@ import { KpiStrip } from "./KpiStrip";
 import { ActionQueue } from "./ActionQueue";
 import { BookingFunnelPanel } from "./BookingFunnelPanel";
 import { HyrosAdSourcesPanel } from "./HyrosAdSourcesPanel";
+import { RoutingPerformancePanel } from "./RoutingPerformancePanel";
 import { FunnelChart } from "./FunnelChart";
 import { LeadAgeDecayCurve } from "./LeadAgeDecayCurve";
 import { BestTimeToCallHeatmap } from "./BestTimeToCallHeatmap";
@@ -111,6 +112,11 @@ export function OverviewTab({
               coverage={data.hyrosCoverage}
             />
           </div>
+          <RoutingPerformancePanel
+            rows={data.hyrosRoutingPerAd}
+            adsHidden={data.hyrosRoutingAdsHidden}
+            coverage={data.hyrosCoverage}
+          />
         </>
       )}
     </div>
