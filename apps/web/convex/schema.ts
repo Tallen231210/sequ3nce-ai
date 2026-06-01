@@ -500,6 +500,67 @@ export default defineSchema({
     .index("by_closer", ["closerId"])
     .index("by_closer_and_date", ["closerId", "createdAt"]),
 
+  // Heavy-blob sibling table — moves the four large fields off the
+  // calls table so list/scan queries don't pay ~97 KB/row for data
+  // they don't need. After the backfill in callContent.ts runs and
+  // commit 2 removes these fields from the calls schema, a calls row
+  // is ~100 bytes and any team-wide scan is permanently under the
+  // Convex 16 MiB read limit regardless of team size or date range.
+  //
+  // Single-call detail views (transcript player, AI analysis tab,
+  // desktop ammo polling) do one extra .get("callContent", callId) —
+  // single-row reads are unconstrained by the scan limit.
+  callContent: defineTable({
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    transcriptText: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    callAnalysis: v.optional(v.object({
+      chapters: v.array(v.object({
+        title: v.string(),
+        startTime: v.number(),
+        endTime: v.number(),
+        summary: v.string(),
+      })),
+      analysis: v.object({
+        opening: v.object({ score: v.string(), summary: v.string() }),
+        discovery: v.object({ score: v.string(), summary: v.string() }),
+        presentation: v.object({ score: v.string(), summary: v.string() }),
+        objectionHandling: v.object({ score: v.string(), summary: v.string() }),
+        closing: v.object({ score: v.string(), summary: v.string() }),
+      }),
+      callSequence: v.array(v.object({
+        phase: v.string(),
+        description: v.string(),
+      })),
+      analyzedAt: v.number(),
+    })),
+    ammoAnalysis: v.optional(v.object({
+      engagement: v.object({
+        level: v.string(),
+        reason: v.string(),
+      }),
+      beliefs: v.object({
+        problem: v.number(),
+        solution: v.number(),
+        vehicle: v.number(),
+        self: v.number(),
+        time: v.number(),
+        money: v.number(),
+        urgency: v.number(),
+      }),
+      objectionPrediction: v.array(v.object({
+        type: v.string(),
+        probability: v.number(),
+      })),
+      painPoints: v.array(v.string()),
+      liveSummary: v.optional(v.string()),
+      analyzedAt: v.number(),
+    })),
+  })
+    .index("by_call", ["callId"])
+    .index("by_team", ["teamId"]),
+
   // Ammo (key moments extracted from calls)
   ammo: defineTable({
     callId: v.id("calls"),

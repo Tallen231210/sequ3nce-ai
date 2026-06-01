@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+import { getContentForCallTx } from "./callContent";
 
 // ──────────────────────────────────────────────
 // QUERIES
@@ -84,6 +85,11 @@ export const getCallsForReview = query({
       filtered.map(async (call) => {
         const closer = await ctx.db.get(call.closerId);
 
+        // Pull summary from callContent sibling, falling back to the
+        // calls row during the migration window. Remove fallback in
+        // commit 2.
+        const content = await getContentForCallTx(ctx, call._id);
+
         // Check if there are closer comments newer than managerReadAt
         let hasUnreadReplies = false;
         if (call.commentCount && call.commentCount > 0) {
@@ -120,7 +126,7 @@ export const getCallsForReview = query({
           createdAt: call.createdAt,
           startedAt: call.startedAt,
           endedAt: call.endedAt,
-          summary: call.summary,
+          summary: content?.summary ?? call.summary,
         };
       })
     );
@@ -344,6 +350,11 @@ export const getCallForReview = query({
 
     const closer = await ctx.db.get(call.closerId);
 
+    // Migration-aware blob read — callContent wins when present, falls
+    // back to calls row for not-yet-backfilled rows. Remove fallback
+    // in commit 2.
+    const content = await getContentForCallTx(ctx, args.callId);
+
     return {
       _id: call._id,
       closerId: call.closerId,
@@ -355,14 +366,14 @@ export const getCallForReview = query({
       duration: call.duration,
       recordingUrl: call.recordingUrl,
       recordingType: call.recordingType,
-      transcriptText: call.transcriptText,
+      transcriptText: content?.transcriptText ?? call.transcriptText,
       flaggedForReview: call.flaggedForReview,
       flaggedAt: call.flaggedAt,
       reviewStatus: call.reviewStatus,
       reviewedAt: call.reviewedAt,
       commentCount: call.commentCount ?? 0,
-      summary: call.summary,
-      callAnalysis: call.callAnalysis,
+      summary: content?.summary ?? call.summary,
+      callAnalysis: content?.callAnalysis ?? call.callAnalysis,
       createdAt: call.createdAt,
       startedAt: call.startedAt,
       endedAt: call.endedAt,

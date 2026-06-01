@@ -3,6 +3,7 @@ import { mutation, query, internalMutation, internalAction, internalQuery } from
 import { api, internal } from "./_generated/api";
 import { Id, Doc } from "./_generated/dataModel";
 import { buildCallStartedBlocks } from "./slack";
+import { upsertCallContentTx, getContentForCallTx } from "./callContent";
 
 // Create a new call record (called by audio processor when call starts)
 export const createCall = mutation({
@@ -155,7 +156,12 @@ export const updateTranscript = mutation({
     transcript: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.callId as any, {
+    const callId = args.callId as Id<"calls">;
+    const call = await ctx.db.get(callId);
+    if (!call) return;
+    await upsertCallContentTx(ctx, {
+      callId,
+      teamId: call.teamId,
       transcriptText: args.transcript,
     });
   },
@@ -262,24 +268,22 @@ export const completeCall = mutation({
     status: v.string(),
   },
   handler: async (ctx, args) => {
-    const call = await ctx.db.get(args.callId as any) as {
-      transcriptText?: string;
-      recordingUrl?: string;
-      duration?: number;
-      endedAt?: number;
-      status?: string;
-    } | null;
+    const callId = args.callId as Id<"calls">;
+    const call = await ctx.db.get(callId);
     if (!call) return;
 
-    // Build patch defensively — only write fields that improve the record
-    const patch: Record<string, any> = {};
-
-    // Only write transcriptText if incoming is non-empty (never overwrite good data with empty)
+    // Transcript goes to the callContent sibling. The "don't shorten"
+    // defensive guard is preserved inside upsertCallContentTx.
     if (args.transcript && args.transcript.trim().length > 0) {
-      if (!call.transcriptText || args.transcript.length > call.transcriptText.length) {
-        patch.transcriptText = args.transcript;
-      }
+      await upsertCallContentTx(ctx, {
+        callId,
+        teamId: call.teamId,
+        transcriptText: args.transcript,
+      });
     }
+
+    // Build patch for non-blob fields
+    const patch: Record<string, any> = {};
 
     // Only write recordingUrl if incoming is non-empty and current is empty
     if (args.recordingUrl && !call.recordingUrl) {
@@ -306,7 +310,7 @@ export const completeCall = mutation({
     }
 
     if (Object.keys(patch).length > 0) {
-      await ctx.db.patch(args.callId as any, patch);
+      await ctx.db.patch(callId, patch);
     }
   },
 });
@@ -613,6 +617,11 @@ export const getCallDetails = query({
     const call = await ctx.db.get(args.callId);
     if (!call) return null;
 
+    // Pull the heavy blob fields from the callContent sibling. Fall
+    // back to the calls row during the migration window for any call
+    // not yet backfilled. Remove the fallback in commit 2.
+    const content = await getContentForCallTx(ctx, args.callId);
+
     // Get closer info
     const closer = await ctx.db.get(call.closerId);
 
@@ -634,6 +643,10 @@ export const getCallDetails = query({
 
     return {
       ...call,
+      transcriptText: content?.transcriptText ?? call.transcriptText,
+      summary: content?.summary ?? call.summary,
+      callAnalysis: content?.callAnalysis ?? call.callAnalysis,
+      ammoAnalysis: content?.ammoAnalysis ?? call.ammoAnalysis,
       closer: closer ? { name: closer.name, email: closer.email } : null,
       teamName: team?.name || null,
       ammo,
@@ -1682,7 +1695,11 @@ export const updateCallSummary = internalMutation({
     summary: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.callId, {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return;
+    await upsertCallContentTx(ctx, {
+      callId: args.callId,
+      teamId: call.teamId,
       summary: args.summary,
     });
   },
@@ -1714,7 +1731,11 @@ export const updateCallAnalysis = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.callId, {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return;
+    await upsertCallContentTx(ctx, {
+      callId: args.callId,
+      teamId: call.teamId,
       callAnalysis: args.callAnalysis,
     });
   },
@@ -1724,6 +1745,10 @@ export const updateCallAnalysis = internalMutation({
 export const getCallAnalysis = query({
   args: { callId: v.id("calls") },
   handler: async (ctx, args) => {
+    const content = await getContentForCallTx(ctx, args.callId);
+    if (content?.callAnalysis) return content.callAnalysis;
+    // Migration fallback: pre-backfill calls still carry callAnalysis
+    // on the calls row. Remove this branch in commit 2.
     const call = await ctx.db.get(args.callId);
     return call?.callAnalysis ?? null;
   },
@@ -2784,8 +2809,10 @@ export const updateAmmoAnalysis = mutation({
       return { success: false, error: "Call not found" };
     }
 
-    // Update the call with new analysis
-    await ctx.db.patch(callIdTyped, {
+    // Write the analysis to the callContent sibling.
+    await upsertCallContentTx(ctx, {
+      callId: callIdTyped,
+      teamId: call.teamId,
       ammoAnalysis: {
         ...args.analysis,
         analyzedAt: Date.now(),
@@ -2818,6 +2845,9 @@ export const getAmmoAnalysis = query({
   },
   handler: async (ctx, args) => {
     const callIdTyped = args.callId as Id<"calls">;
+    const content = await getContentForCallTx(ctx, callIdTyped);
+    if (content?.ammoAnalysis) return content.ammoAnalysis;
+    // Migration fallback — see getCallAnalysis. Remove in commit 2.
     const call = await ctx.db.get(callIdTyped);
     return call?.ammoAnalysis ?? null;
   },
@@ -2999,7 +3029,8 @@ export const getTranscriptSegmentsInternal = internalQuery({
   },
 });
 
-// Internal mutation to write assembled transcriptText to a call record
+// Internal mutation to write assembled transcriptText to a call record.
+// "Don't shorten" guard lives inside upsertCallContentTx.
 export const writeTranscriptText = internalMutation({
   args: {
     callId: v.id("calls"),
@@ -3008,10 +3039,11 @@ export const writeTranscriptText = internalMutation({
   handler: async (ctx, args) => {
     const call = await ctx.db.get(args.callId);
     if (!call) return;
-    // Only write if current transcriptText is empty or shorter
-    if (!call.transcriptText || args.transcriptText.length > call.transcriptText.length) {
-      await ctx.db.patch(args.callId, { transcriptText: args.transcriptText });
-    }
+    await upsertCallContentTx(ctx, {
+      callId: args.callId,
+      teamId: call.teamId,
+      transcriptText: args.transcriptText,
+    });
   },
 });
 

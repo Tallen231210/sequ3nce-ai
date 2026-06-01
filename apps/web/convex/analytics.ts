@@ -1,5 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { getContentForCallTx } from "./callContent";
 
 // Date range types
 type DateRange = "today" | "this_week" | "last_7_days" | "this_month" | "last_30_days" | "last_90_days" | "custom";
@@ -776,20 +777,20 @@ function formatObjectionLabel(objection: string): string {
 export const getObjectionPredictionAccuracy = query({
   args: {},
   handler: async (ctx) => {
-    // Get all completed calls that have both ammoAnalysis and primaryObjection
+    // Get completed lost/not_closed calls with a primaryObjection set.
+    // ammoAnalysis lives on the callContent sibling — fetched per-call
+    // below since this is a bounded debug query.
     const calls = await ctx.db
       .query("calls")
       .filter((q) => q.eq(q.field("status"), "completed"))
       .collect();
 
-    // Filter to calls with both prediction and actual
-    const callsWithBoth = calls.filter(
-      (c) => c.ammoAnalysis?.objectionPrediction?.length && c.primaryObjection
-    );
-
-    // Filter to lost/not_closed calls only (where objection matters)
-    const lostCalls = callsWithBoth.filter(
-      (c) => c.outcome === "not_closed" || c.outcome === "lost" || c.outcome === "follow_up"
+    const lostCalls = calls.filter(
+      (c) =>
+        c.primaryObjection &&
+        (c.outcome === "not_closed" ||
+          c.outcome === "lost" ||
+          c.outcome === "follow_up"),
     );
 
     let exactMatches = 0;
@@ -802,7 +803,12 @@ export const getObjectionPredictionAccuracy = query({
     }> = [];
 
     for (const call of lostCalls) {
-      const predictions = call.ammoAnalysis?.objectionPrediction || [];
+      // Migration-aware blob read: prefer callContent, fall back to
+      // call.ammoAnalysis (removed in commit 2).
+      const content = await getContentForCallTx(ctx, call._id);
+      const ammoAnalysis = content?.ammoAnalysis ?? call.ammoAnalysis;
+      const predictions = ammoAnalysis?.objectionPrediction || [];
+      if (predictions.length === 0) continue;
       const actual = call.primaryObjection;
 
       // Sort by probability (highest first)

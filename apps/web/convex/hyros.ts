@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { getContentForCallTx } from "./callContent";
 
 // ============================================
 // AUTH HELPER
@@ -322,6 +323,11 @@ export const getHyrosPushData = internalQuery({
     const call = await ctx.db.get(args.callId);
     if (!call) return null;
 
+    // Pull blob fields used in tag generation from callContent sibling
+    // (migration fallback to call.ammoAnalysis / call.callAnalysis
+    // covers any not-yet-backfilled rows).
+    const content = await getContentForCallTx(ctx, args.callId);
+
     let prospectEmail: string | null = null;
     let prospectNameFromCal: string | undefined;
     if (call.calendarEventId) {
@@ -353,8 +359,8 @@ export const getHyrosPushData = internalQuery({
         prospectWasDecisionMaker: call.prospectWasDecisionMaker,
         primaryObjection: call.primaryObjection,
         budgetDiscussion: call.budgetDiscussion,
-        ammoAnalysis: call.ammoAnalysis,
-        callAnalysis: call.callAnalysis,
+        ammoAnalysis: content?.ammoAnalysis ?? call.ammoAnalysis,
+        callAnalysis: content?.callAnalysis ?? call.callAnalysis,
         hyrosSyncedAt: call.hyrosSyncedAt,
       },
       prospectEmail,
