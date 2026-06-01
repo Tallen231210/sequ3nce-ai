@@ -9,13 +9,48 @@ interface HyrosAdSourcesPanelProps {
   platforms: Array<{
     platform: string;
     count: number;
-    ads: Array<{ name: string; count: number }>;
+    ads: Array<{
+      name: string;
+      count: number;
+      // Wave 1 outcome augmentation. show% / close% / $avg are
+      // present together only when matchedCount >= MIN_MATCHED_SAMPLE
+      // (the leads have actually been called). avgTimeToDialMs is
+      // independent — it can be present even when matched data isn't,
+      // because it's an ops metric driven by lead.firstDialAt.
+      matchedCount?: number;
+      showedCount?: number;
+      closedCount?: number;
+      cashCollected?: number;
+      avgTimeToDialMs?: number;
+      topObjection?: { name: string; count: number };
+    }>;
   }>;
   coverage: {
     attributedCount: number;
     totalLeads: number;
     hyrosEnabled: boolean;
+    outcomeWindowDays: number;
+    outcomeWindowCapped: boolean;
   };
+}
+
+function formatCash(n: number): string {
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}K`;
+  return `$${Math.round(n)}`;
+}
+
+function formatTimeToDial(ms: number): string {
+  const minutes = ms / 60000;
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
+}
+
+function showDotColor(showPct: number): string {
+  if (showPct >= 70) return "text-emerald-500";
+  if (showPct >= 40) return "text-amber-500";
+  return "text-red-500";
 }
 
 /**
@@ -136,9 +171,30 @@ export function HyrosAdSourcesPanel({ platforms, coverage }: HyrosAdSourcesPanel
                 </div>
 
                 {showSubRows && (
-                  <ul className="ml-3 mt-2 space-y-1.5 border-l border-border pl-3">
+                  <ul className="ml-3 mt-2 space-y-2 border-l border-border pl-3">
                     {p.ads.map((ad) => {
                       const adPct = (ad.count / p.count) * 100;
+                      // Show/close percentages use matchedCount as
+                      // the denominator (of the leads we have actually
+                      // called, this many showed/closed) — matches
+                      // the convention in computeCloserSideShowRate.
+                      // Booking count remains the visible total above.
+                      const hasOutcomes =
+                        ad.matchedCount !== undefined && ad.matchedCount > 0;
+                      const showPct =
+                        hasOutcomes && ad.showedCount !== undefined
+                          ? (ad.showedCount / (ad.matchedCount as number)) * 100
+                          : 0;
+                      const closePct =
+                        hasOutcomes && ad.closedCount !== undefined
+                          ? (ad.closedCount / (ad.matchedCount as number)) * 100
+                          : 0;
+                      const avgCash =
+                        ad.cashCollected !== undefined &&
+                        ad.closedCount !== undefined &&
+                        ad.closedCount > 0
+                          ? ad.cashCollected / ad.closedCount
+                          : 0;
                       return (
                         <li key={ad.name}>
                           <div className="mb-0.5 flex items-center justify-between text-[11px]">
@@ -153,6 +209,41 @@ export function HyrosAdSourcesPanel({ platforms, coverage }: HyrosAdSourcesPanel
                               style={{ width: `${adPct}%` }}
                             />
                           </div>
+                          {(hasOutcomes || ad.avgTimeToDialMs !== undefined) && (
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+                              {hasOutcomes && (
+                                <>
+                                  <span className={showDotColor(showPct)}>●</span>
+                                  <span>{Math.round(showPct)}% show</span>
+                                  {ad.closedCount !== undefined && (
+                                    <>
+                                      <span>·</span>
+                                      <span>{Math.round(closePct)}% close</span>
+                                    </>
+                                  )}
+                                  {avgCash > 0 && (
+                                    <>
+                                      <span>·</span>
+                                      <span>{formatCash(avgCash)} avg</span>
+                                    </>
+                                  )}
+                                  <span>·</span>
+                                  <span>of {ad.matchedCount} called</span>
+                                </>
+                              )}
+                              {ad.avgTimeToDialMs !== undefined && (
+                                <>
+                                  {hasOutcomes && <span>·</span>}
+                                  <span>{formatTimeToDial(ad.avgTimeToDialMs)} to dial</span>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          {ad.topObjection && (
+                            <div className="mt-0.5 text-[10px] text-muted-foreground/70">
+                              Top lost-reason: {ad.topObjection.name}
+                            </div>
+                          )}
                         </li>
                       );
                     })}
@@ -164,7 +255,14 @@ export function HyrosAdSourcesPanel({ platforms, coverage }: HyrosAdSourcesPanel
         </ul>
 
         <p className="mt-4 text-[10px] text-muted-foreground">
-          {coverage.attributedCount} of {coverage.totalLeads} leads attributed via Hyros ({Math.round(coveragePct)}%).
+          {coverage.attributedCount} of {coverage.totalLeads} leads attributed via Hyros ({Math.round(coveragePct)}%)
+          {coverage.outcomeWindowCapped && (
+            <>
+              {" · outcomes from leads booked in the last "}
+              {coverage.outcomeWindowDays} days
+            </>
+          )}
+          .
         </p>
       </CardContent>
     </Card>

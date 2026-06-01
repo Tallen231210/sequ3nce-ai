@@ -2,6 +2,10 @@ import { v } from "convex/values";
 import { internalQuery, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { computeScorecard } from "./setterDataMetrics";
+import {
+  buildMatcherIndex,
+  findCallsForLead,
+} from "./setterCloserMatcher";
 
 // ============================================================================
 // Setter Data — public read APIs for the dashboard UI.
@@ -137,11 +141,36 @@ export const getOverview = query({
     //    by sourceLinkName (the specific ad/video/campaign). Denominator
     //    = attributedCount (NOT totalLeads — the panel answers "of the
     //    Hyros-attributed leads, where did they come from").
+    //
+    //    Wave 1 ad-outcome augmentation: each ad accumulator also tracks
+    //    downstream operator outcomes (showed, closed, cash, time-to-
+    //    first-dial, top objection) so the UI can render per-ad show /
+    //    close / $ inline. Time-to-dial comes from the setterLead row
+    //    itself (no matcher needed); the rest require a second pass via
+    //    setterCloserMatcher after we know which leads are attributed.
+    interface AdAccumulator {
+      count: number;
+      timeToDialSumMs: number;
+      timeToDialN: number;
+      matched: number;
+      showed: number;
+      closed: number;
+      cashCollected: number;
+      objectionCounts: Map<string, number>;
+      objectionTotal: number;
+    }
     const hyrosByPlatform = new Map<
       string,
-      { count: number; ads: Map<string, number> }
+      { count: number; ads: Map<string, AdAccumulator> }
     >();
     let attributedCount = 0;
+    // Cache of attributed leads with their (platform, adName) keys so we
+    // can do the matcher lookup pass without re-deriving normalization.
+    const attributedLeadsForOutcomes: Array<{
+      lead: Doc<"setterLeads">;
+      platform: string;
+      adName: string;
+    }> = [];
 
     for (const lead of leads) {
       bookingMap.set(
@@ -160,11 +189,119 @@ export const getOverview = query({
         const adName = lead.hyrosFirstSource.sourceLinkName ?? "Unspecified";
         const entry = hyrosByPlatform.get(platform) ?? {
           count: 0,
-          ads: new Map<string, number>(),
+          ads: new Map<string, AdAccumulator>(),
         };
         entry.count += 1;
-        entry.ads.set(adName, (entry.ads.get(adName) ?? 0) + 1);
+        const adAcc = entry.ads.get(adName) ?? {
+          count: 0,
+          timeToDialSumMs: 0,
+          timeToDialN: 0,
+          matched: 0,
+          showed: 0,
+          closed: 0,
+          cashCollected: 0,
+          objectionCounts: new Map<string, number>(),
+          objectionTotal: 0,
+        };
+        adAcc.count += 1;
+        if (lead.firstDialAt && lead.firstDialAt > lead.dateAdded) {
+          adAcc.timeToDialSumMs += lead.firstDialAt - lead.dateAdded;
+          adAcc.timeToDialN += 1;
+        }
+        entry.ads.set(adName, adAcc);
         hyrosByPlatform.set(platform, entry);
+        attributedLeadsForOutcomes.push({ lead, platform, adName });
+      }
+    }
+
+    // Wave 1: matcher lookup pass. Cap at the most recent 60 days of
+    // call activity to stay under the 16 MiB read limit (the calls
+    // table carries transcript blobs — same constraint as
+    // computeCloserSideShowRate). The lookahead absorbs follow-up
+    // calls that happen up to 14 days after the lead's range.
+    const HYROS_OUTCOME_MAX_RANGE_MS = 60 * 24 * 60 * 60 * 1000;
+    const CLOSER_MATCH_LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
+    const requestedRangeMs = args.rangeEnd - args.rangeStart;
+    const outcomeRangeStart = Math.max(
+      args.rangeStart,
+      args.rangeEnd - HYROS_OUTCOME_MAX_RANGE_MS,
+    );
+    const outcomeRangeEnd = args.rangeEnd + CLOSER_MATCH_LOOKAHEAD_MS;
+    const outcomeWindowDays = Math.round(
+      (args.rangeEnd - outcomeRangeStart) / (24 * 60 * 60 * 1000),
+    );
+    const outcomeWindowCapped = requestedRangeMs > HYROS_OUTCOME_MAX_RANGE_MS;
+
+    if (attributedCount > 0) {
+      try {
+        const matcherIndex = await buildMatcherIndex(
+          ctx,
+          teamId,
+          outcomeRangeStart,
+          outcomeRangeEnd,
+        );
+        for (const entry of attributedLeadsForOutcomes) {
+          // Skip leads added before the capped outcome window — their
+          // calls weren't loaded into the matcher index, so any lookup
+          // would mis-report "no match" rather than honest "we don't
+          // know."
+          if (entry.lead.dateAdded < outcomeRangeStart) continue;
+          const platformEntry = hyrosByPlatform.get(entry.platform);
+          if (!platformEntry) continue;
+          const adAcc = platformEntry.ads.get(entry.adName);
+          if (!adAcc) continue;
+
+          const matched = findCallsForLead(matcherIndex, {
+            email: entry.lead.email,
+            phone: entry.lead.phone,
+          });
+          if (matched.length === 0) continue;
+          adAcc.matched += 1;
+          // "Showed" = at least one settled completed call that wasn't
+          // a no_show or rescheduled. Matches computeCloserSideShowRate.
+          if (
+            matched.some(
+              (c) =>
+                c.status === "completed" &&
+                c.outcome != null &&
+                c.outcome !== "no_show" &&
+                c.outcome !== "rescheduled",
+            )
+          ) {
+            adAcc.showed += 1;
+          }
+          const closedCalls = matched.filter((c) => c.outcome === "closed");
+          if (closedCalls.length > 0) {
+            adAcc.closed += 1;
+            for (const c of closedCalls) {
+              adAcc.cashCollected += c.cashCollected ?? 0;
+            }
+          }
+          // Top objection — only count primaryObjection on lost /
+          // follow_up calls. "other" and missing values are excluded
+          // from the mode so the rollup reflects real signal.
+          for (const c of matched) {
+            if (
+              (c.outcome === "lost" || c.outcome === "follow_up") &&
+              c.primaryObjection &&
+              c.primaryObjection.toLowerCase() !== "other"
+            ) {
+              adAcc.objectionCounts.set(
+                c.primaryObjection,
+                (adAcc.objectionCounts.get(c.primaryObjection) ?? 0) + 1,
+              );
+              adAcc.objectionTotal += 1;
+            }
+          }
+        }
+      } catch (err) {
+        // Belt-and-suspenders: if the matcher trips the 16 MiB limit
+        // anyway, leave outcome fields unset rather than failing the
+        // whole tab. UI just won't show the secondary metrics line.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!/16777216|read limit|too many bytes/i.test(msg)) {
+          throw err;
+        }
       }
     }
 
@@ -180,23 +317,84 @@ export const getOverview = query({
         ? [...topBookings, { name: "Other", count: otherBookingCount }]
         : topBookings;
 
+    // Outcome thresholds. Two distinct gates because they answer
+    // different questions:
+    // - MIN_MATCHED_SAMPLE: how many leads from this ad have we
+    //   actually called yet. Drives show% / close% / $ — denominator
+    //   is matched, NOT bookings (matches computeCloserSideShowRate's
+    //   convention). Skipping outcomes when matched is low avoids
+    //   showing "0% show" on ads whose leads are mostly booked-but-
+    //   not-yet-called (the AICom-style cohort where most bookings
+    //   are recent).
+    // - MIN_TIME_TO_DIAL_SAMPLE: ops metric, independent of calls.
+    //   Computed from firstDialAt on the lead itself.
+    // - MIN_OBJECTION_SAMPLE: stricter — surfaces the modal lost
+    //   reason only when there's a real cluster.
+    const MIN_MATCHED_SAMPLE = 5;
+    const MIN_TIME_TO_DIAL_SAMPLE = 3;
+    const MIN_OBJECTION_SAMPLE = 5;
+
     const hyrosAdSources = Array.from(hyrosByPlatform.entries())
       .map(([platform, { count, ads }]) => ({
         platform,
         count,
         ads: Array.from(ads.entries())
-          .map(([name, c]) => ({ name, count: c }))
+          .map(([name, acc]) => {
+            const row: {
+              name: string;
+              count: number;
+              matchedCount?: number;
+              showedCount?: number;
+              closedCount?: number;
+              cashCollected?: number;
+              avgTimeToDialMs?: number;
+              topObjection?: { name: string; count: number };
+            } = { name, count: acc.count };
+            if (acc.matched >= MIN_MATCHED_SAMPLE) {
+              row.matchedCount = acc.matched;
+              row.showedCount = acc.showed;
+              row.closedCount = acc.closed;
+              if (acc.cashCollected > 0) row.cashCollected = acc.cashCollected;
+              if (acc.objectionTotal >= MIN_OBJECTION_SAMPLE) {
+                let topName: string | null = null;
+                let topCount = 0;
+                for (const [oname, ocount] of acc.objectionCounts.entries()) {
+                  if (ocount > topCount) {
+                    topName = oname;
+                    topCount = ocount;
+                  }
+                }
+                if (topName) {
+                  row.topObjection = { name: topName, count: topCount };
+                }
+              }
+            }
+            // Time-to-first-dial is independent of call matching —
+            // it's an ops metric driven by firstDialAt on the lead.
+            // Surface separately so an ad with too few matches still
+            // shows its ops timing.
+            if (acc.timeToDialN >= MIN_TIME_TO_DIAL_SAMPLE) {
+              row.avgTimeToDialMs = Math.round(
+                acc.timeToDialSumMs / acc.timeToDialN,
+              );
+            }
+            return row;
+          })
           .sort((a, b) => b.count - a.count),
       }))
       .sort((a, b) => b.count - a.count);
 
     // team.hyrosEnabled drives the right panel's "not connected" empty
     // state vs "connected but no attributed leads yet" empty state.
+    // outcomeWindowDays + outcomeWindowCapped drive the footer caveat
+    // when the requested range exceeded the 60d outcome cap.
     const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
     const hyrosCoverage = {
       attributedCount,
       totalLeads: leads.length,
       hyrosEnabled: team?.hyrosEnabled === true,
+      outcomeWindowDays,
+      outcomeWindowCapped,
     };
 
     // Action queue: top-5 untouched leads, oldest first ("stalest first
