@@ -148,6 +148,7 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
       {selectedEvent && (
         <ScheduleMeetingModal
           event={selectedEvent}
+          closerInfo={closerInfo}
           onConfirm={handleJoinConfirm}
           onClose={() => setSelectedEvent(null)}
         />
