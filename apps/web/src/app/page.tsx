@@ -25,6 +25,7 @@ import {
   Video,
   TrendingUp,
   Zap,
+  Workflow,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -165,6 +166,12 @@ export default function Home() {
       description: "Track scheduled calls and follow-ups. Know exactly when calls should happen and if they actually did.",
       size: "small" as const,
     },
+    {
+      icon: Workflow,
+      title: "See the whole funnel — not just the call",
+      description: "Other tools stop at the closer. Sequ3nce traces every lead from the setter who booked it to the closer who took it — including time-to-dial, who's leaking pipeline, and which setter brings the best closes from which ad.",
+      size: "large" as const,
+    },
   ];
 
   const painPoints = [
@@ -223,7 +230,7 @@ export default function Home() {
           className={cn(
             "mx-auto transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
             isScrolled
-              ? "max-w-4xl bg-white/80 backdrop-blur-xl border border-zinc-200/60 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.08)] rounded-full px-6"
+              ? "max-w-5xl bg-white/80 backdrop-blur-xl border border-zinc-200/60 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.08)] rounded-full px-6"
               : "max-w-7xl px-6"
           )}
         >
@@ -232,23 +239,36 @@ export default function Home() {
             isScrolled ? "h-14" : "h-16"
           )}>
             <Logo href="/" height={28} />
-            <nav className="hidden md:flex items-center gap-8">
-              {["features", "integrations", "how-it-works", "pricing"].map((id) => (
+            <nav
+              className={cn(
+                "hidden md:flex items-center transition-all duration-500",
+                isScrolled ? "gap-5" : "gap-8",
+              )}
+            >
+              {[
+                "features",
+                "setter-data",
+                "integrations",
+                "how-it-works",
+                "pricing",
+              ].map((id) => (
                 <button
                   key={id}
                   onClick={() => scrollToSection(id)}
-                  className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors"
+                  className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors whitespace-nowrap"
                 >
                   {id === "how-it-works"
                     ? "How It Works"
-                    : id === "integrations"
-                      ? "Integrations"
-                      : id.charAt(0).toUpperCase() + id.slice(1)}
+                    : id === "setter-data"
+                      ? "Setter Data"
+                      : id === "integrations"
+                        ? "Integrations"
+                        : id.charAt(0).toUpperCase() + id.slice(1)}
                 </button>
               ))}
               <Link
                 href="/personal"
-                className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors"
+                className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors whitespace-nowrap"
               >
                 For Closers
               </Link>
@@ -301,7 +321,8 @@ export default function Home() {
             <h1 className="text-[3.5rem] sm:text-[5rem] md:text-[6.5rem] lg:text-[8rem] xl:text-[9rem] font-semibold tracking-[-0.04em] leading-[0.9] text-zinc-950 max-w-6xl">
               Finally see why
               <br />
-              deals close
+              deals{" "}
+              <span className="font-serif italic font-normal">close</span>
               <span className="text-zinc-300">.</span>
             </h1>
           </AnimatedSection>
@@ -367,19 +388,21 @@ export default function Home() {
             </div>
           </AnimatedSection>
 
-          {/* Hero video */}
+          {/* Hero video — lazy-loaded so it doesn't tank mobile PageSpeed.
+              preload="none" prevents the MP4 from being fetched on page load.
+              First screenshot acts as the poster; native controls reveal the
+              play button. Click-to-play on all devices. */}
           <AnimatedSection delay={500} className="mt-20">
             <div className="relative">
               {/* Glow behind video */}
               <div className="absolute -inset-6 bg-gradient-to-b from-zinc-200/50 via-zinc-100/20 to-transparent rounded-3xl blur-2xl" />
               <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-[0_50px_100px_-30px_rgba(0,0,0,0.15)]">
                 <video
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
+                  preload="none"
+                  poster="/screenshots/Live-calls.gif"
                   controls
-                  className="w-full h-auto"
+                  playsInline
+                  className="w-full h-auto bg-zinc-100"
                 >
                   <source src="/videos/hero.mp4" type="video/mp4" />
                 </video>
@@ -432,7 +455,9 @@ export default function Home() {
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
                 Your sales floor,
                 <br />
-                in one dashboard<span className="text-zinc-300">.</span>
+                in one{" "}
+                <span className="font-serif italic font-normal">dashboard</span>
+                <span className="text-zinc-300">.</span>
               </h2>
               <p className="mt-6 text-zinc-500 text-lg leading-relaxed">
                 Real-time visibility into every call, every closer, every deal.
@@ -460,7 +485,9 @@ export default function Home() {
                 <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05] text-zinc-950">
                   You&apos;re running a
                   <br />
-                  sales team blind<span className="text-zinc-300">.</span>
+                  sales team{" "}
+                  <span className="font-serif italic font-normal">blind</span>
+                  <span className="text-zinc-300">.</span>
                 </h2>
               </div>
               <p className="text-zinc-500 text-lg max-w-md lg:pt-12 leading-relaxed">
@@ -533,7 +560,9 @@ export default function Home() {
                 <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
                   Stop guessing.
                   <br />
-                  <span className="text-zinc-300">Start knowing.</span>
+                  Start{" "}
+                  <span className="font-serif italic font-normal">knowing</span>
+                  <span className="text-zinc-300">.</span>
                 </h2>
               </div>
               <p className="text-zinc-500 max-w-md text-lg leading-relaxed">
@@ -546,14 +575,20 @@ export default function Home() {
           {/* Bento grid */}
           <div className="grid lg:grid-cols-6 gap-4">
             {features.map((feature, index) => {
-              // Large items span 4 of 6 cols, small items span 2
-              // Last two small items (index 4,5) each span 3 to fill the row
-              const isLastRow = index >= 4 && feature.size === "small";
-              const colSpan = feature.size === "large"
-                ? "lg:col-span-4"
-                : isLastRow
-                  ? "lg:col-span-3"
-                  : "lg:col-span-2";
+              // Large items span 4 of 6 cols, small items span 2.
+              // Indices 4-5 are the small row pair — each spans 3 to fill the row.
+              // Index 6 is the Setter Intelligence large card spanning all 6
+              // cols as a featured row of its own.
+              const isLastSmallRow =
+                (index === 4 || index === 5) && feature.size === "small";
+              const isSetterRow = index === 6;
+              const colSpan = isSetterRow
+                ? "lg:col-span-6"
+                : feature.size === "large"
+                  ? "lg:col-span-4"
+                  : isLastSmallRow
+                    ? "lg:col-span-3"
+                    : "lg:col-span-2";
               return (
               <AnimatedSection
                 key={index}
@@ -616,6 +651,136 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
+      {/* SETTER DATA — funnel-wide visibility differentiator */}
+      {/* ═══════════════════════════════════════════ */}
+      <section id="setter-data" className="py-32 relative z-10">
+        <div className="relative mx-auto max-w-7xl px-6">
+          <AnimatedSection>
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 mb-16">
+              <div>
+                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
+                  Setter Data
+                </div>
+                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
+                  Most tools stop at the closer.
+                  <br />
+                  We see the{" "}
+                  <span className="font-serif italic font-normal">whole funnel</span>
+                  <span className="text-zinc-300">.</span>
+                </h2>
+              </div>
+              <p className="text-zinc-500 max-w-md text-lg leading-relaxed">
+                Every lead has a setter behind it. Sequ3nce is the only platform
+                that joins setter activity to closer outcomes — so you know
+                exactly where your pipeline is leaking.
+              </p>
+            </div>
+          </AnimatedSection>
+
+          {/* 4-stat grid showing the unique setter-side metrics */}
+          <AnimatedSection delay={100}>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-16">
+              {[
+                {
+                  label: "Time to first dial",
+                  description:
+                    "Catch leads going cold. Median dial time per setter, per source.",
+                },
+                {
+                  label: "Closer-side show rate",
+                  description:
+                    "Match every booked lead to the call that actually happened. Who's no-showing on which setter's pipeline.",
+                },
+                {
+                  label: "Setter × closer routing",
+                  description:
+                    "Which closer converts which setter's leads best. Route smarter — close more.",
+                },
+                {
+                  label: "Ad-source attribution",
+                  description:
+                    "Joined with Hyros: see which closer turns which ad creative into deals. Not just bookings — closes.",
+                },
+              ].map((stat, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm p-7 hover:border-zinc-300 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.08)] hover:-translate-y-0.5 transition-all"
+                >
+                  <h3 className="text-base font-semibold text-zinc-950 mb-2 tracking-tight">
+                    {stat.label}
+                  </h3>
+                  <p className="text-[13px] text-zinc-500 leading-relaxed">
+                    {stat.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </AnimatedSection>
+
+          {/* Featured callout — the positioning shot */}
+          <AnimatedSection delay={200}>
+            <div className="relative rounded-2xl border border-zinc-200 bg-zinc-950 text-white p-10 lg:p-14 overflow-hidden">
+              <div
+                aria-hidden
+                className="absolute inset-0 -z-0 opacity-30"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(circle, rgb(63 63 70) 1px, transparent 1px)",
+                  backgroundSize: "24px 24px",
+                  maskImage:
+                    "radial-gradient(ellipse 70% 60% at 50% 50%, black 30%, transparent 80%)",
+                  WebkitMaskImage:
+                    "radial-gradient(ellipse 70% 60% at 50% 50%, black 30%, transparent 80%)",
+                }}
+              />
+              <div className="relative grid lg:grid-cols-2 gap-10 items-center">
+                <div>
+                  <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-500 font-medium mb-5">
+                    The Setter Data tab
+                  </div>
+                  <h3 className="text-2xl lg:text-3xl font-semibold tracking-tight leading-snug mb-5">
+                    The metric Gong and Chorus can&apos;t show you:{" "}
+                    <span className="font-serif italic font-normal text-white">
+                      who lost the lead before the call ever happened.
+                    </span>
+                  </h3>
+                  <p className="text-zinc-400 leading-relaxed">
+                    Sales call tools see the call. CRM tools see the contact.
+                    Nothing sees the gap between them — the hours your lead sat
+                    waiting, the setter who never followed up, the closer who
+                    got the wrong booking. The Setter Data tab does. Every lead
+                    in your pipeline, matched to the setter who booked it and
+                    the closer who took it, with the operational signals you
+                    need to fix what&apos;s broken.
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  {[
+                    "Untouched-lead alerts → catch dropped leads in real time",
+                    "Coverage-gap digest → see which hours your team isn't dialing",
+                    "Per-setter scorecards → speed-to-lead, dial cadence, lead age decay",
+                    "Routing matrix → best closer per ad creative, automatically",
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center shrink-0 mt-0.5">
+                        <Check
+                          className="h-3 w-3 text-zinc-950"
+                          strokeWidth={2.5}
+                        />
+                      </div>
+                      <span className="text-sm text-zinc-300 leading-relaxed">
+                        {item}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </AnimatedSection>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════ */}
       {/* INTEGRATIONS                                  */}
       {/* ═══════════════════════════════════════════ */}
       <section id="integrations" className="py-32 relative z-10">
@@ -628,7 +793,9 @@ export default function Home() {
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
                 Close the loop between
                 <br />
-                sales and marketing<span className="text-zinc-300">.</span>
+                sales and{" "}
+                <span className="font-serif italic font-normal">marketing</span>
+                <span className="text-zinc-300">.</span>
               </h2>
               <p className="mt-6 text-zinc-500 text-lg leading-relaxed">
                 Sequ3nce doesn&apos;t just record calls — it feeds real
@@ -793,7 +960,8 @@ export default function Home() {
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight">
                 Three steps<span className="text-zinc-300">.</span>{" "}
-                That&apos;s it<span className="text-zinc-300">.</span>
+                <span className="font-serif italic font-normal">That&apos;s it</span>
+                <span className="text-zinc-300">.</span>
               </h2>
             </div>
           </AnimatedSection>
@@ -842,7 +1010,7 @@ export default function Home() {
                 <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
                   Simple,
                   <br />
-                  transparent
+                  <span className="font-serif italic font-normal">transparent</span>
                   <br />
                   pricing<span className="text-zinc-300">.</span>
                 </h2>
@@ -877,29 +1045,27 @@ export default function Home() {
                     <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 mb-6 font-medium">
                       Everything included
                     </div>
-                    <div className="text-5xl font-semibold tracking-tight">
-                      Custom
+                    <div className="text-6xl sm:text-7xl font-semibold tracking-[-0.04em] text-zinc-950 leading-none">
+                      $499
+                      <span className="text-2xl font-medium text-zinc-400 tracking-tight">
+                        /mo
+                      </span>
                     </div>
-                    <p className="text-sm text-zinc-400 mt-2">
-                      Based on team size
+                    <p className="text-sm text-zinc-500 mt-3">
+                      Platform fee — includes everything below
                     </p>
                   </div>
 
-                  <div className="border-t border-zinc-100 pt-8 mb-10 space-y-5">
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-zinc-500 text-sm">Platform fee</span>
-                      <span className="text-2xl font-semibold">
-                        $499
-                        <span className="text-sm font-normal text-zinc-400">/mo</span>
+                  <div className="border-t border-zinc-100 pt-6 mb-10 flex items-baseline justify-between">
+                    <span className="text-sm text-zinc-500">
+                      + Per closer seat
+                    </span>
+                    <span className="text-2xl font-semibold text-zinc-950">
+                      $149
+                      <span className="text-sm font-normal text-zinc-400">
+                        /mo
                       </span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-zinc-500 text-sm">Per closer seat</span>
-                      <span className="text-2xl font-semibold">
-                        $149
-                        <span className="text-sm font-normal text-zinc-400">/mo</span>
-                      </span>
-                    </div>
+                    </span>
                   </div>
 
                   <div className="space-y-4 mb-10">
@@ -959,7 +1125,8 @@ export default function Home() {
                   <br />
                   We&apos;ve got
                   <br />
-                  answers<span className="text-zinc-300">.</span>
+                  <span className="font-serif italic font-normal">answers</span>
+                  <span className="text-zinc-300">.</span>
                 </h2>
                 <p className="mt-6 text-zinc-500 text-lg leading-relaxed">
                   Everything you need to know about getting started with
@@ -980,33 +1147,54 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* FINAL CTA                                    */}
+      {/* FINAL CTA (dark — visual rhythm break + premium close) */}
       {/* ═══════════════════════════════════════════ */}
-      <section className="py-32 lg:py-44 relative z-10 overflow-hidden">
+      <section className="py-32 lg:py-44 relative z-10 overflow-hidden bg-zinc-950 text-white">
+        {/* Subtle dot grid in dark, mirrors the global pattern */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-0 opacity-40"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgb(63 63 70) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            maskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 50%, black 40%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 50%, black 40%, transparent 80%)",
+          }}
+        />
         <div className="relative mx-auto max-w-7xl px-6">
           <AnimatedSection>
             <div className="text-center">
-              <h2 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[8rem] font-semibold tracking-[-0.03em] text-zinc-950 leading-[0.9]">
+              <h2 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[8rem] font-semibold tracking-[-0.03em] leading-[0.9]">
                 Stop wondering
-                <span className="text-zinc-300">.</span>
+                <span className="text-zinc-600">.</span>
                 <br />
-                Start knowing
-                <span className="text-zinc-300">.</span>
+                Start{" "}
+                <span className="font-serif italic font-normal">knowing</span>
+                <span className="text-zinc-600">.</span>
               </h2>
-              <p className="mt-10 text-lg lg:text-xl text-zinc-500 max-w-xl mx-auto leading-relaxed">
+              <p className="mt-10 text-lg lg:text-xl text-zinc-400 max-w-xl mx-auto leading-relaxed">
                 See exactly why deals close and why they don&apos;t — starting
                 today.
               </p>
               <div className="mt-14">
                 <SignedOut>
-                  <BookDemoButton size="lg">
+                  <BookDemoButton
+                    size="lg"
+                    className="bg-white text-zinc-900 hover:bg-zinc-100"
+                  >
                     Book a Demo
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
                 <SignedIn>
                   <Link href="/dashboard">
-                    <Button size="lg">
+                    <Button
+                      size="lg"
+                      className="bg-white text-zinc-900 hover:bg-zinc-100"
+                    >
                       Go to Dashboard
                       <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                     </Button>
