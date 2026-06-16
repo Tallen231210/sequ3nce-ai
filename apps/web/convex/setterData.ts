@@ -6,6 +6,19 @@ import {
   buildMatcherIndex,
   findCallsForLead,
 } from "./setterCloserMatcher";
+import {
+  computeBookingsInsight,
+  computeCadenceInsight,
+  computeCoverageGapInsight,
+  computeDecayInsight,
+  computeFunnelInsight,
+  computeHeatmapInsight,
+  computeHyrosAdSourcesInsight,
+  computeRoutingInsight,
+  dayName,
+  hourRange,
+  type PanelInsight,
+} from "./setterDataInsights";
 
 // ============================================================================
 // Setter Data — public read APIs for the dashboard UI.
@@ -635,6 +648,81 @@ export const getOverview = query({
           : "Unassigned",
       }));
 
+    // Auto-generated panel insights — the "so what" layer under each chart.
+    // Pure deterministic computation over data already in hand; no extra DB
+    // reads. Each helper returns null when below its sample-size gate.
+    const cadenceInsight: PanelInsight | null = computeCadenceInsight(
+      scorecard.perSetter
+        .filter(
+          (r): r is typeof r & { cadence: { avgDialsPerLead: number } } =>
+            r.cadence.avgDialsPerLead != null,
+        )
+        .map((r) => ({
+          name: r.name,
+          leadsWithDials: r.cadence.leadsWithDials,
+          avgDialsPerLead: r.cadence.avgDialsPerLead,
+          pctLeadsThreeOrMoreAttempts: r.cadence.pctLeadsThreeOrMoreAttempts,
+        })),
+    );
+
+    const bookingsInsight: PanelInsight | null = computeBookingsInsight({
+      total: scorecard.bookings.total,
+      byDayOfWeek: scorecard.bookings.byDayOfWeek.map((count, day) => ({
+        day,
+        count,
+      })),
+      connectionsToBookingsRate: scorecard.bookings.connectionsToBookingsRate,
+      perSetter: scorecard.bookings.perSetter.map((s) => ({
+        name: s.name,
+        bookings: s.bookingCount,
+      })),
+      flowType: scorecard.bookings.flowType,
+    });
+
+    const funnelInsight: PanelInsight | null = computeFunnelInsight({
+      totalLeads: scorecard.totalLeads,
+      connectedLeads: scorecard.connectedLeads,
+      totalAppointments: scorecard.totalAppointments,
+      totalShowed: scorecard.totalShowed,
+      bookingsThirdStage:
+        scorecard.bookings.source !== "none" && scorecard.bookings.total > 0
+          ? { count: scorecard.bookings.total }
+          : null,
+      // Show outcomes only exist on the setterAppointments source (GHL
+      // appointment objects carry a status field). calendarEvents-sourced
+      // bookings have no show data, so the third-stage drop isn't a leak.
+      showsTracked: scorecard.bookings.source === "setterAppointments",
+    });
+
+    // For Hyros ad sources: flatten all ads across all platforms before passing
+    // to the insight helper — it picks best/worst across the entire range.
+    const flatAds = hyrosAdSources.flatMap((p) => p.ads);
+    const hyrosAdSourcesInsight: PanelInsight | null = computeHyrosAdSourcesInsight(
+      attributedCount,
+      flatAds,
+    );
+
+    const routingInsight: PanelInsight | null = computeRoutingInsight(
+      hyrosRoutingPerAd.map((r) => ({
+        adName: r.adName,
+        matchedTotal: r.matchedTotal,
+        bestCloser: r.bestCloser
+          ? { name: r.bestCloser.name, closeRate: r.bestCloser.closeRate }
+          : undefined,
+        worstCloser: r.worstCloser
+          ? { name: r.worstCloser.name, closeRate: r.worstCloser.closeRate }
+          : undefined,
+        closerSpreadPp: r.closerSpreadPp,
+        bestSetter: r.bestSetter
+          ? { name: r.bestSetter.name, showRate: r.bestSetter.showRate }
+          : undefined,
+        worstSetter: r.worstSetter
+          ? { name: r.worstSetter.name, showRate: r.worstSetter.showRate }
+          : undefined,
+        setterSpreadPp: r.setterSpreadPp,
+      })),
+    );
+
     return {
       ...scorecard,
       bookingFunnel,
@@ -643,6 +731,12 @@ export const getOverview = query({
       hyrosRoutingPerAd,
       hyrosRoutingAdsHidden: routingAdsHidden,
       actionQueue,
+      // Wave 1 insight payloads — null when below sample gate.
+      cadenceInsight,
+      bookingsInsight,
+      funnelInsight,
+      hyrosAdSourcesInsight,
+      routingInsight,
     };
   },
 });
@@ -1412,12 +1506,23 @@ async function computeDecayCurve(
   const p90SpeedMs =
     speeds.length > 0 ? speeds[Math.floor(speeds.length * 0.9)] : null;
 
+  const insight = computeDecayInsight(
+    bucketRows.map((b) => ({
+      label: b.label,
+      leadCount: b.leadCount,
+      connectedCount: b.connectedCount,
+      rate: b.rate,
+    })),
+    speeds.length,
+  );
+
   return {
     buckets: bucketRows,
     medianSpeedMs,
     p90SpeedMs,
     totalLeads: speeds.length,
     rangeClampedTo90Days: effectiveStart > rangeStart,
+    insight,
   };
 }
 
@@ -1577,6 +1682,22 @@ export const getBestTimeToCallHeatmap = query({
       }
     }
 
+    // Flatten the 7×24 grid into the {day,hour,dials,connects} shape the
+    // insight helper expects.
+    const flatCells = grid.flatMap((row, day) =>
+      row.map((cell, hour) => ({
+        day,
+        hour,
+        dials: cell.dialCount,
+        connects: cell.connectedCount,
+      })),
+    );
+    const insight = computeHeatmapInsight(
+      flatCells,
+      dials.length,
+      connects.length,
+    );
+
     return {
       grid,
       timezone,
@@ -1586,6 +1707,7 @@ export const getBestTimeToCallHeatmap = query({
       sampleCapHit:
         dials.length === HEATMAP_EVENT_TAKE ||
         connects.length === HEATMAP_EVENT_TAKE,
+      insight,
     };
   },
 });
@@ -1798,6 +1920,7 @@ interface CoverageGapDigest {
   windows: CoverageGapWindow[];
   baselineMedianMs: number | null;
   totalLeadsInDay: number;
+  insight: PanelInsight | null;
 }
 
 async function computeCoverageGapDigest(
@@ -1846,6 +1969,7 @@ async function computeCoverageGapDigest(
     windows: [],
     baselineMedianMs: null,
     totalLeadsInDay: 0,
+    insight: null,
   };
   if (!dayLeads || dayLeads.length === 0) return empty;
 
@@ -1973,12 +2097,30 @@ async function computeCoverageGapDigest(
     return impactB - impactA;
   });
 
+  const topWindows = windows.slice(0, COVERAGE_GAP_TOP_N);
+  // Format windows for the insight helper. Window label format:
+  //   "Mon 7am–8am" (single hour) / "Mon 9am–11am" (multi-hour cluster)
+  const insight =
+    baselineMedianMs !== null
+      ? computeCoverageGapInsight(
+          topWindows
+            .filter((w) => w.medianTimeToFirstDialMs !== null)
+            .map((w) => ({
+              label: `${dayName(w.dow)} ${hourRange(w.startHour).split("–")[0]}–${hourRange(w.endHour - 1).split("–")[1]}`,
+              medianFirstDialMs: w.medianTimeToFirstDialMs as number,
+              leadsArrived: w.leadCount,
+            })),
+          baselineMedianMs,
+        )
+      : null;
+
   return {
     date: dateStr,
     timezone,
-    windows: windows.slice(0, COVERAGE_GAP_TOP_N),
+    windows: topWindows,
     baselineMedianMs,
     totalLeadsInDay: dayLeads.length,
+    insight,
   };
 }
 

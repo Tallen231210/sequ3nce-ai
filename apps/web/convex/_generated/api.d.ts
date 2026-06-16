@@ -85,6 +85,7 @@ import type * as setterCloserMatcher from "../setterCloserMatcher.js";
 import type * as setterCloserMatcherBackfill from "../setterCloserMatcherBackfill.js";
 import type * as setterCloserMatcherBackfillQuery from "../setterCloserMatcherBackfillQuery.js";
 import type * as setterData from "../setterData.js";
+import type * as setterDataInsights from "../setterDataInsights.js";
 import type * as setterDataMetrics from "../setterDataMetrics.js";
 import type * as setterDataMutations from "../setterDataMutations.js";
 import type * as setterDataNotifications from "../setterDataNotifications.js";
@@ -188,6 +189,7 @@ declare const fullApi: ApiFromModules<{
   setterCloserMatcherBackfill: typeof setterCloserMatcherBackfill;
   setterCloserMatcherBackfillQuery: typeof setterCloserMatcherBackfillQuery;
   setterData: typeof setterData;
+  setterDataInsights: typeof setterDataInsights;
   setterDataMetrics: typeof setterDataMetrics;
   setterDataMutations: typeof setterDataMutations;
   setterDataNotifications: typeof setterDataNotifications;

@@ -89,11 +89,14 @@ export function OverviewTab({
         <>
           <ConnectRateAnomalyBanner />
           <KpiStrip data={data} onUntouchedClick={() => onDrillToLeads("untouched")} />
-          <FunnelChart data={data} />
-          <BookingsPanel bookings={data.bookings} />
+          <FunnelChart data={data} insight={data.funnelInsight} />
+          <BookingsPanel bookings={data.bookings} insight={data.bookingsInsight} />
           <LeadAgeDecayCurve rangeStart={rangeStart} rangeEnd={rangeEnd} />
           <BestTimeToCallHeatmap rangeStart={rangeStart} rangeEnd={rangeEnd} />
-          <DialCadencePanel perSetter={data.perSetter} />
+          <DialCadencePanel
+            perSetter={data.perSetter}
+            insight={data.cadenceInsight}
+          />
           <CoverageGapPanel />
           {pipelines && pipelines.length > 0 && (
             <PipelineFunnel pipelines={pipelines} />
@@ -110,12 +113,14 @@ export function OverviewTab({
             <HyrosAdSourcesPanel
               platforms={data.hyrosAdSources}
               coverage={data.hyrosCoverage}
+              insight={data.hyrosAdSourcesInsight}
             />
           </div>
           <RoutingPerformancePanel
             rows={data.hyrosRoutingPerAd}
             adsHidden={data.hyrosRoutingAdsHidden}
             coverage={data.hyrosCoverage}
+            insight={data.routingInsight}
           />
         </>
       )}

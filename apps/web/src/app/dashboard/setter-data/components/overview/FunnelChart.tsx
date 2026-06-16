@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { InsightCard, type PanelInsight } from "./InsightCard";
 import {
   Bar,
   BarChart,
@@ -22,6 +23,7 @@ interface FunnelChartProps {
       total: number;
     };
   };
+  insight?: PanelInsight | null;
 }
 
 /**
@@ -31,7 +33,7 @@ interface FunnelChartProps {
  * to "Bookings" so customers without GHL appointment tracking still see a
  * populated funnel.
  */
-export function FunnelChart({ data }: FunnelChartProps) {
+export function FunnelChart({ data, insight }: FunnelChartProps) {
   const useBookings =
     data.bookings &&
     data.bookings.source !== "none" &&
@@ -109,6 +111,8 @@ export function FunnelChart({ data }: FunnelChartProps) {
             </BarChart>
           </ResponsiveContainer>
         </div>
+
+        <InsightCard insight={insight ?? null} />
       </CardContent>
     </Card>
   );

@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Card, CardContent } from "@/components/ui/card";
+import { InsightCard } from "./InsightCard";
 import {
   Bar,
   BarChart,
@@ -156,6 +157,8 @@ export function LeadAgeDecayCurve({
             </BarChart>
           </ResponsiveContainer>
         </div>
+
+        <InsightCard insight={data.insight} />
       </CardContent>
     </Card>
   );

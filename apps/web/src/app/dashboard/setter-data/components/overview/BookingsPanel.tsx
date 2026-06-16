@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { InsightCard, type PanelInsight } from "./InsightCard";
 import { CalendarCheck, Sparkles } from "lucide-react";
 
 type BookingFlowType = "setter_drives" | "self_book" | "mixed" | "unknown";
@@ -27,6 +28,7 @@ interface BookingsData {
 
 interface BookingsPanelProps {
   bookings: BookingsData;
+  insight?: PanelInsight | null;
 }
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -38,7 +40,7 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  * self-book teams — answers "what % of bookings did my setters reach
  * before the call?"
  */
-export function BookingsPanel({ bookings }: BookingsPanelProps) {
+export function BookingsPanel({ bookings, insight }: BookingsPanelProps) {
   if (bookings.source === "none") {
     return (
       <Card>
@@ -186,6 +188,8 @@ export function BookingsPanel({ bookings }: BookingsPanelProps) {
             clamped for performance).
           </div>
         )}
+
+        <InsightCard insight={insight ?? null} />
       </CardContent>
     </Card>
   );

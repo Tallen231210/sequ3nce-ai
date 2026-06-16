@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users } from "lucide-react";
+import { InsightCard, type PanelInsight } from "./InsightCard";
 
 interface RoutingPerf {
   name: string;
@@ -34,6 +35,7 @@ interface RoutingPerformancePanelProps {
     totalLeads: number;
     hyrosEnabled: boolean;
   };
+  insight?: PanelInsight | null;
 }
 
 /**
@@ -52,6 +54,7 @@ export function RoutingPerformancePanel({
   rows,
   adsHidden,
   coverage,
+  insight,
 }: RoutingPerformancePanelProps) {
   if (!coverage.hyrosEnabled) {
     return (
@@ -156,6 +159,8 @@ export function RoutingPerformancePanel({
           )}
           .
         </p>
+
+        <InsightCard insight={insight ?? null} />
       </CardContent>
     </Card>
   );

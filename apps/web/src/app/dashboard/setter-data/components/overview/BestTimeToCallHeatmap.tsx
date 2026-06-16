@@ -5,6 +5,7 @@ import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { InsightCard } from "./InsightCard";
 
 interface BestTimeToCallHeatmapProps {
   rangeStart: number;
@@ -138,6 +139,8 @@ export function BestTimeToCallHeatmap({
             here may be conservative.
           </div>
         )}
+
+        <InsightCard insight={data.insight} />
       </CardContent>
     </Card>
   );

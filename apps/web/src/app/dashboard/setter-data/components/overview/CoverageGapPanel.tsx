@@ -5,6 +5,7 @@ import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { InsightCard } from "./InsightCard";
 
 /**
  * Yesterday's worst lead-coverage windows in team timezone. Surfaces
@@ -104,6 +105,8 @@ export function CoverageGapPanel() {
             ≥60 min minimum).
           </div>
         )}
+
+        <InsightCard insight={data.insight} />
       </CardContent>
     </Card>
   );

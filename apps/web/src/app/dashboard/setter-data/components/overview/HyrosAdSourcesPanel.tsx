@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sparkles } from "lucide-react";
+import { InsightCard, type PanelInsight } from "./InsightCard";
 
 interface HyrosAdSourcesPanelProps {
   platforms: Array<{
@@ -30,6 +31,7 @@ interface HyrosAdSourcesPanelProps {
     totalLeads: number;
     hyrosEnabled: boolean;
   };
+  insight?: PanelInsight | null;
 }
 
 function formatCash(n: number): string {
@@ -69,7 +71,7 @@ function showDotColor(showPct: number): string {
  *      attributed leads; the ad sub-rows show count + share within
  *      their parent platform.
  */
-export function HyrosAdSourcesPanel({ platforms, coverage }: HyrosAdSourcesPanelProps) {
+export function HyrosAdSourcesPanel({ platforms, coverage, insight }: HyrosAdSourcesPanelProps) {
   if (!coverage.hyrosEnabled) {
     return (
       <Card>
@@ -255,6 +257,8 @@ export function HyrosAdSourcesPanel({ platforms, coverage }: HyrosAdSourcesPanel
         <p className="mt-4 text-[10px] text-muted-foreground">
           {coverage.attributedCount} of {coverage.totalLeads} leads attributed via Hyros ({Math.round(coveragePct)}%).
         </p>
+
+        <InsightCard insight={insight ?? null} />
       </CardContent>
     </Card>
   );

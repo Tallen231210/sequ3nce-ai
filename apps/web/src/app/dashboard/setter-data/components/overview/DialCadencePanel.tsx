@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { InsightCard, type PanelInsight } from "./InsightCard";
 import { Phone } from "lucide-react";
 
 interface Cadence {
@@ -20,6 +21,7 @@ interface SetterCadenceRow {
 
 interface DialCadencePanelProps {
   perSetter: SetterCadenceRow[];
+  insight?: PanelInsight | null;
 }
 
 /**
@@ -29,7 +31,7 @@ interface DialCadencePanelProps {
  * backend with null aggregates) appear at the bottom with "—" and a
  * footnote.
  */
-export function DialCadencePanel({ perSetter }: DialCadencePanelProps) {
+export function DialCadencePanel({ perSetter, insight }: DialCadencePanelProps) {
   const populated = perSetter
     .filter((s) => s.cadence.avgDialsPerLead !== null)
     .sort(
@@ -89,6 +91,8 @@ export function DialCadencePanel({ perSetter }: DialCadencePanelProps) {
             </div>
           </div>
         )}
+
+        <InsightCard insight={insight ?? null} />
       </CardContent>
     </Card>
   );
