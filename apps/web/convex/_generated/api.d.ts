@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as adSpend from "../adSpend.js";
+import type * as adSpendInternal from "../adSpendInternal.js";
 import type * as admin from "../admin.js";
 import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
@@ -75,6 +77,8 @@ import type * as lib_sentry from "../lib/sentry.js";
 import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
 import type * as meetingBot from "../meetingBot.js";
+import type * as metaAdsConfig from "../metaAdsConfig.js";
+import type * as metaAdsInternal from "../metaAdsInternal.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
@@ -96,6 +100,8 @@ import type * as setterGhlOauthActions from "../setterGhlOauthActions.js";
 import type * as setterGhlSync from "../setterGhlSync.js";
 import type * as setterGhlSyncMutations from "../setterGhlSyncMutations.js";
 import type * as setterGhlWebhooks from "../setterGhlWebhooks.js";
+import type * as setterScorecardBackfill from "../setterScorecardBackfill.js";
+import type * as setterScorecardConfig from "../setterScorecardConfig.js";
 import type * as setterSpeedToLeadDispatcher from "../setterSpeedToLeadDispatcher.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
@@ -112,6 +118,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  adSpend: typeof adSpend;
+  adSpendInternal: typeof adSpendInternal;
   admin: typeof admin;
   ai: typeof ai;
   analytics: typeof analytics;
@@ -179,6 +187,8 @@ declare const fullApi: ApiFromModules<{
   liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
   meetingBot: typeof meetingBot;
+  metaAdsConfig: typeof metaAdsConfig;
+  metaAdsInternal: typeof metaAdsInternal;
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
@@ -200,6 +210,8 @@ declare const fullApi: ApiFromModules<{
   setterGhlSync: typeof setterGhlSync;
   setterGhlSyncMutations: typeof setterGhlSyncMutations;
   setterGhlWebhooks: typeof setterGhlWebhooks;
+  setterScorecardBackfill: typeof setterScorecardBackfill;
+  setterScorecardConfig: typeof setterScorecardConfig;
   setterSpeedToLeadDispatcher: typeof setterSpeedToLeadDispatcher;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;

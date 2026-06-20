@@ -123,6 +123,32 @@ export default defineSchema({
     // webhook signatures. Encrypted via lib/encrypt the same way hyrosApiKey is.
     hyrosWebhookSecret: v.optional(v.string()),
     hyrosWebhookConfiguredAt: v.optional(v.number()),
+    // Meta Ads (Facebook) integration — Phase 1 spend ingestion.
+    // Encrypted via lib/encrypt (same pattern as hyrosApiKey). Stores a
+    // long-lived User Access Token with ads_read permission. The token
+    // expires every 60 days; metaAdsTokenExpiresAt drives renewal prompts.
+    metaAdsAccessToken: v.optional(v.string()),
+    metaAdsAdAccountId: v.optional(v.string()),   // "act_XXXXXXX" format
+    metaAdsConnectedAt: v.optional(v.number()),
+    metaAdsTokenExpiresAt: v.optional(v.number()),
+    metaAdsLastSyncedAt: v.optional(v.number()),
+    metaAdsLastSyncError: v.optional(v.string()),
+    // Phase 2 — Setter Scorecard team-level overlay config.
+    // Per-offer overlay is a future Phase 4; for now one team = one config.
+    // setterCadenceDefault: "A" (B2C, 12 dials/lead over 4 days) or
+    //   "B" (B2B, 5-6 dials/lead). Drives cadence-adherence targets.
+    // setter*Target: optional overrides for the playbook KPIs.
+    setterCadenceDefault: v.optional(v.string()),       // "A" | "B"
+    setterDialsPerDayTarget: v.optional(v.number()),    // default 150
+    setterContactsPerDayTarget: v.optional(v.number()), // derived from cadence if absent
+    setterSetRateTarget: v.optional(v.number()),        // 0..100 percentage
+    // Override anchor for scorecard dollar leakage. When set, used as the
+    // "avg deal value per close" multiplier instead of the computed avg.
+    // Useful when closer-entered cashCollected / contractValue data is
+    // patchy (some teams enter placeholders) but the manager knows the
+    // typical deal economics. Used as the LARGER of (computed avg, this
+    // override) so it never under-estimates.
+    setterTypicalDealValue: v.optional(v.number()),
     // GoHighLevel CRM integration (legacy API-key flow — disposition sync)
     // Kept for backwards compatibility; the new Setter Data feature uses
     // OAuth tokens via setterGhlInstallations instead. Phase 3 will rebuild
@@ -1951,9 +1977,41 @@ export default defineSchema({
     ghlRole: v.optional(v.string()),
     isActive: v.boolean(),
     lastSeenInSyncAt: v.number(),
+    // Phase 2 — Setter Scorecard tenure tracking.
+    // firstSeenAt: set on first GHL sync that surfaces this rep. Never
+    //   overwritten. Used as the canonical "joined our system" date for
+    //   ramping vs stabilized auto-detection (60-day threshold).
+    // stabilizedAt: manual override. When set, isStabilized = now >= this.
+    //   Defaults to null — fall back to auto-detect via firstSeenAt.
+    firstSeenAt: v.optional(v.number()),
+    stabilizedAt: v.optional(v.number()),
   })
     .index("by_team", ["teamId"])
     .index("by_team_and_ghl_user_id", ["teamId", "ghlUserId"]),
+
+  // Phase 1 — daily ad spend rollup per ad creative per platform.
+  // Populated by adSpend.ts daily-sync cron. Joined to Hyros-attributed
+  // setterLeads via adSourceId (Hyros's adSource.adSourceId === Meta's
+  // ad ID) to produce per-closer ROI in getCloserRoi.
+  //
+  // Stored in cents to avoid float drift. One row per (team, date,
+  // platform, adSourceId).
+  adSpendDaily: defineTable({
+    teamId: v.id("teams"),
+    date: v.string(),                          // "YYYY-MM-DD" in UTC
+    platform: v.string(),                      // "facebook" | "google" | ...
+    adAccountId: v.optional(v.string()),       // Meta ad account id
+    adSourceId: v.optional(v.string()),        // Meta ad id — matches Hyros adSource.adSourceId
+    sourceLinkName: v.optional(v.string()),    // human-readable creative name
+    spendCents: v.number(),
+    impressions: v.optional(v.number()),
+    clicks: v.optional(v.number()),
+    source: v.string(),                        // "meta_ads" (Meta API) | "manual" | future "google_ads"
+    ingestedAt: v.number(),
+  })
+    .index("by_team_and_date", ["teamId", "date"])
+    .index("by_team_and_platform_and_date", ["teamId", "platform", "date"])
+    .index("by_ad_source_and_date", ["adSourceId", "date"]),
 
   // Synced GHL contacts (the "leads" the setters work). Snapshot fields are
   // denormalized projections of setterLeadEvents — they're recomputed on

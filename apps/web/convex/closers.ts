@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import { Id, Doc } from "./_generated/dataModel";
 
 // Simple password hashing using Web Crypto API (available in Convex runtime)
 // In production, you might want to use a more robust solution
@@ -1318,5 +1318,381 @@ export const closerHasPassword = query({
   handler: async (ctx, args) => {
     const closer = await ctx.db.get(args.closerId);
     return closer ? !!closer.passwordHash : false;
+  },
+});
+
+// ----------------------------------------------------------------------------
+// Closer Unit Economics (Phase 1) — getCloserRoi
+//
+// For each closer, attribute the ad spend on leads they personally ran to
+// the cash collected + contract value from those same calls. ROI = cash /
+// spend.
+//
+// Attribution algorithm:
+//   1. Find every completed call this closer ran in the range
+//   2. Trace each call back to its setterLead (email/phone match)
+//   3. Look up the lead's Hyros adSourceId
+//   4. Fair-share that ad's spend across all leads it produced in the
+//      booking week (so high-volume ads don't get over-attributed)
+//   5. Sum per-closer
+//
+// No-shows: the user explicitly wants closer ROI to NOT include ad spend
+// on leads where the closer was the assigned-but-didn't-run. That's a
+// business loss (counted in teamWide.noShowDragSpend) but not a closer
+// penalty.
+// ----------------------------------------------------------------------------
+
+export const getCloserRoi = query({
+  args: {
+    clerkId: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    // Authenticate + scope to team
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) return null;
+    const teamId = user.teamId;
+
+    // Step 1: pull completed calls in range via callStats (lean — no
+    // transcript blobs). callStats has closerId, outcome, cashCollected,
+    // contractValue, status, createdAt — everything we need.
+    const callStatsInRange: Doc<"callStats">[] = await ctx.db
+      .query("callStats")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date", (q: any) =>
+        q
+          .eq("teamId", teamId)
+          .gte("createdAt", args.rangeStart)
+          .lt("createdAt", args.rangeEnd),
+      )
+      .collect();
+
+    // Index by closerId for per-closer rollup
+    interface CloserAccum {
+      closerId: string;
+      closerName: string;
+      callsRun: number;
+      spendCents: number;
+      cashCollected: number;
+      contractValue: number;
+      closedCount: number;
+      lostCount: number;
+      followUpCount: number;
+      callIds: Id<"calls">[];   // for reverse-lookup
+    }
+    const closerAccum = new Map<string, CloserAccum>();
+
+    // Pull closer roster once for name lookups
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", teamId))
+      .collect();
+    const closerNameById = new Map(closers.map((c) => [String(c._id), c.name]));
+
+    function ensure(closerId: string): CloserAccum {
+      let row = closerAccum.get(closerId);
+      if (!row) {
+        row = {
+          closerId,
+          closerName: closerNameById.get(closerId) ?? "Unknown closer",
+          callsRun: 0,
+          spendCents: 0,
+          cashCollected: 0,
+          contractValue: 0,
+          closedCount: 0,
+          lostCount: 0,
+          followUpCount: 0,
+          callIds: [],
+        };
+        closerAccum.set(closerId, row);
+      }
+      return row;
+    }
+
+    // Pre-pass: bucket calls by closer + collect call IDs for setterLead
+    // reverse-lookup. Track no-show drag at team level separately.
+    let noShowCallCount = 0;
+    for (const cs of callStatsInRange) {
+      if (cs.status === "no_show") {
+        noShowCallCount += 1;
+        continue; // no-shows don't count toward closer ROI
+      }
+      if (cs.status !== "completed") continue;
+      const row = ensure(cs.closerId);
+      row.callsRun += 1;
+      row.cashCollected += cs.cashCollected ?? 0;
+      row.contractValue += cs.contractValue ?? 0;
+      row.callIds.push(cs.callId);
+      if (cs.outcome === "closed") row.closedCount += 1;
+      else if (cs.outcome === "lost" || cs.outcome === "not_closed")
+        row.lostCount += 1;
+      else if (cs.outcome === "follow_up") row.followUpCount += 1;
+    }
+
+    // Step 2 + 3 + 4: spend attribution. For each call → fetch the
+    // matching lead via prospectEmail/prospectPhone → fetch the lead's
+    // hyrosFirstSource.adSourceId → look up that ad's spend that week
+    // → fair-share across leads-from-that-ad-that-week.
+    //
+    // To keep this efficient on high-volume teams:
+    //   - Pull all setterLeads in the team in one scan, build email/
+    //     phone indices in memory.
+    //   - Pull all calls referenced (via getCalls-by-ids) to get
+    //     prospectEmail / prospectPhone.
+    //   - Group spend lookups by (adSourceId, week) to dedupe queries.
+
+    const allCalls = (await Promise.all(
+      Array.from(closerAccum.values())
+        .flatMap((c) => c.callIds)
+        .map((cid) => ctx.db.get(cid)),
+    )) as Array<Doc<"calls"> | null>;
+    const callById = new Map<string, Doc<"calls"> | null>(
+      allCalls.map((c) => [String(c?._id ?? ""), c]),
+    );
+
+    // Build email/phone → lead index across the team. Bounded — most
+    // teams have <10k leads. Lean callStats made our 16MB worries
+    // permanent history but setterLeads are small docs.
+    const teamLeads: Doc<"setterLeads">[] = await ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .collect();
+    const normalize = (s: string | null | undefined) =>
+      (s ?? "").trim().toLowerCase();
+    const leadByEmail = new Map<string, Doc<"setterLeads">>();
+    const leadByPhone = new Map<string, Doc<"setterLeads">>();
+    for (const l of teamLeads) {
+      if (l.email) leadByEmail.set(normalize(l.email), l);
+      if (l.phone) leadByPhone.set(normalize(l.phone), l);
+    }
+
+    // For each call: find matching lead, capture (adSourceId, week)
+    // for spend lookup.
+    function isoWeek(d: Date): string {
+      // ISO week: YYYY-Www (we use it as a deduplication key, not a
+      // strict ISO standard — Sun-start "week of" works fine).
+      const year = d.getUTCFullYear();
+      const start = Date.UTC(year, 0, 1);
+      const w = Math.floor((d.getTime() - start) / (7 * 24 * 60 * 60_000));
+      return `${year}-W${String(w).padStart(2, "0")}`;
+    }
+
+    interface CallAttribution {
+      callId: string;
+      closerId: string;
+      adSourceId: string;
+      weekKey: string;
+      weekStart: number;
+      weekEnd: number;
+    }
+    const attributions: CallAttribution[] = [];
+    let leadsWithoutAttribution = 0;
+    for (const [closerId, row] of closerAccum) {
+      for (const cid of row.callIds) {
+        const call = callById.get(String(cid));
+        if (!call) continue;
+        const emailKey = normalize(call.prospectEmail);
+        const phoneKey = normalize(call.prospectPhone);
+        const lead =
+          (emailKey && leadByEmail.get(emailKey)) ||
+          (phoneKey && leadByPhone.get(phoneKey));
+        if (!lead || !lead.hyrosFirstSource?.adSourceId) {
+          leadsWithoutAttribution += 1;
+          continue;
+        }
+        const callDate = new Date(call.createdAt);
+        const weekKey = isoWeek(callDate);
+        // Week boundaries in UTC ms
+        const weekStart =
+          callDate.getTime() - (callDate.getUTCDay() * 24 * 60 * 60_000);
+        const weekEnd = weekStart + 7 * 24 * 60 * 60_000;
+        attributions.push({
+          callId: String(cid),
+          closerId,
+          adSourceId: lead.hyrosFirstSource.adSourceId,
+          weekKey,
+          weekStart,
+          weekEnd,
+        });
+      }
+    }
+
+    // For each unique (adSourceId, week) combo: pull spend for the week
+    // + count how many leads from that ad arrived that week (for fair-
+    // share denominator).
+    interface AdWeekSpend {
+      spendCents: number;
+      leadsThatWeek: number;
+    }
+    const adWeekCache = new Map<string, AdWeekSpend>();
+    for (const a of attributions) {
+      const key = `${a.adSourceId}|${a.weekKey}`;
+      if (adWeekCache.has(key)) continue;
+
+      // Sum spend for this ad over the week
+      const spendRows = await ctx.db
+        .query("adSpendDaily")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_ad_source_and_date", (q: any) =>
+          q.eq("adSourceId", a.adSourceId),
+        )
+        .collect();
+      const weekStartISO = new Date(a.weekStart).toISOString().slice(0, 10);
+      const weekEndISO = new Date(a.weekEnd).toISOString().slice(0, 10);
+      const spendCents = spendRows
+        .filter((r) => r.date >= weekStartISO && r.date < weekEndISO)
+        .reduce((s, r) => s + r.spendCents, 0);
+
+      // Count leads from this ad in this week (fair-share denominator)
+      const leadsThatWeek = teamLeads.filter(
+        (l) =>
+          l.hyrosFirstSource?.adSourceId === a.adSourceId &&
+          l.dateAdded >= a.weekStart &&
+          l.dateAdded < a.weekEnd,
+      ).length;
+
+      adWeekCache.set(key, {
+        spendCents,
+        leadsThatWeek: Math.max(1, leadsThatWeek), // avoid /0
+      });
+    }
+
+    // Apply attribution to closer accumulators
+    for (const a of attributions) {
+      const key = `${a.adSourceId}|${a.weekKey}`;
+      const aw = adWeekCache.get(key)!;
+      const fairShare = aw.spendCents / aw.leadsThatWeek;
+      const row = closerAccum.get(a.closerId);
+      if (row) row.spendCents += fairShare;
+    }
+
+    // Team-wide totals
+    let teamSpendCents = 0;
+    let teamCash = 0;
+    let teamContract = 0;
+    for (const r of closerAccum.values()) {
+      teamSpendCents += r.spendCents;
+      teamCash += r.cashCollected;
+      teamContract += r.contractValue;
+    }
+
+    // No-show drag — team-level. For each no-show, spend share is the
+    // same fair-share math but doesn't go to any closer.
+    let noShowDragCents = 0;
+    for (const cs of callStatsInRange) {
+      if (cs.status !== "no_show") continue;
+      const call = (await ctx.db.get(cs.callId)) as Doc<"calls"> | null;
+      if (!call) continue;
+      const emailKey = normalize(call.prospectEmail);
+      const phoneKey = normalize(call.prospectPhone);
+      const lead =
+        (emailKey && leadByEmail.get(emailKey)) ||
+        (phoneKey && leadByPhone.get(phoneKey));
+      if (!lead || !lead.hyrosFirstSource?.adSourceId) continue;
+      const callDate = new Date(call.createdAt);
+      const weekStart =
+        callDate.getTime() - (callDate.getUTCDay() * 24 * 60 * 60_000);
+      const weekEnd = weekStart + 7 * 24 * 60 * 60_000;
+      const key = `${lead.hyrosFirstSource.adSourceId}|${isoWeek(callDate)}`;
+      let aw = adWeekCache.get(key);
+      if (!aw) {
+        // Pull spend for this lookup if not cached
+        const spendRows = await ctx.db
+          .query("adSpendDaily")
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .withIndex("by_ad_source_and_date", (q: any) =>
+            q.eq("adSourceId", lead.hyrosFirstSource!.adSourceId!),
+          )
+          .collect();
+        const wsISO = new Date(weekStart).toISOString().slice(0, 10);
+        const weISO = new Date(weekEnd).toISOString().slice(0, 10);
+        const spendCents = spendRows
+          .filter((r) => r.date >= wsISO && r.date < weISO)
+          .reduce((s, r) => s + r.spendCents, 0);
+        const leadsThatWeek = teamLeads.filter(
+          (l) =>
+            l.hyrosFirstSource?.adSourceId === lead.hyrosFirstSource!.adSourceId &&
+            l.dateAdded >= weekStart &&
+            l.dateAdded < weekEnd,
+        ).length;
+        aw = { spendCents, leadsThatWeek: Math.max(1, leadsThatWeek) };
+        adWeekCache.set(key, aw);
+      }
+      noShowDragCents += aw.spendCents / aw.leadsThatWeek;
+    }
+
+    // Coverage percentage — what fraction of called leads had ad
+    // attribution we could spend-attribute
+    const totalCalls = Array.from(closerAccum.values()).reduce(
+      (s, r) => s + r.callsRun,
+      0,
+    );
+    const spendCoveragePct =
+      totalCalls > 0
+        ? Math.round(((totalCalls - leadsWithoutAttribution) / totalCalls) * 100)
+        : 0;
+
+    // Build per-closer rows
+    const rows = Array.from(closerAccum.values())
+      .map((r) => {
+        const spendUsd = r.spendCents / 100;
+        return {
+          closerId: r.closerId,
+          closerName: r.closerName,
+          callsRun: r.callsRun,
+          spendUsd,
+          cashCollected: r.cashCollected,
+          contractValue: r.contractValue,
+          roiCash: spendUsd > 0 ? r.cashCollected / spendUsd : null,
+          roiContract: spendUsd > 0 ? r.contractValue / spendUsd : null,
+          avgDealCash: r.closedCount > 0 ? r.cashCollected / r.closedCount : 0,
+          avgDealContract:
+            r.closedCount > 0 ? r.contractValue / r.closedCount : 0,
+          closedCount: r.closedCount,
+          lostCount: r.lostCount,
+          followUpCount: r.followUpCount,
+        };
+      })
+      .sort((a, b) => {
+        // Default sort: worst ROI first (where the manager should look).
+        // Null ROI rows (no spend) go to the bottom.
+        if (a.roiCash === null && b.roiCash === null) return 0;
+        if (a.roiCash === null) return 1;
+        if (b.roiCash === null) return -1;
+        return a.roiCash - b.roiCash;
+      });
+
+    // Check spend connection state for the empty-state branch
+    const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
+    const spendSource: "meta_ads" | "unknown" = team?.metaAdsAccessToken
+      ? "meta_ads"
+      : "unknown";
+
+    return {
+      teamWide: {
+        totalSpendUsd: teamSpendCents / 100,
+        totalCashCollected: teamCash,
+        totalContractValue: teamContract,
+        blendedRoiCash: teamSpendCents > 0 ? teamCash / (teamSpendCents / 100) : null,
+        blendedRoiContract:
+          teamSpendCents > 0 ? teamContract / (teamSpendCents / 100) : null,
+        noShowDragUsd: noShowDragCents / 100,
+        noShowCallCount,
+        leadsTotal: teamLeads.filter(
+          (l) => l.dateAdded >= args.rangeStart && l.dateAdded < args.rangeEnd,
+        ).length,
+        callsTotal: totalCalls,
+      },
+      rowsByCloser: rows,
+      spendSource,
+      spendCoveragePct,
+      windowDays: Math.round((args.rangeEnd - args.rangeStart) / (24 * 60 * 60_000)),
+      hasSpendData: teamSpendCents > 0,
+    };
   },
 });
