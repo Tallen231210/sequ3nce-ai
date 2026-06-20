@@ -156,4 +156,13 @@ crons.daily(
   internal.setterDataNotifications.runBookingFlowDetectionSweep,
 );
 
+// Phase 1 (Closer Unit Economics) — Meta Ads daily spend sync. Pulls
+// yesterday + today's per-ad spend for each team with Meta connected.
+// The 2-day window catches Meta's late-attribution adjustments.
+crons.daily(
+  "ad-spend-meta-daily-sync",
+  { hourUTC: 9, minuteUTC: 0 },
+  internal.adSpend.runDailyMetaSync,
+);
+
 export default crons;

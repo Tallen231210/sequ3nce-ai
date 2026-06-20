@@ -1047,6 +1047,27 @@ export const getMySettings = query({
       },
       // Team timezone (read-only here — set elsewhere in account settings).
       timezone: team.timezone,
+      // Phase 2 — Setter Scorecard team-level overlay config.
+      scorecardConfig: {
+        cadenceDefault: team.setterCadenceDefault === "B" ? "B" : "A",
+        dialsPerDayTarget: team.setterDialsPerDayTarget ?? 150,
+        contactsPerDayTarget:
+          team.setterContactsPerDayTarget ??
+          (team.setterCadenceDefault === "B" ? 25 : 12.5),
+        setRateTarget: team.setterSetRateTarget ?? 15,
+        typicalDealValue: team.setterTypicalDealValue ?? null,
+      },
+      // Phase 1 — Closer ROI / Meta Ads connection state.
+      // Drives the Meta Ads card on the Settings tab. We don't return
+      // the encrypted token; only the metadata needed to render state.
+      metaAds: {
+        connected: !!team.metaAdsAccessToken && !!team.metaAdsAdAccountId,
+        adAccountId: team.metaAdsAdAccountId ?? null,
+        connectedAt: team.metaAdsConnectedAt ?? null,
+        tokenExpiresAt: team.metaAdsTokenExpiresAt ?? null,
+        lastSyncedAt: team.metaAdsLastSyncedAt ?? null,
+        lastSyncError: team.metaAdsLastSyncError ?? null,
+      },
     };
   },
 });
@@ -2259,3 +2280,420 @@ function getLocalDateRangeUtcLocal(
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
+
+// ----------------------------------------------------------------------------
+// Setter Scorecard (Phase 2) — playbook-anchored per-setter performance.
+//
+// Fixed trailing 60-day window. Ignores the dashboard date picker because
+// the playbook's central rule is "promote on consistency, fire the yo-yos
+// — we evaluate on trailing 60-90 days, not week-over-week." A manager
+// looking at this view is making hire/fire/coach calls, not range-specific
+// diagnostics.
+//
+// Targets come from the playbook's published baselines + the team's
+// optional overrides (teams.setter*Target). Dollar leakage is anchored to
+// team-average close rate × team-average cash collected so the numbers
+// stay defensible (no leader-peak math).
+// ----------------------------------------------------------------------------
+
+const SCORECARD_WINDOW_DAYS = 60;
+const SCORECARD_STABILIZED_TENURE_DAYS = 60;
+// Playbook baselines (Section 2 of the published doc Tyler shared).
+const PLAYBOOK_DEFAULT_DIALS_PER_DAY = 150;
+const PLAYBOOK_DEFAULT_CONTACTS_PER_DAY_A = 12.5; // Cadence A (B2C)
+const PLAYBOOK_DEFAULT_CONTACTS_PER_DAY_B = 25;   // Cadence B (B2B)
+const PLAYBOOK_DEFAULT_AVG_DIALS_PER_LEAD_A = 12; // Cadence A target
+const PLAYBOOK_DEFAULT_AVG_DIALS_PER_LEAD_B = 5;  // Cadence B target
+const PLAYBOOK_DEFAULT_PCT_LEADS_HITTING_CADENCE = 80; // either cadence
+const PLAYBOOK_RAMPING_SHOW_RATE = 60;
+const PLAYBOOK_STABILIZED_SHOW_RATE = 70;
+// Conservative connect-rate lift per additional dial — anchored to industry
+// research, not team-leader peaks. Used in cadence-gap dollar math.
+const CONSERVATIVE_CONNECT_LIFT_PER_DIAL = 0.04; // 4pp per missed dial
+
+interface ScorecardKpiCell {
+  actual: number | null;
+  target: number;
+  status: "red" | "amber" | "green" | "na";
+}
+
+interface ScorecardLineItem {
+  kpi: string;
+  lostUnits: number;        // missed dials / missed shows / late leads / etc.
+  dollarValue: number;      // monthly leakage estimate (USD)
+  explanation: string;
+}
+
+interface ScorecardRow {
+  ghlUserId: string;
+  name: string;
+  tenureDays: number;
+  isStabilized: boolean;
+  workingDaysInWindow: number;
+  kpis: {
+    dialsPerDay: ScorecardKpiCell;
+    contactsPerDay: ScorecardKpiCell;
+    avgDialsPerLead: ScorecardKpiCell;
+    pctLeadsHittingCadence: ScorecardKpiCell;
+    setRate: ScorecardKpiCell;
+    showRate: ScorecardKpiCell;
+  };
+  dollarLeakageMonthly: number;
+  lineItems: ScorecardLineItem[];
+}
+
+interface ScorecardResponse {
+  windowDays: number;
+  rangeStart: number;
+  rangeEnd: number;
+  workingDaysInWindow: number;
+  cadenceDefault: "A" | "B";
+  teamAverages: {
+    closeRate: number;             // 0..1 fraction
+    avgCashCollectedPerClose: number; // USD
+  };
+  rows: ScorecardRow[];
+}
+
+/**
+ * Compute weekdays (Mon-Fri, team local time) in a UTC ms range.
+ * Used as the divisor for "per day" KPIs so weekends/holidays don't
+ * deflate the actual numbers. Team timezone is the right frame because
+ * managers pay setters per their local working calendar.
+ */
+function countWorkingDays(
+  rangeStart: number,
+  rangeEnd: number,
+  timezone: string,
+): number {
+  let count = 0;
+  for (let t = rangeStart; t < rangeEnd; t += 24 * 60 * 60_000) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+    }).formatToParts(new Date(t));
+    const wd = parts.find((p) => p.type === "weekday")?.value ?? "";
+    if (wd !== "Sat" && wd !== "Sun") count += 1;
+  }
+  return count;
+}
+
+function statusForRatio(actual: number, target: number): "red" | "amber" | "green" {
+  if (target <= 0) return "green";
+  const r = actual / target;
+  if (r >= 0.95) return "green";
+  if (r >= 0.75) return "amber";
+  return "red";
+}
+
+function statusForDelta(actualPct: number, targetPct: number): "red" | "amber" | "green" {
+  const gap = targetPct - actualPct;
+  if (gap <= 5) return "green";
+  if (gap <= 15) return "amber";
+  return "red";
+}
+
+export const getSetterScorecard = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args): Promise<ScorecardResponse | null> => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
+
+    const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
+    if (!team) return null;
+
+    const cadenceDefault: "A" | "B" =
+      team.setterCadenceDefault === "B" ? "B" : "A";
+    const dialsTarget =
+      team.setterDialsPerDayTarget ?? PLAYBOOK_DEFAULT_DIALS_PER_DAY;
+    const contactsTarget =
+      team.setterContactsPerDayTarget ??
+      (cadenceDefault === "B"
+        ? PLAYBOOK_DEFAULT_CONTACTS_PER_DAY_B
+        : PLAYBOOK_DEFAULT_CONTACTS_PER_DAY_A);
+    const cadenceDialsTarget =
+      cadenceDefault === "B"
+        ? PLAYBOOK_DEFAULT_AVG_DIALS_PER_LEAD_B
+        : PLAYBOOK_DEFAULT_AVG_DIALS_PER_LEAD_A;
+    const cadencePctTarget = PLAYBOOK_DEFAULT_PCT_LEADS_HITTING_CADENCE;
+    const setRateTarget = team.setterSetRateTarget ?? 15; // pct
+
+    const now = Date.now();
+    const rangeStart = now - SCORECARD_WINDOW_DAYS * 24 * 60 * 60_000;
+    const rangeEnd = now;
+    const timezone = team.timezone || "America/New_York";
+    const workingDaysInWindow = countWorkingDays(rangeStart, rangeEnd, timezone);
+
+    // Reuse the scorecard helper — it already computes 6/7 KPIs we need.
+    const scorecard = await computeScorecard(ctx, {
+      teamId,
+      rangeStart,
+      rangeEnd,
+    });
+
+    // Team averages for dollar-leakage math. Compute from completed calls
+    // in the same trailing window — gives us teamCloseRate + avgCashPerClose
+    // anchored to recent reality, not historical peaks.
+    const closeRateNumerator = scorecard.bookings.total > 0
+      ? scorecard.closerSide.closed
+      : 0;
+    const closeRateDenominator =
+      scorecard.closerSide.matched > 0
+        ? scorecard.closerSide.matched
+        : Math.max(1, scorecard.bookings.total);
+    const teamCloseRate =
+      closeRateDenominator > 0
+        ? closeRateNumerator / closeRateDenominator
+        : 0;
+
+    // Average deal value per close — pull from callStats sidecar across
+    // the window. The 16 MiB callStats split means we can scan freely.
+    // Use contractValue as the primary multiplier with fallback chain:
+    // contractValue > cashCollected > dealValue (legacy). Contract value
+    // is the right anchor because closers often collect a small day-of
+    // cash on a multi-thousand-dollar deal (payment plans, deposits).
+    // Using cash-collected-only systematically under-estimates leakage.
+    const callStatsRows = await ctx.db
+      .query("callStats")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date", (q: any) =>
+        q.eq("teamId", teamId).gte("createdAt", rangeStart).lt("createdAt", rangeEnd),
+      )
+      .collect();
+    const closedRows = (callStatsRows as Array<{
+      outcome?: string;
+      cashCollected?: number;
+      contractValue?: number;
+      dealValue?: number;
+    }>).filter((r) => r.outcome === "closed");
+    const dealValueForLeakage = (r: {
+      cashCollected?: number;
+      contractValue?: number;
+      dealValue?: number;
+    }) =>
+      r.contractValue && r.contractValue > 0
+        ? r.contractValue
+        : r.cashCollected && r.cashCollected > 0
+          ? r.cashCollected
+          : r.dealValue ?? 0;
+    const computedAvgDealValue =
+      closedRows.length > 0
+        ? closedRows.reduce((s, r) => s + dealValueForLeakage(r), 0) /
+          closedRows.length
+        : 0;
+    // Use the LARGER of (computed avg, manager override). Override never
+    // under-estimates. Override is the right anchor when closer-entered
+    // values are patchy or placeholder (a known issue on some teams).
+    const avgCashCollectedPerClose = team.setterTypicalDealValue
+      ? Math.max(computedAvgDealValue, team.setterTypicalDealValue)
+      : computedAvgDealValue;
+
+    // Pull setterReps for tenure data.
+    const reps = (await ctx.db
+      .query("setterReps")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .collect()) as Doc<"setterReps">[];
+    const repByGhlId = new Map(reps.map((r) => [r.ghlUserId, r]));
+
+    // Build a row per setter that appears in the scorecard.
+    const rows: ScorecardRow[] = [];
+    for (const setterRow of scorecard.perSetter) {
+      const rep = repByGhlId.get(setterRow.ghlUserId);
+      // Tenure source: stabilizedAt override > firstSeenAt > _creationTime.
+      const tenureBase =
+        rep?.firstSeenAt ?? rep?._creationTime ?? now;
+      const tenureDays = Math.max(0, (now - tenureBase) / (24 * 60 * 60_000));
+      const isStabilized = rep?.stabilizedAt
+        ? now >= rep.stabilizedAt
+        : tenureDays >= SCORECARD_STABILIZED_TENURE_DAYS;
+
+      const showRateTarget = isStabilized
+        ? PLAYBOOK_STABILIZED_SHOW_RATE
+        : PLAYBOOK_RAMPING_SHOW_RATE;
+
+      const dialsPerDay =
+        workingDaysInWindow > 0
+          ? setterRow.dialCount / workingDaysInWindow
+          : 0;
+      const contactsPerDay =
+        workingDaysInWindow > 0
+          ? setterRow.leadCount / workingDaysInWindow
+          : 0;
+
+      const avgDialsPerLead = setterRow.cadence.avgDialsPerLead;
+      const pctLeadsHittingCadence =
+        setterRow.cadence.pctLeadsThreeOrMoreAttempts !== null
+          ? setterRow.cadence.pctLeadsThreeOrMoreAttempts * 100
+          : null;
+
+      const setRate =
+        setterRow.connectedCount > 0
+          ? (setterRow.appointmentCount / setterRow.connectedCount) * 100
+          : null;
+
+      const showRate =
+        setterRow.showRate !== null ? setterRow.showRate * 100 : null;
+
+      // KPI cells with status flags. Explicit type on each ternary so the
+      // inference doesn't widen "na" | "red" | "amber" | "green" → string.
+      type S = "red" | "amber" | "green" | "na";
+      const kpis = {
+        dialsPerDay: {
+          actual: dialsPerDay,
+          target: dialsTarget,
+          status: statusForRatio(dialsPerDay, dialsTarget) as S,
+        },
+        contactsPerDay: {
+          actual: contactsPerDay,
+          target: contactsTarget,
+          status: statusForRatio(contactsPerDay, contactsTarget) as S,
+        },
+        avgDialsPerLead: {
+          actual: avgDialsPerLead,
+          target: cadenceDialsTarget,
+          status: (avgDialsPerLead === null
+            ? "na"
+            : statusForRatio(avgDialsPerLead, cadenceDialsTarget)) as S,
+        },
+        pctLeadsHittingCadence: {
+          actual: pctLeadsHittingCadence,
+          target: cadencePctTarget,
+          status: (pctLeadsHittingCadence === null
+            ? "na"
+            : statusForDelta(pctLeadsHittingCadence, cadencePctTarget)) as S,
+        },
+        setRate: {
+          actual: setRate,
+          target: setRateTarget,
+          status: (setRate === null
+            ? "na"
+            : statusForDelta(setRate, setRateTarget)) as S,
+        },
+        showRate: {
+          actual: showRate,
+          target: showRateTarget,
+          status: (showRate === null
+            ? "na"
+            : statusForDelta(showRate, showRateTarget)) as S,
+        },
+      };
+
+      // Dollar leakage — three conservative line items.
+      const lineItems: ScorecardLineItem[] = [];
+
+      // 1. Cadence gap: missed dials × conservative connect-lift × close rate × avg cash.
+      // Only counts when this setter has enough lead volume to mean something.
+      if (
+        avgDialsPerLead !== null &&
+        avgDialsPerLead < cadenceDialsTarget &&
+        setterRow.cadence.leadsWithDials >= 5
+      ) {
+        const missedDialsPerLead = cadenceDialsTarget - avgDialsPerLead;
+        const missedDials =
+          missedDialsPerLead * setterRow.cadence.leadsWithDials;
+        // Each missed dial costs (probability of connect lift) × close rate × avg cash.
+        // Reduce by 30 days / window length to get monthly run-rate.
+        const monthly =
+          (missedDials * CONSERVATIVE_CONNECT_LIFT_PER_DIAL * teamCloseRate *
+            avgCashCollectedPerClose) /
+          (SCORECARD_WINDOW_DAYS / 30);
+        if (monthly > 0) {
+          lineItems.push({
+            kpi: "cadence",
+            lostUnits: Math.round(missedDials),
+            dollarValue: monthly,
+            explanation: `${setterRow.cadence.leadsWithDials} leads averaged ${avgDialsPerLead.toFixed(1)} dials vs target ${cadenceDialsTarget}. ${Math.round(
+              missedDials,
+            )} dials below cadence.`,
+          });
+        }
+      }
+
+      // 2. Show-rate gap: missing shows × close rate × avg cash. Anchored to
+      //    setter's own appointments — if they didn't book, no leakage.
+      if (
+        showRate !== null &&
+        setterRow.appointmentCount >= 3 &&
+        showRate < showRateTarget
+      ) {
+        const gapPp = showRateTarget - showRate;
+        const missingShows =
+          (gapPp / 100) * setterRow.appointmentCount;
+        const monthly =
+          (missingShows * teamCloseRate * avgCashCollectedPerClose) /
+          (SCORECARD_WINDOW_DAYS / 30);
+        if (monthly > 0) {
+          lineItems.push({
+            kpi: "showRate",
+            lostUnits: Math.round(missingShows),
+            dollarValue: monthly,
+            explanation: `Show rate ${Math.round(showRate)}% vs target ${showRateTarget}% on ${setterRow.appointmentCount} bookings. ${Math.round(
+              missingShows,
+            )} missing shows.`,
+          });
+        }
+      }
+
+      // 3. Set-rate gap: missing sets × downstream show rate × close rate × avg cash.
+      if (
+        setRate !== null &&
+        setterRow.connectedCount >= 5 &&
+        setRate < setRateTarget
+      ) {
+        const gapPp = setRateTarget - setRate;
+        const missingSets =
+          (gapPp / 100) * setterRow.connectedCount;
+        const downstreamShowRate = (showRate ?? showRateTarget) / 100;
+        const monthly =
+          (missingSets * downstreamShowRate * teamCloseRate *
+            avgCashCollectedPerClose) /
+          (SCORECARD_WINDOW_DAYS / 30);
+        if (monthly > 0) {
+          lineItems.push({
+            kpi: "setRate",
+            lostUnits: Math.round(missingSets),
+            dollarValue: monthly,
+            explanation: `Set rate ${Math.round(setRate)}% vs target ${setRateTarget}% on ${setterRow.connectedCount} connects. ${Math.round(
+              missingSets,
+            )} missing sets.`,
+          });
+        }
+      }
+
+      const dollarLeakageMonthly = lineItems.reduce(
+        (s, li) => s + li.dollarValue,
+        0,
+      );
+
+      rows.push({
+        ghlUserId: setterRow.ghlUserId,
+        name: setterRow.name,
+        tenureDays: Math.round(tenureDays),
+        isStabilized,
+        workingDaysInWindow,
+        kpis,
+        dollarLeakageMonthly,
+        lineItems,
+      });
+    }
+
+    // Sort by dollar leakage desc — worst performers at top, which is the
+    // coaching/firing queue.
+    rows.sort((a, b) => b.dollarLeakageMonthly - a.dollarLeakageMonthly);
+
+    return {
+      windowDays: SCORECARD_WINDOW_DAYS,
+      rangeStart,
+      rangeEnd,
+      workingDaysInWindow,
+      cadenceDefault,
+      teamAverages: {
+        closeRate: teamCloseRate,
+        avgCashCollectedPerClose,
+      },
+      rows,
+    };
+  },
+});

@@ -14,15 +14,18 @@ import { OverviewTab } from "./components/overview/OverviewTab";
 import { LeadsTab } from "./components/leads/LeadsTab";
 import { SettersTab } from "./components/setters/SettersTab";
 import { SettingsTab } from "./components/settings/SettingsTab";
+import { ScorecardTab } from "./components/scorecard/ScorecardTab";
+import { isEarlyAccessTeam } from "@/lib/featureGates";
 import { Loader2 } from "lucide-react";
 
-const TABS = ["overview", "leads", "setters", "settings"] as const;
+const TABS = ["overview", "leads", "setters", "scorecard", "settings"] as const;
 type TabId = (typeof TABS)[number];
 
 const TAB_LABELS: Record<TabId, string> = {
   overview: "Overview",
   leads: "Leads",
   setters: "Setters",
+  scorecard: "Scorecard",
   settings: "Settings",
 };
 
@@ -39,9 +42,17 @@ function SetterDataPageInner() {
     clerkId ? { clerkId } : "skip",
   );
 
+  // Scorecard tab is in early access for the AICom team only.
+  // Other customers don't see it in the nav and can't reach it via URL.
+  const showScorecard = isEarlyAccessTeam(team?._id);
+  const visibleTabs = TABS.filter((id) => id !== "scorecard" || showScorecard);
+
   // Tab state — persisted to URL so links + browser-back work naturally.
   const tabParam = searchParams.get("tab");
-  const initialTab = isTabId(tabParam) ? tabParam : "overview";
+  const initialTab =
+    isTabId(tabParam) && (tabParam !== "scorecard" || showScorecard)
+      ? tabParam
+      : "overview";
   const [tab, setTab] = useState<TabId>(initialTab);
 
   // Keep state in sync if the URL changes (e.g. OAuth callback redirects
@@ -155,7 +166,7 @@ function SetterDataPageInner() {
 
         {/* Tab nav */}
         <nav className="mb-6 flex gap-1 border-b border-border">
-          {TABS.map((id) => (
+          {visibleTabs.map((id) => (
             <button
               key={id}
               onClick={() => handleTabChange(id)}
@@ -206,6 +217,7 @@ function SetterDataPageInner() {
             onRangeChange={(start, end) => setDateRange({ start, end })}
           />
         )}
+        {tab === "scorecard" && showScorecard && <ScorecardTab />}
         {tab === "settings" && <SettingsTab />}
       </div>
     </>

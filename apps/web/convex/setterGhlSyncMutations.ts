@@ -61,6 +61,9 @@ export const upsertSetterRep = internalMutation({
       ghlRole: args.ghlRole,
       isActive: true,
       lastSeenInSyncAt: now,
+      // Phase 2 — Setter Scorecard tenure tracking. Set on first sight,
+      // never updated. Drives the ramping vs stabilized 60-day flag.
+      firstSeenAt: now,
     });
   },
 });
