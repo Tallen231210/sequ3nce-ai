@@ -92,7 +92,7 @@ export const generateCallSummary = internalAction({
       }
 
       const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 700,
         system: SUMMARY_PROMPT,
         messages: [
@@ -204,7 +204,7 @@ export const generateLiveSummary = internalAction({
       }
 
       const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 400,
         system: LIVE_SUMMARY_PROMPT,
         messages: [
@@ -858,7 +858,7 @@ export const generateSetterCallSummary = internalAction({
 
     try {
       const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 500,
         system: SETTER_SUMMARY_PROMPT,
         messages: [
