@@ -109,6 +109,14 @@ export const validateAndStoreMetaToken = action({
         adAccountId: matched.id,           // "act_XXXXX"
         tokenExpiresAt,
       });
+
+      // Kick off a 90-day backfill in the background so the ROI tab
+      // populates without manual CLI intervention. Scheduled (not
+      // awaited) — manager gets immediate "Connected" feedback while
+      // historical spend rolls in over the next few minutes.
+      await ctx.scheduler.runAfter(0, internal.adSpend.backfillMetaSpend, {
+        teamId: user.teamId as never,
+      });
     }
 
     return { ok: true, adAccounts, tokenExpiresAt };
