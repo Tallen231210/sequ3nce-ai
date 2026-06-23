@@ -34,7 +34,7 @@ export default function InstallHelpPage() {
               ← Back to download
             </Link>
             <a
-              href="mailto:support@sequ3nce.ai"
+              href="mailto:team@sequ3nce.ai"
               className="text-black font-medium hover:underline"
             >
               Contact support
@@ -137,7 +137,7 @@ export default function InstallHelpPage() {
             <p className="text-gray-700">
               Need help finding a workaround?{" "}
               <a
-                href="mailto:support@sequ3nce.ai"
+                href="mailto:team@sequ3nce.ai"
                 className="text-black font-medium hover:underline"
               >
                 Contact support
@@ -228,7 +228,7 @@ export default function InstallHelpPage() {
             <p className="text-gray-700">
               Stuck?{" "}
               <a
-                href="mailto:support@sequ3nce.ai"
+                href="mailto:team@sequ3nce.ai"
                 className="text-black font-medium hover:underline"
               >
                 Contact support
@@ -268,10 +268,10 @@ export default function InstallHelpPage() {
           <p className="text-gray-700">
             Email{" "}
             <a
-              href="mailto:support@sequ3nce.ai"
+              href="mailto:team@sequ3nce.ai"
               className="text-black font-medium hover:underline"
             >
-              support@sequ3nce.ai
+              team@sequ3nce.ai
             </a>{" "}
             and we&apos;ll send you the right package for your distribution.
           </p>
@@ -280,8 +280,9 @@ export default function InstallHelpPage() {
         {/* Still stuck */}
         <section className="bg-gray-900 rounded-2xl p-8 text-white">
           <h2 className="text-xl font-semibold mb-3">Still stuck?</h2>
-          <p className="text-gray-300 mb-4">
-            Email <strong>support@sequ3nce.ai</strong> with:
+          <p className="text-gray-300 mb-3">
+            Ask your team manager — they have a direct Slack line with
+            our team. Send them:
           </p>
           <ul className="space-y-1.5 text-gray-300 list-disc pl-5 mb-4">
             <li>The exact error message (a screenshot is perfect)</li>
@@ -289,9 +290,9 @@ export default function InstallHelpPage() {
             <li>What step you got stuck on</li>
           </ul>
           <p className="text-gray-400 text-sm">
-            We typically reply within 24 hours. If you&apos;re part of a
-            customer team, your manager can also loop us in via your
-            support Slack channel.
+            No manager to ask, or you&apos;re an account owner yourself?
+            Email <strong>team@sequ3nce.ai</strong> — we typically reply
+            within 24 hours.
           </p>
         </section>
       </main>

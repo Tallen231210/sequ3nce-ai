@@ -327,7 +327,7 @@ export default function DownloadPage() {
             <div className="mt-6 max-w-2xl mx-auto text-center text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
               Don&apos;t see your platform? We have Linux builds (.deb / .rpm) on request —{" "}
               <a
-                href="mailto:support@sequ3nce.ai"
+                href="mailto:team@sequ3nce.ai"
                 className="text-black font-medium hover:underline"
               >
                 contact support
@@ -386,16 +386,20 @@ export default function DownloadPage() {
             >
               install troubleshoot guide
             </Link>{" "}
-            or email support.
+            — it covers the most common issues.
           </p>
-          <a
-            href="mailto:support@sequ3nce.ai"
-            className="inline-block bg-black text-white font-medium px-6 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
-          >
-            Contact support@sequ3nce.ai
-          </a>
-          <p className="mt-3 text-xs text-gray-500">
-            We typically reply within 24 hours.
+          <p className="text-gray-700">
+            Still stuck? Ask your team manager — they have a direct
+            support line with us.
+          </p>
+          <p className="mt-4 text-xs text-gray-500">
+            No manager to ask, or you&apos;re an account owner?{" "}
+            <a
+              href="mailto:team@sequ3nce.ai"
+              className="text-gray-700 hover:text-black hover:underline"
+            >
+              team@sequ3nce.ai
+            </a>
           </p>
         </div>
       </main>
