@@ -379,9 +379,27 @@ export const verifyCloserMagicLink = mutation({
 
     // Find a closer with a matching, unexpired code. Same constant-
     // time comparison as the password flow.
+    //
+    // Multi-team disambiguation: the same email can map to closer
+    // records on multiple teams (we write the same code to all of
+    // them so any of them can verify). When the closer authenticates,
+    // we need to pick ONE record to sign them into. Heuristic:
+    //   1. Prefer "pending" records over "active" — a fresh
+    //      addCloserViaMagicLink is the most common reason a code
+    //      exists, and the just-added record is by definition pending.
+    //   2. Within each status group, prefer the most recently created.
+    // Without this sort, .collect() ordering is undefined and the
+    // closer might land on a stale record from a different team.
+    const sortedEligible = [...eligible].sort((a, b) => {
+      const aPending = a.status === "pending" ? 0 : 1;
+      const bPending = b.status === "pending" ? 0 : 1;
+      if (aPending !== bPending) return aPending - bPending;
+      return b._creationTime - a._creationTime;
+    });
+
     const codeHash = await sha256Hex(code);
     let matched = null;
-    for (const closer of eligible) {
+    for (const closer of sortedEligible) {
       if (!closer.magicLinkCodeHash || !closer.magicLinkExpiresAt) continue;
       if (closer.magicLinkExpiresAt < now) continue;
       if (constantTimeEqual(closer.magicLinkCodeHash, codeHash)) {
