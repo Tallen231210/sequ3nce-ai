@@ -33,22 +33,24 @@ function LaunchInner() {
     setTriedAt(Date.now());
   }, [email, code]);
 
-  // Success detection: if the page loses focus or becomes hidden
-  // shortly after we fired the protocol, the OS handed off to the
-  // desktop app. Flip to the success view.
+  // Success "detection" is imperfect — browsers don't expose a callback
+  // when a custom-protocol launch succeeds. Two signals layered:
+  //   1) Focus loss / tab hidden = OS routed to the desktop app (fast)
+  //   2) 3-second timeout = optimistic fallback (some OS configs return
+  //      focus immediately after protocol fires, so we never get signal 1)
+  // The fallback options below stay reachable even after we flip to the
+  // success view, so an actual failure isn't a dead-end.
   useEffect(() => {
     if (!triedAt) return;
-    const onBlurOrHide = () => {
-      // Ignore focus changes that happen before we even fired
-      if (!triedAt || Date.now() - triedAt > 30_000) return;
-      setSignedIn(true);
-    };
+    const onBlurOrHide = () => setSignedIn(true);
     const onVis = () => {
       if (document.visibilityState === "hidden") onBlurOrHide();
     };
     window.addEventListener("blur", onBlurOrHide);
     document.addEventListener("visibilitychange", onVis);
+    const t = setTimeout(() => setSignedIn(true), 3000);
     return () => {
+      clearTimeout(t);
       window.removeEventListener("blur", onBlurOrHide);
       document.removeEventListener("visibilitychange", onVis);
     };
@@ -87,9 +89,32 @@ function LaunchInner() {
             <p className="text-gray-600 mb-2">
               Sequ3nce should now be open on your computer.
             </p>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 mb-10">
               You can safely close this tab.
             </p>
+
+            {/* Always-reachable fallback. Browsers can't confirm a custom-
+                protocol launch actually opened the app — if the success
+                view fired but Sequ3nce isn't open, the user needs these. */}
+            <div className="border-t border-gray-200 pt-6 text-left bg-gray-50 rounded-lg p-4">
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                Sequ3nce didn&apos;t open?
+              </p>
+              <div className="flex flex-col gap-2">
+                <a
+                  href={protocolHref}
+                  className="text-sm text-gray-700 hover:text-black hover:underline"
+                >
+                  → Try opening Sequ3nce again
+                </a>
+                <Link
+                  href="/download"
+                  className="text-sm text-gray-700 hover:text-black hover:underline"
+                >
+                  → Download Sequ3nce first
+                </Link>
+              </div>
+            </div>
           </>
         ) : missing ? (
           <>

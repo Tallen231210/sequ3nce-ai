@@ -99,6 +99,7 @@ export const generateMagicLinkCode = internalMutation({
   ): Promise<{
     code: string | null;
     closerName?: string;
+    isReturning?: boolean;
     reason?: "cooldown" | "unknown_email" | "invalid_format";
   }> => {
     const email = args.email.trim().toLowerCase();
@@ -148,9 +149,16 @@ export const generateMagicLinkCode = internalMutation({
         (b.lastLoginAt ?? b._creationTime) - (a.lastLoginAt ?? a._creationTime),
     )[0];
 
+    // If ANY of the closer's records has logged in before, this is a
+    // returning user — pick the lighter "sign in" template variant
+    // (no "Welcome to Sequ3nce" framing). First-time closers (no record
+    // has lastLoginAt yet) get the full welcome with download step.
+    const isReturning = eligible.some((c) => c.lastLoginAt != null);
+
     return {
       code,
       closerName: greetingCloser.name,
+      isReturning,
     };
   },
 });
@@ -226,8 +234,53 @@ export const requestCloserMagicLink = action({
 
     const codeFormatted = `${result.code.slice(0, 3)}-${result.code.slice(3)}`;
     const greetingName = result.closerName?.trim() || "there";
+    const isReturning = !!result.isReturning;
 
-    const html = `
+    // Returning closer = lighter "sign in" template (they already have
+    // the app installed and know the product). First-time closer = full
+    // welcome with download-first step.
+    const html = isReturning
+      ? `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 40px 20px;">
+        <h2 style="color: #111; margin-bottom: 8px;">Sign in to Sequ3nce</h2>
+        <p style="color: #555; font-size: 15px; line-height: 1.5; margin-bottom: 28px;">
+          Hi ${greetingName}, click below to sign back in on this computer.
+        </p>
+
+        <div style="text-align: center; margin-bottom: 28px;">
+          <a
+            href="${launchUrl}"
+            style="display: inline-block; background: #111; color: white; text-decoration: none; font-weight: 600; padding: 14px 32px; border-radius: 10px; font-size: 16px;"
+          >
+            Sign in to Sequ3nce →
+          </a>
+        </div>
+
+        <!-- FALLBACK: code entry for cross-device -->
+        <div style="border-top: 1px solid #eee; padding-top: 20px; margin-bottom: 24px;">
+          <div style="font-size: 11px; font-weight: 700; color: #888; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+            On a different computer or phone?
+          </div>
+          <p style="color: #666; font-size: 13px; line-height: 1.5; margin: 0 0 12px 0;">
+            Open Sequ3nce on the computer where you use it, click
+            <em>Send me a sign-in link</em>, and enter this code:
+          </p>
+          <div style="background: #f5f5f5; border-radius: 10px; padding: 18px; text-align: center;">
+            <span style="font-size: 26px; font-weight: 700; letter-spacing: 8px; color: #111; font-family: ui-monospace, SFMono-Regular, monospace;">${codeFormatted}</span>
+          </div>
+        </div>
+
+        <p style="color: #999; font-size: 12px; line-height: 1.5;">
+          This code is valid for 7 days. If you didn't request this sign-in,
+          you can safely ignore this email.
+        </p>
+        <p style="color: #999; font-size: 12px; line-height: 1.5; margin-top: 10px;">
+          Need the desktop app on this computer? Get it at
+          <a href="https://sequ3nce.ai/download" style="color: #555;">sequ3nce.ai/download</a>.
+        </p>
+      </div>
+    `
+      : `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 40px 20px;">
         <h2 style="color: #111; margin-bottom: 8px;">Welcome to Sequ3nce 👋</h2>
         <p style="color: #555; font-size: 15px; line-height: 1.5; margin-bottom: 32px;">
@@ -312,7 +365,9 @@ export const requestCloserMagicLink = action({
         body: JSON.stringify({
           from: "Sequ3nce <noreply@noreply.sequ3nce.ai>",
           to: [normalizedEmail],
-          subject: "You've been added to Sequ3nce — click to sign in",
+          subject: isReturning
+            ? "Sign in to Sequ3nce"
+            : "You've been added to Sequ3nce — click to sign in",
           html,
         }),
       });
