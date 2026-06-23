@@ -161,9 +161,59 @@ export default function TeamPage() {
     }
   };
 
-  // Email validation
+  // Email validation — syntactic only. `.co` is technically valid (it's
+  // Colombia's TLD), so we can't block it via regex without losing
+  // real .co addresses.
   const isValidEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  // Heuristic typo detection — returns a suggested correction when the
+  // email looks like a common .com → .co typo (or gmial → gmail, etc.).
+  // Pure UX guard: we show a confirm dialog before sending so the
+  // manager can catch typos before the closer waits forever for an
+  // email that won't arrive.
+  const detectEmailTypo = (email: string): string | null => {
+    const lower = email.toLowerCase().trim();
+    const domain = lower.split("@")[1];
+    if (!domain) return null;
+
+    // Common TLD typos: .co (Colombia, often meant .com), .cm, .con, .cmo
+    const tldFixes: Array<[RegExp, string]> = [
+      [/\.co$/, ".com"],
+      [/\.cm$/, ".com"],
+      [/\.con$/, ".com"],
+      [/\.cmo$/, ".com"],
+      [/\.ney$/, ".net"],
+      [/\.ner$/, ".net"],
+      [/\.ogr$/, ".org"],
+      [/\.orgg$/, ".org"],
+    ];
+    for (const [pattern, replacement] of tldFixes) {
+      if (pattern.test(domain)) {
+        return lower.replace(pattern, replacement);
+      }
+    }
+
+    // Common provider typos in the domain prefix
+    const providerFixes: Record<string, string> = {
+      "gmial.com": "gmail.com",
+      "gnail.com": "gmail.com",
+      "gamil.com": "gmail.com",
+      "gmali.com": "gmail.com",
+      "yaho.com": "yahoo.com",
+      "yhoo.com": "yahoo.com",
+      "yahooo.com": "yahoo.com",
+      "hotmial.com": "hotmail.com",
+      "hotmil.com": "hotmail.com",
+      "outlok.com": "outlook.com",
+      "outloo.com": "outlook.com",
+      "iclud.com": "icloud.com",
+    };
+    if (providerFixes[domain]) {
+      return lower.replace(domain, providerFixes[domain]);
+    }
+    return null;
   };
 
   // Handle form submit
@@ -185,6 +235,17 @@ export default function TeamPage() {
     if (!isValidEmail(email)) {
       setError("Please enter a valid email address");
       return;
+    }
+
+    // Catch the easy typos before we send an invitation to nobody.
+    // window.confirm keeps this dependency-free; we can swap for a real
+    // dialog later if it becomes a friction point.
+    const suggestion = detectEmailTypo(email);
+    if (suggestion && suggestion !== email.trim().toLowerCase()) {
+      const proceed = window.confirm(
+        `That email looks like it might be a typo.\n\nYou entered: ${email.trim()}\nDid you mean: ${suggestion}?\n\nClick OK to send to your typed address anyway, or Cancel to edit.`,
+      );
+      if (!proceed) return;
     }
 
     if (!clerkId) {
@@ -362,7 +423,10 @@ export default function TeamPage() {
   return (
     <>
       <Header title="Team" description="Manage your closers and team members" />
-      <div className="p-6 space-y-6">
+      <div className="p-6 pb-24 space-y-6">
+        {/* pb-24 keeps the bottom-right ChatContainer from overlapping
+            the closer-row dropdown trigger when the closers list is the
+            last thing in the viewport. */}
         {/* Team Overview */}
         <Card>
           <CardHeader className="pb-3">
