@@ -79,17 +79,31 @@ function generate6DigitCode(): string {
  * team the closer signs into — and so issuing a code never overwrites
  * an active code on a DIFFERENT team's closer record.
  *
- * Always returns { success: true } even when the email doesn't match
- * any closer OR is rate-limited — prevents account enumeration via
- * either the response code OR response timing. Cooldown is enforced
- * silently server-side.
+ * Returns shape:
+ *   { code: "123456", closerName: "..." }      → success, send email
+ *   { code: null, reason: "cooldown" }         → silent success
+ *   { code: null, reason: "unknown_email" }    → email not registered
+ *
+ * "unknown_email" surfaces an error to the user — Sequ3nce desktop is
+ * B2B (managers control adds; no public signup), so telling them
+ * "your email isn't registered" is the correct UX AND prevents random
+ * installs from probing the app via guessed emails. Cooldown stays
+ * silent so a real-account-in-cooldown is indistinguishable from a
+ * real-account-just-sent (no enumeration via timing).
  */
 export const generateMagicLinkCode = internalMutation({
   args: { email: v.string() },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    code: string | null;
+    closerName?: string;
+    reason?: "cooldown" | "unknown_email" | "invalid_format";
+  }> => {
     const email = args.email.trim().toLowerCase();
     if (!EMAIL_REGEX.test(email)) {
-      return { success: true, code: null };
+      return { code: null, reason: "invalid_format" };
     }
 
     const closers = await ctx.db
@@ -98,7 +112,7 @@ export const generateMagicLinkCode = internalMutation({
       .collect();
     const eligible = closers.filter((c) => c.status !== "deactivated");
     if (eligible.length === 0) {
-      return { success: true, code: null };
+      return { code: null, reason: "unknown_email" };
     }
 
     // Cooldown: if ANY of the matching closers had a recent send, skip
@@ -111,7 +125,7 @@ export const generateMagicLinkCode = internalMutation({
         now - c.magicLinkLastSentAt < RESEND_COOLDOWN_MS,
     );
     if (recentlySent) {
-      return { success: true, code: null };
+      return { code: null, reason: "cooldown" };
     }
 
     const code = generate6DigitCode();
@@ -135,7 +149,6 @@ export const generateMagicLinkCode = internalMutation({
     )[0];
 
     return {
-      success: true,
       code,
       closerName: greetingCloser.name,
     };
@@ -175,8 +188,22 @@ export const requestCloserMagicLink = action({
       { email: normalizedEmail },
     );
 
-    // No code generated (unknown email, deactivated, or cooldown active) —
-    // pretend success to avoid leaking which of those it was.
+    // B2B-specific UX: tell the user explicitly when their email isn't
+    // registered. No public signup exists for the desktop app — only
+    // closers a manager invited can sign in — so this is both better
+    // UX (no waiting forever for an email that won't arrive) AND a
+    // legitimate security layer against random installs guessing
+    // their way into the code-entry screen.
+    if (result.reason === "unknown_email") {
+      return {
+        success: false,
+        error:
+          "We couldn't find a closer with that email. Ask your manager to invite you, or check the spelling.",
+      };
+    }
+
+    // Cooldown or deactivated — silent success (don't leak whether
+    // the address exists via response timing or content).
     if (!result.code) {
       return { success: true };
     }

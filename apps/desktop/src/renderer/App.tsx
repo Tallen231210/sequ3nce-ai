@@ -203,7 +203,7 @@ function AppContent() {
       const result = await requestMagicLink(email.trim().toLowerCase());
       if (result.success) {
         setLoginMode('magic_code');
-        setMagicMessage(`Check ${email.trim().toLowerCase()} for a 6-digit code. It expires in 15 minutes.`);
+        setMagicMessage(`Check ${email.trim().toLowerCase()} for a 6-digit code. It's valid for 7 days.`);
         setAuthState('login');
       } else {
         setAuthError({
