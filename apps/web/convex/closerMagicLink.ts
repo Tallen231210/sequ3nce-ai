@@ -25,6 +25,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_REGEX = /^\d{6}$/;
 const MAGIC_LINK_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 const RESEND_COOLDOWN_MS = 60 * 1000; // 60s between requests to the same email
+// Brute-force guard. With a 6-digit code (900k space), 5 wrong tries
+// before forced re-request closes the brute-force vector. The closer
+// can always request a fresh code, so legit users are unaffected.
+const MAX_FAILED_ATTEMPTS = 5;
 
 // SHA-256 via Web Crypto — same util used by b2cAuth.ts. Closers table's
 // magicLinkCodeHash stores the hex digest of the 6-digit code so the
@@ -48,71 +52,89 @@ function constantTimeEqual(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
+// Cryptographically secure 6-digit code via Web Crypto. Math.random
+// is NOT CSPRNG — V8's PRNG can be partially predictable, opening
+// brute-force pathways the rate-limit alone can't fully close.
+function generate6DigitCode(): string {
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return String(100000 + (buf[0] % 900000));
+}
+
 // ============================================================================
 // Internal: code generation + persist
 // ============================================================================
 
 /**
- * Generates a 6-digit code for the closer with the given email and
- * stores its hash on the closer record. Returns the raw code to the
+ * Generates a 6-digit code for ALL closers matching this email and
+ * stores its hash on each closer record. Returns the raw code to the
  * caller (the requestCloserMagicLink action) so it can be emailed.
  *
+ * Multi-team note: the same email can appear on multiple closer
+ * records (Tyler is on Team A and Team B). We write the code to ALL
+ * eligible records so verify will find a match regardless of which
+ * team the closer signs into — and so issuing a code never overwrites
+ * an active code on a DIFFERENT team's closer record.
+ *
  * Always returns { success: true } even when the email doesn't match
- * any closer, to avoid leaking account existence. The action checks
- * for `code: null` and silently no-ops in that case.
+ * any closer OR is rate-limited — prevents account enumeration via
+ * either the response code OR response timing. Cooldown is enforced
+ * silently server-side.
  */
 export const generateMagicLinkCode = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, args) => {
     const email = args.email.trim().toLowerCase();
     if (!EMAIL_REGEX.test(email)) {
-      return { success: true, code: null, retryAfter: undefined };
+      return { success: true, code: null };
     }
 
-    // Pick the most-recently-active closer with this email. Multiple
-    // closers can share an email if they're on different teams; the
-    // magic-link should sign them into whichever they've used most
-    // recently. Ties fall back to first match.
     const closers = await ctx.db
       .query("closers")
       .withIndex("by_email", (q) => q.eq("email", email))
       .collect();
     const eligible = closers.filter((c) => c.status !== "deactivated");
     if (eligible.length === 0) {
-      return { success: true, code: null, retryAfter: undefined };
+      return { success: true, code: null };
     }
-    const closer = eligible.sort(
+
+    // Cooldown: if ANY of the matching closers had a recent send, skip
+    // silently. We never return retryAfter — that's an account-enumeration
+    // side channel since unknown emails would have no cooldown to report.
+    const now = Date.now();
+    const recentlySent = eligible.some(
+      (c) =>
+        c.magicLinkLastSentAt &&
+        now - c.magicLinkLastSentAt < RESEND_COOLDOWN_MS,
+    );
+    if (recentlySent) {
+      return { success: true, code: null };
+    }
+
+    const code = generate6DigitCode();
+    const codeHash = await sha256Hex(code);
+
+    // Write the SAME code to every eligible record so verify works
+    // regardless of which team's closer logs in.
+    for (const closer of eligible) {
+      await ctx.db.patch(closer._id, {
+        magicLinkCodeHash: codeHash,
+        magicLinkExpiresAt: now + MAGIC_LINK_EXPIRY_MS,
+        magicLinkLastSentAt: now,
+        magicLinkFailedAttempts: 0, // Reset on new issue
+      });
+    }
+
+    // Use the most-recently-active record's name in the email greeting.
+    const greetingCloser = eligible.sort(
       (a, b) =>
         (b.lastLoginAt ?? b._creationTime) - (a.lastLoginAt ?? a._creationTime),
     )[0];
 
-    // 60-second resend cooldown — prevents an attacker from blasting
-    // the closer's inbox or burning Resend quota.
-    const now = Date.now();
-    if (
-      closer.magicLinkLastSentAt &&
-      now - closer.magicLinkLastSentAt < RESEND_COOLDOWN_MS
-    ) {
-      const retryAfter = Math.ceil(
-        (RESEND_COOLDOWN_MS - (now - closer.magicLinkLastSentAt)) / 1000,
-      );
-      return { success: false, code: null, retryAfter };
-    }
-
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    const codeHash = await sha256Hex(code);
-
-    await ctx.db.patch(closer._id, {
-      magicLinkCodeHash: codeHash,
-      magicLinkExpiresAt: now + MAGIC_LINK_EXPIRY_MS,
-      magicLinkLastSentAt: now,
-    });
-
     return {
       success: true,
       code,
-      retryAfter: undefined,
-      closerName: closer.name,
+      closerName: greetingCloser.name,
     };
   },
 });
@@ -127,16 +149,18 @@ export const generateMagicLinkCode = internalMutation({
  *   - Manager Team tab ("Resend sign-in link" dropdown action)
  *   - addCloserViaMagicLink mutation (auto-fires on closer add)
  *
- * Returns { success: true } even when the email doesn't match a closer,
- * to avoid leaking account existence. If a rate-limit fires returns
- * { success: false, retryAfter: <seconds> }.
+ * Returns { success: true } even when the email doesn't match a closer
+ * OR when the resend cooldown is active — prevents account enumeration
+ * via response timing. Cooldown is enforced silently server-side; the
+ * client never knows whether the silence is "we sent it" or "we won't
+ * send right now."
  */
 export const requestCloserMagicLink = action({
   args: { email: v.string() },
   handler: async (
     ctx,
     args,
-  ): Promise<{ success: boolean; error?: string; retryAfter?: number }> => {
+  ): Promise<{ success: boolean; error?: string }> => {
     const normalizedEmail = args.email.trim().toLowerCase();
 
     if (!EMAIL_REGEX.test(normalizedEmail)) {
@@ -148,15 +172,8 @@ export const requestCloserMagicLink = action({
       { email: normalizedEmail },
     );
 
-    if (result.retryAfter) {
-      return {
-        success: false,
-        error: `Please wait ${result.retryAfter}s before requesting another code`,
-        retryAfter: result.retryAfter,
-      };
-    }
-
-    // No matching closer — pretend success to avoid account enumeration.
+    // No code generated (unknown email, deactivated, or cooldown active) —
+    // pretend success to avoid leaking which of those it was.
     if (!result.code) {
       return { success: true };
     }
@@ -280,9 +297,37 @@ export const verifyCloserMagicLink = mutation({
       .collect();
     const eligible = closers.filter((c) => c.status !== "deactivated");
 
+    const now = Date.now();
+
+    // Brute-force lockout: if ANY closer record for this email is over
+    // the failed-attempt limit, force a re-request before accepting
+    // more guesses. Same code is written to every eligible record
+    // (per generateMagicLinkCode), so counts are consistent.
+    const lockedOut = eligible.some(
+      (c) =>
+        c.magicLinkCodeHash &&
+        (c.magicLinkFailedAttempts ?? 0) >= MAX_FAILED_ATTEMPTS,
+    );
+    if (lockedOut) {
+      // Burn the codes so the attacker can't keep guessing even by
+      // racing — force a fresh request.
+      for (const closer of eligible) {
+        if (closer.magicLinkCodeHash) {
+          await ctx.db.patch(closer._id, {
+            magicLinkCodeHash: undefined,
+            magicLinkExpiresAt: undefined,
+            magicLinkFailedAttempts: undefined,
+          });
+        }
+      }
+      return {
+        success: false,
+        error: "Too many failed attempts. Request a new code.",
+      };
+    }
+
     // Find a closer with a matching, unexpired code. Same constant-
     // time comparison as the password flow.
-    const now = Date.now();
     const codeHash = await sha256Hex(code);
     let matched = null;
     for (const closer of eligible) {
@@ -295,39 +340,49 @@ export const verifyCloserMagicLink = mutation({
     }
 
     if (!matched) {
-      // Clear expired codes on any closer that had one with this email,
-      // so old hashes don't sit around forever.
+      // Increment failed-attempt counter on every record that still has
+      // an unexpired code. Then clear expired ones opportunistically.
       for (const closer of eligible) {
-        if (
-          closer.magicLinkExpiresAt &&
-          closer.magicLinkExpiresAt < now
-        ) {
+        if (!closer.magicLinkCodeHash || !closer.magicLinkExpiresAt) continue;
+        if (closer.magicLinkExpiresAt < now) {
           await ctx.db.patch(closer._id, {
             magicLinkCodeHash: undefined,
             magicLinkExpiresAt: undefined,
+            magicLinkFailedAttempts: undefined,
+          });
+        } else {
+          await ctx.db.patch(closer._id, {
+            magicLinkFailedAttempts:
+              (closer.magicLinkFailedAttempts ?? 0) + 1,
           });
         }
       }
       return { success: false, error: "Invalid or expired code" };
     }
 
-    // Success — single-use: clear the code, mark activation + last login.
-    const updates: {
-      magicLinkCodeHash: undefined;
-      magicLinkExpiresAt: undefined;
+    // Success — single-use: clear the code (on ALL matching records, not
+    // just the verified one, so a stolen code can't be reused on a
+    // sibling team record), reset failed-attempt counter, mark
+    // activation + last login on the verified closer only.
+    for (const closer of eligible) {
+      if (closer.magicLinkCodeHash) {
+        await ctx.db.patch(closer._id, {
+          magicLinkCodeHash: undefined,
+          magicLinkExpiresAt: undefined,
+          magicLinkFailedAttempts: undefined,
+        });
+      }
+    }
+    const loginUpdates: {
       lastLoginAt: number;
       status?: string;
       activatedAt?: number;
-    } = {
-      magicLinkCodeHash: undefined,
-      magicLinkExpiresAt: undefined,
-      lastLoginAt: now,
-    };
+    } = { lastLoginAt: now };
     if (matched.status === "pending") {
-      updates.status = "active";
-      updates.activatedAt = now;
+      loginUpdates.status = "active";
+      loginUpdates.activatedAt = now;
     }
-    await ctx.db.patch(matched._id, updates);
+    await ctx.db.patch(matched._id, loginUpdates);
 
     const team = await ctx.db.get(matched.teamId);
 
@@ -338,7 +393,7 @@ export const verifyCloserMagicLink = mutation({
         teamId: matched.teamId,
         name: matched.name,
         email: matched.email,
-        status: updates.status ?? matched.status,
+        status: loginUpdates.status ?? matched.status,
         teamName: team?.name,
       },
     };

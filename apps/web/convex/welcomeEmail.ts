@@ -58,9 +58,11 @@ export const sendB2BWelcomeEmail = internalAction({
       return { ok: false, reason: "Email service not configured" };
     }
 
-    const calendlyUrl = process.env.NEXT_PUBLIC_CALENDLY_URL?.trim();
-    const dashboardUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://sequ3nce.ai";
+    // IMPORTANT: These are CONVEX env vars (set via `npx convex env set
+    // CALENDLY_URL ... --prod`), NOT Next.js NEXT_PUBLIC_*. Welcome
+    // email runs in the Convex action runtime, separate from Vercel.
+    const calendlyUrl = process.env.CALENDLY_URL?.trim();
+    const dashboardUrl = process.env.APP_URL?.trim() || "https://sequ3nce.ai";
 
     const greetingName = args.managerName?.trim() || "there";
 

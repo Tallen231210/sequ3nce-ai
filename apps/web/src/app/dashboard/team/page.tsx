@@ -74,7 +74,6 @@ export default function TeamPage() {
   // Form state
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -209,7 +208,6 @@ export default function TeamPage() {
 
       setName("");
       setEmail("");
-      setPassword("");
       setSuccess(
         `${name} added — we sent them a sign-in link at ${email.trim().toLowerCase()}`,
       );
@@ -226,8 +224,6 @@ export default function TeamPage() {
         // Map technical errors to user-friendly messages
         if (fullMessage.includes("already added") || fullMessage.includes("already exists")) {
           message = "A closer with this email already exists on your team.";
-        } else if (fullMessage.includes("password") && fullMessage.includes("6")) {
-          message = "Password must be at least 6 characters.";
         } else if (fullMessage.includes("invalid email") || fullMessage.includes("email")) {
           message = "Please enter a valid email address.";
         } else if (fullMessage.includes("network") || fullMessage.includes("fetch")) {
@@ -275,10 +271,17 @@ export default function TeamPage() {
     }
   };
 
+  // Track which closer emails currently have a resend in flight so the
+  // dropdown item disables itself and rapid double-clicks don't fire
+  // duplicate requests.
+  const [resendingFor, setResendingFor] = useState<Set<string>>(new Set());
+
   // Re-send a magic-link email to an existing closer. Triggered from
-  // the closer-row dropdown. Backend's 60s rate-limit returns retryAfter
-  // if the manager spams it.
+  // the closer-row dropdown. Backend silently enforces a 60s cooldown
+  // (no enumeration side-channel), and we double-tap-guard here too.
   const handleResendMagicLink = async (email: string) => {
+    if (resendingFor.has(email)) return;
+    setResendingFor((s) => new Set(s).add(email));
     try {
       const result = await requestMagicLink({ email });
       if (!result.success) {
@@ -292,6 +295,12 @@ export default function TeamPage() {
       console.error("Resend magic link failed:", err);
       setError("Failed to send sign-in link");
       setTimeout(() => setError(null), 5000);
+    } finally {
+      setResendingFor((s) => {
+        const next = new Set(s);
+        next.delete(email);
+        return next;
+      });
     }
   };
 
@@ -487,9 +496,12 @@ export default function TeamPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={() => handleResendMagicLink(closer.email)}
+                              disabled={resendingFor.has(closer.email)}
                             >
                               <Sparkles className="h-4 w-4 mr-2" strokeWidth={1.5} />
-                              Resend sign-in link
+                              {resendingFor.has(closer.email)
+                                ? "Sending..."
+                                : "Resend sign-in link"}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>

@@ -220,10 +220,17 @@ function AppContent() {
     }
   };
 
-  // Magic-link: verify the 6-digit code.
-  const handleVerifyMagicLink = async (codeOverride?: string) => {
+  // Magic-link: verify the 6-digit code. Accepts overrides for both
+  // code AND email because the deep-link handler fires synchronously
+  // after setState calls — the component state hasn't committed yet
+  // when this is invoked from the auth:callback listener, so we can't
+  // rely on the `email` closure.
+  const handleVerifyMagicLink = async (
+    codeOverride?: string,
+    emailOverride?: string,
+  ) => {
     const code = (codeOverride ?? magicCode).trim();
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = (emailOverride ?? email).trim().toLowerCase();
     if (!normalizedEmail || code.length !== 6) return;
 
     setAuthState('logging_in');
@@ -260,7 +267,8 @@ function AppContent() {
       setEmail(detail.email);
       setMagicCode(detail.code);
       setLoginMode('magic_code');
-      void handleVerifyMagicLink(detail.code);
+      // Pass both overrides — state from setEmail hasn't committed yet.
+      void handleVerifyMagicLink(detail.code, detail.email);
     };
     window.addEventListener('auth:callback', handler as EventListener);
     return () =>
@@ -290,6 +298,12 @@ function AppContent() {
   const handleRetry = () => {
     setAuthError(null);
     setAuthState('login');
+    // Send them back to the magic-email entry point. Otherwise a
+    // closer whose code expired bounces back to the code-entry screen
+    // with no path to request a fresh one.
+    setLoginMode('magic_email');
+    setMagicCode('');
+    setMagicMessage(null);
   };
 
   // Render based on auth state

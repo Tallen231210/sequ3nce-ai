@@ -103,12 +103,17 @@ export function Sidebar() {
   // Onboarding item slots right after Dashboard, only when not yet
   // complete — once the team finishes the 5-step checklist the item
   // disappears from the nav so it doesn't clutter the sidebar forever.
+  // Use findIndex on Dashboard so reordering baseNavigation doesn't
+  // silently misplace the Onboarding slot.
+  const dashboardIdx = baseWithIntegrations.findIndex(
+    (item) => item.href === "/dashboard",
+  );
   const navigation =
-    onboardingState && !onboardingComplete
+    onboardingState && !onboardingComplete && dashboardIdx >= 0
       ? [
-          baseWithIntegrations[0], // Dashboard
+          ...baseWithIntegrations.slice(0, dashboardIdx + 1),
           { name: "Onboarding", href: "/dashboard/onboarding", icon: Sparkles },
-          ...baseWithIntegrations.slice(1),
+          ...baseWithIntegrations.slice(dashboardIdx + 1),
         ]
       : baseWithIntegrations;
 

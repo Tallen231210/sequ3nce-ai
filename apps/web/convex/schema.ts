@@ -297,6 +297,7 @@ export default defineSchema({
     magicLinkCodeHash: v.optional(v.string()), // SHA-256 of latest 6-digit code
     magicLinkExpiresAt: v.optional(v.number()), // Unix ms, 15 min from issue
     magicLinkLastSentAt: v.optional(v.number()), // For 60s resend cooldown
+    magicLinkFailedAttempts: v.optional(v.number()), // Lockout after N wrong codes
   })
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])

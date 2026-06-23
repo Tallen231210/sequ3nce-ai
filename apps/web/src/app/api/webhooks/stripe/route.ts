@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import * as Sentry from "@sentry/nextjs";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
@@ -295,11 +296,21 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         managerName,
       });
     } else {
+      // Paid customer who'll never get an onboarding email — surface
+      // loudly so we can manually reach out + investigate why Stripe
+      // didn't include customer_details.email on this session.
+      Sentry.captureMessage(
+        `[stripe webhook] No manager email on session ${session.id} — welcome email skipped`,
+        { level: "warning", tags: { integration: "stripe", flow: "welcomeEmail" } },
+      );
       console.warn(
         `[stripe webhook] No manager email on session ${session.id} — welcome email skipped`,
       );
     }
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { integration: "stripe", flow: "welcomeEmail" },
+    });
     console.error("[stripe webhook] Welcome email failed (non-fatal):", err);
   }
 

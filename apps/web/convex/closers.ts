@@ -1263,6 +1263,13 @@ export const addCloserViaMagicLink = mutation({
     if (!email || !args.name.trim()) {
       throw new Error("Name and email are required");
     }
+    // Validate before insert — otherwise the closer record gets
+    // created but the magic-link send silently no-ops on its own
+    // EMAIL_REGEX check inside the action, leaving the manager with
+    // a "success" toast and a broken closer record.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Please enter a valid email address");
+    }
 
     const existing = await ctx.db
       .query("closers")

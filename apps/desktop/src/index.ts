@@ -533,6 +533,11 @@ const createTray = (): void => {
 
 // Web app URL for auth
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://sequ3nce.ai';
+// Centralized Convex HTTP-action endpoint. Several call sites in this
+// file hit Convex directly; consolidate to this constant so a future
+// deployment swap is one change.
+const CONVEX_SITE_URL =
+  process.env.CONVEX_SITE_URL || 'https://ideal-ram-982.convex.site';
 
 // Send magic link via the Convex backend. The renderer normally calls
 // the backend directly via apps/desktop/src/renderer/convex.ts:requestMagicLink,
@@ -544,7 +549,7 @@ async function sendMagicLink(email: string): Promise<{ success: boolean; error?:
     pendingMagicLinkEmail = email;
 
     const response = await fetch(
-      'https://ideal-ram-982.convex.site/closer/magicLink/request',
+      `${CONVEX_SITE_URL}/closer/magicLink/request`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

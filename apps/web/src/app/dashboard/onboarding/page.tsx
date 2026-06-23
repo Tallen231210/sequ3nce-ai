@@ -158,7 +158,7 @@ export default function OnboardingPage() {
           index={2}
           checked={state.addedCloser}
           title="Add your first closer"
-          description="Closers are the team members who actually run sales calls. Add their email + password in the Team tab — they use those credentials to sign into the desktop app."
+          description="Closers are the team members who actually run sales calls. Add their name + email in the Team tab — we'll email them a one-click sign-in link for the desktop app."
           action={
             <Button asChild size="sm" variant={state.addedCloser ? "outline" : "default"}>
               <Link href="/dashboard/team">Go to Team</Link>

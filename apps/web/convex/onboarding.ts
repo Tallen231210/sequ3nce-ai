@@ -72,7 +72,16 @@ export const getOnboardingState = query({
       team.setterCoverageGapSlackChannelId
     );
 
-    const bookedCall = team.onboardingBookedCallAt != null;
+    // Grandfather established customers — anyone older than 14 days
+    // signed up before this onboarding pack shipped (or has been
+    // around long enough that prompting them to "book your onboarding
+    // call" is awkward). For them, treat bookedCall as already done
+    // so they don't get the banner / sidebar nag. Tracked: future-us
+    // can shorten this window once everyone's been migrated.
+    const GRANDFATHER_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+    const isEstablished =
+      Date.now() - team._creationTime > GRANDFATHER_AGE_MS;
+    const bookedCall = team.onboardingBookedCallAt != null || isEstablished;
     const completed =
       bookedCall &&
       addedCloser &&
@@ -90,7 +99,12 @@ export const getOnboardingState = query({
       bannerDismissed: team.onboardingBannerDismissedAt != null,
       // Surfaced to client so the banner + email use the same source of truth.
       // Empty string => not configured yet; client hides the CTA gracefully.
-      calendlyUrl: process.env.NEXT_PUBLIC_CALENDLY_URL ?? null,
+      //
+      // IMPORTANT: This is a CONVEX env var (set via `npx convex env set
+      // CALENDLY_URL ... --prod`), NOT a Next.js NEXT_PUBLIC_*. Convex
+      // queries run in the Convex runtime which doesn't have access to
+      // Vercel's NEXT_PUBLIC_* env vars.
+      calendlyUrl: process.env.CALENDLY_URL ?? null,
       onboardingCompletedAt: team.onboardingCompletedAt ?? null,
     };
   },
