@@ -253,10 +253,15 @@ export const requestCloserMagicLink = action({
 
         <!-- FALLBACK: code entry for cross-device -->
         <div style="border-top: 1px solid #eee; padding-top: 20px; margin-bottom: 24px;">
+          <div style="font-size: 11px; font-weight: 700; color: #888; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+            Only if Step 2 doesn't work
+          </div>
           <p style="color: #666; font-size: 13px; line-height: 1.5; margin: 0 0 12px 0;">
-            <strong>Reading this on your phone or a different computer?</strong>
-            Open the desktop app on the computer where you'll use Sequ3nce,
-            click <em>Send me a sign-in link</em>, and enter this code:
+            <strong>Reading this email on a phone or different computer?</strong>
+            You can't use the Step 2 button — the desktop app needs to be on
+            the same computer the link opens. Instead, open Sequ3nce on the
+            computer where you'll use it, click <em>Send me a sign-in link</em>,
+            then enter this backup code:
           </p>
           <div style="background: #f5f5f5; border-radius: 10px; padding: 18px; text-align: center;">
             <span style="font-size: 26px; font-weight: 700; letter-spacing: 8px; color: #111; font-family: ui-monospace, SFMono-Regular, monospace;">${codeFormatted}</span>

@@ -281,6 +281,13 @@ function AppContent() {
     setEmail('');
     setPassword('');
     setAuthState('login');
+    // Reset magic-link state too, otherwise a logged-out closer might
+    // land on the code-entry screen or the password screen depending on
+    // how they last signed in. Default everyone to the magic-link email
+    // entry point — clean slate.
+    setLoginMode('magic_email');
+    setMagicCode('');
+    setMagicMessage(null);
 
     // Clear Sentry user so subsequent errors aren't attributed to the
     // logged-out closer.

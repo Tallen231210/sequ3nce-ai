@@ -18,19 +18,41 @@ function LaunchInner() {
   const email = params.get("email") ?? "";
   const code = params.get("code") ?? "";
   const [triedAt, setTriedAt] = useState<number | null>(null);
+  // Switches to "Signed in!" view when we detect the user switched
+  // away (focus loss / tab hidden) — that's a strong signal the OS
+  // routed them to the desktop app. Avoids the "infinite spinner
+  // after the app already opened" trap.
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
     if (!email || !code) return;
     const protocolUrl = `sequ3nce://auth-callback?email=${encodeURIComponent(
       email,
     )}&code=${encodeURIComponent(code)}`;
-    // Browser fires the protocol via location assignment. If the OS has
-    // a handler registered (Sequ3nce.app installed + run once), the
-    // desktop app comes to the foreground with the email+code. If not,
-    // the assignment is a no-op and the fallback below stays visible.
     window.location.href = protocolUrl;
     setTriedAt(Date.now());
   }, [email, code]);
+
+  // Success detection: if the page loses focus or becomes hidden
+  // shortly after we fired the protocol, the OS handed off to the
+  // desktop app. Flip to the success view.
+  useEffect(() => {
+    if (!triedAt) return;
+    const onBlurOrHide = () => {
+      // Ignore focus changes that happen before we even fired
+      if (!triedAt || Date.now() - triedAt > 30_000) return;
+      setSignedIn(true);
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") onBlurOrHide();
+    };
+    window.addEventListener("blur", onBlurOrHide);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("blur", onBlurOrHide);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [triedAt]);
 
   const missing = !email || !code;
   const protocolHref = `sequ3nce://auth-callback?email=${encodeURIComponent(
@@ -46,7 +68,30 @@ function LaunchInner() {
       </header>
 
       <main className="max-w-md mx-auto px-4 py-16 text-center">
-        {missing ? (
+        {signedIn && !missing ? (
+          <>
+            <div className="mb-6 inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100">
+              <svg
+                className="w-7 h-7 text-emerald-600"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-3">
+              You&apos;re signed in
+            </h1>
+            <p className="text-gray-600 mb-2">
+              Sequ3nce should now be open on your computer.
+            </p>
+            <p className="text-sm text-gray-500">
+              You can safely close this tab.
+            </p>
+          </>
+        ) : missing ? (
           <>
             <h1 className="text-2xl font-semibold text-gray-900 mb-3">
               Missing sign-in details
