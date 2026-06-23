@@ -298,6 +298,12 @@ export default defineSchema({
     magicLinkExpiresAt: v.optional(v.number()), // Unix ms, 15 min from issue
     magicLinkLastSentAt: v.optional(v.number()), // For 60s resend cooldown
     magicLinkFailedAttempts: v.optional(v.number()), // Lockout after N wrong codes
+    // Picker token: issued by verifyCloserMagicLink when the verified
+    // email maps to MULTIPLE closer records (closer works for multiple
+    // Sequ3nce teams with the same email). Short-lived (2 min); the
+    // closer redeems it via pickCloserTeam to sign into a specific team.
+    magicLinkPickerTokenHash: v.optional(v.string()),
+    magicLinkPickerExpiresAt: v.optional(v.number()),
   })
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])

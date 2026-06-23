@@ -342,23 +342,56 @@ export const requestCloserMagicLink = action({
  * that loginCloser returns so the desktop renderer's persist-to-
  * localStorage path is unchanged.
  */
+type CloserAuthInfo = {
+  closerId: Id<"closers">;
+  teamId: Id<"teams">;
+  name: string;
+  email: string;
+  status: string;
+  teamName?: string;
+};
+
+type TeamChoice = {
+  closerId: Id<"closers">;
+  teamId: Id<"teams">;
+  teamName: string;
+  status: string;
+};
+
+// Picker tokens are 32-byte hex = 64 chars. Two minutes is enough for
+// a thinking closer; long enough not to surprise them, short enough to
+// minimize race window if a code was somehow stolen mid-flow.
+const PICKER_TOKEN_EXPIRY_MS = 2 * 60 * 1000;
+function generatePickerToken(): string {
+  const buf = new Uint8Array(32);
+  crypto.getRandomValues(buf);
+  return Array.from(buf)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export const verifyCloserMagicLink = mutation({
   args: { email: v.string(), code: v.string() },
   handler: async (
     ctx,
     args,
-  ): Promise<{
-    success: boolean;
-    error?: string;
-    closer?: {
-      closerId: Id<"closers">;
-      teamId: Id<"teams">;
-      name: string;
-      email: string;
-      status: string;
-      teamName?: string;
-    };
-  }> => {
+  ): Promise<
+    | {
+        success: true;
+        kind: "signed_in";
+        closer: CloserAuthInfo;
+      }
+    | {
+        success: true;
+        kind: "team_picker";
+        pickerToken: string;
+        choices: TeamChoice[];
+      }
+    | {
+        success: false;
+        error: string;
+      }
+  > => {
     const email = args.email.trim().toLowerCase();
     const code = args.code.trim();
 
@@ -456,10 +489,9 @@ export const verifyCloserMagicLink = mutation({
       return { success: false, error: "Invalid or expired code" };
     }
 
-    // Success — single-use: clear the code (on ALL matching records, not
-    // just the verified one, so a stolen code can't be reused on a
-    // sibling team record), reset failed-attempt counter, mark
-    // activation + last login on the verified closer only.
+    // Code is single-use regardless of branch — clear it on ALL matching
+    // records (not just the verified one) so a stolen code can't be
+    // reused on a sibling team record, and reset failed-attempt counter.
     for (const closer of eligible) {
       if (closer.magicLinkCodeHash) {
         await ctx.db.patch(closer._id, {
@@ -469,27 +501,155 @@ export const verifyCloserMagicLink = mutation({
         });
       }
     }
+
+    // Single-team closer: sign in directly, no picker.
+    if (eligible.length === 1) {
+      const loginUpdates: {
+        lastLoginAt: number;
+        status?: string;
+        activatedAt?: number;
+      } = { lastLoginAt: now };
+      if (matched.status === "pending") {
+        loginUpdates.status = "active";
+        loginUpdates.activatedAt = now;
+      }
+      await ctx.db.patch(matched._id, loginUpdates);
+      const team = await ctx.db.get(matched.teamId);
+      return {
+        success: true,
+        kind: "signed_in",
+        closer: {
+          closerId: matched._id,
+          teamId: matched.teamId,
+          name: matched.name,
+          email: matched.email,
+          status: loginUpdates.status ?? matched.status,
+          teamName: team?.name,
+        },
+      };
+    }
+
+    // Multi-team closer: issue a short-lived picker token to ALL eligible
+    // records (so the client can later submit any of them with the
+    // token). No activation yet — that happens when the closer picks
+    // a team. Semantically right: "I proved I own this email" is not
+    // the same as "I'm joining team B."
+    const pickerToken = generatePickerToken();
+    const pickerTokenHash = await sha256Hex(pickerToken);
+    const pickerExpiresAt = now + PICKER_TOKEN_EXPIRY_MS;
+    for (const closer of eligible) {
+      await ctx.db.patch(closer._id, {
+        magicLinkPickerTokenHash: pickerTokenHash,
+        magicLinkPickerExpiresAt: pickerExpiresAt,
+      });
+    }
+    const choices: TeamChoice[] = [];
+    for (const closer of eligible) {
+      const team = await ctx.db.get(closer.teamId);
+      choices.push({
+        closerId: closer._id,
+        teamId: closer.teamId,
+        teamName: team?.name ?? "Unknown team",
+        status: closer.status,
+      });
+    }
+    return {
+      success: true,
+      kind: "team_picker",
+      pickerToken,
+      choices,
+    };
+  },
+});
+
+// ============================================================================
+// Public mutation: pick a team after verifyCloserMagicLink returned
+// multiple matches. Two-phase auth so the closer can disambiguate.
+// ============================================================================
+
+export const pickCloserTeam = mutation({
+  args: {
+    pickerToken: v.string(),
+    closerId: v.id("closers"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    closer?: CloserAuthInfo;
+  }> => {
+    const token = args.pickerToken.trim();
+    if (!token) return { success: false, error: "Missing picker token" };
+
+    const closer = await ctx.db.get(args.closerId);
+    if (!closer || closer.status === "deactivated") {
+      return { success: false, error: "Invalid team selection" };
+    }
+
+    const now = Date.now();
+    if (
+      !closer.magicLinkPickerTokenHash ||
+      !closer.magicLinkPickerExpiresAt ||
+      closer.magicLinkPickerExpiresAt < now
+    ) {
+      // Clean up the closer's stale picker fields opportunistically.
+      if (closer.magicLinkPickerTokenHash) {
+        await ctx.db.patch(closer._id, {
+          magicLinkPickerTokenHash: undefined,
+          magicLinkPickerExpiresAt: undefined,
+        });
+      }
+      return {
+        success: false,
+        error: "Selection timed out. Request a new code.",
+      };
+    }
+
+    const tokenHash = await sha256Hex(token);
+    if (!constantTimeEqual(closer.magicLinkPickerTokenHash, tokenHash)) {
+      return { success: false, error: "Invalid picker token" };
+    }
+
+    // Token is valid. Clear picker tokens from ALL records with this email
+    // (single-use across teams — a closer who picks Team A can't reuse the
+    // same token to also sign into Team B without a fresh code).
+    const siblings = await ctx.db
+      .query("closers")
+      .withIndex("by_email", (q) => q.eq("email", closer.email))
+      .collect();
+    for (const sibling of siblings) {
+      if (sibling.magicLinkPickerTokenHash) {
+        await ctx.db.patch(sibling._id, {
+          magicLinkPickerTokenHash: undefined,
+          magicLinkPickerExpiresAt: undefined,
+        });
+      }
+    }
+
+    // Apply activation + lastLoginAt to the chosen closer only.
     const loginUpdates: {
       lastLoginAt: number;
       status?: string;
       activatedAt?: number;
     } = { lastLoginAt: now };
-    if (matched.status === "pending") {
+    if (closer.status === "pending") {
       loginUpdates.status = "active";
       loginUpdates.activatedAt = now;
     }
-    await ctx.db.patch(matched._id, loginUpdates);
+    await ctx.db.patch(closer._id, loginUpdates);
 
-    const team = await ctx.db.get(matched.teamId);
+    const team = await ctx.db.get(closer.teamId);
 
     return {
       success: true,
       closer: {
-        closerId: matched._id,
-        teamId: matched.teamId,
-        name: matched.name,
-        email: matched.email,
-        status: loginUpdates.status ?? matched.status,
+        closerId: closer._id,
+        teamId: closer.teamId,
+        name: closer.name,
+        email: closer.email,
+        status: loginUpdates.status ?? closer.status,
         teamName: team?.name,
       },
     };

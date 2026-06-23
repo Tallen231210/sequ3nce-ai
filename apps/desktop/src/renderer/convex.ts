@@ -31,6 +31,21 @@ export interface LoginResult {
   closer?: CloserInfo;
 }
 
+// Choice returned to the closer when their email maps to multiple
+// closer records (multi-team case). Renderer shows a picker; pick
+// finalizes auth via pickCloserTeam.
+export interface TeamChoice {
+  closerId: string;
+  teamId: string;
+  teamName: string;
+  status: string;
+}
+
+export type VerifyMagicLinkResult =
+  | { success: true; kind: "signed_in"; closer: CloserInfo }
+  | { success: true; kind: "team_picker"; pickerToken: string; choices: TeamChoice[] }
+  | { success: false; error: string };
+
 // Login a closer with email and password
 export async function loginCloser(email: string, password: string): Promise<LoginResult> {
   try {
@@ -112,14 +127,17 @@ export async function requestMagicLink(
 }
 
 /**
- * Verify a magic-link code. On success, server returns CloserInfo
- * matching loginCloser's shape, so the App.tsx persist-to-localStorage
- * path is identical.
+ * Verify a magic-link code. Returns a discriminated union:
+ *   { kind: "signed_in", closer }          → sign in immediately
+ *   { kind: "team_picker", pickerToken,
+ *     choices }                            → closer is on multiple teams,
+ *                                            show picker and call pickCloserTeam
+ *   { success: false, error }              → invalid/expired/etc
  */
 export async function verifyMagicLink(
   email: string,
   code: string,
-): Promise<LoginResult> {
+): Promise<VerifyMagicLinkResult> {
   try {
     const response = await fetch(
       `${CONVEX_SITE_URL}/closer/magicLink/verify?_=${Date.now()}`,
@@ -139,11 +157,52 @@ export async function verifyMagicLink(
         error: errorData.error || "Verification failed",
       };
     }
-    return (await response.json()) as LoginResult;
+    return (await response.json()) as VerifyMagicLinkResult;
   } catch (error) {
     console.error("[Convex] verifyMagicLink failed:", error);
     Sentry.captureException(error, {
       tags: { feature: "verifyMagicLink", integration: "convex" },
+    });
+    return {
+      success: false,
+      error: "Network error. Please check your connection.",
+    };
+  }
+}
+
+/**
+ * After verifyMagicLink returns kind: "team_picker", call this with the
+ * pickerToken + the closerId the user chose. Returns CloserInfo for the
+ * chosen team or an error (most commonly: token expired).
+ */
+export async function pickCloserTeam(
+  pickerToken: string,
+  closerId: string,
+): Promise<LoginResult> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/closer/magicLink/pickTeam?_=${Date.now()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
+        body: JSON.stringify({ pickerToken, closerId }),
+      },
+    );
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errorData.error || "Team selection failed",
+      };
+    }
+    return (await response.json()) as LoginResult;
+  } catch (error) {
+    console.error("[Convex] pickCloserTeam failed:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "pickCloserTeam", integration: "convex" },
     });
     return {
       success: false,

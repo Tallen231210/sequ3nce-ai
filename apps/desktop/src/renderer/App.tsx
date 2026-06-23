@@ -4,8 +4,10 @@ import {
   loginCloser,
   requestMagicLink,
   verifyMagicLink,
+  pickCloserTeam,
   logClientError,
   type CloserInfo,
+  type TeamChoice,
 } from './convex';
 import { MeetingBotHub } from './views/MeetingBotHub';
 import { ThemeProvider } from './ThemeContext';
@@ -76,7 +78,7 @@ export function App() {
   );
 }
 
-type LoginMode = 'magic_email' | 'magic_code' | 'password';
+type LoginMode = 'magic_email' | 'magic_code' | 'team_picker' | 'password';
 
 function AppContent() {
   const [authState, setAuthState] = useState<AuthState>('initial_loading');
@@ -89,6 +91,10 @@ function AppContent() {
   const [loginMode, setLoginMode] = useState<LoginMode>('magic_email');
   const [magicCode, setMagicCode] = useState('');
   const [magicMessage, setMagicMessage] = useState<string | null>(null);
+  // Team-picker state — set when verify returns multiple matching teams.
+  // Closer picks one; pickCloserTeam finalizes auth with the chosen ID.
+  const [teamChoices, setTeamChoices] = useState<TeamChoice[]>([]);
+  const [pickerToken, setPickerToken] = useState<string | null>(null);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -238,16 +244,54 @@ function AppContent() {
 
     try {
       const result = await verifyMagicLink(normalizedEmail, code);
-      if (result.success && result.closer) {
-        completeLogin(result.closer);
-      } else {
+      if (!result.success) {
         setAuthError({
           message: result.error || 'Invalid or expired code.',
         });
         setAuthState('error');
+        return;
       }
+      if (result.kind === 'signed_in') {
+        completeLogin(result.closer);
+        return;
+      }
+      // Multi-team case: stash choices + token, show picker.
+      setTeamChoices(result.choices);
+      setPickerToken(result.pickerToken);
+      setLoginMode('team_picker');
+      setAuthState('login');
     } catch (err) {
       console.error('[App] verifyMagicLink error:', err);
+      setAuthError({
+        message: 'Network error. Please check your connection and try again.',
+      });
+      setAuthState('error');
+    }
+  };
+
+  // Multi-team picker: closer chose a team, finalize auth.
+  const handlePickTeam = async (closerId: string) => {
+    if (!pickerToken) return;
+    setAuthState('logging_in');
+    setAuthError(null);
+    try {
+      const result = await pickCloserTeam(pickerToken, closerId);
+      if (result.success && result.closer) {
+        completeLogin(result.closer);
+        return;
+      }
+      // Most commonly: picker token expired. Reset to email entry so
+      // the closer can request a fresh code.
+      setAuthError({
+        message: result.error || 'Selection timed out. Sign in again.',
+      });
+      setAuthState('error');
+      setLoginMode('magic_email');
+      setMagicCode('');
+      setPickerToken(null);
+      setTeamChoices([]);
+    } catch (err) {
+      console.error('[App] pickCloserTeam error:', err);
       setAuthError({
         message: 'Network error. Please check your connection and try again.',
       });
@@ -288,6 +332,8 @@ function AppContent() {
     setLoginMode('magic_email');
     setMagicCode('');
     setMagicMessage(null);
+    setTeamChoices([]);
+    setPickerToken(null);
 
     // Clear Sentry user so subsequent errors aren't attributed to the
     // logged-out closer.
@@ -307,10 +353,12 @@ function AppContent() {
     setAuthState('login');
     // Send them back to the magic-email entry point. Otherwise a
     // closer whose code expired bounces back to the code-entry screen
-    // with no path to request a fresh one.
+    // (or stale team-picker view) with no path to request a fresh one.
     setLoginMode('magic_email');
     setMagicCode('');
     setMagicMessage(null);
+    setTeamChoices([]);
+    setPickerToken(null);
   };
 
   // Render based on auth state
@@ -340,9 +388,11 @@ function AppContent() {
         magicCode={magicCode}
         setMagicCode={setMagicCode}
         magicMessage={magicMessage}
+        teamChoices={teamChoices}
         onPasswordSubmit={handleLogin}
         onMagicRequest={handleRequestMagicLink}
         onMagicVerify={() => handleVerifyMagicLink()}
+        onPickTeam={handlePickTeam}
         isLoading={authState === 'logging_in'}
       />
     );
@@ -373,9 +423,11 @@ function AppContent() {
       magicCode={magicCode}
       setMagicCode={setMagicCode}
       magicMessage={magicMessage}
+      teamChoices={teamChoices}
       onPasswordSubmit={handleLogin}
       onMagicRequest={handleRequestMagicLink}
       onMagicVerify={() => handleVerifyMagicLink()}
+      onPickTeam={handlePickTeam}
       isLoading={false}
     />
   );
@@ -393,9 +445,11 @@ interface LoginScreenProps {
   magicCode: string;
   setMagicCode: (code: string) => void;
   magicMessage: string | null;
+  teamChoices: TeamChoice[];
   onPasswordSubmit: (e: React.FormEvent) => void;
   onMagicRequest: (e: React.FormEvent) => void;
   onMagicVerify: () => void;
+  onPickTeam: (closerId: string) => void;
   isLoading: boolean;
 }
 
@@ -409,9 +463,11 @@ function LoginScreen({
   magicCode,
   setMagicCode,
   magicMessage,
+  teamChoices,
   onPasswordSubmit,
   onMagicRequest,
   onMagicVerify,
+  onPickTeam,
   isLoading,
 }: LoginScreenProps) {
   return (
@@ -513,6 +569,45 @@ function LoginScreen({
               Use a different email
             </button>
           </form>
+        )}
+
+        {/* Mode 2b — pick a team (only when verify returned multiple matching closer records) */}
+        {mode === 'team_picker' && (
+          <div className="w-full max-w-xs space-y-3">
+            <p className="text-sm text-gray-700 text-center mb-1">
+              You belong to multiple Sequ3nce teams.
+            </p>
+            <p className="text-xs text-gray-500 text-center mb-3">
+              Which one are you signing into?
+            </p>
+            {teamChoices.map((choice) => (
+              <button
+                key={choice.closerId}
+                type="button"
+                onClick={() => onPickTeam(choice.closerId)}
+                disabled={isLoading}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-left text-black hover:border-gray-400 hover:bg-gray-100 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="font-medium">{choice.teamName}</span>
+                {choice.status === 'pending' && (
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500">
+                    New invite
+                  </span>
+                )}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setMode('magic_email')}
+              disabled={isLoading}
+              className="w-full text-xs text-gray-500 hover:text-gray-700 transition-colors mt-2"
+            >
+              Use a different email
+            </button>
+            <p className="text-[11px] text-gray-400 text-center mt-2">
+              You have 2 minutes to choose before the session expires.
+            </p>
+          </div>
         )}
 
         {/* Mode 3 — legacy password sign-in (for closers added pre-magic-link) */}

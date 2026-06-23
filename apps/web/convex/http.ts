@@ -296,6 +296,73 @@ http.route({
   }),
 });
 
+// ============================================================================
+// Closer magic-link auth — pick a team after a multi-team verify
+// ============================================================================
+http.route({
+  path: "/closer/magicLink/pickTeam",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { pickerToken, closerId } = await request.json();
+      if (!pickerToken || !closerId) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "pickerToken and closerId are required",
+          }),
+          {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      }
+      const result = await ctx.runMutation(
+        api.closerMagicLink.pickCloserTeam,
+        { pickerToken, closerId },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    } catch (error) {
+      console.error("[/closer/magicLink/pickTeam] failed:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: "Pick team failed" }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+  }),
+});
+
+http.route({
+  path: "/closer/magicLink/pickTeam",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+      },
+    });
+  }),
+});
+
 // POST endpoint to change closer password (from desktop app)
 http.route({
   path: "/changePassword",
