@@ -1,7 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
+
+type DetectedPlatform = "mac" | "windows" | "unknown";
+
+function detectPlatform(): DetectedPlatform {
+  if (typeof navigator === "undefined") return "unknown";
+  // Modern API — Chrome/Edge/Brave (low-entropy hint, no permission needed)
+  const ua = (
+    navigator as Navigator & { userAgentData?: { platform: string } }
+  ).userAgentData?.platform?.toLowerCase();
+  if (ua) {
+    if (ua.includes("mac")) return "mac";
+    if (ua.includes("win")) return "windows";
+    return "unknown";
+  }
+  // Fallback — Safari, Firefox, older browsers
+  const legacy = navigator.userAgent.toLowerCase();
+  if (legacy.includes("mac")) return "mac";
+  if (legacy.includes("win")) return "windows";
+  return "unknown";
+}
 
 interface Release {
   tag_name: string;
@@ -23,6 +44,13 @@ type Platform = "mac" | "windows";
 export default function DownloadPage() {
   const [releases, setReleases] = useState<ReleasesResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  // Platform detection runs client-side only (no SSR) to avoid hydration
+  // mismatch. Defaults to "unknown" until effect runs.
+  const [detected, setDetected] = useState<DetectedPlatform>("unknown");
+
+  useEffect(() => {
+    setDetected(detectPlatform());
+  }, []);
 
   useEffect(() => {
     // Fetch releases from our API (proxies to GitHub with auth)
@@ -163,48 +191,150 @@ export default function DownloadPage() {
             Select your operating system to download:
           </p>
           <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {(["mac", "windows"] as const).map((p) => (
-              <div
-                key={p}
-                className="border-2 border-gray-200 rounded-2xl p-8 text-center hover:border-gray-400 transition-colors bg-gray-50"
-              >
-                <div className="flex justify-center mb-4 text-gray-700">
-                  {platformInfo[p].icon}
-                </div>
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                  {platformInfo[p].name}
-                </h2>
-                {releases && (
-                  <p className="text-gray-500 mb-4">
-                    Version {getVersion()}
-                    {getAssetSize(p) && ` • ${getAssetSize(p)}`}
+            {(["mac", "windows"] as const).map((p) => {
+              const isRecommended = detected === p;
+              return (
+                <div
+                  key={p}
+                  className={
+                    "border-2 rounded-2xl p-8 text-center transition-colors bg-gray-50 " +
+                    (isRecommended
+                      ? "border-black ring-2 ring-black/10"
+                      : "border-gray-200 hover:border-gray-400")
+                  }
+                >
+                  {isRecommended && (
+                    <div className="mb-3 inline-block text-[11px] font-semibold uppercase tracking-wider text-white bg-black px-2.5 py-1 rounded-full">
+                      Recommended for your device
+                    </div>
+                  )}
+                  <div className="flex justify-center mb-4 text-gray-700">
+                    {platformInfo[p].icon}
+                  </div>
+                  <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                    {platformInfo[p].name}
+                  </h2>
+                  {releases && (
+                    <p className="text-gray-500 mb-4">
+                      Version {getVersion()}
+                      {getAssetSize(p) && ` • ${getAssetSize(p)}`}
+                    </p>
+                  )}
+
+                  {loading ? (
+                    <div className="w-8 h-8 border-2 border-gray-300 border-t-black rounded-full animate-spin mx-auto mb-4" />
+                  ) : getDownloadUrl(p) ? (
+                    <a
+                      href={getDownloadUrl(p)!}
+                      className="inline-block bg-black text-white font-medium px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors mb-4"
+                    >
+                      Download{platformInfo[p].extension ? ` ${platformInfo[p].extension}` : ""}
+                    </a>
+                  ) : (
+                    <button
+                      disabled
+                      className="inline-block bg-gray-300 text-gray-500 font-medium px-8 py-3 rounded-lg cursor-not-allowed mb-4"
+                    >
+                      Coming Soon
+                    </button>
+                  )}
+
+                  <p className="text-sm text-gray-500 mb-1">
+                    {platformInfo[p].requirement}
                   </p>
-                )}
+                  <p className="text-xs text-gray-400 mb-5">
+                    Browser blocked the download? Check your Downloads folder.
+                  </p>
 
-                {loading ? (
-                  <div className="w-8 h-8 border-2 border-gray-300 border-t-black rounded-full animate-spin mx-auto mb-4" />
-                ) : getDownloadUrl(p) ? (
-                  <a
-                    href={getDownloadUrl(p)!}
-                    className="inline-block bg-black text-white font-medium px-8 py-3 rounded-lg hover:bg-gray-800 transition-colors mb-4"
-                  >
-                    Download{platformInfo[p].extension ? ` ${platformInfo[p].extension}` : ""}
-                  </a>
-                ) : (
-                  <button
-                    disabled
-                    className="inline-block bg-gray-300 text-gray-500 font-medium px-8 py-3 rounded-lg cursor-not-allowed mb-4"
-                  >
-                    Coming Soon
-                  </button>
-                )}
-
-                <p className="text-sm text-gray-500">
-                  {platformInfo[p].requirement}
-                </p>
-              </div>
-            ))}
+                  {/* Trouble installing? */}
+                  <details className="text-left text-sm text-gray-700">
+                    <summary className="cursor-pointer font-medium text-gray-900 select-none">
+                      Trouble installing?
+                    </summary>
+                    <ul className="mt-3 space-y-2 pl-1">
+                      {p === "mac" ? (
+                        <>
+                          <li>
+                            <Link
+                              href="/help/install#mac-damaged"
+                              className="text-gray-700 hover:text-black hover:underline"
+                            >
+                              &quot;App is damaged and can&apos;t be opened&quot;
+                            </Link>
+                          </li>
+                          <li>
+                            <Link
+                              href="/help/install#mac-unsigned"
+                              className="text-gray-700 hover:text-black hover:underline"
+                            >
+                              &quot;Apple cannot check it for malicious software&quot;
+                            </Link>
+                          </li>
+                          <li>
+                            <Link
+                              href="/help/install#mac-old-os"
+                              className="text-gray-700 hover:text-black hover:underline"
+                            >
+                              App won&apos;t launch / Mac too old
+                            </Link>
+                          </li>
+                        </>
+                      ) : (
+                        <>
+                          <li>
+                            <Link
+                              href="/help/install#win-smartscreen"
+                              className="text-gray-700 hover:text-black hover:underline"
+                            >
+                              &quot;Windows protected your PC&quot;
+                            </Link>
+                          </li>
+                          <li>
+                            <Link
+                              href="/help/install#win-antivirus"
+                              className="text-gray-700 hover:text-black hover:underline"
+                            >
+                              Antivirus flagged the installer
+                            </Link>
+                          </li>
+                          <li>
+                            <Link
+                              href="/help/install#win-old-os"
+                              className="text-gray-700 hover:text-black hover:underline"
+                            >
+                              Installer won&apos;t run / &quot;not compatible&quot;
+                            </Link>
+                          </li>
+                        </>
+                      )}
+                      <li>
+                        <Link
+                          href="/help/install"
+                          className="text-black font-medium hover:underline"
+                        >
+                          More install help →
+                        </Link>
+                      </li>
+                    </ul>
+                  </details>
+                </div>
+              );
+            })}
           </div>
+
+          {/* Linux / unknown platform fallback */}
+          {detected === "unknown" && !loading && (
+            <div className="mt-6 max-w-2xl mx-auto text-center text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+              Don&apos;t see your platform? We have Linux builds (.deb / .rpm) on request —{" "}
+              <a
+                href="mailto:support@sequ3nce.ai"
+                className="text-black font-medium hover:underline"
+              >
+                contact support
+              </a>
+              .
+            </div>
+          )}
         </div>
 
         {/* Getting Started */}
@@ -247,15 +377,25 @@ export default function DownloadPage() {
         </div>
 
         {/* Help */}
-        <div className="mt-12 text-center text-gray-500">
-          <p>
-            Need help?{" "}
-            <a
-              href="mailto:support@sequ3nce.ai"
-              className="text-black hover:underline"
+        <div className="mt-12 text-center">
+          <p className="text-gray-700 mb-3">
+            Stuck on install? Walk through our{" "}
+            <Link
+              href="/help/install"
+              className="text-black font-medium hover:underline"
             >
-              Contact support
-            </a>
+              install troubleshoot guide
+            </Link>{" "}
+            or email support.
+          </p>
+          <a
+            href="mailto:support@sequ3nce.ai"
+            className="inline-block bg-black text-white font-medium px-6 py-2.5 rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            Contact support@sequ3nce.ai
+          </a>
+          <p className="mt-3 text-xs text-gray-500">
+            We typically reply within 24 hours.
           </p>
         </div>
       </main>
