@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import type { CloserInfo, CallHistoryItem } from '../convex';
 import { getCallHistory, getPendingQuestionnaireInfo, dismissOrphanedQuestionnaires } from '../convex';
+import { usePoll } from '../lib/usePoll';
 import { CallDetailSheet } from './CallDetailSheet';
 
 type OutcomeFilter = 'all' | 'closed' | 'lost' | 'no_show' | 'follow_up';
@@ -36,13 +37,17 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
     getPendingQuestionnaireInfo(closerInfo.closerId).then(setPendingInfo);
   }, [closerInfo.closerId]);
 
-  // Refresh pending info periodically (every 10s)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      getPendingQuestionnaireInfo(closerInfo.closerId).then(setPendingInfo);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId]);
+  // Refresh pending info — bumped from 10s to 15s. Pauses when hidden.
+  // (task #348)
+  usePoll(
+    'pendingQuestionnaire',
+    async () => {
+      const info = await getPendingQuestionnaireInfo(closerInfo.closerId);
+      setPendingInfo(info);
+    },
+    15_000,
+    { immediate: false },
+  );
 
   const filteredCalls = useMemo(() => {
     let result = calls;

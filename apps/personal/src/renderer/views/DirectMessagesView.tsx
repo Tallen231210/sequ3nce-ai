@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CloserInfo, DMThread, DMMessage, TeamThread, TeamThreadMessage } from '../convex';
+import { usePoll } from '../lib/usePoll';
 import {
   getDMThreads,
   getDMMessages,
@@ -20,7 +21,13 @@ import { NewDMModal } from './NewDMModal';
 import iconImage from '../../assets/icon.png';
 
 const MAX_DM_BODY = 2000;
-const POLL_INTERVAL = 3000;
+// DM polling intervals. Active conversations (message body, typing) stay
+// fairly tight; the thread LIST refresh (which surfaces new threads) was
+// bumped from 3s to 15s — a new-thread notification doesn't need 3s
+// freshness. See task #348.
+const THREAD_LIST_POLL = 15_000;
+const ACTIVE_THREAD_POLL = 5_000;
+const TYPING_POLL = 3_000;
 
 interface DirectMessagesViewProps {
   closerInfo: CloserInfo;
@@ -80,9 +87,6 @@ export function DirectMessagesView({
 
   const mountedRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const threadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const messagePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const typingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initialRecipientHandled = useRef(false);
 
   // Load threads
@@ -113,34 +117,40 @@ export function DirectMessagesView({
     }
   }, [userId]);
 
-  // Initial load + polling
+  // Initial load on mount
   useEffect(() => {
     mountedRef.current = true;
     loadThreads();
     loadTeamInbox();
-    threadPollRef.current = setInterval(() => {
-      loadThreads();
-      loadTeamInbox();
-    }, POLL_INTERVAL);
     return () => {
       mountedRef.current = false;
-      if (threadPollRef.current) clearInterval(threadPollRef.current);
     };
-  }, [loadThreads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Message polling for active thread
-  useEffect(() => {
-    if (messagePollRef.current) clearInterval(messagePollRef.current);
-    if (activeThread) {
-      loadMessages(activeThread._id);
-      messagePollRef.current = setInterval(() => {
-        loadMessages(activeThread._id);
-      }, POLL_INTERVAL);
-    }
-    return () => {
-      if (messagePollRef.current) clearInterval(messagePollRef.current);
-    };
-  }, [activeThread?._id, loadMessages]);
+  // Thread list + team inbox refresh — 15s (bumped from 3s; new threads
+  // can wait that long to surface).
+  usePoll(
+    'dmThreadList',
+    async () => {
+      await loadThreads();
+      await loadTeamInbox();
+    },
+    THREAD_LIST_POLL,
+    { immediate: false },
+  );
+
+  // Active-thread message refresh — 5s. Keeps an open conversation feeling
+  // live without hammering Convex (was 3s).
+  usePoll(
+    'dmActiveMessages',
+    async () => {
+      if (!activeThread) return;
+      await loadMessages(activeThread._id);
+    },
+    ACTIVE_THREAD_POLL,
+    { enabled: !!activeThread, immediate: true },
+  );
 
   // Founder-only: message polling for active team-inbox thread
   const loadTeamInboxMessages = useCallback(async (threadId: string) => {
@@ -151,31 +161,31 @@ export function DirectMessagesView({
     }
   }, [userId]);
 
-  useEffect(() => {
-    if (!activeTeamInboxThread) return;
-    loadTeamInboxMessages(activeTeamInboxThread._id);
-    const interval = setInterval(() => {
-      loadTeamInboxMessages(activeTeamInboxThread._id);
-    }, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [activeTeamInboxThread?._id, loadTeamInboxMessages]);
+  usePoll(
+    'teamInboxMessages',
+    async () => {
+      if (!activeTeamInboxThread) return;
+      await loadTeamInboxMessages(activeTeamInboxThread._id);
+    },
+    ACTIVE_THREAD_POLL,
+    { enabled: !!activeTeamInboxThread, immediate: true },
+  );
 
-  // Typing indicator polling for active thread
+  // Typing indicator — 3s. Reset names when active thread changes.
   useEffect(() => {
-    if (typingPollRef.current) clearInterval(typingPollRef.current);
     setTypingNames([]);
-    if (activeThread && userId) {
-      const pollTyping = async () => {
-        const result = await getDMTypingUsers(userId, activeThread._id);
-        if (mountedRef.current) setTypingNames((result.users || []).map(u => u.userName));
-      };
-      pollTyping();
-      typingPollRef.current = setInterval(pollTyping, 3000);
-    }
-    return () => {
-      if (typingPollRef.current) clearInterval(typingPollRef.current);
-    };
-  }, [activeThread?._id, userId]);
+  }, [activeThread?._id]);
+
+  usePoll(
+    'dmTyping',
+    async () => {
+      if (!activeThread || !userId) return;
+      const result = await getDMTypingUsers(userId, activeThread._id);
+      if (mountedRef.current) setTypingNames((result.users || []).map((u) => u.userName));
+    },
+    TYPING_POLL,
+    { enabled: !!activeThread && !!userId, immediate: true },
+  );
 
   // Scroll to bottom when messages change
   useEffect(() => {

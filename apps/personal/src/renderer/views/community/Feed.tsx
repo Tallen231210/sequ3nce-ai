@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { usePoll } from '../../lib/usePoll';
 import {
   getFeedPosts,
   getNewPostCount,
@@ -39,15 +40,17 @@ export function Feed({ userId, channels, isAdmin }: FeedProps) {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Poll for new posts
-  useEffect(() => {
-    const interval = setInterval(async () => {
+  // Poll for new posts — task #348
+  usePoll(
+    'feedNewPosts',
+    async () => {
       if (!mountedRef.current) return;
       const count = await getNewPostCount(lastFetchedRef.current);
       if (mountedRef.current) setNewPostCount(count);
-    }, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, []);
+    },
+    POLL_INTERVAL,
+    { immediate: false },
+  );
 
   const loadPosts = async (filterFriendsOnly?: boolean) => {
     const useFriendsOnly = filterFriendsOnly ?? friendsOnly;

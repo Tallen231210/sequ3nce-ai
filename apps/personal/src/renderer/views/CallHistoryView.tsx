@@ -3,6 +3,7 @@ import type { CloserInfo, CallHistoryItem } from '../convex';
 import { getCallHistory, getPendingQuestionnaireInfo, dismissOrphanedQuestionnaires } from '../convex';
 import { CallDetailSheet } from './CallDetailSheet';
 import { TaskHintBanner } from './adoption-checklist/TaskHintBanner';
+import { usePoll } from '../lib/usePoll';
 
 type OutcomeFilter = 'all' | 'closed' | 'lost' | 'no_show' | 'follow_up';
 
@@ -37,13 +38,18 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
     getPendingQuestionnaireInfo(closerInfo.closerId).then(setPendingInfo);
   }, [closerInfo.closerId]);
 
-  // Refresh pending info frequently (every 3s) — ensures "Fill Out Now" banner appears quickly after End Call
-  useEffect(() => {
-    const interval = setInterval(() => {
-      getPendingQuestionnaireInfo(closerInfo.closerId).then(setPendingInfo);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId]);
+  // Refresh pending info — bumped 3s → 15s. Task #348: 3s was wildly
+  // aggressive; the "Fill Out Now" banner appearing within 15s of End
+  // Call is fine UX, and 3s was a top contributor to saturation.
+  usePoll(
+    'pendingQuestionnaireInfo',
+    async () => {
+      const info = await getPendingQuestionnaireInfo(closerInfo.closerId);
+      setPendingInfo(info);
+    },
+    15_000,
+    { immediate: false },
+  );
 
   const filteredCalls = useMemo(() => {
     let result = calls;

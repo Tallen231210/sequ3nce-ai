@@ -6,6 +6,80 @@ import * as Sentry from "@sentry/electron/renderer";
 // HTTP Action endpoint - hosted at .convex.site (not .convex.cloud)
 const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
+// ============================================================================
+// convexFetch — circuit-breaker wrapper around fetch()
+//
+// Convex's prod backend has a 64-concurrent-action ceiling. When ALL pollers
+// across all signed-in users saturate that, Convex returns 429 + body
+// "TooManyConcurrentRequests" and EVERY new action (including auth + magic
+// link sends) fails until pressure drops. The unrelented "retry on every
+// interval" pattern in the polling sites kept the system saturated.
+//
+// This wrapper adds three safety nets transparently:
+//   1. Jitter (0-50ms) on every outgoing call so a thundering herd of N
+//      users hitting the same second smears out.
+//   2. Circuit breaker — after a 429, refuse new calls for an exponential
+//      backoff window (2s → 4s → 8s → ... 60s cap). Resets after 30s
+//      without errors.
+//   3. Detection works on BOTH 429 and 500-with-TooManyConcurrentRequests
+//      response bodies (Convex returns either depending on the layer).
+//
+// Layered with usePoll (which adds backoff at the polling cadence level),
+// this defends against saturation from any direction.
+// ============================================================================
+
+let consecutive429s = 0;
+let lastFailureAt = 0;
+const BREAKER_RESET_MS = 30_000;
+
+async function convexFetch(
+  input: string,
+  init?: RequestInit,
+): Promise<Response> {
+  // Reset breaker if it's been quiet for BREAKER_RESET_MS
+  if (consecutive429s > 0 && Date.now() - lastFailureAt > BREAKER_RESET_MS) {
+    consecutive429s = 0;
+  }
+
+  // Apply circuit-breaker delay OR baseline jitter
+  let delay: number;
+  if (consecutive429s > 0) {
+    const baseBackoff = Math.min(60_000, Math.pow(2, consecutive429s) * 1000);
+    delay = baseBackoff + Math.random() * baseBackoff * 0.25;
+  } else {
+    delay = Math.random() * 50;
+  }
+  if (delay > 0) {
+    await new Promise((r) => setTimeout(r, delay));
+  }
+
+  // Use globalThis.fetch explicitly to avoid recursion if any future
+  // sed/codemod swaps `fetch` with `convexFetch` across the file.
+  const response = await globalThis.fetch(input, init);
+
+  // Detect Convex saturation. 429 is the canonical signal; some routes
+  // surface it as a 500 with the message in the body.
+  if (response.status === 429) {
+    consecutive429s = Math.min(consecutive429s + 1, 8);
+    lastFailureAt = Date.now();
+  } else if (response.status >= 500) {
+    try {
+      const cloned = response.clone();
+      const body = await cloned.text();
+      if (body.includes("TooManyConcurrentRequests")) {
+        consecutive429s = Math.min(consecutive429s + 1, 8);
+        lastFailureAt = Date.now();
+      }
+    } catch {
+      // Body read failed; treat as a normal 5xx without breaker bump.
+    }
+  } else if (response.ok) {
+    consecutive429s = 0;
+  }
+
+  return response;
+}
+
 export interface CloserInfo {
   closerId: string;
   teamId: string;
@@ -52,7 +126,7 @@ export async function loginCloser(email: string, password: string): Promise<Logi
     console.log("[Convex] Logging in closer:", email);
 
     // Add cache-busting query param to prevent Electron caching issues
-    const response = await fetch(`${CONVEX_SITE_URL}/loginCloser?_=${Date.now()}`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/loginCloser?_=${Date.now()}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -91,7 +165,7 @@ export async function requestMagicLink(
   email: string,
 ): Promise<{ success: boolean; error?: string; retryAfter?: number }> {
   try {
-    const response = await fetch(
+    const response = await convexFetch(
       `${CONVEX_SITE_URL}/closer/magicLink/request?_=${Date.now()}`,
       {
         method: "POST",
@@ -139,7 +213,7 @@ export async function verifyMagicLink(
   code: string,
 ): Promise<VerifyMagicLinkResult> {
   try {
-    const response = await fetch(
+    const response = await convexFetch(
       `${CONVEX_SITE_URL}/closer/magicLink/verify?_=${Date.now()}`,
       {
         method: "POST",
@@ -180,7 +254,7 @@ export async function pickCloserTeam(
   closerId: string,
 ): Promise<LoginResult> {
   try {
-    const response = await fetch(
+    const response = await convexFetch(
       `${CONVEX_SITE_URL}/closer/magicLink/pickTeam?_=${Date.now()}`,
       {
         method: "POST",
@@ -220,7 +294,7 @@ export async function getCloserByEmail(email: string): Promise<CloserInfo | null
     const url = `${CONVEX_SITE_URL}/getCloserByEmail?email=${encodeURIComponent(email)}`;
     console.log("[Convex] Request URL:", url);
 
-    const response = await fetch(url);
+    const response = await convexFetch(url);
 
     console.log("[Convex] Response status:", response.status);
 
@@ -247,7 +321,7 @@ export async function activateCloser(email: string): Promise<boolean> {
   try {
     console.log("[Convex] Activating closer:", email);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/activateCloser`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/activateCloser`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -289,7 +363,7 @@ export async function findMatchingScheduledCall(
     console.log("[Convex] Finding matching scheduled call for closer:", closerId);
 
     const url = `${CONVEX_SITE_URL}/findMatchingScheduledCall?closerId=${encodeURIComponent(closerId)}&teamId=${encodeURIComponent(teamId)}`;
-    const response = await fetch(url);
+    const response = await convexFetch(url);
 
     if (!response.ok) {
       console.error("[Convex] Error finding scheduled call:", response.status);
@@ -317,7 +391,7 @@ export async function updateProspectName(data: {
   try {
     console.log("[Convex] Updating prospect name:", data);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/updateProspectName`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/updateProspectName`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -367,7 +441,7 @@ export async function completeCallWithOutcome(data: {
   try {
     console.log("[Convex] Completing call with outcome:", data);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/completeCallWithOutcome`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/completeCallWithOutcome`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -411,7 +485,7 @@ export async function getPendingQuestionnaireInfo(closerId: string): Promise<{
   firstProspectName?: string;
 }> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getPendingQuestionnaireCount`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getPendingQuestionnaireCount`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -439,7 +513,7 @@ export async function getPendingQuestionnaireInfo(closerId: string): Promise<{
 // Dismiss orphaned questionnaires (bots without linked call records)
 export async function dismissOrphanedQuestionnaires(closerId: string): Promise<{ dismissed: number }> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/dismissOrphanedQuestionnaires`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/dismissOrphanedQuestionnaires`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -464,7 +538,7 @@ export async function changePassword(
   try {
     console.log("[Convex] Changing password for closer:", closerId);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/changePassword`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/changePassword`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -540,7 +614,7 @@ export async function isMeetingBotEnabled(teamId: string): Promise<boolean> {
   try {
     console.log("[Convex] Checking meeting bot enabled for team:", teamId);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/isMeetingBotEnabled`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/isMeetingBotEnabled`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -570,7 +644,7 @@ export async function needsCalendarOnboarding(closerId: string): Promise<boolean
   try {
     console.log("[Convex] Checking calendar onboarding for closer:", closerId);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/needsCalendarOnboarding`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/needsCalendarOnboarding`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -608,7 +682,7 @@ export interface ActiveBotCall {
 // User manually ends call — writes "ended_by_user" to Convex so poll stops detecting it
 export async function endCallManually(closerId: string): Promise<{ success: boolean }> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/endCallManually`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/endCallManually`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -625,7 +699,7 @@ export async function endCallManually(closerId: string): Promise<{ success: bool
 
 export async function getActiveCallForCloserBot(closerId: string): Promise<ActiveBotCall | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getActiveCallForCloserBot`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getActiveCallForCloserBot`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -657,7 +731,7 @@ export async function createBotForMeeting(
   prospectName?: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/createBotForMeeting`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/createBotForMeeting`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId, teamId, meetingUrl, meetingTitle, prospectName }),
@@ -682,7 +756,7 @@ export async function createQuickBot(
   prospectName?: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/createQuickBot`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/createQuickBot`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ meetingUrl, closerId, teamId, prospectName }),
@@ -702,7 +776,7 @@ export async function createQuickBot(
 // Cancel/kick bot from meeting
 export async function cancelBot(botId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/cancelBot`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/cancelBot`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ botId }),
@@ -722,7 +796,7 @@ export async function cancelBot(botId: string): Promise<boolean> {
 // Get upcoming bots for closer
 export async function getUpcomingBotsForCloser(closerId: string): Promise<Record<string, unknown>[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getUpcomingBotsForCloser`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getUpcomingBotsForCloser`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -746,7 +820,7 @@ export async function excludeCalendarEvent(
   eventTitle?: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/excludeCalendarEvent`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/excludeCalendarEvent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId, calendarEventId, eventTitle }),
@@ -770,7 +844,7 @@ export async function requestReinforcement(
   message?: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/requestReinforcement`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/requestReinforcement`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId, closerId, closerName, callId, message }),
@@ -795,7 +869,7 @@ export async function callGoingLong(
   estimatedMinutes?: number
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/callGoingLong`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/callGoingLong`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ teamId, closerId, callId, estimatedMinutes }),
@@ -824,7 +898,7 @@ export interface TranscriptSegment {
 
 export async function getTranscriptSegments(callId: string): Promise<TranscriptSegment[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getTranscriptSegments?callId=${encodeURIComponent(callId)}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getTranscriptSegments?callId=${encodeURIComponent(callId)}`);
     if (!response.ok) return [];
     const result = await response.json();
     return Array.isArray(result) ? result : [];
@@ -863,7 +937,7 @@ export interface AmmoV2Analysis {
 
 export async function getAmmoAnalysis(callId: string): Promise<AmmoV2Analysis | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getAmmoAnalysis?callId=${encodeURIComponent(callId)}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getAmmoAnalysis?callId=${encodeURIComponent(callId)}`);
     if (!response.ok) return null;
     const result = await response.json();
     if (result && result.engagement) return result;
@@ -880,7 +954,7 @@ export async function getAmmoAnalysis(callId: string): Promise<AmmoV2Analysis | 
 // Check if Ammo V2 is enabled
 export async function isAmmoV2Enabled(teamId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/isAmmoV2Enabled?teamId=${encodeURIComponent(teamId)}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/isAmmoV2Enabled?teamId=${encodeURIComponent(teamId)}`);
     if (!response.ok) return false;
     const result = await response.json();
     return result.enabled === true;
@@ -895,7 +969,7 @@ export async function isAmmoV2Enabled(teamId: string): Promise<boolean> {
 // Update call notes
 export async function updateCallNotes(callId: string, notes: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/updateCallNotes`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/updateCallNotes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId, notes }),
@@ -922,7 +996,7 @@ export interface TeamResource {
 
 export async function getActiveResources(teamId: string): Promise<TeamResource[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getActiveResources?teamId=${encodeURIComponent(teamId)}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getActiveResources?teamId=${encodeURIComponent(teamId)}`);
     if (!response.ok) return [];
     const result = await response.json();
     return Array.isArray(result) ? result : [];
@@ -938,7 +1012,7 @@ export async function getActiveResources(teamId: string): Promise<TeamResource[]
 // Save meeting platform preference
 export async function saveMeetingPlatform(closerId: string, platform: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/saveMeetingPlatform`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/saveMeetingPlatform`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId, platform }),
@@ -955,7 +1029,7 @@ export async function saveMeetingPlatform(closerId: string, platform: string): P
 // Mark calendar onboarding as completed
 export async function markOnboardingCompleted(closerId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/markOnboardingCompleted`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/markOnboardingCompleted`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -976,7 +1050,7 @@ export async function connectCalendar(
   icsUrl: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/connectCalendarByEmail`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/connectCalendarByEmail`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, teamId, icsUrl }),
@@ -994,7 +1068,7 @@ export async function connectCalendar(
 // Sync calendar events
 export async function syncCalendar(email: string, teamId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/syncCalendarByEmail`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/syncCalendarByEmail`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, teamId }),
@@ -1039,7 +1113,7 @@ export interface CloserStats {
 
 export async function getCloserStats(closerId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<CloserStats | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getCloserStats`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserStats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1080,7 +1154,7 @@ export interface AnalyticsSummary {
 
 export async function getAnalyticsSummary(closerId: string, teamId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<AnalyticsSummary | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getCloserAnalyticsSummary`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserAnalyticsSummary`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1118,7 +1192,7 @@ export interface LostDealsData {
 
 export async function getLostDealsByObjection(closerId: string, teamId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<LostDealsData | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getCloserLostDeals`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserLostDeals`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1164,7 +1238,7 @@ export interface ObjectionAnalysisData {
 
 export async function getObjectionAnalysis(closerId: string, teamId: string, period: string, customStart?: number | null, customEnd?: number | null): Promise<ObjectionAnalysisData | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getCloserObjectionAnalysis`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserObjectionAnalysis`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1212,7 +1286,7 @@ export async function getCalendarEvents(
       endDate: String(endDate),
     });
 
-    const response = await fetch(`${CONVEX_SITE_URL}/getCloserEventsByEmail?${params}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserEventsByEmail?${params}`);
 
     if (!response.ok) return [];
     const result = await response.json();
@@ -1269,7 +1343,7 @@ export async function getCloserBriefing(
       teamId,
       calendarEventId,
     });
-    const response = await fetch(
+    const response = await convexFetch(
       `${CONVEX_SITE_URL}/getCloserBriefing?${params}`,
     );
     if (!response.ok) return null;
@@ -1338,7 +1412,7 @@ export interface CallHistoryItem {
 
 export async function getCallHistory(closerId: string, limit?: number): Promise<CallHistoryItem[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getCallHistory`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCallHistory`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId, limit: limit || 20 }),
@@ -1359,7 +1433,7 @@ export async function getCallHistory(closerId: string, limit?: number): Promise<
 // Fetch just the callAnalysis field for a single call (lightweight polling endpoint)
 export async function getCallAnalysis(callId: string): Promise<CallAnalysis | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getCallAnalysis?callId=${encodeURIComponent(callId)}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCallAnalysis?callId=${encodeURIComponent(callId)}`);
     if (!response.ok) return null;
     const result = await response.json();
     return result.callAnalysis ?? null;
@@ -1387,7 +1461,7 @@ export interface CalendarStatus {
 export async function getCalendarStatus(email: string, teamId: string): Promise<CalendarStatus | null> {
   try {
     const params = new URLSearchParams({ email, teamId });
-    const response = await fetch(`${CONVEX_SITE_URL}/getCloserCalendarStatusByEmail?${params}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserCalendarStatusByEmail?${params}`);
     if (!response.ok) return null;
     return await response.json();
   } catch (error) {
@@ -1401,7 +1475,7 @@ export async function getCalendarStatus(email: string, teamId: string): Promise<
 
 export async function disconnectCalendar(email: string, teamId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/disconnectCalendarByEmail`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/disconnectCalendarByEmail`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, teamId }),
@@ -1420,7 +1494,7 @@ export async function disconnectCalendar(email: string, teamId: string): Promise
 
 export async function submitDiagnosticReport(data: Record<string, unknown>): Promise<{ success: boolean; reportId?: string; error?: string }> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/submitDiagnosticReport`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/submitDiagnosticReport`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -1455,7 +1529,7 @@ export interface FeedbackCall {
 
 export async function getFeedbackForCloser(closerId: string): Promise<FeedbackCall[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getFeedbackForCloser`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getFeedbackForCloser`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -1486,7 +1560,7 @@ export interface CallComment {
 
 export async function getCommentsForCall(callId: string): Promise<CallComment[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getCommentsForCall`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCommentsForCall`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId }),
@@ -1513,7 +1587,7 @@ export async function addCallComment(
   parentCommentId?: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/addCallComment`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/addCallComment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId, content, authorType, authorName, authorId, timestampSeconds, parentCommentId }),
@@ -1543,7 +1617,7 @@ export interface SharedMoment {
 
 export async function getSharedMoments(closerId: string): Promise<SharedMoment[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getSharedMoments`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getSharedMoments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -1563,7 +1637,7 @@ export async function getSharedMoments(closerId: string): Promise<SharedMoment[]
 // Unread counts
 export async function getUnreadFeedbackCount(closerId: string): Promise<number> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getUnreadFeedbackCount`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getUnreadFeedbackCount`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -1581,7 +1655,7 @@ export async function getUnreadFeedbackCount(closerId: string): Promise<number> 
 
 export async function getUnreadSharedMomentsCount(closerId: string): Promise<number> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getUnreadSharedMomentsCount`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getUnreadSharedMomentsCount`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -1599,7 +1673,7 @@ export async function getUnreadSharedMomentsCount(closerId: string): Promise<num
 
 export async function markFeedbackRead(callId: string, closerId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/markFeedbackRead`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/markFeedbackRead`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId, closerId }),
@@ -1615,7 +1689,7 @@ export async function markFeedbackRead(callId: string, closerId: string): Promis
 
 export async function markSharedMomentsSeen(closerId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/markSharedMomentsSeen`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/markSharedMomentsSeen`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -1634,7 +1708,7 @@ export async function markSharedMomentsSeen(closerId: string): Promise<boolean> 
 // Flag call for review
 export async function flagCallForReview(callId: string, closerId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/flagCallForReview`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/flagCallForReview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId, closerId }),
@@ -1654,7 +1728,7 @@ export async function flagCallForReview(callId: string, closerId: string): Promi
 // Unflag call
 export async function unflagCall(callId: string, closerId: string): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/unflagCall`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/unflagCall`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId, closerId }),
@@ -1674,7 +1748,7 @@ export async function unflagCall(callId: string, closerId: string): Promise<bool
 // Refresh recording URL (Recall.ai URLs expire ~24h)
 export async function refreshRecordingUrl(callId: string): Promise<string | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/refreshRecordingUrl`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/refreshRecordingUrl`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ callId }),
@@ -1703,7 +1777,7 @@ export async function createSharedLink(
   teamId: string
 ): Promise<SharedLinkResult | null> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/createSharedLink`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/createSharedLink`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1738,7 +1812,7 @@ export interface AmmoItem {
 
 export async function getAmmoByCall(callId: string): Promise<AmmoItem[]> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/getAmmoByCall?callId=${encodeURIComponent(callId)}`);
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getAmmoByCall?callId=${encodeURIComponent(callId)}`);
     if (!response.ok) return [];
     const result = await response.json();
     return Array.isArray(result) ? result : [];
@@ -1769,7 +1843,7 @@ export async function getOrCreateRolePlayRoom(teamId: string): Promise<RolePlayR
   try {
     console.log("[Convex] Getting/creating role play room for team:", teamId);
 
-    const response = await fetch(`${CONVEX_SITE_URL}/getOrCreateRolePlayRoom`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getOrCreateRolePlayRoom`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1803,7 +1877,7 @@ export async function joinRolePlayRoom(
   try {
     console.log("[Convex] Joining role play room:", { teamId, closerId, userName });
 
-    const response = await fetch(`${CONVEX_SITE_URL}/joinRolePlayRoom`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/joinRolePlayRoom`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1840,7 +1914,7 @@ export async function leaveRolePlayRoom(
   try {
     console.log("[Convex] Leaving role play room:", { teamId, closerId });
 
-    const response = await fetch(`${CONVEX_SITE_URL}/leaveRolePlayRoom`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/leaveRolePlayRoom`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1873,7 +1947,7 @@ export async function leaveRolePlayRoom(
 export async function getRolePlayRoomParticipants(teamId: string): Promise<RolePlayRoomParticipant[]> {
   try {
     const url = `${CONVEX_SITE_URL}/getRolePlayRoomParticipants?teamId=${encodeURIComponent(teamId)}`;
-    const response = await fetch(url);
+    const response = await convexFetch(url);
 
     if (!response.ok) {
       console.error("[Convex] Failed to get role play room participants:", response.status);
@@ -1908,7 +1982,7 @@ export interface ChatMessage {
 export async function getMessagesForCloser(closerId: string, limit = 100): Promise<ChatMessage[]> {
   try {
     const url = `${CONVEX_SITE_URL}/getMessagesForCloser?closerId=${encodeURIComponent(closerId)}&limit=${limit}`;
-    const response = await fetch(url);
+    const response = await convexFetch(url);
     if (!response.ok) return [];
     return await response.json();
   } catch (error) {
@@ -1927,7 +2001,7 @@ export async function sendMessageFromCloser(
   message: string
 ): Promise<boolean> {
   try {
-    const response = await fetch(`${CONVEX_SITE_URL}/sendMessage`, {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1951,7 +2025,7 @@ export async function sendMessageFromCloser(
 
 export async function markAllMessagesRead(closerId: string): Promise<void> {
   try {
-    await fetch(`${CONVEX_SITE_URL}/markAllAsReadForCloser`, {
+    await convexFetch(`${CONVEX_SITE_URL}/markAllAsReadForCloser`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ closerId }),
@@ -1967,7 +2041,7 @@ export async function markAllMessagesRead(closerId: string): Promise<void> {
 export async function getUnreadMessageCount(closerId: string): Promise<number> {
   try {
     const url = `${CONVEX_SITE_URL}/getUnreadCountForCloser?closerId=${encodeURIComponent(closerId)}`;
-    const response = await fetch(url);
+    const response = await convexFetch(url);
     if (!response.ok) return 0;
     const data = await response.json();
     return data.count || 0;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CloserInfo, WeeklyContest, WeeklySubmission } from '../../convex';
+import { usePoll } from '../../lib/usePoll';
 import {
   getActiveContest,
   getContestSubmissions,
@@ -85,9 +86,21 @@ export function CallOfTheWeekView({ closerInfo }: CallOfTheWeekViewProps) {
   useEffect(() => {
     mountedRef.current = true;
     loadData();
-    const interval = setInterval(() => { if (mountedRef.current) loadData(); }, POLL_INTERVAL);
-    return () => { mountedRef.current = false; clearInterval(interval); };
-  }, [loadData]);
+    return () => {
+      mountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // task #348 — backoff + visibility-pause
+  usePoll(
+    'callOfTheWeek',
+    async () => {
+      if (mountedRef.current) await loadData();
+    },
+    POLL_INTERVAL,
+    { immediate: false },
+  );
 
   const handleVote = async (submissionId: string) => {
     if (!contest || voting || !userId) return;

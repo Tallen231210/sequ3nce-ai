@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CloserInfo, ActiveBotCall } from '../convex';
+import { usePoll } from '../lib/usePoll';
 import {
   needsCalendarOnboarding,
   getActiveCallForCloserBot,
@@ -188,7 +189,10 @@ const NAV_ITEMS: NavItem[] = [
 // Minimum call duration in seconds before showing questionnaire
 const MIN_CALL_DURATION = 30;
 // Bot polling interval in ms
-const BOT_POLL_INTERVAL = 3000;
+// Bot polling interval — bumped from 3s to 10s. Top contributor to
+// Convex action saturation per task #348. UX tolerance for the floating
+// ammo panel opening is ~10s, not 3s.
+const BOT_POLL_INTERVAL = 10_000;
 
 interface MeetingBotHubProps {
   closerInfo: CloserInfo;
@@ -279,82 +283,82 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
     });
   }, [closerInfo.closerId]);
 
-  // Poll pending questionnaire count for Calls tab badge
-  useEffect(() => {
-    const poll = () => {
-      getPendingQuestionnaireInfo(closerInfo.closerId).then((info) => {
-        setCallsPendingCount(info.count);
-      }).catch(() => {});
-    };
-    poll();
-    const interval = setInterval(poll, 10000);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId]);
+  // All sidebar badge polls migrated to usePoll for backoff + jitter +
+  // visibility-pause (task #348). Intervals bumped where they were
+  // unnecessarily aggressive (10s → 15s for non-time-critical badges).
 
-  // Poll friend requests for community badge
-  useEffect(() => {
-    if (!closerInfo.b2cUserId) return;
-    const poll = async () => {
-      const friendResult = await getIncomingFriendRequests(closerInfo.b2cUserId!).catch(() => ({ requests: [] }));
+  usePoll(
+    'callsPending',
+    async () => {
+      const info = await getPendingQuestionnaireInfo(closerInfo.closerId);
+      setCallsPendingCount(info.count);
+    },
+    15_000,
+  );
+
+  usePoll(
+    'friendRequests',
+    async () => {
+      if (!closerInfo.b2cUserId) return;
+      const friendResult = await getIncomingFriendRequests(closerInfo.b2cUserId).catch(
+        () => ({ requests: [] }),
+      );
       setFriendRequestCount(friendResult.requests.length);
-    };
-    poll();
-    const interval = setInterval(poll, 10000);
-    return () => clearInterval(interval);
-  }, [closerInfo.b2cUserId]);
+    },
+    15_000,
+    { enabled: !!closerInfo.b2cUserId },
+  );
 
-  // DM unread badge polling + notification chime
-  useEffect(() => {
-    if (!closerInfo.b2cUserId) return;
-    const poll = async () => {
-      const count = await getDMUnreadCount(closerInfo.b2cUserId!);
+  usePoll(
+    'dmUnread',
+    async () => {
+      if (!closerInfo.b2cUserId) return;
+      const count = await getDMUnreadCount(closerInfo.b2cUserId);
       setDmUnreadCount(count);
-
-      // Electron push notification + sound for new DMs
       if (count > prevDmUnreadRef.current && selectedItem !== 'messages') {
         new Notification('New Message', { body: 'You have a new message', silent: true });
         playNotificationChime();
       }
       prevDmUnreadRef.current = count;
-    };
-    poll();
-    const interval = setInterval(poll, 10000);
-    return () => clearInterval(interval);
-  }, [closerInfo.b2cUserId, selectedItem]);
+    },
+    15_000,
+    { enabled: !!closerInfo.b2cUserId },
+  );
 
   // Money Bells unread badge (propagated into the Community sidebar-tab badge).
   // The sub-tab badge inside ChannelSidebar uses the same endpoint, and clicking
   // the Money Bells sub-tab updates the localStorage lastViewed → clears both.
-  useEffect(() => {
-    if (!closerInfo.b2cUserId) return;
-    const MONEY_BELLS_LAST_VIEWED_KEY = 'sequ3nce_money_bells_last_viewed';
-    const poll = async () => {
+  usePoll(
+    'moneyBellsUnread',
+    async () => {
+      if (!closerInfo.b2cUserId) return;
+      const MONEY_BELLS_LAST_VIEWED_KEY = 'sequ3nce_money_bells_last_viewed';
       const since = Number(localStorage.getItem(MONEY_BELLS_LAST_VIEWED_KEY)) || Date.now();
-      const res = await getMoneyBellsUnreadCount(closerInfo.b2cUserId!, since);
+      const res = await getMoneyBellsUnreadCount(closerInfo.b2cUserId, since);
       if ('count' in res) setMoneyBellsUnreadCount(res.count);
-    };
-    poll();
-    const interval = setInterval(poll, 20000);
-    return () => clearInterval(interval);
-  }, [closerInfo.b2cUserId]);
+    },
+    20_000,
+    { enabled: !!closerInfo.b2cUserId },
+  );
 
   // Founder-only: pending stats-verification requests badge
-  useEffect(() => {
-    if (!closerInfo.b2cUserId || !isFounder) return;
-    const poll = async () => {
-      const res = await getPendingVerificationCount(closerInfo.b2cUserId!);
+  usePoll(
+    'verificationPending',
+    async () => {
+      if (!closerInfo.b2cUserId || !isFounder) return;
+      const res = await getPendingVerificationCount(closerInfo.b2cUserId);
       if ('count' in res) setVerificationPendingCount(res.count);
-    };
-    poll();
-    const interval = setInterval(poll, 15000);
-    return () => clearInterval(interval);
-  }, [closerInfo.b2cUserId, isFounder]);
+    },
+    20_000,
+    { enabled: !!closerInfo.b2cUserId && isFounder },
+  );
 
-  // Founder-only: team-notification inbox unread badge + notification chime (shared across founders)
-  useEffect(() => {
-    if (!closerInfo.b2cUserId || !isFounder) return;
-    const poll = async () => {
-      const res = await getTeamUnreadCount(closerInfo.b2cUserId!);
+  // Founder-only: team-notification inbox unread badge + chime
+  usePoll(
+    'teamNotifUnread',
+    async () => {
+      if (!closerInfo.b2cUserId || !isFounder) return;
+      const res = await getTeamUnreadCount(closerInfo.b2cUserId);
       if ('count' in res) {
         setTeamNotificationUnreadCount(res.count);
         if (
@@ -370,23 +374,22 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
         }
         prevTeamNotifUnreadRef.current = res.count;
       }
-    };
-    poll();
-    const interval = setInterval(poll, 15000);
-    return () => clearInterval(interval);
-  }, [closerInfo.b2cUserId, isFounder, selectedItem]);
+    },
+    20_000,
+    { enabled: !!closerInfo.b2cUserId && isFounder },
+  );
 
-  // Content review pending count polling (founder only)
-  useEffect(() => {
-    if (!closerInfo.b2cUserId || !isFounder) return;
-    const poll = async () => {
-      const submissions = await getPendingContentSubmissions(closerInfo.b2cUserId!);
+  // Content review pending count (founder only)
+  usePoll(
+    'contentPending',
+    async () => {
+      if (!closerInfo.b2cUserId || !isFounder) return;
+      const submissions = await getPendingContentSubmissions(closerInfo.b2cUserId);
       setContentPendingCount(submissions.length);
-    };
-    poll();
-    const interval = setInterval(poll, 15000);
-    return () => clearInterval(interval);
-  }, [closerInfo.b2cUserId, isFounder]);
+    },
+    20_000,
+    { enabled: !!closerInfo.b2cUserId && isFounder },
+  );
 
   // Update dock/taskbar badge when either count changes
   useEffect(() => {
@@ -397,26 +400,28 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
     };
   }, [friendRequestCount, dmUnreadCount]);
 
-  // Heartbeat for online presence — every 60 seconds
-  useEffect(() => {
-    if (!closerInfo.b2cUserId) return;
-    sendHeartbeat(closerInfo.b2cUserId);
-    const interval = setInterval(() => {
-      sendHeartbeat(closerInfo.b2cUserId!);
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [closerInfo.b2cUserId]);
+  // Heartbeat for online presence — every 60 seconds. Does NOT pause when
+  // hidden — heartbeat is the source of "user is online" truth and must
+  // fire even with the window minimized.
+  usePoll(
+    'heartbeat',
+    async () => {
+      if (!closerInfo.b2cUserId) return;
+      await sendHeartbeat(closerInfo.b2cUserId);
+    },
+    60_000,
+    { enabled: !!closerInfo.b2cUserId, pauseWhenHidden: false },
+  );
 
-  // Online user IDs polling — every 30 seconds
-  useEffect(() => {
-    const poll = async () => {
+  // Online user IDs — every 30 seconds; pauses when hidden.
+  usePoll(
+    'onlineUsers',
+    async () => {
       const ids = await getOnlineUserIds();
       setOnlineUserIds(new Set(ids));
-    };
-    poll();
-    const interval = setInterval(poll, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    },
+    30_000,
+  );
 
   const handleNavigateToMessage = useCallback((recipientId: string, recipientName: string, recipientPhotoUrl: string | null) => {
     setDmRecipient({ id: recipientId, name: recipientName, photoUrl: recipientPhotoUrl });
@@ -429,14 +434,13 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Theme sync to floating windows is now handled by ThemeContext.tsx
 
-  // Bot polling — every 3 seconds
-  // Detects call start/end and sends IPC to main process to open/close floating windows
-  useEffect(() => {
-    const poll = async () => {
+  // Bot polling — every 10s (bumped from 3s; see BOT_POLL_INTERVAL).
+  usePoll(
+    'botActiveCall',
+    async () => {
       const call = await getActiveCallForCloserBot(closerInfo.closerId);
 
       if (call) {
-        // Bot is active — clear any pending call-ended prompt
         if (!activeCallStartRef.current) {
           activeCallStartRef.current = Date.now();
         }
@@ -444,7 +448,6 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
         previousCallRef.current = call;
         setCallEndedPending(null);
 
-        // Send IPC to open floating ammo panel (only once per call)
         if (botCallNotifiedRef.current !== call.callId) {
           botCallNotifiedRef.current = call.callId;
           window.electron?.bot?.callStarted({
@@ -458,7 +461,6 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
           });
         }
       } else {
-        // No active call — show soft prompt instead of auto-firing questionnaire
         if (previousCallRef.current && activeCallStartRef.current) {
           const elapsed = (Date.now() - activeCallStartRef.current) / 1000;
           if (elapsed >= MIN_CALL_DURATION) {
@@ -473,12 +475,9 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
         previousCallRef.current = null;
         botCallNotifiedRef.current = null;
       }
-    };
-
-    poll();
-    const interval = setInterval(poll, BOT_POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId, closerInfo.teamId, closerInfo.name]);
+    },
+    BOT_POLL_INTERVAL,
+  );
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);

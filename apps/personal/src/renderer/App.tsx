@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as Sentry from '@sentry/electron/renderer';
+import { usePoll } from './lib/usePoll';
 import {
   loginCloser,
   signupB2CUser,
@@ -135,29 +136,37 @@ function AppContent() {
     sendStartupDiagnostic(info.email);
   };
 
-  // Poll subscription status every 60 seconds — detect cancellation without requiring logout
-  useEffect(() => {
-    if (authState !== 'authenticated' || !closerInfo?.b2cUserId) return;
-    if (closerInfo.subscriptionStatus !== 'active') return; // Already on paywall, no need to poll
-
-    const checkSubscription = async () => {
-      const result = await getSubscriptionStatus(closerInfo.b2cUserId!);
-      // Only revoke if the server definitively said the subscription is inactive.
-      // Ignore network errors — a transient WiFi dropout or sleep/wake should NOT
-      // kick the user to the paywall. The error field is set on network failures
-      // and non-OK HTTP responses, so we skip those entirely.
+  // Poll subscription status — detect cancellation without requiring logout.
+  // Migrated to usePoll for backoff + visibility-pause (task #348). Pauses
+  // automatically when window hidden; no need to poll for a user not at
+  // the screen.
+  usePoll(
+    'subscriptionStatus',
+    async () => {
+      if (!closerInfo?.b2cUserId) return;
+      const result = await getSubscriptionStatus(closerInfo.b2cUserId);
+      // Only revoke if the server definitively said the subscription is
+      // inactive. Ignore network errors — a transient WiFi dropout or
+      // sleep/wake should NOT kick the user to the paywall.
       if (result.error) return;
-      if (result.subscriptionStatus !== 'active' && closerInfo.subscriptionStatus === 'active') {
-        // Subscription was genuinely revoked by the server — update local state to trigger paywall
+      if (
+        result.subscriptionStatus !== 'active' &&
+        closerInfo.subscriptionStatus === 'active'
+      ) {
         const updated = { ...closerInfo, subscriptionStatus: result.subscriptionStatus };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         setCloserInfo(updated);
       }
-    };
-
-    const interval = setInterval(checkSubscription, 60000);
-    return () => clearInterval(interval);
-  }, [authState, closerInfo?.b2cUserId, closerInfo?.subscriptionStatus]);
+    },
+    60_000,
+    {
+      enabled:
+        authState === 'authenticated' &&
+        !!closerInfo?.b2cUserId &&
+        closerInfo?.subscriptionStatus === 'active',
+      immediate: false,
+    },
+  );
 
   // Check for existing session on mount
   useEffect(() => {

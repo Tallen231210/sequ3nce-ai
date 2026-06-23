@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CloserInfo, ActiveBotCall } from '../convex';
+import { usePoll } from '../lib/usePoll';
 import {
   needsCalendarOnboarding,
   getActiveCallForCloserBot,
@@ -126,8 +127,10 @@ const NAV_ITEMS: NavItem[] = [
 
 // Minimum call duration in seconds before showing questionnaire
 const MIN_CALL_DURATION = 30;
-// Bot polling interval in ms
-const BOT_POLL_INTERVAL = 3000;
+// Bot polling interval — bumped from 3s to 10s. Closer's UX tolerance for
+// "the floating ammo panel opens" is ~10s; the previous 3s was overkill
+// and was a top contributor to Convex action saturation (task #348).
+const BOT_POLL_INTERVAL = 10_000;
 
 interface MeetingBotHubProps {
   closerInfo: CloserInfo;
@@ -182,33 +185,32 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
     return () => { unsub?.(); };
   }, [closerInfo.closerId]);
 
-  // Poll coaching unread counts (feedback + shared moments)
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const [fc, mc] = await Promise.all([
-          getUnreadFeedbackCount(closerInfo.closerId),
-          getUnreadSharedMomentsCount(closerInfo.closerId),
-        ]);
-        setCoachingUnreadCount(fc + mc);
-      } catch {}
-    };
-    poll();
-    const interval = setInterval(poll, 30000);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId]);
+  // Poll coaching unread counts (feedback + shared moments) — 30s.
+  // Note: CoachingView ALSO polls these endpoints when open. Pre-fix
+  // both fired simultaneously; per task #348's audit we drop the
+  // CoachingView duplicate and keep this one as the source of truth.
+  usePoll(
+    'coachingUnread',
+    async () => {
+      const [fc, mc] = await Promise.all([
+        getUnreadFeedbackCount(closerInfo.closerId),
+        getUnreadSharedMomentsCount(closerInfo.closerId),
+      ]);
+      setCoachingUnreadCount(fc + mc);
+    },
+    30_000,
+  );
 
-  // Poll pending questionnaire count for Calls tab badge
-  useEffect(() => {
-    const poll = () => {
-      getPendingQuestionnaireInfo(closerInfo.closerId).then((info) => {
-        setCallsPendingCount(info.count);
-      }).catch(() => {});
-    };
-    poll();
-    const interval = setInterval(poll, 10000);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId]);
+  // Poll pending questionnaire count for Calls tab badge — 15s
+  // (bumped from 10s; matches the CallHistoryView bump for consistency).
+  usePoll(
+    'callsPending',
+    async () => {
+      const info = await getPendingQuestionnaireInfo(closerInfo.closerId);
+      setCallsPendingCount(info.count);
+    },
+    15_000,
+  );
 
   // Clear badge when switching to Messages or Coaching tab
   useEffect(() => {
@@ -218,14 +220,14 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Theme sync to floating windows is now handled by ThemeContext.tsx
 
-  // Bot polling — every 3 seconds
-  // Detects call start/end and sends IPC to main process to open/close floating windows
-  useEffect(() => {
-    const poll = async () => {
+  // Bot polling — every 10s (bumped from 3s; see BOT_POLL_INTERVAL).
+  // Detects call start/end and sends IPC to open/close floating windows.
+  usePoll(
+    'botActiveCall',
+    async () => {
       const call = await getActiveCallForCloserBot(closerInfo.closerId);
 
       if (call) {
-        // Bot is active — clear any pending call-ended prompt
         if (!activeCallStartRef.current) {
           activeCallStartRef.current = Date.now();
         }
@@ -233,7 +235,6 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
         previousCallRef.current = call;
         setCallEndedPending(null);
 
-        // Send IPC to open floating ammo panel (only once per call)
         if (botCallNotifiedRef.current !== call.callId) {
           botCallNotifiedRef.current = call.callId;
           window.electron?.bot?.callStarted({
@@ -247,7 +248,6 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
           });
         }
       } else {
-        // No active call — show soft prompt instead of auto-firing questionnaire
         if (previousCallRef.current && activeCallStartRef.current) {
           const elapsed = (Date.now() - activeCallStartRef.current) / 1000;
           if (elapsed >= MIN_CALL_DURATION) {
@@ -262,12 +262,9 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
         previousCallRef.current = null;
         botCallNotifiedRef.current = null;
       }
-    };
-
-    poll();
-    const interval = setInterval(poll, BOT_POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId, closerInfo.teamId, closerInfo.name]);
+    },
+    BOT_POLL_INTERVAL,
+  );
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);

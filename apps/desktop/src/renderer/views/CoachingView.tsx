@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { usePoll } from '../lib/usePoll';
 import type {
   CloserInfo,
   FeedbackCall,
@@ -67,25 +68,24 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
     });
   }, [closerInfo.closerId]);
 
-  // Poll unread counts
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const [fc, mc] = await Promise.all([
-          getUnreadFeedbackCount(closerInfo.closerId),
-          getUnreadSharedMomentsCount(closerInfo.closerId),
-        ]);
-        if (!mountedRef.current) return;
-        setUnreadFeedback(fc);
-        setUnreadMoments(mc);
-      } catch (err) {
-        console.error('[Coaching] Unread poll error:', err);
-      }
-    };
-    poll();
-    const interval = setInterval(poll, 30000);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId]);
+  // Poll unread counts — migrated to usePoll for backoff + jitter +
+  // visibility-pause (task #348). Note: MeetingBotHub ALSO polls these
+  // endpoints into a combined count for the sidebar badge. The
+  // duplicate is a known Phase 2 cleanup; for now both run but with
+  // jitter so they don't collide.
+  usePoll(
+    'coachingUnreadSplit',
+    async () => {
+      const [fc, mc] = await Promise.all([
+        getUnreadFeedbackCount(closerInfo.closerId),
+        getUnreadSharedMomentsCount(closerInfo.closerId),
+      ]);
+      if (!mountedRef.current) return;
+      setUnreadFeedback(fc);
+      setUnreadMoments(mc);
+    },
+    30_000,
+  );
 
   // Mark shared moments as seen when tab switches to it
   useEffect(() => {

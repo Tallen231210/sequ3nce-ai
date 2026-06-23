@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { usePoll } from '../../lib/usePoll';
 import {
   getChannelPosts,
   getNewPostCount,
@@ -43,15 +44,17 @@ export function Channels({ userId, channels, isAdmin }: ChannelsProps) {
     }
   }, [selectedChannel?._id]);
 
-  // Poll for new posts
-  useEffect(() => {
-    const interval = setInterval(async () => {
+  // Poll for new posts — task #348
+  usePoll(
+    'newPostCount',
+    async () => {
       if (!mountedRef.current) return;
       const count = await getNewPostCount(lastFetchedRef.current);
       if (mountedRef.current) setNewPostCount(count);
-    }, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, []);
+    },
+    POLL_INTERVAL,
+    { immediate: false },
+  );
 
   const loadPosts = async (channelId: string) => {
     setLoading(true);

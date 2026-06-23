@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { usePoll } from '../lib/usePoll';
 import type {
   CloserInfo,
   FeedbackCall,
@@ -67,25 +68,22 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
     });
   }, [closerInfo.closerId]);
 
-  // Poll unread counts
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const [fc, mc] = await Promise.all([
-          getUnreadFeedbackCount(closerInfo.closerId),
-          getUnreadSharedMomentsCount(closerInfo.closerId),
-        ]);
-        if (!mountedRef.current) return;
-        setUnreadFeedback(fc);
-        setUnreadMoments(mc);
-      } catch (err) {
-        console.error('[Coaching] Unread poll error:', err);
-      }
-    };
-    poll();
-    const interval = setInterval(poll, 30000);
-    return () => clearInterval(interval);
-  }, [closerInfo.closerId]);
+  // Poll unread counts — migrated to usePoll (task #348). Same
+  // duplicate-with-MeetingBotHub trade-off as the B2B side; jitter
+  // mutes the impact.
+  usePoll(
+    'coachingUnreadSplit',
+    async () => {
+      const [fc, mc] = await Promise.all([
+        getUnreadFeedbackCount(closerInfo.closerId),
+        getUnreadSharedMomentsCount(closerInfo.closerId),
+      ]);
+      if (!mountedRef.current) return;
+      setUnreadFeedback(fc);
+      setUnreadMoments(mc);
+    },
+    30_000,
+  );
 
   // Mark shared moments as seen when tab switches to it
   useEffect(() => {

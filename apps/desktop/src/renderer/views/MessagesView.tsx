@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CloserInfo, ChatMessage } from '../convex';
+import { usePoll } from '../lib/usePoll';
 import {
   getMessagesForCloser,
   sendMessageFromCloser,
@@ -38,7 +39,6 @@ export function MessagesView({ closerInfo }: MessagesViewProps) {
   const [text, setText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   const scrollToBottom = useCallback(() => {
@@ -46,30 +46,27 @@ export function MessagesView({ closerInfo }: MessagesViewProps) {
   }, []);
 
   const fetchMessages = useCallback(async () => {
-    try {
-      const data = await getMessagesForCloser(closerInfo.closerId, 100);
-      if (mountedRef.current) setMessages(data);
-    } catch (error) {
-      console.error('[Messages] Failed to fetch:', error);
-    }
+    const data = await getMessagesForCloser(closerInfo.closerId, 100);
+    if (mountedRef.current) setMessages(data);
   }, [closerInfo.closerId]);
 
-  // Initial load + start polling
+  // Initial load on mount
   useEffect(() => {
     setIsLoading(true);
     fetchMessages().then(() => {
       setIsLoading(false);
       setTimeout(scrollToBottom, 100);
     });
-
-    // Poll every 3 seconds for new messages
-    pollIntervalRef.current = setInterval(fetchMessages, 3000);
-
     return () => {
       mountedRef.current = false;
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
-  }, [fetchMessages, scrollToBottom]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchMessages]);
+
+  // Poll for new messages — bumped from 3s to 15s. Unread badge doesn't
+  // need 3s freshness; this was a top contributor to Convex saturation
+  // (task #348). Pauses when window hidden.
+  usePoll('messages', fetchMessages, 15_000, { immediate: false });
 
   // Mark as read after 2 seconds of viewing
   useEffect(() => {
