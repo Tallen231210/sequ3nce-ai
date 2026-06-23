@@ -75,14 +75,31 @@ export const getOnboardingState = query({
 
     // Grandfather established customers — anyone older than 14 days
     // signed up before this onboarding pack shipped (or has been
-    // around long enough that prompting them to "book your onboarding
-    // call" is awkward). For them, treat bookedCall as already done
-    // so they don't get the banner / sidebar nag. Tracked: future-us
-    // can shorten this window once everyone's been migrated.
+    // around long enough that the pack is irrelevant). For them, mark
+    // EVERY item complete + force completed=true so they don't see
+    // the banner OR the sidebar tab regardless of whether they have
+    // GHL/Hyros/Slack configured. The pack is meant for fresh signups
+    // only; established customers got their onboarding manually via
+    // Tyler and shouldn't be re-prompted now.
     const GRANDFATHER_AGE_MS = 14 * 24 * 60 * 60 * 1000;
     const isEstablished =
       Date.now() - team._creationTime > GRANDFATHER_AGE_MS;
-    const bookedCall = team.onboardingBookedCallAt != null || isEstablished;
+
+    if (isEstablished) {
+      return {
+        bookedCall: true,
+        addedCloser: true,
+        installedGhl: true,
+        connectedHyros: true,
+        configuredSlack: true,
+        completed: true,
+        bannerDismissed: team.onboardingBannerDismissedAt != null,
+        bookingUrl: process.env.ONBOARDING_BOOKING_URL ?? null,
+        onboardingCompletedAt: team.onboardingCompletedAt ?? null,
+      };
+    }
+
+    const bookedCall = team.onboardingBookedCallAt != null;
     const completed =
       bookedCall &&
       addedCloser &&
