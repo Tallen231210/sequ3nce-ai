@@ -6,7 +6,8 @@
 //
 // The checklist auto-checks against existing state across multiple tables so
 // the manager never has to "tick" anything except "Book onboarding call"
-// (manual self-check since we haven't wired Tyler's Calendly webhook yet).
+// (manual self-check since we haven't wired the calendar provider's
+// booking webhook yet — GHL/Calendly/Cal.com all expose this).
 //
 // State is owned by the teams table (4 optional fields added in schema):
 //   - welcomeEmailSentAt          → set by welcomeEmail action, idempotency
@@ -101,10 +102,14 @@ export const getOnboardingState = query({
       // Empty string => not configured yet; client hides the CTA gracefully.
       //
       // IMPORTANT: This is a CONVEX env var (set via `npx convex env set
-      // CALENDLY_URL ... --prod`), NOT a Next.js NEXT_PUBLIC_*. Convex
-      // queries run in the Convex runtime which doesn't have access to
-      // Vercel's NEXT_PUBLIC_* env vars.
-      calendlyUrl: process.env.CALENDLY_URL ?? null,
+      // ONBOARDING_BOOKING_URL ... --prod`), NOT a Next.js NEXT_PUBLIC_*.
+      // Convex queries run in the Convex runtime which doesn't have access
+      // to Vercel's NEXT_PUBLIC_* env vars.
+      //
+      // Provider-agnostic — Sequ3nce currently uses GoHighLevel's calendar
+      // booking link, but it could be Calendly, Cal.com, or any URL that
+      // accepts a click-through to book a meeting.
+      bookingUrl: process.env.ONBOARDING_BOOKING_URL ?? null,
       onboardingCompletedAt: team.onboardingCompletedAt ?? null,
     };
   },

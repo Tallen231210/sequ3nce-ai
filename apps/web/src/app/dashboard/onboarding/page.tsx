@@ -20,7 +20,7 @@ import {
  * new B2B customer to first value. Most items auto-check by querying
  * existing state (closer count, GHL install status, hyrosApiKey,
  * Slack channel IDs). Only "Book onboarding call" requires a manual
- * self-check since we haven't wired a Calendly webhook yet.
+ * self-check since we haven't wired the calendar provider's webhook yet.
  *
  * When all 5 complete, the page automatically calls markCompleted,
  * which causes:
@@ -125,10 +125,10 @@ export default function OnboardingPage() {
           description="30 minutes with our team. We'll walk you through the platform and configure integrations together."
           action={
             <>
-              {state.calendlyUrl ? (
+              {state.bookingUrl ? (
                 <Button asChild size="sm">
                   <a
-                    href={state.calendlyUrl}
+                    href={state.bookingUrl}
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => void handleMarkBooked()}

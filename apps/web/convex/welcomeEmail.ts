@@ -26,12 +26,12 @@ const FROM_ADDRESS = "Sequ3nce <noreply@noreply.sequ3nce.ai>";
  *
  * Email contents:
  *  - Subject line introduces Sequ3nce
- *  - Primary CTA: book Tyler's onboarding call (Calendly link via env var)
+ *  - Primary CTA: book Tyler's onboarding call (booking link via env var)
  *  - Secondary self-serve steps with deep links into the dashboard
  *  - Footer with manual support fallback
  *
  * If RESEND_API_KEY or NEXT_PUBLIC_CALENDLY_URL aren't set, the email
- * still sends but the Calendly section is omitted — graceful degradation
+ * still sends but the booking section is omitted — graceful degradation
  * so we never block a Stripe webhook on missing config.
  */
 export const sendB2BWelcomeEmail = internalAction({
@@ -59,14 +59,16 @@ export const sendB2BWelcomeEmail = internalAction({
     }
 
     // IMPORTANT: These are CONVEX env vars (set via `npx convex env set
-    // CALENDLY_URL ... --prod`), NOT Next.js NEXT_PUBLIC_*. Welcome
-    // email runs in the Convex action runtime, separate from Vercel.
-    const calendlyUrl = process.env.CALENDLY_URL?.trim();
+    // ONBOARDING_BOOKING_URL ... --prod`), NOT Next.js NEXT_PUBLIC_*.
+    // Welcome email runs in the Convex action runtime, separate from
+    // Vercel. ONBOARDING_BOOKING_URL is provider-agnostic — could point
+    // at GHL, Calendly, Cal.com, etc.
+    const bookingUrl = process.env.ONBOARDING_BOOKING_URL?.trim();
     const dashboardUrl = process.env.APP_URL?.trim() || "https://sequ3nce.ai";
 
     const greetingName = args.managerName?.trim() || "there";
 
-    const calendlyBlock = calendlyUrl
+    const bookingBlock = bookingUrl
       ? `
         <div style="background: #1e293b; border-radius: 10px; padding: 24px; margin: 24px 0; text-align: center;">
           <p style="color: #cbd5e1; font-size: 13px; margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 1px;">
@@ -80,7 +82,7 @@ export const sendB2BWelcomeEmail = internalAction({
             integrations together.
           </p>
           <a
-            href="${calendlyUrl}"
+            href="${bookingUrl}"
             style="display: inline-block; background: white; color: #111; font-weight: 600; padding: 12px 28px; border-radius: 8px; text-decoration: none;"
           >
             Schedule your call →
@@ -95,7 +97,7 @@ export const sendB2BWelcomeEmail = internalAction({
           Hi ${greetingName}, you're in. Here's how to get your team running.
         </p>
 
-        ${calendlyBlock}
+        ${bookingBlock}
 
         <h3 style="font-size: 16px; margin: 28px 0 12px 0;">While you wait — quick self-serve steps</h3>
         <ul style="padding: 0; margin: 0 0 24px 0; list-style: none;">

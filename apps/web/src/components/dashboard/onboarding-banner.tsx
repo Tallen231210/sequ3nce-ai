@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
  *  - they've booked the call (onboardingBookedCallAt set)
  *  - they've dismissed the banner (onboardingBannerDismissedAt set)
  *  - onboarding is fully complete (onboardingCompletedAt set)
- *  - no Calendly URL is configured (graceful degradation pre-env-var)
+ *  - no booking URL is configured (graceful degradation pre-env-var)
  */
 export function OnboardingBanner() {
   const { clerkId, isReady } = useTeam();
@@ -29,7 +29,7 @@ export function OnboardingBanner() {
   const dismissBanner = useMutation(api.onboarding.dismissBanner);
 
   if (!state) return null;
-  if (!state.calendlyUrl) return null;
+  if (!state.bookingUrl) return null;
   if (state.bookedCall || state.bannerDismissed || state.completed) {
     return null;
   }
@@ -64,12 +64,12 @@ export function OnboardingBanner() {
             className="bg-white text-indigo-700 hover:bg-white/90"
           >
             <a
-              href={state.calendlyUrl}
+              href={state.bookingUrl}
               target="_blank"
               rel="noreferrer"
               onClick={() => {
                 // Optimistically mark as booked when they click through.
-                // We can't detect the actual booking without a Calendly
+                // We can't detect the actual booking without a calendar-provider
                 // webhook (deferred), so this is best-effort; they can
                 // always re-book via the checklist page.
                 void handleBooked();
