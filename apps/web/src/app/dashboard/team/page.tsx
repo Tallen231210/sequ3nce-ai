@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, MoreHorizontal, UserPlus, Loader2, Download, Copy, Check, Mail } from "lucide-react";
+import { Users, MoreHorizontal, UserPlus, Loader2, Download, Copy, Check, Mail, Sparkles } from "lucide-react";
 import { useTeam } from "@/hooks/useTeam";
 import { Id } from "../../../../convex/_generated/dataModel";
 import {
@@ -133,7 +133,8 @@ export default function TeamPage() {
     clerkId ? { clerkId } : "skip"
   );
 
-  const addCloserWithPassword = useMutation(api.closers.addCloserWithPassword);
+  const addCloserViaMagicLink = useMutation(api.closers.addCloserViaMagicLink);
+  const requestMagicLink = useAction(api.closerMagicLink.requestCloserMagicLink);
   const removeCloser = useMutation(api.closers.removeCloser);
   const updateCloserStatus = useMutation(api.closers.updateCloserStatus);
 
@@ -192,24 +193,13 @@ export default function TeamPage() {
       return;
     }
 
-    if (!password.trim()) {
-      setError("Password is required");
-      return;
-    }
-
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      await addCloserWithPassword({
+      await addCloserViaMagicLink({
         clerkId,
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        password: password.trim(),
       });
 
       // Update Stripe seats (current active/pending count + 1 for the new closer)
@@ -220,8 +210,10 @@ export default function TeamPage() {
       setName("");
       setEmail("");
       setPassword("");
-      setSuccess(`${name} has been added to your team`);
-      setTimeout(() => setSuccess(null), 3000);
+      setSuccess(
+        `${name} added — we sent them a sign-in link at ${email.trim().toLowerCase()}`,
+      );
+      setTimeout(() => setSuccess(null), 5000);
     } catch (err: unknown) {
       // Show user-friendly error messages, log technical details for debugging
       console.error("Error adding closer:", err);
@@ -280,6 +272,26 @@ export default function TeamPage() {
       setCloserToDelete(null);
     } catch (err) {
       console.error("Failed to remove closer:", err);
+    }
+  };
+
+  // Re-send a magic-link email to an existing closer. Triggered from
+  // the closer-row dropdown. Backend's 60s rate-limit returns retryAfter
+  // if the manager spams it.
+  const handleResendMagicLink = async (email: string) => {
+    try {
+      const result = await requestMagicLink({ email });
+      if (!result.success) {
+        setError(result.error ?? "Failed to send sign-in link");
+        setTimeout(() => setError(null), 5000);
+        return;
+      }
+      setSuccess(`Sign-in link sent to ${email}`);
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      console.error("Resend magic link failed:", err);
+      setError("Failed to send sign-in link");
+      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -399,21 +411,10 @@ export default function TeamPage() {
                     disabled={isSubmitting}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Min 6 characters"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={isSubmitting}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    The closer will use this password to log into the desktop app
-                  </p>
-                </div>
               </div>
+              <p className="text-xs text-muted-foreground">
+                We&apos;ll email them a one-click sign-in link as soon as you add them — no password to share.
+              </p>
 
               {error && (
                 <p className="text-sm text-red-600">{error}</p>
@@ -484,6 +485,12 @@ export default function TeamPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleResendMagicLink(closer.email)}
+                            >
+                              <Sparkles className="h-4 w-4 mr-2" strokeWidth={1.5} />
+                              Resend sign-in link
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
                                 setDownloadDialogCloser({

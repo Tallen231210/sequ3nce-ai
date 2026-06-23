@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { Id, Doc } from "./_generated/dataModel";
+import { api } from "./_generated/api";
 
 // Simple password hashing using Web Crypto API (available in Convex runtime)
 // In production, you might want to use a more robust solution
@@ -1179,7 +1180,11 @@ export const loginCloser = mutation({
   },
 });
 
-// Add a closer with initial password (called by manager)
+/**
+ * @deprecated Use `addCloserViaMagicLink` instead. Kept for emergency
+ * / legacy API consumers. The manager UI no longer surfaces this path.
+ * New closers should be magic-link only — no password at rest.
+ */
 export const addCloserWithPassword = mutation({
   args: {
     clerkId: v.string(),
@@ -1226,6 +1231,60 @@ export const addCloserWithPassword = mutation({
       status: "pending",
       passwordHash,
       invitedAt: Date.now(),
+    });
+
+    return { closerId };
+  },
+});
+
+/**
+ * Manager-facing add-closer mutation. Creates the closer record (no
+ * passwordHash) and schedules a magic-link email so the closer can
+ * sign in immediately. Used by /dashboard/team's add form.
+ *
+ * Email send is fire-and-forget — failures are logged inside the
+ * action but don't roll back the closer creation. Manager can always
+ * use the "Resend sign-in link" dropdown action.
+ */
+export const addCloserViaMagicLink = mutation({
+  args: {
+    clerkId: v.string(),
+    email: v.string(),
+    name: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ closerId: Id<"closers"> }> => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) throw new Error("User not found");
+
+    const email = args.email.trim().toLowerCase();
+    if (!email || !args.name.trim()) {
+      throw new Error("Name and email are required");
+    }
+
+    const existing = await ctx.db
+      .query("closers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+    if (existing && existing.teamId === user.teamId) {
+      throw new Error("You already added a closer with that email");
+    }
+
+    const closerId = await ctx.db.insert("closers", {
+      email,
+      name: args.name.trim(),
+      teamId: user.teamId,
+      status: "pending",
+      invitedAt: Date.now(),
+    });
+
+    // Fire the magic-link email asynchronously. We use scheduler instead
+    // of awaiting so the mutation returns instantly; the email lands a
+    // moment later.
+    await ctx.scheduler.runAfter(0, api.closerMagicLink.requestCloserMagicLink, {
+      email,
     });
 
     return { closerId };

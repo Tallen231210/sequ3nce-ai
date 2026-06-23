@@ -185,10 +185,19 @@ contextBridge.exposeInMainWorld('electron', {
   },
 } as ElectronAPI);
 
-// Auth callback from deep link
-ipcRenderer.on('auth:callback', (_event, data: { token?: string; error?: string }) => {
-  window.dispatchEvent(new CustomEvent('auth:callback', { detail: data }));
-});
+// Auth callback from deep link. Carries either:
+//   { email, code }   — magic-link 6-digit flow (preferred)
+//   { token, email? } — legacy auth-callback
+//   { error }         — failure
+ipcRenderer.on(
+  'auth:callback',
+  (
+    _event,
+    data: { email?: string; code?: string; token?: string; error?: string },
+  ) => {
+    window.dispatchEvent(new CustomEvent('auth:callback', { detail: data }));
+  },
+);
 
 // Google Calendar connected callback from deep link
 ipcRenderer.on('calendar:connected', (_event, data: { closerId: string }) => {

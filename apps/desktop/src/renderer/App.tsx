@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import * as Sentry from '@sentry/electron/renderer';
 import {
   loginCloser,
+  requestMagicLink,
+  verifyMagicLink,
   logClientError,
   type CloserInfo,
 } from './convex';
@@ -74,12 +76,19 @@ export function App() {
   );
 }
 
+type LoginMode = 'magic_email' | 'magic_code' | 'password';
+
 function AppContent() {
   const [authState, setAuthState] = useState<AuthState>('initial_loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [closerInfo, setCloserInfo] = useState<CloserInfo | null>(null);
   const [authError, setAuthError] = useState<AuthError | null>(null);
+  // Magic-link state — separate from password so a closer can switch
+  // between flows without losing their email field.
+  const [loginMode, setLoginMode] = useState<LoginMode>('magic_email');
+  const [magicCode, setMagicCode] = useState('');
+  const [magicMessage, setMagicMessage] = useState<string | null>(null);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -132,6 +141,29 @@ function AppContent() {
     setCloserInfo(null);
   };
 
+  // Shared post-auth side effects. Both password login and magic-link
+  // verify funnel through here so we don't drift the two code paths.
+  const completeLogin = (closer: CloserInfo) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(closer));
+    setCloserInfo(closer);
+    setAuthState('authenticated');
+
+    Sentry.setUser({
+      id: closer.closerId,
+      email: closer.email,
+      username: closer.name,
+    });
+
+    window.electron.training?.setCloserId(closer.closerId);
+    window.electron.ammo?.setTeamId(closer.teamId);
+    window.electron.schedule?.setCloserEmail(closer.email);
+    window.electron.schedule?.setTeamId(closer.teamId);
+    window.electron.chat?.startPolling(closer.closerId, closer.teamId, closer.name);
+    window.electron.app.setWindowSize?.(1200, 800);
+
+    sendStartupDiagnostic(closer.email);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
@@ -141,35 +173,8 @@ function AppContent() {
 
     try {
       const result = await loginCloser(email.trim().toLowerCase(), password.trim());
-
       if (result.success && result.closer) {
-        // Save closer info to localStorage
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(result.closer));
-        setCloserInfo(result.closer);
-        setAuthState('authenticated');
-
-        // Tag every subsequent Sentry event with which closer is logged in.
-        Sentry.setUser({
-          id: result.closer.closerId,
-          email: result.closer.email,
-          username: result.closer.name,
-        });
-
-        // Set closer ID for the training window
-        window.electron.training?.setCloserId(result.closer.closerId);
-        // Set team ID for resources in ammo tracker
-        window.electron.ammo?.setTeamId(result.closer.teamId);
-        // Set closer email and team ID for the schedule window
-        window.electron.schedule?.setCloserEmail(result.closer.email);
-        window.electron.schedule?.setTeamId(result.closer.teamId);
-        // Start chat polling for live messages
-        window.electron.chat?.startPolling(result.closer.closerId, result.closer.teamId, result.closer.name);
-
-        // Size window for bot hub
-        window.electron.app.setWindowSize?.(1200, 800);
-
-        // Send startup diagnostic (helps debug remote issues)
-        sendStartupDiagnostic(result.closer.email);
+        completeLogin(result.closer);
       } else {
         setAuthError({
           message: result.error || 'Login failed. Please try again.',
@@ -184,6 +189,84 @@ function AppContent() {
       setAuthState('error');
     }
   };
+
+  // Magic-link: ask the backend to email a 6-digit code.
+  const handleRequestMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+
+    setAuthState('logging_in');
+    setAuthError(null);
+    setMagicMessage(null);
+
+    try {
+      const result = await requestMagicLink(email.trim().toLowerCase());
+      if (result.success) {
+        setLoginMode('magic_code');
+        setMagicMessage(`Check ${email.trim().toLowerCase()} for a 6-digit code. It expires in 15 minutes.`);
+        setAuthState('login');
+      } else {
+        setAuthError({
+          message: result.error || 'Could not send sign-in link. Try again.',
+        });
+        setAuthState('error');
+      }
+    } catch (err) {
+      console.error('[App] requestMagicLink error:', err);
+      setAuthError({
+        message: 'Network error. Please check your connection and try again.',
+      });
+      setAuthState('error');
+    }
+  };
+
+  // Magic-link: verify the 6-digit code.
+  const handleVerifyMagicLink = async (codeOverride?: string) => {
+    const code = (codeOverride ?? magicCode).trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || code.length !== 6) return;
+
+    setAuthState('logging_in');
+    setAuthError(null);
+
+    try {
+      const result = await verifyMagicLink(normalizedEmail, code);
+      if (result.success && result.closer) {
+        completeLogin(result.closer);
+      } else {
+        setAuthError({
+          message: result.error || 'Invalid or expired code.',
+        });
+        setAuthState('error');
+      }
+    } catch (err) {
+      console.error('[App] verifyMagicLink error:', err);
+      setAuthError({
+        message: 'Network error. Please check your connection and try again.',
+      });
+      setAuthState('error');
+    }
+  };
+
+  // Listen for the sequ3nce:// auth-callback deep-link from main process
+  // (preload dispatches as a CustomEvent on window). When the closer
+  // clicks "Open in Sequ3nce app" in the email, we get { email, code }
+  // here and can auto-verify without typing.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ email?: string; code?: string }>)
+        .detail;
+      if (!detail?.email || !detail?.code) return;
+      setEmail(detail.email);
+      setMagicCode(detail.code);
+      setLoginMode('magic_code');
+      void handleVerifyMagicLink(detail.code);
+    };
+    window.addEventListener('auth:callback', handler as EventListener);
+    return () =>
+      window.removeEventListener('auth:callback', handler as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = () => {
     clearSession();
@@ -227,11 +310,18 @@ function AppContent() {
   if (authState === 'login' || authState === 'logging_in') {
     return (
       <LoginScreen
+        mode={loginMode}
+        setMode={setLoginMode}
         email={email}
         setEmail={setEmail}
         password={password}
         setPassword={setPassword}
-        onSubmit={handleLogin}
+        magicCode={magicCode}
+        setMagicCode={setMagicCode}
+        magicMessage={magicMessage}
+        onPasswordSubmit={handleLogin}
+        onMagicRequest={handleRequestMagicLink}
+        onMagicVerify={() => handleVerifyMagicLink()}
         isLoading={authState === 'logging_in'}
       />
     );
@@ -253,11 +343,18 @@ function AppContent() {
   // Fallback - shouldn't reach here
   return (
     <LoginScreen
+      mode={loginMode}
+      setMode={setLoginMode}
       email={email}
       setEmail={setEmail}
       password={password}
       setPassword={setPassword}
-      onSubmit={handleLogin}
+      magicCode={magicCode}
+      setMagicCode={setMagicCode}
+      magicMessage={magicMessage}
+      onPasswordSubmit={handleLogin}
+      onMagicRequest={handleRequestMagicLink}
+      onMagicVerify={() => handleVerifyMagicLink()}
       isLoading={false}
     />
   );
@@ -266,15 +363,36 @@ function AppContent() {
 // ==================== Auth Screens ====================
 
 interface LoginScreenProps {
+  mode: LoginMode;
+  setMode: (m: LoginMode) => void;
   email: string;
   setEmail: (email: string) => void;
   password: string;
   setPassword: (password: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
+  magicCode: string;
+  setMagicCode: (code: string) => void;
+  magicMessage: string | null;
+  onPasswordSubmit: (e: React.FormEvent) => void;
+  onMagicRequest: (e: React.FormEvent) => void;
+  onMagicVerify: () => void;
   isLoading: boolean;
 }
 
-function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoading }: LoginScreenProps) {
+function LoginScreen({
+  mode,
+  setMode,
+  email,
+  setEmail,
+  password,
+  setPassword,
+  magicCode,
+  setMagicCode,
+  magicMessage,
+  onPasswordSubmit,
+  onMagicRequest,
+  onMagicVerify,
+  isLoading,
+}: LoginScreenProps) {
   return (
     <div className="h-screen flex flex-col bg-white text-black">
       <div className="titlebar h-8 border-b border-gray-200" />
@@ -285,8 +403,9 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
           <p className="text-gray-500 text-sm mt-4">Sign in to your account</p>
         </div>
 
-        <form onSubmit={onSubmit} className="w-full max-w-xs space-y-4">
-          <div>
+        {/* Mode 1 — request magic link (email only) */}
+        {mode === 'magic_email' && (
+          <form onSubmit={onMagicRequest} className="w-full max-w-xs space-y-4">
             <input
               type="email"
               value={email}
@@ -296,9 +415,97 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
               disabled={isLoading}
               autoFocus
             />
-          </div>
+            <button
+              type="submit"
+              disabled={isLoading || !email.trim()}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
+                  Sending...
+                </>
+              ) : (
+                'Send me a sign-in link'
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('password')}
+              className="w-full text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Sign in with password instead
+            </button>
+          </form>
+        )}
 
-          <div>
+        {/* Mode 2 — enter the 6-digit code */}
+        {mode === 'magic_code' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onMagicVerify();
+            }}
+            className="w-full max-w-xs space-y-4"
+          >
+            {magicMessage && (
+              <p className="text-xs text-gray-600 text-center bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                {magicMessage}
+              </p>
+            )}
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={magicCode}
+              onChange={(e) =>
+                setMagicCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+              }
+              placeholder="6-digit code"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black text-center text-2xl tracking-[0.5em] font-mono placeholder-gray-400 placeholder:tracking-normal placeholder:text-sm placeholder:font-sans focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+              disabled={isLoading}
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={isLoading || magicCode.length !== 6}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('magic_email');
+                setMagicCode('');
+              }}
+              className="w-full text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Use a different email
+            </button>
+          </form>
+        )}
+
+        {/* Mode 3 — legacy password sign-in (for closers added pre-magic-link) */}
+        {mode === 'password' && (
+          <form onSubmit={onPasswordSubmit} className="w-full max-w-xs space-y-4">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
+              disabled={isLoading}
+              autoFocus
+            />
             <input
               type="password"
               value={password}
@@ -307,26 +514,34 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-black placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-all duration-150"
               disabled={isLoading}
             />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading || !email.trim() || !password.trim()}
-            className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
-                Signing in...
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={isLoading || !email.trim() || !password.trim()}
+              className="w-full py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-gray-400 border-t-white rounded-full" />
+                  Signing in...
+                </>
+              ) : (
+                'Sign In'
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('magic_email')}
+              className="w-full text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Forgot password? Send me a sign-in link
+            </button>
+          </form>
+        )}
 
         <p className="mt-8 text-xs text-gray-400 text-center max-w-xs">
-          Use the email and password your manager provided
+          {mode === 'password'
+            ? 'Use the email and password your manager provided.'
+            : 'We’ll email you a one-time sign-in code.'}
         </p>
       </div>
     </div>

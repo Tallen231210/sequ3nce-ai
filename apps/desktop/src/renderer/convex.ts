@@ -67,6 +67,91 @@ export async function loginCloser(email: string, password: string): Promise<Logi
   }
 }
 
+/**
+ * Request a magic-link sign-in code by email. Closer receives a 6-digit
+ * code + sequ3nce:// deep-link in their inbox. Single-use, 15-min expiry,
+ * 60s resend cooldown enforced server-side.
+ */
+export async function requestMagicLink(
+  email: string,
+): Promise<{ success: boolean; error?: string; retryAfter?: number }> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/closer/magicLink/request?_=${Date.now()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
+        body: JSON.stringify({ email }),
+      },
+    );
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errorData.error || "Failed to send sign-in link",
+      };
+    }
+    return (await response.json()) as {
+      success: boolean;
+      error?: string;
+      retryAfter?: number;
+    };
+  } catch (error) {
+    console.error("[Convex] requestMagicLink failed:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "requestMagicLink", integration: "convex" },
+    });
+    return {
+      success: false,
+      error: "Network error. Please check your connection.",
+    };
+  }
+}
+
+/**
+ * Verify a magic-link code. On success, server returns CloserInfo
+ * matching loginCloser's shape, so the App.tsx persist-to-localStorage
+ * path is identical.
+ */
+export async function verifyMagicLink(
+  email: string,
+  code: string,
+): Promise<LoginResult> {
+  try {
+    const response = await fetch(
+      `${CONVEX_SITE_URL}/closer/magicLink/verify?_=${Date.now()}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
+        body: JSON.stringify({ email, code }),
+      },
+    );
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errorData.error || "Verification failed",
+      };
+    }
+    return (await response.json()) as LoginResult;
+  } catch (error) {
+    console.error("[Convex] verifyMagicLink failed:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "verifyMagicLink", integration: "convex" },
+    });
+    return {
+      success: false,
+      error: "Network error. Please check your connection.",
+    };
+  }
+}
+
 // Get closer info by email (for desktop app login)
 // Uses HTTP Action endpoint - simple HTTP GET, no WebSocket needed
 export async function getCloserByEmail(email: string): Promise<CloserInfo | null> {

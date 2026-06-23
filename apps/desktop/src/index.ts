@@ -534,26 +534,36 @@ const createTray = (): void => {
 // Web app URL for auth
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://sequ3nce.ai';
 
-// Send magic link - opens browser to web app's auth page
+// Send magic link via the Convex backend. The renderer normally calls
+// the backend directly via apps/desktop/src/renderer/convex.ts:requestMagicLink,
+// but this IPC handler stays around for any legacy callers + the
+// `window.electron.auth.sendMagicLink` API exposed in preload.ts.
 async function sendMagicLink(email: string): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log('[Auth] Opening browser for magic link auth:', email);
+    console.log('[Auth] Requesting magic link for:', email);
     pendingMagicLinkEmail = email;
 
-    // Build the auth URL
-    const authUrl = new URL(`${WEB_APP_URL}/desktop-auth`);
-    authUrl.searchParams.set('email', email);
-    authUrl.searchParams.set('redirect', `${PROTOCOL_NAME}://auth-callback`);
-
-    // Open the browser to the auth page
-    shell.openExternal(authUrl.toString());
-
-    return { success: true };
+    const response = await fetch(
+      'https://ideal-ram-982.convex.site/closer/magicLink/request',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      },
+    );
+    if (!response.ok) {
+      return { success: false, error: 'Failed to send sign-in link' };
+    }
+    const result = (await response.json()) as {
+      success: boolean;
+      error?: string;
+    };
+    return result;
   } catch (error) {
-    console.error('[Auth] Error opening auth URL:', error);
+    console.error('[Auth] Error sending magic link:', error);
     return {
       success: false,
-      error: 'Failed to open login page. Please try again.'
+      error: 'Failed to send sign-in link. Please try again.',
     };
   }
 }
@@ -594,21 +604,31 @@ function handleAuthCallback(url: string): void {
     // Get the email from the callback
     const email = parsedUrl.searchParams.get('email') || pendingMagicLinkEmail;
 
-    // Check for token or session
+    // Magic-link 6-digit code (sequ3nce://auth-callback?email=X&code=123456).
+    // Preferred path going forward — backend verifyCloserMagicLink consumes
+    // {email, code} and returns CloserInfo.
+    const code = parsedUrl.searchParams.get('code');
+
+    // Legacy token (clerk ticket or generic "authenticated"). Kept so any
+    // older email links still resolve to the same auth:callback event
+    // shape; renderer ignores token when code is present.
     const token = parsedUrl.searchParams.get('token') ||
                   parsedUrl.searchParams.get('__clerk_ticket') ||
-                  'authenticated'; // Fallback token if link was clicked
+                  'authenticated';
 
-    if (token && email) {
-      console.log('[Auth] Auth successful for:', email);
-      // Update the pending email
+    if (email && code) {
+      console.log('[Auth] Magic-link callback for:', email);
+      pendingMagicLinkEmail = email;
+      mainWindow?.webContents.send('auth:callback', { email, code });
+    } else if (token && email) {
+      console.log('[Auth] Legacy auth callback for:', email);
       pendingMagicLinkEmail = email;
       mainWindow?.webContents.send('auth:callback', { token, email });
     } else if (token) {
-      console.log('[Auth] Auth successful (no email in callback)');
+      console.log('[Auth] Legacy auth callback (no email)');
       mainWindow?.webContents.send('auth:callback', { token });
     } else {
-      console.error('[Auth] No token in callback');
+      console.error('[Auth] No token or code in callback');
       mainWindow?.webContents.send('auth:callback', { error: 'Invalid callback. Please try again.' });
     }
   } catch (error) {

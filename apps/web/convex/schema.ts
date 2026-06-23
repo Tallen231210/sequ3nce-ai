@@ -291,6 +291,12 @@ export default defineSchema({
     lastLoginAt: v.optional(v.number()), // Track last desktop app login
     lastSeenAt: v.optional(v.number()), // Updated when desktop app polls for messages (for "last active" indicator)
     sharedMomentsSeenAt: v.optional(v.number()), // When closer last viewed "Shared with You"
+    // Magic-link auth — closer sign-in via emailed 6-digit code (or
+    // sequ3nce:// deep-link). Optional + additive; legacy password closers
+    // still use passwordHash. See convex/closerMagicLink.ts for the flow.
+    magicLinkCodeHash: v.optional(v.string()), // SHA-256 of latest 6-digit code
+    magicLinkExpiresAt: v.optional(v.number()), // Unix ms, 15 min from issue
+    magicLinkLastSentAt: v.optional(v.number()), // For 60s resend cooldown
   })
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])

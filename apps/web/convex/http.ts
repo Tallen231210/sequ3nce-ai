@@ -165,6 +165,137 @@ http.route({
   }),
 });
 
+// ============================================================================
+// Closer magic-link auth — request a 6-digit code by email
+// ============================================================================
+http.route({
+  path: "/closer/magicLink/request",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { email } = await request.json();
+      if (!email) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Email is required" }),
+          {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      }
+      const result = await ctx.runAction(
+        api.closerMagicLink.requestCloserMagicLink,
+        { email },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    } catch (error) {
+      console.error("[/closer/magicLink/request] failed:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: "Request failed" }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+  }),
+});
+
+http.route({
+  path: "/closer/magicLink/request",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
+// ============================================================================
+// Closer magic-link auth — verify a 6-digit code, returns CloserInfo
+// ============================================================================
+http.route({
+  path: "/closer/magicLink/verify",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { email, code } = await request.json();
+      if (!email || !code) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Email and code are required",
+          }),
+          {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      }
+      const result = await ctx.runMutation(
+        api.closerMagicLink.verifyCloserMagicLink,
+        { email, code },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      });
+    } catch (error) {
+      console.error("[/closer/magicLink/verify] failed:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: "Verification failed" }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        },
+      );
+    }
+  }),
+});
+
+http.route({
+  path: "/closer/magicLink/verify",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
+
 // POST endpoint to change closer password (from desktop app)
 http.route({
   path: "/changePassword",
