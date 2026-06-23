@@ -115,6 +115,10 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       mainConfig,
+      // Use a different port from Next.js dev (which lives on 3000) so the
+      // web + desktop dev servers can run side-by-side without colliding.
+      port: 3030,
+      loggerPort: 9020,
       // Allow all connections in dev mode - the default CSP is too restrictive
       devContentSecurityPolicy: "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * ws: wss: https:;",
       renderer: {

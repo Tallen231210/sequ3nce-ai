@@ -23,7 +23,10 @@ import type { Id } from "./_generated/dataModel";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_REGEX = /^\d{6}$/;
-const MAGIC_LINK_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
+// 7 days. Most common use case is the manager-adds-closer flow where
+// the closer might not check email immediately. Single-use enforcement
+// + brute-force lockout + CSPRNG codes make a longer window safe.
+const MAGIC_LINK_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000; // 60s between requests to the same email
 // Brute-force guard. With a 6-digit code (900k space), 5 wrong tries
 // before forced re-request closes the brute-force vector. The closer
@@ -184,11 +187,13 @@ export const requestCloserMagicLink = action({
       return { success: false, error: "Email service not configured" };
     }
 
-    // Deep-link the desktop app already knows how to receive — the
-    // existing handleAuthCallback in apps/desktop/src/index.ts:580-618
-    // parses these params and pushes them to the renderer via the
-    // auth:callback IPC event.
-    const deepLink = `sequ3nce://auth-callback?email=${encodeURIComponent(
+    // Route the deep-link through an https intermediary at /launch.
+    // Email clients (Gmail, Outlook) strip anchor hrefs with custom
+    // protocols like sequ3nce:// as a security measure; the /launch
+    // page fires the protocol via browser JS, which is allowed.
+    // Falls back to download instructions if the app isn't installed.
+    const appUrl = process.env.APP_URL?.trim() || "https://sequ3nce.ai";
+    const launchUrl = `${appUrl}/launch?email=${encodeURIComponent(
       normalizedEmail,
     )}&code=${result.code}`;
 
@@ -196,30 +201,71 @@ export const requestCloserMagicLink = action({
     const greetingName = result.closerName?.trim() || "there";
 
     const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
-        <h2 style="color: #111; margin-bottom: 8px;">Sign in to Sequ3nce</h2>
-        <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
-          Hi ${greetingName}, here's your sign-in code. It expires in 15 minutes.
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 40px 20px;">
+        <h2 style="color: #111; margin-bottom: 8px;">Welcome to Sequ3nce 👋</h2>
+        <p style="color: #555; font-size: 15px; line-height: 1.5; margin-bottom: 32px;">
+          Hi ${greetingName}, your manager added you to the team.
+          Two quick steps to get signed in:
         </p>
-        <div style="background: #f5f5f5; border-radius: 10px; padding: 28px; text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 11px; font-weight: 600; color: #666; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;">
-            Your sign-in code
+
+        <!-- STEP 1: DOWNLOAD -->
+        <div style="background: #fafafa; border: 1px solid #eaeaea; border-radius: 12px; padding: 24px; margin-bottom: 16px;">
+          <div style="font-size: 11px; font-weight: 700; color: #6366f1; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+            Step 1
           </div>
-          <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #111; font-family: ui-monospace, SFMono-Regular, monospace;">${codeFormatted}</span>
+          <h3 style="color: #111; font-size: 17px; margin: 0 0 8px 0;">
+            Download the desktop app
+          </h3>
+          <p style="color: #555; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">
+            Mac or Windows — we auto-detect your platform.
+          </p>
+          <div style="text-align: center;">
+            <a
+              href="https://sequ3nce.ai/download"
+              style="display: inline-block; background: #111; color: white; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 10px; font-size: 15px;"
+            >
+              Download Sequ3nce →
+            </a>
+          </div>
         </div>
-        <p style="color: #666; font-size: 14px; margin-bottom: 12px; text-align: center;">
-          Reading this on the same computer where you'll use Sequ3nce?
-        </p>
-        <div style="text-align: center; margin-bottom: 28px;">
-          <a
-            href="${deepLink}"
-            style="display: inline-block; background: #111; color: white; text-decoration: none; font-weight: 600; padding: 12px 24px; border-radius: 8px;"
-          >
-            Open in Sequ3nce app
-          </a>
+
+        <!-- STEP 2: SIGN IN -->
+        <div style="background: #fafafa; border: 1px solid #eaeaea; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+          <div style="font-size: 11px; font-weight: 700; color: #6366f1; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+            Step 2
+          </div>
+          <h3 style="color: #111; font-size: 17px; margin: 0 0 8px 0;">
+            Come back here and sign in
+          </h3>
+          <p style="color: #555; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">
+            Once the app is installed, return to this email and click below.
+            You'll be signed in automatically.
+          </p>
+          <div style="text-align: center;">
+            <a
+              href="${launchUrl}"
+              style="display: inline-block; background: #111; color: white; text-decoration: none; font-weight: 600; padding: 14px 28px; border-radius: 10px; font-size: 15px;"
+            >
+              Sign in to Sequ3nce →
+            </a>
+          </div>
         </div>
-        <p style="color: #999; font-size: 12px;">
-          If you didn't request this, you can safely ignore this email.
+
+        <!-- FALLBACK: code entry for cross-device -->
+        <div style="border-top: 1px solid #eee; padding-top: 20px; margin-bottom: 24px;">
+          <p style="color: #666; font-size: 13px; line-height: 1.5; margin: 0 0 12px 0;">
+            <strong>Reading this on your phone or a different computer?</strong>
+            Open the desktop app on the computer where you'll use Sequ3nce,
+            click <em>Send me a sign-in link</em>, and enter this code:
+          </p>
+          <div style="background: #f5f5f5; border-radius: 10px; padding: 18px; text-align: center;">
+            <span style="font-size: 26px; font-weight: 700; letter-spacing: 8px; color: #111; font-family: ui-monospace, SFMono-Regular, monospace;">${codeFormatted}</span>
+          </div>
+        </div>
+
+        <p style="color: #999; font-size: 12px; line-height: 1.5;">
+          This invitation is valid for 7 days. If you didn't expect this email,
+          you can safely ignore it.
         </p>
       </div>
     `;
@@ -234,7 +280,7 @@ export const requestCloserMagicLink = action({
         body: JSON.stringify({
           from: "Sequ3nce <noreply@noreply.sequ3nce.ai>",
           to: [normalizedEmail],
-          subject: "Sign in to Sequ3nce",
+          subject: "You've been added to Sequ3nce — click to sign in",
           html,
         }),
       });
