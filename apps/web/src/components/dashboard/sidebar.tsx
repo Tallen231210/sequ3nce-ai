@@ -21,6 +21,7 @@ import {
   Zap,
   Briefcase,
   UserCheck,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
@@ -48,7 +49,7 @@ const baseNavigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { team } = useTeam();
+  const { team, clerkId } = useTeam();
 
   const flaggedCount = useQuery(
     api.callReviews.getFlaggedCallCount,
@@ -62,6 +63,24 @@ export function Sidebar() {
 
   const callReviewsBadge = (flaggedCount?.count ?? 0) + (unreadReplyCount?.count ?? 0);
 
+  // Onboarding nav item — only visible until all 5 checklist items
+  // complete. Badge shows "N/5" progress so manager can see how close
+  // they are without opening the page.
+  const onboardingState = useQuery(
+    api.onboarding.getOnboardingState,
+    clerkId ? { clerkId } : "skip",
+  );
+  const onboardingComplete = onboardingState?.completed === true;
+  const onboardingProgress = onboardingState
+    ? [
+        onboardingState.bookedCall,
+        onboardingState.addedCloser,
+        onboardingState.installedGhl,
+        onboardingState.connectedHyros,
+        onboardingState.configuredSlack,
+      ].filter(Boolean).length
+    : 0;
+
   // Build navigation dynamically — add integration sync pages before Billing when enabled.
   // GHL Sync is intentionally hidden — its UI was non-functional and is being absorbed
   // into the new Setter Data tab. The underlying disposition-sync code remains in place
@@ -74,13 +93,24 @@ export function Sidebar() {
   const filteredBase = team?.setterDataEnabled === false
     ? baseNavigation.filter((item) => item.href !== "/dashboard/setter-data")
     : baseNavigation;
-  const navigation = integrationItems.length > 0
+  const baseWithIntegrations = integrationItems.length > 0
     ? [
         ...filteredBase.slice(0, 11), // Dashboard through Team (now includes Setter Data)
         ...integrationItems,
         ...filteredBase.slice(11), // Billing, Settings
       ]
     : filteredBase;
+  // Onboarding item slots right after Dashboard, only when not yet
+  // complete — once the team finishes the 5-step checklist the item
+  // disappears from the nav so it doesn't clutter the sidebar forever.
+  const navigation =
+    onboardingState && !onboardingComplete
+      ? [
+          baseWithIntegrations[0], // Dashboard
+          { name: "Onboarding", href: "/dashboard/onboarding", icon: Sparkles },
+          ...baseWithIntegrations.slice(1),
+        ]
+      : baseWithIntegrations;
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-background">
@@ -101,6 +131,10 @@ export function Sidebar() {
               item.name === "Call Reviews" && callReviewsBadge
                 ? callReviewsBadge
                 : 0;
+            const onboardingBadgeText =
+              item.name === "Onboarding"
+                ? `${onboardingProgress}/5`
+                : null;
 
             return (
               <Link
@@ -125,6 +159,18 @@ export function Sidebar() {
                     )}
                   >
                     {badge}
+                  </span>
+                )}
+                {onboardingBadgeText && (
+                  <span
+                    className={cn(
+                      "ml-auto flex h-5 min-w-7 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+                      isActive
+                        ? "bg-white/20 text-primary-foreground"
+                        : "bg-indigo-100 text-indigo-700"
+                    )}
+                  >
+                    {onboardingBadgeText}
                   </span>
                 )}
               </Link>

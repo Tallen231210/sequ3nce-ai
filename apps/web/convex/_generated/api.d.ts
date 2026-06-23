@@ -79,6 +79,7 @@ import type * as liveStreams from "../liveStreams.js";
 import type * as meetingBot from "../meetingBot.js";
 import type * as metaAdsConfig from "../metaAdsConfig.js";
 import type * as metaAdsInternal from "../metaAdsInternal.js";
+import type * as onboarding from "../onboarding.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
@@ -109,6 +110,8 @@ import type * as stream from "../stream.js";
 import type * as streamActions from "../streamActions.js";
 import type * as teams from "../teams.js";
 import type * as trainingPlaylists from "../trainingPlaylists.js";
+import type * as welcomeEmail from "../welcomeEmail.js";
+import type * as welcomeEmailInternal from "../welcomeEmailInternal.js";
 import type * as zoomOAuth from "../zoomOAuth.js";
 
 import type {
@@ -189,6 +192,7 @@ declare const fullApi: ApiFromModules<{
   meetingBot: typeof meetingBot;
   metaAdsConfig: typeof metaAdsConfig;
   metaAdsInternal: typeof metaAdsInternal;
+  onboarding: typeof onboarding;
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
@@ -219,6 +223,8 @@ declare const fullApi: ApiFromModules<{
   streamActions: typeof streamActions;
   teams: typeof teams;
   trainingPlaylists: typeof trainingPlaylists;
+  welcomeEmail: typeof welcomeEmail;
+  welcomeEmailInternal: typeof welcomeEmailInternal;
   zoomOAuth: typeof zoomOAuth;
 }>;
 

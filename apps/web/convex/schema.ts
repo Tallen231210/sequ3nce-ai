@@ -237,6 +237,14 @@ export default defineSchema({
     setterCoverageGapDiscordWebhookUrl: v.optional(v.string()),
     setterCoverageGapHourLocal: v.optional(v.number()), // 0-23 in team.timezone, default 9
     setterCoverageGapMinLeadsThreshold: v.optional(v.number()), // default 3
+
+    // Post-signup onboarding pack — drives welcome email idempotency,
+    // dashboard banner visibility, and the /dashboard/onboarding checklist.
+    // All optional + additive; null/undefined means "not yet" for each.
+    welcomeEmailSentAt: v.optional(v.number()),
+    onboardingBookedCallAt: v.optional(v.number()),
+    onboardingBannerDismissedAt: v.optional(v.number()),
+    onboardingCompletedAt: v.optional(v.number()),
   })
     .index("by_stripe_customer", ["stripeCustomerId"]),
 

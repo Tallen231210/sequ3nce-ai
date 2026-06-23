@@ -281,6 +281,28 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     plan: "active",
   });
 
+  // Fire the B2B welcome email. Idempotent inside the action (checks
+  // team.welcomeEmailSentAt); Stripe retries won't double-send.
+  // Wrapped in try/catch so an email-infra hiccup never causes the
+  // webhook to 500, which would make Stripe keep retrying.
+  try {
+    const managerEmail = session.customer_details?.email ?? "";
+    const managerName = session.customer_details?.name ?? undefined;
+    if (managerEmail) {
+      await convex.action(api.welcomeEmail.scheduleB2BWelcomeEmail, {
+        stripeCustomerId: customerId,
+        managerEmail,
+        managerName,
+      });
+    } else {
+      console.warn(
+        `[stripe webhook] No manager email on session ${session.id} — welcome email skipped`,
+      );
+    }
+  } catch (err) {
+    console.error("[stripe webhook] Welcome email failed (non-fatal):", err);
+  }
+
   console.log(`Checkout completed for customer ${customerId}`);
 }
 
