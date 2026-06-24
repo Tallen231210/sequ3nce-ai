@@ -244,22 +244,25 @@ function AppContent() {
 
     try {
       const result = await verifyMagicLink(normalizedEmail, code);
-      if (!result.success) {
-        setAuthError({
-          message: result.error || 'Invalid or expired code.',
-        });
-        setAuthState('error');
-        return;
-      }
-      if (result.kind === 'signed_in') {
+      // Use explicit kind check — TS doesn't narrow the discriminated
+      // union well off `!result.success` when two of the three variants
+      // share `success: true`. Branch on `kind` instead.
+      if (result.success && result.kind === 'signed_in') {
         completeLogin(result.closer);
         return;
       }
-      // Multi-team case: stash choices + token, show picker.
-      setTeamChoices(result.choices);
-      setPickerToken(result.pickerToken);
-      setLoginMode('team_picker');
-      setAuthState('login');
+      if (result.success && result.kind === 'team_picker') {
+        setTeamChoices(result.choices);
+        setPickerToken(result.pickerToken);
+        setLoginMode('team_picker');
+        setAuthState('login');
+        return;
+      }
+      // Remaining branch: success === false (failure variant)
+      const errorMessage =
+        ('error' in result && result.error) || 'Invalid or expired code.';
+      setAuthError({ message: errorMessage });
+      setAuthState('error');
     } catch (err) {
       console.error('[App] verifyMagicLink error:', err);
       setAuthError({
