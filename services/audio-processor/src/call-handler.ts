@@ -16,6 +16,7 @@ import {
   getBotExistingCallId,
   getBotConfigForAudioProcessor,
   pinCloserParticipantId,
+  saveCallArtifactsFromAudioProcessor,
 } from "./convex.js";
 import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
@@ -771,15 +772,29 @@ export class CallHandler {
       logger.warn(`No audio chunks collected for call ${this.session.metadata.callId} - no recording to upload`);
     }
 
-    // Mark call as completed in Convex
+    // Save artifacts to Convex. The terminal call.status="completed" transition is
+    // gated on bot.call_ended / bot.done webhooks for source=recall (Bug 2 fix —
+    // transient WebSocket drops must not split a single bot session into two call
+    // records). For source=closer (no Recall bot, legacy desktop flow), the audio
+    // processor remains the sole completion authority.
     if (this.convexCallId) {
-      logger.info(`Completing call in Convex: ${this.convexCallId}, recordingUrl=${recordingUrl ? 'set' : 'empty'}`);
-      await completeCall(
-        this.convexCallId,
-        recordingUrl,
-        this.session.fullTranscript,
-        duration
-      );
+      if (this.source === "recall") {
+        logger.info(`Saving recall call artifacts in Convex: ${this.convexCallId}, recordingUrl=${recordingUrl ? 'set' : 'empty'} (status transition deferred to bot lifecycle webhook)`);
+        await saveCallArtifactsFromAudioProcessor(
+          this.convexCallId,
+          recordingUrl,
+          this.session.fullTranscript,
+          duration,
+        );
+      } else {
+        logger.info(`Completing call in Convex: ${this.convexCallId}, recordingUrl=${recordingUrl ? 'set' : 'empty'}`);
+        await completeCall(
+          this.convexCallId,
+          recordingUrl,
+          this.session.fullTranscript,
+          duration
+        );
+      }
     }
 
     logger.info(`Call ended: ${this.session.metadata.callId} (duration: ${duration}s, chunks: ${audioChunkCount}, hasRecording: ${!!recordingUrl})`);

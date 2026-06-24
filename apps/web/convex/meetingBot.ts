@@ -1108,11 +1108,26 @@ export const completeCallFromBot = internalMutation({
       return { success: true };
     }
 
+    // Bug 3 fix — duration accuracy.
+    // Use Recall's authoritative bot timestamps (bot.joinedAt → bot.endedAt) as the
+    // canonical wall-clock duration for the call. This is what Tyler wants: timer
+    // matches the bot's actual in-meeting time, not the audio processor's WebSocket
+    // session time (which can drift on reconnects). Falls back to the existing
+    // duration value if either bot timestamp is missing (legacy bots, dispatch
+    // failed mid-flight, or non-bot calls).
+    let canonicalDuration: number | undefined = args.duration;
+    if (call.meetingBotId) {
+      const bot = await ctx.db.get(call.meetingBotId);
+      if (bot?.joinedAt && bot?.endedAt && bot.endedAt > bot.joinedAt) {
+        canonicalDuration = Math.floor((bot.endedAt - bot.joinedAt) / 1000);
+      }
+    }
+
     await ctx.db.patch(args.callId, {
       status: "completed",
       endedAt: args.endedAt,
       ...(args.recordingUrl && { recordingUrl: args.recordingUrl }),
-      ...(args.duration && { duration: args.duration }),
+      ...(canonicalDuration && { duration: canonicalDuration }),
     });
 
     // Schedule AI summary generation with 60s delay to let transcript fully flush
@@ -1453,6 +1468,26 @@ export const getExcludedEvents = query({
 // Get a bot's existing linked callId (used by audio processor for reconnection)
 // If the bot already has a call record, returns it so the audio processor can
 // resume the existing call instead of creating a duplicate.
+//
+// Resume policy (architectural fix for Bug 2 — call fragmentation):
+//   1. Bot itself is still active in Recall → ALWAYS return the existing callId,
+//      regardless of how stale call.status looks. The bot is the source of truth;
+//      a transient WebSocket close should never split the recording.
+//   2. Bot is terminal (completed/failed/etc.) — fall through to the legacy
+//      auto-completed dedup window, now widened from 2 → 30 minutes for safety.
+//
+// Recall's bot.call_ended / bot.done webhooks are the only authority on
+// terminal call.status now (see saveCallArtifactsFromAudioProcessor); this query
+// just exposes the bot's truth to the audio processor on reconnect.
+const BOT_ACTIVE_STATUSES = new Set([
+  "scheduled",
+  "joining",
+  "active",
+  "ended_by_user",
+  "in_waiting_room",
+]);
+const AUTO_COMPLETE_DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 min — widened from 2 min
+
 export const getBotCallId = query({
   args: { botId: v.string() },
   handler: async (ctx, args) => {
@@ -1465,21 +1500,27 @@ export const getBotCallId = query({
     const call = await ctx.db.get(bot.callId);
     if (!call) return null;
 
-    // Active call — return it (existing behavior)
+    // Bot is still in the meeting per Recall — always resume into this call.
+    // This is the primary fix for fragmentation: even if call.status="completed"
+    // got set by some race, the bot says it's still recording, so any new
+    // WebSocket connection MUST resume into the existing call record.
+    if (BOT_ACTIVE_STATUSES.has(bot.status)) {
+      return { callId: bot.callId.toString(), botActive: true };
+    }
+
+    // Bot ended cleanly but call hasn't transitioned yet — still resume.
     if (call.status !== "completed") {
       return { callId: bot.callId.toString() };
     }
 
-    // Recently auto-completed call (race condition from WebSocket reconnection).
-    // When a bot reconnects, either createCall's safety guard or completeCall's
-    // WebSocket-close handler may have auto-completed the existing call before
-    // getBotCallId runs. Both paths set wasAutoCompleted: true. Legacy fallback
-    // checks the notes marker (older data without the boolean field).
-    const twoMinutesAgo = Date.now() - 2 * 60 * 1000;
+    // Bot is terminal AND call is completed. Belt-and-suspenders dedup window
+    // for tail-end race conditions (bot.call_ended just fired as audio processor
+    // was reconnecting).
+    const dedupCutoff = Date.now() - AUTO_COMPLETE_DEDUP_WINDOW_MS;
     const wasAutoCompleted =
       (call as { wasAutoCompleted?: boolean }).wasAutoCompleted === true ||
       call.notes?.includes("[Auto-completed: new call started]");
-    if (wasAutoCompleted && call.endedAt && call.endedAt > twoMinutesAgo) {
+    if (wasAutoCompleted && call.endedAt && call.endedAt > dedupCutoff) {
       return { callId: bot.callId.toString(), wasAutoCompleted: true };
     }
 

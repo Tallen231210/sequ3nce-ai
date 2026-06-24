@@ -129,6 +129,33 @@ export async function completeCall(
   }
 }
 
+// Save call artifacts (transcript, recording URL, duration) WITHOUT marking the
+// call completed. Used for source=recall: Recall's bot.call_ended / bot.done
+// webhooks are the sole authority on call.status="completed", so a transient
+// WebSocket drop on this side doesn't split a single bot session into two call
+// records. See architectural plan: .claude/plans/meeting-bot-pipeline-fixes.md
+export async function saveCallArtifactsFromAudioProcessor(
+  callId: string,
+  recordingUrl: string,
+  transcript: string,
+  duration: number,
+): Promise<void> {
+  try {
+    await convex.mutation(
+      "calls:saveCallArtifactsFromAudioProcessor" as any,
+      {
+        callId,
+        recordingUrl,
+        transcript,
+        duration,
+      },
+    );
+    logger.info(`Recall call artifacts saved: ${callId}`);
+  } catch (error) {
+    logger.error("Failed to save call artifacts", error);
+  }
+}
+
 export async function getTeamCustomPrompt(teamId: string): Promise<string | undefined> {
   try {
     const team = await convex.query("teams:getTeamById" as any, { teamId });

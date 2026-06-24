@@ -258,6 +258,57 @@ export const addAmmo = mutation({
   },
 });
 
+// Save call artifacts (transcript blob, recording URL, duration) WITHOUT changing
+// call.status. Used by the audio processor for source=recall when its WebSocket
+// closes mid-bot-session. The terminal "completed" transition happens only via
+// bot.call_ended / bot.done webhooks (completeCallFromBot) — that way a transient
+// WebSocket disconnect doesn't prematurely end the call.
+//
+// This is the architectural fix for Bug 2 (single bot session split into two
+// call records). The 6-minute gap between Osi Okpetu's Call A WebSocket-close
+// and Call B WebSocket-reconnect happened because completeCall + getBotCallId's
+// 2-minute dedup window were doing this job. With this mutation, the bot's
+// lifecycle webhook is the sole authority on completion.
+export const saveCallArtifactsFromAudioProcessor = mutation({
+  args: {
+    callId: v.string(),
+    recordingUrl: v.string(),
+    transcript: v.string(),
+    duration: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const callId = args.callId as Id<"calls">;
+    const call = await ctx.db.get(callId);
+    if (!call) return;
+
+    if (args.transcript && args.transcript.trim().length > 0) {
+      await upsertCallContentTx(ctx, {
+        callId,
+        teamId: call.teamId,
+        transcriptText: args.transcript,
+      });
+    }
+
+    const patch: Record<string, any> = {};
+
+    // Only write recordingUrl if incoming is non-empty and current is empty
+    if (args.recordingUrl && !call.recordingUrl) {
+      patch.recordingUrl = args.recordingUrl;
+    }
+
+    // Only write duration if not already set — completeCallFromBot will recompute
+    // it from bot.endedAt - bot.joinedAt as the authoritative value once the bot
+    // actually ends.
+    if (!call.duration && args.duration > 0) {
+      patch.duration = args.duration;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      await ctx.db.patch(callId, patch);
+    }
+  },
+});
+
 // Complete call (when call ends)
 export const completeCall = mutation({
   args: {
