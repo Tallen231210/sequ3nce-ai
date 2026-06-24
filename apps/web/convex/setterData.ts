@@ -1007,6 +1007,7 @@ export const getMySettings = query({
         enabled: team.setterDailyScorecardEnabled ?? false,
         channel: team.setterDailyScorecardChannel,
         slackChannelId: team.setterDailyScorecardSlackChannelId,
+        slackChannelName: team.setterDailyScorecardSlackChannelName,
         discordWebhookUrl: team.setterDailyScorecardDiscordWebhookUrl,
         hourLocal: team.setterDailyScorecardHourLocal,
       },
@@ -1016,6 +1017,7 @@ export const getMySettings = query({
         thresholdMinutes: team.setterUntouchedAlertThresholdMinutes,
         channel: team.setterUntouchedAlertChannel,
         slackChannelId: team.setterUntouchedAlertSlackChannelId,
+        slackChannelName: team.setterUntouchedAlertSlackChannelName,
         discordWebhookUrl: team.setterUntouchedAlertDiscordWebhookUrl,
       },
       // Disposition sync toggle (Phase 3c). When true AND a setterGhl
@@ -1030,6 +1032,7 @@ export const getMySettings = query({
         enabled: team.setterSpeedToLeadEnabled ?? false,
         channel: team.setterSpeedToLeadChannel,
         slackChannelId: team.setterSpeedToLeadSlackChannelId,
+        slackChannelName: team.setterSpeedToLeadSlackChannelName,
         discordWebhookUrl: team.setterSpeedToLeadDiscordWebhookUrl,
         slowThresholdMinutes:
           team.setterSpeedToLeadSlowThresholdMs !== undefined
@@ -1041,6 +1044,7 @@ export const getMySettings = query({
         enabled: team.setterCoverageGapEnabled ?? false,
         channel: team.setterCoverageGapChannel,
         slackChannelId: team.setterCoverageGapSlackChannelId,
+        slackChannelName: team.setterCoverageGapSlackChannelName,
         discordWebhookUrl: team.setterCoverageGapDiscordWebhookUrl,
         hourLocal: team.setterCoverageGapHourLocal,
         minLeads: team.setterCoverageGapMinLeadsThreshold,

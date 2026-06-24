@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
@@ -15,17 +15,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  SlackChannelPicker,
+  type SlackChannelOption,
+} from "@/components/slack/SlackChannelPicker";
 
 interface UntouchedAlertSettings {
   enabled: boolean;
   thresholdMinutes?: number;
   channel?: "slack" | "discord";
   slackChannelId?: string;
+  slackChannelName?: string;
   discordWebhookUrl?: string;
 }
 
 interface UntouchedAlertConfigProps {
   settings: UntouchedAlertSettings;
+  slackChannels: SlackChannelOption[];
+  loadingSlackChannels: boolean;
+  joinError: string | null;
+  onJoinError: (err: string | null) => void;
 }
 
 const THRESHOLD_OPTIONS = [
@@ -36,11 +45,18 @@ const THRESHOLD_OPTIONS = [
   { value: 60, label: "60 minutes" },
 ];
 
-export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
+export function UntouchedAlertConfig({
+  settings,
+  slackChannels,
+  loadingSlackChannels,
+  joinError,
+  onJoinError,
+}: UntouchedAlertConfigProps) {
   const { clerkId } = useTeam();
   const updateConfig = useMutation(
     api.setterDataMutations.updateUntouchedAlertConfig,
   );
+  const joinSlackChannel = useAction(api.slack.joinSlackChannel);
 
   const [enabled, setEnabled] = useState(settings.enabled);
   const [thresholdMinutes, setThresholdMinutes] = useState<string>(
@@ -51,6 +67,9 @@ export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
   );
   const [slackChannelId, setSlackChannelId] = useState(
     settings.slackChannelId ?? "",
+  );
+  const [slackChannelName, setSlackChannelName] = useState(
+    settings.slackChannelName ?? "",
   );
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState(
     settings.discordWebhookUrl ?? "",
@@ -74,6 +93,22 @@ export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
       }
       if (channel === "slack" && slackChannelId.trim()) {
         args.slackChannelId = slackChannelId.trim();
+        if (slackChannelName.trim()) {
+          args.slackChannelName = slackChannelName.trim();
+        }
+        // Auto-join the bot. Surface failures inline via onJoinError, but
+        // don't block the save — private channels can be manually /invite'd.
+        const joinResult = await joinSlackChannel({
+          clerkId,
+          channelId: slackChannelId.trim(),
+        });
+        if (!joinResult.success && joinResult.error) {
+          onJoinError(joinResult.error);
+        } else {
+          onJoinError(null);
+        }
+      } else {
+        onJoinError(null);
       }
       if (channel === "discord" && discordWebhookUrl.trim()) {
         args.discordWebhookUrl = discordWebhookUrl.trim();
@@ -162,16 +197,19 @@ export function UntouchedAlertConfig({ settings }: UntouchedAlertConfigProps) {
               {/* Slack-specific */}
               {channel === "slack" && (
                 <div className="space-y-2">
-                  <Label htmlFor="untouched-slack">Slack channel ID</Label>
-                  <Input
-                    id="untouched-slack"
-                    placeholder="C01234567"
+                  <Label>Slack channel</Label>
+                  <SlackChannelPicker
                     value={slackChannelId}
-                    onChange={(e) => setSlackChannelId(e.target.value)}
+                    selectedChannelName={slackChannelName || undefined}
+                    onChange={(id, name) => {
+                      setSlackChannelId(id);
+                      setSlackChannelName(name);
+                      onJoinError(null);
+                    }}
+                    channels={slackChannels}
+                    loadingChannels={loadingSlackChannels}
+                    joinError={joinError}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Falls back to your default Slack channel if blank.
-                  </p>
                 </div>
               )}
 

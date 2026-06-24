@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
@@ -15,11 +15,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  SlackChannelPicker,
+  type SlackChannelOption,
+} from "@/components/slack/SlackChannelPicker";
 
 interface ScorecardSettings {
   enabled: boolean;
   channel?: "slack" | "discord";
   slackChannelId?: string;
+  slackChannelName?: string;
   discordWebhookUrl?: string;
   hourLocal?: number;
 }
@@ -27,20 +32,32 @@ interface ScorecardSettings {
 interface ScorecardConfigProps {
   scorecard: ScorecardSettings;
   teamTimezone?: string;
+  slackChannels: SlackChannelOption[];
+  loadingSlackChannels: boolean;
+  joinError: string | null;
+  onJoinError: (err: string | null) => void;
 }
 
 export function ScorecardConfig({
   scorecard,
   teamTimezone,
+  slackChannels,
+  loadingSlackChannels,
+  joinError,
+  onJoinError,
 }: ScorecardConfigProps) {
   const { clerkId } = useTeam();
   const updateConfig = useMutation(api.setterDataMutations.updateScorecardConfig);
+  const joinSlackChannel = useAction(api.slack.joinSlackChannel);
 
   const [enabled, setEnabled] = useState(scorecard.enabled);
   const [channel, setChannel] = useState<"slack" | "discord" | "">(
     scorecard.channel ?? "",
   );
   const [slackChannelId, setSlackChannelId] = useState(scorecard.slackChannelId ?? "");
+  const [slackChannelName, setSlackChannelName] = useState(
+    scorecard.slackChannelName ?? "",
+  );
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState(
     scorecard.discordWebhookUrl ?? "",
   );
@@ -65,6 +82,23 @@ export function ScorecardConfig({
       }
       if (channel === "slack" && slackChannelId.trim()) {
         args.slackChannelId = slackChannelId.trim();
+        if (slackChannelName.trim()) {
+          args.slackChannelName = slackChannelName.trim();
+        }
+        // Auto-join the bot. Surface failures inline via onJoinError, but
+        // don't block the save — private channels can be manually /invite'd
+        // and the config is still useful (matches closer-side graceful degrade).
+        const joinResult = await joinSlackChannel({
+          clerkId,
+          channelId: slackChannelId.trim(),
+        });
+        if (!joinResult.success && joinResult.error) {
+          onJoinError(joinResult.error);
+        } else {
+          onJoinError(null);
+        }
+      } else {
+        onJoinError(null);
       }
       if (channel === "discord" && discordWebhookUrl.trim()) {
         args.discordWebhookUrl = discordWebhookUrl.trim();
@@ -132,20 +166,20 @@ export function ScorecardConfig({
               {/* Slack-specific fields */}
               {channel === "slack" && (
                 <div className="space-y-2">
-                  <Label htmlFor="scorecard-slack-channel">
-                    Slack channel ID
-                  </Label>
-                  <Input
-                    id="scorecard-slack-channel"
-                    placeholder="C01234567"
+                  <Label>Slack channel</Label>
+                  <SlackChannelPicker
                     value={slackChannelId}
-                    onChange={(e) => setSlackChannelId(e.target.value)}
+                    selectedChannelName={slackChannelName || undefined}
+                    onChange={(id, name) => {
+                      setSlackChannelId(id);
+                      setSlackChannelName(name);
+                      // Clear stale error when user picks a different channel.
+                      onJoinError(null);
+                    }}
+                    channels={slackChannels}
+                    loadingChannels={loadingSlackChannels}
+                    joinError={joinError}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Right-click any channel in Slack → View channel details →
-                    copy the ID at the bottom. Falls back to your default
-                    Slack channel if left blank.
-                  </p>
                 </div>
               )}
 

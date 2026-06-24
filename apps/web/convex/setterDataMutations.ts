@@ -65,6 +65,9 @@ export const updateScorecardConfig = mutation({
     enabled: v.optional(v.boolean()),
     channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
     slackChannelId: v.optional(v.string()),
+    // Cosmetic display name for the picker round-trip + private-channel
+    // error copy. Not used for notification routing (that's slackChannelId).
+    slackChannelName: v.optional(v.string()),
     discordWebhookUrl: v.optional(v.string()),
     hourLocal: v.optional(v.number()),
   },
@@ -111,6 +114,9 @@ export const updateScorecardConfig = mutation({
     if (args.slackChannelId !== undefined) {
       patch.setterDailyScorecardSlackChannelId = args.slackChannelId;
     }
+    if (args.slackChannelName !== undefined) {
+      patch.setterDailyScorecardSlackChannelName = args.slackChannelName;
+    }
     if (args.discordWebhookUrl !== undefined) {
       patch.setterDailyScorecardDiscordWebhookUrl = args.discordWebhookUrl;
     }
@@ -144,6 +150,9 @@ export const updateUntouchedAlertConfig = mutation({
     thresholdMinutes: v.optional(v.number()),
     channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
     slackChannelId: v.optional(v.string()),
+    // Cosmetic display name for the picker round-trip + private-channel
+    // error copy. Not used for notification routing (that's slackChannelId).
+    slackChannelName: v.optional(v.string()),
     discordWebhookUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -190,6 +199,9 @@ export const updateUntouchedAlertConfig = mutation({
     if (args.slackChannelId !== undefined) {
       patch.setterUntouchedAlertSlackChannelId = args.slackChannelId;
     }
+    if (args.slackChannelName !== undefined) {
+      patch.setterUntouchedAlertSlackChannelName = args.slackChannelName;
+    }
     if (args.discordWebhookUrl !== undefined) {
       patch.setterUntouchedAlertDiscordWebhookUrl = args.discordWebhookUrl;
     }
@@ -220,6 +232,9 @@ export const updateSpeedToLeadConfig = mutation({
     enabled: v.optional(v.boolean()),
     channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
     slackChannelId: v.optional(v.string()),
+    // Cosmetic display name for the picker round-trip + private-channel
+    // error copy. Not used for notification routing (that's slackChannelId).
+    slackChannelName: v.optional(v.string()),
     discordWebhookUrl: v.optional(v.string()),
     slowThresholdMinutes: v.optional(v.number()),
   },
@@ -264,6 +279,9 @@ export const updateSpeedToLeadConfig = mutation({
     if (args.slackChannelId !== undefined) {
       patch.setterSpeedToLeadSlackChannelId = args.slackChannelId;
     }
+    if (args.slackChannelName !== undefined) {
+      patch.setterSpeedToLeadSlackChannelName = args.slackChannelName;
+    }
     if (args.discordWebhookUrl !== undefined) {
       patch.setterSpeedToLeadDiscordWebhookUrl = args.discordWebhookUrl;
     }
@@ -295,6 +313,9 @@ export const updateCoverageGapConfig = mutation({
     enabled: v.optional(v.boolean()),
     channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
     slackChannelId: v.optional(v.string()),
+    // Cosmetic display name for the picker round-trip + private-channel
+    // error copy. Not used for notification routing (that's slackChannelId).
+    slackChannelName: v.optional(v.string()),
     discordWebhookUrl: v.optional(v.string()),
     hourLocal: v.optional(v.number()),
     minLeads: v.optional(v.number()),
@@ -346,6 +367,9 @@ export const updateCoverageGapConfig = mutation({
     }
     if (args.slackChannelId !== undefined) {
       patch.setterCoverageGapSlackChannelId = args.slackChannelId;
+    }
+    if (args.slackChannelName !== undefined) {
+      patch.setterCoverageGapSlackChannelName = args.slackChannelName;
     }
     if (args.discordWebhookUrl !== undefined) {
       patch.setterCoverageGapDiscordWebhookUrl = args.discordWebhookUrl;

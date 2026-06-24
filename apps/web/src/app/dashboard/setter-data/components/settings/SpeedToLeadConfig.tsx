@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
@@ -15,17 +15,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  SlackChannelPicker,
+  type SlackChannelOption,
+} from "@/components/slack/SlackChannelPicker";
 
 interface SpeedToLeadSettings {
   enabled: boolean;
   channel?: "slack" | "discord";
   slackChannelId?: string;
+  slackChannelName?: string;
   discordWebhookUrl?: string;
   slowThresholdMinutes?: number;
 }
 
 interface SpeedToLeadConfigProps {
   settings: SpeedToLeadSettings;
+  slackChannels: SlackChannelOption[];
+  loadingSlackChannels: boolean;
+  joinError: string | null;
+  onJoinError: (err: string | null) => void;
 }
 
 const THRESHOLD_OPTIONS = [
@@ -37,11 +46,18 @@ const THRESHOLD_OPTIONS = [
   { value: 120, label: "2 hours" },
 ];
 
-export function SpeedToLeadConfig({ settings }: SpeedToLeadConfigProps) {
+export function SpeedToLeadConfig({
+  settings,
+  slackChannels,
+  loadingSlackChannels,
+  joinError,
+  onJoinError,
+}: SpeedToLeadConfigProps) {
   const { clerkId } = useTeam();
   const updateConfig = useMutation(
     api.setterDataMutations.updateSpeedToLeadConfig,
   );
+  const joinSlackChannel = useAction(api.slack.joinSlackChannel);
 
   const [enabled, setEnabled] = useState(settings.enabled);
   const [slowThresholdMinutes, setSlowThresholdMinutes] = useState<string>(
@@ -52,6 +68,9 @@ export function SpeedToLeadConfig({ settings }: SpeedToLeadConfigProps) {
   );
   const [slackChannelId, setSlackChannelId] = useState(
     settings.slackChannelId ?? "",
+  );
+  const [slackChannelName, setSlackChannelName] = useState(
+    settings.slackChannelName ?? "",
   );
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState(
     settings.discordWebhookUrl ?? "",
@@ -75,6 +94,20 @@ export function SpeedToLeadConfig({ settings }: SpeedToLeadConfigProps) {
       }
       if (channel === "slack" && slackChannelId.trim()) {
         args.slackChannelId = slackChannelId.trim();
+        if (slackChannelName.trim()) {
+          args.slackChannelName = slackChannelName.trim();
+        }
+        const joinResult = await joinSlackChannel({
+          clerkId,
+          channelId: slackChannelId.trim(),
+        });
+        if (!joinResult.success && joinResult.error) {
+          onJoinError(joinResult.error);
+        } else {
+          onJoinError(null);
+        }
+      } else {
+        onJoinError(null);
       }
       if (channel === "discord" && discordWebhookUrl.trim()) {
         args.discordWebhookUrl = discordWebhookUrl.trim();
@@ -161,16 +194,19 @@ export function SpeedToLeadConfig({ settings }: SpeedToLeadConfigProps) {
 
               {channel === "slack" && (
                 <div className="space-y-2">
-                  <Label htmlFor="speedtolead-slack">Slack channel ID</Label>
-                  <Input
-                    id="speedtolead-slack"
-                    placeholder="C01234567"
+                  <Label>Slack channel</Label>
+                  <SlackChannelPicker
                     value={slackChannelId}
-                    onChange={(e) => setSlackChannelId(e.target.value)}
+                    selectedChannelName={slackChannelName || undefined}
+                    onChange={(id, name) => {
+                      setSlackChannelId(id);
+                      setSlackChannelName(name);
+                      onJoinError(null);
+                    }}
+                    channels={slackChannels}
+                    loadingChannels={loadingSlackChannels}
+                    joinError={joinError}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Falls back to your default Slack channel if blank.
-                  </p>
                 </div>
               )}
 

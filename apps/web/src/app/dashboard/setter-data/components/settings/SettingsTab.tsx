@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useState, useEffect, useCallback } from "react";
+import { useQuery, useAction } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { GhlConnectionCard } from "./GhlConnectionCard";
@@ -12,7 +13,11 @@ import { ConnectionThresholdConfig } from "./ConnectionThresholdConfig";
 import { DispositionSyncConfig } from "./DispositionSyncConfig";
 import { PlaybookConfig } from "./PlaybookConfig";
 import { MetaAdsConfig } from "./MetaAdsConfig";
+import type { SlackChannelOption } from "@/components/slack/SlackChannelPicker";
 import { Loader2 } from "lucide-react";
+
+// Keyed by config name (scorecard, untouchedAlert, speedToLead, coverageGap)
+type AutoJoinErrors = Record<string, string | null>;
 
 export function SettingsTab() {
   const { clerkId } = useTeam();
@@ -24,6 +29,40 @@ export function SettingsTab() {
     api.setterGhlOauth.getMyInstallationStatus,
     clerkId ? { clerkId } : "skip",
   );
+
+  // Lift Slack channel fetch to this parent so all 4 configs share one
+  // list — no redundant fetches, and the channels the user picked on the
+  // closer-side /dashboard/settings page are already here (same workspace,
+  // same API). Mirrors the closer-side pattern.
+  const getSlackChannels = useAction(api.slack.getSlackChannels);
+  const [slackChannels, setSlackChannels] = useState<SlackChannelOption[]>([]);
+  const [loadingSlackChannels, setLoadingSlackChannels] = useState(false);
+  // Per-config auto-join error from joinSlackChannel. Surfaced inline by
+  // the picker (amber alert with actionable /invite copy for private
+  // channels). Each config writes to its own key.
+  const [autoJoinErrors, setAutoJoinErrors] = useState<AutoJoinErrors>({});
+
+  const fetchSlackChannels = useCallback(async () => {
+    if (!clerkId) return;
+    setLoadingSlackChannels(true);
+    try {
+      const result = await getSlackChannels({ clerkId });
+      if ("channels" in result) {
+        setSlackChannels(result.channels);
+      } else {
+        // Most common case: Slack not connected. Picker stays empty;
+        // the configs render fine (user is presumably using Discord or
+        // hasn't picked a channel type yet).
+        setSlackChannels([]);
+      }
+    } finally {
+      setLoadingSlackChannels(false);
+    }
+  }, [clerkId, getSlackChannels]);
+
+  useEffect(() => {
+    fetchSlackChannels();
+  }, [fetchSlackChannels]);
 
   if (settings === undefined || installation === undefined) {
     return (
@@ -50,6 +89,7 @@ export function SettingsTab() {
     enabled: settings.scorecard.enabled,
     channel: narrowedScorecardChannel,
     slackChannelId: settings.scorecard.slackChannelId,
+    slackChannelName: settings.scorecard.slackChannelName,
     discordWebhookUrl: settings.scorecard.discordWebhookUrl,
     hourLocal: settings.scorecard.hourLocal,
   };
@@ -64,6 +104,7 @@ export function SettingsTab() {
     thresholdMinutes: settings.untouchedAlert.thresholdMinutes,
     channel: narrowedUntouchedChannel,
     slackChannelId: settings.untouchedAlert.slackChannelId,
+    slackChannelName: settings.untouchedAlert.slackChannelName,
     discordWebhookUrl: settings.untouchedAlert.discordWebhookUrl,
   };
 
@@ -76,6 +117,7 @@ export function SettingsTab() {
     enabled: settings.speedToLead.enabled,
     channel: narrowedSpeedToLeadChannel,
     slackChannelId: settings.speedToLead.slackChannelId,
+    slackChannelName: settings.speedToLead.slackChannelName,
     discordWebhookUrl: settings.speedToLead.discordWebhookUrl,
     slowThresholdMinutes: settings.speedToLead.slowThresholdMinutes,
   };
@@ -89,10 +131,18 @@ export function SettingsTab() {
     enabled: settings.coverageGap.enabled,
     channel: narrowedCoverageGapChannel,
     slackChannelId: settings.coverageGap.slackChannelId,
+    slackChannelName: settings.coverageGap.slackChannelName,
     discordWebhookUrl: settings.coverageGap.discordWebhookUrl,
     hourLocal: settings.coverageGap.hourLocal,
     minLeads: settings.coverageGap.minLeads,
   };
+
+  // Per-config setter for the auto-join error. Each config calls
+  // onJoinError(message) after save attempts; passing null clears.
+  function makeErrorSetter(key: string) {
+    return (err: string | null) =>
+      setAutoJoinErrors((prev) => ({ ...prev, [key]: err }));
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
@@ -103,12 +153,35 @@ export function SettingsTab() {
       />
       <PlaybookConfig config={settings.scorecardConfig} />
       <MetaAdsConfig metaAds={settings.metaAds} />
-      <ScorecardConfig scorecard={scorecard} teamTimezone={settings.timezone} />
-      <UntouchedAlertConfig settings={untouchedAlert} />
-      <SpeedToLeadConfig settings={speedToLead} />
+      <ScorecardConfig
+        scorecard={scorecard}
+        teamTimezone={settings.timezone}
+        slackChannels={slackChannels}
+        loadingSlackChannels={loadingSlackChannels}
+        joinError={autoJoinErrors.scorecard ?? null}
+        onJoinError={makeErrorSetter("scorecard")}
+      />
+      <UntouchedAlertConfig
+        settings={untouchedAlert}
+        slackChannels={slackChannels}
+        loadingSlackChannels={loadingSlackChannels}
+        joinError={autoJoinErrors.untouchedAlert ?? null}
+        onJoinError={makeErrorSetter("untouchedAlert")}
+      />
+      <SpeedToLeadConfig
+        settings={speedToLead}
+        slackChannels={slackChannels}
+        loadingSlackChannels={loadingSlackChannels}
+        joinError={autoJoinErrors.speedToLead ?? null}
+        onJoinError={makeErrorSetter("speedToLead")}
+      />
       <CoverageGapConfig
         settings={coverageGap}
         teamTimezone={settings.timezone || "America/New_York"}
+        slackChannels={slackChannels}
+        loadingSlackChannels={loadingSlackChannels}
+        joinError={autoJoinErrors.coverageGap ?? null}
+        onJoinError={makeErrorSetter("coverageGap")}
       />
       <ConnectionThresholdConfig
         thresholdSec={settings.setterConnectionThresholdSec}

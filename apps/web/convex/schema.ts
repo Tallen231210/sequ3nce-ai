@@ -175,6 +175,7 @@ export default defineSchema({
     setterDailyScorecardEnabled: v.optional(v.boolean()),
     setterDailyScorecardChannel: v.optional(v.string()), // "slack" | "discord"
     setterDailyScorecardSlackChannelId: v.optional(v.string()),
+    setterDailyScorecardSlackChannelName: v.optional(v.string()), // For picker round-trip + error copy
     setterDailyScorecardDiscordWebhookUrl: v.optional(v.string()),
     setterDailyScorecardHourLocal: v.optional(v.number()), // 0-23 in team.timezone
 
@@ -186,6 +187,7 @@ export default defineSchema({
     setterUntouchedAlertThresholdMinutes: v.optional(v.number()), // default 5
     setterUntouchedAlertChannel: v.optional(v.string()), // "slack" | "discord"
     setterUntouchedAlertSlackChannelId: v.optional(v.string()),
+    setterUntouchedAlertSlackChannelName: v.optional(v.string()), // For picker round-trip + error copy
     setterUntouchedAlertDiscordWebhookUrl: v.optional(v.string()),
 
     // Phase 3 — Disposition sync toggle. When true AND a setterGhlInstallations
@@ -200,6 +202,7 @@ export default defineSchema({
     setterSpeedToLeadEnabled: v.optional(v.boolean()),
     setterSpeedToLeadChannel: v.optional(v.string()), // "slack" | "discord"
     setterSpeedToLeadSlackChannelId: v.optional(v.string()),
+    setterSpeedToLeadSlackChannelName: v.optional(v.string()), // For picker round-trip + error copy
     setterSpeedToLeadDiscordWebhookUrl: v.optional(v.string()),
     // Speed above which the ping renders with ⚠️ (and 3× above renders 🚨).
     // Default 30 min if unset.
@@ -234,6 +237,7 @@ export default defineSchema({
     setterCoverageGapEnabled: v.optional(v.boolean()),
     setterCoverageGapChannel: v.optional(v.string()), // "slack" | "discord"
     setterCoverageGapSlackChannelId: v.optional(v.string()),
+    setterCoverageGapSlackChannelName: v.optional(v.string()), // For picker round-trip + error copy
     setterCoverageGapDiscordWebhookUrl: v.optional(v.string()),
     setterCoverageGapHourLocal: v.optional(v.number()), // 0-23 in team.timezone, default 9
     setterCoverageGapMinLeadsThreshold: v.optional(v.number()), // default 3
