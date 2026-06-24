@@ -281,6 +281,7 @@ export const insertBot = internalMutation({
     scheduledAt: v.optional(v.number()),
     source: v.string(),
     closerName: v.optional(v.string()),
+    closerIsHost: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const botId = await ctx.db.insert("meetingBots", {
@@ -294,6 +295,7 @@ export const insertBot = internalMutation({
       status: "scheduled",
       source: args.source,
       closerName: args.closerName,
+      closerIsHost: args.closerIsHost,
       createdAt: Date.now(),
     });
     return botId;
@@ -394,6 +396,8 @@ export const createBot = action({
     }
 
     // 1. Create the meetingBot record with status "scheduled"
+    // closerIsHost=true: scheduled calls = closer scheduled meeting = is the host.
+    // decideSpeaker uses this to match Recall's participant.is_host correctly.
     const botId: Id<"meetingBots"> = await ctx.runMutation(internal.meetingBot.insertBot, {
       closerId: args.closerId,
       teamId: args.teamId,
@@ -403,6 +407,7 @@ export const createBot = action({
       calendarEventId: args.calendarEventId,
       scheduledAt: args.scheduledAt,
       source: "calendar",
+      closerIsHost: true,
     });
 
     // 2. Get team info for bot name configuration
@@ -670,12 +675,15 @@ export const createQuickBot = action({
   },
   handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
     // 1. Create the meetingBot record with status "scheduled" and source "quick_bot"
+    // closerIsHost=false: QuickBot = closer pasted external Zoom URL = joining as guest,
+    // not host. decideSpeaker uses this to match Recall's participant.is_host correctly.
     const botId: Id<"meetingBots"> = await ctx.runMutation(internal.meetingBot.insertBot, {
       closerId: args.closerId,
       teamId: args.teamId,
       meetingUrl: args.meetingUrl,
       prospectName: args.prospectName,
       source: "quick_bot",
+      closerIsHost: false,
     });
 
     // 2. Get team info for bot name configuration

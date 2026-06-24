@@ -1030,6 +1030,7 @@ export default defineSchema({
     failureReason: v.optional(v.string()), // Why the bot failed (if status === "failed")
     closerName: v.optional(v.string()), // For webhook transcript speaker identification
     closerParticipantId: v.optional(v.union(v.number(), v.string())), // Recall participant.id pinned once we identify the closer — locks per-call speaker consistency
+    closerIsHost: v.optional(v.boolean()), // Whether the closer is the meeting host. true for scheduled bots (closer scheduled the meeting), false for QuickBot (closer joining external Zoom). Used by decideSpeaker to match is_host correctly.
     createdAt: v.number(),
   })
     .index("by_closer", ["closerId"])
