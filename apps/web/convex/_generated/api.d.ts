@@ -63,6 +63,7 @@ import type * as dataMigrations from "../dataMigrations.js";
 import type * as demoSeeds from "../demoSeeds.js";
 import type * as diagnostics from "../diagnostics.js";
 import type * as discord from "../discord.js";
+import type * as founderAdmin from "../founderAdmin.js";
 import type * as ghl from "../ghl.js";
 import type * as ghlActions from "../ghlActions.js";
 import type * as googleCalendar from "../googleCalendar.js";
@@ -177,6 +178,7 @@ declare const fullApi: ApiFromModules<{
   demoSeeds: typeof demoSeeds;
   diagnostics: typeof diagnostics;
   discord: typeof discord;
+  founderAdmin: typeof founderAdmin;
   ghl: typeof ghl;
   ghlActions: typeof ghlActions;
   googleCalendar: typeof googleCalendar;
