@@ -155,18 +155,21 @@ export const getSlackChannels = action({
           return { error: data.error };
         }
 
-        // Only include channels where the bot has been invited
+        // Return every channel the OAuth token can see (public + private channels
+        // the installer added during OAuth). The UI calls joinSlackChannel to
+        // auto-add the bot when a channel is selected (channels:join scope).
+        // Pre-filtering on is_member here was the historical setup blocker —
+        // fresh integrations had the bot in zero channels, so the picker was
+        // empty and the auto-join code was unreachable.
         for (const ch of data.channels || []) {
-          if (ch.is_member) {
-            allChannels.push({ id: ch.id, name: ch.name });
-          }
+          allChannels.push({ id: ch.id, name: ch.name });
         }
 
         cursor = data.response_metadata?.next_cursor || undefined;
       } while (cursor);
 
       allChannels.sort((a, b) => a.name.localeCompare(b.name));
-      console.log("[Slack] Returning channels:", allChannels.length, "where bot is a member");
+      console.log("[Slack] Returning channels:", allChannels.length);
 
       return { channels: allChannels };
     } catch (error) {

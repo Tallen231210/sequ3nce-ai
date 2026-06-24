@@ -1677,7 +1677,7 @@ export default function SettingsPage() {
                         </p>
                         <p className={slackChannels.length === 0 ? "text-amber-600" : "text-blue-600"}>
                           {slackChannels.length === 0
-                            ? "Try disconnecting and reconnecting Slack, then click Refresh above."
+                            ? "No channels in your workspace are visible to Sequ3nce. Make sure your Slack workspace has at least one public channel, then click Refresh."
                             : "Select a channel for each notification type. The bot will automatically join the channel you pick."}
                         </p>
                       </div>
