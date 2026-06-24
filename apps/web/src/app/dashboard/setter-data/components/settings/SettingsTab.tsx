@@ -12,12 +12,10 @@ import { ConnectionThresholdConfig } from "./ConnectionThresholdConfig";
 import { DispositionSyncConfig } from "./DispositionSyncConfig";
 import { PlaybookConfig } from "./PlaybookConfig";
 import { MetaAdsConfig } from "./MetaAdsConfig";
-import { isEarlyAccessTeam } from "@/lib/featureGates";
 import { Loader2 } from "lucide-react";
 
 export function SettingsTab() {
-  const { clerkId, team } = useTeam();
-  const showEarlyAccessCards = isEarlyAccessTeam(team?._id);
+  const { clerkId } = useTeam();
   const settings = useQuery(
     api.setterData.getMySettings,
     clerkId ? { clerkId } : "skip",
@@ -103,12 +101,8 @@ export function SettingsTab() {
         enabled={settings.dispositionSync.enabled}
         hasInstallation={installation.connected && installation.status === "active"}
       />
-      {showEarlyAccessCards && (
-        <>
-          <PlaybookConfig config={settings.scorecardConfig} />
-          <MetaAdsConfig metaAds={settings.metaAds} />
-        </>
-      )}
+      <PlaybookConfig config={settings.scorecardConfig} />
+      <MetaAdsConfig metaAds={settings.metaAds} />
       <ScorecardConfig scorecard={scorecard} teamTimezone={settings.timezone} />
       <UntouchedAlertConfig settings={untouchedAlert} />
       <SpeedToLeadConfig settings={speedToLead} />

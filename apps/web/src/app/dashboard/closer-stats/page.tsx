@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
-import { isEarlyAccessTeam } from "@/lib/featureGates";
 import { Header } from "@/components/dashboard/header";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { RoiTab } from "./components/RoiTab";
@@ -710,8 +709,7 @@ function CloserStatsPageInner() {
     });
   }
 
-  const { clerkId, team, isLoading: isTeamLoading } = useTeam();
-  const showRoiTab = isEarlyAccessTeam(team?._id);
+  const { clerkId, isLoading: isTeamLoading } = useTeam();
   const [dateRange, setDateRange] = useState<DateRange>("last_30_days");
   const [customStart, setCustomStart] = useState<number | undefined>(undefined);
   const [customEnd, setCustomEnd] = useState<number | undefined>(undefined);
@@ -766,32 +764,30 @@ function CloserStatsPageInner() {
         title="Closer Stats"
         description="Performance metrics for your team"
       />
-      {showRoiTab && (
-        <div className="px-6 pt-4">
-          {/* Tab nav */}
-          <nav className="mb-4 flex gap-1 border-b border-border">
-            {(["performance", "roi"] as const).map((id) => (
-              <button
-                key={id}
-                onClick={() => changeTab(id)}
-                className={
-                  "relative px-4 py-2 text-sm font-medium transition-colors " +
-                  (tab === id
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground")
-                }
-              >
-                {id === "performance" ? "Performance" : "ROI"}
-                {tab === id && (
-                  <span className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-foreground" />
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
-      )}
-      {showRoiTab && tab === "roi" && <RoiTab />}
-      {(!showRoiTab || tab === "performance") && <div className="p-6">
+      <div className="px-6 pt-4">
+        {/* Tab nav */}
+        <nav className="mb-4 flex gap-1 border-b border-border">
+          {(["performance", "roi"] as const).map((id) => (
+            <button
+              key={id}
+              onClick={() => changeTab(id)}
+              className={
+                "relative px-4 py-2 text-sm font-medium transition-colors " +
+                (tab === id
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground")
+              }
+            >
+              {id === "performance" ? "Performance" : "ROI"}
+              {tab === id && (
+                <span className="absolute bottom-[-1px] left-0 right-0 h-0.5 bg-foreground" />
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+      {tab === "roi" && <RoiTab />}
+      {tab === "performance" && <div className="p-6">
         {/* Filters */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
