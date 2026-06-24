@@ -54,6 +54,7 @@ import {
   ChevronDown,
   ChevronUp,
   Bot,
+  Lock,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -535,10 +536,11 @@ interface NotificationChannelConfigProps {
   label: string;
   description: string;
   config?: { enabled: boolean; channelId?: string; channelName?: string };
-  channels: { id: string; name: string }[];
+  channels: { id: string; name: string; isPrivate: boolean }[];
   onUpdate: (enabled: boolean, channelId?: string, channelName?: string) => Promise<void>;
   saving: boolean;
   loadingChannels: boolean;
+  joinError?: string | null;
 }
 
 function NotificationChannelConfig({
@@ -550,6 +552,7 @@ function NotificationChannelConfig({
   onUpdate,
   saving,
   loadingChannels,
+  joinError,
 }: NotificationChannelConfigProps) {
   const isEnabled = config?.enabled ?? true; // Default to enabled if not configured
   const selectedChannelId = config?.channelId || "";
@@ -617,7 +620,10 @@ function NotificationChannelConfig({
             <SelectContent>
               {channels.map((channel) => (
                 <SelectItem key={channel.id} value={channel.id}>
-                  #{channel.name}
+                  <span className="flex items-center gap-1.5">
+                    {channel.isPrivate && <Lock className="h-3 w-3 text-muted-foreground" />}
+                    #{channel.name}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -628,6 +634,21 @@ function NotificationChannelConfig({
         <p className="text-xs text-amber-700">
           Please select a channel to receive these notifications
         </p>
+      )}
+      {joinError && (
+        <div className="text-xs p-2 rounded border bg-amber-50 border-amber-200 text-amber-700">
+          {joinError.toLowerCase().includes("private") ? (
+            <>
+              <p className="font-medium mb-1">Sequ3nce can&apos;t auto-join private channels.</p>
+              <p>
+                Open Slack, go to <span className="font-mono">#{config?.channelName ?? "this channel"}</span>,
+                type <span className="font-mono">/invite @Sequ3nce</span>, then save again here.
+              </p>
+            </>
+          ) : (
+            <p>{joinError}</p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -726,9 +747,12 @@ export default function SettingsPage() {
   const [slackOAuthTestResult, setSlackOAuthTestResult] = useState<{ success: boolean; error?: string } | null>(null);
   const [slackOAuthSuccess, setSlackOAuthSuccess] = useState(false);
   const [slackOAuthError, setSlackOAuthError] = useState<string | undefined>();
-  const [slackChannels, setSlackChannels] = useState<{ id: string; name: string }[]>([]);
+  const [slackChannels, setSlackChannels] = useState<{ id: string; name: string; isPrivate: boolean }[]>([]);
   const [loadingSlackChannels, setLoadingSlackChannels] = useState(false);
   const [savingNotificationChannel, setSavingNotificationChannel] = useState<string | null>(null);
+  // Per-notification-type auto-join errors. Surfaced inline next to the failing
+  // picker — replaces the silent console.warn that hid private-channel failures.
+  const [autoJoinErrors, setAutoJoinErrors] = useState<Record<string, string | null>>({});
 
   // Discord states
   const [savingDiscordChannel, setSavingDiscordChannel] = useState<string | null>(null);
@@ -1111,13 +1135,20 @@ export default function SettingsPage() {
   ) => {
     if (!clerkId) return;
     setSavingNotificationChannel(notificationType);
+    // Clear any prior error for this notification type — user is trying again
+    // (either re-picking the same channel after manual /invite, or switching).
+    setAutoJoinErrors((prev) => ({ ...prev, [notificationType]: null }));
     try {
       // Auto-join the bot to the channel if one is selected
       if (channelId && enabled) {
         const joinResult = await joinSlackChannel({ clerkId, channelId });
         if (!joinResult.success && joinResult.error) {
-          console.warn("[Slack] Auto-join failed:", joinResult.error);
-          // Don't block — private channels need manual invite but we still save the config
+          // Surface inline. Config still saves below — for private channels the
+          // user can manually /invite the bot and notifications start firing.
+          setAutoJoinErrors((prev) => ({
+            ...prev,
+            [notificationType]: joinResult.error ?? null,
+          }));
         }
       }
       await updateSlackNotificationChannel({
@@ -1621,6 +1652,7 @@ export default function SettingsPage() {
                       }
                       saving={savingNotificationChannel === "reinforcement"}
                       loadingChannels={loadingSlackChannels}
+                      joinError={autoJoinErrors.reinforcement ?? null}
                     />
 
                     <NotificationChannelConfig
@@ -1634,6 +1666,7 @@ export default function SettingsPage() {
                       }
                       saving={savingNotificationChannel === "callStarted"}
                       loadingChannels={loadingSlackChannels}
+                      joinError={autoJoinErrors.callStarted ?? null}
                     />
 
                     <NotificationChannelConfig
@@ -1647,6 +1680,7 @@ export default function SettingsPage() {
                       }
                       saving={savingNotificationChannel === "callGoingLong"}
                       loadingChannels={loadingSlackChannels}
+                      joinError={autoJoinErrors.callGoingLong ?? null}
                     />
 
                     <NotificationChannelConfig
@@ -1660,6 +1694,7 @@ export default function SettingsPage() {
                       }
                       saving={savingNotificationChannel === "callCompleted"}
                       loadingChannels={loadingSlackChannels}
+                      joinError={autoJoinErrors.callCompleted ?? null}
                     />
 
                     {!loadingSlackChannels && (

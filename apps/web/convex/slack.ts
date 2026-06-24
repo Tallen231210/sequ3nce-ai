@@ -112,7 +112,7 @@ export const getSlackChannels = action({
   args: {
     clerkId: v.string(),
   },
-  handler: async (ctx, args): Promise<{ channels: { id: string; name: string }[] } | { error: string }> => {
+  handler: async (ctx, args): Promise<{ channels: { id: string; name: string; isPrivate: boolean }[] } | { error: string }> => {
     const user = await ctx.runQuery(api.teams.getMyUser, { clerkId: args.clerkId }) as { teamId: string } | null;
     if (!user) {
       return { error: "User not found" };
@@ -129,7 +129,7 @@ export const getSlackChannels = action({
 
     try {
       // Paginate through all channels — Slack defaults to a small page size
-      const allChannels: { id: string; name: string }[] = [];
+      const allChannels: { id: string; name: string; isPrivate: boolean }[] = [];
       let cursor: string | undefined;
 
       do {
@@ -161,8 +161,14 @@ export const getSlackChannels = action({
         // Pre-filtering on is_member here was the historical setup blocker —
         // fresh integrations had the bot in zero channels, so the picker was
         // empty and the auto-join code was unreachable.
+        // isPrivate flows to the UI so the picker can show a lock icon and
+        // surface actionable copy when conversations.join fails on private channels.
         for (const ch of data.channels || []) {
-          allChannels.push({ id: ch.id, name: ch.name });
+          allChannels.push({
+            id: ch.id,
+            name: ch.name,
+            isPrivate: ch.is_private === true,
+          });
         }
 
         cursor = data.response_metadata?.next_cursor || undefined;
