@@ -203,6 +203,56 @@ export async function completeBot(botId: string): Promise<void> {
   }
 }
 
+// Fetch the bot's closer-host config so participant_events.join can deterministically
+// pick the closer's participant.id. Defaults preserve scheduled-call behavior when the
+// field doesn't exist on legacy bots (closerIsHost=true).
+export interface AudioProcessorBotConfig {
+  closerIsHost: boolean;
+  closerName: string | null;
+  botName: string;
+  closerParticipantId: number | string | null;
+}
+
+export async function getBotConfigForAudioProcessor(
+  botId: string,
+): Promise<AudioProcessorBotConfig | null> {
+  try {
+    const result = await convex.query(
+      "meetingBot:getBotConfigForAudioProcessor" as any,
+      { botId },
+    );
+    return (result as AudioProcessorBotConfig) ?? null;
+  } catch (error) {
+    logger.error(`[Bot] Failed to fetch bot config for ${botId}: ${error}`);
+    return null;
+  }
+}
+
+// Pin the closer's Recall participant.id onto the bot record. Idempotent — first
+// call wins. Lets decideSpeaker's Layer 1 catch every subsequent transcript segment
+// regardless of host status, display name, or other fragile signals.
+export async function pinCloserParticipantId(
+  botId: string,
+  participantId: number | string,
+  participantName: string,
+  source: "host_match" | "first_non_host" | null,
+): Promise<void> {
+  try {
+    await convex.mutation(
+      "meetingBot:pinCloserParticipantIdFromAudioProcessor" as any,
+      {
+        botId,
+        closerParticipantId: participantId,
+        participantName,
+        source: source ?? undefined,
+      },
+    );
+  } catch (error) {
+    // Best-effort: don't crash the session.
+    logger.error(`[Bot] Failed to pin closerParticipantId for ${botId}: ${error}`);
+  }
+}
+
 // Get a bot's existing linked callId (for reconnection — reuse instead of creating duplicate)
 export async function getBotExistingCallId(botId: string): Promise<string | null> {
   try {

@@ -14,6 +14,8 @@ import {
   updateTalkTime,
   getLastTranscriptTimestamp,
   getBotExistingCallId,
+  getBotConfigForAudioProcessor,
+  pinCloserParticipantId,
 } from "./convex.js";
 import { analyzeTranscriptForDetection } from "./detection.js";
 import { getManifestoForCall } from "./manifesto.js";
@@ -49,6 +51,16 @@ export class CallHandler {
 
   // Recall.ai participant join order tracking: first non-bot participant = closer
   private firstParticipantJoined: string | null = null;
+  // Bot config cached at session start so participant_events.join can deterministically
+  // pick the closer's participant.id without a round-trip per event. closerIsHost defaults
+  // to true (preserves scheduled-call behavior on bots created before that field existed).
+  private botConfig: {
+    closerIsHost: boolean;
+    closerName: string | null;
+    botName: string;
+    closerParticipantId: number | string | null;
+  } | null = null;
+  private closerParticipantIdPinned = false;
   private maxDurationTimeout: NodeJS.Timeout | null = null; // Auto-end after 2 hours
 
   // Ammo V2: Real-time AI analysis
@@ -152,6 +164,24 @@ export class CallHandler {
         logger.info(`[NEW CALL] Creating new call record for ${this.session.metadata.callId}`);
         this.convexCallId = await createCall(this.session.metadata);
         logger.info(`[NEW CALL] Created with Convex ID: ${this.convexCallId}`);
+      }
+
+      // For Recall.ai bot sessions, fetch the bot's closer-host config so
+      // participant_events.join can deterministically pick the closer's participant.id.
+      // metadata.callId is the Convex meetingBots._id for source=recall (see
+      // handleRecallConnection in index.ts where callMetadata.callId = botId).
+      if (this.source === "recall") {
+        this.botConfig = await getBotConfigForAudioProcessor(this.session.metadata.callId);
+        if (this.botConfig) {
+          this.closerParticipantIdPinned = this.botConfig.closerParticipantId !== null;
+          logger.info(
+            `[Recall] Bot config loaded: closerIsHost=${this.botConfig.closerIsHost}, ` +
+              `closerName="${this.botConfig.closerName}", botName="${this.botConfig.botName}", ` +
+              `alreadyPinned=${this.closerParticipantIdPinned}`,
+          );
+        } else {
+          logger.warn(`[Recall] Bot config fetch returned null for botId=${this.session.metadata.callId} — defaults will apply`);
+        }
       }
 
       // Get team's ammo config (custom categories, offer details, etc.)
@@ -432,14 +462,33 @@ export class CallHandler {
   }
 
   /**
-   * Track participant join order from Recall.ai participant_events.join.
-   * The first non-bot participant is the closer (they host the meeting).
+   * Track participant join order from Recall.ai participant_events.join. Pins the
+   * closer's participant.id on the bot record when we can identify them with high
+   * confidence. Once pinned, decideSpeaker's Layer 1 catches every transcript segment.
+   *
+   * Pin logic uses the bot's `closerIsHost` flag (set at dispatch — true for scheduled
+   * calls, false for QuickBot) combined with participant.is_host:
+   *   - closerIsHost=true  AND participant.is_host=true  → pin
+   *   - closerIsHost=false AND participant.is_host=false (first non-host non-bot) → pin
+   *
+   * Skips participants matching the bot's own name. Caches firstParticipantJoined
+   * for legacy logging compatibility (only used by Speechmatics-flow speaker debug).
    */
-  trackParticipantJoin(participantName: string): void {
-    // Skip the bot itself — match against known bot name patterns
-    const botPatterns = ["sequ3nce.ai", "sequ3nce", "notetaker", "note taker", "meeting bot", "recorder"];
+  trackParticipantJoin(
+    participantName: string,
+    participantId?: number | string,
+    participantIsHost?: boolean,
+  ): void {
+    // Skip the bot itself. Prefer the configured bot name (covers custom names like
+    // "Acme Recorder" that the static fallback patterns won't match); fall back to
+    // the legacy patterns when bot config isn't loaded yet.
     const nameLower = participantName.toLowerCase();
-    if (botPatterns.some(bp => nameLower.includes(bp))) {
+    const configuredBotName = this.botConfig?.botName?.toLowerCase();
+    const legacyPatterns = ["sequ3nce.ai", "sequ3nce", "notetaker", "note taker", "meeting bot", "recorder"];
+    const isBot =
+      (configuredBotName && nameLower.includes(configuredBotName)) ||
+      legacyPatterns.some((bp) => nameLower.includes(bp));
+    if (isBot) {
       logger.info(`[Recall] Skipping bot participant: "${participantName}"`);
       return;
     }
@@ -450,6 +499,45 @@ export class CallHandler {
     } else {
       logger.info(`[Recall] Additional participant joined: "${participantName}"`);
     }
+
+    // Pin closerParticipantId in Convex if we have enough signal. This is the
+    // architectural fix for the QuickBot speaker-attribution bug — the audio processor
+    // sees participant.id from realtime events while the transcript webhook only sees
+    // it for diarized speech (sometimes too late or never).
+    if (this.source !== "recall") return;
+    if (this.closerParticipantIdPinned) return;
+    if (participantId === undefined || participantId === null) return;
+
+    const closerIsHost = this.botConfig?.closerIsHost ?? true;
+    let shouldPin = false;
+    let pinSource: "host_match" | "first_non_host" | null = null;
+    if (typeof participantIsHost === "boolean") {
+      if (closerIsHost && participantIsHost) {
+        shouldPin = true;
+        pinSource = "host_match";
+      } else if (!closerIsHost && !participantIsHost) {
+        shouldPin = true;
+        pinSource = "first_non_host";
+      }
+    }
+
+    if (!shouldPin) return;
+
+    // Mark optimistically so a flurry of join events doesn't double-pin. The Convex
+    // mutation is idempotent anyway, but this saves the round trip.
+    this.closerParticipantIdPinned = true;
+    const botIdForPin = this.session.metadata.callId;
+    pinCloserParticipantId(botIdForPin, participantId, participantName, pinSource).catch(
+      (err) => {
+        // Best-effort: don't crash the session on failure. Reset the flag so the next
+        // matching participant gets a retry.
+        this.closerParticipantIdPinned = false;
+        logger.error(`[Recall] Failed to pin closerParticipantId for bot ${botIdForPin}: ${err}`);
+      },
+    );
+    logger.info(
+      `[Recall] Pinning closerParticipantId=${participantId} for bot ${botIdForPin} (source=${pinSource})`,
+    );
   }
 
   /**

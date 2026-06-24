@@ -330,6 +330,62 @@ export const pinCloserParticipantId = internalMutation({
   },
 });
 
+// Called by the audio processor (public mutation, no auth required — botId is
+// the secret) when it sees the closer-matching participant in participant_events.join.
+// Idempotent — first call wins; subsequent calls are no-ops. Returns true if pinned
+// (or already pinned), false on bad botId. Best-effort: failures shouldn't crash
+// the audio processor's call session.
+export const pinCloserParticipantIdFromAudioProcessor = mutation({
+  args: {
+    botId: v.string(), // Convex meetingBots._id (string form — audio processor passes via WebSocket session metadata)
+    closerParticipantId: v.union(v.number(), v.string()),
+    participantName: v.optional(v.string()), // For logging only
+    source: v.optional(v.string()), // "host_match" | "first_non_host" — for telemetry
+  },
+  handler: async (ctx, args) => {
+    const botDocId = ctx.db.normalizeId("meetingBots", args.botId);
+    if (!botDocId) {
+      console.error(`[pinCloserFromAudio] Invalid bot ID: ${args.botId}`);
+      return { success: false, reason: "invalid_bot_id" };
+    }
+    const bot = await ctx.db.get(botDocId);
+    if (!bot) {
+      console.error(`[pinCloserFromAudio] Bot not found: ${args.botId}`);
+      return { success: false, reason: "bot_not_found" };
+    }
+    if (bot.closerParticipantId !== undefined) {
+      // Already pinned — idempotent success.
+      return { success: true, alreadyPinned: true };
+    }
+    await ctx.db.patch(botDocId, { closerParticipantId: args.closerParticipantId });
+    console.log(
+      `[pinCloserFromAudio] Pinned participantId=${args.closerParticipantId} as closer for bot ${args.botId} ` +
+        `(name="${args.participantName ?? "?"}", source=${args.source ?? "?"}, closerIsHost=${bot.closerIsHost})`,
+    );
+    return { success: true, alreadyPinned: false };
+  },
+});
+
+// Exposes bot's closer-host config + name patterns to the audio processor so it
+// can deterministically pick the closer from participant_events.join. Public query
+// because the audio processor uses anonymous HTTP. botId is the access token.
+export const getBotConfigForAudioProcessor = query({
+  args: { botId: v.string() },
+  handler: async (ctx, args) => {
+    const botDocId = ctx.db.normalizeId("meetingBots", args.botId);
+    if (!botDocId) return null;
+    const bot = await ctx.db.get(botDocId);
+    if (!bot) return null;
+    const team = await ctx.db.get(bot.teamId);
+    return {
+      closerIsHost: bot.closerIsHost ?? true, // Default to true preserves legacy scheduled-call behavior on bots created before this field existed
+      closerName: bot.closerName ?? null,
+      botName: team?.meetingBotName ?? "Sequ3nce.ai",
+      closerParticipantId: bot.closerParticipantId ?? null,
+    };
+  },
+});
+
 // Update a meeting bot with the Recall.ai bot UUID
 export const setBotRecallId = internalMutation({
   args: {

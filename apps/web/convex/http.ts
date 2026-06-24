@@ -3657,13 +3657,16 @@ http.route({
 
       // Speaker identification — see decideSpeaker() at the bottom of this file for the
       // full decision tree. Reads Recall's structured signals (participant.is_host,
-      // pinned participant.id) before falling back to name matching.
+      // pinned participant.id) before falling back to name matching. closerIsHost
+      // defaults to true for bots created before that field existed (preserves the
+      // legacy scheduled-call behavior).
       const participantObj = transcriptData?.participant;
       const closerName = bot.closerName || "";
       const decision = decideSpeaker({
         participant: participantObj,
         closerName,
         pinnedCloserParticipantId: bot.closerParticipantId,
+        closerIsHost: bot.closerIsHost ?? true,
       });
       const speaker = decision.speaker;
 
@@ -11442,12 +11445,16 @@ export default http;
 //
 // Decision priority (top wins):
 //   1. Pinned participant.id on the bot row — once we've confidently identified
-//      the closer in this call, subsequent segments inherit the label.
-//   2. participant.is_host boolean — Sequ3nce bots join meetings the closer
-//      scheduled, so the closer is the meeting host on Zoom/Meet/Teams.
+//      the closer in this call, subsequent segments inherit the label. Populated
+//      either from the audio processor's participant_events.join handler (preferred,
+//      reliable for both scheduled and QuickBot flows) or from Layer 2 high-confidence
+//      hits during transcript processing.
+//   2. participant.is_host matches bot.closerIsHost. Scheduled bots set closerIsHost=true
+//      (closer scheduled the meeting → is host); QuickBots set false (closer joining
+//      external Zoom → is guest). Defaults to true when unset (preserves legacy
+//      scheduled-call behavior on old bots).
 //   3. Token-overlap on names — split closerName on whitespace, declare match if
-//      any token of length >= 3 appears in participant.name. More permissive than
-//      the previous 5-char-prefix matcher (catches Joshua/Josh via "neale").
+//      any token of length >= 3 appears in participant.name.
 //   4. Default "prospect".
 
 type ParticipantLike = {
@@ -11461,8 +11468,8 @@ interface SpeakerDecision {
   source: "pinned_id" | "is_host" | "name_tokens" | "default";
   // True when both is_host AND name tokens agree on the closer (high confidence).
   shouldPin: boolean;
-  // True when is_host: true but name tokens don't match closerName — surfaces
-  // the prospect-schedules-the-meeting edge case via a warning log.
+  // True when is_host matches closerIsHost but name tokens don't match closerName.
+  // Surfaces "closer's display name doesn't include their stored name" as a warning.
   disagreement: boolean;
 }
 
@@ -11470,8 +11477,9 @@ function decideSpeaker(args: {
   participant: ParticipantLike | undefined;
   closerName: string;
   pinnedCloserParticipantId: number | string | undefined;
+  closerIsHost: boolean; // From bot record; caller defaults to true if undefined
 }): SpeakerDecision {
-  const { participant, closerName, pinnedCloserParticipantId } = args;
+  const { participant, closerName, pinnedCloserParticipantId, closerIsHost } = args;
   if (!participant) {
     return { speaker: "prospect", source: "default", shouldPin: false, disagreement: false };
   }
@@ -11488,12 +11496,14 @@ function decideSpeaker(args: {
 
   const nameMatch = closerName ? tokenOverlap(closerName, participant.name || "") : false;
 
-  // Layer 2: is_host boolean. typeof check rejects null/undefined cleanly.
+  // Layer 2: is_host boolean, compared against bot's closerIsHost. typeof check rejects
+  // null/undefined cleanly. For scheduled calls (closerIsHost=true) participant.is_host=true
+  // means closer; for QuickBot (closerIsHost=false) participant.is_host=false means closer.
   if (typeof participant.is_host === "boolean") {
-    const speaker: "closer" | "prospect" = participant.is_host ? "closer" : "prospect";
-    const shouldPin =
-      participant.id !== undefined && participant.is_host && nameMatch;
-    const disagreement = participant.is_host && closerName !== "" && !nameMatch;
+    const matchesCloser = participant.is_host === closerIsHost;
+    const speaker: "closer" | "prospect" = matchesCloser ? "closer" : "prospect";
+    const shouldPin = participant.id !== undefined && matchesCloser && nameMatch;
+    const disagreement = matchesCloser && closerName !== "" && !nameMatch;
     return { speaker, source: "is_host", shouldPin, disagreement };
   }
 

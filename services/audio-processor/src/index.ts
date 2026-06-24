@@ -411,10 +411,16 @@ function handleRecallConnection(ws: WebSocket, req: import("http").IncomingMessa
 
         case "participant_events.join": {
           const participant = message.data?.data?.participant || message.data?.participant;
-          logger.info(`[Recall] Participant joined: ${participant?.name} (host: ${participant?.is_host})`);
-          // Track participant join order for speaker identification fallback
+          logger.info(`[Recall] Participant joined: ${participant?.name} (id: ${participant?.id}, host: ${participant?.is_host})`);
+          // Track participant join order + try to pin closer participant.id in Convex.
+          // The pin is what makes decideSpeaker Layer 1 catch every transcript segment
+          // reliably, regardless of host status or display-name fragility.
           if (participant?.name) {
-            callHandler.trackParticipantJoin(participant.name);
+            callHandler.trackParticipantJoin(
+              participant.name,
+              participant.id,
+              typeof participant.is_host === "boolean" ? participant.is_host : undefined,
+            );
           }
           break;
         }
