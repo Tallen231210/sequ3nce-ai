@@ -3,30 +3,15 @@ import { mutation, query, internalQuery, internalMutation } from "./_generated/s
 
 // ==================== Queries ====================
 
-/** Get subscription info for a B2C user.
- *
- * Founder/admin badge bypass: if the user has either "founder" or "admin"
- * in their badges, we report subscriptionStatus as "active" regardless
- * of the actual Stripe state. Founders are comped — they shouldn't get
- * paywalled if their Stripe subscription lapses for any reason. This
- * single source of truth is consumed by the Personal app's paywall gate
- * and the /b2c/subscription-status HTTP route.
- *
- * stripeCustomerId / subscriptionId / cancelledAt remain the raw values
- * for downstream billing flows that need the actual Stripe state.
- */
+/** Get subscription info for a B2C user */
 export const getB2CSubscription = query({
   args: { userId: v.id("b2cUsers") },
   handler: async (ctx, { userId }) => {
     const user = await ctx.db.get(userId);
     if (!user) return null;
 
-    const badges = user.badges ?? [];
-    const hasBypass = badges.includes("founder") || badges.includes("admin");
-    const effectiveStatus = hasBypass ? "active" : user.subscriptionStatus;
-
     return {
-      subscriptionStatus: effectiveStatus,
+      subscriptionStatus: user.subscriptionStatus,
       stripeCustomerId: user.stripeCustomerId,
       subscriptionId: user.subscriptionId,
       cancelledAt: user.cancelledAt,
