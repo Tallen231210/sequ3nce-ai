@@ -1562,22 +1562,6 @@ export const getLeadAgeDecayCurve = query({
   },
 });
 
-/**
- * Internal variant — same logic, takes teamId directly (no clerkId auth).
- * Used by sendSpeedToLeadNotification in setterDataNotifications to look
- * up the team's historical decay rate when building the per-lead Slack ping.
- */
-export const getLeadAgeDecayCurveInternal = internalQuery({
-  args: {
-    teamId: v.id("teams"),
-    rangeStart: v.number(),
-    rangeEnd: v.number(),
-  },
-  handler: async (ctx, args) => {
-    return computeDecayCurve(ctx, args.teamId, args.rangeStart, args.rangeEnd);
-  },
-});
-
 // ----------------------------------------------------------------------------
 // Best-time-to-call heatmap — 7×24 grid of connect rate by hour-of-day +
 // day-of-week. Universal-signal (no GHL appointment data needed).

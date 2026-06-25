@@ -69,7 +69,6 @@ export const getOnboardingState = query({
       team.slackChannelId ||
       team.setterDailyScorecardSlackChannelId ||
       team.setterUntouchedAlertSlackChannelId ||
-      team.setterSpeedToLeadSlackChannelId ||
       team.setterCoverageGapSlackChannelId
     );
 

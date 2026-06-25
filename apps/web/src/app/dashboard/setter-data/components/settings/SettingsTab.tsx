@@ -15,7 +15,7 @@ import { MetaAdsConfig } from "./MetaAdsConfig";
 import type { SlackChannelOption } from "@/components/slack/SlackChannelPicker";
 import { Loader2 } from "lucide-react";
 
-// Keyed by config name (scorecard, untouchedAlert, speedToLead, coverageGap)
+// Keyed by config name (scorecard, untouchedAlert, coverageGap)
 type AutoJoinErrors = Record<string, string | null>;
 
 export function SettingsTab() {

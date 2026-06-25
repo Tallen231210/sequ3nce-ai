@@ -6,7 +6,7 @@ import { api } from "../../../convex/_generated/api";
 /**
  * Centralizes the auto-join + save-authorization flow that the setter-data
  * Slack configs share. Replaces ~25 LoC of duplicated logic across each of
- * ScorecardConfig / UntouchedAlertConfig / SpeedToLeadConfig / CoverageGapConfig.
+ * ScorecardConfig / UntouchedAlertConfig / CoverageGapConfig.
  *
  * Categorizes Slack join errors:
  *

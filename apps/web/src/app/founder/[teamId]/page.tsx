@@ -163,10 +163,6 @@ export default function FounderTeamDetailPage({
               : "off"}
           </li>
           <li>
-            Speed-to-lead:{" "}
-            {team.setterSpeedToLeadEnabled ? "enabled" : "off"}
-          </li>
-          <li>
             Coverage gap: {team.setterCoverageGapEnabled ? "enabled" : "off"}
           </li>
           <li>
