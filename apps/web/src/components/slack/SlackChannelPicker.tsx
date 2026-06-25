@@ -29,6 +29,9 @@ export interface SlackChannelOption {
 }
 
 interface SlackChannelPickerProps {
+  /** DOM id for the SelectTrigger — paired with the Label htmlFor on the
+   * parent so screen readers announce the field name on focus. */
+  id?: string;
   /** Selected channel ID. Empty string = nothing selected. */
   value: string;
   /** Display name of the selected channel — used in the "(not found)" tag
@@ -42,6 +45,13 @@ interface SlackChannelPickerProps {
   /** Auto-join error from the most recent save attempt. Null = no error.
    * If the message contains "private", renders the actionable /invite copy. */
   joinError?: string | null;
+  /** Set when getSlackChannels in the parent failed (network, rate limit,
+   * expired token, etc.) — distinct from the benign "Slack not connected"
+   * case. Drives the "Couldn't load — Retry" affordance so the picker
+   * doesn't deceive the user into thinking a saved channel was deleted. */
+  fetchError?: string | null;
+  /** Called when the user clicks Retry in the fetch-failed affordance. */
+  onRetryFetch?: () => void;
   /** Show amber border on the trigger (e.g., when channel is required
    * but nothing is picked). */
   highlightMissing?: boolean;
@@ -51,22 +61,31 @@ interface SlackChannelPickerProps {
 }
 
 export function SlackChannelPicker({
+  id,
   value,
   selectedChannelName,
   onChange,
   channels,
   loadingChannels,
   joinError,
+  fetchError,
+  onRetryFetch,
   highlightMissing,
   disabled,
   className,
 }: SlackChannelPickerProps) {
   // If the saved value isn't in the fetched channel list, the channel
-  // may have been deleted in Slack or the bot kicked. Show the raw ID
-  // with a "(not found)" tag so the user knows to re-pick rather than
-  // assume their notifications are still routing.
+  // may have been deleted in Slack or the bot kicked — UNLESS the fetch
+  // failed, in which case we can't tell. Show "(not found)" only when we
+  // successfully fetched the list and the saved id genuinely isn't in it.
   const matchedChannel = channels.find((c) => c.id === value);
-  const showNotFound = value !== "" && !loadingChannels && !matchedChannel;
+  const showNotFound =
+    value !== "" && !loadingChannels && !matchedChannel && !fetchError;
+  // Saved-but-can't-verify: fetch failed AND we have a saved value AND we
+  // can't resolve it from the (empty) channel list. Render a retry instead
+  // of the deceptive "(not found)" tag.
+  const showFetchFailedForSaved =
+    value !== "" && !loadingChannels && !matchedChannel && !!fetchError;
 
   return (
     <div className={className}>
@@ -79,12 +98,18 @@ export function SlackChannelPicker({
         disabled={disabled || loadingChannels}
       >
         <SelectTrigger
+          id={id}
           className={`h-9 text-sm ${highlightMissing ? "border-amber-400" : ""}`}
         >
           {loadingChannels ? (
             <span className="flex items-center gap-2">
               <Loader2 className="h-3 w-3 animate-spin" />
               Loading channels…
+            </span>
+          ) : showFetchFailedForSaved ? (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              #{selectedChannelName ?? value}{" "}
+              <span className="text-xs">(couldn&apos;t load)</span>
             </span>
           ) : showNotFound ? (
             <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -108,6 +133,21 @@ export function SlackChannelPicker({
           ))}
         </SelectContent>
       </Select>
+
+      {fetchError && (
+        <div className="mt-2 flex items-center justify-between text-xs p-2 rounded border bg-amber-50 border-amber-200 text-amber-700">
+          <span>Couldn&apos;t load Slack channels.</span>
+          {onRetryFetch && (
+            <button
+              type="button"
+              onClick={onRetryFetch}
+              className="font-medium underline hover:no-underline"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
 
       {joinError && (
         <div className="mt-2 text-xs p-2 rounded border bg-amber-50 border-amber-200 text-amber-700">

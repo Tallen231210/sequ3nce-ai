@@ -562,7 +562,7 @@ function NotificationChannelConfig({
     <div className={`p-3 rounded-lg space-y-2 ${needsChannelSelection ? "bg-amber-50 border border-amber-200" : "bg-zinc-50"}`}>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium">{label}</p>
+          <p id={`${type}-channel-label`} className="text-sm font-medium">{label}</p>
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
         {saving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -607,7 +607,11 @@ function NotificationChannelConfig({
             }}
             disabled={loadingChannels}
           >
-            <SelectTrigger className={`w-[180px] h-8 text-sm ${needsChannelSelection ? "border-amber-400" : ""}`}>
+            <SelectTrigger
+              id={`${type}-channel`}
+              aria-labelledby={`${type}-channel-label`}
+              className={`w-[180px] h-8 text-sm ${needsChannelSelection ? "border-amber-400" : ""}`}
+            >
               {loadingChannels ? (
                 <span className="flex items-center gap-2">
                   <Loader2 className="h-3 w-3 animate-spin" />

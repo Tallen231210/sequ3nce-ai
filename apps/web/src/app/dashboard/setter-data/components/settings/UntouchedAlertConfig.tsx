@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useAction } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
   SlackChannelPicker,
   type SlackChannelOption,
 } from "@/components/slack/SlackChannelPicker";
+import { useSaveWithSlackJoin } from "@/components/slack/useSaveWithSlackJoin";
 
 interface UntouchedAlertSettings {
   enabled: boolean;
@@ -33,6 +34,8 @@ interface UntouchedAlertConfigProps {
   settings: UntouchedAlertSettings;
   slackChannels: SlackChannelOption[];
   loadingSlackChannels: boolean;
+  slackFetchError: string | null;
+  onRetrySlackFetch: () => void;
   joinError: string | null;
   onJoinError: (err: string | null) => void;
 }
@@ -49,6 +52,8 @@ export function UntouchedAlertConfig({
   settings,
   slackChannels,
   loadingSlackChannels,
+  slackFetchError,
+  onRetrySlackFetch,
   joinError,
   onJoinError,
 }: UntouchedAlertConfigProps) {
@@ -56,7 +61,7 @@ export function UntouchedAlertConfig({
   const updateConfig = useMutation(
     api.setterDataMutations.updateUntouchedAlertConfig,
   );
-  const joinSlackChannel = useAction(api.slack.joinSlackChannel);
+  const { joinAndAuthorizeSave } = useSaveWithSlackJoin();
 
   const [enabled, setEnabled] = useState(settings.enabled);
   const [thresholdMinutes, setThresholdMinutes] = useState<string>(
@@ -91,24 +96,19 @@ export function UntouchedAlertConfig({
       if (channel === "slack" || channel === "discord") {
         args.channel = channel;
       }
-      if (channel === "slack" && slackChannelId.trim()) {
-        args.slackChannelId = slackChannelId.trim();
-        if (slackChannelName.trim()) {
-          args.slackChannelName = slackChannelName.trim();
-        }
-        // Auto-join the bot. Surface failures inline via onJoinError, but
-        // don't block the save — private channels can be manually /invite'd.
-        const joinResult = await joinSlackChannel({
-          clerkId,
-          channelId: slackChannelId.trim(),
-        });
-        if (!joinResult.success && joinResult.error) {
-          onJoinError(joinResult.error);
-        } else {
-          onJoinError(null);
-        }
-      } else {
-        onJoinError(null);
+      const { okToSave, slackArgs } = await joinAndAuthorizeSave({
+        clerkId,
+        channel,
+        slackChannelId,
+        slackChannelName,
+        onJoinError,
+      });
+      if (!okToSave) {
+        setSaving(false);
+        return;
+      }
+      if (slackArgs) {
+        Object.assign(args, slackArgs);
       }
       if (channel === "discord" && discordWebhookUrl.trim()) {
         args.discordWebhookUrl = discordWebhookUrl.trim();
@@ -197,8 +197,9 @@ export function UntouchedAlertConfig({
               {/* Slack-specific */}
               {channel === "slack" && (
                 <div className="space-y-2">
-                  <Label>Slack channel</Label>
+                  <Label htmlFor="untouched-slack-channel">Slack channel</Label>
                   <SlackChannelPicker
+                    id="untouched-slack-channel"
                     value={slackChannelId}
                     selectedChannelName={slackChannelName || undefined}
                     onChange={(id, name) => {
@@ -208,6 +209,8 @@ export function UntouchedAlertConfig({
                     }}
                     channels={slackChannels}
                     loadingChannels={loadingSlackChannels}
+                    fetchError={slackFetchError}
+                    onRetryFetch={onRetrySlackFetch}
                     joinError={joinError}
                   />
                 </div>

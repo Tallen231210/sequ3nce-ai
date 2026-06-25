@@ -89,6 +89,13 @@ export const updateScorecardConfig = mutation({
       throw new Error("slackChannelId cannot be empty");
     }
 
+    // Slack channel names cap at 80 chars; 100 leaves margin. Defensive
+    // only — real-world clients never hit it because the name comes from
+    // a picker that lists actual Slack channels.
+    if (args.slackChannelName !== undefined && args.slackChannelName.length > 100) {
+      throw new Error("slackChannelName must be at most 100 characters");
+    }
+
     if (args.discordWebhookUrl !== undefined) {
       const trimmed = args.discordWebhookUrl.trim();
       if (trimmed === "") {
@@ -173,6 +180,10 @@ export const updateUntouchedAlertConfig = mutation({
       throw new Error("slackChannelId cannot be empty");
     }
 
+    if (args.slackChannelName !== undefined && args.slackChannelName.length > 100) {
+      throw new Error("slackChannelName must be at most 100 characters");
+    }
+
     if (args.discordWebhookUrl !== undefined) {
       const trimmed = args.discordWebhookUrl.trim();
       if (trimmed === "") {
@@ -254,6 +265,10 @@ export const updateSpeedToLeadConfig = mutation({
 
     if (args.slackChannelId !== undefined && args.slackChannelId.trim() === "") {
       throw new Error("slackChannelId cannot be empty");
+    }
+
+    if (args.slackChannelName !== undefined && args.slackChannelName.length > 100) {
+      throw new Error("slackChannelName must be at most 100 characters");
     }
 
     if (args.discordWebhookUrl !== undefined) {
@@ -344,6 +359,9 @@ export const updateCoverageGapConfig = mutation({
     }
     if (args.slackChannelId !== undefined && args.slackChannelId.trim() === "") {
       throw new Error("slackChannelId cannot be empty");
+    }
+    if (args.slackChannelName !== undefined && args.slackChannelName.length > 100) {
+      throw new Error("slackChannelName must be at most 100 characters");
     }
     if (args.discordWebhookUrl !== undefined) {
       const trimmed = args.discordWebhookUrl.trim();

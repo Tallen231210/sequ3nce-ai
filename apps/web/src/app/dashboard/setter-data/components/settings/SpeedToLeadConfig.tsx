@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useAction } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
   SlackChannelPicker,
   type SlackChannelOption,
 } from "@/components/slack/SlackChannelPicker";
+import { useSaveWithSlackJoin } from "@/components/slack/useSaveWithSlackJoin";
 
 interface SpeedToLeadSettings {
   enabled: boolean;
@@ -33,6 +34,8 @@ interface SpeedToLeadConfigProps {
   settings: SpeedToLeadSettings;
   slackChannels: SlackChannelOption[];
   loadingSlackChannels: boolean;
+  slackFetchError: string | null;
+  onRetrySlackFetch: () => void;
   joinError: string | null;
   onJoinError: (err: string | null) => void;
 }
@@ -50,6 +53,8 @@ export function SpeedToLeadConfig({
   settings,
   slackChannels,
   loadingSlackChannels,
+  slackFetchError,
+  onRetrySlackFetch,
   joinError,
   onJoinError,
 }: SpeedToLeadConfigProps) {
@@ -57,7 +62,7 @@ export function SpeedToLeadConfig({
   const updateConfig = useMutation(
     api.setterDataMutations.updateSpeedToLeadConfig,
   );
-  const joinSlackChannel = useAction(api.slack.joinSlackChannel);
+  const { joinAndAuthorizeSave } = useSaveWithSlackJoin();
 
   const [enabled, setEnabled] = useState(settings.enabled);
   const [slowThresholdMinutes, setSlowThresholdMinutes] = useState<string>(
@@ -92,22 +97,19 @@ export function SpeedToLeadConfig({
       if (channel === "slack" || channel === "discord") {
         args.channel = channel;
       }
-      if (channel === "slack" && slackChannelId.trim()) {
-        args.slackChannelId = slackChannelId.trim();
-        if (slackChannelName.trim()) {
-          args.slackChannelName = slackChannelName.trim();
-        }
-        const joinResult = await joinSlackChannel({
-          clerkId,
-          channelId: slackChannelId.trim(),
-        });
-        if (!joinResult.success && joinResult.error) {
-          onJoinError(joinResult.error);
-        } else {
-          onJoinError(null);
-        }
-      } else {
-        onJoinError(null);
+      const { okToSave, slackArgs } = await joinAndAuthorizeSave({
+        clerkId,
+        channel,
+        slackChannelId,
+        slackChannelName,
+        onJoinError,
+      });
+      if (!okToSave) {
+        setSaving(false);
+        return;
+      }
+      if (slackArgs) {
+        Object.assign(args, slackArgs);
       }
       if (channel === "discord" && discordWebhookUrl.trim()) {
         args.discordWebhookUrl = discordWebhookUrl.trim();
@@ -194,8 +196,9 @@ export function SpeedToLeadConfig({
 
               {channel === "slack" && (
                 <div className="space-y-2">
-                  <Label>Slack channel</Label>
+                  <Label htmlFor="speedtolead-slack-channel">Slack channel</Label>
                   <SlackChannelPicker
+                    id="speedtolead-slack-channel"
                     value={slackChannelId}
                     selectedChannelName={slackChannelName || undefined}
                     onChange={(id, name) => {
@@ -205,6 +208,8 @@ export function SpeedToLeadConfig({
                     }}
                     channels={slackChannels}
                     loadingChannels={loadingSlackChannels}
+                    fetchError={slackFetchError}
+                    onRetryFetch={onRetrySlackFetch}
                     joinError={joinError}
                   />
                 </div>

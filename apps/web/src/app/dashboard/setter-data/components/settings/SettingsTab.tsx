@@ -37,6 +37,12 @@ export function SettingsTab() {
   const getSlackChannels = useAction(api.slack.getSlackChannels);
   const [slackChannels, setSlackChannels] = useState<SlackChannelOption[]>([]);
   const [loadingSlackChannels, setLoadingSlackChannels] = useState(false);
+  // Distinct from the "Slack not connected" benign-empty case. Set only when
+  // getSlackChannels failed for a real reason (network, rate limit, expired
+  // token, Slack 5xx). Required so the picker doesn't deceive users with
+  // saved channels into thinking those channels were deleted in Slack —
+  // shows a "Couldn't load — Retry" affordance instead of "(not found)".
+  const [slackFetchError, setSlackFetchError] = useState<string | null>(null);
   // Per-config auto-join error from joinSlackChannel. Surfaced inline by
   // the picker (amber alert with actionable /invite copy for private
   // channels). Each config writes to its own key.
@@ -45,16 +51,25 @@ export function SettingsTab() {
   const fetchSlackChannels = useCallback(async () => {
     if (!clerkId) return;
     setLoadingSlackChannels(true);
+    setSlackFetchError(null);
     try {
       const result = await getSlackChannels({ clerkId });
       if ("channels" in result) {
         setSlackChannels(result.channels);
       } else {
-        // Most common case: Slack not connected. Picker stays empty;
-        // the configs render fine (user is presumably using Discord or
-        // hasn't picked a channel type yet).
+        // Benign empty case = no Slack OAuth token on the team. Picker
+        // shows empty dropdown, user is presumably using Discord. Real
+        // errors (anything else) get surfaced so we don't mislabel saved
+        // channels as deleted when the fetch just failed.
         setSlackChannels([]);
+        if (result.error && result.error !== "Slack not connected") {
+          setSlackFetchError(result.error);
+        }
       }
+    } catch (err) {
+      // useAction transport-level throw (Convex network, etc.).
+      setSlackChannels([]);
+      setSlackFetchError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingSlackChannels(false);
     }
@@ -158,6 +173,8 @@ export function SettingsTab() {
         teamTimezone={settings.timezone}
         slackChannels={slackChannels}
         loadingSlackChannels={loadingSlackChannels}
+        slackFetchError={slackFetchError}
+        onRetrySlackFetch={fetchSlackChannels}
         joinError={autoJoinErrors.scorecard ?? null}
         onJoinError={makeErrorSetter("scorecard")}
       />
@@ -165,6 +182,8 @@ export function SettingsTab() {
         settings={untouchedAlert}
         slackChannels={slackChannels}
         loadingSlackChannels={loadingSlackChannels}
+        slackFetchError={slackFetchError}
+        onRetrySlackFetch={fetchSlackChannels}
         joinError={autoJoinErrors.untouchedAlert ?? null}
         onJoinError={makeErrorSetter("untouchedAlert")}
       />
@@ -172,6 +191,8 @@ export function SettingsTab() {
         settings={speedToLead}
         slackChannels={slackChannels}
         loadingSlackChannels={loadingSlackChannels}
+        slackFetchError={slackFetchError}
+        onRetrySlackFetch={fetchSlackChannels}
         joinError={autoJoinErrors.speedToLead ?? null}
         onJoinError={makeErrorSetter("speedToLead")}
       />
@@ -180,6 +201,8 @@ export function SettingsTab() {
         teamTimezone={settings.timezone || "America/New_York"}
         slackChannels={slackChannels}
         loadingSlackChannels={loadingSlackChannels}
+        slackFetchError={slackFetchError}
+        onRetrySlackFetch={fetchSlackChannels}
         joinError={autoJoinErrors.coverageGap ?? null}
         onJoinError={makeErrorSetter("coverageGap")}
       />

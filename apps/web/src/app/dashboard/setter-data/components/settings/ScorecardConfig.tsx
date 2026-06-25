@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useAction } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
   SlackChannelPicker,
   type SlackChannelOption,
 } from "@/components/slack/SlackChannelPicker";
+import { useSaveWithSlackJoin } from "@/components/slack/useSaveWithSlackJoin";
 
 interface ScorecardSettings {
   enabled: boolean;
@@ -34,6 +35,8 @@ interface ScorecardConfigProps {
   teamTimezone?: string;
   slackChannels: SlackChannelOption[];
   loadingSlackChannels: boolean;
+  slackFetchError: string | null;
+  onRetrySlackFetch: () => void;
   joinError: string | null;
   onJoinError: (err: string | null) => void;
 }
@@ -43,12 +46,14 @@ export function ScorecardConfig({
   teamTimezone,
   slackChannels,
   loadingSlackChannels,
+  slackFetchError,
+  onRetrySlackFetch,
   joinError,
   onJoinError,
 }: ScorecardConfigProps) {
   const { clerkId } = useTeam();
   const updateConfig = useMutation(api.setterDataMutations.updateScorecardConfig);
-  const joinSlackChannel = useAction(api.slack.joinSlackChannel);
+  const { joinAndAuthorizeSave } = useSaveWithSlackJoin();
 
   const [enabled, setEnabled] = useState(scorecard.enabled);
   const [channel, setChannel] = useState<"slack" | "discord" | "">(
@@ -80,25 +85,22 @@ export function ScorecardConfig({
       if (channel === "slack" || channel === "discord") {
         args.channel = channel;
       }
-      if (channel === "slack" && slackChannelId.trim()) {
-        args.slackChannelId = slackChannelId.trim();
-        if (slackChannelName.trim()) {
-          args.slackChannelName = slackChannelName.trim();
-        }
-        // Auto-join the bot. Surface failures inline via onJoinError, but
-        // don't block the save — private channels can be manually /invite'd
-        // and the config is still useful (matches closer-side graceful degrade).
-        const joinResult = await joinSlackChannel({
-          clerkId,
-          channelId: slackChannelId.trim(),
-        });
-        if (!joinResult.success && joinResult.error) {
-          onJoinError(joinResult.error);
-        } else {
-          onJoinError(null);
-        }
-      } else {
-        onJoinError(null);
+      // Auto-join + categorize errors. Bad-channel codes (channel_not_found,
+      // is_archived, token_revoked, invalid_auth) abort the save so we don't
+      // persist a dead channel ID. Private channels graceful-degrade.
+      const { okToSave, slackArgs } = await joinAndAuthorizeSave({
+        clerkId,
+        channel,
+        slackChannelId,
+        slackChannelName,
+        onJoinError,
+      });
+      if (!okToSave) {
+        setSaving(false);
+        return;
+      }
+      if (slackArgs) {
+        Object.assign(args, slackArgs);
       }
       if (channel === "discord" && discordWebhookUrl.trim()) {
         args.discordWebhookUrl = discordWebhookUrl.trim();
@@ -166,8 +168,9 @@ export function ScorecardConfig({
               {/* Slack-specific fields */}
               {channel === "slack" && (
                 <div className="space-y-2">
-                  <Label>Slack channel</Label>
+                  <Label htmlFor="scorecard-slack-channel">Slack channel</Label>
                   <SlackChannelPicker
+                    id="scorecard-slack-channel"
                     value={slackChannelId}
                     selectedChannelName={slackChannelName || undefined}
                     onChange={(id, name) => {
@@ -178,6 +181,8 @@ export function ScorecardConfig({
                     }}
                     channels={slackChannels}
                     loadingChannels={loadingSlackChannels}
+                    fetchError={slackFetchError}
+                    onRetryFetch={onRetrySlackFetch}
                     joinError={joinError}
                   />
                 </div>
