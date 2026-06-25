@@ -25,7 +25,7 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
 
   return (
     <div
-      className={`p-4 bg-white dark:bg-gray-900 rounded-xl border transition-colors ${
+      className={`relative p-4 bg-white dark:bg-gray-900 rounded-xl border transition-colors ${
         urgency === 'now'
           ? 'border-red-200 dark:border-red-800 shadow-[0_2px_8px_rgba(242,51,51,0.1)]'
           : isPast
@@ -33,6 +33,14 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
           : 'border-gray-100 dark:border-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)]'
       }`}
     >
+      {/* Google calendar color accent — left edge strip. Skipped for "now"
+          events so the red urgency border stays visually dominant. */}
+      {event.calendarColor && urgency !== 'now' && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+          style={{ backgroundColor: event.calendarColor }}
+        />
+      )}
       {/* Top row: urgency badge + time */}
       <div className="flex items-center justify-between mb-2">
         <span

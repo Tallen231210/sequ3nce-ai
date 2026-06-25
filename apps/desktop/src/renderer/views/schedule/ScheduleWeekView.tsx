@@ -162,7 +162,11 @@ function WeekEventBlock({
   onClick: () => void;
 }) {
   const urgency = getEventUrgency(event, now);
-  const color = getUrgencyBlockColor(urgency);
+  const urgencyColor = getUrgencyBlockColor(urgency);
+  // Prefer Google's color (per-event override or calendar default) when present;
+  // fall back to urgency-based color. "Now" urgency always takes priority since
+  // that's the visual cue saying "join this RIGHT NOW".
+  const color = urgency === 'now' ? urgencyColor : event.calendarColor ?? urgencyColor;
   const yOffset = eventYOffset(event);
   const height = eventBlockHeight(event);
   const platform = detectPlatform(event.meetingUrl);

@@ -69,6 +69,11 @@ interface CalendarEvent {
   fetchedAt: number;
   closerName?: string;
   closerInitials?: string;
+  // Resolved hex color from Google (per-event override > calendar default).
+  // When set, prefers over the per-closer hashed color. Optional because ICS
+  // synced events and pre-multi-cal-migration Google events leave it undefined.
+  calendarColor?: string;
+  calendarLabel?: string;
 }
 
 interface CalendarStatus {
@@ -301,7 +306,11 @@ function ListView({
           <CardContent className="space-y-1">
             {dayEvents.map((event) => {
               const closerIndex = closerColorMap.get(event.closerId) ?? 0;
-              const color = getCloserColor(closerIndex);
+              // Prefer Google's per-event / per-calendar color (synced via
+              // resolveEventColor from the multi-cal subscription pipeline).
+              // Falls back to per-closer hashed color for ICS users and any
+              // events whose Google color hasn't been resolved yet.
+              const color = event.calendarColor ?? getCloserColor(closerIndex);
               const eventId = String(event._id);
               const isExpanded = expanded.has(eventId);
               return (
@@ -462,7 +471,7 @@ function DayView({
                 const height = Math.max(duration * HOUR_PX, 24);
 
                 const closerIndex = closerColorMap.get(event.closerId) ?? 0;
-                const color = getCloserColor(closerIndex);
+                const color = event.calendarColor ?? getCloserColor(closerIndex);
 
                 const left = `calc(4rem + (100% - 4rem - 1rem) * ${columnIndex / columnCount})`;
                 const width = `calc((100% - 4rem - 1rem) / ${columnCount} - 2px)`;
@@ -631,7 +640,7 @@ function WeekView({
 
                   const closerIndex =
                     closerColorMap.get(event.closerId) ?? 0;
-                  const color = getCloserColor(closerIndex);
+                  const color = event.calendarColor ?? getCloserColor(closerIndex);
 
                   return (
                     <div
@@ -733,7 +742,7 @@ function MonthView({
                 <div className="space-y-0.5 mt-1">
                   {dayEvents.slice(0, maxVisible).map((event) => {
                     const closerIndex = closerColorMap.get(event.closerId) ?? 0;
-                    const color = getCloserColor(closerIndex);
+                    const color = event.calendarColor ?? getCloserColor(closerIndex);
 
                     return (
                       <div

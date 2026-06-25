@@ -1270,6 +1270,12 @@ export interface CalendarEvent {
   isAllDay?: boolean;
   meetingUrl?: string;
   attendees?: Array<{ email: string; name?: string; isOrganizer?: boolean }>;
+  // Multi-calendar B2B fields. Populated by sync from Google's per-event
+  // colorId override or the calendar's backgroundColor default. Renderers
+  // use these for color cues without doing palette math.
+  calendarColor?: string;
+  calendarLabel?: string;
+  subscriptionId?: string;
 }
 
 export async function getCalendarEvents(
@@ -1487,6 +1493,157 @@ export async function disconnectCalendar(email: string, teamId: string): Promise
       tags: { feature: "disconnectCalendar", integration: "convex" },
     });
     return false;
+  }
+}
+
+// ==================== MULTI-CALENDAR SUBSCRIPTIONS (B2B) ====================
+
+export interface CalendarSubscription {
+  _id: string;
+  closerId: string;
+  teamId: string;
+  googleCalendarId: string;
+  label: string;
+  calendarBackgroundColor?: string;
+  accessRole?: string;
+  enabled: boolean;
+  syncErrorCode?: string;
+  lastSyncAt?: number;
+  createdAt: number;
+}
+
+export interface AvailableCalendar {
+  googleCalendarId: string;
+  summary: string;
+  backgroundColor: string | null;
+  accessRole: string;
+  primary: boolean;
+  alreadySubscribed: boolean;
+}
+
+export async function listCalendarSubscriptions(
+  email: string,
+  teamId: string,
+): Promise<CalendarSubscription[]> {
+  try {
+    const params = new URLSearchParams({ email, teamId });
+    const response = await convexFetch(
+      `${CONVEX_SITE_URL}/listCalendarSubscriptionsByEmail?${params}`,
+    );
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.subscriptions ?? [];
+  } catch (error) {
+    console.error("[Convex] Failed to list calendar subscriptions:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "listCalendarSubscriptions", integration: "convex" },
+    });
+    return [];
+  }
+}
+
+export async function listAvailableGoogleCalendars(
+  email: string,
+  teamId: string,
+): Promise<{ ok: boolean; calendars?: AvailableCalendar[]; error?: string }> {
+  try {
+    const params = new URLSearchParams({ email, teamId });
+    const response = await convexFetch(
+      `${CONVEX_SITE_URL}/listAvailableGoogleCalendarsByEmail?${params}`,
+    );
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      return { ok: false, error: data.error ?? "Failed to list available calendars" };
+    }
+    return { ok: true, calendars: data.calendars ?? [] };
+  } catch (error) {
+    console.error("[Convex] Failed to list available calendars:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "listAvailableGoogleCalendars", integration: "convex" },
+    });
+    return { ok: false, error: "Network error" };
+  }
+}
+
+export async function addCalendarSubscription(
+  email: string,
+  teamId: string,
+  googleCalendarId: string,
+  label: string,
+  backgroundColor?: string,
+  accessRole?: string,
+): Promise<{ success: boolean; subscriptionId?: string; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/addCalendarSubscriptionByEmail`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        teamId,
+        googleCalendarId,
+        label,
+        backgroundColor,
+        accessRole,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.error ?? "Failed to add subscription" };
+    }
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to add calendar subscription:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "addCalendarSubscription", integration: "convex" },
+    });
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function removeCalendarSubscription(
+  subscriptionId: string,
+): Promise<{ success: boolean; eventsDeleted?: number; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/removeCalendarSubscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscriptionId }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.error ?? "Failed to remove subscription" };
+    }
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to remove calendar subscription:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "removeCalendarSubscription", integration: "convex" },
+    });
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function toggleCalendarSubscription(
+  subscriptionId: string,
+  enabled: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/toggleCalendarSubscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscriptionId, enabled }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.error ?? "Failed to toggle subscription" };
+    }
+    return data;
+  } catch (error) {
+    console.error("[Convex] Failed to toggle calendar subscription:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "toggleCalendarSubscription", integration: "convex" },
+    });
+    return { success: false, error: "Network error" };
   }
 }
 

@@ -2127,6 +2127,223 @@ http.route({
   }),
 });
 
+// ============================================================================
+// B2B multi-calendar subscriptions HTTP wrappers
+// Desktop calls these endpoints with email + teamId; we resolve to closerId
+// then dispatch to the underlying Convex mutations / queries. Mirrors the
+// existing /getCloserCalendarStatusByEmail / /disconnectCalendarByEmail
+// pattern. CORS preflight is shared at the bottom of the group.
+// ============================================================================
+
+const CALENDAR_SUB_CORS_HEADERS = {
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+};
+
+http.route({
+  path: "/listCalendarSubscriptionsByEmail",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const email = url.searchParams.get("email");
+    const teamId = url.searchParams.get("teamId");
+    if (!email || !teamId) {
+      return new Response(JSON.stringify({ error: "email and teamId are required" }), {
+        status: 400,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    }
+    try {
+      const _closerLookup = (await ctx.runQuery(internal.calendar.getCloserByEmailAndTeam, { email, teamId: teamId as Id<"teams"> })) as { _id: Id<"closers"> } | null;
+      const closerId = _closerLookup?._id ?? null;
+      if (!closerId) {
+        return new Response(JSON.stringify({ subscriptions: [] }), {
+          status: 200,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      const subscriptions = await ctx.runQuery(
+        api.closerCalendarSubscriptions.getMySubscriptions,
+        { closerId },
+      );
+      return new Response(JSON.stringify({ subscriptions }), {
+        status: 200,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    } catch (error) {
+      console.error("[HTTP] listCalendarSubscriptionsByEmail error:", error);
+      return new Response(JSON.stringify({ error: "Failed to list subscriptions" }), {
+        status: 500,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/listAvailableGoogleCalendarsByEmail",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const email = url.searchParams.get("email");
+    const teamId = url.searchParams.get("teamId");
+    if (!email || !teamId) {
+      return new Response(JSON.stringify({ error: "email and teamId are required" }), {
+        status: 400,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    }
+    try {
+      const _closerLookup = (await ctx.runQuery(internal.calendar.getCloserByEmailAndTeam, { email, teamId: teamId as Id<"teams"> })) as { _id: Id<"closers"> } | null;
+      const closerId = _closerLookup?._id ?? null;
+      if (!closerId) {
+        return new Response(JSON.stringify({ ok: false, error: "Closer not found" }), {
+          status: 404,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      const result = await ctx.runAction(
+        api.closerCalendarSubscriptions.listAvailableCalendars,
+        { closerId },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    } catch (error) {
+      console.error("[HTTP] listAvailableGoogleCalendarsByEmail error:", error);
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: error instanceof Error ? error.message : "Failed to list available calendars",
+        }),
+        { status: 500, headers: CALENDAR_SUB_CORS_HEADERS },
+      );
+    }
+  }),
+});
+
+http.route({
+  path: "/addCalendarSubscriptionByEmail",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { email, teamId, googleCalendarId, label, backgroundColor, accessRole } = body;
+      if (!email || !teamId || !googleCalendarId || !label) {
+        return new Response(
+          JSON.stringify({ error: "email, teamId, googleCalendarId, label required" }),
+          { status: 400, headers: CALENDAR_SUB_CORS_HEADERS },
+        );
+      }
+      const _closerLookup = (await ctx.runQuery(internal.calendar.getCloserByEmailAndTeam, { email, teamId: teamId as Id<"teams"> })) as { _id: Id<"closers"> } | null;
+      const closerId = _closerLookup?._id ?? null;
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Closer not found" }), {
+          status: 404,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      const result = await ctx.runMutation(
+        api.closerCalendarSubscriptions.addSubscription,
+        { closerId, googleCalendarId, label, backgroundColor, accessRole },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    } catch (error) {
+      console.error("[HTTP] addCalendarSubscriptionByEmail error:", error);
+      const msg = error instanceof Error ? error.message : "Failed to add subscription";
+      // Surface the user-friendly cap-reached message inline so the desktop UI
+      // can display it without parsing a stack trace.
+      return new Response(JSON.stringify({ error: msg }), {
+        status: 400,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/removeCalendarSubscription",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { subscriptionId } = body;
+      if (!subscriptionId) {
+        return new Response(JSON.stringify({ error: "subscriptionId required" }), {
+          status: 400,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      const result = await ctx.runMutation(
+        api.closerCalendarSubscriptions.removeSubscription,
+        { subscriptionId },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    } catch (error) {
+      console.error("[HTTP] removeCalendarSubscription error:", error);
+      return new Response(JSON.stringify({ error: "Failed to remove subscription" }), {
+        status: 500,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/toggleCalendarSubscription",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { subscriptionId, enabled } = body;
+      if (!subscriptionId || typeof enabled !== "boolean") {
+        return new Response(
+          JSON.stringify({ error: "subscriptionId and enabled (boolean) required" }),
+          { status: 400, headers: CALENDAR_SUB_CORS_HEADERS },
+        );
+      }
+      const result = await ctx.runMutation(
+        api.closerCalendarSubscriptions.toggleSubscription,
+        { subscriptionId, enabled },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    } catch (error) {
+      console.error("[HTTP] toggleCalendarSubscription error:", error);
+      return new Response(JSON.stringify({ error: "Failed to toggle subscription" }), {
+        status: 500,
+        headers: CALENDAR_SUB_CORS_HEADERS,
+      });
+    }
+  }),
+});
+
+// Shared OPTIONS preflight for the 5 subscription endpoints above.
+const SUB_CORS_OPTIONS_HANDLER = httpAction(async () => {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+    },
+  });
+});
+http.route({ path: "/listCalendarSubscriptionsByEmail", method: "OPTIONS", handler: SUB_CORS_OPTIONS_HANDLER });
+http.route({ path: "/listAvailableGoogleCalendarsByEmail", method: "OPTIONS", handler: SUB_CORS_OPTIONS_HANDLER });
+http.route({ path: "/addCalendarSubscriptionByEmail", method: "OPTIONS", handler: SUB_CORS_OPTIONS_HANDLER });
+http.route({ path: "/removeCalendarSubscription", method: "OPTIONS", handler: SUB_CORS_OPTIONS_HANDLER });
+http.route({ path: "/toggleCalendarSubscription", method: "OPTIONS", handler: SUB_CORS_OPTIONS_HANDLER });
+
 // POST endpoint to sync calendar (requires teamId)
 http.route({
   path: "/syncCalendarByEmail",

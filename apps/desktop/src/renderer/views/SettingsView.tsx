@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import type { CloserInfo, CalendarStatus } from '../convex';
+import type { CloserInfo, CalendarStatus, CalendarSubscription } from '../convex';
 import {
   getCalendarStatus,
   connectCalendar,
@@ -7,7 +7,11 @@ import {
   disconnectCalendar,
   changePassword,
   submitDiagnosticReport,
+  listCalendarSubscriptions,
+  removeCalendarSubscription,
+  toggleCalendarSubscription,
 } from '../convex';
+import { AddCalendarPicker } from './SettingsView/AddCalendarPicker';
 
 interface SettingsViewProps {
   closerInfo: CloserInfo;
@@ -21,6 +25,12 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
   const [icsUrl, setIcsUrl] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  // Multi-calendar subscriptions (B2B only — shows when provider === 'google')
+  const [subscriptions, setSubscriptions] = useState<CalendarSubscription[]>([]);
+  const [isLoadingSubs, setIsLoadingSubs] = useState(false);
+  const [showAddPicker, setShowAddPicker] = useState(false);
+  const [pendingMutationId, setPendingMutationId] = useState<string | null>(null);
 
   // Password
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -55,6 +65,41 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
       setIsLoadingCal(false);
     });
   }, [closerInfo.email, closerInfo.teamId]);
+
+  // Load multi-calendar subscriptions whenever the closer is connected via
+  // Google. ICS users don't have subs.
+  function refreshSubscriptions() {
+    if (calStatus?.provider !== 'google') {
+      setSubscriptions([]);
+      return;
+    }
+    setIsLoadingSubs(true);
+    listCalendarSubscriptions(closerInfo.email, closerInfo.teamId).then((subs) => {
+      setSubscriptions(subs);
+      setIsLoadingSubs(false);
+    });
+  }
+
+  useEffect(() => {
+    refreshSubscriptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calStatus?.provider, closerInfo.email, closerInfo.teamId]);
+
+  async function handleToggleSubscription(sub: CalendarSubscription) {
+    setPendingMutationId(sub._id);
+    await toggleCalendarSubscription(sub._id, !sub.enabled);
+    refreshSubscriptions();
+    setPendingMutationId(null);
+  }
+
+  async function handleRemoveSubscription(sub: CalendarSubscription) {
+    setPendingMutationId(sub._id);
+    await removeCalendarSubscription(sub._id);
+    refreshSubscriptions();
+    // Trigger a sync so the desktop schedule refreshes without the removed cal.
+    syncCalendar(closerInfo.email, closerInfo.teamId);
+    setPendingMutationId(null);
+  }
 
   // Refresh calendar status when Google Calendar is connected via OAuth deep link
   useEffect(() => {
@@ -256,7 +301,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
               <span className="text-[13px] text-gray-500">Loading...</span>
             </div>
           ) : calStatus?.connected ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center gap-2 text-[13px]">
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
                 <span className="text-green-700 font-medium">
@@ -268,6 +313,87 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
                   </span>
                 )}
               </div>
+
+              {/* Sub-calendar subscriptions list — Google only. ICS users
+                  see the legacy single-cal display. */}
+              {calStatus.provider === 'google' && (
+                <div className="space-y-2 max-w-md">
+                  <div className="text-[12px] font-medium text-gray-700">
+                    Synced calendars{' '}
+                    <span className="font-normal text-gray-400">
+                      ({subscriptions.filter((s) => s.enabled).length} active)
+                    </span>
+                  </div>
+                  {isLoadingSubs && subscriptions.length === 0 ? (
+                    <div className="text-[12px] text-gray-500">Loading…</div>
+                  ) : subscriptions.length === 0 ? (
+                    <div className="text-[12px] text-gray-500">
+                      No calendars yet. Click Add to start syncing.
+                    </div>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {subscriptions.map((sub) => (
+                        <li
+                          key={sub._id}
+                          className={`flex items-center gap-2.5 p-2 rounded border ${
+                            sub.enabled
+                              ? 'border-gray-200 bg-white'
+                              : 'border-gray-100 bg-gray-50 opacity-60'
+                          }`}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-sm shrink-0"
+                            style={{
+                              backgroundColor: sub.calendarBackgroundColor ?? '#999',
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12.5px] font-medium text-gray-900 truncate">
+                              {sub.label}
+                              {sub.syncErrorCode === 'deleted' && (
+                                <span className="ml-2 text-[10px] text-red-600">
+                                  (deleted in Google)
+                                </span>
+                              )}
+                              {sub.syncErrorCode === 'forbidden' && (
+                                <span className="ml-2 text-[10px] text-amber-700">
+                                  (access revoked)
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-gray-500">
+                              {sub.accessRole === 'freeBusyReader'
+                                ? 'free/busy only'
+                                : sub.accessRole ?? 'reader'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleToggleSubscription(sub)}
+                            disabled={pendingMutationId === sub._id}
+                            className="text-[10.5px] font-medium text-gray-600 hover:text-gray-900 disabled:text-gray-400"
+                          >
+                            {sub.enabled ? 'Disable' : 'Enable'}
+                          </button>
+                          <button
+                            onClick={() => handleRemoveSubscription(sub)}
+                            disabled={pendingMutationId === sub._id}
+                            className="text-[10.5px] font-medium text-red-600 hover:text-red-700 disabled:text-gray-400"
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <button
+                    onClick={() => setShowAddPicker(true)}
+                    className="text-[12px] font-semibold text-blue-600 hover:text-blue-700"
+                  >
+                    + Add calendar
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={handleDisconnectCalendar}
                 disabled={isDisconnecting}
@@ -275,6 +401,19 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
               >
                 {isDisconnecting ? 'Disconnecting...' : 'Disconnect Calendar'}
               </button>
+
+              {showAddPicker && (
+                <AddCalendarPicker
+                  email={closerInfo.email}
+                  teamId={closerInfo.teamId}
+                  onClose={() => setShowAddPicker(false)}
+                  onSubscriptionsAdded={() => {
+                    refreshSubscriptions();
+                    // Sync immediately so new calendar's events appear.
+                    syncCalendar(closerInfo.email, closerInfo.teamId);
+                  }}
+                />
+              )}
             </div>
           ) : (
             <div className="space-y-3 max-w-md">
