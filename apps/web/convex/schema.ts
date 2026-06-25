@@ -334,6 +334,11 @@ export default defineSchema({
     }))),
     // Multi-calendar support (B2C) — tracks which calendar connection this event belongs to
     calendarId: v.optional(v.id("b2cCalendars")),
+    // Multi-calendar support (B2B) — sibling field pointing at the closer's
+    // sub-calendar subscription. Mutually exclusive with calendarId above:
+    // B2C events fill calendarId, B2B events fill subscriptionId. The shared
+    // calendarColor/calendarLabel fields below are used by both.
+    subscriptionId: v.optional(v.id("closerCalendarSubscriptions")),
     calendarColor: v.optional(v.string()),  // denormalized for fast UI rendering
     calendarLabel: v.optional(v.string()),  // denormalized for fast UI rendering
     // When set, this calendar event is a system-generated reference to a
@@ -345,6 +350,30 @@ export default defineSchema({
     .index("by_team_and_time", ["teamId", "startTime"])
     .index("by_closer_and_uid", ["closerId", "uid"])
     .index("by_coaching_call", ["coachingCallId"]),
+
+  // B2B multi-calendar subscriptions — one row per sub-calendar the closer
+  // wants to sync from their one connected Google account. Many subscriptions
+  // can share a single closers.googleCalendarRefreshToken. B2C uses a
+  // separate b2cCalendars table because each B2C row carries its own OAuth
+  // token (multi-account model). For B2B, OAuth is single-account; this
+  // table just tracks which sub-calendars under that account to sync.
+  closerCalendarSubscriptions: defineTable({
+    closerId: v.id("closers"),
+    teamId: v.id("teams"), // denormalized for team-scoped queries / cleanup
+    googleCalendarId: v.string(), // Google Calendar API id ("primary" or "abc@group.calendar.google.com")
+    label: v.string(), // user-customizable display name; defaults to the calendar's summary on add
+    calendarBackgroundColor: v.optional(v.string()), // hex from Google's backgroundColor; refreshed every sync
+    accessRole: v.optional(v.string()), // "owner" | "writer" | "reader" | "freeBusyReader"
+    enabled: v.boolean(),
+    // Set when sync hits a fatal error for this sub. UI surfaces the tag;
+    // sync skips disabled subs. null = healthy.
+    syncErrorCode: v.optional(v.string()), // "deleted" | "forbidden" | "other"
+    lastSyncAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_closer", ["closerId"])
+    .index("by_closer_and_enabled", ["closerId", "enabled"])
+    .index("by_team", ["teamId"]),
 
   // Scheduled calls (synced from Calendly or other calendar integrations)
   scheduledCalls: defineTable({

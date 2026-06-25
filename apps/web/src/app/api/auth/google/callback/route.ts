@@ -168,6 +168,24 @@ export async function GET(req: NextRequest) {
         refreshToken,
         email,
       });
+
+      // Auto-create a "primary" sub-calendar subscription so multi-calendar
+      // sync has a default entry on first sync. Idempotent — running the
+      // OAuth flow a second time is a no-op (existing primary preserved).
+      // Failures here are non-fatal: the lazy-migration path in the sync
+      // action will create the primary on next run if this fails for any
+      // reason (e.g. transient Convex blip during callback).
+      try {
+        await convex.mutation(
+          api.closerCalendarSubscriptions.addPrimarySubscription,
+          { closerId: typedCloserId },
+        );
+      } catch (subErr) {
+        console.warn(
+          "[Google OAuth] Primary subscription creation failed (non-fatal — sync will retry):",
+          subErr,
+        );
+      }
     }
 
     console.log("[Google OAuth] Successfully saved Google Calendar connection for closer:", typedCloserId);

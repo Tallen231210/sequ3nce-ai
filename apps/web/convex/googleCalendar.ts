@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { action, internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { resolveEventColor } from "./lib/googleCalendarPalette";
 
 // ============================================
 // INTERNAL QUERIES
@@ -108,76 +110,331 @@ export const refreshAccessToken = internalAction({
  */
 export const fetchGoogleCalendarEvents = internalAction({
   args: { closerId: v.id("closers") },
-  handler: async (ctx, args): Promise<{ success: boolean; syncedEvents: number }> => {
-    // 1. Get fresh access token
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ success: boolean; syncedEvents: number }> => {
+    // 1. Refresh access token (existing helper handles invalid_grant by
+    //    clearing the connection, so we can assume the token is valid here
+    //    or this throws).
     const accessToken = await ctx.runAction(
       internal.googleCalendar.refreshAccessToken,
-      { closerId: args.closerId }
+      { closerId: args.closerId },
     );
 
-    // 2. Get closer info for attendee filtering
-    const closer = await ctx.runQuery(internal.googleCalendar.getCloserWithToken, {
-      closerId: args.closerId,
-    });
+    // 2. Get closer for attendee filtering + teamId for the lazy migration
+    const closer = await ctx.runQuery(
+      internal.googleCalendar.getCloserWithToken,
+      { closerId: args.closerId },
+    );
     if (!closer) throw new Error("Closer not found");
 
-    // 3. Fetch events from Google Calendar API
-    const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    // 3. Get enabled subscriptions. If the closer has none (existing user
+    //    pre-multi-cal feature), lazy-create a "primary" subscription before
+    //    proceeding. Transparent migration — no user action required.
+    let subscriptions = (await ctx.runQuery(
+      internal.closerCalendarSubscriptions
+        .getEnabledSubscriptionsForCloserInternal,
+      { closerId: args.closerId },
+    )) as Array<{
+      _id: Id<"closerCalendarSubscriptions">;
+      googleCalendarId: string;
+      label: string;
+      calendarBackgroundColor?: string;
+    }>;
 
+    if (subscriptions.length === 0) {
+      await ctx.runMutation(
+        internal.closerCalendarSubscriptions.addPrimarySubscriptionInternal,
+        { closerId: args.closerId },
+      );
+      subscriptions = (await ctx.runQuery(
+        internal.closerCalendarSubscriptions
+          .getEnabledSubscriptionsForCloserInternal,
+        { closerId: args.closerId },
+      )) as typeof subscriptions;
+    }
+
+    // 4. For each enabled subscription, fetch + upsert events.
+    const nowDate = new Date();
+    const sevenDaysAgo = new Date(
+      nowDate.getTime() - 7 * 24 * 60 * 60 * 1000,
+    );
+    const thirtyDaysFromNow = new Date(
+      nowDate.getTime() + 30 * 24 * 60 * 60 * 1000,
+    );
     const params = new URLSearchParams({
       timeMin: sevenDaysAgo.toISOString(),
       timeMax: thirtyDaysFromNow.toISOString(),
-      singleEvents: "true", // Expand recurring events
+      singleEvents: "true",
       orderBy: "startTime",
       maxResults: "250",
     });
 
-    const response = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    let totalSynced = 0;
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(
-        `Google Calendar API error ${response.status}: ${errorBody}`
+    for (const sub of subscriptions) {
+      // Google's /calendars/{calendarId} endpoint takes a URL-encoded id.
+      // "primary" is a special string + all real ids are already URL-safe
+      // but encode defensively for shared calendars with special chars.
+      const encodedCalendarId = encodeURIComponent(sub.googleCalendarId);
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodedCalendarId}/events?${params}`;
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      } catch (err) {
+        // Network-level error. Log and continue to next sub — don't block
+        // healthy subs because one is unreachable.
+        console.error(
+          `[Google Calendar] Network error syncing sub ${sub._id} (${sub.googleCalendarId}):`,
+          err,
+        );
+        await ctx.runMutation(
+          internal.closerCalendarSubscriptions
+            .updateSubscriptionSyncStateInternal,
+          {
+            subscriptionId: sub._id,
+            syncErrorCode: "other",
+            lastSyncAt: Date.now(),
+          },
+        );
+        continue;
+      }
+
+      if (!response.ok) {
+        // 404 = calendar deleted in Google; 403 = permission revoked.
+        // Auto-disable on 404 so we stop hammering a dead endpoint. Keep
+        // 403 enabled in case the permission gets restored.
+        if (response.status === 404) {
+          await ctx.runMutation(
+            internal.closerCalendarSubscriptions
+              .updateSubscriptionSyncStateInternal,
+            {
+              subscriptionId: sub._id,
+              syncErrorCode: "deleted",
+              enabled: false,
+              lastSyncAt: Date.now(),
+            },
+          );
+        } else if (response.status === 403) {
+          await ctx.runMutation(
+            internal.closerCalendarSubscriptions
+              .updateSubscriptionSyncStateInternal,
+            {
+              subscriptionId: sub._id,
+              syncErrorCode: "forbidden",
+              lastSyncAt: Date.now(),
+            },
+          );
+        } else {
+          await ctx.runMutation(
+            internal.closerCalendarSubscriptions
+              .updateSubscriptionSyncStateInternal,
+            {
+              subscriptionId: sub._id,
+              syncErrorCode: "other",
+              lastSyncAt: Date.now(),
+            },
+          );
+        }
+        const errorBody = await response.text();
+        console.error(
+          `[Google Calendar] ${response.status} for sub ${sub._id}: ${errorBody}`,
+        );
+        continue;
+      }
+
+      const data: {
+        items?: GoogleCalendarEvent[];
+        summary?: string;
+        backgroundColor?: string;
+      } = await response.json();
+
+      // Refresh the subscription's cached backgroundColor if Google returned
+      // one (events.list payload includes the calendar metadata at top level).
+      if (
+        data.backgroundColor &&
+        data.backgroundColor !== sub.calendarBackgroundColor
+      ) {
+        await ctx.runMutation(
+          internal.closerCalendarSubscriptions
+            .updateSubscriptionSyncStateInternal,
+          {
+            subscriptionId: sub._id,
+            calendarBackgroundColor: data.backgroundColor,
+            syncErrorCode: null,
+          },
+        );
+      }
+
+      // Build the per-event payload. Resolve color via the standard palette:
+      // event.colorId override > calendar backgroundColor > null (renderer
+      // falls back to its own defaults).
+      const effectiveBackgroundColor =
+        data.backgroundColor ?? sub.calendarBackgroundColor ?? undefined;
+      const events = (data.items ?? [])
+        .filter((item) => item.status !== "cancelled")
+        .map((item) => ({
+          uid: item.id,
+          title: item.summary || "Untitled",
+          description: item.description || undefined,
+          startTime: parseGoogleDateTime(item.start),
+          endTime: parseGoogleDateTime(item.end),
+          location: item.location || undefined,
+          isAllDay: !!item.start.date && !item.start.dateTime,
+          meetingUrl:
+            extractMeetingUrl(item.location) ||
+            extractMeetingUrl(item.description) ||
+            item.hangoutLink ||
+            undefined,
+          attendees: extractProspectAttendees(
+            item.attendees || [],
+            closer.email,
+          ),
+          calendarColor:
+            resolveEventColor(item.colorId, effectiveBackgroundColor) ??
+            undefined,
+        }));
+
+      await ctx.runMutation(
+        internal.googleCalendar.upsertSubscriptionEvents,
+        {
+          closerId: args.closerId,
+          teamId: closer.teamId,
+          subscriptionId: sub._id,
+          subscriptionLabel: sub.label,
+          events,
+        },
       );
+
+      await ctx.runMutation(
+        internal.closerCalendarSubscriptions
+          .updateSubscriptionSyncStateInternal,
+        {
+          subscriptionId: sub._id,
+          lastSyncAt: Date.now(),
+          syncErrorCode: null,
+        },
+      );
+      totalSynced += events.length;
     }
 
-    const data = await response.json();
+    return { success: true, syncedEvents: totalSynced };
+  },
+});
 
-    // 4. Transform to our event format
-    const events = (data.items || [])
-      .filter((item: GoogleCalendarEvent) => item.status !== "cancelled")
-      .map((item: GoogleCalendarEvent) => ({
-        uid: item.id,
-        title: item.summary || "Untitled",
-        description: item.description || undefined,
-        startTime: parseGoogleDateTime(item.start),
-        endTime: parseGoogleDateTime(item.end),
-        location: item.location || undefined,
-        isAllDay: !!item.start.date && !item.start.dateTime,
-        meetingUrl:
-          extractMeetingUrl(item.location) ||
-          extractMeetingUrl(item.description) ||
-          item.hangoutLink ||
-          undefined,
-        attendees: extractProspectAttendees(
-          item.attendees || [],
-          closer.email
+/**
+ * Per-subscription upsert. Scoped delete — only removes future events that
+ * belong to THIS subscription and weren't matched in the current sync. Events
+ * from other subscriptions or B2C connections are left alone.
+ *
+ * Dedup key is (closerId, uid, subscriptionId) so the same event appearing
+ * on two subscribed sub-calendars produces two rows (Tyler's "show twice"
+ * decision — easier for closers to see when something's double-booked).
+ */
+export const upsertSubscriptionEvents = internalMutation({
+  args: {
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    subscriptionId: v.id("closerCalendarSubscriptions"),
+    subscriptionLabel: v.string(),
+    events: v.array(
+      v.object({
+        uid: v.string(),
+        title: v.string(),
+        description: v.optional(v.string()),
+        startTime: v.number(),
+        endTime: v.number(),
+        location: v.optional(v.string()),
+        isAllDay: v.optional(v.boolean()),
+        meetingUrl: v.optional(v.string()),
+        attendees: v.optional(
+          v.array(
+            v.object({
+              email: v.string(),
+              name: v.optional(v.string()),
+              isOrganizer: v.optional(v.boolean()),
+            }),
+          ),
         ),
-      }));
+        calendarColor: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
 
-    // 5. Upsert events with attendees
-    await ctx.runMutation(internal.calendar.upsertCalendarEventsWithAttendees, {
-      closerId: args.closerId,
-      teamId: closer.teamId,
-      events,
-    });
+    const allClosersEvents = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+    const thisSubsEvents = allClosersEvents.filter(
+      (e) => e.subscriptionId === args.subscriptionId,
+    );
+    const existingByUid = new Map(thisSubsEvents.map((e) => [e.uid, e]));
+    const matchedExistingIds = new Set<string>();
+    const processedUids = new Set<string>();
 
-    return { success: true, syncedEvents: events.length };
+    for (const event of args.events) {
+      if (processedUids.has(event.uid)) continue;
+      processedUids.add(event.uid);
+
+      const existing = existingByUid.get(event.uid);
+      if (existing) {
+        matchedExistingIds.add(existing._id);
+        await ctx.db.patch(existing._id, {
+          uid: event.uid,
+          title: event.title,
+          description: event.description,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          location: event.location,
+          isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
+          attendees: event.attendees,
+          calendarColor: event.calendarColor,
+          calendarLabel: args.subscriptionLabel,
+          fetchedAt: now,
+        });
+      } else {
+        await ctx.db.insert("calendarEvents", {
+          closerId: args.closerId,
+          teamId: args.teamId,
+          uid: event.uid,
+          title: event.title,
+          description: event.description,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          location: event.location,
+          isAllDay: event.isAllDay,
+          meetingUrl: event.meetingUrl,
+          attendees: event.attendees,
+          subscriptionId: args.subscriptionId,
+          calendarColor: event.calendarColor,
+          calendarLabel: args.subscriptionLabel,
+          fetchedAt: now,
+        });
+      }
+    }
+
+    // Scoped delete — only events from THIS subscription that weren't in the
+    // current sync. Don't touch events from other subscriptions (multi-cal
+    // closers) or B2C events (those use calendarId, not subscriptionId).
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    for (const existing of thisSubsEvents) {
+      if (
+        !matchedExistingIds.has(existing._id) &&
+        existing.startTime > oneDayAgo
+      ) {
+        await ctx.db.delete(existing._id);
+      }
+    }
+
+    await ctx.db.patch(args.closerId, { calendarLastSyncAt: now });
+    return { success: true, upserted: args.events.length };
   },
 });
 
@@ -250,6 +507,10 @@ interface GoogleCalendarEvent {
   hangoutLink?: string;
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
+  // Per-event color override (string "1"-"11"). When unset, the event takes
+  // its calendar's default backgroundColor. We resolve to a hex at sync time
+  // via lib/googleCalendarPalette.ts.
+  colorId?: string;
   attendees?: Array<{
     email: string;
     displayName?: string;
