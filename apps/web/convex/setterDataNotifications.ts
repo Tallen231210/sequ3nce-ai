@@ -153,6 +153,20 @@ async function sweepUntouchedAlertsForTeam(
   const channel = team.setterUntouchedAlertChannel;
   if (channel !== "slack" && channel !== "discord") return 0;
 
+  // GHL location id for the "Open in GHL" deep link. Setter-data customers
+  // connect via OAuth (locationId stored on setterGhlInstallations) while
+  // the legacy ghlApiKey path stores it on the team row directly. Prefer
+  // the OAuth install since that's what every customer on the new setter
+  // data flow uses; fall back to the legacy field for older teams.
+  // (Bug fix follow-up to 6b7eba5 — original used only team.ghlLocationId,
+  // which is null for OAuth-installed customers like Gianni Scott's team.)
+  const installation = (await ctx.runQuery(
+    internal.setterGhlOauth.getActiveInstallationForTeam,
+    { teamId: team._id },
+  )) as { locationId: string } | null;
+  const ghlLocationId =
+    installation?.locationId ?? team.ghlLocationId ?? null;
+
   let alertsSent = 0;
   const bucket = Math.floor(Date.now() / UNTOUCHED_DEDUP_BUCKET_MS);
 
@@ -167,8 +181,6 @@ async function sweepUntouchedAlertsForTeam(
     const minutesUntouched = Math.floor(
       (Date.now() - lead.dateAdded) / 60_000,
     );
-
-    const ghlLocationId = team.ghlLocationId ?? null;
 
     if (channel === "slack") {
       const slackChannelId =
