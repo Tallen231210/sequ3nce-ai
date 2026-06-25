@@ -1026,19 +1026,6 @@ export const getMySettings = query({
       dispositionSync: {
         enabled: team.setterDispositionSyncEnabled ?? false,
       },
-      // Dashboard Phase 1 — per-lead speed-to-lead ping config. Off by
-      // default; opt-in per team.
-      speedToLead: {
-        enabled: team.setterSpeedToLeadEnabled ?? false,
-        channel: team.setterSpeedToLeadChannel,
-        slackChannelId: team.setterSpeedToLeadSlackChannelId,
-        slackChannelName: team.setterSpeedToLeadSlackChannelName,
-        discordWebhookUrl: team.setterSpeedToLeadDiscordWebhookUrl,
-        slowThresholdMinutes:
-          team.setterSpeedToLeadSlowThresholdMs !== undefined
-            ? Math.round(team.setterSpeedToLeadSlowThresholdMs / 60000)
-            : undefined,
-      },
       // Dashboard Phase 3 — daily coverage-gap digest config. Off by default.
       coverageGap: {
         enabled: team.setterCoverageGapEnabled ?? false,

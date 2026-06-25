@@ -168,6 +168,8 @@ async function sweepUntouchedAlertsForTeam(
       (Date.now() - lead.dateAdded) / 60_000,
     );
 
+    const ghlLocationId = team.ghlLocationId ?? null;
+
     if (channel === "slack") {
       const slackChannelId =
         team.setterUntouchedAlertSlackChannelId || team.slackChannelId;
@@ -176,7 +178,11 @@ async function sweepUntouchedAlertsForTeam(
         accessToken: team.slackAccessToken,
         channelId: slackChannelId,
         text: `⚠️ Untouched lead alert`,
-        blocks: buildUntouchedAlertSlackBlocks({ lead, minutesUntouched }),
+        blocks: buildUntouchedAlertSlackBlocks({
+          lead,
+          minutesUntouched,
+          ghlLocationId,
+        }),
       });
       if (!result.ok) {
         throw new Error(`Slack post failed: ${result.error}`);
@@ -187,7 +193,11 @@ async function sweepUntouchedAlertsForTeam(
       const result = await postDiscordWebhook({
         webhookUrl,
         content: `⚠️ Untouched lead — ${lead.name || lead.email || lead.phone || "Unnamed"}`,
-        embed: buildUntouchedAlertDiscordEmbed({ lead, minutesUntouched }),
+        embed: buildUntouchedAlertDiscordEmbed({
+          lead,
+          minutesUntouched,
+          ghlLocationId,
+        }),
       });
       if (!result.ok) {
         throw new Error(`Discord post failed: ${result.error}`);
@@ -679,18 +689,44 @@ function formatSetterLine(row: ScorecardSetterRow): string {
 interface UntouchedAlertFormatArgs {
   lead: UntouchedLead;
   minutesUntouched: number;
+  // GHL location id used to build the "Open in GHL" deep link. Optional —
+  // legacy teams using only the ghlApiKey path (no OAuth installation) won't
+  // have one. When missing, the GHL CTA is omitted and the clickable phone
+  // link remains the primary next-step affordance for the setter.
+  ghlLocationId: string | null;
+}
+
+/**
+ * Convert a raw phone string (any GHL format — E.164, dashes, parens, spaces)
+ * to a tel: link target. Strips everything except digits + an optional leading
+ * +. The display string keeps GHL's original formatting so it reads naturally;
+ * only the link target is normalized.
+ */
+function phoneToTelLink(raw: string): string {
+  const cleaned = raw.replace(/[^\d+]/g, "");
+  return `tel:${cleaned}`;
+}
+
+function ghlContactUrl(locationId: string, contactId: string): string {
+  return `https://app.gohighlevel.com/v2/location/${locationId}/contacts/detail/${contactId}`;
 }
 
 function buildUntouchedAlertSlackBlocks(
   args: UntouchedAlertFormatArgs,
 ): unknown[] {
-  const { lead, minutesUntouched } = args;
+  const { lead, minutesUntouched, ghlLocationId } = args;
   const displayName = lead.name || lead.email || lead.phone || "Unnamed lead";
+
+  // Contact bits — phone gets wrapped in a Slack tel: mrkdwn link so the
+  // setter can dial straight from the message on mobile or via their dialer
+  // integration on desktop.
   const contactBits: string[] = [];
   if (lead.name && lead.email) contactBits.push(lead.email);
-  if (lead.phone) contactBits.push(lead.phone);
+  if (lead.phone) {
+    contactBits.push(`<${phoneToTelLink(lead.phone)}|${lead.phone}>`);
+  }
 
-  return [
+  const blocks: unknown[] = [
     {
       type: "header",
       text: {
@@ -714,22 +750,43 @@ function buildUntouchedAlertSlackBlocks(
           .join("\n"),
       },
     },
-    {
-      type: "context",
+  ];
+
+  // Primary CTA — "Open in GHL" button, only when we have a location id to
+  // build the URL. Legacy teams (api-key only) skip this; their phone link
+  // is the next-best action.
+  if (ghlLocationId && lead.ghlContactId) {
+    blocks.push({
+      type: "actions",
       elements: [
         {
-          type: "mrkdwn",
-          text: "<https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched|View untouched leads →>",
+          type: "button",
+          text: { type: "plain_text", text: "Open in GHL" },
+          url: ghlContactUrl(ghlLocationId, lead.ghlContactId),
+          style: "primary",
         },
       ],
-    },
-  ];
+    });
+  }
+
+  // Secondary context link — Sequ3nce dashboard view of untouched leads.
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: "<https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched|View untouched leads →>",
+      },
+    ],
+  });
+
+  return blocks;
 }
 
 function buildUntouchedAlertDiscordEmbed(
   args: UntouchedAlertFormatArgs,
 ): unknown {
-  const { lead, minutesUntouched } = args;
+  const { lead, minutesUntouched, ghlLocationId } = args;
   const displayName = lead.name || lead.email || lead.phone || "Unnamed lead";
 
   const fields: Array<{ name: string; value: string; inline?: boolean }> = [];
@@ -737,15 +794,27 @@ function buildUntouchedAlertDiscordEmbed(
     fields.push({ name: "Email", value: lead.email, inline: true });
   }
   if (lead.phone) {
-    fields.push({ name: "Phone", value: lead.phone, inline: true });
+    // Discord renders [text](tel:...) as a clickable link.
+    fields.push({
+      name: "Phone",
+      value: `[${lead.phone}](${phoneToTelLink(lead.phone)})`,
+      inline: true,
+    });
   }
   if (lead.assignedToName) {
     fields.push({ name: "Assigned", value: lead.assignedToName, inline: true });
   }
 
+  // Append the GHL CTA to the description as a markdown link — Discord
+  // embeds don't have real buttons, but bold markdown link reads as one.
+  let description = `**${displayName}** has been sitting for ${minutesUntouched} minutes with no contact attempts.`;
+  if (ghlLocationId && lead.ghlContactId) {
+    description += `\n\n[**Open in GHL →**](${ghlContactUrl(ghlLocationId, lead.ghlContactId)})`;
+  }
+
   return {
     title: `⚠️ Untouched lead — ${minutesUntouched}m`,
-    description: `**${displayName}** has been sitting for ${minutesUntouched} minutes with no contact attempts.`,
+    description,
     url: "https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched",
     color: 0xf59e0b, // amber
     fields,
@@ -1016,45 +1085,6 @@ function formatHourSlack(h: number): string {
   if (h < 12) return `${h}am`;
   return `${h - 12}pm`;
 }
-
-// ============================================================================
-// Speed-to-lead notification context query (V8 internalQuery).
-// The actual dispatcher action lives in setterSpeedToLeadDispatcher.ts
-// because it depends on @sentry/node (captureAndPersist) which forces
-// Node runtime. Keeping the V8 read here lets the dispatcher call back
-// via runQuery cheaply.
-// ============================================================================
-
-interface SpeedToLeadContext {
-  team: TeamDoc;
-  lead: Doc<"setterLeads">;
-  setterName: string | null;
-}
-
-export const getSpeedToLeadContext = internalQuery({
-  args: {
-    leadId: v.id("setterLeads"),
-    dialerGhlUserId: v.string(),
-  },
-  handler: async (ctx, args): Promise<SpeedToLeadContext | null> => {
-    const lead = await ctx.db.get(args.leadId);
-    if (!lead) return null;
-    const team = await ctx.db.get(lead.teamId);
-    if (!team) return null;
-    const rep = await ctx.db
-      .query("setterReps")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_team_and_ghl_user_id", (q: any) =>
-        q.eq("teamId", lead.teamId).eq("ghlUserId", args.dialerGhlUserId),
-      )
-      .first();
-    return {
-      team,
-      lead,
-      setterName: rep?.name ?? null,
-    };
-  },
-});
 
 // ----------------------------------------------------------------------------
 // Time / date helpers

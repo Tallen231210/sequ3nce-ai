@@ -853,22 +853,6 @@ async function recordCallEvent(
         ghlEventKey: ev.ghlEventKey ? `${ev.ghlEventKey}:connected` : undefined,
       });
     }
-
-    // Speed-to-lead Slack ping — scheduled (not awaited) so a slow Slack
-    // post doesn't block the webhook handler. The dispatcher checks the
-    // team's enabled flag + dedupes; safe to schedule unconditionally.
-    if (isFirstDialTransition && ev.ghlUserId !== undefined) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.setterSpeedToLeadDispatcher.sendSpeedToLeadNotification,
-        {
-          leadId: lead._id,
-          dialerGhlUserId: ev.ghlUserId,
-          firstDialAt: ev.occurredAt,
-          dateAdded: lead.dateAdded,
-        },
-      );
-    }
   } else {
     await ctx.db.patch(lead._id, {
       lastActivityAt: maxTime(lead.lastActivityAt, ev.occurredAt),

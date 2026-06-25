@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as _debugTestSetterScorecard from "../_debugTestSetterScorecard.js";
 import type * as adSpend from "../adSpend.js";
 import type * as adSpendInternal from "../adSpendInternal.js";
 import type * as admin from "../admin.js";
@@ -105,7 +106,6 @@ import type * as setterGhlSyncMutations from "../setterGhlSyncMutations.js";
 import type * as setterGhlWebhooks from "../setterGhlWebhooks.js";
 import type * as setterScorecardBackfill from "../setterScorecardBackfill.js";
 import type * as setterScorecardConfig from "../setterScorecardConfig.js";
-import type * as setterSpeedToLeadDispatcher from "../setterSpeedToLeadDispatcher.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
 import type * as stream from "../stream.js";
@@ -123,6 +123,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  _debugTestSetterScorecard: typeof _debugTestSetterScorecard;
   adSpend: typeof adSpend;
   adSpendInternal: typeof adSpendInternal;
   admin: typeof admin;
@@ -220,7 +221,6 @@ declare const fullApi: ApiFromModules<{
   setterGhlWebhooks: typeof setterGhlWebhooks;
   setterScorecardBackfill: typeof setterScorecardBackfill;
   setterScorecardConfig: typeof setterScorecardConfig;
-  setterSpeedToLeadDispatcher: typeof setterSpeedToLeadDispatcher;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
   stream: typeof stream;

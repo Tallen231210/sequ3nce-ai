@@ -7,7 +7,6 @@ import { useTeam } from "@/hooks/useTeam";
 import { GhlConnectionCard } from "./GhlConnectionCard";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
-import { SpeedToLeadConfig } from "./SpeedToLeadConfig";
 import { CoverageGapConfig } from "./CoverageGapConfig";
 import { ConnectionThresholdConfig } from "./ConnectionThresholdConfig";
 import { DispositionSyncConfig } from "./DispositionSyncConfig";
@@ -123,20 +122,6 @@ export function SettingsTab() {
     discordWebhookUrl: settings.untouchedAlert.discordWebhookUrl,
   };
 
-  const narrowedSpeedToLeadChannel: "slack" | "discord" | undefined =
-    settings.speedToLead.channel === "slack" ||
-    settings.speedToLead.channel === "discord"
-      ? settings.speedToLead.channel
-      : undefined;
-  const speedToLead = {
-    enabled: settings.speedToLead.enabled,
-    channel: narrowedSpeedToLeadChannel,
-    slackChannelId: settings.speedToLead.slackChannelId,
-    slackChannelName: settings.speedToLead.slackChannelName,
-    discordWebhookUrl: settings.speedToLead.discordWebhookUrl,
-    slowThresholdMinutes: settings.speedToLead.slowThresholdMinutes,
-  };
-
   const narrowedCoverageGapChannel: "slack" | "discord" | undefined =
     settings.coverageGap.channel === "slack" ||
     settings.coverageGap.channel === "discord"
@@ -186,15 +171,6 @@ export function SettingsTab() {
         onRetrySlackFetch={fetchSlackChannels}
         joinError={autoJoinErrors.untouchedAlert ?? null}
         onJoinError={makeErrorSetter("untouchedAlert")}
-      />
-      <SpeedToLeadConfig
-        settings={speedToLead}
-        slackChannels={slackChannels}
-        loadingSlackChannels={loadingSlackChannels}
-        slackFetchError={slackFetchError}
-        onRetrySlackFetch={fetchSlackChannels}
-        joinError={autoJoinErrors.speedToLead ?? null}
-        onJoinError={makeErrorSetter("speedToLead")}
       />
       <CoverageGapConfig
         settings={coverageGap}
