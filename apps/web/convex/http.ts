@@ -2271,16 +2271,45 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { subscriptionId } = body;
-      if (!subscriptionId) {
-        return new Response(JSON.stringify({ error: "subscriptionId required" }), {
-          status: 400,
+      const { subscriptionId, email, teamId } = body;
+      // Ownership check — without these the route accepted any subscriptionId
+      // from any caller. Require email+teamId so we can verify the requesting
+      // closer owns the subscription before letting the mutation through.
+      if (!subscriptionId || !email || !teamId) {
+        return new Response(
+          JSON.stringify({ error: "subscriptionId, email, teamId required" }),
+          { status: 400, headers: CALENDAR_SUB_CORS_HEADERS },
+        );
+      }
+      const closerLookup = (await ctx.runQuery(
+        internal.calendar.getCloserByEmailAndTeam,
+        { email, teamId: teamId as Id<"teams"> },
+      )) as { _id: Id<"closers"> } | null;
+      if (!closerLookup) {
+        return new Response(JSON.stringify({ error: "Closer not found" }), {
+          status: 404,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      const owner = await ctx.runQuery(
+        internal.closerCalendarSubscriptions.getSubscriptionOwnerInternal,
+        { subscriptionId: subscriptionId as Id<"closerCalendarSubscriptions"> },
+      );
+      if (!owner) {
+        return new Response(JSON.stringify({ error: "Subscription not found" }), {
+          status: 404,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      if (owner.closerId !== closerLookup._id) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
           headers: CALENDAR_SUB_CORS_HEADERS,
         });
       }
       const result = await ctx.runMutation(
         api.closerCalendarSubscriptions.removeSubscription,
-        { subscriptionId },
+        { subscriptionId: subscriptionId as Id<"closerCalendarSubscriptions"> },
       );
       return new Response(JSON.stringify(result), {
         status: 200,
@@ -2302,16 +2331,52 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { subscriptionId, enabled } = body;
-      if (!subscriptionId || typeof enabled !== "boolean") {
+      const { subscriptionId, enabled, email, teamId } = body;
+      if (
+        !subscriptionId ||
+        typeof enabled !== "boolean" ||
+        !email ||
+        !teamId
+      ) {
         return new Response(
-          JSON.stringify({ error: "subscriptionId and enabled (boolean) required" }),
+          JSON.stringify({
+            error: "subscriptionId, enabled (boolean), email, teamId required",
+          }),
           { status: 400, headers: CALENDAR_SUB_CORS_HEADERS },
         );
       }
+      const closerLookup = (await ctx.runQuery(
+        internal.calendar.getCloserByEmailAndTeam,
+        { email, teamId: teamId as Id<"teams"> },
+      )) as { _id: Id<"closers"> } | null;
+      if (!closerLookup) {
+        return new Response(JSON.stringify({ error: "Closer not found" }), {
+          status: 404,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      const owner = await ctx.runQuery(
+        internal.closerCalendarSubscriptions.getSubscriptionOwnerInternal,
+        { subscriptionId: subscriptionId as Id<"closerCalendarSubscriptions"> },
+      );
+      if (!owner) {
+        return new Response(JSON.stringify({ error: "Subscription not found" }), {
+          status: 404,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
+      if (owner.closerId !== closerLookup._id) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: CALENDAR_SUB_CORS_HEADERS,
+        });
+      }
       const result = await ctx.runMutation(
         api.closerCalendarSubscriptions.toggleSubscription,
-        { subscriptionId, enabled },
+        {
+          subscriptionId: subscriptionId as Id<"closerCalendarSubscriptions">,
+          enabled,
+        },
       );
       return new Response(JSON.stringify(result), {
         status: 200,

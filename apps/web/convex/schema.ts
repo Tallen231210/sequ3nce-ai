@@ -349,7 +349,10 @@ export default defineSchema({
     .index("by_closer", ["closerId"])
     .index("by_team_and_time", ["teamId", "startTime"])
     .index("by_closer_and_uid", ["closerId", "uid"])
-    .index("by_coaching_call", ["coachingCallId"]),
+    .index("by_coaching_call", ["coachingCallId"])
+    // Used by per-subscription upsert / cleanup / cascade-delete so we don't
+    // scan the entire closer's event set just to find one sub's events.
+    .index("by_subscription", ["subscriptionId"]),
 
   // B2B multi-calendar subscriptions — one row per sub-calendar the closer
   // wants to sync from their one connected Google account. Many subscriptions

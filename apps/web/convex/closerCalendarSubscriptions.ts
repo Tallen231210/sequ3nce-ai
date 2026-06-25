@@ -70,6 +70,21 @@ export const getAllSubscriptionsForCloserInternal = internalQuery({
   },
 });
 
+/**
+ * Internal helper for the HTTP-route ownership checks. Returns the
+ * subscription's closerId so the route can compare against the closer
+ * resolved from email+teamId before invoking remove/toggle. Returns
+ * null when the subscriptionId is bogus.
+ */
+export const getSubscriptionOwnerInternal = internalQuery({
+  args: { subscriptionId: v.id("closerCalendarSubscriptions") },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db.get(args.subscriptionId);
+    if (!sub) return null;
+    return { closerId: sub.closerId, teamId: sub.teamId };
+  },
+});
+
 // ============================================================================
 // MUTATIONS
 // ============================================================================
@@ -179,13 +194,15 @@ export const addPrimarySubscriptionInternal = internalMutation({
 
 /**
  * Public wrapper of addPrimarySubscriptionInternal so the Next.js OAuth
- * callback can invoke it via the standard Convex HTTP client.
+ * callback can invoke it via the standard Convex HTTP client. Idempotent —
+ * the primary-already-exists check short-circuits before any cap concern,
+ * but if a (degenerate) state has 10 enabled non-primary subs AND no
+ * primary, this enforces the cap symmetrically with addSubscription
+ * rather than silently inserting an 11th row.
  */
 export const addPrimarySubscription = mutation({
   args: { closerId: v.id("closers") },
   handler: async (ctx, args): Promise<Id<"closerCalendarSubscriptions"> | null> => {
-    // Same logic inlined since internalMutation can't be called from a public
-    // mutation directly. Idempotent.
     const closer = await ctx.db.get(args.closerId);
     if (!closer) return null;
     const existing = await ctx.db
@@ -194,6 +211,16 @@ export const addPrimarySubscription = mutation({
       .collect();
     const primary = existing.find((s) => s.googleCalendarId === "primary");
     if (primary) return primary._id;
+
+    // Cap symmetry with addSubscription. Only counts enabled subs; disabled
+    // ones don't block the user from getting their primary back.
+    const activeCount = existing.filter((s) => s.enabled).length;
+    if (activeCount >= MAX_SUBSCRIPTIONS_PER_CLOSER) {
+      throw new Error(
+        `Calendar limit reached — remove a subscription before adding another (max ${MAX_SUBSCRIPTIONS_PER_CLOSER}).`,
+      );
+    }
+
     return await ctx.db.insert("closerCalendarSubscriptions", {
       closerId: args.closerId,
       teamId: closer.teamId,
@@ -217,17 +244,18 @@ export const removeSubscription = mutation({
     const sub = await ctx.db.get(args.subscriptionId);
     if (!sub) return { success: false, reason: "not_found" };
 
-    // Cascade-delete events from this subscription so we don't leave orphans.
+    // Cascade-delete events from this subscription. Uses the by_subscription
+    // index added in this cleanup commit so we don't scan the entire closer
+    // event set just to find one sub's events (was M2/M4 from the review).
     const orphanEvents = await ctx.db
       .query("calendarEvents")
-      .withIndex("by_closer", (q) => q.eq("closerId", sub.closerId))
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", args.subscriptionId))
       .collect();
     let deleted = 0;
     for (const ev of orphanEvents) {
-      if (ev.subscriptionId === args.subscriptionId && deleted < 5000) {
-        await ctx.db.delete(ev._id);
-        deleted++;
-      }
+      if (deleted >= 5000) break;
+      await ctx.db.delete(ev._id);
+      deleted++;
     }
     await ctx.db.delete(args.subscriptionId);
     return { success: true, eventsDeleted: deleted };

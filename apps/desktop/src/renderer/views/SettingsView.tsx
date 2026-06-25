@@ -87,14 +87,23 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
 
   async function handleToggleSubscription(sub: CalendarSubscription) {
     setPendingMutationId(sub._id);
-    await toggleCalendarSubscription(sub._id, !sub.enabled);
+    await toggleCalendarSubscription(
+      sub._id,
+      !sub.enabled,
+      closerInfo.email,
+      closerInfo.teamId,
+    );
     refreshSubscriptions();
     setPendingMutationId(null);
   }
 
   async function handleRemoveSubscription(sub: CalendarSubscription) {
     setPendingMutationId(sub._id);
-    await removeCalendarSubscription(sub._id);
+    await removeCalendarSubscription(
+      sub._id,
+      closerInfo.email,
+      closerInfo.teamId,
+    );
     refreshSubscriptions();
     // Trigger a sync so the desktop schedule refreshes without the removed cal.
     syncCalendar(closerInfo.email, closerInfo.teamId);

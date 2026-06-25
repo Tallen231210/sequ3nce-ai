@@ -111,8 +111,25 @@ export const getCloserEventsByEmail = query({
       .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
       .collect();
 
+    // Hide events from disabled sub-calendar subscriptions (B2B multi-cal).
+    // Events with no subscriptionId (ICS users, pre-multi-cal Google events)
+    // always show. Only events linked to an explicitly-disabled sub get
+    // filtered — matches plan behavior of "preserve label preference, hide
+    // events until re-enabled."
+    const subs = await ctx.db
+      .query("closerCalendarSubscriptions")
+      .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
+      .collect();
+    const disabledSubIds = new Set(
+      subs.filter((s) => !s.enabled).map((s) => s._id as string),
+    );
+
     return events
       .filter((e) => e.startTime >= args.startDate && e.startTime <= args.endDate)
+      .filter(
+        (e) =>
+          !e.subscriptionId || !disabledSubIds.has(e.subscriptionId as string),
+      )
       .sort((a, b) => a.startTime - b.startTime);
   },
 });
@@ -148,12 +165,26 @@ export const getTeamEvents = query({
       .withIndex("by_team_and_time", (q) => q.eq("teamId", user.teamId))
       .collect();
 
-    // Filter by date range and closer
+    // Pull all disabled subscriptions for the target closers so we can hide
+    // their events (matches the same filter applied in the closer's desktop
+    // view). One-shot fetch since N closers is small.
+    const allSubs = await ctx.db
+      .query("closerCalendarSubscriptions")
+      .withIndex("by_team", (q) => q.eq("teamId", user.teamId))
+      .collect();
+    const disabledSubIds = new Set(
+      allSubs.filter((s) => !s.enabled).map((s) => s._id as string),
+    );
+
+    // Filter by date range, target closers, and enabled subscription state.
+    // Events without a subscriptionId (ICS / legacy single-cal sync) always
+    // pass through.
     const filteredEvents = events.filter(
       (e) =>
         e.startTime >= args.startDate &&
         e.startTime <= args.endDate &&
-        targetCloserIds.includes(e.closerId)
+        targetCloserIds.includes(e.closerId) &&
+        (!e.subscriptionId || !disabledSubIds.has(e.subscriptionId as string))
     );
 
     // Attach closer info
@@ -330,7 +361,23 @@ export const disconnectCalendarByEmail = mutation({
       await ctx.db.delete(event._id);
     }
 
-    return { success: true, deletedEvents: events.length };
+    // Wipe multi-cal subscriptions too. The picker has no way to deal with
+    // ghost rows pointing at the old account, and the next sync would 404 on
+    // every one of them. Cleaner to start fresh on reconnect. The OAuth
+    // callback re-creates a primary subscription automatically.
+    const subs = await ctx.db
+      .query("closerCalendarSubscriptions")
+      .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
+      .collect();
+    for (const sub of subs) {
+      await ctx.db.delete(sub._id);
+    }
+
+    return {
+      success: true,
+      deletedEvents: events.length,
+      deletedSubscriptions: subs.length,
+    };
   },
 });
 

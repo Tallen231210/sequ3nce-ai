@@ -1602,12 +1602,17 @@ export async function addCalendarSubscription(
 
 export async function removeCalendarSubscription(
   subscriptionId: string,
+  email: string,
+  teamId: string,
 ): Promise<{ success: boolean; eventsDeleted?: number; error?: string }> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/removeCalendarSubscription`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscriptionId }),
+      // email + teamId required for the ownership check (was unauthenticated
+      // before the cleanup commit — anyone with a Convex doc id could delete
+      // another closer's subscription).
+      body: JSON.stringify({ subscriptionId, email, teamId }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -1626,12 +1631,16 @@ export async function removeCalendarSubscription(
 export async function toggleCalendarSubscription(
   subscriptionId: string,
   enabled: boolean,
+  email: string,
+  teamId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/toggleCalendarSubscription`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscriptionId, enabled }),
+      // email + teamId required for the ownership check (same reason as
+      // removeCalendarSubscription above).
+      body: JSON.stringify({ subscriptionId, enabled, email, teamId }),
     });
     const data = await response.json();
     if (!response.ok) {

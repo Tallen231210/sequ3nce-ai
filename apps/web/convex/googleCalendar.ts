@@ -141,6 +141,7 @@ export const fetchGoogleCalendarEvents = internalAction({
       googleCalendarId: string;
       label: string;
       calendarBackgroundColor?: string;
+      accessRole?: string;
     }>;
 
     if (subscriptions.length === 0) {
@@ -275,11 +276,15 @@ export const fetchGoogleCalendarEvents = internalAction({
       // falls back to its own defaults).
       const effectiveBackgroundColor =
         data.backgroundColor ?? sub.calendarBackgroundColor ?? undefined;
+      // freeBusyReader access only exposes the calendar's busy/free blocks
+      // without titles. Show them clearly as "(Busy)" rather than the
+      // misleading "Untitled" default (closes L1 from the review).
+      const isFreeBusyOnly = sub.accessRole === "freeBusyReader";
       const events = (data.items ?? [])
         .filter((item) => item.status !== "cancelled")
         .map((item) => ({
           uid: item.id,
-          title: item.summary || "Untitled",
+          title: item.summary || (isFreeBusyOnly ? "(Busy)" : "Untitled"),
           description: item.description || undefined,
           startTime: parseGoogleDateTime(item.start),
           endTime: parseGoogleDateTime(item.end),
@@ -367,13 +372,14 @@ export const upsertSubscriptionEvents = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
 
-    const allClosersEvents = await ctx.db
+    // Use the by_subscription index (added in cleanup commit) so we don't
+    // scan the entire closer event set on every sync (was a read-limit
+    // risk per the review). For multi-cal closers (10 subs) this drops
+    // reads by ~10x.
+    const thisSubsEvents = await ctx.db
       .query("calendarEvents")
-      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", args.subscriptionId))
       .collect();
-    const thisSubsEvents = allClosersEvents.filter(
-      (e) => e.subscriptionId === args.subscriptionId,
-    );
     const existingByUid = new Map(thisSubsEvents.map((e) => [e.uid, e]));
     const matchedExistingIds = new Set<string>();
     const processedUids = new Set<string>();
