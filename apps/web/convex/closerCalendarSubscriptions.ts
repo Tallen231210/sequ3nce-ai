@@ -348,6 +348,7 @@ export const listAvailableCalendars = action({
       alreadySubscribed: boolean;
     }>;
     error?: string;
+    needsReauth?: boolean;
   }> => {
     let accessToken: string;
     try {
@@ -370,9 +371,32 @@ export const listAvailableCalendars = action({
       { headers: { Authorization: `Bearer ${accessToken}` } },
     );
     if (!response.ok) {
+      // Surface Google's actual error body — they put the precise reason
+      // (missing scope, quota, etc.) in the JSON. Without this we showed
+      // a bare "Google API error 403" and had no way to diagnose without
+      // shelling into logs.
+      const body = await response.text();
+      let detail = "";
+      try {
+        const parsed = JSON.parse(body) as {
+          error?: { message?: string; status?: string };
+        };
+        detail = parsed.error?.message ?? "";
+      } catch {
+        detail = body.slice(0, 200);
+      }
+      // 403 with a scope-related message → tell the closer how to recover.
+      // Renderer can react to needsReauth to surface a "Reconnect Google"
+      // CTA inline instead of just dumping the error string.
+      const isScopeError =
+        response.status === 403 &&
+        /scope|permission/i.test(detail);
       return {
         ok: false,
-        error: `Google API error ${response.status}`,
+        error: detail
+          ? `Google API error ${response.status}: ${detail}`
+          : `Google API error ${response.status}`,
+        needsReauth: isScopeError,
       };
     }
     const data: {

@@ -18,6 +18,7 @@ import {
 interface AddCalendarPickerProps {
   email: string;
   teamId: string;
+  closerId: string;
   onClose: () => void;
   onSubscriptionsAdded: () => void;
 }
@@ -25,11 +26,13 @@ interface AddCalendarPickerProps {
 export function AddCalendarPicker({
   email,
   teamId,
+  closerId,
   onClose,
   onSubscriptionsAdded,
 }: AddCalendarPickerProps) {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [needsReauth, setNeedsReauth] = useState(false);
   const [calendars, setCalendars] = useState<AvailableCalendar[]>([]);
   // Set of googleCalendarIds the user has checked in this session (excludes
   // already-subscribed ones, which we render disabled+checked for clarity).
@@ -41,10 +44,12 @@ export function AddCalendarPicker({
     let cancelled = false;
     setLoading(true);
     setFetchError(null);
+    setNeedsReauth(false);
     listAvailableGoogleCalendars(email, teamId).then((res) => {
       if (cancelled) return;
       if (!res.ok) {
         setFetchError(res.error ?? 'Could not load calendars');
+        setNeedsReauth(res.needsReauth === true);
         setCalendars([]);
       } else {
         setCalendars(res.calendars ?? []);
@@ -115,8 +120,27 @@ export function AddCalendarPicker({
           )}
 
           {!loading && fetchError && (
-            <div className="text-[13px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
-              {fetchError}
+            <div className="text-[13px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 space-y-2">
+              <div>{fetchError}</div>
+              {needsReauth && (
+                <div className="space-y-2 pt-1 border-t border-amber-200">
+                  <div className="text-[12px] text-amber-800">
+                    Your Google Calendar connection is missing the permission
+                    needed to list calendars. Reconnect to grant the new scope.
+                  </div>
+                  <button
+                    onClick={() => {
+                      window.open(
+                        `https://sequ3nce.ai/api/auth/google/authorize?closerId=${closerId}`,
+                        '_blank',
+                      );
+                    }}
+                    className="text-[12px] font-semibold text-white bg-amber-700 hover:bg-amber-800 px-3 py-1.5 rounded transition-colors"
+                  >
+                    Reconnect Google Calendar
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

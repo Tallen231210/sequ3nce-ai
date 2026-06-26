@@ -415,6 +415,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
                 <AddCalendarPicker
                   email={closerInfo.email}
                   teamId={closerInfo.teamId}
+                  closerId={closerInfo.closerId}
                   onClose={() => setShowAddPicker(false)}
                   onSubscriptionsAdded={() => {
                     refreshSubscriptions();

@@ -1545,7 +1545,12 @@ export async function listCalendarSubscriptions(
 export async function listAvailableGoogleCalendars(
   email: string,
   teamId: string,
-): Promise<{ ok: boolean; calendars?: AvailableCalendar[]; error?: string }> {
+): Promise<{
+  ok: boolean;
+  calendars?: AvailableCalendar[];
+  error?: string;
+  needsReauth?: boolean;
+}> {
   try {
     const params = new URLSearchParams({ email, teamId });
     const response = await convexFetch(
@@ -1553,7 +1558,11 @@ export async function listAvailableGoogleCalendars(
     );
     const data = await response.json();
     if (!response.ok || !data.ok) {
-      return { ok: false, error: data.error ?? "Failed to list available calendars" };
+      return {
+        ok: false,
+        error: data.error ?? "Failed to list available calendars",
+        needsReauth: data.needsReauth === true,
+      };
     }
     return { ok: true, calendars: data.calendars ?? [] };
   } catch (error) {

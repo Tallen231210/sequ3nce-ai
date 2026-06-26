@@ -41,7 +41,20 @@ export async function GET(req: NextRequest) {
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", "https://www.googleapis.com/auth/calendar.events.readonly");
+  // Two scopes (space-separated): events.readonly lets us sync events; the
+  // separate calendarlist.readonly is what `calendarList.list` needs for the
+  // multi-calendar sub-calendar picker. The picker fails 403 without the
+  // second scope — events.readonly alone reads events but can't enumerate
+  // which calendars exist. Closers connected before this change have tokens
+  // missing the second scope and need to disconnect + reconnect Google
+  // Calendar from Settings to pick up the new scope.
+  authUrl.searchParams.set(
+    "scope",
+    [
+      "https://www.googleapis.com/auth/calendar.events.readonly",
+      "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+    ].join(" "),
+  );
   authUrl.searchParams.set("access_type", "offline");
   authUrl.searchParams.set("prompt", "consent");
   authUrl.searchParams.set("state", state);
