@@ -13,13 +13,13 @@ export default function RecruitingPage() {
       <Header title="Recruiting" description="Post jobs and browse talent" />
 
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-5">
-          <Briefcase className="w-8 h-8 text-zinc-400" />
+        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-5">
+          <Briefcase className="w-8 h-8 text-muted-foreground" />
         </div>
-        <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
+        <h2 className="text-xl font-semibold text-foreground mb-2">
           Recruiting Coming Soon
         </h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-md leading-relaxed">
+        <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
           We&apos;re building a talent marketplace that connects your team with
           top-performing closers. Check back once our closer directory is
           live.
