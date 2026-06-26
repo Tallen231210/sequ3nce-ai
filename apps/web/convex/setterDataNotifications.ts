@@ -719,6 +719,43 @@ function phoneToTelLink(raw: string): string {
   return `tel:${cleaned}`;
 }
 
+/**
+ * Format a minutes count into a compact human-readable duration. Untouched
+ * leads regularly cross the day boundary (especially overnight or weekend
+ * sits), and "7735m" is unreadable at a glance. We collapse the largest two
+ * units so "5d 8h" / "2h 15m" / "45m" reads instantly. Short form for headers,
+ * long form for body sentences.
+ */
+function formatUntouchedDuration(
+  minutes: number,
+  variant: "short" | "long" = "short",
+): string {
+  const totalMinutes = Math.max(0, Math.floor(minutes));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const mins = totalMinutes % 60;
+
+  if (variant === "short") {
+    if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+    if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    return `${mins}m`;
+  }
+
+  const pluralize = (n: number, unit: string) =>
+    `${n} ${unit}${n === 1 ? "" : "s"}`;
+  if (days > 0) {
+    return hours > 0
+      ? `${pluralize(days, "day")} ${pluralize(hours, "hour")}`
+      : pluralize(days, "day");
+  }
+  if (hours > 0) {
+    return mins > 0
+      ? `${pluralize(hours, "hour")} ${pluralize(mins, "minute")}`
+      : pluralize(hours, "hour");
+  }
+  return pluralize(mins, "minute");
+}
+
 function ghlContactUrl(locationId: string, contactId: string): string {
   return `https://app.gohighlevel.com/v2/location/${locationId}/contacts/detail/${contactId}`;
 }
@@ -738,12 +775,15 @@ function buildUntouchedAlertSlackBlocks(
     contactBits.push(`<${phoneToTelLink(lead.phone)}|${lead.phone}>`);
   }
 
+  const shortDuration = formatUntouchedDuration(minutesUntouched, "short");
+  const longDuration = formatUntouchedDuration(minutesUntouched, "long");
+
   const blocks: unknown[] = [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: `⚠️ Untouched lead — ${minutesUntouched}m`,
+        text: `⚠️ Untouched lead — ${shortDuration}`,
       },
     },
     {
@@ -756,7 +796,7 @@ function buildUntouchedAlertSlackBlocks(
           lead.assignedToName
             ? `Assigned to *${lead.assignedToName}*`
             : "Unassigned",
-          `Sitting for ${minutesUntouched} minutes with no contact attempts.`,
+          `Sitting for ${longDuration} with no contact attempts.`,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -817,15 +857,18 @@ function buildUntouchedAlertDiscordEmbed(
     fields.push({ name: "Assigned", value: lead.assignedToName, inline: true });
   }
 
+  const shortDuration = formatUntouchedDuration(minutesUntouched, "short");
+  const longDuration = formatUntouchedDuration(minutesUntouched, "long");
+
   // Append the GHL CTA to the description as a markdown link — Discord
   // embeds don't have real buttons, but bold markdown link reads as one.
-  let description = `**${displayName}** has been sitting for ${minutesUntouched} minutes with no contact attempts.`;
+  let description = `**${displayName}** has been sitting for ${longDuration} with no contact attempts.`;
   if (ghlLocationId && lead.ghlContactId) {
     description += `\n\n[**Open in GHL →**](${ghlContactUrl(ghlLocationId, lead.ghlContactId)})`;
   }
 
   return {
-    title: `⚠️ Untouched lead — ${minutesUntouched}m`,
+    title: `⚠️ Untouched lead — ${shortDuration}`,
     description,
     url: "https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched",
     color: 0xf59e0b, // amber
