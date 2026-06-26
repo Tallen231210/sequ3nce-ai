@@ -86,7 +86,15 @@ export const runScorecards = internalAction({
 // it sits there.
 // ============================================================================
 
-const UNTOUCHED_DEDUP_BUCKET_MS = 15 * 60 * 1000;
+// Maximum age a lead can be (since GHL date_added) and still qualify for an
+// untouched-lead alert. Tightened from the original 7-day window after a
+// customer reported alerts feeling random and chaotic: "lead from today,
+// then lead from 9 days ago." A 24h cap restricts the alert stream to
+// genuinely fresh leads, which is the only state where a setter response
+// is still meaningful. Anything older drops out and is treated as
+// permanently stale for notification purposes (the dashboard still shows
+// the lead — this only governs what fires into Slack/Discord).
+const UNTOUCHED_MAX_LEAD_AGE_MS = 24 * 60 * 60 * 1000;
 
 export const runUntouchedAlertSweep = internalAction({
   args: {},
@@ -168,10 +176,21 @@ async function sweepUntouchedAlertsForTeam(
     installation?.locationId ?? team.ghlLocationId ?? null;
 
   let alertsSent = 0;
-  const bucket = Math.floor(Date.now() / UNTOUCHED_DEDUP_BUCKET_MS);
 
-  for (const lead of leads) {
-    const dedupKey = `${team._id}_untouched_${lead.ghlContactId}_${bucket}`;
+  // Process oldest-first within the candidate window so a manager reading
+  // alerts top-to-bottom sees them in the order each lead crossed the
+  // threshold. Without this, the loop order matches whatever the index
+  // returned and the stream feels random — the original complaint.
+  const sortedLeads = [...leads].sort((a, b) => a.dateAdded - b.dateAdded);
+
+  for (const lead of sortedLeads) {
+    // One alert per lead, ever. The old design used a rolling 15-min
+    // bucket which meant a single untouched lead would fire ~96 alerts in
+    // 24h and ~672 alerts over the original 7-day window. Once a setter
+    // has been pinged about a lead, additional pings add noise without
+    // information — the dashboard's untouched-leads tab is the durable
+    // surface for "what still needs attention."
+    const dedupKey = `${team._id}_untouched_${lead.ghlContactId}`;
     const alreadyAlerted = await ctx.runQuery(
       internal.setterDataNotifications.hasNotificationByDedupKey,
       { dedupKey },
@@ -385,9 +404,10 @@ export const getEnabledUntouchedAlertTeams = internalQuery({
 
 /**
  * Find leads that have crossed the team's untouched threshold but still
- * have zero contact attempts. Bounded to leads added within the last
- * 7 days so a freshly-enabled alert config doesn't fire a flood of
- * historical notifications.
+ * have zero contact attempts. Bounded to leads added within
+ * UNTOUCHED_MAX_LEAD_AGE_MS (24h) so the stream is always "leads that just
+ * came in and weren't worked." Older leads are intentionally excluded —
+ * they live on the dashboard as a backlog but don't generate fresh pings.
  */
 export const getUntouchedLeadsForTeam = internalQuery({
   args: {
@@ -395,14 +415,14 @@ export const getUntouchedLeadsForTeam = internalQuery({
     olderThanMs: v.number(),
   },
   handler: async (ctx, args) => {
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const oldestEligible = Date.now() - UNTOUCHED_MAX_LEAD_AGE_MS;
     const candidates = await ctx.db
       .query("setterLeads")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team_and_date_added", (q: any) =>
         q
           .eq("teamId", args.teamId)
-          .gte("dateAdded", sevenDaysAgo)
+          .gte("dateAdded", oldestEligible)
           .lt("dateAdded", args.olderThanMs),
       )
       .collect();
