@@ -87,7 +87,7 @@ export const getAllCallsLinkedToBot = internalQuery({
   handler: async (ctx, args) => {
     const calls = await ctx.db
       .query("calls")
-      .filter((q) => q.eq(q.field("meetingBotId"), args.botId))
+      .withIndex("by_meeting_bot", (q) => q.eq("meetingBotId", args.botId))
       .collect();
     return calls.map((c) => ({ _id: c._id, teamId: c.teamId }));
   },

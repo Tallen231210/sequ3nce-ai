@@ -510,7 +510,13 @@ export default defineSchema({
     // the badge queries collect() over every call for a team and blow
     // past Convex's 16 MiB per-query read limit on high-volume teams.
     .index("by_team_and_flagged", ["teamId", "flaggedForReview"])
-    .index("by_team_and_review_status", ["teamId", "reviewStatus"]),
+    .index("by_team_and_review_status", ["teamId", "reviewStatus"])
+    // Reverse lookup from a meetingBot to all calls referencing it. Used by
+    // speakerVerification.getAllCallsLinkedToBot to find every call that
+    // belongs to a bot when there are multiple (fragmented bot sessions).
+    // Without this index the lookup is a full-table .filter() scan and blows
+    // Convex's 16 MiB read limit on teams with large call histories.
+    .index("by_meeting_bot", ["meetingBotId"]),
 
   // Sidecar stats table — denormalizes only the fields stats queries
   // need (no transcript / ammoAnalysis / callAnalysis blobs). Lets
