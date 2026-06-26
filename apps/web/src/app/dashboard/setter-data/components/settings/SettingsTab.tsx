@@ -8,6 +8,7 @@ import { GhlConnectionCard } from "./GhlConnectionCard";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
 import { CoverageGapConfig } from "./CoverageGapConfig";
+import { UncontactedDigestConfig } from "./UncontactedDigestConfig";
 import { ConnectionThresholdConfig } from "./ConnectionThresholdConfig";
 import { DispositionSyncConfig } from "./DispositionSyncConfig";
 import { PlaybookConfig } from "./PlaybookConfig";
@@ -137,6 +138,20 @@ export function SettingsTab() {
     minLeads: settings.coverageGap.minLeads,
   };
 
+  const narrowedUncontactedDigestChannel: "slack" | "discord" | undefined =
+    settings.uncontactedDigest.channel === "slack" ||
+    settings.uncontactedDigest.channel === "discord"
+      ? settings.uncontactedDigest.channel
+      : undefined;
+  const uncontactedDigest = {
+    enabled: settings.uncontactedDigest.enabled,
+    channel: narrowedUncontactedDigestChannel,
+    slackChannelId: settings.uncontactedDigest.slackChannelId,
+    slackChannelName: settings.uncontactedDigest.slackChannelName,
+    discordWebhookUrl: settings.uncontactedDigest.discordWebhookUrl,
+    hourLocal: settings.uncontactedDigest.hourLocal,
+  };
+
   // Per-config setter for the auto-join error. Each config calls
   // onJoinError(message) after save attempts; passing null clears.
   function makeErrorSetter(key: string) {
@@ -171,6 +186,16 @@ export function SettingsTab() {
         onRetrySlackFetch={fetchSlackChannels}
         joinError={autoJoinErrors.untouchedAlert ?? null}
         onJoinError={makeErrorSetter("untouchedAlert")}
+      />
+      <UncontactedDigestConfig
+        uncontactedDigest={uncontactedDigest}
+        teamTimezone={settings.timezone}
+        slackChannels={slackChannels}
+        loadingSlackChannels={loadingSlackChannels}
+        slackFetchError={slackFetchError}
+        onRetrySlackFetch={fetchSlackChannels}
+        joinError={autoJoinErrors.uncontactedDigest ?? null}
+        onJoinError={makeErrorSetter("uncontactedDigest")}
       />
       <CoverageGapConfig
         settings={coverageGap}

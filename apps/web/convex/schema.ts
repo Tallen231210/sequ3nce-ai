@@ -190,6 +190,18 @@ export default defineSchema({
     setterUntouchedAlertSlackChannelName: v.optional(v.string()), // For picker round-trip + error copy
     setterUntouchedAlertDiscordWebhookUrl: v.optional(v.string()),
 
+    // Daily Uncontacted Leads digest. End-of-day rollup of every lead added
+    // today (team-local) that still has zero contact attempts at report
+    // time. Complementary to the real-time untouched alert — gives setters
+    // a clean batch view to sweep through if they couldn't keep up with
+    // pings during the day. Off by default. Default hour 17 (5pm local).
+    setterUncontactedDigestEnabled: v.optional(v.boolean()),
+    setterUncontactedDigestHourLocal: v.optional(v.number()), // 0-23 in team.timezone
+    setterUncontactedDigestChannel: v.optional(v.string()), // "slack" | "discord"
+    setterUncontactedDigestSlackChannelId: v.optional(v.string()),
+    setterUncontactedDigestSlackChannelName: v.optional(v.string()),
+    setterUncontactedDigestDiscordWebhookUrl: v.optional(v.string()),
+
     // Phase 3 — Disposition sync toggle. When true AND a setterGhlInstallations
     // row exists for this team, post-call disposition sync routes through the
     // new OAuth flow instead of the legacy ghlApiKey path. Off by default;

@@ -5,6 +5,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import type { Doc } from "./_generated/dataModel";
 import type { ScorecardData, ScorecardSetterRow } from "./setterDataMetrics";
 import { buildBookingMatcherIndex } from "./setterCloserBookings";
@@ -1267,6 +1268,401 @@ function formatDuration(ms: number): string {
   const hours = Math.floor(totalMin / 60);
   const min = totalMin % 60;
   return min === 0 ? `${hours}h` : `${hours}h ${min}m`;
+}
+
+// ============================================================================
+// runUncontactedDigest — daily end-of-day digest of uncontacted leads
+//
+// Runs hourly (cron). Per-team gated on enabled flag + local-tz delivery
+// hour (default 17 = 5pm). Sends a Slack/Discord message listing every
+// lead added today (team-local) that still has zero contact attempts at
+// report time. Complementary to the real-time untouched alert: that one
+// fires on threshold-cross; this one is the catch-up batch view for
+// setters who couldn't keep up during the day. Even leads that fired a
+// real-time alert earlier get excluded here if they've been contacted by
+// the time the digest runs — the report always reflects current state.
+// Dedup keyed by `{teamId}_uncontacted_digest_{today-date-in-tz}` so a
+// team gets at most one digest per local day.
+// ============================================================================
+
+const DEFAULT_UNCONTACTED_DIGEST_HOUR = 17; // 5pm local
+
+export const runUncontactedDigest = internalAction({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    processed: number;
+    skipped: number;
+    errored: number;
+    candidateTeams: number;
+  }> => {
+    const now = Date.now();
+    const teams = (await ctx.runQuery(
+      internal.setterDataNotifications.getEnabledUncontactedDigestTeams,
+      {},
+    )) as TeamDoc[];
+
+    let processed = 0;
+    let skipped = 0;
+    let errored = 0;
+
+    for (const team of teams) {
+      try {
+        const result = await maybeSendUncontactedDigestForTeam(ctx, team, now);
+        if (result.sent) processed++;
+        else skipped++;
+      } catch (err) {
+        errored++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[runUncontactedDigest] Error for team ${team._id}: ${message}`,
+          err,
+        );
+      }
+    }
+
+    return { processed, skipped, errored, candidateTeams: teams.length };
+  },
+});
+
+export const getEnabledUncontactedDigestTeams = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("teams").collect();
+    return all.filter(
+      (t) =>
+        t.setterDataEnabled !== false &&
+        t.setterUncontactedDigestEnabled === true,
+    );
+  },
+});
+
+/**
+ * Find every lead added during the given UTC range that still has zero
+ * contact attempts. Used by the daily digest to enumerate "still
+ * uncontacted as of now" — even if an untouched alert fired earlier in
+ * the day, contacted leads are excluded here because the filter checks
+ * current state (dialCount + smsOutboundCount + lastActivityAt) not
+ * historical alert delivery.
+ */
+export const getUncontactedLeadsInRange = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    rangeStartMs: v.number(),
+    rangeEndMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const candidates = await ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_date_added", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .gte("dateAdded", args.rangeStartMs)
+          .lte("dateAdded", args.rangeEndMs),
+      )
+      .collect();
+
+    return candidates
+      .filter(
+        (l) =>
+          l.dialCount === 0 &&
+          l.smsOutboundCount === 0 &&
+          l.lastActivityAt === undefined,
+      )
+      .sort((a, b) => a.dateAdded - b.dateAdded)
+      .map((l) => ({
+        leadId: l._id,
+        ghlContactId: l.ghlContactId,
+        name: l.name,
+        email: l.email,
+        phone: l.phone,
+        dateAdded: l.dateAdded,
+        assignedToName: l.assignedToName,
+      }));
+  },
+});
+
+interface UncontactedDigestLead {
+  leadId: Id<"setterLeads">;
+  ghlContactId: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  dateAdded: number;
+  assignedToName?: string;
+}
+
+async function maybeSendUncontactedDigestForTeam(
+  ctx: ActionCtx,
+  team: TeamDoc,
+  nowMs: number,
+): Promise<{ sent: boolean; reason?: string }> {
+  const targetHour =
+    team.setterUncontactedDigestHourLocal ?? DEFAULT_UNCONTACTED_DIGEST_HOUR;
+  const tz = team.timezone || DEFAULT_TIMEZONE;
+  const localNow = formatInTimeZone(new Date(nowMs), tz);
+  if (localNow.hour !== targetHour) {
+    return { sent: false, reason: `hour ${localNow.hour} != target ${targetHour}` };
+  }
+
+  // Today's local date string for dedup. Digest fires once per local day,
+  // regardless of how many cron ticks land within the target hour.
+  const todayDateStr = `${localNow.year}-${pad2(localNow.month)}-${pad2(localNow.day)}`;
+  const dedupKey = `${team._id}_uncontacted_digest_${todayDateStr}`;
+  const alreadySent = await ctx.runQuery(
+    internal.setterDataNotifications.hasNotificationByDedupKey,
+    { dedupKey },
+  );
+  if (alreadySent) {
+    return { sent: false, reason: "already sent for this date" };
+  }
+
+  // "Today" = start-of-day local through current moment. Captures every
+  // lead that landed today and is still uncontacted as of the report.
+  const range = getLocalDateRangeUtc(todayDateStr, tz);
+  const leads = (await ctx.runQuery(
+    internal.setterDataNotifications.getUncontactedLeadsInRange,
+    {
+      teamId: team._id,
+      rangeStartMs: range.startMs,
+      rangeEndMs: nowMs,
+    },
+  )) as UncontactedDigestLead[];
+
+  // Pre-flight channel check before composing — skip cleanly if config is
+  // half-set rather than firing into nothing.
+  const channel = team.setterUncontactedDigestChannel;
+  if (channel !== "slack" && channel !== "discord") {
+    return { sent: false, reason: "no notification channel configured" };
+  }
+
+  // GHL deep-link location id — same OAuth-then-legacy fallback as the
+  // untouched-lead alert.
+  const installation = (await ctx.runQuery(
+    internal.setterGhlOauth.getActiveInstallationForTeam,
+    { teamId: team._id },
+  )) as { locationId: string } | null;
+  const ghlLocationId =
+    installation?.locationId ?? team.ghlLocationId ?? null;
+
+  const dateLabel = humanReadableDate(localNow);
+  const fallbackText =
+    leads.length === 0
+      ? `📋 Uncontacted Leads Report — ${dateLabel}: all clear`
+      : `📋 ${leads.length} uncontacted lead${leads.length === 1 ? "" : "s"} — ${dateLabel}`;
+
+  if (channel === "slack") {
+    const slackChannelId =
+      team.setterUncontactedDigestSlackChannelId || team.slackChannelId;
+    if (!team.slackAccessToken || !slackChannelId) {
+      return { sent: false, reason: "slack not connected or no channel" };
+    }
+    const blocks = buildUncontactedDigestSlackBlocks({
+      leads,
+      dateLabel,
+      ghlLocationId,
+      nowMs,
+    });
+    const result = await postSlackMessage({
+      accessToken: team.slackAccessToken,
+      channelId: slackChannelId,
+      text: fallbackText,
+      blocks,
+    });
+    if (!result.ok) {
+      throw new Error(`Slack post failed: ${result.error}`);
+    }
+  } else {
+    const webhookUrl = team.setterUncontactedDigestDiscordWebhookUrl;
+    if (!webhookUrl) {
+      return { sent: false, reason: "no discord webhook configured" };
+    }
+    const embed = buildUncontactedDigestDiscordEmbed({
+      leads,
+      dateLabel,
+      ghlLocationId,
+      nowMs,
+    });
+    const result = await postDiscordWebhook({
+      webhookUrl,
+      content: fallbackText,
+      embed,
+    });
+    if (!result.ok) {
+      throw new Error(`Discord post failed: ${result.error}`);
+    }
+  }
+
+  await ctx.runMutation(internal.setterDataNotifications.recordSentNotification, {
+    teamId: team._id,
+    type: "setter_uncontacted_digest",
+    dedupKey,
+  });
+
+  return { sent: true };
+}
+
+interface UncontactedDigestFormatArgs {
+  leads: UncontactedDigestLead[];
+  dateLabel: string;
+  ghlLocationId: string | null;
+  nowMs: number;
+}
+
+// Slack message format: header + summary + per-lead lines. Each lead line
+// shows the wait time, name, contact, assignment, and an inline GHL deep
+// link. List is truncated at 40 leads to stay under Slack's 50-block
+// limit — overflow is summarized as "+N more" with a dashboard link.
+const MAX_DIGEST_LEADS_SHOWN = 40;
+
+function buildUncontactedDigestSlackBlocks(
+  args: UncontactedDigestFormatArgs,
+): unknown[] {
+  const { leads, dateLabel, ghlLocationId, nowMs } = args;
+
+  const blocks: unknown[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text:
+          leads.length === 0
+            ? `📋 Uncontacted Leads — ${dateLabel}`
+            : `📋 ${leads.length} uncontacted ${leads.length === 1 ? "lead" : "leads"} — ${dateLabel}`,
+      },
+    },
+  ];
+
+  if (leads.length === 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "✅ Every lead that came in today has at least one contact attempt. Nice work.",
+      },
+    });
+    return blocks;
+  }
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `Leads added today that still have *zero* dials, SMS, or activity — sorted by how long they've been waiting.`,
+    },
+  });
+  blocks.push({ type: "divider" });
+
+  const shown = leads.slice(0, MAX_DIGEST_LEADS_SHOWN);
+  for (const lead of shown) {
+    const waitedFor = formatUntouchedDuration(
+      Math.floor((nowMs - lead.dateAdded) / 60_000),
+      "short",
+    );
+    const displayName = lead.name || lead.email || lead.phone || "Unnamed";
+
+    const contactBits: string[] = [];
+    if (lead.name && lead.email) contactBits.push(lead.email);
+    if (lead.phone) {
+      contactBits.push(`<${phoneToTelLink(lead.phone)}|${lead.phone}>`);
+    }
+    const assignment = lead.assignedToName
+      ? `Assigned: ${lead.assignedToName}`
+      : "Unassigned";
+
+    const ghlLink =
+      ghlLocationId && lead.ghlContactId
+        ? ` · <${ghlContactUrl(ghlLocationId, lead.ghlContactId)}|Open in GHL>`
+        : "";
+
+    const text = [
+      `*${waitedFor}* — *${displayName}*`,
+      contactBits.length > 0 ? contactBits.join(" · ") : null,
+      `${assignment}${ghlLink}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text },
+    });
+  }
+
+  if (leads.length > MAX_DIGEST_LEADS_SHOWN) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `+${leads.length - MAX_DIGEST_LEADS_SHOWN} more — <https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched|view full list →>`,
+        },
+      ],
+    });
+  } else {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "<https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched|View all uncontacted leads →>",
+        },
+      ],
+    });
+  }
+
+  return blocks;
+}
+
+function buildUncontactedDigestDiscordEmbed(
+  args: UncontactedDigestFormatArgs,
+): unknown {
+  const { leads, dateLabel, ghlLocationId, nowMs } = args;
+
+  if (leads.length === 0) {
+    return {
+      title: `📋 Uncontacted Leads — ${dateLabel}`,
+      description:
+        "✅ Every lead that came in today has at least one contact attempt. Nice work.",
+      color: 0x10b981, // emerald
+      footer: { text: "Sequ3nce Setter Data" },
+    };
+  }
+
+  const shown = leads.slice(0, MAX_DIGEST_LEADS_SHOWN);
+  const lines: string[] = [];
+  for (const lead of shown) {
+    const waitedFor = formatUntouchedDuration(
+      Math.floor((nowMs - lead.dateAdded) / 60_000),
+      "short",
+    );
+    const displayName = lead.name || lead.email || lead.phone || "Unnamed";
+    const contactBit = lead.email ?? lead.phone ?? "";
+    const assignment = lead.assignedToName
+      ? ` · ${lead.assignedToName}`
+      : " · Unassigned";
+    const ghlLink =
+      ghlLocationId && lead.ghlContactId
+        ? ` · [GHL](${ghlContactUrl(ghlLocationId, lead.ghlContactId)})`
+        : "";
+    lines.push(
+      `**${waitedFor}** — ${displayName}${contactBit ? ` · ${contactBit}` : ""}${assignment}${ghlLink}`,
+    );
+  }
+  let description = `Leads added today still with zero contact attempts — oldest first.\n\n${lines.join("\n")}`;
+  if (leads.length > MAX_DIGEST_LEADS_SHOWN) {
+    description += `\n\n_+${leads.length - MAX_DIGEST_LEADS_SHOWN} more_`;
+  }
+
+  return {
+    title: `📋 ${leads.length} uncontacted lead${leads.length === 1 ? "" : "s"} — ${dateLabel}`,
+    description,
+    url: "https://sequ3nce.ai/dashboard/setter-data?tab=leads&filter=untouched",
+    color: 0xf59e0b, // amber
+    footer: { text: "Sequ3nce Setter Data" },
+  };
 }
 
 // ============================================================================

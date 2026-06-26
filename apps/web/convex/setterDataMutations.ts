@@ -223,6 +223,84 @@ export const updateUntouchedAlertConfig = mutation({
 });
 
 // ----------------------------------------------------------------------------
+// updateUncontactedDigestConfig — daily end-of-day uncontacted-leads digest
+// ----------------------------------------------------------------------------
+
+/**
+ * Update any subset of uncontacted-digest config fields. Same sparse
+ * pattern as updateScorecardConfig.
+ *
+ * Validation mirrors scorecard's: hourLocal ∈ [0, 23], slackChannelId
+ * non-empty if set, discordWebhookUrl must be a Discord URL.
+ */
+export const updateUncontactedDigestConfig = mutation({
+  args: {
+    clerkId: v.string(),
+    enabled: v.optional(v.boolean()),
+    channel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
+    slackChannelId: v.optional(v.string()),
+    slackChannelName: v.optional(v.string()),
+    discordWebhookUrl: v.optional(v.string()),
+    hourLocal: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx, args.clerkId);
+    const teamId = user.teamId as Id<"teams">;
+
+    if (args.hourLocal !== undefined) {
+      if (
+        !Number.isInteger(args.hourLocal) ||
+        args.hourLocal < 0 ||
+        args.hourLocal > 23
+      ) {
+        throw new Error("hourLocal must be an integer 0-23");
+      }
+    }
+    if (args.slackChannelId !== undefined && args.slackChannelId.trim() === "") {
+      throw new Error("slackChannelId cannot be empty");
+    }
+    if (args.slackChannelName !== undefined && args.slackChannelName.length > 100) {
+      throw new Error("slackChannelName must be at most 100 characters");
+    }
+    if (args.discordWebhookUrl !== undefined) {
+      const trimmed = args.discordWebhookUrl.trim();
+      if (trimmed === "") {
+        throw new Error("discordWebhookUrl cannot be empty");
+      }
+      if (
+        !trimmed.startsWith("https://discord.com/api/webhooks/") &&
+        !trimmed.startsWith("https://discordapp.com/api/webhooks/")
+      ) {
+        throw new Error("discordWebhookUrl must be a Discord webhook URL");
+      }
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (args.enabled !== undefined) {
+      patch.setterUncontactedDigestEnabled = args.enabled;
+    }
+    if (args.channel !== undefined) {
+      patch.setterUncontactedDigestChannel = args.channel;
+    }
+    if (args.slackChannelId !== undefined) {
+      patch.setterUncontactedDigestSlackChannelId = args.slackChannelId;
+    }
+    if (args.slackChannelName !== undefined) {
+      patch.setterUncontactedDigestSlackChannelName = args.slackChannelName;
+    }
+    if (args.discordWebhookUrl !== undefined) {
+      patch.setterUncontactedDigestDiscordWebhookUrl = args.discordWebhookUrl;
+    }
+    if (args.hourLocal !== undefined) {
+      patch.setterUncontactedDigestHourLocal = args.hourLocal;
+    }
+
+    await ctx.db.patch(teamId, patch);
+    return { success: true };
+  },
+});
+
+// ----------------------------------------------------------------------------
 // updateCoverageGapConfig — Dashboard Phase 3 daily coverage-gap digest
 // ----------------------------------------------------------------------------
 

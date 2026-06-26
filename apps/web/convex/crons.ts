@@ -133,6 +133,19 @@ crons.cron(
   internal.setterDataNotifications.runCoverageGapDigest,
 );
 
+// Uncontacted Leads Digest: end-of-day rollup (per team-configured hour,
+// default 5pm local). Lists every lead added today that's still
+// uncontacted as of the digest time — even if a real-time untouched
+// alert fired earlier in the day, contacted leads are excluded.
+// Complementary to setter-untouched-alert-sweep above: that's the
+// real-time poke, this is the batch catch-up. Per-team enabled flag is
+// off by default. Wall-clock cron for the same deploy-reset reason.
+crons.cron(
+  "setter-uncontacted-digest",
+  "0 * * * *",
+  internal.setterDataNotifications.runUncontactedDigest,
+);
+
 // Hyros Attribution Poll (Phase 5 read direction): every 30 min, bounded
 // per-team at 100 leads. Reconciliation backstop for the webhook path —
 // if a webhook never fires or arrives delayed, the poll catches up. Only

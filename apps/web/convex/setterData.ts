@@ -1036,6 +1036,15 @@ export const getMySettings = query({
         hourLocal: team.setterCoverageGapHourLocal,
         minLeads: team.setterCoverageGapMinLeadsThreshold,
       },
+      // Daily end-of-day uncontacted-leads digest. Off by default.
+      uncontactedDigest: {
+        enabled: team.setterUncontactedDigestEnabled ?? false,
+        channel: team.setterUncontactedDigestChannel,
+        slackChannelId: team.setterUncontactedDigestSlackChannelId,
+        slackChannelName: team.setterUncontactedDigestSlackChannelName,
+        discordWebhookUrl: team.setterUncontactedDigestDiscordWebhookUrl,
+        hourLocal: team.setterUncontactedDigestHourLocal,
+      },
       // Team timezone (read-only here — set elsewhere in account settings).
       timezone: team.timezone,
       // Phase 2 — Setter Scorecard team-level overlay config.
