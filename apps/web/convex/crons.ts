@@ -95,9 +95,17 @@ crons.daily(
 // whichever channel (slack/discord) the team has configured. Dedupes
 // via slackNotifications.dedupKey so a team gets at most one scorecard
 // per local day.
-crons.interval(
+//
+// Wall-clock cron (not crons.interval) — interval crons reset their
+// "next fire" on every Convex deploy. With deploys happening multiple
+// times per day, the hourly interval would get pushed forward and
+// never actually fire within a team's target-hour window. The cron
+// expression below fires at the top of every UTC hour regardless of
+// deploy activity. Caused weeks of "scorecard never delivered" reports
+// before the cause was identified 2026-06-26.
+crons.cron(
   "setter-daily-scorecard",
-  { hours: 1 },
+  "0 * * * *",
   internal.setterDataNotifications.runScorecards,
 );
 
@@ -115,9 +123,13 @@ crons.interval(
 // on local-tz delivery hour (default 9am). Surfaces yesterday's worst
 // lead-coverage windows in a Slack/Discord digest. Empty-state aware:
 // teams with no gaps don't get pinged. Off by default.
-crons.interval(
+//
+// Same deploy-reset rationale as the scorecard cron above — use a
+// wall-clock cron expression so deploys don't push the schedule
+// forward indefinitely.
+crons.cron(
   "setter-coverage-gap-digest",
-  { hours: 1 },
+  "0 * * * *",
   internal.setterDataNotifications.runCoverageGapDigest,
 );
 
