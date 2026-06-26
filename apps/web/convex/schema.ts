@@ -1067,6 +1067,11 @@ export default defineSchema({
     closerName: v.optional(v.string()), // For webhook transcript speaker identification
     closerParticipantId: v.optional(v.union(v.number(), v.string())), // Recall participant.id pinned once we identify the closer — locks per-call speaker consistency
     closerIsHost: v.optional(v.boolean()), // Whether the closer is the meeting host. true for scheduled bots (closer scheduled the meeting), false for QuickBot (closer joining external Zoom). Used by decideSpeaker to match is_host correctly.
+    // Post-call ground-truth check against Recall.ai's participant list.
+    // Set by speakerVerification.verifyClosersByRecallApi when the verifier
+    // either confirms the pin matches the closer's name or repairs it from
+    // Recall's authoritative data. One-shot — once stamped, we don't reverify.
+    speakerVerifiedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_closer", ["closerId"])

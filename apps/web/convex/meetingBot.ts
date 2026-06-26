@@ -1168,6 +1168,22 @@ export const completeCallFromBot = internalMutation({
       }
     }
 
+    // Post-completion ground-truth check against Recall's authoritative
+    // participant list. Scheduled at +90s — after the +60/+65s AI scheduling
+    // above so the verifier sees a stable state. If labels were wrong (pin
+    // landed on the prospect, closer joined under multiple ids after
+    // dropping/rejoining, etc.) the verifier relabels segments and re-runs
+    // AI with the corrected transcript. For correctly labeled calls (the
+    // common case) it returns "verified_no_change" with one Recall API call.
+    // See apps/web/convex/speakerVerification.ts for the full algorithm.
+    if (call.meetingBotId) {
+      await ctx.scheduler.runAfter(
+        90000,
+        internal.speakerVerification.verifyClosersByRecallApi,
+        { botId: call.meetingBotId },
+      );
+    }
+
     console.log(`[completeCallFromBot] Call completed: ${args.callId}`);
     return { success: true };
   },
