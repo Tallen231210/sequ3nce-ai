@@ -27,6 +27,18 @@ import type { CallMetadata, CallSession, TranscriptChunk, AmmoConfig, CallSource
 const TALK_TIME_UPDATE_INTERVAL_MS = 15000; // Update talk time every 15 seconds
 const MAX_CALL_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours max call duration
 
+/**
+ * Token-overlap name match. Mirrors apps/web/convex/http.ts:tokenOverlap so
+ * pin-time decisions here line up with decideSpeaker decisions in the webhook.
+ * Splits the closer's stored name into >=3-char tokens and looks for any token
+ * substring in the participant's display name (case-insensitive).
+ */
+function tokenOverlap(a: string, b: string): boolean {
+  const aTokens = a.toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+  const bLower = b.toLowerCase();
+  return aTokens.some((t) => bLower.includes(t));
+}
+
 // Callback type for sending Ammo V2 analysis to desktop
 export type OnAmmoV2AnalysisCallback = (analysis: AmmoV2Analysis) => void;
 
@@ -509,10 +521,21 @@ export class CallHandler {
     if (this.closerParticipantIdPinned) return;
     if (participantId === undefined || participantId === null) return;
 
+    // Two-signal requirement: pin only when BOTH is_host AND name-token match
+    // agree on the closer. Previously we pinned on is_host alone — when Zoom
+    // misreports is_host (free accounts often mark everyone is_host=false, or
+    // assign host to whoever joined first), the "first non-host" heuristic
+    // landed on the prospect, inverting every transcript label for the call.
+    // Requiring name match eliminates that whole failure mode. When the closer
+    // doesn't put their stored name into Zoom (e.g., joins as "G.S.") we fall
+    // through cleanly to Layer 2 in decideSpeaker, which still labels per
+    // segment via is_host comparison against closerIsHost — already correct.
     const closerIsHost = this.botConfig?.closerIsHost ?? true;
+    const closerName = this.botConfig?.closerName ?? "";
+    const nameMatch = closerName ? tokenOverlap(closerName, participantName) : false;
     let shouldPin = false;
     let pinSource: "host_match" | "first_non_host" | null = null;
-    if (typeof participantIsHost === "boolean") {
+    if (typeof participantIsHost === "boolean" && nameMatch) {
       if (closerIsHost && participantIsHost) {
         shouldPin = true;
         pinSource = "host_match";
@@ -522,7 +545,17 @@ export class CallHandler {
       }
     }
 
-    if (!shouldPin) return;
+    if (!shouldPin) {
+      // Useful for diagnosing future "100% prospect" reports — surfaces every
+      // join we didn't pin so we can see whether is_host was missing, the name
+      // failed to match, or the closer never joined at all.
+      logger.info(
+        `[Recall] Skipping pin for "${participantName}" id=${participantId} ` +
+          `is_host=${participantIsHost} closerIsHost=${closerIsHost} ` +
+          `nameMatch=${nameMatch} closerName="${closerName}"`,
+      );
+      return;
+    }
 
     // Mark optimistically so a flurry of join events doesn't double-pin. The Convex
     // mutation is idempotent anyway, but this saves the round trip.
