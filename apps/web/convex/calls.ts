@@ -129,6 +129,38 @@ export const getCallById = query({
   },
 });
 
+/**
+ * Fetch the call row merged with its callContent sibling. Used by every
+ * non-UI caller that needs the blob fields (summary, callAnalysis,
+ * transcriptText, ammoAnalysis) which live on callContent post-migration
+ * (see schema.ts:451 + heavy-blob-callContent-split memory).
+ *
+ * Background: `getCallById` returns ONLY the calls row, so reads like
+ * `call.summary` come back undefined and silently break post-call
+ * notifications (Slack/Discord recap, GHL summary sync, Hyros tag
+ * enrichment, meetingBot retry-generation gating). Centralized here so
+ * the next handler that needs blob fields can just `runQuery` this
+ * instead of remembering to also fetch from callContent.
+ *
+ * Internal-only — UI reads use getCallDetails (which already does this
+ * merge plus closer/team/ammo/segments enrichment).
+ */
+export const getCallWithContent = internalQuery({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return null;
+    const content = await getContentForCallTx(ctx, args.callId);
+    return {
+      ...call,
+      transcriptText: content?.transcriptText,
+      summary: content?.summary,
+      callAnalysis: content?.callAnalysis,
+      ammoAnalysis: content?.ammoAnalysis,
+    };
+  },
+});
+
 // Get active call for a closer (on_call or waiting status)
 export const getActiveCallForCloser = query({
   args: { closerId: v.id("closers") },

@@ -1237,8 +1237,12 @@ export const sendCallCompletedNotification = internalAction({
         return { success: true, skipped: true, reason: "Already sent" };
       }
 
-      // Get call details (including the newly generated summary)
-      const call = await ctx.runQuery(api.calls.getCallById, { callId: args.callId as string }) as {
+      // Get call details merged with callContent (summary lives on the
+      // sibling table post-migration — see calls.ts:getCallWithContent
+      // for why this matters).
+      const call = await ctx.runQuery(internal.calls.getCallWithContent, {
+        callId: args.callId,
+      }) as {
         closerId: string;
         teamId: any;
         prospectName?: string;
