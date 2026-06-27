@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import type { CalendarEvent } from '../../convex';
 import {
   getEventsForDate,
@@ -11,10 +11,12 @@ import {
   eventBlockHeight,
   currentTimeYOffset,
   getProspectAttendee,
+  layoutOverlappingEvents,
   HOUR_HEIGHT,
   GRID_START_HOUR,
   GRID_END_HOUR,
   TIME_COLUMN_WIDTH,
+  type PositionedEvent,
 } from './scheduleUtils';
 import { TodayAgendaSidebar } from './TodayAgendaSidebar';
 
@@ -94,45 +96,18 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
             </div>
 
             {/* Day columns */}
-            {weekDates.map((date, i) => {
-              const isToday = date.toDateString() === todayStr;
-              const dayEvents = getEventsForDate(events, date);
-
-              return (
-                <div
-                  key={i}
-                  className="flex-1 relative border-l border-gray-100 dark:border-gray-800"
-                >
-                  {/* Today highlight */}
-                  {isToday && (
-                    <div className="absolute inset-0 bg-blue-50/50 dark:bg-blue-950/20" />
-                  )}
-
-                  {/* Hour grid lines */}
-                  {hours.map((hour) => (
-                    <div
-                      key={hour}
-                      className="absolute w-full border-t border-gray-100 dark:border-gray-800"
-                      style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT }}
-                    />
-                  ))}
-
-                  {/* Event blocks */}
-                  {dayEvents.map((event) => (
-                    <WeekEventBlock
-                      key={event._id}
-                      event={event}
-                      now={now}
-                      closerEmail={closerEmail}
-                      onClick={() => onEventClick(event)}
-                    />
-                  ))}
-
-                  {/* Current time indicator */}
-                  {isToday && <CurrentTimeIndicator now={now} />}
-                </div>
-              );
-            })}
+            {weekDates.map((date, i) => (
+              <WeekDayColumn
+                key={i}
+                date={date}
+                events={events}
+                hours={hours}
+                isToday={date.toDateString() === todayStr}
+                now={now}
+                closerEmail={closerEmail}
+                onEventClick={onEventClick}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -150,17 +125,75 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
 
 // ==================== Sub-components ====================
 
+function WeekDayColumn({
+  date,
+  events,
+  hours,
+  isToday,
+  now,
+  closerEmail,
+  onEventClick,
+}: {
+  date: Date;
+  events: CalendarEvent[];
+  hours: number[];
+  isToday: boolean;
+  now: number;
+  closerEmail?: string;
+  onEventClick: (event: CalendarEvent) => void;
+}) {
+  // Run the overlap layout per day. Events from different calendars often
+  // land at the same time slot; without this they'd stack on top of each
+  // other and the user would see one block instead of N. Side-by-side
+  // packing matches Google Calendar's week view exactly.
+  const dayEvents = useMemo(() => getEventsForDate(events, date), [events, date]);
+  const positioned = useMemo(() => layoutOverlappingEvents(dayEvents), [dayEvents]);
+
+  return (
+    <div className="flex-1 relative border-l border-gray-100 dark:border-gray-800">
+      {/* Today highlight */}
+      {isToday && (
+        <div className="absolute inset-0 bg-blue-50/50 dark:bg-blue-950/20" />
+      )}
+
+      {/* Hour grid lines */}
+      {hours.map((hour) => (
+        <div
+          key={hour}
+          className="absolute w-full border-t border-gray-100 dark:border-gray-800"
+          style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT }}
+        />
+      ))}
+
+      {/* Event blocks */}
+      {positioned.map((p) => (
+        <WeekEventBlock
+          key={p.event._id}
+          positioned={p}
+          now={now}
+          closerEmail={closerEmail}
+          onClick={() => onEventClick(p.event)}
+        />
+      ))}
+
+      {/* Current time indicator */}
+      {isToday && <CurrentTimeIndicator now={now} />}
+    </div>
+  );
+}
+
 function WeekEventBlock({
-  event,
+  positioned,
   now,
   closerEmail,
   onClick,
 }: {
-  event: CalendarEvent;
+  positioned: PositionedEvent;
   now: number;
   closerEmail?: string;
   onClick: () => void;
 }) {
+  const { event, column, maxCols } = positioned;
   const urgency = getEventUrgency(event, now);
   const urgencyColor = getUrgencyBlockColor(urgency);
   // Prefer Google's color (per-event override or calendar default) when present;
@@ -172,12 +205,17 @@ function WeekEventBlock({
   const platform = detectPlatform(event.meetingUrl);
   const prospect = getProspectAttendee(event, closerEmail);
 
+  const widthPct = 100 / maxCols;
+  const leftPct = column * widthPct;
+
   return (
     <div
-      className="absolute left-[2px] right-[2px] rounded px-1.5 py-0.5 cursor-pointer overflow-hidden hover:brightness-95 transition-all"
+      className="absolute rounded px-1.5 py-0.5 cursor-pointer overflow-hidden hover:brightness-95 transition-all"
       style={{
         top: yOffset,
         height: Math.max(height, 18),
+        left: `calc(${leftPct}% + 2px)`,
+        width: `calc(${widthPct}% - 4px)`,
         backgroundColor: `${color}E6`,
         borderLeft: `3px solid ${color}`,
       }}
@@ -186,7 +224,7 @@ function WeekEventBlock({
       <p className="text-white text-[10px] font-semibold truncate leading-tight">
         {event.title}
       </p>
-      {height > 24 && prospect && (
+      {height > 24 && prospect && maxCols <= 2 && (
         <p className="text-white/70 text-[9px] truncate">
           {prospect.name || prospect.email}
         </p>
@@ -196,7 +234,7 @@ function WeekEventBlock({
           {formatTime(event.startTime)}
         </p>
       )}
-      {height > 50 && platform && (
+      {height > 50 && platform && maxCols <= 2 && (
         <p className="text-white/80 text-[8px] flex items-center gap-0.5 mt-0.5">
           <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
             <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />

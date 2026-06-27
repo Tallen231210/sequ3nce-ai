@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import type { CloserInfo, CalendarEvent } from '../../convex';
+import type { CloserInfo, CalendarEvent, CalendarSubscription } from '../../convex';
 import {
   getCalendarEvents,
   getCalendarStatus,
@@ -8,6 +8,7 @@ import {
   disconnectCalendar,
   excludeCalendarEvent,
   createBotForMeeting,
+  listCalendarSubscriptions,
   type CalendarStatus,
 } from '../../convex';
 import {
@@ -35,6 +36,7 @@ interface ScheduleViewProps {
 export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [status, setStatus] = useState<CalendarStatus | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [subscriptions, setSubscriptions] = useState<CalendarSubscription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -94,9 +96,13 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           end = start + 7 * 24 * 60 * 60 * 1000;
         }
 
-        const evts = await getCalendarEvents(closerInfo.email, closerInfo.teamId, start, end);
+        const [evts, subs] = await Promise.all([
+          getCalendarEvents(closerInfo.email, closerInfo.teamId, start, end),
+          listCalendarSubscriptions(closerInfo.email, closerInfo.teamId),
+        ]);
         if (thisLoadId !== loadIdRef.current) return;
         setEvents(evts);
+        setSubscriptions(subs);
       }
     } catch (error) {
       console.error('[Schedule] Failed to load data:', error);
@@ -312,6 +318,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
       {viewMode === 'day' && (
         <ScheduleDayView
           events={events}
+          subscriptions={subscriptions}
           date={dayDate}
           now={now}
           closerEmail={closerInfo.email}

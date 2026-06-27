@@ -241,6 +241,91 @@ export function currentTimeYOffset(now: Date): number {
   return (hour - GRID_START_HOUR) * HOUR_HEIGHT + (minute / 60) * HOUR_HEIGHT;
 }
 
+// ==================== Overlap Layout ====================
+
+/**
+ * Each event gets a horizontal column within its overlap cluster so that
+ * concurrent events render side-by-side instead of stacked. Standard
+ * Google Calendar week-view layout: events that overlap in time split
+ * the day-column horizontally, each one rendering at width = 1/cluster.cols.
+ *
+ * Algorithm:
+ *  1. Sort events by start time
+ *  2. Walk them, grouping into "clusters" where any pair overlaps
+ *     (transitively — A overlaps B, B overlaps C → all share a cluster)
+ *  3. Within a cluster, each event takes the smallest column index not
+ *     already claimed by a still-overlapping earlier event
+ *  4. The cluster's maxCols (= max column index + 1) is what every event
+ *     in that cluster uses for its width
+ *
+ * Tradeoff: cluster width is uniform across the cluster, even when some
+ * events in the cluster don't overlap directly. Google does the same —
+ * the alternative (per-event optimal width) gets visually confusing
+ * because events change width mid-cluster.
+ */
+export interface PositionedEvent {
+  event: CalendarEvent;
+  column: number; // 0-indexed
+  maxCols: number; // total columns in this event's overlap cluster
+}
+
+export function layoutOverlappingEvents(events: CalendarEvent[]): PositionedEvent[] {
+  if (events.length === 0) return [];
+
+  const sorted = [...events].sort((a, b) => a.startTime - b.startTime);
+  type Cluster = {
+    members: CalendarEvent[];
+    columnByEventId: Map<string, number>;
+    maxCols: number;
+    clusterEnd: number; // max endTime of any member — drives "is this event in this cluster?"
+  };
+  const clusters: Cluster[] = [];
+
+  for (const event of sorted) {
+    // Find a cluster this event overlaps with. Since events are sorted by
+    // start time, only the most recent cluster can possibly still overlap.
+    const tail = clusters[clusters.length - 1];
+    const overlapsTail = tail && tail.clusterEnd > event.startTime;
+
+    if (!overlapsTail) {
+      clusters.push({
+        members: [event],
+        columnByEventId: new Map([[event._id, 0]]),
+        maxCols: 1,
+        clusterEnd: event.endTime,
+      });
+      continue;
+    }
+
+    // Find the smallest column not currently held by an event whose end is
+    // after this event's start (i.e., one that's still in-flight).
+    const occupied = new Set<number>();
+    for (const m of tail.members) {
+      if (m.endTime > event.startTime) {
+        occupied.add(tail.columnByEventId.get(m._id)!);
+      }
+    }
+    let col = 0;
+    while (occupied.has(col)) col++;
+    tail.members.push(event);
+    tail.columnByEventId.set(event._id, col);
+    tail.maxCols = Math.max(tail.maxCols, col + 1);
+    tail.clusterEnd = Math.max(tail.clusterEnd, event.endTime);
+  }
+
+  const out: PositionedEvent[] = [];
+  for (const cluster of clusters) {
+    for (const m of cluster.members) {
+      out.push({
+        event: m,
+        column: cluster.columnByEventId.get(m._id)!,
+        maxCols: cluster.maxCols,
+      });
+    }
+  }
+  return out;
+}
+
 // ==================== Prospect Attendee ====================
 
 /** Returns the first non-organizer attendee from the event, or null if none */
