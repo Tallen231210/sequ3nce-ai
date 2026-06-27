@@ -5,7 +5,7 @@ import type { CalendarEvent } from '../../convex';
 
 // ==================== Types ====================
 
-export type ViewMode = 'list' | 'week';
+export type ViewMode = 'list' | 'day' | 'week' | 'month';
 
 export type EventUrgency = 'now' | 'soon' | 'today' | 'upcoming' | 'ended';
 
@@ -130,6 +130,64 @@ export function getWeekDates(weekOffset: number): Date[] {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     return d;
+  });
+}
+
+/** Single-day view: returns midnight-anchored date for `today + dayOffset` */
+export function getDayDate(dayOffset: number): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + dayOffset);
+  return d;
+}
+
+/** Month view: returns the 42 cells (6 weeks × 7 days, Mon-Sun) covering the
+ *  month containing `today + monthOffset` months, padded with leading/trailing
+ *  days from the adjacent months to fill the grid. */
+export function getMonthDates(monthOffset: number): {
+  cells: Date[];
+  monthAnchor: Date;
+} {
+  const today = new Date();
+  const monthAnchor = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  const monthAnchorWeekday = monthAnchor.getDay();
+  const daysFromMonday = monthAnchorWeekday === 0 ? 6 : monthAnchorWeekday - 1;
+  const gridStart = new Date(monthAnchor);
+  gridStart.setDate(monthAnchor.getDate() - daysFromMonday);
+  gridStart.setHours(0, 0, 0, 0);
+  const cells = Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    return d;
+  });
+  return { cells, monthAnchor };
+}
+
+/** Header label for the Day view ("Today", "Tomorrow", or "Mon, Jun 30, 2026") */
+export function formatDayLabel(date: Date): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const dayMs = date.getTime();
+  if (dayMs === today.getTime()) return 'Today';
+  if (dayMs === tomorrow.getTime()) return 'Tomorrow';
+  if (dayMs === yesterday.getTime()) return 'Yesterday';
+  return date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+/** Header label for the Month view ("June 2026") */
+export function formatMonthLabel(monthAnchor: Date): string {
+  return monthAnchor.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
   });
 }
 

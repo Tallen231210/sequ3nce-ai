@@ -10,10 +10,22 @@ import {
   createBotForMeeting,
   type CalendarStatus,
 } from '../../convex';
-import { type ViewMode, formatRelative, formatWeekLabel, getWeekDates, extractProspectName } from './scheduleUtils';
+import {
+  type ViewMode,
+  formatRelative,
+  formatWeekLabel,
+  getWeekDates,
+  getDayDate,
+  getMonthDates,
+  formatDayLabel,
+  formatMonthLabel,
+  extractProspectName,
+} from './scheduleUtils';
 import { ScheduleConnectForm } from './ScheduleConnectForm';
 import { ScheduleListView } from './ScheduleListView';
+import { ScheduleDayView } from './ScheduleDayView';
 import { ScheduleWeekView } from './ScheduleWeekView';
+import { ScheduleMonthView } from './ScheduleMonthView';
 import { ScheduleMeetingModal } from './ScheduleMeetingModal';
 
 interface ScheduleViewProps {
@@ -27,9 +39,13 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [now, setNow] = useState(Date.now());
 
-  // View mode
+  // View mode + per-view offsets. Each view keeps its own offset so that
+  // toggling between (e.g.) Week and Day doesn't reset the navigation
+  // context the user just set.
   const [viewMode, setViewMode] = useState<ViewMode>('week');
+  const [dayOffset, setDayOffset] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
 
   // Connection form
   const [icsUrl, setIcsUrl] = useState('');
@@ -51,13 +67,27 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
       setStatus(calStatus);
 
       if (calStatus?.connected) {
-        let start: number, end: number;
-        if (viewMode === 'week') {
+        // Per-view fetch window. Day = 1 day, Week = 7 days, Month = 42
+        // cells (~6 weeks). List defaults to a 7-day rolling window from
+        // today, matching the prior behavior.
+        let start: number;
+        let end: number;
+        if (viewMode === 'day') {
+          const d = getDayDate(dayOffset);
+          start = d.getTime();
+          end = start + 24 * 60 * 60 * 1000;
+        } else if (viewMode === 'week') {
           const dates = getWeekDates(weekOffset);
           start = dates[0].getTime();
           const lastDay = new Date(dates[6]);
           lastDay.setDate(lastDay.getDate() + 1);
           end = lastDay.getTime();
+        } else if (viewMode === 'month') {
+          const { cells } = getMonthDates(monthOffset);
+          start = cells[0].getTime();
+          const lastCell = new Date(cells[cells.length - 1]);
+          lastCell.setDate(lastCell.getDate() + 1);
+          end = lastCell.getTime();
         } else {
           const today = new Date();
           start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
@@ -72,7 +102,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
       console.error('[Schedule] Failed to load data:', error);
     }
     if (thisLoadId === loadIdRef.current) setIsLoading(false);
-  }, [closerInfo, viewMode, weekOffset]);
+  }, [closerInfo, viewMode, dayOffset, weekOffset, monthOffset]);
 
   // Initial load + auto-sync + minute timer
   useEffect(() => {
@@ -153,6 +183,8 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   }
 
   const weekDates = getWeekDates(weekOffset);
+  const dayDate = getDayDate(dayOffset);
+  const monthData = getMonthDates(monthOffset);
 
   return (
     <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950">
@@ -173,19 +205,19 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
             )}
           </div>
 
-          {/* View mode toggle */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5" style={{ width: 120 }}>
-            {(['list', 'week'] as ViewMode[]).map((mode) => (
+          {/* View mode toggle — 4 options matching Google Calendar */}
+          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5" style={{ width: 220 }}>
+            {(['list', 'day', 'week', 'month'] as ViewMode[]).map((mode) => (
               <button
                 key={mode}
-                onClick={() => { setViewMode(mode); if (mode === 'list') setWeekOffset(0); }}
-                className={`flex-1 text-[12px] font-medium py-1 rounded-md transition-colors ${
+                onClick={() => setViewMode(mode)}
+                className={`flex-1 text-[12px] font-medium py-1 rounded-md transition-colors capitalize ${
                   viewMode === mode
                     ? 'bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
                 }`}
               >
-                {mode === 'list' ? 'List' : 'Week'}
+                {mode}
               </button>
             ))}
           </div>
@@ -211,11 +243,16 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           </div>
         </div>
 
-        {/* Week navigation (only in week mode) */}
-        {viewMode === 'week' && (
+        {/* Per-view navigation bar — prev / today / next / label.
+            Hidden in list mode (list is a forward-rolling 7-day window). */}
+        {viewMode !== 'list' && (
           <div className="flex items-center justify-center gap-3 px-4 py-2 border-t border-gray-100 dark:border-gray-800">
             <button
-              onClick={() => setWeekOffset((o) => o - 1)}
+              onClick={() => {
+                if (viewMode === 'day') setDayOffset((o) => o - 1);
+                else if (viewMode === 'week') setWeekOffset((o) => o - 1);
+                else if (viewMode === 'month') setMonthOffset((o) => o - 1);
+              }}
               className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -224,9 +261,15 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
             </button>
 
             <button
-              onClick={() => setWeekOffset(0)}
+              onClick={() => {
+                if (viewMode === 'day') setDayOffset(0);
+                else if (viewMode === 'week') setWeekOffset(0);
+                else if (viewMode === 'month') setMonthOffset(0);
+              }}
               className={`text-[12px] font-semibold px-2.5 py-1 rounded-md transition-colors ${
-                weekOffset === 0
+                (viewMode === 'day' && dayOffset === 0) ||
+                (viewMode === 'week' && weekOffset === 0) ||
+                (viewMode === 'month' && monthOffset === 0)
                   ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-800'
               }`}
@@ -235,7 +278,11 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
             </button>
 
             <button
-              onClick={() => setWeekOffset((o) => o + 1)}
+              onClick={() => {
+                if (viewMode === 'day') setDayOffset((o) => o + 1);
+                else if (viewMode === 'week') setWeekOffset((o) => o + 1);
+                else if (viewMode === 'month') setMonthOffset((o) => o + 1);
+              }}
               className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -244,14 +291,16 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
             </button>
 
             <span className="text-[13px] font-medium text-black dark:text-white ml-1">
-              {formatWeekLabel(weekDates)}
+              {viewMode === 'day' && formatDayLabel(dayDate)}
+              {viewMode === 'week' && formatWeekLabel(weekDates)}
+              {viewMode === 'month' && formatMonthLabel(monthData.monthAnchor)}
             </span>
           </div>
         )}
       </div>
 
       {/* Content */}
-      {viewMode === 'list' ? (
+      {viewMode === 'list' && (
         <ScheduleListView
           events={events}
           now={now}
@@ -259,13 +308,44 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           onExclude={handleExclude}
           onJoinRequest={setSelectedEvent}
         />
-      ) : (
+      )}
+      {viewMode === 'day' && (
+        <ScheduleDayView
+          events={events}
+          date={dayDate}
+          now={now}
+          closerEmail={closerInfo.email}
+          onEventClick={setSelectedEvent}
+        />
+      )}
+      {viewMode === 'week' && (
         <ScheduleWeekView
           events={events}
           weekDates={weekDates}
           now={now}
           closerEmail={closerInfo.email}
           onEventClick={setSelectedEvent}
+        />
+      )}
+      {viewMode === 'month' && (
+        <ScheduleMonthView
+          events={events}
+          cells={monthData.cells}
+          monthAnchor={monthData.monthAnchor}
+          now={now}
+          onEventClick={setSelectedEvent}
+          onDayClick={(date) => {
+            // Jump to Day view focused on the clicked date. Compute the
+            // dayOffset that puts the picked date at the day view's anchor.
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const target = new Date(date);
+            target.setHours(0, 0, 0, 0);
+            const diffMs = target.getTime() - today.getTime();
+            const offset = Math.round(diffMs / (24 * 60 * 60 * 1000));
+            setDayOffset(offset);
+            setViewMode('day');
+          }}
         />
       )}
 
