@@ -47,7 +47,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Id } from "../../../../convex/_generated/dataModel";
 
 // Filter types
-type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days";
+type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days" | "last_90_days";
 type OutcomeFilter = "all" | "closed" | "not_closed" | "follow_up" | "lost" | "no_show" | "rescheduled";
 type ObjectionFilter = "all" | "none" | "spouse_partner" | "price_money" | "timing" | "need_to_think" | "not_qualified" | "logistics" | "competitor" | "other";
 
@@ -57,6 +57,7 @@ const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: "this_week", label: "This Week" },
   { value: "this_month", label: "This Month" },
   { value: "last_30_days", label: "Last 30 Days" },
+  { value: "last_90_days", label: "Last 90 Days" },
 ];
 
 const OUTCOME_FILTER_OPTIONS: { value: OutcomeFilter; label: string }[] = [
@@ -320,6 +321,12 @@ function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
       thirtyDaysAgo.setHours(0, 0, 0, 0);
       return date >= thirtyDaysAgo;
     }
+    case "last_90_days": {
+      const ninetyDaysAgo = new Date(now);
+      ninetyDaysAgo.setDate(now.getDate() - 90);
+      ninetyDaysAgo.setHours(0, 0, 0, 0);
+      return date >= ninetyDaysAgo;
+    }
     default:
       return true;
   }
@@ -377,7 +384,7 @@ export default function CompletedCallsPage() {
         last_7_days: "this_week",
         this_month: "this_month",
         last_30_days: "last_30_days",
-        last_90_days: "all",
+        last_90_days: "last_90_days",
       };
       const next = mapped[dateRange];
       if (next) setDateFilter(next);

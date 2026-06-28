@@ -136,7 +136,15 @@ export function LeakAttribution({
       // Estimated bucket — call this out in the label so customers don't
       // confuse it with hard numbers above.
       label: "No-shows (estimated)",
-      sublabel: `${noShows.dealCount} no-show${noShows.dealCount === 1 ? "" : "s"} × ${formatCurrency(noShows.avgDealSizeUsed)} avg deal size`,
+      // Two sublabel variants:
+      //   - With an avg deal size > 0: full math is visible ("3 no-shows × $6.5k avg").
+      //   - With avg = 0 (no calls yet have contractValue filled): hide the
+      //     misleading "× $0" — the estimate is honestly zero, but the math
+      //     looks broken. Say so plainly instead.
+      sublabel:
+        noShows.avgDealSizeUsed > 0
+          ? `${noShows.dealCount} no-show${noShows.dealCount === 1 ? "" : "s"} × ${formatCurrency(noShows.avgDealSizeUsed)} avg deal size`
+          : `${noShows.dealCount} no-show${noShows.dealCount === 1 ? "" : "s"} — no contract data yet to estimate value`,
       amount: noShows.amount,
       trend: noShows.trend,
       colorClass: "bg-rose-400",
