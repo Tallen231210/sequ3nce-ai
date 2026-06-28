@@ -136,6 +136,51 @@ export const getAnalyticsSummary = query({
     const callsWithOutcome = calls.filter((c) => c.outcome != null && c.outcome !== "no_show");
     const closeRate = callsWithOutcome.length > 0 ? (closedCalls.length / callsWithOutcome.length) * 100 : 0;
 
+    // ========================================================================
+    // Step 1 — Leak Attribution buckets.
+    //
+    // Drives the new Money View (replacing the flat 4-tile KPI grid). Each
+    // bucket represents a distinct mechanism by which money leaks out of the
+    // funnel. Surfaced as a stacked bar in the LeakAttribution component,
+    // each bucket clickable into a filtered Call Reviews view.
+    //
+    // Buckets:
+    //   1. In-call losses — Σ contractValue for outcome ∈ {lost, follow_up}.
+    //      Hard number. The closer filled contractValue at end of call even
+    //      when they didn't close.
+    //   2. Uncollected on closes — Σ (contractValue - cashCollected) for
+    //      outcome === "closed" AND cashCollected < contractValue. Captures
+    //      payment plans and outstanding balance.
+    //   3. No-shows (estimated) — count(no_show) × team avg deal size.
+    //      Estimate because closers don't reliably fill contractValue on
+    //      no-shows. avgDealSize defined as mean contractValue across all
+    //      calls in the period where contractValue > 0 (not just closes —
+    //      lost deals also represent typical opportunity size). Conservative
+    //      and easy to explain in the UI.
+    // ========================================================================
+
+    // Avg deal size for the no-show estimate
+    const callsWithValue = calls.filter((c) => (c.contractValue ?? 0) > 0);
+    const avgDealSize =
+      callsWithValue.length > 0
+        ? callsWithValue.reduce((sum, c) => sum + (c.contractValue || 0), 0) /
+          callsWithValue.length
+        : 0;
+
+    const inCallLossAmount = lostOrFollowUpCalls.reduce(
+      (sum, c) => sum + (c.contractValue || 0),
+      0,
+    );
+    const uncollectedClosedCalls = closedCalls.filter(
+      (c) => (c.contractValue ?? 0) > (c.cashCollected ?? 0),
+    );
+    const uncollectedAmount = uncollectedClosedCalls.reduce(
+      (sum, c) => sum + ((c.contractValue || 0) - (c.cashCollected || 0)),
+      0,
+    );
+    const noShowCalls = calls.filter((c) => c.outcome === "no_show");
+    const noShowAmount = noShowCalls.length * avgDealSize;
+
     // Calculate previous period metrics (same logic as current)
     const prevTotalPitched = prevCalls.reduce((sum, c) => sum + (c.contractValue || c.dealValue || 0), 0);
     const prevClosedCalls = prevCalls.filter((c) => c.outcome === "closed");
@@ -145,13 +190,51 @@ export const getAnalyticsSummary = query({
     const prevCallsWithOutcome = prevCalls.filter((c) => c.outcome != null && c.outcome !== "no_show");
     const prevCloseRate = prevCallsWithOutcome.length > 0 ? (prevClosedCalls.length / prevCallsWithOutcome.length) * 100 : 0;
 
+    // Previous-period leak bucket values, for trend computation
+    const prevCallsWithValue = prevCalls.filter(
+      (c) => (c.contractValue ?? 0) > 0,
+    );
+    const prevAvgDealSize =
+      prevCallsWithValue.length > 0
+        ? prevCallsWithValue.reduce((sum, c) => sum + (c.contractValue || 0), 0) /
+          prevCallsWithValue.length
+        : 0;
+    const prevInCallLossAmount = prevLostOrFollowUpCalls.reduce(
+      (sum, c) => sum + (c.contractValue || 0),
+      0,
+    );
+    const prevUncollectedAmount = prevClosedCalls
+      .filter((c) => (c.contractValue ?? 0) > (c.cashCollected ?? 0))
+      .reduce(
+        (sum, c) => sum + ((c.contractValue || 0) - (c.cashCollected || 0)),
+        0,
+      );
+    const prevNoShowCalls = prevCalls.filter((c) => c.outcome === "no_show");
+    const prevNoShowAmount = prevNoShowCalls.length * prevAvgDealSize;
+
     // Calculate trends
     const pitchedTrend = prevTotalPitched > 0 ? ((totalPitched - prevTotalPitched) / prevTotalPitched) * 100 : 0;
     const closedTrend = prevTotalClosed > 0 ? ((totalClosed - prevTotalClosed) / prevTotalClosed) * 100 : 0;
     const leftOnTableTrend = prevLeftOnTable > 0 ? ((leftOnTable - prevLeftOnTable) / prevLeftOnTable) * 100 : 0;
     const closeRateTrend = prevCloseRate > 0 ? closeRate - prevCloseRate : 0;
+    const inCallLossesTrend =
+      prevInCallLossAmount > 0
+        ? ((inCallLossAmount - prevInCallLossAmount) / prevInCallLossAmount) * 100
+        : 0;
+    const uncollectedTrend =
+      prevUncollectedAmount > 0
+        ? ((uncollectedAmount - prevUncollectedAmount) / prevUncollectedAmount) * 100
+        : 0;
+    const noShowsTrend =
+      prevNoShowAmount > 0
+        ? ((noShowAmount - prevNoShowAmount) / prevNoShowAmount) * 100
+        : 0;
 
     return {
+      // Legacy fields — kept so existing consumers (the old 4-tile MoneyView
+      // during transition, any downstream queries, tests) keep working
+      // unchanged. New Money View consumes `revenueClosed`, `avgDealSize`,
+      // and `leakBuckets` below.
       totalPitched,
       totalClosed,
       leftOnTable,
@@ -159,6 +242,27 @@ export const getAnalyticsSummary = query({
       totalCalls: calls.length,
       closedCalls: closedCalls.length,
       lostOrFollowUpCalls: lostOrFollowUpCalls.length,
+      // New Money View fields
+      revenueClosed: totalClosed,
+      avgDealSize: Math.round(avgDealSize),
+      leakBuckets: {
+        inCallLosses: {
+          amount: Math.round(inCallLossAmount),
+          dealCount: lostOrFollowUpCalls.length,
+          trend: Math.round(inCallLossesTrend * 10) / 10,
+        },
+        uncollected: {
+          amount: Math.round(uncollectedAmount),
+          dealCount: uncollectedClosedCalls.length,
+          trend: Math.round(uncollectedTrend * 10) / 10,
+        },
+        noShows: {
+          amount: Math.round(noShowAmount),
+          dealCount: noShowCalls.length,
+          avgDealSizeUsed: Math.round(avgDealSize),
+          trend: Math.round(noShowsTrend * 10) / 10,
+        },
+      },
       trends: {
         pitched: Math.round(pitchedTrend * 10) / 10,
         closed: Math.round(closedTrend * 10) / 10,

@@ -7,6 +7,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { Header } from "@/components/dashboard/header";
 import { FilterBar } from "@/components/analytics/FilterBar";
 import { MoneyView } from "@/components/analytics/MoneyView";
+import { LeakAttribution } from "@/components/analytics/LeakAttribution";
 import { WhereYouLosing } from "@/components/analytics/WhereYouLosing";
 import { WhoIsLosing } from "@/components/analytics/WhoIsLosing";
 import { LeadQualityCheck } from "@/components/analytics/LeadQualityCheck";
@@ -106,8 +107,18 @@ export default function AnalyticsPage() {
           isLoading={isLoading}
         />
 
-        {/* Section 1: Money View */}
-        <MoneyView data={summaryData} isLoading={summaryData === undefined} />
+        {/* Section 1: Money View — hero card + leak attribution side-by-side
+            on desktop, stacked on mobile. Hero is the primary number
+            (Revenue Closed); leak attribution is the actionable breakdown
+            of "Left on the Table" into clickable buckets. */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <MoneyView data={summaryData} isLoading={summaryData === undefined} />
+          <LeakAttribution
+            data={summaryData}
+            dateRange={dateRange}
+            isLoading={summaryData === undefined}
+          />
+        </div>
 
         {/* Section 2: Where You're Losing */}
         <WhereYouLosing data={lostDealsData} isLoading={lostDealsData === undefined} />

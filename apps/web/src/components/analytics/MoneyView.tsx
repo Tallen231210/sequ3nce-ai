@@ -1,105 +1,51 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, TrendingUp, TrendingDown, Target, Minus } from "lucide-react";
-import { formatCurrencyFull, formatPercent, formatTrend, getTrendClasses } from "@/lib/analytics-utils";
+import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import {
+  formatCurrencyFull,
+  formatCurrency,
+  formatPercent,
+  formatTrend,
+  getTrendClasses,
+} from "@/lib/analytics-utils";
 
+/**
+ * Hero card for the Analytics tab top — Step 1 of the revamp.
+ *
+ * Replaces the previous 4-tile KPI grid. Surfaces ONE primary number
+ * (Revenue Closed) with its trend, plus a row of supporting context
+ * (close rate, total calls, avg deal size). The "where money leaked"
+ * story now lives in the companion LeakAttribution card next to this.
+ */
 interface MoneyViewProps {
-  data: {
-    totalPitched: number;
-    totalClosed: number;
-    leftOnTable: number;
-    closeRate: number;
-    totalCalls: number;
-    closedCalls: number;
-    trends: {
-      pitched: number;
-      closed: number;
-      closeRate: number;
-    };
-  } | undefined;
+  data:
+    | {
+        revenueClosed: number;
+        avgDealSize: number;
+        closeRate: number;
+        totalCalls: number;
+        closedCalls: number;
+        trends: {
+          closed: number;
+          closeRate: number;
+        };
+      }
+    | undefined;
   isLoading?: boolean;
-}
-
-function StatCard({
-  title,
-  value,
-  trend,
-  icon: Icon,
-  isCurrency = true,
-  isPercent = false,
-  invertTrend = false,
-}: {
-  title: string;
-  value: number;
-  trend: number;
-  icon: React.ElementType;
-  isCurrency?: boolean;
-  isPercent?: boolean;
-  invertTrend?: boolean;
-}) {
-  const trendInfo = formatTrend(trend);
-  // For "left on table", down is good
-  const adjustedPositive = invertTrend ? !trendInfo.isPositive : trendInfo.isPositive;
-
-  const displayValue = isPercent
-    ? formatPercent(value)
-    : isCurrency
-      ? formatCurrencyFull(value)
-      : value.toString();
-
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-zinc-100 rounded-lg">
-              <Icon className="h-5 w-5 text-zinc-600" />
-            </div>
-            <span className="text-sm text-muted-foreground">{title}</span>
-          </div>
-          {!trendInfo.isNeutral && (
-            <div className={`flex items-center gap-1 text-sm ${getTrendClasses(adjustedPositive, trendInfo.isNeutral)}`}>
-              {adjustedPositive ? (
-                <TrendingUp className="h-4 w-4" />
-              ) : (
-                <TrendingDown className="h-4 w-4" />
-              )}
-              <span>{trendInfo.text}</span>
-            </div>
-          )}
-          {trendInfo.isNeutral && (
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <Minus className="h-4 w-4" />
-              <span>—</span>
-            </div>
-          )}
-        </div>
-        <div className="mt-3">
-          <span className="text-3xl font-semibold">{displayValue}</span>
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 function LoadingSkeleton() {
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      {[1, 2, 3, 4].map((i) => (
-        <Card key={i}>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="h-9 w-24 bg-zinc-200 rounded animate-pulse" />
-              <div className="h-5 w-16 bg-zinc-200 rounded animate-pulse" />
-            </div>
-            <div className="mt-3">
-              <div className="h-9 w-32 bg-zinc-200 rounded animate-pulse" />
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+    <Card>
+      <CardContent className="p-6">
+        <div className="space-y-3">
+          <div className="h-4 w-32 bg-zinc-200 rounded animate-pulse" />
+          <div className="h-12 w-48 bg-zinc-200 rounded animate-pulse" />
+          <div className="h-4 w-64 bg-zinc-200 rounded animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -108,38 +54,88 @@ export function MoneyView({ data, isLoading }: MoneyViewProps) {
     return <LoadingSkeleton />;
   }
 
+  const trendInfo = formatTrend(data.trends.closed);
+
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">The Money View</h2>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Pitched"
-          value={data.totalPitched}
-          trend={data.trends.pitched}
-          icon={DollarSign}
-        />
-        <StatCard
-          title="Total Closed"
-          value={data.totalClosed}
-          trend={data.trends.closed}
-          icon={DollarSign}
-        />
-        <StatCard
-          title="Left on Table"
-          value={data.leftOnTable}
-          trend={data.trends.pitched - data.trends.closed}
-          icon={DollarSign}
-          invertTrend={true}
-        />
-        <StatCard
-          title="Close Rate"
-          value={data.closeRate}
-          trend={data.trends.closeRate}
-          icon={Target}
-          isCurrency={false}
-          isPercent={true}
-        />
-      </div>
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          {/* Hero — primary number + trend */}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-muted-foreground mb-1">Revenue Closed</p>
+            <p className="text-4xl font-semibold leading-tight">
+              {formatCurrencyFull(data.revenueClosed)}
+            </p>
+          </div>
+          {!trendInfo.isNeutral ? (
+            <div
+              className={`flex items-center gap-1.5 text-sm font-medium shrink-0 ${getTrendClasses(trendInfo.isPositive, trendInfo.isNeutral)}`}
+            >
+              {trendInfo.isPositive ? (
+                <TrendingUp className="h-4 w-4" />
+              ) : (
+                <TrendingDown className="h-4 w-4" />
+              )}
+              <span>{trendInfo.text} vs last period</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground shrink-0">
+              <Minus className="h-4 w-4" />
+              <span>vs last period</span>
+            </div>
+          )}
+        </div>
+
+        {/* Supporting context row */}
+        <div className="mt-5 pt-4 border-t flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <SupportingStat
+            label="Close rate"
+            value={formatPercent(data.closeRate)}
+            trend={data.trends.closeRate}
+            isPercentTrend
+          />
+          <SupportingStat
+            label="Calls"
+            value={data.totalCalls.toString()}
+          />
+          <SupportingStat
+            label="Avg deal"
+            value={formatCurrency(data.avgDealSize)}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SupportingStat({
+  label,
+  value,
+  trend,
+  isPercentTrend = false,
+}: {
+  label: string;
+  value: string;
+  trend?: number;
+  isPercentTrend?: boolean;
+}) {
+  const trendInfo = trend !== undefined ? formatTrend(trend) : null;
+  // For percent-point trends (like close rate), suppress trend display when
+  // the underlying number is too small to be meaningful — avoids noisy
+  // "↑ 100%" when going from 1 → 2 closes.
+  const showTrend = trendInfo && !trendInfo.isNeutral && (!isPercentTrend || Math.abs(trend!) >= 1);
+
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+      {showTrend && (
+        <span
+          className={`text-xs ${getTrendClasses(trendInfo!.isPositive, trendInfo!.isNeutral)}`}
+        >
+          {trendInfo!.text}
+        </span>
+      )}
     </div>
   );
 }

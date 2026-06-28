@@ -41,9 +41,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Phone, Trash2, Loader2, Search, X, ChevronDown, Filter } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Id } from "../../../../convex/_generated/dataModel";
 
 // Filter types
@@ -328,6 +328,7 @@ function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
 export default function CompletedCallsPage() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Filter state
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
@@ -335,6 +336,54 @@ export default function CompletedCallsPage() {
   const [objectionFilter, setObjectionFilter] = useState<ObjectionFilter>("all");
   const [selectedClosers, setSelectedClosers] = useState<Set<string>>(new Set());
   const [prospectSearch, setProspectSearch] = useState("");
+  // Multi-outcome support — populated when the URL passes comma-separated
+  // outcomes (e.g., ?outcome=lost,follow_up from Analytics → Leak Attribution
+  // → In-call losses drill-down). When non-null, this overrides the single
+  // outcomeFilter for the filter predicate. The Select UI still shows the
+  // single value for further manual adjustment.
+  const [multiOutcomes, setMultiOutcomes] = useState<Set<string> | null>(null);
+  // "Uncollected only" filter — closed deals where cashCollected < contractValue.
+  // Driven by ?uncollected=true URL param from Analytics → Leak Attribution
+  // → Uncollected drill-down. No UI control yet; user can clear via Clear Filters.
+  const [uncollectedOnly, setUncollectedOnly] = useState(false);
+
+  // Hydrate filter state from URL params on mount. Lets external links (e.g.,
+  // Analytics Leak Attribution buckets) deep-link into a pre-filtered Calls
+  // view. Only runs once — subsequent in-page filter changes don't sync back.
+  useEffect(() => {
+    const outcome = searchParams.get("outcome");
+    if (outcome) {
+      const values = outcome.split(",").map((s) => s.trim()).filter(Boolean);
+      if (values.length === 1) {
+        setOutcomeFilter(values[0] as OutcomeFilter);
+        setMultiOutcomes(null);
+      } else if (values.length > 1) {
+        setMultiOutcomes(new Set(values));
+        // Reflect the first value in the Select so the user sees SOMETHING
+        // selected in the UI; the filter predicate uses multiOutcomes when
+        // it's non-null so the full set still applies.
+        setOutcomeFilter(values[0] as OutcomeFilter);
+      }
+    }
+    if (searchParams.get("uncollected") === "true") {
+      setUncollectedOnly(true);
+    }
+    const dateRange = searchParams.get("dateRange");
+    if (dateRange) {
+      // Map analytics date-range values to the Completed-tab DateFilter shape.
+      // Analytics uses "last_30_days" / "last_90_days" / "this_week" / etc.
+      const mapped: Record<string, DateFilter> = {
+        this_week: "this_week",
+        last_7_days: "this_week",
+        this_month: "this_month",
+        last_30_days: "last_30_days",
+        last_90_days: "all",
+      };
+      const next = mapped[dateRange];
+      if (next) setDateFilter(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const calls = useQuery(
     api.calls.getCompletedCallsWithCloser,
@@ -366,10 +415,23 @@ export default function CompletedCallsPage() {
       const callDate = call.startedAt || call.createdAt;
       if (!isWithinDateFilter(callDate, dateFilter)) return false;
 
-      // Outcome filter
-      if (outcomeFilter !== "all") {
+      // Outcome filter — multiOutcomes (URL-driven multi-value, e.g.
+      // "lost,follow_up") wins over the single-value outcomeFilter when set.
+      if (multiOutcomes && multiOutcomes.size > 0) {
+        const callOutcome = call.outcome || "pending";
+        if (!multiOutcomes.has(callOutcome)) return false;
+      } else if (outcomeFilter !== "all") {
         const callOutcome = call.outcome || "pending";
         if (callOutcome !== outcomeFilter) return false;
+      }
+
+      // Uncollected-only filter — closed deals with outstanding balance.
+      // URL-driven (?uncollected=true) from Analytics drill-down.
+      if (uncollectedOnly) {
+        if (call.outcome !== "closed") return false;
+        const cash = call.cashCollected ?? 0;
+        const contract = call.contractValue ?? 0;
+        if (cash >= contract) return false;
       }
 
       // Objection filter - checks both primaryObjection (lost/follow-up) and objectionsOvercome (closed)
@@ -398,15 +460,17 @@ export default function CompletedCallsPage() {
 
       return true;
     });
-  }, [calls, dateFilter, outcomeFilter, objectionFilter, selectedClosers, prospectSearch]);
+  }, [calls, dateFilter, outcomeFilter, multiOutcomes, uncollectedOnly, objectionFilter, selectedClosers, prospectSearch]);
 
   // Check if any filters are active
-  const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || objectionFilter !== "all" || selectedClosers.size > 0 || prospectSearch.trim() !== "";
+  const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || (multiOutcomes !== null && multiOutcomes.size > 0) || uncollectedOnly || objectionFilter !== "all" || selectedClosers.size > 0 || prospectSearch.trim() !== "";
 
   // Clear all filters
   const clearAllFilters = () => {
     setDateFilter("all");
     setOutcomeFilter("all");
+    setMultiOutcomes(null);
+    setUncollectedOnly(false);
     setObjectionFilter("all");
     setSelectedClosers(new Set());
     setProspectSearch("");
