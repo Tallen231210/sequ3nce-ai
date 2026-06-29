@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/table";
 import { Users, AlertTriangle, Lightbulb } from "lucide-react";
 import { formatCurrencyFull, formatPercent } from "@/lib/analytics-utils";
+import { RecommendationCallout } from "./RecommendationCallout";
+import type { Recommendation } from "@/lib/analytics-types";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 interface CloserData {
@@ -33,6 +35,7 @@ interface WhoIsLosingProps {
     insights: string[];
   } | undefined;
   isLoading?: boolean;
+  recommendation?: Recommendation | null;
 }
 
 function LoadingSkeleton() {
@@ -58,7 +61,7 @@ function getCloseRateColor(rate: number): string {
   return "text-red-600";
 }
 
-export function WhoIsLosing({ data, isLoading }: WhoIsLosingProps) {
+export function WhoIsLosing({ data, isLoading, recommendation }: WhoIsLosingProps) {
   if (isLoading || !data) {
     return <LoadingSkeleton />;
   }
@@ -150,6 +153,8 @@ export function WhoIsLosing({ data, isLoading }: WhoIsLosingProps) {
             </TableBody>
           </Table>
         </div>
+
+        <RecommendationCallout recommendation={recommendation} />
       </CardContent>
     </Card>
   );

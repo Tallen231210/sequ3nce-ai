@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Target, TrendingUp, TrendingDown, AlertTriangle, Lightbulb } from "lucide-react";
 import { formatCurrencyFull, formatTrend, getTrendClasses, getLeadQualityColor } from "@/lib/analytics-utils";
+import { RecommendationCallout } from "./RecommendationCallout";
+import type { Recommendation } from "@/lib/analytics-types";
 
 interface LeadQualityProps {
   data: {
@@ -26,6 +28,7 @@ interface LeadQualityProps {
     insights: string[];
   } | undefined;
   isLoading?: boolean;
+  recommendation?: Recommendation | null;
 }
 
 function LoadingSkeleton() {
@@ -44,7 +47,7 @@ function LoadingSkeleton() {
   );
 }
 
-export function LeadQualityCheck({ data, isLoading }: LeadQualityProps) {
+export function LeadQualityCheck({ data, isLoading, recommendation }: LeadQualityProps) {
   if (isLoading || !data) {
     return <LoadingSkeleton />;
   }
@@ -206,6 +209,8 @@ export function LeadQualityCheck({ data, isLoading }: LeadQualityProps) {
             </span>
           </div>
         )}
+
+        <RecommendationCallout recommendation={recommendation} />
       </CardContent>
     </Card>
   );

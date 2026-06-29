@@ -375,6 +375,17 @@ export default function CompletedCallsPage() {
     if (searchParams.get("uncollected") === "true") {
       setUncollectedOnly(true);
     }
+    // Step 2 — primaryObjection + closerId hydration for drill-downs from the
+    // new inline recommendations (rules 1, 4, 5, 6). Keeps the existing
+    // single-select objection UI in sync.
+    const objection = searchParams.get("primaryObjection");
+    if (objection) {
+      setObjectionFilter(objection as ObjectionFilter);
+    }
+    const closer = searchParams.get("closerId");
+    if (closer) {
+      setSelectedClosers(new Set([closer]));
+    }
     const dateRange = searchParams.get("dateRange");
     if (dateRange) {
       // Map analytics date-range values to the Completed-tab DateFilter shape.

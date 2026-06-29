@@ -13,6 +13,8 @@ import {
   formatCurrency,
   formatTrend,
 } from "@/lib/analytics-utils";
+import { RecommendationCallout } from "./RecommendationCallout";
+import type { Recommendation } from "@/lib/analytics-types";
 
 /**
  * Leak Attribution — Step 1 of the Analytics revamp.
@@ -52,6 +54,16 @@ interface LeakAttributionProps {
     | undefined;
   dateRange: string;
   isLoading?: boolean;
+  /**
+   * Per-bucket inline recommendations. Each callout is rendered directly under
+   * its corresponding bucket row. Optional — when omitted/null, the bucket
+   * just renders without an extra callout (no layout regression).
+   */
+  recommendations?: {
+    inCallLosses?: Recommendation | null;
+    uncollected?: Recommendation | null;
+    noShows?: Recommendation | null;
+  };
 }
 
 function LoadingSkeleton() {
@@ -76,6 +88,7 @@ export function LeakAttribution({
   data,
   dateRange,
   isLoading,
+  recommendations,
 }: LeakAttributionProps) {
   if (isLoading || !data) {
     return <LoadingSkeleton />;
@@ -184,41 +197,58 @@ export function LeakAttribution({
           })}
         </div>
 
-        {/* Per-bucket rows. Clickable into Call Reviews with the right
-            outcome / cohort filter applied. */}
+        {/* Per-bucket rows. Each row clickable into Calls with the right
+            outcome / cohort filter applied. Per-bucket inline recommendation
+            (if any) renders immediately below its row — indented to align
+            with the row's text content so it visually belongs to the row
+            above it. */}
         <div className="space-y-2">
-          {rows.map((row) => (
-            <Link
-              key={row.key}
-              href={row.href}
-              className="group flex items-center gap-3 rounded-lg border border-transparent hover:border-zinc-200 hover:bg-zinc-50 px-3 py-2.5 transition-colors"
-            >
-              {/* Color swatch — visually ties row to its stacked-bar segment */}
-              <div
-                className={`w-2.5 h-2.5 rounded-sm shrink-0 ${row.colorClass}`}
-              />
+          {rows.map((row) => {
+            const rec =
+              row.key === "inCallLosses"
+                ? recommendations?.inCallLosses
+                : row.key === "uncollected"
+                  ? recommendations?.uncollected
+                  : recommendations?.noShows;
+            return (
+              <div key={row.key}>
+                <Link
+                  href={row.href}
+                  className="group flex items-center gap-3 rounded-lg border border-transparent hover:border-zinc-200 hover:bg-zinc-50 px-3 py-2.5 transition-colors"
+                >
+                  {/* Color swatch — visually ties row to its stacked-bar segment */}
+                  <div
+                    className={`w-2.5 h-2.5 rounded-sm shrink-0 ${row.colorClass}`}
+                  />
 
-              {/* Label + sublabel */}
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-foreground">
-                  {row.label}
-                </div>
-                <div className="text-xs text-muted-foreground truncate">
-                  {row.sublabel}
-                </div>
+                  {/* Label + sublabel */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-foreground">
+                      {row.label}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {row.sublabel}
+                    </div>
+                  </div>
+
+                  {/* Amount + trend */}
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-semibold tabular-nums">
+                      {formatCurrencyFull(row.amount)}
+                    </div>
+                    <TrendChip trend={row.trend} />
+                  </div>
+
+                  <ChevronRight className="h-4 w-4 text-zinc-300 group-hover:text-zinc-500 shrink-0 transition-colors" />
+                </Link>
+                {rec && (
+                  <div className="pl-7 pr-3">
+                    <RecommendationCallout recommendation={rec} />
+                  </div>
+                )}
               </div>
-
-              {/* Amount + trend */}
-              <div className="text-right shrink-0">
-                <div className="text-sm font-semibold tabular-nums">
-                  {formatCurrencyFull(row.amount)}
-                </div>
-                <TrendChip trend={row.trend} />
-              </div>
-
-              <ChevronRight className="h-4 w-4 text-zinc-300 group-hover:text-zinc-500 shrink-0 transition-colors" />
-            </Link>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>

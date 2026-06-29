@@ -43,7 +43,9 @@ export default function AnalyticsPage() {
   const closerBreakdown = useQuery(api.analytics.getCloserPerformanceBreakdown, teamOnlyArgs);
   const leadQualityData = useQuery(api.analytics.getLeadQualityAnalysis, filterArgs);
   const objectionAnalysis = useQuery(api.analytics.getObjectionAnalysis, filterArgs);
-  const recommendations = useQuery(api.analytics.getRecommendations, teamOnlyArgs);
+  // Step 2: inline-recommendation bundle. Replaces the old `getRecommendations`
+  // query (now deleted). Returns per-section recs + a top-3 digest.
+  const recBundle = useQuery(api.analyticsRecommendations.getAnalyticsRecommendations, filterArgs);
 
   const isLoading =
     isTeamLoading ||
@@ -52,7 +54,7 @@ export default function AnalyticsPage() {
     closerBreakdown === undefined ||
     leadQualityData === undefined ||
     objectionAnalysis === undefined ||
-    recommendations === undefined;
+    recBundle === undefined;
 
   // Extract closers for filter dropdown from closerBreakdown data
   const closers = useMemo(() => {
@@ -110,30 +112,48 @@ export default function AnalyticsPage() {
         {/* Section 1: Money View — hero card + leak attribution side-by-side
             on desktop, stacked on mobile. Hero is the primary number
             (Revenue Closed); leak attribution is the actionable breakdown
-            of "Left on the Table" into clickable buckets. */}
+            of "Left on the Table" into clickable buckets. Each bucket row
+            renders its own inline recommendation below it (Step 2). */}
         <div className="grid gap-4 md:grid-cols-2">
           <MoneyView data={summaryData} isLoading={summaryData === undefined} />
           <LeakAttribution
             data={summaryData}
             dateRange={dateRange}
             isLoading={summaryData === undefined}
+            recommendations={{
+              inCallLosses: recBundle?.bySection["leak.inCallLosses"],
+              uncollected: recBundle?.bySection["leak.uncollected"],
+              noShows: recBundle?.bySection["leak.noShows"],
+            }}
           />
         </div>
 
         {/* Section 2: Where You're Losing */}
-        <WhereYouLosing data={lostDealsData} isLoading={lostDealsData === undefined} />
+        <WhereYouLosing
+          data={lostDealsData}
+          isLoading={lostDealsData === undefined}
+          recommendation={recBundle?.bySection.whereYouLosing}
+        />
 
         {/* Section 3: Who's Losing */}
-        <WhoIsLosing data={closerBreakdown} isLoading={closerBreakdown === undefined} />
+        <WhoIsLosing
+          data={closerBreakdown}
+          isLoading={closerBreakdown === undefined}
+          recommendation={recBundle?.bySection.whoIsLosing}
+        />
 
         {/* Section 4: Lead Quality Check */}
-        <LeadQualityCheck data={leadQualityData} isLoading={leadQualityData === undefined} />
+        <LeadQualityCheck
+          data={leadQualityData}
+          isLoading={leadQualityData === undefined}
+          recommendation={recBundle?.bySection.leadQuality}
+        />
 
         {/* Section 5: Objection Analysis - Real form data */}
         <ObjectionAnalysis data={objectionAnalysis} isLoading={objectionAnalysis === undefined} />
 
-        {/* Section 6: Recommendations */}
-        <Recommendations data={recommendations} isLoading={recommendations === undefined} />
+        {/* Section 6: Top-3 priorities digest. Hides itself when no recs fire. */}
+        <Recommendations data={recBundle?.top} isLoading={recBundle === undefined} />
       </div>
     </>
   );

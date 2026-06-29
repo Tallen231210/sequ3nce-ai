@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import { formatCurrencyFull, getBarWidth } from "@/lib/analytics-utils";
+import { RecommendationCallout } from "./RecommendationCallout";
+import type { Recommendation } from "@/lib/analytics-types";
 
 interface ObjectionData {
   objection: string;
@@ -21,6 +23,7 @@ interface WhereYouLosingProps {
     problemAreas: string[];
   } | undefined;
   isLoading?: boolean;
+  recommendation?: Recommendation | null;
 }
 
 function LoadingSkeleton() {
@@ -46,7 +49,7 @@ function LoadingSkeleton() {
   );
 }
 
-export function WhereYouLosing({ data, isLoading }: WhereYouLosingProps) {
+export function WhereYouLosing({ data, isLoading, recommendation }: WhereYouLosingProps) {
   if (isLoading || !data) {
     return <LoadingSkeleton />;
   }
@@ -136,6 +139,8 @@ export function WhereYouLosing({ data, isLoading }: WhereYouLosingProps) {
             </div>
           ))}
         </div>
+
+        <RecommendationCallout recommendation={recommendation} />
       </CardContent>
     </Card>
   );
