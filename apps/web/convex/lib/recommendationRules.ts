@@ -448,7 +448,16 @@ export function recommendWhoIsLosing(inputs: RuleInputs): Recommendation | null 
     });
   }
 
-  // Rule 5A — drop
+  // Rule 5A — drop. Pick the closer with the steepest drop (smallest
+  // current/prior ratio), NOT the first match in iteration order — otherwise
+  // the rec is unstable when multiple closers are dropping in the same
+  // period.
+  let dropCandidate: {
+    closer: Closer;
+    curr: Per;
+    prior: Per;
+    ratio: number;
+  } | null = null;
   for (const closer of activeClosers) {
     const curr = perCurr.get(closer._id)!;
     const prior = perPrior.get(closer._id)!;
@@ -457,7 +466,12 @@ export function recommendWhoIsLosing(inputs: RuleInputs): Recommendation | null 
     if (prior.rate <= 0) continue;
     const ratio = curr.rate / prior.rate;
     if (ratio >= DROP_CLOSE_RATE_VS_PRIOR_RATIO) continue;
-
+    if (!dropCandidate || ratio < dropCandidate.ratio) {
+      dropCandidate = { closer, curr, prior, ratio };
+    }
+  }
+  if (dropCandidate) {
+    const { closer, curr, prior } = dropCandidate;
     return {
       id: "who-losing-drop",
       section: "whoIsLosing",

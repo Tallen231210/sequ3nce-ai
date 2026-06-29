@@ -77,6 +77,7 @@ import type * as hyrosActions from "../hyrosActions.js";
 import type * as hyrosRead from "../hyrosRead.js";
 import type * as hyrosReadActions from "../hyrosReadActions.js";
 import type * as hyrosReadInternal from "../hyrosReadInternal.js";
+import type * as lib_dateRanges from "../lib/dateRanges.js";
 import type * as lib_encrypt from "../lib/encrypt.js";
 import type * as lib_googleCalendarPalette from "../lib/googleCalendarPalette.js";
 import type * as lib_recommendationRules from "../lib/recommendationRules.js";
@@ -198,6 +199,7 @@ declare const fullApi: ApiFromModules<{
   hyrosRead: typeof hyrosRead;
   hyrosReadActions: typeof hyrosReadActions;
   hyrosReadInternal: typeof hyrosReadInternal;
+  "lib/dateRanges": typeof lib_dateRanges;
   "lib/encrypt": typeof lib_encrypt;
   "lib/googleCalendarPalette": typeof lib_googleCalendarPalette;
   "lib/recommendationRules": typeof lib_recommendationRules;
