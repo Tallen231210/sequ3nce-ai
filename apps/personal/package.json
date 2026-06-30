@@ -98,6 +98,9 @@
       "deleteAppDataOnUninstall": false
     },
     "generateUpdatesFilesForAllChannels": false,
-    "publish": null
+    "publish": {
+      "provider": "generic",
+      "url": "https://www.sequ3nce.ai/api/updates/personal"
+    }
   }
 }
