@@ -958,17 +958,33 @@ export const createCallFromBot = mutation({
   handler: async (ctx, args) => {
     // Title-parser fallback: when the desktop couldn't extract a prospect
     // name (typical for Calendly-style sub-calendar events that have an
-    // auto-generated "<Prospect> and <Closer>" title but no attendees), try
-    // to parse it server-side from bot.meetingTitle + closer.name. Only
-    // fires when the caller passed nothing — never overrides a real name.
-    // Same patch is also written back to bot.prospectName for downstream
-    // consumers that read from the bot record directly.
+    // auto-generated "<Prospect> and <Bookee>" title but no attendees), try
+    // server-side from bot.meetingTitle + the team's active closer names.
+    //
+    // We pass ALL team closer names (not just the logged-in closer) because
+    // some teams share calendars and any closer can take any open meeting.
+    // The parser uses team-closer matching to disambiguate when possible
+    // and falls back to a Calendly-format heuristic for off-team bookees
+    // (e.g., a business owner whose calendar the team is sharing).
+    //
+    // Only fires when the caller passed nothing — never overrides a real
+    // name. Same patch is also written back to bot.prospectName for
+    // downstream consumers that read from the bot record directly.
     let prospectName = args.prospectName?.trim() || undefined;
     if (!prospectName) {
       const bot = await ctx.db.get(args.meetingBotId);
-      const closer = await ctx.db.get(args.closerId);
-      if (bot?.meetingTitle && closer?.name) {
-        const parsed = extractProspectFromTitle(bot.meetingTitle, closer.name);
+      if (bot?.meetingTitle) {
+        const teamClosers = await ctx.db
+          .query("closers")
+          .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+          .filter((q) => q.eq(q.field("status"), "active"))
+          .collect();
+        const closerNames = teamClosers
+          .map((c) => c.name)
+          .filter((n): n is string => typeof n === "string" && n.length > 0);
+        const parsed = extractProspectFromTitle(bot.meetingTitle, {
+          closerNames,
+        });
         if (parsed) {
           prospectName = parsed;
           await ctx.db.patch(args.meetingBotId, { prospectName: parsed });
@@ -1055,6 +1071,25 @@ export const backfillMissingProspectNamesInternal = internalMutation({
     let patched = 0;
     const samples: string[] = [];
 
+    // Cache team-closer-name lists per team since the backfill can span
+    // many teams in one run. One query per team is plenty.
+    const teamClosersCache = new Map<string, string[]>();
+    const getTeamCloserNames = async (teamId: Id<"teams">): Promise<string[]> => {
+      const key = teamId as unknown as string;
+      const cached = teamClosersCache.get(key);
+      if (cached) return cached;
+      const closers = await ctx.db
+        .query("closers")
+        .withIndex("by_team", (q) => q.eq("teamId", teamId))
+        .filter((q) => q.eq(q.field("status"), "active"))
+        .collect();
+      const names = closers
+        .map((c) => c.name)
+        .filter((n): n is string => typeof n === "string" && n.length > 0);
+      teamClosersCache.set(key, names);
+      return names;
+    };
+
     for (const call of calls) {
       const hasName =
         typeof call.prospectName === "string" && call.prospectName.trim() !== "";
@@ -1065,15 +1100,17 @@ export const backfillMissingProspectNamesInternal = internalMutation({
       const bot = await ctx.db.get(call.meetingBotId);
       if (!bot?.meetingTitle) continue;
 
-      const closer = await ctx.db.get(call.closerId);
-      if (!closer?.name) continue;
+      const closerNames = await getTeamCloserNames(call.teamId);
+      if (closerNames.length === 0) continue;
 
-      const parsed = extractProspectFromTitle(bot.meetingTitle, closer.name);
+      const parsed = extractProspectFromTitle(bot.meetingTitle, {
+        closerNames,
+      });
       if (!parsed) continue;
 
       if (samples.length < 10) {
         samples.push(
-          `${call._id}: "${bot.meetingTitle}" → "${parsed}" (closer="${closer.name}")`,
+          `${call._id}: "${bot.meetingTitle}" → "${parsed}"`,
         );
       }
 
@@ -1081,8 +1118,6 @@ export const backfillMissingProspectNamesInternal = internalMutation({
       if (args.dryRun) continue;
 
       await ctx.db.patch(call._id, { prospectName: parsed });
-      // Mirror onto the bot too so any consumer reading from the bot
-      // record sees the same name.
       if (
         typeof bot.prospectName !== "string" ||
         bot.prospectName.trim() === ""

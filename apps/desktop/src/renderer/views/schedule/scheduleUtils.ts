@@ -391,8 +391,20 @@ const TITLE_SEPARATORS = [
   ' vs ',
   ' vs. ',
 ] as const;
+const CALENDLY_DEFAULT_SEPARATORS = new Set<string>([' and ', ' with ']);
 const NAME_VALIDATOR = /^\p{L}[\p{L}\s'.\-]{1,59}$/u;
 
+// Mirrors the server-side helper at
+// `apps/web/convex/lib/extractProspectFromTitle.ts` — keep the two in sync.
+// Tier 1: match logged-in closer's first name to disambiguate halves.
+// Tier 2: when no closer matches and the separator is Calendly's default
+// (" and " / " with "), assume "<Prospect> [sep] <Bookee>" and take the
+// first half if BOTH halves look like person names (strict title-case
+// check). The desktop only has the logged-in closer's name, so Tier 1
+// here is single-closer. The server fixes shared-calendar edge cases
+// using the full team-closer list as a multi-name match. The desktop
+// UX gap (slightly less accuracy on shared calendars) is acceptable —
+// recorded call + Slack get the correct name via the server fallback.
 function parseFromMeetingTitle(
   title: string,
   closerName: string,
@@ -421,6 +433,19 @@ function parseFromMeetingTitle(
     if (candidate) {
       const validated = validateName(candidate);
       if (validated) return validated;
+      continue;
+    }
+
+    // Tier 2 — Calendly heuristic fallback (see file header).
+    if (
+      !aHasCloser &&
+      !bHasCloser &&
+      CALENDLY_DEFAULT_SEPARATORS.has(sep) &&
+      looksLikeFullName(partA) &&
+      looksLikeFullName(partB)
+    ) {
+      const validated = validateName(partA);
+      if (validated) return validated;
     }
   }
   return undefined;
@@ -445,6 +470,21 @@ function containsName(haystack: string, needleLower: string): boolean {
 function isLetter(ch: string): boolean {
   if (!ch) return false;
   return /\p{L}/u.test(ch);
+}
+
+function looksLikeFullName(s: string): boolean {
+  const cleaned = s.trim();
+  if (cleaned.length < 2) return false;
+  const words = cleaned.split(/\s+/);
+  let titleCasedWordCount = 0;
+  for (const w of words) {
+    if (w.length === 0) continue;
+    const startsWithLetter = /^\p{L}/u.test(w);
+    if (!startsWithLetter) continue;
+    if (!/^\p{Lu}/u.test(w)) return false;
+    titleCasedWordCount++;
+  }
+  return titleCasedWordCount >= 1;
 }
 
 function validateName(s: string): string | undefined {
