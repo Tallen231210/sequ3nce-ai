@@ -7,8 +7,11 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { runAllRules, type RecommendationBundle } from "./lib/recommendationRules";
 import { getDateRangeTimestamps, type DateRange } from "./lib/dateRanges";
-import { computeCallQuality } from "./lib/callQualityAggregator";
-import type { Doc, Id } from "./_generated/dataModel";
+import {
+  computeCallQuality,
+  resolveVerifiedBotIds,
+  makeIsVerified,
+} from "./lib/callQualityAggregator";
 
 export const getAnalyticsRecommendations = query({
   args: {
@@ -55,23 +58,14 @@ export const getAnalyticsRecommendations = query({
       .filter((q) => q.eq(q.field("status"), "active"))
       .collect();
 
-    // Compute Call Quality summary (Step 4) so the rec engine can fire its
-    // talk-ratio / signal-gap rules on the same numbers the UI section shows.
-    // Same speaker-verification skip-list logic as the section query.
-    const verifiedBotIds = new Set<string>();
-    const botIdSet = new Set<Id<"meetingBots">>();
-    for (const c of currentCalls) {
-      if (c.meetingBotId) botIdSet.add(c.meetingBotId);
-    }
-    for (const botId of botIdSet) {
-      const bot = await ctx.db.get(botId);
-      if (bot?.speakerVerifiedAt) verifiedBotIds.add(botId);
-    }
-    const isVerified = (call: Doc<"calls">) => {
-      if (!call.meetingBotId) return true;
-      return verifiedBotIds.has(call.meetingBotId);
-    };
-    const cqSummary = computeCallQuality(currentCalls, isVerified);
+    // Compute Call Quality summary (Step 4) using the SAME verification
+    // skip-list the section query uses — so the rule engine fires on the
+    // numbers the user sees on the page, not subtly different ones.
+    const verifiedBotIds = await resolveVerifiedBotIds(ctx, currentCalls);
+    const cqSummary = computeCallQuality(
+      currentCalls,
+      makeIsVerified(verifiedBotIds),
+    );
     const cqInputs = {
       talkRatio: {
         teamAvg: cqSummary.talkRatio.teamAvg,

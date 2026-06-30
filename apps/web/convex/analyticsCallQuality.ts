@@ -20,8 +20,11 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { getDateRangeTimestamps, type DateRange } from "./lib/dateRanges";
-import { computeCallQuality } from "./lib/callQualityAggregator";
-import type { Doc, Id } from "./_generated/dataModel";
+import {
+  computeCallQuality,
+  resolveVerifiedBotIds,
+  makeIsVerified,
+} from "./lib/callQualityAggregator";
 
 export const getCallQualitySummary = query({
   args: {
@@ -50,24 +53,7 @@ export const getCallQualitySummary = query({
       allCalls = allCalls.filter((c) => c.closerId === args.closerId);
     }
 
-    // Pre-resolve speaker-verification status for every call that has a
-    // meeting bot. Doing this once up front so the aggregator's predicate is
-    // synchronous (the aggregator is pure / shared with the rec query).
-    const verifiedBotIds = new Set<string>();
-    const botIdSet = new Set<Id<"meetingBots">>();
-    for (const c of allCalls) {
-      if (c.meetingBotId) botIdSet.add(c.meetingBotId);
-    }
-    for (const botId of botIdSet) {
-      const bot = await ctx.db.get(botId);
-      if (bot?.speakerVerifiedAt) verifiedBotIds.add(botId);
-    }
-
-    const isVerified = (call: Doc<"calls">) => {
-      if (!call.meetingBotId) return true; // manual recording, no attribution risk
-      return verifiedBotIds.has(call.meetingBotId);
-    };
-
-    return computeCallQuality(allCalls, isVerified);
+    const verifiedBotIds = await resolveVerifiedBotIds(ctx, allCalls);
+    return computeCallQuality(allCalls, makeIsVerified(verifiedBotIds));
   },
 });

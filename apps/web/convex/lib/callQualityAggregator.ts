@@ -7,9 +7,50 @@
 // caller is responsible for loading calls + meeting-bot verification status;
 // this just does the math.
 
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 
 type Call = Doc<"calls">;
+
+/**
+ * Resolve speaker-verification status for a batch of calls. Returns a Set of
+ * verified bot ids — callers compose this into an `isVerified(call)` predicate.
+ *
+ * Shared between `analyticsCallQuality` (section query) and
+ * `analyticsRecommendations` (rec engine) so they apply the same
+ * skip-list to the same numbers. If the rule used here drifts from the
+ * one shown in the UI, the inline rec contradicts the section it sits in.
+ *
+ * Caller pattern:
+ *   const verifiedBotIds = await resolveVerifiedBotIds(ctx, calls);
+ *   const isVerified = (c) => !c.meetingBotId || verifiedBotIds.has(c.meetingBotId);
+ *   const summary = computeCallQuality(calls, isVerified);
+ */
+export async function resolveVerifiedBotIds(
+  // Loose ctx type to avoid pulling Convex generic plumbing into a lib file.
+  // Any QueryCtx satisfies this.
+  ctx: { db: { get: (id: Id<"meetingBots">) => Promise<Doc<"meetingBots"> | null> } },
+  calls: Call[],
+): Promise<Set<Id<"meetingBots">>> {
+  const botIdSet = new Set<Id<"meetingBots">>();
+  for (const c of calls) {
+    if (c.meetingBotId) botIdSet.add(c.meetingBotId);
+  }
+  const verifiedBotIds = new Set<Id<"meetingBots">>();
+  for (const botId of botIdSet) {
+    const bot = await ctx.db.get(botId);
+    if (bot?.speakerVerifiedAt) verifiedBotIds.add(botId);
+  }
+  return verifiedBotIds;
+}
+
+/** Predicate factory. Composes the verified-bot Set into a per-call check. */
+export function makeIsVerified(verifiedBotIds: Set<Id<"meetingBots">>) {
+  return (call: Call) => {
+    // No bot = manual recording, no attribution risk → include
+    if (!call.meetingBotId) return true;
+    return verifiedBotIds.has(call.meetingBotId);
+  };
+}
 
 export const TALK_BUCKETS: Array<{ key: string; min: number; max: number; label: string }> = [
   { key: "very_quiet", min: 0, max: 0.2, label: "0-20%" },

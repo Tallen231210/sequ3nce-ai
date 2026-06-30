@@ -306,7 +306,12 @@ function SignalRow({ label, signal }: { label: string; signal: Signal }) {
     );
   }
   const gap = signal.closedHitRate - signal.lostHitRate;
-  const isInteresting = Math.abs(gap) >= 0.2 && signal.closedCount >= 3 && signal.lostCount >= 3;
+  // Note: the UI badge threshold (20pp) is intentionally LOWER than the
+  // rec-engine threshold (30pp) — so customers see informational gap badges
+  // before any single signal crosses into "we have a recommendation for you"
+  // territory. The badge is awareness; the rec is action.
+  const isInteresting =
+    Math.abs(gap) >= 0.2 && signal.closedCount >= 3 && signal.lostCount >= 3;
   return (
     <div className="grid grid-cols-[1fr,auto,auto] items-center gap-3 text-sm">
       <span>{label}</span>
@@ -327,11 +332,16 @@ function SignalRow({ label, signal }: { label: string; signal: Signal }) {
       {isInteresting && (
         <Badge
           variant="outline"
-          className={`text-xs ${gap > 0 ? "border-amber-200 text-amber-700 bg-amber-50" : "border-zinc-200 text-zinc-600"}`}
+          // Positive gap = closed calls hit this signal MORE = good
+          // differentiator (do more of this). Emerald, not amber — amber
+          // would read as warning when it's actually opportunity.
+          // Negative gap = lost calls hit it more = anomaly. Zinc-subtle,
+          // because the manager probably wants to investigate, not act.
+          className={`text-xs ${gap > 0 ? "border-emerald-200 text-emerald-700 bg-emerald-50" : "border-zinc-200 text-zinc-600"}`}
           title={
             gap > 0
-              ? "Closed calls hit this signal materially more often — likely a differentiator."
-              : "Lost calls hit this signal more often — unusual, worth a look."
+              ? "Closed calls hit this signal materially more often — likely a differentiator. Make it a habit on every call."
+              : "Lost calls hit this signal more often — unusual. Worth listening to a few to understand what's happening."
           }
         >
           {gap > 0 ? "↑" : "↓"} {formatPercent(Math.abs(gap) * 100)} gap
