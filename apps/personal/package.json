@@ -16,9 +16,9 @@
     "test:headed": "npx playwright test --headed",
     "build:native": "bash scripts/build-native.sh",
     "build:mac": "npm run build:native && electron-forge make --platform darwin",
-    "build:win": "electron-forge make --platform win32",
     "build:linux": "electron-forge make --platform linux",
-    "build:all": "npm run build:native && electron-forge make --platform darwin,win32,linux"
+    "build:all": "npm run build:native && electron-forge make --platform darwin,linux",
+    "make:win:nsis": "electron-forge package --platform=win32 --arch=x64 && electron-builder --prepackaged \"out/Sequ3nce Personal-win32-x64\" --win"
   },
   "keywords": [],
   "author": {
@@ -31,7 +31,6 @@
     "@electron-forge/maker-deb": "^7.10.2",
     "@electron-forge/maker-dmg": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.10.2",
-    "@electron-forge/maker-squirrel": "^7.10.2",
     "@electron-forge/maker-zip": "^7.10.2",
     "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
     "@electron-forge/plugin-fuses": "^7.10.2",
@@ -52,6 +51,7 @@
     "autoprefixer": "^10.4.22",
     "css-loader": "^6.11.0",
     "electron": "39.2.6",
+    "electron-builder": "^25.1.8",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
     "fork-ts-checker-webpack-plugin": "^7.3.0",
@@ -71,7 +71,6 @@
     "@tailwindcss/postcss": "^4.1.17",
     "convex": "^1.31.0",
     "electron-audio-loopback": "^1.0.6",
-    "electron-squirrel-startup": "^1.0.1",
     "electron-updater": "^6.6.2",
     "koffi": "^2.15.6",
     "react": "^19.2.1",
@@ -80,5 +79,25 @@
     "uiohook-napi": "^1.5.5",
     "uuid": "^13.0.0",
     "ws": "^8.18.3"
+  },
+  "build": {
+    "appId": "com.sequ3nce.personal",
+    "productName": "Sequ3nce Personal",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "artifactName": "Sequ3nce-Personal-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "generateUpdatesFilesForAllChannels": false,
+    "publish": null
   }
 }

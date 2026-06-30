@@ -1,5 +1,4 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
-import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -64,13 +63,9 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    // Windows installer
-    new MakerSquirrel({
-      name: 'Sequ3nce',
-      setupIcon: './assets/icon.ico',
-      // The ICO file to use as the icon for the generated Setup.exe
-      iconUrl: 'https://raw.githubusercontent.com/Tallen231210/sequ3nce-ai/main/apps/desktop/assets/icon.ico',
-    }),
+    // Windows installer is built by electron-builder (NSIS) via the
+    // `make:win:nsis` npm script — see apps/desktop/package.json `build` block.
+    // electron-forge handles macOS + Linux installers below.
     // macOS DMG
     new MakerDMG({
       name: 'Sequ3nce',

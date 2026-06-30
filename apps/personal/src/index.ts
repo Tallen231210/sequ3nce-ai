@@ -58,12 +58,6 @@ declare const POST_CALL_PRELOAD_WEBPACK_ENTRY: string;
 declare const STREAM_OVERLAY_WEBPACK_ENTRY: string;
 declare const STREAM_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
-
 // Type definitions
 type AudioCaptureStatus = 'idle' | 'connecting' | 'capturing' | 'reconnecting' | 'error';
 

@@ -70,9 +70,13 @@ jobs:
         working-directory: apps/desktop
         run: npm ci
 
+      # Windows installer is built by electron-builder (NSIS) — not electron-forge.
+      # electron-updater is from the electron-builder ecosystem and only ever
+      # worked correctly with NSIS installers; the prior Squirrel installer
+      # was incompatible and caused broken/failed auto-updates on Windows.
       - name: Build Windows app
         working-directory: apps/desktop
-        run: npm run make -- --platform win32
+        run: npm run make:win:nsis
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -81,8 +85,9 @@ jobs:
         with:
           name: windows-build
           path: |
-            apps/desktop/out/make/**/*.exe
-            apps/desktop/out/make/**/*.nupkg
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/latest.yml
 
   build-linux:
     runs-on: ubuntu-latest
@@ -142,28 +147,9 @@ jobs:
             echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate Windows update manifest
-        run: |
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-          EXE_FILE=$(find artifacts -name "*.exe" ! -name "*.nupkg" | head -1)
-          if [ -n "$EXE_FILE" ]; then
-            SHA512_BASE64=$(sha512sum "$EXE_FILE" | awk '{print $1}' | xxd -r -p | base64 -w 0)
-            SIZE=$(stat --format=%s "$EXE_FILE")
-            EXE_NAME=$(basename "$EXE_FILE")
-            RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-            cat > artifacts/latest.yml << EOF
-          version: ${VERSION}
-          files:
-            - url: ${EXE_NAME}
-              sha512: ${SHA512_BASE64}
-              size: ${SIZE}
-          path: ${EXE_NAME}
-          sha512: ${SHA512_BASE64}
-          releaseDate: '${RELEASE_DATE}'
-          EOF
-            echo "Generated latest.yml for Windows"
-            cat artifacts/latest.yml
-          fi
+      # Windows latest.yml is now produced natively by electron-builder during
+      # the build-windows job (no hand-rolled manifest step needed). It lands
+      # in apps/desktop/dist/latest.yml and rides through the artifact upload.
 
       - name: Generate macOS update manifest
         run: |
@@ -199,9 +185,10 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.zip
             artifacts/**/*.exe
+            artifacts/**/*.exe.blockmap
             artifacts/**/*.deb
             artifacts/**/*.rpm
-            artifacts/latest.yml
+            artifacts/**/latest.yml
             artifacts/latest-mac.yml
           body: |
             ## Sequ3nce Desktop v${{ steps.get_version.outputs.VERSION }}

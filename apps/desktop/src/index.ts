@@ -24,12 +24,6 @@ declare const SCHEDULE_PRELOAD_WEBPACK_ENTRY: string;
 declare const POST_CALL_WEBPACK_ENTRY: string;
 declare const POST_CALL_PRELOAD_WEBPACK_ENTRY: string;
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-if (require('electron-squirrel-startup')) {
-  app.quit();
-}
-
 let mainWindow: BrowserWindow | null = null;
 let ammoTrackerWindow: BrowserWindow | null = null;
 let postCallWindow: BrowserWindow | null = null;
