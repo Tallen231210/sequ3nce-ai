@@ -353,7 +353,8 @@ export function getProspectAttendee(
 /** Extract prospect name from attendees or event title */
 export function extractProspectName(
   event: CalendarEvent,
-  closerEmail?: string
+  closerEmail?: string,
+  closerName?: string,
 ): string | undefined {
   // 1. Try attendee name first (most reliable when available)
   const prospect = getProspectAttendee(event, closerEmail);
@@ -367,5 +368,88 @@ export function extractProspectName(
     }
   }
 
+  // 3. Scheduling-tool fallback (Calendly, Acuity, SavvyCal …): titles in
+  // "<Prospect> and <Closer>" / "with" / "&" format. Sub-calendar events
+  // from these tools typically have NO attendees populated by Google's API,
+  // so this is our last-ditch extraction. Mirrors the server-side helper at
+  // `apps/web/convex/lib/extractProspectFromTitle.ts` — keep the two in
+  // sync if either's algorithm changes.
+  if (event.title && closerName) {
+    const parsed = parseFromMeetingTitle(event.title, closerName);
+    if (parsed) return parsed;
+  }
+
   return undefined;
+}
+
+const TITLE_SEPARATORS = [
+  ' and ',
+  ' with ',
+  ' & ',
+  ' + ',
+  ' / ',
+  ' vs ',
+  ' vs. ',
+] as const;
+const NAME_VALIDATOR = /^\p{L}[\p{L}\s'.\-]{1,59}$/u;
+
+function parseFromMeetingTitle(
+  title: string,
+  closerName: string,
+): string | undefined {
+  const cleanTitle = title.trim().replace(/\s+/g, ' ');
+  if (!cleanTitle) return undefined;
+  const cleanCloser = closerName.trim().replace(/\s+/g, ' ');
+  if (!cleanCloser) return undefined;
+  const closerFirstName = cleanCloser.split(' ')[0].toLowerCase();
+  if (closerFirstName.length < 2) return undefined;
+  const lowerTitle = cleanTitle.toLowerCase();
+
+  for (const sep of TITLE_SEPARATORS) {
+    const idx = lowerTitle.indexOf(sep);
+    if (idx === -1) continue;
+    const partA = cleanTitle.slice(0, idx).trim();
+    const partB = cleanTitle.slice(idx + sep.length).trim();
+    if (!partA || !partB) continue;
+
+    const aHasCloser = containsName(partA, closerFirstName);
+    const bHasCloser = containsName(partB, closerFirstName);
+    let candidate: string | undefined;
+    if (aHasCloser && !bHasCloser) candidate = partB;
+    else if (bHasCloser && !aHasCloser) candidate = partA;
+
+    if (candidate) {
+      const validated = validateName(candidate);
+      if (validated) return validated;
+    }
+  }
+  return undefined;
+}
+
+function containsName(haystack: string, needleLower: string): boolean {
+  const lower = haystack.toLowerCase();
+  let from = 0;
+  while (true) {
+    const idx = lower.indexOf(needleLower, from);
+    if (idx === -1) return false;
+    const before = idx === 0 ? '' : lower[idx - 1];
+    const after =
+      idx + needleLower.length >= lower.length
+        ? ''
+        : lower[idx + needleLower.length];
+    if (!isLetter(before) && !isLetter(after)) return true;
+    from = idx + 1;
+  }
+}
+
+function isLetter(ch: string): boolean {
+  if (!ch) return false;
+  return /\p{L}/u.test(ch);
+}
+
+function validateName(s: string): string | undefined {
+  const candidate = s.trim().replace(/[.,;:!?]+$/, '').trim();
+  if (candidate.length < 2 || candidate.length > 60) return undefined;
+  if (!NAME_VALIDATOR.test(candidate)) return undefined;
+  return candidate;
 }

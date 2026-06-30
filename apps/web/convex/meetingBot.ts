@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
 import { getContentForCallTx } from "./callContent";
+import { extractProspectFromTitle } from "./lib/extractProspectFromTitle";
 
 // Schedule a delayed fetch of the recording URL from Recall.ai API
 export const scheduleRecordingFetch = internalMutation({
@@ -955,10 +956,33 @@ export const createCallFromBot = mutation({
     prospectName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Title-parser fallback: when the desktop couldn't extract a prospect
+    // name (typical for Calendly-style sub-calendar events that have an
+    // auto-generated "<Prospect> and <Closer>" title but no attendees), try
+    // to parse it server-side from bot.meetingTitle + closer.name. Only
+    // fires when the caller passed nothing — never overrides a real name.
+    // Same patch is also written back to bot.prospectName for downstream
+    // consumers that read from the bot record directly.
+    let prospectName = args.prospectName?.trim() || undefined;
+    if (!prospectName) {
+      const bot = await ctx.db.get(args.meetingBotId);
+      const closer = await ctx.db.get(args.closerId);
+      if (bot?.meetingTitle && closer?.name) {
+        const parsed = extractProspectFromTitle(bot.meetingTitle, closer.name);
+        if (parsed) {
+          prospectName = parsed;
+          await ctx.db.patch(args.meetingBotId, { prospectName: parsed });
+          console.log(
+            `[createCallFromBot] Recovered prospectName "${parsed}" from meetingTitle "${bot.meetingTitle}" for bot ${args.meetingBotId}`,
+          );
+        }
+      }
+    }
+
     const callId = await ctx.db.insert("calls", {
       closerId: args.closerId,
       teamId: args.teamId,
-      prospectName: args.prospectName,
+      prospectName,
       status: "on_call",
       recordingType: "video",
       meetingBotId: args.meetingBotId,
@@ -976,6 +1000,98 @@ export const createCallFromBot = mutation({
     });
 
     return callId;
+  },
+});
+
+/**
+ * One-shot backfill for the "Unknown Prospect" bug introduced by multi-cal
+ * sub-calendar subscriptions. Patches existing calls whose prospectName is
+ * null/undefined/"" but whose linked bot has a `meetingTitle` we can parse.
+ *
+ * Run via `npx convex run --prod meetingBot:backfillMissingProspectNames
+ *   '{"dryRun": true}'` first to see what would change, then with
+ *   `dryRun: false` to actually patch.
+ *
+ * Bounded: scans `calls.by_team` for each team in chunks. For Gianni's team
+ * today this is ~10 affected rows. Safe to re-run; the predicate excludes
+ * already-named calls so successive runs are no-ops.
+ */
+export const backfillMissingProspectNames = internalAction({
+  args: {
+    dryRun: v.boolean(),
+    // Optional team scope. Default: all teams. When debugging a single
+    // customer pass their teamId; production sweep leaves it null.
+    teamId: v.optional(v.id("teams")),
+  },
+  handler: async (ctx, args): Promise<{ scanned: number; patched: number; samples: string[] }> => {
+    const result = await ctx.runMutation(
+      internal.meetingBot.backfillMissingProspectNamesInternal,
+      { dryRun: args.dryRun, teamId: args.teamId },
+    );
+    console.log(
+      `[backfillMissingProspectNames] dryRun=${args.dryRun} scanned=${result.scanned} ${args.dryRun ? "would_patch" : "patched"}=${result.patched}`,
+    );
+    return result;
+  },
+});
+
+export const backfillMissingProspectNamesInternal = internalMutation({
+  args: {
+    dryRun: v.boolean(),
+    teamId: v.optional(v.id("teams")),
+  },
+  handler: async (ctx, args) => {
+    // Find candidate calls. Scope by team if provided; otherwise sweep the
+    // index. We page over the whole index even at scale because the calls
+    // main row is light (~100 bytes after the callContent split).
+    const baseQuery = args.teamId
+      ? ctx.db
+          .query("calls")
+          .withIndex("by_team", (q) => q.eq("teamId", args.teamId!))
+      : ctx.db.query("calls");
+
+    const calls = await baseQuery.collect();
+    let scanned = 0;
+    let patched = 0;
+    const samples: string[] = [];
+
+    for (const call of calls) {
+      const hasName =
+        typeof call.prospectName === "string" && call.prospectName.trim() !== "";
+      if (hasName) continue;
+      if (!call.meetingBotId) continue;
+      scanned++;
+
+      const bot = await ctx.db.get(call.meetingBotId);
+      if (!bot?.meetingTitle) continue;
+
+      const closer = await ctx.db.get(call.closerId);
+      if (!closer?.name) continue;
+
+      const parsed = extractProspectFromTitle(bot.meetingTitle, closer.name);
+      if (!parsed) continue;
+
+      if (samples.length < 10) {
+        samples.push(
+          `${call._id}: "${bot.meetingTitle}" → "${parsed}" (closer="${closer.name}")`,
+        );
+      }
+
+      patched++;
+      if (args.dryRun) continue;
+
+      await ctx.db.patch(call._id, { prospectName: parsed });
+      // Mirror onto the bot too so any consumer reading from the bot
+      // record sees the same name.
+      if (
+        typeof bot.prospectName !== "string" ||
+        bot.prospectName.trim() === ""
+      ) {
+        await ctx.db.patch(bot._id, { prospectName: parsed });
+      }
+    }
+
+    return { scanned, patched, samples };
   },
 });
 

@@ -81,6 +81,7 @@ import type * as hyrosReadInternal from "../hyrosReadInternal.js";
 import type * as lib_callQualityAggregator from "../lib/callQualityAggregator.js";
 import type * as lib_dateRanges from "../lib/dateRanges.js";
 import type * as lib_encrypt from "../lib/encrypt.js";
+import type * as lib_extractProspectFromTitle from "../lib/extractProspectFromTitle.js";
 import type * as lib_googleCalendarPalette from "../lib/googleCalendarPalette.js";
 import type * as lib_recommendationRules from "../lib/recommendationRules.js";
 import type * as lib_sentry from "../lib/sentry.js";
@@ -205,6 +206,7 @@ declare const fullApi: ApiFromModules<{
   "lib/callQualityAggregator": typeof lib_callQualityAggregator;
   "lib/dateRanges": typeof lib_dateRanges;
   "lib/encrypt": typeof lib_encrypt;
+  "lib/extractProspectFromTitle": typeof lib_extractProspectFromTitle;
   "lib/googleCalendarPalette": typeof lib_googleCalendarPalette;
   "lib/recommendationRules": typeof lib_recommendationRules;
   "lib/sentry": typeof lib_sentry;

@@ -158,7 +158,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
 
   async function handleJoinConfirm(event: CalendarEvent) {
     if (!event.meetingUrl) return;
-    const prospectName = extractProspectName(event, closerInfo.email);
+    const prospectName = extractProspectName(event, closerInfo.email, closerInfo.name);
     await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, prospectName);
     window.open(event.meetingUrl, '_blank');
     setSelectedEvent(null);
