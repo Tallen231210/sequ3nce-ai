@@ -11,6 +11,7 @@ import { LeakAttribution } from "@/components/analytics/LeakAttribution";
 import { WhereYouLosing } from "@/components/analytics/WhereYouLosing";
 import { WhoIsLosing } from "@/components/analytics/WhoIsLosing";
 import { LeadQualityCheck } from "@/components/analytics/LeadQualityCheck";
+import { CallQualityCheck } from "@/components/analytics/CallQualityCheck";
 import { ObjectionAnalysis } from "@/components/analytics/ObjectionAnalysis";
 import { Recommendations } from "@/components/analytics/Recommendations";
 import { Loader2 } from "lucide-react";
@@ -46,6 +47,8 @@ export default function AnalyticsPage() {
   // Step 2: inline-recommendation bundle. Replaces the old `getRecommendations`
   // query (now deleted). Returns per-section recs + a top-3 digest.
   const recBundle = useQuery(api.analyticsRecommendations.getAnalyticsRecommendations, filterArgs);
+  // Step 4: Call Quality section data (first AI-data dependency).
+  const callQualityData = useQuery(api.analyticsCallQuality.getCallQualitySummary, filterArgs);
 
   const isLoading =
     isTeamLoading ||
@@ -54,7 +57,8 @@ export default function AnalyticsPage() {
     closerBreakdown === undefined ||
     leadQualityData === undefined ||
     objectionAnalysis === undefined ||
-    recBundle === undefined;
+    recBundle === undefined ||
+    callQualityData === undefined;
 
   // Extract closers for filter dropdown from closerBreakdown data
   const closers = useMemo(() => {
@@ -149,7 +153,16 @@ export default function AnalyticsPage() {
           recommendation={recBundle?.bySection.leadQuality}
         />
 
-        {/* Section 5: Objection Analysis - Real form data */}
+        {/* Section 5: Call Quality — Step 4. First AI-data section.
+            Gated behind verified-attribution skip-list (in the query) and a
+            data-confidence indicator (in the component). Factual signals only. */}
+        <CallQualityCheck
+          data={callQualityData}
+          isLoading={callQualityData === undefined}
+          recommendation={recBundle?.bySection.callQuality}
+        />
+
+        {/* Section 6: Objection Analysis - Real form data */}
         <ObjectionAnalysis data={objectionAnalysis} isLoading={objectionAnalysis === undefined} />
 
         {/* Section 6: Top-3 priorities digest. Hides itself when no recs fire. */}

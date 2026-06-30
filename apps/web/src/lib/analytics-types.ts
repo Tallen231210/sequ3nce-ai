@@ -8,7 +8,8 @@ export type SectionKey =
   | "leak.noShows"
   | "whereYouLosing"
   | "whoIsLosing"
-  | "leadQuality";
+  | "leadQuality"
+  | "callQuality";
 
 export type Recommendation = {
   id: string;

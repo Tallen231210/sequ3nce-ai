@@ -23,7 +23,8 @@ export type SectionKey =
   | "leak.noShows"
   | "whereYouLosing"
   | "whoIsLosing"
-  | "leadQuality";
+  | "leadQuality"
+  | "callQuality";
 
 export type Recommendation = {
   id: string;
@@ -61,6 +62,11 @@ const CHRONIC_CLOSE_RATE_VS_TEAM_RATIO = 0.5;
 const DROP_CLOSE_RATE_VS_PRIOR_RATIO = 0.5;
 const HIGH_QUALITY_CLOSE_RATE_FLOOR = 0.6;
 const HIGH_QUALITY_SCORE_FLOOR = 7;
+// Call-quality thresholds (Step 4).
+const TALK_RATIO_HEALTHY_MIN = 0.35;
+const TALK_RATIO_HEALTHY_MAX = 0.65;
+const DISCOVERY_SIGNAL_GAP_THRESHOLD = 0.3; // 30 percentage-point gap
+const MIN_CALLS_FOR_CALL_QUALITY_REC = 8;
 
 const OBJECTION_LABELS: Record<string, string> = {
   spouse_partner: "Spouse/partner",
@@ -563,6 +569,112 @@ export function recommendLeadQuality(inputs: RuleInputs): Recommendation | null 
 }
 
 // ============================================================================
+// Rule 7 & 8 — callQuality (Step 4)
+//
+// Two complementary rules on the FACTUAL AI signals. Both require a healthy
+// sample of verified-attribution calls before firing; the rule engine doesn't
+// see unverified calls (the call-quality query already filters them out and
+// passes only the aggregated summary).
+//
+// 7 — Talk-ratio out of band: team avg talk-ratio outside the 35-65%
+//     "healthy" band, with at least MIN_CALLS_FOR_CALL_QUALITY_REC verified
+//     calls behind the number.
+//
+// 8 — Discovery-signal gap: closed calls hit a discovery signal (budget,
+//     timeline, decision-maker) at a >=30 pp higher rate than lost calls.
+//     The signal is the differentiator — surface it as a coaching anchor.
+//     Only the BIGGEST gap fires (one rec per period). Requires N >= 6 in
+//     both closed and lost cohorts so the rates aren't tiny-sample noise.
+// ============================================================================
+
+export type CallQualityInputs = {
+  talkRatio: {
+    teamAvg: number;
+    closedAvg: number;
+    lostAvg: number;
+    closedCount: number;
+    lostCount: number;
+  };
+  signals: {
+    budget: { closedHitRate: number; lostHitRate: number; closedCount: number; lostCount: number };
+    timeline: { closedHitRate: number; lostHitRate: number; closedCount: number; lostCount: number };
+    decisionMaker: { closedHitRate: number; lostHitRate: number; closedCount: number; lostCount: number };
+  };
+  verifiedCount: number;
+};
+
+export function recommendCallQuality(
+  callQuality: CallQualityInputs | null,
+): Recommendation | null {
+  if (!callQuality) return null;
+  if (callQuality.verifiedCount < MIN_CALLS_FOR_CALL_QUALITY_REC) return null;
+
+  // Rule 7 — talk-ratio out of band. Out of band = team is either talking
+  // too much (sales monologue) or too little (not steering the call). Both
+  // are coachable, with different remediation.
+  const r = callQuality.talkRatio.teamAvg;
+  if (r > 0 && (r < TALK_RATIO_HEALTHY_MIN || r > TALK_RATIO_HEALTHY_MAX)) {
+    const overTalking = r > TALK_RATIO_HEALTHY_MAX;
+    const headline = overTalking
+      ? `Your team talks ${formatPct(r)} of the call on average — well above the 40-60% sweet spot. Closers usually win by getting prospects talking; the team's monologuing.`
+      : `Your team talks only ${formatPct(r)} of the call on average — below the 40-60% sweet spot. Either prospects are dominating (qualification issue) or closers aren't steering the conversation.`;
+    return {
+      id: overTalking ? "call-quality-overtalking" : "call-quality-undertalking",
+      section: "callQuality",
+      severity: "high",
+      headline,
+    };
+  }
+
+  // Rule 8 — discovery-signal gap.
+  type Signal = { name: string; closed: number; lost: number; gap: number; closedCount: number; lostCount: number };
+  const candidates: Signal[] = [
+    {
+      name: "budget",
+      closed: callQuality.signals.budget.closedHitRate,
+      lost: callQuality.signals.budget.lostHitRate,
+      gap: callQuality.signals.budget.closedHitRate - callQuality.signals.budget.lostHitRate,
+      closedCount: callQuality.signals.budget.closedCount,
+      lostCount: callQuality.signals.budget.lostCount,
+    },
+    {
+      name: "timeline",
+      closed: callQuality.signals.timeline.closedHitRate,
+      lost: callQuality.signals.timeline.lostHitRate,
+      gap: callQuality.signals.timeline.closedHitRate - callQuality.signals.timeline.lostHitRate,
+      closedCount: callQuality.signals.timeline.closedCount,
+      lostCount: callQuality.signals.timeline.lostCount,
+    },
+    {
+      name: "decision-maker confirmation",
+      closed: callQuality.signals.decisionMaker.closedHitRate,
+      lost: callQuality.signals.decisionMaker.lostHitRate,
+      gap: callQuality.signals.decisionMaker.closedHitRate - callQuality.signals.decisionMaker.lostHitRate,
+      closedCount: callQuality.signals.decisionMaker.closedCount,
+      lostCount: callQuality.signals.decisionMaker.lostCount,
+    },
+  ];
+
+  const ranked = candidates
+    .filter(
+      (s) =>
+        s.gap >= DISCOVERY_SIGNAL_GAP_THRESHOLD &&
+        s.closedCount >= 6 &&
+        s.lostCount >= 6,
+    )
+    .sort((a, b) => b.gap - a.gap);
+
+  if (ranked.length === 0) return null;
+  const top = ranked[0];
+  return {
+    id: `call-quality-signal-gap-${top.name.replace(/\s+/g, "-")}`,
+    section: "callQuality",
+    severity: "medium",
+    headline: `${top.name.charAt(0).toUpperCase()}${top.name.slice(1)} comes up in ${formatPct(top.closed)} of closed calls but only ${formatPct(top.lost)} of lost calls. Drilling into this consistently looks like the difference — make it a required discovery step.`,
+  };
+}
+
+// ============================================================================
 // Orchestration — run all rules, build the bySection map + top-N digest.
 // ============================================================================
 
@@ -579,6 +691,7 @@ const SEVERITY_ORDER: Record<Recommendation["severity"], number> = {
 
 export function runAllRules(
   inputs: RuleInputs,
+  callQuality: CallQualityInputs | null,
   options: { topN?: number } = {},
 ): RecommendationBundle {
   const empty: RecommendationBundle = {
@@ -589,6 +702,7 @@ export function runAllRules(
       whereYouLosing: null,
       whoIsLosing: null,
       leadQuality: null,
+      callQuality: null,
     },
     top: [],
   };
@@ -606,6 +720,7 @@ export function runAllRules(
     whereYouLosing: recommendWhereYouLosing(inputs),
     whoIsLosing: recommendWhoIsLosing(inputs),
     leadQuality: recommendLeadQuality(inputs),
+    callQuality: recommendCallQuality(callQuality),
   } as Record<SectionKey, Recommendation | null>;
 
   const top = (Object.values(recs).filter(Boolean) as Recommendation[])
