@@ -321,9 +321,13 @@ export const getCloserPerformanceBreakdown = query({
   args: {
     teamId: v.id("teams"),
     dateRange: v.string(),
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { start, end } = getDateRangeTimestamps(args.dateRange as DateRange);
+    const { start, end } = getDateRangeTimestamps(
+      args.dateRange as DateRange, args.customStart, args.customEnd
+    );
 
     // Get all closers for this team
     const closers = await ctx.db
@@ -410,9 +414,13 @@ export const getLeadQualityAnalysis = query({
     teamId: v.id("teams"),
     dateRange: v.string(),
     closerId: v.optional(v.id("closers")),
+    customStart: v.optional(v.number()),
+    customEnd: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { start, end, prevStart, prevEnd } = getDateRangeTimestamps(args.dateRange as DateRange);
+    const { start, end, prevStart, prevEnd } = getDateRangeTimestamps(
+      args.dateRange as DateRange, args.customStart, args.customEnd
+    );
 
     // Get completed calls with lead quality scores
     let calls = await ctx.db

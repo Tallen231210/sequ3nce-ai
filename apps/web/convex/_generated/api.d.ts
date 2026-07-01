@@ -16,6 +16,7 @@ import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
 import type * as analyticsCallQuality from "../analyticsCallQuality.js";
 import type * as analyticsRecommendations from "../analyticsRecommendations.js";
+import type * as analyticsTrends from "../analyticsTrends.js";
 import type * as b2cAdoptionChecklist from "../b2cAdoptionChecklist.js";
 import type * as b2cAuth from "../b2cAuth.js";
 import type * as b2cBilling from "../b2cBilling.js";
@@ -141,6 +142,7 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   analyticsCallQuality: typeof analyticsCallQuality;
   analyticsRecommendations: typeof analyticsRecommendations;
+  analyticsTrends: typeof analyticsTrends;
   b2cAdoptionChecklist: typeof b2cAdoptionChecklist;
   b2cAuth: typeof b2cAuth;
   b2cBilling: typeof b2cBilling;

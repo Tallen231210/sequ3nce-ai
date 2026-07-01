@@ -4,10 +4,11 @@ import { useState, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
+import { GeistMono } from "geist/font/mono";
 import { Header } from "@/components/dashboard/header";
 import { FilterBar } from "@/components/analytics/FilterBar";
-import { MoneyView } from "@/components/analytics/MoneyView";
-import { LeakAttribution } from "@/components/analytics/LeakAttribution";
+import { MoneyLedger } from "@/components/analytics/MoneyLedger";
+import { MonthlyComparison } from "@/components/analytics/MonthlyComparison";
 import { WhereYouLosing } from "@/components/analytics/WhereYouLosing";
 import { WhoIsLosing } from "@/components/analytics/WhoIsLosing";
 import { LeadQualityCheck } from "@/components/analytics/LeadQualityCheck";
@@ -20,14 +21,27 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 export default function AnalyticsPage() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const [dateRange, setDateRange] = useState("last_30_days");
+  const [customStart, setCustomStart] = useState<number | undefined>(undefined);
+  const [customEnd, setCustomEnd] = useState<number | undefined>(undefined);
   const [closerId, setCloserId] = useState("all");
 
-  // Prepare filter args
+  const scopedCloserId = closerId !== "all" ? (closerId as Id<"closers">) : undefined;
+
+  const handleRangeChange = (range: string, start?: number, end?: number) => {
+    setDateRange(range);
+    setCustomStart(start);
+    setCustomEnd(end);
+  };
+
+  // Prepare filter args. customStart/customEnd are ignored by the backend for
+  // named ranges, so it's safe to always pass them.
   const filterArgs = team?._id
     ? {
         teamId: team._id,
         dateRange,
-        closerId: closerId !== "all" ? (closerId as Id<"closers">) : undefined,
+        closerId: scopedCloserId,
+        customStart,
+        customEnd,
       }
     : "skip";
 
@@ -35,6 +49,8 @@ export default function AnalyticsPage() {
     ? {
         teamId: team._id,
         dateRange,
+        customStart,
+        customEnd,
       }
     : "skip";
 
@@ -100,37 +116,38 @@ export default function AnalyticsPage() {
     <>
       <Header
         title="Analytics"
-        description="What exactly do we need to fix — on the sales team, in our marketing/lead gen, and in our sales process?"
+        description="Where deals are won, lost, and left behind."
       />
-      <div className="p-6 space-y-8">
+      <div className={`${GeistMono.variable} p-6 space-y-8`}>
         {/* Filters */}
         <FilterBar
           dateRange={dateRange}
-          onDateRangeChange={setDateRange}
+          customStart={customStart}
+          customEnd={customEnd}
+          onRangeChange={handleRangeChange}
           closerId={closerId}
           onCloserChange={handleCloserChange}
           closers={closers || []}
           isLoading={isLoading}
         />
 
-        {/* Section 1: Money View — hero card + leak attribution side-by-side
-            on desktop, stacked on mobile. Hero is the primary number
-            (Revenue Closed); leak attribution is the actionable breakdown
-            of "Left on the Table" into clickable buckets. Each bucket row
-            renders its own inline recommendation below it (Step 2). */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <MoneyView data={summaryData} isLoading={summaryData === undefined} />
-          <LeakAttribution
-            data={summaryData}
-            dateRange={dateRange}
-            isLoading={summaryData === undefined}
-            recommendations={{
-              inCallLosses: recBundle?.bySection["leak.inCallLosses"],
-              uncollected: recBundle?.bySection["leak.uncollected"],
-              noShows: recBundle?.bySection["leak.noShows"],
-            }}
-          />
-        </div>
+        {/* Section 1: Money Ledger — the signature hero. Fuses revenue closed
+            + leak attribution into one panel with a capture-rate story. Each
+            leak row drills into filtered Calls and can carry an inline rec. */}
+        <MoneyLedger
+          data={summaryData}
+          dateRange={dateRange}
+          isLoading={summaryData === undefined}
+          recommendations={{
+            inCallLosses: recBundle?.bySection["leak.inCallLosses"],
+            uncollected: recBundle?.bySection["leak.uncollected"],
+            noShows: recBundle?.bySection["leak.noShows"],
+          }}
+        />
+
+        {/* Month over month — self-contained comparison, metric- and
+            window-switchable. Independent of the page period filter. */}
+        <MonthlyComparison teamId={team._id} closerId={scopedCloserId} />
 
         {/* Section 2: Where You're Losing */}
         <WhereYouLosing

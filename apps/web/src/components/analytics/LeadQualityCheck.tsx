@@ -1,10 +1,13 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Target, TrendingUp, TrendingDown, AlertTriangle, Lightbulb } from "lucide-react";
-import { formatCurrencyFull, formatTrend, getTrendClasses, getLeadQualityColor } from "@/lib/analytics-utils";
+import { cn } from "@/lib/utils";
+import { formatCurrencyFull } from "@/lib/analytics-utils";
+import { Stat } from "./primitives/Stat";
+import { TileGroup, MetricTile } from "./primitives/MetricTile";
+import { MONO } from "./primitives/typography";
 import { RecommendationCallout } from "./RecommendationCallout";
+import { SectionNote } from "./primitives/SectionNote";
 import type { Recommendation } from "@/lib/analytics-types";
 
 interface LeadQualityProps {
@@ -16,14 +19,8 @@ interface LeadQualityProps {
       medium: { count: number; label: string };
       high: { count: number; label: string };
     };
-    highQualityLost: {
-      count: number;
-      value: number;
-    };
-    lowQualityLost: {
-      count: number;
-      value: number;
-    };
+    highQualityLost: { count: number; value: number };
+    lowQualityLost: { count: number; value: number };
     nonDecisionMakerPercent: number;
     insights: string[];
   } | undefined;
@@ -35,12 +32,12 @@ function LoadingSkeleton() {
   return (
     <Card>
       <CardHeader>
-        <div className="h-6 w-40 bg-zinc-200 rounded animate-pulse" />
+        <div className="h-5 w-32 animate-pulse rounded bg-zinc-100" />
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="h-32 bg-zinc-100 rounded animate-pulse" />
-          <div className="h-32 bg-zinc-100 rounded animate-pulse" />
+        <div className="grid gap-8 md:grid-cols-2">
+          <div className="h-24 animate-pulse rounded bg-zinc-100" />
+          <div className="h-24 animate-pulse rounded bg-zinc-100" />
         </div>
       </CardContent>
     </Card>
@@ -48,163 +45,88 @@ function LoadingSkeleton() {
 }
 
 export function LeadQualityCheck({ data, isLoading, recommendation }: LeadQualityProps) {
-  if (isLoading || !data) {
-    return <LoadingSkeleton />;
-  }
+  if (isLoading || !data) return <LoadingSkeleton />;
 
-  const totalDistribution = data.distribution.low.count + data.distribution.medium.count + data.distribution.high.count;
-  const trendInfo = formatTrend(data.scoreTrend);
+  const dist = [data.distribution.low, data.distribution.medium, data.distribution.high];
+  const total = dist.reduce((sum, b) => sum + b.count, 0);
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Lead Quality Check</CardTitle>
-          <span className="text-sm text-muted-foreground">
-            Is it the leads or is it us?
-          </span>
+          <CardTitle className="text-sm font-semibold tracking-tight">Lead quality</CardTitle>
+          <span className="text-xs text-zinc-400">Scored from post-call forms</span>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Insights callout */}
-        {data.insights.length > 0 && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-1">
-            {data.insights.map((insight, i) => (
-              <div key={i} className="flex items-start gap-2 text-blue-700">
-                <Lightbulb className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <span className="text-sm font-medium">{insight}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {data.insights.length > 0 && <SectionNote items={data.insights} />}
 
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Average Score */}
-          <div className="p-4 bg-zinc-50 rounded-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Average Lead Quality</span>
-              {!trendInfo.isNeutral && (
-                <span className={`flex items-center gap-1 text-xs ${getTrendClasses(trendInfo.isPositive, trendInfo.isNeutral)}`}>
-                  {trendInfo.isPositive ? (
-                    <TrendingUp className="h-3 w-3" />
-                  ) : (
-                    <TrendingDown className="h-3 w-3" />
-                  )}
-                  {trendInfo.text}
-                </span>
-              )}
+        <div className="grid gap-8 md:grid-cols-2">
+          {/* average score */}
+          <Stat
+            label="Average lead quality"
+            value={data.avgScore.toFixed(1)}
+            suffix="/ 10"
+            size="lg"
+            trend={{ value: data.scoreTrend }}
+          />
+
+          {/* distribution — monochrome small multiples */}
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+              Distribution
             </div>
-            <div className="flex items-baseline gap-1">
-              <span className={`text-4xl font-bold ${getLeadQualityColor(data.avgScore)}`}>
-                {data.avgScore.toFixed(1)}
-              </span>
-              <span className="text-xl text-muted-foreground">/ 10</span>
-            </div>
-          </div>
-
-          {/* Distribution */}
-          <div className="p-4 bg-zinc-50 rounded-lg">
-            <span className="text-sm text-muted-foreground block mb-3">Lead Quality Distribution</span>
-            <div className="flex gap-2">
-              {/* Low quality (1-4) */}
-              <div className="flex-1">
-                <div className="h-2 rounded-full bg-red-200 overflow-hidden mb-1">
-                  <div
-                    className="h-full bg-red-500 rounded-full"
-                    style={{
-                      width: totalDistribution > 0
-                        ? `${(data.distribution.low.count / totalDistribution) * 100}%`
-                        : "0%"
-                    }}
-                  />
-                </div>
-                <div className="text-center">
-                  <span className="text-sm font-medium">{data.distribution.low.count}</span>
-                  <span className="text-xs text-muted-foreground block">{data.distribution.low.label}</span>
-                </div>
-              </div>
-
-              {/* Medium quality (5-6) */}
-              <div className="flex-1">
-                <div className="h-2 rounded-full bg-yellow-200 overflow-hidden mb-1">
-                  <div
-                    className="h-full bg-yellow-500 rounded-full"
-                    style={{
-                      width: totalDistribution > 0
-                        ? `${(data.distribution.medium.count / totalDistribution) * 100}%`
-                        : "0%"
-                    }}
-                  />
-                </div>
-                <div className="text-center">
-                  <span className="text-sm font-medium">{data.distribution.medium.count}</span>
-                  <span className="text-xs text-muted-foreground block">{data.distribution.medium.label}</span>
-                </div>
-              </div>
-
-              {/* High quality (7-10) */}
-              <div className="flex-1">
-                <div className="h-2 rounded-full bg-green-200 overflow-hidden mb-1">
-                  <div
-                    className="h-full bg-green-500 rounded-full"
-                    style={{
-                      width: totalDistribution > 0
-                        ? `${(data.distribution.high.count / totalDistribution) * 100}%`
-                        : "0%"
-                    }}
-                  />
-                </div>
-                <div className="text-center">
-                  <span className="text-sm font-medium">{data.distribution.high.count}</span>
-                  <span className="text-xs text-muted-foreground block">{data.distribution.high.label}</span>
-                </div>
-              </div>
+            <div className="mt-3 grid grid-cols-3 gap-3">
+              {dist.map((bucket) => {
+                const pct = total > 0 ? (bucket.count / total) * 100 : 0;
+                return (
+                  <div key={bucket.label}>
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-[11px] text-zinc-400">{bucket.label}</span>
+                      <span className={cn("text-sm font-medium", MONO)}>{bucket.count}</span>
+                    </div>
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className="h-full rounded-full bg-zinc-900"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
 
-        {/* Lost deals breakdown */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="p-4 border rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-green-100 rounded">
-                <Target className="h-4 w-4 text-green-600" />
-              </div>
-              <span className="text-sm font-medium">High-Quality Leads Lost (7+)</span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold">{data.highQualityLost.count}</span>
-              <span className="text-sm text-muted-foreground">deals</span>
-              <span className="text-sm font-medium text-red-600">
-                ({formatCurrencyFull(data.highQualityLost.value)})
-              </span>
-            </div>
-          </div>
+        {/* lost by quality — no pastel icon boxes; number is the hero, $ muted */}
+        <TileGroup columns={2}>
+          <MetricTile>
+            <Stat
+              label="High-quality leads lost · 7+"
+              value={data.highQualityLost.count}
+              sublabel={formatCurrencyFull(data.highQualityLost.value)}
+            />
+          </MetricTile>
+          <MetricTile>
+            <Stat
+              label="Low-quality leads lost · 1–4"
+              value={data.lowQualityLost.count}
+              sublabel={formatCurrencyFull(data.lowQualityLost.value)}
+            />
+          </MetricTile>
+        </TileGroup>
 
-          <div className="p-4 border rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-red-100 rounded">
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-              </div>
-              <span className="text-sm font-medium">Low-Quality Leads Lost (1-4)</span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold">{data.lowQualityLost.count}</span>
-              <span className="text-sm text-muted-foreground">deals</span>
-              <span className="text-sm font-medium text-red-600">
-                ({formatCurrencyFull(data.lowQualityLost.value)})
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Decision maker stat */}
+        {/* decision-maker signal — red only when it crosses the threshold */}
         {data.nonDecisionMakerPercent > 0 && (
-          <div className="p-3 bg-zinc-50 rounded-lg flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">
-              Calls with non-decision makers
-            </span>
-            <span className={`font-medium ${data.nonDecisionMakerPercent > 30 ? "text-red-600" : "text-zinc-600"}`}>
+          <div className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 text-sm">
+            <span className="text-zinc-500">Calls with non-decision makers</span>
+            <span
+              className={cn(
+                "font-medium",
+                MONO,
+                data.nonDecisionMakerPercent > 30 ? "text-red-600" : "text-zinc-700",
+              )}
+            >
               {data.nonDecisionMakerPercent}%
             </span>
           </div>

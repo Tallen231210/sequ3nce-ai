@@ -1,9 +1,11 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { formatCurrencyFull, getBarWidth } from "@/lib/analytics-utils";
+import { TrendDelta } from "./primitives/TrendDelta";
+import { MONO } from "./primitives/typography";
+import { SectionNote } from "./primitives/SectionNote";
 import { RecommendationCallout } from "./RecommendationCallout";
 import type { Recommendation } from "@/lib/analytics-types";
 
@@ -30,18 +32,12 @@ function LoadingSkeleton() {
   return (
     <Card>
       <CardHeader>
-        <div className="h-6 w-48 bg-zinc-200 rounded animate-pulse" />
+        <div className="h-5 w-44 animate-pulse rounded bg-zinc-100" />
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="space-y-2">
-              <div className="flex justify-between">
-                <div className="h-4 w-32 bg-zinc-200 rounded animate-pulse" />
-                <div className="h-4 w-24 bg-zinc-200 rounded animate-pulse" />
-              </div>
-              <div className="h-6 w-full bg-zinc-200 rounded animate-pulse" />
-            </div>
+            <div key={i} className="h-9 animate-pulse rounded bg-zinc-100" />
           ))}
         </div>
       </CardContent>
@@ -50,22 +46,19 @@ function LoadingSkeleton() {
 }
 
 export function WhereYouLosing({ data, isLoading, recommendation }: WhereYouLosingProps) {
-  if (isLoading || !data) {
-    return <LoadingSkeleton />;
-  }
+  if (isLoading || !data) return <LoadingSkeleton />;
 
   if (data.objections.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Where You're Losing Deals</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold tracking-tight">
+            Where deals are lost
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="p-3 bg-zinc-100 rounded-full mb-3">
-              <AlertTriangle className="h-6 w-6 text-zinc-400" />
-            </div>
-            <p className="text-muted-foreground">No lost deals in this period</p>
+          <div className="py-10 text-center text-sm text-zinc-500">
+            No lost deals in this period.
           </div>
         </CardContent>
       </Card>
@@ -78,61 +71,37 @@ export function WhereYouLosing({ data, isLoading, recommendation }: WhereYouLosi
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Where You're Losing Deals</CardTitle>
-          <div className="text-sm text-muted-foreground">
-            {formatCurrencyFull(data.totalLost)} across {data.totalDeals} deals
-          </div>
+          <CardTitle className="text-sm font-semibold tracking-tight">
+            Where deals are lost
+          </CardTitle>
+          <span className={cn("text-xs text-zinc-400", MONO)}>
+            {formatCurrencyFull(data.totalLost)} · {data.totalDeals} deals
+          </span>
         </div>
       </CardHeader>
-      <CardContent>
-        {/* Problem areas callout */}
+      <CardContent className="space-y-5">
         {data.problemAreas.length > 0 && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center gap-2 text-red-700">
-              <AlertTriangle className="h-4 w-4" />
-              <span className="text-sm font-medium">
-                Focus area: {data.problemAreas.join(" and ")} objections are trending up
-              </span>
-            </div>
-          </div>
+          <SectionNote
+            items={[`${data.problemAreas.join(" and ")} objections are trending up.`]}
+          />
         )}
 
-        {/* Objection bars */}
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           {data.objections.map((objection) => (
-            <div key={objection.objection} className="space-y-1">
-              {/* Label row */}
-              <div className="flex items-center justify-between text-sm">
+            <div key={objection.objection}>
+              <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="font-medium">{objection.objectionLabel}</span>
                 <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground">
-                    {objection.dealCount} deals
-                  </span>
-                  <span className="font-medium">
+                  <span className="text-zinc-500">{objection.dealCount} deals</span>
+                  <span className={cn("font-semibold", MONO)}>
                     {formatCurrencyFull(objection.lostAmount)}
                   </span>
-                  {/* Trend indicator */}
-                  {objection.trend !== 0 && (
-                    <span
-                      className={`flex items-center gap-0.5 text-xs ${
-                        objection.trend > 0 ? "text-red-600" : "text-green-600"
-                      }`}
-                    >
-                      {objection.trend > 0 ? (
-                        <TrendingUp className="h-3 w-3" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3" />
-                      )}
-                      {Math.abs(objection.trend)}%
-                    </span>
-                  )}
+                  <TrendDelta value={objection.trend} invert />
                 </div>
               </div>
-
-              {/* Bar */}
-              <div className="h-6 bg-zinc-100 rounded-md overflow-hidden">
+              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-100">
                 <div
-                  className="h-full bg-red-400 rounded-md transition-all duration-500"
+                  className="h-full rounded-full bg-zinc-900"
                   style={{ width: `${getBarWidth(objection.lostAmount, maxValue)}%` }}
                 />
               </div>
