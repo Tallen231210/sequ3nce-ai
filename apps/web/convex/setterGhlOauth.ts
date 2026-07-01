@@ -286,6 +286,32 @@ export const markInstallationError = internalMutation({
     errorMessage: v.string(),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.installationId);
+
+    // Clobber-protection. `getValidAccessToken` throws a GENERIC guard
+    // message — "GHL installation status is error — cannot make API calls" —
+    // for ANY already-errored install. When a retry (reconcile cron, manual
+    // "Refresh now") hits that guard, its catch block calls back in here and
+    // would overwrite the SPECIFIC root-cause error a prior failure recorded
+    // (e.g. GHL's "Location is not active"). That's how the Create Freedom
+    // install (2026-06-26) ended up showing only the useless generic message
+    // in both the UI and Sentry — the real reason was lost, forcing a manual
+    // token-replay to recover it. Never let the generic message win over a
+    // specific one.
+    const incomingIsGeneric = args.errorMessage.includes("cannot make API calls");
+    const existingIsSpecific =
+      !!existing?.errorMessage &&
+      !existing.errorMessage.includes("cannot make API calls");
+
+    if (incomingIsGeneric && existingIsSpecific) {
+      // Preserve the specific root cause; just refresh the errored-at stamp.
+      await ctx.db.patch(args.installationId, {
+        status: "error",
+        errorAt: Date.now(),
+      });
+      return;
+    }
+
     await ctx.db.patch(args.installationId, {
       status: "error",
       errorMessage: args.errorMessage,

@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { encryptApiKey, decryptApiKey } from "./lib/encrypt";
+import { captureAndPersist } from "./lib/sentry";
 
 // ============================================================================
 // Setter Data — GoHighLevel OAuth actions (Node runtime).
@@ -71,6 +72,15 @@ export const exchangeCodeForTokens = action({
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("[GHL OAuth] Token exchange failed:", message);
+      // Install-time failures create no installation row, so there's nothing
+      // to persist — but they MUST reach Sentry, otherwise a failed connect
+      // (e.g. GHL "Location is not active", or agency-level auth) is invisible
+      // and support has to ask the customer for a screenshot. No-op persist.
+      await captureAndPersist(err, async () => {}, {
+        feature: "exchangeCodeForTokens",
+        integration: "ghl-marketplace",
+        extra: { teamId: args.teamId, stage: "token-exchange" },
+      });
       return { success: false, error: `Token exchange failed: ${message}` };
     }
 
@@ -80,6 +90,18 @@ export const exchangeCodeForTokens = action({
     const locationId = tokenResponse.locationId;
     if (!locationId) {
       console.error("[GHL OAuth] Token response missing locationId");
+      // Almost always means the user authorized at the AGENCY level instead
+      // of a sub-account — GHL returns a company token with no locationId.
+      // Capture so this is diagnosable without involving the customer.
+      await captureAndPersist(
+        new Error("GHL token response missing locationId (agency-level auth?)"),
+        async () => {},
+        {
+          feature: "exchangeCodeForTokens",
+          integration: "ghl-marketplace",
+          extra: { teamId: args.teamId, companyId: tokenResponse.companyId, stage: "no-location" },
+        },
+      );
       return { success: false, error: "GoHighLevel did not return a location" };
     }
 
@@ -168,10 +190,20 @@ export const refreshAccessToken = internalAction({
       refreshToken = decryptApiKey(installation.refreshToken);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
-        installationId: args.installationId,
-        errorMessage: `Could not decrypt refresh token: ${message}`,
-      });
+      await captureAndPersist(
+        err,
+        async () => {
+          await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+            installationId: args.installationId,
+            errorMessage: `Could not decrypt refresh token: ${message}`,
+          });
+        },
+        {
+          feature: "refreshAccessToken:decrypt",
+          integration: "ghl-marketplace",
+          extra: { installationId: args.installationId },
+        },
+      );
       return { success: false, error: "Could not decrypt refresh token" };
     }
 
@@ -186,13 +218,27 @@ export const refreshAccessToken = internalAction({
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      // Refresh failures are usually permanent — refresh_token expired (1y)
-      // or customer revoked at GHL. Mark installation errored so the UI
-      // prompts reinstall.
-      await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
-        installationId: args.installationId,
-        errorMessage: `Token refresh failed: ${message}`,
-      });
+      // Refresh failures are usually permanent — refresh_token expired (1y),
+      // customer revoked at GHL, or the location went inactive ("Location is
+      // not active"). This is the ROOT-CAUSE site: capture the real GHL error
+      // to Sentry AND persist it (via markInstallationError) so it's
+      // diagnosable without touching the customer. Previously this only
+      // persisted — and the message then got clobbered by a downstream
+      // generic guard error, hiding the real reason everywhere.
+      await captureAndPersist(
+        err,
+        async () => {
+          await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+            installationId: args.installationId,
+            errorMessage: `Token refresh failed: ${message}`,
+          });
+        },
+        {
+          feature: "refreshAccessToken",
+          integration: "ghl-marketplace",
+          extra: { installationId: args.installationId },
+        },
+      );
       return { success: false, error: `Token refresh failed: ${message}` };
     }
 
