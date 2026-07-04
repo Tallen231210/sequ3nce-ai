@@ -427,6 +427,7 @@ export const getMyInstallationStatus = query({
 
     return {
       connected: true as const,
+      provider: installation.provider ?? "ghl",
       status: installation.status,
       locationId: installation.locationId,
       locationName: installation.locationName,

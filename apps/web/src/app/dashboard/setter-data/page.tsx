@@ -140,9 +140,22 @@ function SetterDataPageInner() {
           />
         )}
 
-        {/* Backfill progress banner (only visible while deep backfill is
-            in progress AND no error) */}
-        {installation.fastBackfillCompletedAt &&
+        {/* Close initial import: the 90-day backfill is still running. */}
+        {installation.provider === "close" &&
+          !installation.fastBackfillCompletedAt &&
+          installation.status === "active" && (
+            <div className="mb-4 flex items-center gap-2 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Importing your last 90 days from Close — dials and connects will
+              fill in over the next few minutes.
+            </div>
+          )}
+
+        {/* GHL deep-backfill progress banner (12-month history extender).
+            GHL-only — Close has no deep backfill, so gate on provider to
+            avoid a perpetual "3 of 12 months" banner. */}
+        {installation.provider !== "close" &&
+          installation.fastBackfillCompletedAt &&
           !installation.deepBackfillCompletedAt &&
           !installation.deepBackfillError &&
           installation.status === "active" && (
@@ -152,10 +165,12 @@ function SetterDataPageInner() {
             />
           )}
 
-        {/* Activity-data scope disclosure. Backfill imports historical
-            leads but NOT historical conversation activity, so dial/SMS/
-            connection metrics are forward-looking from the install date. */}
-        {installation.installedAt &&
+        {/* Activity-data scope disclosure — GHL-only. GHL imports historical
+            leads but NOT historical conversation activity, so dial/SMS metrics
+            are forward-looking from install. Close DOES backfill 90 days of
+            activity, so this note would be wrong for Close. */}
+        {installation.provider !== "close" &&
+          installation.installedAt &&
           installation.status !== "error" &&
           tab !== "settings" && (
             <HistoricalActivityNote installedAt={installation.installedAt} />

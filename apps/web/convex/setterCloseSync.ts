@@ -37,9 +37,30 @@ const PHASE = v.union(
 );
 
 const RECONCILE_OVERLAP_MS = 90 * 60 * 1000;
+const MAX_BACKFILL_RETRIES = 5;
 
 function dir(d: unknown): "inbound" | "outbound" {
   return d === "inbound" ? "inbound" : "outbound";
+}
+
+// Transient = worth retrying (rate limit, 5xx, network blip). A hard error
+// (auth, 4xx) is not — mark the install errored so it surfaces + stops.
+// Without this, one blip mid-crawl would mark the install errored and stall
+// the whole backfill (the reconcile cron only picks up COMPLETED backfills).
+function isTransientCloseError(err: unknown): boolean {
+  const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    /close api (429|500|502|503|504)\b/.test(m) ||
+    m.includes("failed after retries") ||
+    m.includes("timeout") ||
+    m.includes("timed out") ||
+    m.includes("econnreset") ||
+    m.includes("etimedout") ||
+    m.includes("enotfound") ||
+    m.includes("eai_again") ||
+    m.includes("fetch failed") ||
+    m.includes("socket hang up")
+  );
 }
 
 function mapCall(r: any) {
@@ -70,6 +91,8 @@ export const closeFastBackfill = internalAction({
     phase: v.optional(PHASE),
     // Backward date cursor for calls/sms (date_created__lt).
     cursor: v.optional(v.string()),
+    // Consecutive transient-error retries for this step (reset on progress).
+    attempt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<void> => {
     const startedAt = Date.now();
@@ -198,6 +221,27 @@ export const closeFastBackfill = internalAction({
         return;
       }
     } catch (err) {
+      const attempt = args.attempt ?? 0;
+      // Transient blip → retry the same step with backoff instead of marking
+      // the install errored (which would permanently stall the crawl).
+      if (isTransientCloseError(err) && attempt < MAX_BACKFILL_RETRIES) {
+        console.warn(
+          `[closeFastBackfill] transient error phase=${phase} attempt=${attempt + 1}/${MAX_BACKFILL_RETRIES}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        await ctx.scheduler.runAfter(
+          Math.min(30000 * (attempt + 1), 120000),
+          internal.setterCloseSync.closeFastBackfill,
+          {
+            installationId: args.installationId,
+            phase,
+            cursor: args.cursor,
+            attempt: attempt + 1,
+          },
+        );
+        return;
+      }
+      // Hard error, or retries exhausted → surface it and stop.
       await captureAndPersist(
         err,
         async () => {
@@ -211,7 +255,7 @@ export const closeFastBackfill = internalAction({
         {
           feature: `closeFastBackfill:${phase}`,
           integration: "close",
-          extra: { installationId: args.installationId },
+          extra: { installationId: args.installationId, attempt },
         },
       );
     }
@@ -233,9 +277,13 @@ async function reconcilePath(
   sinceISO: string,
   isCall: boolean,
 ): Promise<void> {
-  const MAX_PAGES = 30;
+  // Generous cap: a normal reconcile window (~30-120 min) is small; this only
+  // bounds a pathological catch-up. If we ever hit it, LOG (don't silently
+  // drop) so we know to shorten the cadence / build webhooks.
+  const MAX_PAGES = 100;
   let skip = 0;
-  for (let p = 0; p < MAX_PAGES; p++) {
+  let p = 0;
+  for (; p < MAX_PAGES; p++) {
     const page: any = await closeFetch(key, path, {
       query: { _limit: PAGE, _fields: fields, date_created__gte: sinceISO, _skip: skip },
     });
@@ -256,6 +304,11 @@ async function reconcilePath(
     }
     if (!page.has_more || all.length === 0) break;
     skip += all.length;
+  }
+  if (p >= MAX_PAGES) {
+    console.warn(
+      `[closeReconcile] hit MAX_PAGES on ${path} since ${sinceISO} — window too large; some activity may be deferred to the next tick.`,
+    );
   }
 }
 

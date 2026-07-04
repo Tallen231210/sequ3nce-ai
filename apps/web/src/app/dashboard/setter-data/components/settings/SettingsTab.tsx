@@ -5,6 +5,7 @@ import { useQuery, useAction } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { GhlConnectionCard } from "./GhlConnectionCard";
+import { CloseConnectionCard } from "./CloseConnectionCard";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
 import { CoverageGapConfig } from "./CoverageGapConfig";
@@ -161,7 +162,11 @@ export function SettingsTab() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
-      <GhlConnectionCard installation={installation} />
+      {installation.provider === "close" ? (
+        <CloseConnectionCard installation={installation} />
+      ) : (
+        <GhlConnectionCard installation={installation} />
+      )}
       <DispositionSyncConfig
         enabled={settings.dispositionSync.enabled}
         hasInstallation={installation.connected && installation.status === "active"}
