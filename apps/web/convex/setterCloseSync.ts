@@ -262,16 +262,17 @@ export const closeFastBackfill = internalAction({
       }
 
       if (phase === "enrich") {
-        // Fill name/email/phone on stub leads via GET /lead/{id}. Cursor is
-        // the dateAdded paging position (stringified for the shared cursor arg).
-        let cursor: number | undefined = args.cursor ? Number(args.cursor) : undefined;
+        // Fill name/email/phone + the TRUE date_created on stub leads via
+        // GET /lead/{id}. Cursor is Convex's opaque paginate cursor
+        // (tie-safe — a raw dateAdded cursor skips same-timestamp stubs).
+        let cursor: string | undefined = args.cursor;
 
         for (;;) {
           const batch: any = await ctx.runQuery(
             internal.setterCloseIngest.getLeadsNeedingEnrichment,
             {
               teamId: install.teamId,
-              beforeDateAdded: cursor,
+              cursor,
               limit: ENRICH_QUERY_PAGE,
             },
           );
@@ -280,7 +281,7 @@ export const closeFastBackfill = internalAction({
           for (const l of batch.needing) {
             try {
               const lead: any = await closeFetch(key, `/lead/${l.closeLeadId}/`, {
-                query: { _fields: "id,display_name,contacts" },
+                query: { _fields: "id,display_name,date_created,contacts" },
               });
               const c = (lead.contacts || [])[0] || {};
               items.push({
@@ -288,6 +289,9 @@ export const closeFastBackfill = internalAction({
                 name: c.name || lead.display_name || undefined,
                 email: c.emails?.[0]?.email ?? undefined,
                 phone: c.phones?.[0]?.phone ?? undefined,
+                dateAdded: lead.date_created
+                  ? Date.parse(lead.date_created)
+                  : undefined,
               });
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
@@ -305,20 +309,20 @@ export const closeFastBackfill = internalAction({
             });
           }
 
-          if (batch.pageSize === 0 || batch.nextCursor === null) {
+          if (batch.isDone) {
             await ctx.scheduler.runAfter(0, internal.setterCloseSync.closeFastBackfill, {
               installationId: args.installationId,
               phase: "complete",
             });
             return;
           }
-          cursor = batch.nextCursor;
+          cursor = batch.continueCursor;
 
           if (Date.now() - startedAt > TIME_BUDGET_MS) {
             await ctx.scheduler.runAfter(1000, internal.setterCloseSync.closeFastBackfill, {
               installationId: args.installationId,
               phase,
-              cursor: String(cursor),
+              cursor,
             });
             return;
           }
@@ -451,7 +455,7 @@ async function enrichNewLeads(ctx: any, key: string, teamId: any): Promise<void>
   for (const l of batch.needing.slice(0, 50)) {
     try {
       const lead: any = await closeFetch(key, `/lead/${l.closeLeadId}/`, {
-        query: { _fields: "id,display_name,contacts" },
+        query: { _fields: "id,display_name,date_created,contacts" },
       });
       const c = (lead.contacts || [])[0] || {};
       items.push({
@@ -459,6 +463,7 @@ async function enrichNewLeads(ctx: any, key: string, teamId: any): Promise<void>
         name: c.name || lead.display_name || undefined,
         email: c.emails?.[0]?.email ?? undefined,
         phone: c.phones?.[0]?.phone ?? undefined,
+        dateAdded: lead.date_created ? Date.parse(lead.date_created) : undefined,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

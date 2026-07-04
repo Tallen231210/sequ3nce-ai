@@ -2142,6 +2142,11 @@ export default defineSchema({
     // assignedTo is blank. Maintained with min-time semantics in
     // recordCallEvent (backfills replay events newest-first).
     firstDialByUserId: v.optional(v.string()),
+    // Close-only: when the enrichment pass (GET /lead/{id} → name/email/
+    // phone + true date_created) last processed this lead. Explicit marker —
+    // inferring "needs enrichment" from a missing name breaks when the
+    // meetings backpatch names a lead first. Unset on GHL leads.
+    enrichedAt: v.optional(v.number()),
     lastDialAt: v.optional(v.number()),
     smsOutboundCount: v.number(),
     smsInboundCount: v.number(),

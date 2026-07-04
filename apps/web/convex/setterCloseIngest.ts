@@ -165,32 +165,40 @@ export const ingestCloseMeetings = internalMutation({
 // ----------------------------------------------------------------------------
 
 /**
- * Page of leads still missing a name, newest-first, with a dateAdded cursor.
+ * Page of leads still missing a name, newest-first. Uses Convex's built-in
+ * paginate cursor — it's tie-safe. A raw dateAdded `lt()` cursor is NOT:
+ * stub leads created in the same ingest batch share the exact same
+ * dateAdded millisecond, so a timestamp cursor silently skips every
+ * same-timestamp sibling at a page boundary (~30% of leads in validation).
  * `ghlContactId` is the Close lead id — the Node action GETs /lead/{id}.
  */
 export const getLeadsNeedingEnrichment = internalQuery({
   args: {
     teamId: v.id("teams"),
-    beforeDateAdded: v.optional(v.number()),
+    cursor: v.optional(v.string()),
     limit: v.number(),
   },
   handler: async (ctx, args) => {
-    const page = await ctx.db
+    const result = await ctx.db
       .query("setterLeads")
-      .withIndex("by_team_and_date_added", (q) =>
-        args.beforeDateAdded !== undefined
-          ? q.eq("teamId", args.teamId).lt("dateAdded", args.beforeDateAdded)
-          : q.eq("teamId", args.teamId),
-      )
+      .withIndex("by_team_and_date_added", (q) => q.eq("teamId", args.teamId))
       .order("desc")
-      .take(Math.min(args.limit, 200));
-    const needing = page
-      .filter((l) => l.name === undefined)
+      .paginate({
+        numItems: Math.min(args.limit, 200),
+        cursor: args.cursor ?? null,
+      });
+    const needing = result.page
+      // Explicit marker, NOT "name missing" — the meetings backpatch names
+      // booked leads before enrichment reaches them, and those still need
+      // their true dateAdded + phone.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .filter((l) => (l as any).enrichedAt === undefined)
       .map((l) => ({ id: l._id, closeLeadId: l.ghlContactId }));
     return {
       needing,
-      nextCursor: page.length > 0 ? page[page.length - 1].dateAdded : null,
-      pageSize: page.length,
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+      pageSize: result.page.length,
     };
   },
 });
@@ -203,6 +211,11 @@ export const applyLeadEnrichment = internalMutation({
         name: v.optional(v.string()),
         email: v.optional(v.string()),
         phone: v.optional(v.string()),
+        // Close's real lead date_created (ms). Stub leads are lazy-created
+        // with dateAdded = sync time, which corrupts every "leads added in
+        // range" metric (set-rate denominator, speed-to-lead, new-lead
+        // counts) — enrichment corrects it to the true creation date.
+        dateAdded: v.optional(v.number()),
       }),
     ),
   },
@@ -210,13 +223,24 @@ export const applyLeadEnrichment = internalMutation({
     for (const item of args.items) {
       const lead = await ctx.db.get(item.id);
       if (!lead) continue;
-      // Fill blanks only — never overwrite CRM-synced values.
+      // Contact fields: fill blanks only — never overwrite CRM-synced values.
+      // dateAdded: correct whenever we have the true value and it differs.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const patch: Record<string, any> = {};
       if (lead.name === undefined && item.name) patch.name = item.name;
       if (lead.email === undefined && item.email) patch.email = item.email;
       if (lead.phone === undefined && item.phone) patch.phone = item.phone;
-      if (Object.keys(patch).length > 0) await ctx.db.patch(item.id, patch);
+      if (
+        item.dateAdded !== undefined &&
+        Number.isFinite(item.dateAdded) &&
+        item.dateAdded !== lead.dateAdded
+      ) {
+        patch.dateAdded = item.dateAdded;
+      }
+      // Always stamp the marker — processed leads (including 404s marked
+      // upstream) leave the candidate set for good.
+      patch.enrichedAt = Date.now();
+      await ctx.db.patch(item.id, patch);
     }
     return { processed: args.items.length };
   },
