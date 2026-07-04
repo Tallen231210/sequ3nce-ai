@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation } from "./_generated/server";
+import { internalMutation, internalQuery, mutation } from "./_generated/server";
 import { resolveAuthUser } from "./setterGhlOauth";
 
 // ============================================================================
@@ -16,6 +16,27 @@ const HUNDRED_YEARS_MS = 100 * 365 * 24 * 60 * 60 * 1000;
  * GHL-required fields get benign placeholders (Close has no location/refresh/
  * expiry/scopes); the encrypted API key lives in `accessToken`.
  */
+/**
+ * Active Close installs whose initial backfill is done — the reconcile cron
+ * polls each for new activity since lastSyncedAt. Close-specific because the
+ * GHL reconcile cron excludes provider="close". Candidate set is tiny (one
+ * row per team), so a full scan + filter is cheaper than a new index.
+ */
+export const getCloseInstallationsForReconcile = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("setterGhlInstallations").collect();
+    return all
+      .filter(
+        (i) =>
+          i.provider === "close" &&
+          i.status === "active" &&
+          i.fastBackfillCompletedAt !== undefined,
+      )
+      .map((i) => ({ installationId: i._id, lastSyncedAt: i.lastSyncedAt }));
+  },
+});
+
 export const upsertCloseInstallation = internalMutation({
   args: {
     clerkId: v.string(),

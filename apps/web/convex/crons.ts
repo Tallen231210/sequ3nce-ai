@@ -79,6 +79,16 @@ crons.interval(
   internal.setterGhlSync.reconcile,
 );
 
+// Close CRM reconcile: ongoing freshness for connected Close teams. Polls
+// each active Close install for activity since lastSyncedAt (with overlap;
+// dedup absorbs it). Separate from the GHL reconcile because that one
+// excludes provider="close".
+crons.interval(
+  "setter-close-reconcile",
+  { minutes: 30 },
+  internal.setterCloseSync.closeReconcile,
+);
+
 // Audit-log prune: deletes setterWebhookEvents rows older than 30 days.
 // The audit log is forensic only (debugging webhook delivery + replaying
 // missed events for support); reports run off setterLeads / setterLeadEvents

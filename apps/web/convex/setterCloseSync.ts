@@ -36,8 +36,32 @@ const PHASE = v.union(
   v.literal("complete"),
 );
 
+const RECONCILE_OVERLAP_MS = 90 * 60 * 1000;
+
 function dir(d: unknown): "inbound" | "outbound" {
   return d === "inbound" ? "inbound" : "outbound";
+}
+
+function mapCall(r: any) {
+  return {
+    leadId: r.lead_id,
+    direction: dir(r.direction),
+    occurredAt: Date.parse(r.date_created),
+    durationSec: typeof r.duration === "number" ? r.duration : undefined,
+    userId: r.user_id ?? undefined,
+    id: r.id,
+    disposition: r.disposition ?? undefined,
+  };
+}
+
+function mapSms(r: any) {
+  return {
+    leadId: r.lead_id,
+    direction: dir(r.direction),
+    occurredAt: Date.parse(r.date_created),
+    userId: r.user_id ?? undefined,
+    id: r.id,
+  };
 }
 
 export const closeFastBackfill = internalAction({
@@ -125,26 +149,12 @@ export const closeFastBackfill = internalAction({
             if (phase === "calls") {
               await ctx.runMutation(internal.setterCloseIngest.ingestCloseCalls, {
                 ...base,
-                calls: rows.map((r) => ({
-                  leadId: r.lead_id,
-                  direction: dir(r.direction),
-                  occurredAt: Date.parse(r.date_created),
-                  durationSec: typeof r.duration === "number" ? r.duration : undefined,
-                  userId: r.user_id ?? undefined,
-                  id: r.id,
-                  disposition: r.disposition ?? undefined,
-                })),
+                calls: rows.map(mapCall),
               });
             } else {
               await ctx.runMutation(internal.setterCloseIngest.ingestCloseSms, {
                 ...base,
-                messages: rows.map((r) => ({
-                  leadId: r.lead_id,
-                  direction: dir(r.direction),
-                  occurredAt: Date.parse(r.date_created),
-                  userId: r.user_id ?? undefined,
-                  id: r.id,
-                })),
+                messages: rows.map(mapSms),
               });
             }
           }
@@ -204,6 +214,86 @@ export const closeFastBackfill = internalAction({
           extra: { installationId: args.installationId },
         },
       );
+    }
+  },
+});
+
+// ----------------------------------------------------------------------------
+// closeReconcile — ongoing freshness (cron). Polls each active Close install
+// for activity since lastSyncedAt (with overlap); dedup absorbs the overlap.
+// Bounded (small incremental window) — not the full 90-day crawl.
+// ----------------------------------------------------------------------------
+
+async function reconcilePath(
+  ctx: any,
+  key: string,
+  base: any,
+  path: string,
+  fields: string,
+  sinceISO: string,
+  isCall: boolean,
+): Promise<void> {
+  const MAX_PAGES = 30;
+  let skip = 0;
+  for (let p = 0; p < MAX_PAGES; p++) {
+    const page: any = await closeFetch(key, path, {
+      query: { _limit: PAGE, _fields: fields, date_created__gte: sinceISO, _skip: skip },
+    });
+    const all: any[] = page.data || [];
+    const rows = all.filter((r) => r.lead_id);
+    if (rows.length > 0) {
+      if (isCall) {
+        await ctx.runMutation(internal.setterCloseIngest.ingestCloseCalls, {
+          ...base,
+          calls: rows.map(mapCall),
+        });
+      } else {
+        await ctx.runMutation(internal.setterCloseIngest.ingestCloseSms, {
+          ...base,
+          messages: rows.map(mapSms),
+        });
+      }
+    }
+    if (!page.has_more || all.length === 0) break;
+    skip += all.length;
+  }
+}
+
+export const closeReconcile = internalAction({
+  args: {},
+  handler: async (ctx): Promise<void> => {
+    const installs = await ctx.runQuery(
+      internal.setterCloseInstall.getCloseInstallationsForReconcile,
+      {},
+    );
+    for (const inst of installs) {
+      try {
+        const install: any = await ctx.runQuery(
+          internal.setterGhlOauth.getInstallationById,
+          { installationId: inst.installationId },
+        );
+        if (!install || install.provider !== "close" || install.status !== "active") continue;
+        const key = decryptApiKey(install.accessToken);
+        const base = {
+          teamId: install.teamId,
+          installationId: inst.installationId,
+          locationId: install.locationId as string,
+        };
+        const since =
+          (inst.lastSyncedAt ?? Date.now() - 2 * 60 * 60 * 1000) - RECONCILE_OVERLAP_MS;
+        const sinceISO = new Date(since).toISOString();
+        await reconcilePath(ctx, key, base, "/activity/call/", CALL_FIELDS, sinceISO, true);
+        await reconcilePath(ctx, key, base, "/activity/sms/", SMS_FIELDS, sinceISO, false);
+        await ctx.runMutation(internal.setterCloseIngest.touchCloseSync, {
+          installationId: inst.installationId,
+        });
+      } catch (err) {
+        await captureAndPersist(err, async () => {}, {
+          feature: "closeReconcile",
+          integration: "close",
+          extra: { installationId: inst.installationId },
+        });
+      }
     }
   },
 });
