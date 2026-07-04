@@ -114,6 +114,7 @@ function SetterDataPageInner() {
         <div className="px-6 py-8">
           <ConnectionGate
             teamId={team?._id}
+            clerkId={clerkId}
             showClose={(
               (team as { betaFeatures?: string[] } | null | undefined)?.betaFeatures ?? []
             ).includes("close_crm")}

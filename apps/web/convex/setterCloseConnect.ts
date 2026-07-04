@@ -96,7 +96,7 @@ export const detectFunnel = internalAction({
  * string (never throws to the client) so the settings UI can render it inline.
  */
 export const connectClose = action({
-  args: { teamId: v.id("teams"), apiKey: v.string() },
+  args: { clerkId: v.string(), teamId: v.id("teams"), apiKey: v.string() },
   handler: async (
     ctx,
     args,
@@ -136,6 +136,7 @@ export const connectClose = action({
     const encrypted = encryptApiKey(key);
     try {
       await ctx.runMutation(internal.setterCloseInstall.upsertCloseInstallation, {
+        clerkId: args.clerkId,
         teamId: args.teamId,
         encryptedApiKey: encrypted,
         closeOrganizationId: org.id,
@@ -143,7 +144,12 @@ export const connectClose = action({
         funnel,
       });
     } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : "Failed to save the connection." };
+      // Convex surfaces a mutation throw as "Uncaught Error: <msg>\n  at ...".
+      // Strip that wrapper so the one-CRM-per-team message (and any other
+      // thrown validation) reads cleanly inline.
+      const raw = e instanceof Error ? e.message : "Failed to save the connection.";
+      const clean = raw.replace(/^Uncaught Error:\s*/, "").split("\n")[0].trim();
+      return { success: false, error: clean || "Failed to save the connection." };
     }
 
     // 4. TODO(next increment): kick off the windowed backfill (setterCloseSync).

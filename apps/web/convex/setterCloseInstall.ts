@@ -18,6 +18,7 @@ const HUNDRED_YEARS_MS = 100 * 365 * 24 * 60 * 60 * 1000;
  */
 export const upsertCloseInstallation = internalMutation({
   args: {
+    clerkId: v.string(),
     teamId: v.id("teams"),
     encryptedApiKey: v.string(),
     closeOrganizationId: v.string(),
@@ -25,6 +26,13 @@ export const upsertCloseInstallation = internalMutation({
     funnel: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    // Auth: the caller must belong to the team they're attaching Close to.
+    // Blocks attaching a key to an arbitrary teamId.
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user || user.teamId !== args.teamId) {
+      throw new Error("Not authorized to connect this team.");
+    }
+
     const existing = await ctx.db
       .query("setterGhlInstallations")
       .withIndex("by_team", (q) => q.eq("teamId", args.teamId))

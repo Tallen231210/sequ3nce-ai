@@ -77,6 +77,7 @@ export const getInstallationsNeedingDeepBackfill = internalQuery({
     const all = await ctx.db.query("setterGhlInstallations").collect();
     const candidates = all.filter(
       (inst) =>
+        (inst.provider ?? "ghl") !== "close" && // GHL cron — never touch Close installs
         inst.status === "active" &&
         inst.fastBackfillCompletedAt !== undefined &&
         inst.deepBackfillCompletedAt === undefined &&
@@ -121,6 +122,10 @@ export const getInstallationsForReconcile = internalQuery({
         q.and(
           q.eq(q.field("status"), "active"),
           q.neq(q.field("fastBackfillCompletedAt"), undefined),
+          // GHL reconcile cron — never sweep Close installs (they're synced
+          // by setterCloseSync, not the GHL reconcile path). provider is
+          // undefined on legacy GHL rows (treated as ghl); only "close" excluded.
+          q.neq(q.field("provider"), "close"),
         ),
       )
       .collect();

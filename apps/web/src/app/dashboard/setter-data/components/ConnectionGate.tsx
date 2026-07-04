@@ -26,6 +26,8 @@ const PHASE_1_SCOPES = [
 interface ConnectionGateProps {
   /** Team id — GHL echoes it via OAuth state; Close passes it to connectClose. */
   teamId?: string;
+  /** Clerk id of the signed-in manager — required for the Close connect auth check. */
+  clerkId?: string;
   /** Beta-gated: only show the Close CRM option to teams flagged "close_crm". */
   showClose?: boolean;
 }
@@ -36,7 +38,7 @@ interface ConnectionGateProps {
  * connects, the parent's installation query updates reactively and this gate
  * is replaced by the connected dashboard.
  */
-export function ConnectionGate({ teamId, showClose }: ConnectionGateProps) {
+export function ConnectionGate({ teamId, clerkId, showClose }: ConnectionGateProps) {
   function handleGhlInstall() {
     const clientId = process.env.NEXT_PUBLIC_GHL_CLIENT_ID?.trim();
     const redirectUri = process.env.NEXT_PUBLIC_GHL_REDIRECT_URI?.trim();
@@ -89,7 +91,7 @@ export function ConnectionGate({ teamId, showClose }: ConnectionGateProps) {
                 <ExternalLink className="ml-2 h-3.5 w-3.5" />
               </Button>
             </div>
-            <CloseConnectCard teamId={teamId} />
+            <CloseConnectCard teamId={teamId} clerkId={clerkId} />
           </div>
         ) : (
           <div className="mt-8 flex flex-col items-center gap-3">
@@ -124,14 +126,14 @@ export function ConnectionGate({ teamId, showClose }: ConnectionGateProps) {
   );
 }
 
-function CloseConnectCard({ teamId }: { teamId?: string }) {
+function CloseConnectCard({ teamId, clerkId }: { teamId?: string; clerkId?: string }) {
   const connectClose = useAction(api.setterCloseConnect.connectClose);
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<"idle" | "validating" | "error" | "success">("idle");
   const [message, setMessage] = useState("");
 
   async function handleConnect() {
-    if (!teamId) {
+    if (!teamId || !clerkId) {
       setStatus("error");
       setMessage("Workspace still loading — refresh and try again.");
       return;
@@ -141,7 +143,7 @@ function CloseConnectCard({ teamId }: { teamId?: string }) {
     setStatus("validating");
     setMessage("");
     try {
-      const res = await connectClose({ teamId: teamId as Id<"teams">, apiKey: key });
+      const res = await connectClose({ clerkId, teamId: teamId as Id<"teams">, apiKey: key });
       if (res.success) {
         setStatus("success");
         setMessage(`Connected to ${res.orgName ?? "Close"} — loading your data…`);
