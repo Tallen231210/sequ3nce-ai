@@ -1002,6 +1002,13 @@ export const getMySettings = query({
       setterDataEnabled: team.setterDataEnabled,
       // Connection threshold for "what counts as a connection". Default 60.
       setterConnectionThresholdSec: team.setterConnectionThresholdSec ?? 60,
+      // Booking-flow type — auto-detected daily, manager-overridable. Gates
+      // which set-rate metrics render (self_book hides per-setter set rate).
+      bookingFlow: {
+        detected: team.setterBookingFlowDetected ?? "unknown",
+        detectedAt: team.setterBookingFlowDetectedAt,
+        override: team.setterBookingFlowOverride ?? "auto",
+      },
       // Scorecard config. Mirrors the field shape on the team table.
       scorecard: {
         enabled: team.setterDailyScorecardEnabled ?? false,
@@ -2322,6 +2329,11 @@ interface ScorecardRow {
     setRate: ScorecardKpiCell;
     showRate: ScorecardKpiCell;
   };
+  /** Which definition each rate is showing (UI annotates accordingly):
+   *  setRate "leads" = owned-lead conversion, "connected" = legacy ratio;
+   *  showRate "evidence" = waterfall, "status" = CRM manual statuses. */
+  setRateBasis: "leads" | "connected";
+  showRateBasis: "evidence" | "status";
   dollarLeakageMonthly: number;
   lineItems: ScorecardLineItem[];
 }
@@ -2512,13 +2524,31 @@ export const getSetterScorecard = query({
           ? setterRow.cadence.pctLeadsThreeOrMoreAttempts * 100
           : null;
 
-      const setRate =
+      // Set rate: prefer the lead set rate (owned leads with ≥1 booking ÷
+      // owned leads — what managers mean by "set rate"), falling back to
+      // the legacy connected→booked ratio when ownership data is absent.
+      // `basis` tells the UI which definition it's showing.
+      const leadSetRatePct =
+        setterRow.leadSetRate !== null ? setterRow.leadSetRate * 100 : null;
+      const connectedSetRatePct =
         setterRow.connectedCount > 0
           ? (setterRow.appointmentCount / setterRow.connectedCount) * 100
           : null;
+      const setRate = leadSetRatePct ?? connectedSetRatePct;
+      const setRateBasis: "leads" | "connected" =
+        leadSetRatePct !== null ? "leads" : "connected";
 
-      const showRate =
+      // Show rate: prefer the evidence waterfall (form outcome → recording
+      // → coverage-gated assumption), falling back to the CRM-status rate.
+      const evidenceShowRatePct =
+        setterRow.evidenceShowRate !== null
+          ? setterRow.evidenceShowRate * 100
+          : null;
+      const statusShowRatePct =
         setterRow.showRate !== null ? setterRow.showRate * 100 : null;
+      const showRate = evidenceShowRatePct ?? statusShowRatePct;
+      const showRateBasis: "evidence" | "status" =
+        evidenceShowRatePct !== null ? "evidence" : "status";
 
       // KPI cells with status flags. Explicit type on each ternary so the
       // inference doesn't widen "na" | "red" | "amber" | "green" → string.
@@ -2621,14 +2651,19 @@ export const getSetterScorecard = query({
       }
 
       // 3. Set-rate gap: missing sets × downstream show rate × close rate × avg cash.
-      if (
-        setRate !== null &&
-        setterRow.connectedCount >= 5 &&
-        setRate < setRateTarget
-      ) {
+      // The volume base must match the rate's basis — leads-based set rate
+      // multiplies against owned leads, the legacy ratio against connects.
+      const setRateVolume =
+        setRateBasis === "leads"
+          ? setterRow.ownedLeadCount
+          : setterRow.connectedCount;
+      const setRateVolumeLabel =
+        setRateBasis === "leads"
+          ? `${setterRow.ownedLeadCount} leads`
+          : `${setterRow.connectedCount} connects`;
+      if (setRate !== null && setRateVolume >= 5 && setRate < setRateTarget) {
         const gapPp = setRateTarget - setRate;
-        const missingSets =
-          (gapPp / 100) * setterRow.connectedCount;
+        const missingSets = (gapPp / 100) * setRateVolume;
         const downstreamShowRate = (showRate ?? showRateTarget) / 100;
         const monthly =
           (missingSets * downstreamShowRate * teamCloseRate *
@@ -2639,7 +2674,7 @@ export const getSetterScorecard = query({
             kpi: "setRate",
             lostUnits: Math.round(missingSets),
             dollarValue: monthly,
-            explanation: `Set rate ${Math.round(setRate)}% vs target ${setRateTarget}% on ${setterRow.connectedCount} connects. ${Math.round(
+            explanation: `Set rate ${Math.round(setRate)}% vs target ${setRateTarget}% on ${setRateVolumeLabel}. ${Math.round(
               missingSets,
             )} missing sets.`,
           });
@@ -2658,6 +2693,8 @@ export const getSetterScorecard = query({
         isStabilized,
         workingDaysInWindow,
         kpis,
+        setRateBasis,
+        showRateBasis,
         dollarLeakageMonthly,
         lineItems,
       });

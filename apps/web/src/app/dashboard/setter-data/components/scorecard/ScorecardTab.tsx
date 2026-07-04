@@ -177,6 +177,9 @@ interface ScorecardRowData {
     setRate: KpiCellData;
     showRate: KpiCellData;
   };
+  /** Which definition each rate shows (labels adjust accordingly). */
+  setRateBasis: "leads" | "connected";
+  showRateBasis: "evidence" | "status";
   dollarLeakageMonthly: number;
   lineItems: Array<{ kpi: string; lostUnits: number; dollarValue: number; explanation: string }>;
 }
@@ -251,8 +254,24 @@ function ScorecardRow({ row }: { row: ScorecardRowData }) {
             cell={row.kpis.pctLeadsHittingCadence}
             unit="%"
           />
-          <KpiCell label="Set rate" cell={row.kpis.setRate} unit="%" />
-          <KpiCell label="Show rate" cell={row.kpis.showRate} unit="%" />
+          <KpiCell
+            label={
+              row.setRateBasis === "leads"
+                ? "Set rate (of leads)"
+                : "Set rate (of connects)"
+            }
+            cell={row.kpis.setRate}
+            unit="%"
+          />
+          <KpiCell
+            label={
+              row.showRateBasis === "evidence"
+                ? "Show rate (verified)"
+                : "Show rate (CRM)"
+            }
+            cell={row.kpis.showRate}
+            unit="%"
+          />
           {/* Phase 3 placeholders */}
           <PlaceholderCell label="Hours in dialer" />
           <PlaceholderCell label="EOD discipline" />

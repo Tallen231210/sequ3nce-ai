@@ -40,10 +40,74 @@ export interface ScorecardSetterCadence {
   medianPursuitDays: number | null;
 }
 
+// --- Show-rate evidence waterfall + lead set rate (Phase: metrics revamp) ---
+// Grace before an appointment is considered "settled" (prospect had their slot).
+const SHOW_GRACE_MS = 24 * 60 * 60 * 1000;
+// Closer-call match window around the appointment start. Tight on purpose:
+// a wide window would mark an entire reschedule chain "showed" off one call.
+const SHOW_MATCH_BEFORE_MS = 6 * 60 * 60 * 1000;
+const SHOW_MATCH_AFTER_MS = 48 * 60 * 60 * 1000;
+// A null-outcome completed recording must be at least this long to count as
+// evidence the prospect showed ("joined, nobody came" stubs are no-shows).
+const SHOW_RECORDING_MIN_SEC = 120;
+// Tier-3 "no evidence → assume no-show" only applies when at least this share
+// of settled appointments resolved via tiers 1-2 — one non-recording closer
+// must not turn all their real shows into phantom no-shows.
+const SHOW_ASSUME_COVERAGE = 0.6;
+// Per-setter lead set rate suppressed below this many owned leads.
+const LEAD_SET_RATE_MIN_LEADS = 5;
+
+/**
+ * Evidence-based show rate. Three-tier waterfall per settled appointment:
+ *   1. CRM manual status (GHL "Showed"/"No Show") — trust when present.
+ *   2. Closer-call evidence via the matcher: post-call form outcome first,
+ *      then recording existence (with a duration floor).
+ *   3. No evidence → assumed no-show, but ONLY above a coverage threshold;
+ *      otherwise "unknown" and excluded from the denominator (null > lie).
+ */
+export interface ShowRateEvidence {
+  available: boolean;
+  activeClosers: number;
+  /** Settled candidates: startTime in range + grace elapsed, not cancelled. */
+  candidates: number;
+  /** Resolved to showed-or-no-show (the denominator). */
+  settled: number;
+  showed: number;
+  noShow: number;
+  showRate: number | null;
+  /** Share of candidates resolved by hard evidence (tiers 1-2). */
+  coverage: number | null;
+  breakdown: {
+    fromStatus: number;
+    fromForm: number;
+    fromRecording: number;
+    assumedNoShow: number;
+    unknown: number;
+  };
+  perSetter: Array<{
+    ghlUserId: string;
+    settled: number;
+    showed: number;
+    showRate: number | null;
+  }>;
+}
+
 export interface ScorecardSetterRow {
   ghlUserId: string;
   name: string;
   leadCount: number;
+  /** Leads OWNED by this setter: CRM assignment, falling back to
+   *  first-dialer attribution (setterLeads.firstDialByUserId). */
+  ownedLeadCount: number;
+  /** Of the owned leads, how many have ≥1 non-cancelled booking (ever). */
+  ownedLeadsBooked: number;
+  /** Lead set rate — ownedLeadsBooked / ownedLeadCount. Null when owned
+   *  < LEAD_SET_RATE_MIN_LEADS or the team's flow is self_book (a setter
+   *  doesn't "set" anything when prospects self-schedule). */
+  leadSetRate: number | null;
+  /** Evidence-based show rate over this setter's booked appointments. */
+  evidenceSettled: number;
+  evidenceShowRate: number | null;
   dialCount: number;
   connectedCount: number;
   /** Average ms from lead.dateAdded → lead.firstDialAt for this setter's
@@ -79,6 +143,11 @@ export interface ScorecardData {
   totalNoShow: number;
   /** Showed / (Showed + No Show). null if no settled appts in window. */
   showRate: number | null;
+  /** Company set rate — in-range leads with ≥1 non-cancelled booking. */
+  leadsBooked: number;
+  companySetRate: number | null;
+  /** Evidence-based show rate (waterfall) — the headline show rate. */
+  showRateEvidence: ShowRateEvidence;
   /** Per-setter rows, sorted fastest avg-speed first. Setters with
    *  null avgSpeedMs (no dials in the window) are pushed to the end. */
   perSetter: ScorecardSetterRow[];
@@ -209,7 +278,11 @@ export async function computeScorecard(
       .collect();
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
-    type AccumRow = ScorecardSetterRow & { _speeds: number[]; _noShowCount: number };
+    type AccumRow = ScorecardSetterRow & {
+      _speeds: number[];
+      _noShowCount: number;
+      _ownedContacts: string[];
+    };
     const perSetterMap = new Map<string, AccumRow>();
 
     // Helper: create-or-get a setter accumulator. Used by every aggregation
@@ -223,6 +296,11 @@ export async function computeScorecard(
           ghlUserId: setterId,
           name: repNameByGhlUserId.get(setterId) ?? "Unknown setter",
           leadCount: 0,
+          ownedLeadCount: 0,
+          ownedLeadsBooked: 0,
+          leadSetRate: null,
+          evidenceSettled: 0,
+          evidenceShowRate: null,
           dialCount: 0,
           connectedCount: 0,
           avgSpeedMs: null,
@@ -238,6 +316,7 @@ export async function computeScorecard(
           dialsPerConnect: null,
           _speeds: [],
           _noShowCount: 0,
+          _ownedContacts: [],
         };
         perSetterMap.set(setterId, created);
         row = created;
@@ -245,13 +324,18 @@ export async function computeScorecard(
       return row;
     }
 
-    // Pass 1: lead-count attribution. Lead assignment in GHL is how
-    // managers think about "this setter owns this lead" — keep counting
-    // leads by assignment.
+    // Pass 1: lead-count attribution. `leadCount` stays assignment-only
+    // (backward-compatible with existing dashboards). OWNERSHIP for the
+    // lead set rate falls back to first-dialer attribution when the CRM
+    // never assigned the lead — behavior beats a blank CRM field.
     for (const lead of leads) {
       const setterId = lead.assignedToGhlUserId;
-      if (!setterId) continue;
-      ensureRow(setterId).leadCount += 1;
+      if (setterId) ensureRow(setterId).leadCount += 1;
+      const owner =
+        lead.assignedToGhlUserId ??
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (lead as any).firstDialByUserId;
+      if (owner) ensureRow(owner)._ownedContacts.push(lead.ghlContactId);
     }
 
     // Build a ghlContactId → dateAdded lookup for the in-range leads so
@@ -394,6 +478,40 @@ export async function computeScorecard(
     const settledTotal = totalShowed + totalNoShow;
     const showRate = settledTotal > 0 ? totalShowed / settledTotal : null;
 
+    // Lead → booking linkage for set rates. A lead counts as "booked" when
+    // it has ≥1 non-cancelled appointment EVER (a lead added this week and
+    // booked next week still converted). Company set rate = in-range leads
+    // that booked ÷ in-range leads — capped at 100% by construction.
+    const bookedContactIds = new Set<string>();
+    for (const apt of appts) {
+      if (apt.status === "Cancelled" || apt.status === "Invalid") continue;
+      bookedContactIds.add(apt.ghlContactId);
+    }
+    const leadsBooked = leads.filter((l) =>
+      bookedContactIds.has(l.ghlContactId),
+    ).length;
+    const companySetRate = totalLeads > 0 ? leadsBooked / totalLeads : null;
+
+    // Team config is needed BEFORE the per-setter mapping now: the lead
+    // set rate is gated on the resolved booking-flow type (per-setter set
+    // rate is meaningless for self-book funnels).
+    const team = (await ctx.db.get(args.teamId as Id<"teams">)) as
+      | Doc<"teams">
+      | null;
+    const flowTypeResolved = resolveFlowType(team);
+
+    // Evidence-based show rate (waterfall) — reuses the already-collected
+    // appointment rows.
+    const showRateEvidence = await computeShowRateEvidence(ctx, {
+      teamId: args.teamId,
+      rangeStart: args.rangeStart,
+      rangeEnd: args.rangeEnd,
+      appts,
+    });
+    const evidenceBySetter = new Map(
+      showRateEvidence.perSetter.map((p) => [p.ghlUserId, p]),
+    );
+
     const perSetter: ScorecardSetterRow[] = Array.from(perSetterMap.values()).map((row) => {
       const avg =
         row._speeds.length > 0
@@ -447,10 +565,29 @@ export async function computeScorecard(
       const dialsPerConnect: number | null =
         row.connectedCount >= 3 ? row.dialCount / row.connectedCount : null;
 
+      // Lead set rate: owned-lead conversion. Gated on flow type (self-book
+      // funnels don't have setter-driven booking) and small samples.
+      const ownedLeadCount = row._ownedContacts.length;
+      const ownedLeadsBooked = row._ownedContacts.filter((c) =>
+        bookedContactIds.has(c),
+      ).length;
+      const leadSetRate =
+        flowTypeResolved === "self_book" ||
+        ownedLeadCount < LEAD_SET_RATE_MIN_LEADS
+          ? null
+          : ownedLeadsBooked / ownedLeadCount;
+
+      const evidence = evidenceBySetter.get(row.ghlUserId);
+
       return {
         ghlUserId: row.ghlUserId,
         name: row.name,
         leadCount: row.leadCount,
+        ownedLeadCount,
+        ownedLeadsBooked,
+        leadSetRate,
+        evidenceSettled: evidence?.settled ?? 0,
+        evidenceShowRate: evidence?.showRate ?? null,
         dialCount: row.dialCount,
         connectedCount: row.connectedCount,
         avgSpeedMs: avg,
@@ -481,9 +618,6 @@ export async function computeScorecard(
       rangeEnd: args.rangeEnd,
     });
 
-    const team = (await ctx.db.get(args.teamId as Id<"teams">)) as
-      | Doc<"teams">
-      | null;
     const bookings = await computeBookings(ctx, {
       teamId: args.teamId,
       rangeStart: args.rangeStart,
@@ -509,6 +643,9 @@ export async function computeScorecard(
       totalShowed,
       totalNoShow,
       showRate,
+      leadsBooked,
+      companySetRate,
+      showRateEvidence,
       perSetter,
       closerSide,
       bookings,
@@ -906,6 +1043,232 @@ async function computeCloserSideShowRate(
     showRate: matched > 0 ? showed / matched : null,
     activeClosers,
     available: matched > 0,
+  };
+}
+
+/**
+ * Evidence-based show rate — the three-tier waterfall over settled
+ * appointments (see ShowRateEvidence). Provider-agnostic: GHL appointments
+ * arrive with manual statuses (tier 1 often resolves), Close meetings all
+ * arrive "Confirmed" (tiers 2-3 do the work via closer-call evidence).
+ */
+async function computeShowRateEvidence(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: {
+    teamId: string;
+    rangeStart: number;
+    rangeEnd: number;
+    /** ALL of the team's setterAppointments rows (caller already has them). */
+    appts: Doc<"setterAppointments">[];
+  },
+): Promise<ShowRateEvidence> {
+  const now = Date.now();
+  const breakdown = {
+    fromStatus: 0,
+    fromForm: 0,
+    fromRecording: 0,
+    assumedNoShow: 0,
+    unknown: 0,
+  };
+
+  // Candidates: startTime (NOT bookedAt — numbers must not mutate weeks
+  // later as future bookings settle) in range, grace elapsed, not cancelled.
+  const candidates = args.appts.filter(
+    (a) =>
+      a.startTime >= args.rangeStart &&
+      a.startTime < args.rangeEnd &&
+      a.status !== "Cancelled" &&
+      a.status !== "Invalid" &&
+      a.startTime <= now - SHOW_GRACE_MS,
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const closersAll = await ctx.db
+    .query("closers")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+    .collect();
+  const activeClosers = closersAll.filter(
+    (c: { status?: string }) => c.status === "active",
+  ).length;
+
+  if (candidates.length === 0) {
+    return {
+      available: false,
+      activeClosers,
+      candidates: 0,
+      settled: 0,
+      showed: 0,
+      noShow: 0,
+      showRate: null,
+      coverage: null,
+      breakdown,
+      perSetter: [],
+    };
+  }
+
+  type Res = "showed" | "noShow" | "unknown";
+  const resolution = new Map<string, Res>();
+
+  // ---- Tier 1: CRM manual status --------------------------------------
+  const unresolved: Doc<"setterAppointments">[] = [];
+  for (const a of candidates) {
+    if (a.status === "Showed") {
+      resolution.set(a._id, "showed");
+      breakdown.fromStatus++;
+    } else if (a.status === "No Show") {
+      resolution.set(a._id, "noShow");
+      breakdown.fromStatus++;
+    } else {
+      unresolved.push(a);
+    }
+  }
+
+  // ---- Tier 2: closer-call evidence (form outcome, then recording) ----
+  if (activeClosers > 0 && unresolved.length > 0) {
+    const contactIds = Array.from(new Set(unresolved.map((a) => a.ghlContactId)));
+    const leadByContact = new Map<string, Doc<"setterLeads"> | null>();
+    for (const cid of contactIds) {
+      const lead = await ctx.db
+        .query("setterLeads")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_team_and_ghl_contact_id", (q: any) =>
+          q.eq("teamId", args.teamId).eq("ghlContactId", cid),
+        )
+        .first();
+      leadByContact.set(cid, lead);
+    }
+
+    const minStart = Math.min(...unresolved.map((a) => a.startTime));
+    const maxStart = Math.max(...unresolved.map((a) => a.startTime));
+    const index = await buildMatcherIndex(
+      ctx,
+      args.teamId as Id<"teams">,
+      minStart - SHOW_MATCH_BEFORE_MS,
+      maxStart + SHOW_MATCH_AFTER_MS,
+    );
+
+    const apptsByContact = new Map<string, Doc<"setterAppointments">[]>();
+    for (const a of unresolved) {
+      const list = apptsByContact.get(a.ghlContactId) ?? [];
+      list.push(a);
+      apptsByContact.set(a.ghlContactId, list);
+    }
+
+    for (const [cid, list] of apptsByContact) {
+      const lead = leadByContact.get(cid);
+      if (!lead) continue;
+      // Candidate calls for this lead: the closer either completed the call
+      // or explicitly logged it as a no-show.
+      const calls = findCallsForLead(index, {
+        email: lead.email,
+        phone: lead.phone,
+      })
+        .filter((c) => c.status === "completed" || c.status === "no_show")
+        .sort((x, y) => (x.createdAt ?? 0) - (y.createdAt ?? 0));
+      if (calls.length === 0) continue;
+
+      // Greedy 1:1 assignment: each appointment (chronological) claims the
+      // nearest unconsumed call inside its window. One call can never mark
+      // two appointments of a reschedule chain "showed".
+      const consumed = new Set<string>();
+      for (const a of [...list].sort((x, y) => x.startTime - y.startTime)) {
+        let best: Doc<"calls"> | null = null;
+        let bestDist = Infinity;
+        for (const c of calls) {
+          if (consumed.has(c._id)) continue;
+          const t = c.startedAt ?? c.createdAt ?? 0;
+          if (
+            t < a.startTime - SHOW_MATCH_BEFORE_MS ||
+            t > a.startTime + SHOW_MATCH_AFTER_MS
+          ) {
+            continue;
+          }
+          const dist = Math.abs(t - a.startTime);
+          if (dist < bestDist) {
+            best = c;
+            bestDist = dist;
+          }
+        }
+        if (!best) continue;
+        consumed.add(best._id);
+
+        if (best.status === "no_show" || best.outcome === "no_show") {
+          resolution.set(a._id, "noShow");
+          breakdown.fromForm++;
+        } else if (best.outcome === "rescheduled") {
+          // The meeting moved — neither showed nor no-show for THIS slot.
+          resolution.set(a._id, "unknown");
+          breakdown.unknown++;
+        } else if (best.outcome != null) {
+          resolution.set(a._id, "showed");
+          breakdown.fromForm++;
+        } else if ((best.duration ?? 0) >= SHOW_RECORDING_MIN_SEC) {
+          // No form answer, but a real recording exists — evidence they showed.
+          resolution.set(a._id, "showed");
+          breakdown.fromRecording++;
+        } else {
+          // Recording stub: closer joined, prospect never did.
+          resolution.set(a._id, "noShow");
+          breakdown.fromRecording++;
+        }
+      }
+    }
+  }
+
+  // Coverage = share of candidates resolved by hard evidence (tiers 1-2).
+  const resolvedByEvidence = Array.from(resolution.values()).filter(
+    (r) => r !== "unknown",
+  ).length;
+  const coverage = resolvedByEvidence / candidates.length;
+
+  // ---- Tier 3: no evidence → assumed no-show (coverage-gated) ---------
+  for (const a of candidates) {
+    if (resolution.has(a._id)) continue;
+    if (activeClosers > 0 && coverage >= SHOW_ASSUME_COVERAGE) {
+      resolution.set(a._id, "noShow");
+      breakdown.assumedNoShow++;
+    } else {
+      resolution.set(a._id, "unknown");
+      breakdown.unknown++;
+    }
+  }
+
+  // ---- Rollup ----------------------------------------------------------
+  let showed = 0;
+  let noShow = 0;
+  const per = new Map<string, { settled: number; showed: number }>();
+  for (const a of candidates) {
+    const r = resolution.get(a._id);
+    if (r === undefined || r === "unknown") continue;
+    if (r === "showed") showed++;
+    else noShow++;
+    const sid = a.bookedByGhlUserId;
+    if (!sid) continue;
+    const p = per.get(sid) ?? { settled: 0, showed: 0 };
+    p.settled++;
+    if (r === "showed") p.showed++;
+    per.set(sid, p);
+  }
+  const settled = showed + noShow;
+
+  return {
+    available: settled > 0,
+    activeClosers,
+    candidates: candidates.length,
+    settled,
+    showed,
+    noShow,
+    showRate: settled > 0 ? showed / settled : null,
+    coverage,
+    breakdown,
+    perSetter: Array.from(per.entries()).map(([ghlUserId, p]) => ({
+      ghlUserId,
+      settled: p.settled,
+      showed: p.showed,
+      showRate: p.settled > 0 ? p.showed / p.settled : null,
+    })),
   };
 }
 

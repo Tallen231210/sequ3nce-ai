@@ -2137,6 +2137,11 @@ export default defineSchema({
     // Computed snapshot fields (rebuilt by event handlers, not by upserts)
     dialCount: v.number(),
     firstDialAt: v.optional(v.number()),
+    // Provider user id of whoever made the chronologically-FIRST dial.
+    // Lead-ownership fallback for per-setter set rate when the CRM's
+    // assignedTo is blank. Maintained with min-time semantics in
+    // recordCallEvent (backfills replay events newest-first).
+    firstDialByUserId: v.optional(v.string()),
     lastDialAt: v.optional(v.number()),
     smsOutboundCount: v.number(),
     smsInboundCount: v.number(),
@@ -2364,6 +2369,9 @@ export default defineSchema({
     startTime: v.number(),
     endTime: v.optional(v.number()),
     // GHL appointment statuses — verbatim from their workflow doc.
+    // (Close meetings map into this enum: upcoming/completed→Confirmed,
+    // declined-by-*→Cancelled — Close's "completed" only means the time
+    // passed, never "Showed".)
     status: v.union(
       v.literal("Confirmed"),
       v.literal("Showed"),
@@ -2372,6 +2380,9 @@ export default defineSchema({
       v.literal("Invalid"),
       v.literal("Unconfirmed"),
     ),
+    // Raw provider-side status (e.g. Close "completed"/"declined-by-lead")
+    // for transparency/debugging. GHL rows omit it.
+    providerStatus: v.optional(v.string()),
     bookedAt: v.number(),
     lastUpdatedAt: v.number(),
   })

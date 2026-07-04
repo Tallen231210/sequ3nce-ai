@@ -542,3 +542,26 @@ export const clearDeepBackfillError = mutation({
     return { success: true, cleared: true };
   },
 });
+
+/**
+ * Booking-flow override — lets a manager correct the auto-detected funnel
+ * type from Settings ("auto" defers back to detection). Gates which set-rate
+ * metrics render: self_book suppresses per-setter set rate.
+ */
+export const setBookingFlowOverride = mutation({
+  args: {
+    clerkId: v.string(),
+    override: v.union(
+      v.literal("auto"),
+      v.literal("setter_drives"),
+      v.literal("self_book"),
+      v.literal("mixed"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireAdmin(ctx, args.clerkId);
+    const teamId = user.teamId as Id<"teams">;
+    await ctx.db.patch(teamId, { setterBookingFlowOverride: args.override });
+    return { success: true };
+  },
+});

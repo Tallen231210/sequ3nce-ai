@@ -28,13 +28,27 @@ const PAGE = 100;
 const TIME_BUDGET_MS = 6 * 60 * 1000;
 const CALL_FIELDS = "id,lead_id,user_id,direction,duration,disposition,date_created";
 const SMS_FIELDS = "id,lead_id,user_id,direction,date_created";
+const MEETING_FIELDS =
+  "id,lead_id,user_id,created_by,starts_at,ends_at,status,date_created,date_updated,attendees";
+// Leads enriched per closeFetch page during the enrich phase (each needs its
+// own GET /lead/{id}, so keep batches modest for rate-limit headroom).
+const ENRICH_QUERY_PAGE = 100;
 
 const PHASE = v.union(
   v.literal("users"),
   v.literal("calls"),
   v.literal("sms"),
+  v.literal("meetings"),
+  v.literal("enrich"),
   v.literal("complete"),
 );
+
+// Activity-phase config: which endpoint each phase crawls and what follows it.
+const ACTIVITY_PHASES = {
+  calls: { path: "/activity/call/", fields: CALL_FIELDS, next: "sms" },
+  sms: { path: "/activity/sms/", fields: SMS_FIELDS, next: "meetings" },
+  meetings: { path: "/activity/meeting/", fields: MEETING_FIELDS, next: "enrich" },
+} as const;
 
 const RECONCILE_OVERLAP_MS = 90 * 60 * 1000;
 const MAX_BACKFILL_RETRIES = 5;
@@ -85,6 +99,33 @@ function mapSms(r: any) {
   };
 }
 
+function mapMeeting(r: any) {
+  // Prospect = the attendee who isn't the organizer and has no Close user id.
+  // NEVER take the organizer/closer's email — patching it onto the lead would
+  // bind the lead to every one of that closer's recorded calls in the matcher.
+  const prospect = (r.attendees || []).find(
+    (a: any) => a && a.is_organizer === false && !a.user_id && a.email,
+  );
+  const s = String(r.status ?? "");
+  // Close "completed" only means the scheduled time passed — the show signal
+  // comes from the metrics-layer waterfall, so both map to "Confirmed".
+  const cancelled = s.includes("declined") || s.includes("cancel");
+  return {
+    id: r.id,
+    leadId: r.lead_id,
+    createdByUserId: r.created_by ?? undefined,
+    assignedUserId: r.user_id ?? undefined,
+    startTime: Date.parse(r.starts_at),
+    endTime: r.ends_at ? Date.parse(r.ends_at) : undefined,
+    status: (cancelled ? "Cancelled" : "Confirmed") as "Cancelled" | "Confirmed",
+    providerStatus: s || "unknown",
+    bookedAt: Date.parse(r.date_created),
+    lastUpdatedAt: r.date_updated ? Date.parse(r.date_updated) : Date.parse(r.date_created),
+    prospectEmail: prospect?.email ?? undefined,
+    prospectName: prospect?.name ?? undefined,
+  };
+}
+
 export const closeFastBackfill = internalAction({
   args: {
     installationId: v.id("setterGhlInstallations"),
@@ -110,6 +151,8 @@ export const closeFastBackfill = internalAction({
       | "users"
       | "calls"
       | "sms"
+      | "meetings"
+      | "enrich"
       | "complete";
     const key = decryptApiKey(install.accessToken);
     const base = {
@@ -152,9 +195,8 @@ export const closeFastBackfill = internalAction({
         return;
       }
 
-      if (phase === "calls" || phase === "sms") {
-        const path = phase === "calls" ? "/activity/call/" : "/activity/sms/";
-        const fields = phase === "calls" ? CALL_FIELDS : SMS_FIELDS;
+      if (phase === "calls" || phase === "sms" || phase === "meetings") {
+        const { path, fields, next } = ACTIVITY_PHASES[phase];
         let cursor = args.cursor;
 
         for (;;) {
@@ -166,7 +208,9 @@ export const closeFastBackfill = internalAction({
           if (cursor) query.date_created__lt = cursor;
 
           const page: any = await closeFetch(key, path, { query });
-          const rows: any[] = (page.data || []).filter((r: any) => r.lead_id);
+          const rows: any[] = (page.data || []).filter((r: any) =>
+            phase === "meetings" ? r.lead_id && r.starts_at : r.lead_id,
+          );
 
           if (rows.length > 0) {
             if (phase === "calls") {
@@ -174,10 +218,15 @@ export const closeFastBackfill = internalAction({
                 ...base,
                 calls: rows.map(mapCall),
               });
-            } else {
+            } else if (phase === "sms") {
               await ctx.runMutation(internal.setterCloseIngest.ingestCloseSms, {
                 ...base,
                 messages: rows.map(mapSms),
+              });
+            } else {
+              await ctx.runMutation(internal.setterCloseIngest.ingestCloseMeetings, {
+                ...base,
+                meetings: rows.map(mapMeeting),
               });
             }
           }
@@ -193,7 +242,6 @@ export const closeFastBackfill = internalAction({
 
           const noProgress = nextCursor === cursor;
           if (!page.has_more || (page.data || []).length === 0 || noProgress) {
-            const next = phase === "calls" ? "sms" : "complete";
             await ctx.scheduler.runAfter(0, internal.setterCloseSync.closeFastBackfill, {
               installationId: args.installationId,
               phase: next,
@@ -207,6 +255,70 @@ export const closeFastBackfill = internalAction({
               installationId: args.installationId,
               phase,
               cursor,
+            });
+            return;
+          }
+        }
+      }
+
+      if (phase === "enrich") {
+        // Fill name/email/phone on stub leads via GET /lead/{id}. Cursor is
+        // the dateAdded paging position (stringified for the shared cursor arg).
+        let cursor: number | undefined = args.cursor ? Number(args.cursor) : undefined;
+
+        for (;;) {
+          const batch: any = await ctx.runQuery(
+            internal.setterCloseIngest.getLeadsNeedingEnrichment,
+            {
+              teamId: install.teamId,
+              beforeDateAdded: cursor,
+              limit: ENRICH_QUERY_PAGE,
+            },
+          );
+
+          const items: any[] = [];
+          for (const l of batch.needing) {
+            try {
+              const lead: any = await closeFetch(key, `/lead/${l.closeLeadId}/`, {
+                query: { _fields: "id,display_name,contacts" },
+              });
+              const c = (lead.contacts || [])[0] || {};
+              items.push({
+                id: l.id,
+                name: c.name || lead.display_name || undefined,
+                email: c.emails?.[0]?.email ?? undefined,
+                phone: c.phones?.[0]?.phone ?? undefined,
+              });
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              if (/Close API 404/.test(msg)) {
+                // Lead deleted in Close — mark it so we don't refetch forever.
+                items.push({ id: l.id, name: "(removed from Close)" });
+              } else {
+                throw err; // transient — outer retry resumes at this cursor
+              }
+            }
+          }
+          if (items.length > 0) {
+            await ctx.runMutation(internal.setterCloseIngest.applyLeadEnrichment, {
+              items,
+            });
+          }
+
+          if (batch.pageSize === 0 || batch.nextCursor === null) {
+            await ctx.scheduler.runAfter(0, internal.setterCloseSync.closeFastBackfill, {
+              installationId: args.installationId,
+              phase: "complete",
+            });
+            return;
+          }
+          cursor = batch.nextCursor;
+
+          if (Date.now() - startedAt > TIME_BUDGET_MS) {
+            await ctx.scheduler.runAfter(1000, internal.setterCloseSync.closeFastBackfill, {
+              installationId: args.installationId,
+              phase,
+              cursor: String(cursor),
             });
             return;
           }
@@ -272,11 +384,16 @@ async function reconcilePath(
   ctx: any,
   key: string,
   base: any,
-  path: string,
-  fields: string,
+  kind: "calls" | "sms" | "meetings",
   sinceISO: string,
-  isCall: boolean,
 ): Promise<void> {
+  const { path, fields } = ACTIVITY_PHASES[kind];
+  // Meetings reconcile on date_updated: status transitions (upcoming →
+  // completed/declined) bump date_updated, not date_created — polling
+  // date_created would miss every status change. Calls/SMS are immutable
+  // once created, so date_created is correct for them.
+  const dateFilter =
+    kind === "meetings" ? "date_updated__gte" : "date_created__gte";
   // Generous cap: a normal reconcile window (~30-120 min) is small; this only
   // bounds a pathological catch-up. If we ever hit it, LOG (don't silently
   // drop) so we know to shorten the cadence / build webhooks.
@@ -285,20 +402,27 @@ async function reconcilePath(
   let p = 0;
   for (; p < MAX_PAGES; p++) {
     const page: any = await closeFetch(key, path, {
-      query: { _limit: PAGE, _fields: fields, date_created__gte: sinceISO, _skip: skip },
+      query: { _limit: PAGE, _fields: fields, [dateFilter]: sinceISO, _skip: skip },
     });
     const all: any[] = page.data || [];
-    const rows = all.filter((r) => r.lead_id);
+    const rows = all.filter((r) =>
+      kind === "meetings" ? r.lead_id && r.starts_at : r.lead_id,
+    );
     if (rows.length > 0) {
-      if (isCall) {
+      if (kind === "calls") {
         await ctx.runMutation(internal.setterCloseIngest.ingestCloseCalls, {
           ...base,
           calls: rows.map(mapCall),
         });
-      } else {
+      } else if (kind === "sms") {
         await ctx.runMutation(internal.setterCloseIngest.ingestCloseSms, {
           ...base,
           messages: rows.map(mapSms),
+        });
+      } else {
+        await ctx.runMutation(internal.setterCloseIngest.ingestCloseMeetings, {
+          ...base,
+          meetings: rows.map(mapMeeting),
         });
       }
     }
@@ -309,6 +433,43 @@ async function reconcilePath(
     console.warn(
       `[closeReconcile] hit MAX_PAGES on ${path} since ${sinceISO} — window too large; some activity may be deferred to the next tick.`,
     );
+  }
+}
+
+/**
+ * Reconcile tail: enrich a bounded batch of the newest still-nameless stub
+ * leads (created by fresh dial activity since the backfill's enrich phase).
+ * Per-item errors are skipped, not thrown — a transient blip retries next
+ * tick; a 404 (lead deleted in Close) is marked so it isn't refetched forever.
+ */
+async function enrichNewLeads(ctx: any, key: string, teamId: any): Promise<void> {
+  const batch: any = await ctx.runQuery(
+    internal.setterCloseIngest.getLeadsNeedingEnrichment,
+    { teamId, limit: 200 },
+  );
+  const items: any[] = [];
+  for (const l of batch.needing.slice(0, 50)) {
+    try {
+      const lead: any = await closeFetch(key, `/lead/${l.closeLeadId}/`, {
+        query: { _fields: "id,display_name,contacts" },
+      });
+      const c = (lead.contacts || [])[0] || {};
+      items.push({
+        id: l.id,
+        name: c.name || lead.display_name || undefined,
+        email: c.emails?.[0]?.email ?? undefined,
+        phone: c.phones?.[0]?.phone ?? undefined,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/Close API 404/.test(msg)) {
+        items.push({ id: l.id, name: "(removed from Close)" });
+      }
+      // else: skip — transient, retried on the next tick
+    }
+  }
+  if (items.length > 0) {
+    await ctx.runMutation(internal.setterCloseIngest.applyLeadEnrichment, { items });
   }
 }
 
@@ -335,8 +496,10 @@ export const closeReconcile = internalAction({
         const since =
           (inst.lastSyncedAt ?? Date.now() - 2 * 60 * 60 * 1000) - RECONCILE_OVERLAP_MS;
         const sinceISO = new Date(since).toISOString();
-        await reconcilePath(ctx, key, base, "/activity/call/", CALL_FIELDS, sinceISO, true);
-        await reconcilePath(ctx, key, base, "/activity/sms/", SMS_FIELDS, sinceISO, false);
+        await reconcilePath(ctx, key, base, "calls", sinceISO);
+        await reconcilePath(ctx, key, base, "sms", sinceISO);
+        await reconcilePath(ctx, key, base, "meetings", sinceISO);
+        await enrichNewLeads(ctx, key, install.teamId);
         await ctx.runMutation(internal.setterCloseIngest.touchCloseSync, {
           installationId: inst.installationId,
         });

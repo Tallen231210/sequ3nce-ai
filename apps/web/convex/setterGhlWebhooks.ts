@@ -393,7 +393,7 @@ const VALID_APPOINTMENT_STATUSES = [
   "Invalid",
   "Unconfirmed",
 ] as const;
-type AppointmentStatus = (typeof VALID_APPOINTMENT_STATUSES)[number];
+export type AppointmentStatus = (typeof VALID_APPOINTMENT_STATUSES)[number];
 
 function isValidAppointmentStatus(s: unknown): s is AppointmentStatus {
   return (
@@ -423,7 +423,8 @@ async function handleAppointmentUpsert(
   }
 
   // Default to "Confirmed" if GHL doesn't send a status — happens on
-  // some Create events. Update events always have one.
+  // some Create events. Update events always have one. (GHL-specific
+  // default — lives here in the parser, NOT in the shared core.)
   const rawStatus = apt.appointmentStatus ?? apt.status ?? "Confirmed";
   const status: AppointmentStatus = isValidAppointmentStatus(rawStatus)
     ? rawStatus
@@ -434,9 +435,56 @@ async function handleAppointmentUpsert(
   const lastUpdatedAt = parseTimestamp(apt.dateUpdated) ?? Date.now();
   const bookedAt = parseTimestamp(apt.dateAdded) ?? lastUpdatedAt;
 
+  await upsertAppointment(ctx, args, {
+    appointmentId: ghlAppointmentId,
+    contactId: ghlContactId,
+    calendarId: nnStr(apt.calendarId),
+    bookedByUserId: nnStr(apt.createdBy),
+    assignedToUserId: nnStr(apt.assignedUserId) ?? nnStr(apt.userId),
+    startTime,
+    endTime,
+    status,
+    bookedAt,
+    lastUpdatedAt,
+  });
+}
+
+/**
+ * Provider-generic appointment upsert — the appointments counterpart to the
+ * exported recordCallEvent/recordSmsEvent sink. Takes normalized args so
+ * provider adapters (GHL webhook parser above, setterCloseIngest) share one
+ * write path: dedup by (teamId, appointmentId), the appointment_booked /
+ * appointment_status_change timeline events, the lead snapshot recompute,
+ * and an optional safe backpatch of missing lead contact info.
+ */
+export interface AppointmentUpsertArgs {
+  appointmentId: string;
+  contactId: string;
+  calendarId?: string;
+  bookedByUserId?: string;
+  assignedToUserId?: string;
+  startTime: number;
+  endTime?: number;
+  status: AppointmentStatus;
+  // Raw provider-side status (e.g. Close's "completed"/"declined-by-lead")
+  // kept for transparency/debugging; GHL callers omit it.
+  providerStatus?: string;
+  bookedAt: number;
+  lastUpdatedAt: number;
+  // Prospect contact info harvested from the booking (e.g. Close meeting
+  // attendees). Only patched onto the lead when the lead is missing it.
+  prospectEmail?: string;
+  prospectName?: string;
+}
+
+export async function upsertAppointment(
+  ctx: MutationCtx,
+  args: HandlerCtx,
+  apt: AppointmentUpsertArgs,
+): Promise<void> {
   // Upsert the appointment row. Idempotency: lookup by
-  // (teamId, ghlAppointmentId) — same key used to dedupe redeliveries.
-  const existing = await findAppointment(ctx, args.teamId, ghlAppointmentId);
+  // (teamId, appointmentId) — same key used to dedupe redeliveries.
+  const existing = await findAppointment(ctx, args.teamId, apt.appointmentId);
 
   let prevStatus: AppointmentStatus | null = null;
   if (existing) {
@@ -444,78 +492,96 @@ async function handleAppointmentUpsert(
       ? existing.status
       : null;
     await ctx.db.patch(existing._id, {
-      ghlContactId,
-      ghlCalendarId: nnStr(apt.calendarId) ?? existing.ghlCalendarId,
-      bookedByGhlUserId: nnStr(apt.createdBy) ?? existing.bookedByGhlUserId,
-      assignedToGhlUserId:
-        nnStr(apt.assignedUserId) ??
-        nnStr(apt.userId) ??
-        existing.assignedToGhlUserId,
-      startTime,
-      endTime,
-      status,
-      lastUpdatedAt,
+      ghlContactId: apt.contactId,
+      ghlCalendarId: apt.calendarId ?? existing.ghlCalendarId,
+      bookedByGhlUserId: apt.bookedByUserId ?? existing.bookedByGhlUserId,
+      assignedToGhlUserId: apt.assignedToUserId ?? existing.assignedToGhlUserId,
+      startTime: apt.startTime,
+      endTime: apt.endTime,
+      status: apt.status,
+      ...(apt.providerStatus !== undefined
+        ? { providerStatus: apt.providerStatus }
+        : {}),
+      lastUpdatedAt: apt.lastUpdatedAt,
     });
   } else {
     await ctx.db.insert("setterAppointments", {
       teamId: args.teamId,
-      ghlAppointmentId,
-      ghlContactId,
-      ghlCalendarId: nnStr(apt.calendarId),
-      bookedByGhlUserId: nnStr(apt.createdBy),
-      assignedToGhlUserId: nnStr(apt.assignedUserId) ?? nnStr(apt.userId),
-      startTime,
-      endTime,
-      status,
-      bookedAt,
-      lastUpdatedAt,
+      ghlAppointmentId: apt.appointmentId,
+      ghlContactId: apt.contactId,
+      ghlCalendarId: apt.calendarId,
+      bookedByGhlUserId: apt.bookedByUserId,
+      assignedToGhlUserId: apt.assignedToUserId,
+      startTime: apt.startTime,
+      endTime: apt.endTime,
+      status: apt.status,
+      ...(apt.providerStatus !== undefined
+        ? { providerStatus: apt.providerStatus }
+        : {}),
+      bookedAt: apt.bookedAt,
+      lastUpdatedAt: apt.lastUpdatedAt,
     });
   }
 
   // Emit a lead event for the timeline. New appointments → "appointment_booked";
   // status changes → "appointment_status_change". The lead-events table
   // is the source of truth for the drilldown timeline.
-  const lead = await ensureLead(ctx, args.teamId, ghlContactId);
+  const lead = await ensureLead(ctx, args.teamId, apt.contactId);
+
+  // Backpatch missing lead contact info from the booking. Never overwrite
+  // existing values — the CRM contact sync stays authoritative.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contactPatch: Record<string, any> = {};
+  if (lead.email === undefined && apt.prospectEmail) {
+    contactPatch.email = apt.prospectEmail;
+  }
+  if (lead.name === undefined && apt.prospectName) {
+    contactPatch.name = apt.prospectName;
+  }
+  if (Object.keys(contactPatch).length > 0) {
+    await ctx.db.patch(lead._id, contactPatch);
+  }
+
   if (!existing) {
     await ctx.db.insert("setterLeadEvents", {
       teamId: args.teamId,
-      ghlContactId,
+      ghlContactId: apt.contactId,
       setterLeadId: lead._id,
       eventType: "appointment_booked",
-      occurredAt: bookedAt,
-      ghlUserId: nnStr(apt.createdBy),
+      occurredAt: apt.bookedAt,
+      ghlUserId: apt.bookedByUserId,
       details: {
-        ghlAppointmentId,
+        ghlAppointmentId: apt.appointmentId,
         calendarId: apt.calendarId,
-        startTime,
-        status,
+        startTime: apt.startTime,
+        status: apt.status,
       },
-      ghlEventKey: `appt-booked:${ghlAppointmentId}`,
+      ghlEventKey: `appt-booked:${apt.appointmentId}`,
     });
-  } else if (prevStatus !== status) {
+  } else if (prevStatus !== apt.status) {
     await ctx.db.insert("setterLeadEvents", {
       teamId: args.teamId,
-      ghlContactId,
+      ghlContactId: apt.contactId,
       setterLeadId: lead._id,
       eventType: "appointment_status_change",
-      occurredAt: lastUpdatedAt,
-      ghlUserId: nnStr(apt.createdBy),
+      occurredAt: apt.lastUpdatedAt,
+      ghlUserId: apt.bookedByUserId,
       details: {
-        ghlAppointmentId,
+        ghlAppointmentId: apt.appointmentId,
         from: prevStatus,
-        to: status,
+        to: apt.status,
       },
       // Include status in the dedup key — handlers deduplicate on the
       // exact transition so a redelivered Update is a no-op but a fresh
       // Update from a different state is recorded.
-      ghlEventKey: `appt-status:${ghlAppointmentId}:${status}:${lastUpdatedAt}`,
+      ghlEventKey: `appt-status:${apt.appointmentId}:${apt.status}:${apt.lastUpdatedAt}`,
     });
   }
 
   // Recompute lead snapshot counts from the current setterAppointments rows.
   // Cheap (typical lead has < 3 appointments), keeps the snapshot in sync
   // even when GHL reorders status events.
-  await recomputeLeadAppointmentCounts(ctx, args.teamId, ghlContactId);
+  await recomputeLeadAppointmentCounts(ctx, args.teamId, apt.contactId);
 }
 
 async function findAppointment(
@@ -825,27 +891,52 @@ export async function recordCallEvent(
   // Outbound call → bump dial counters + maybe flip isConnected.
   if (ev.direction === "outbound") {
     const becameConnected = !lead.isConnected && isConnect;
-    // Capture first-dial transition BEFORE the patch so we can fire the
-    // speed-to-lead Slack ping. lead.firstDialAt is set on first dial via
-    // `?? ev.occurredAt` below, so reading the old value here gives us
-    // the truth about whether this is a brand-new lead's first dial.
-    // recordCallEvent only runs for call events; direction=outbound is
-    // sufficient to identify dial_outbound here.
-    const isFirstDialTransition =
-      lead.firstDialAt === undefined && ev.ghlUserId !== undefined;
 
-    await ctx.db.patch(lead._id, {
-      dialCount: lead.dialCount + 1,
-      firstDialAt: lead.firstDialAt ?? ev.occurredAt,
-      lastDialAt: maxTime(lead.lastDialAt, ev.occurredAt),
-      lastActivityAt: maxTime(lead.lastActivityAt, ev.occurredAt),
-      ...(becameConnected
+    // First-dial fields use MIN-time semantics, not first-write-wins:
+    // backfills replay events newest-first (the Close backfill pages
+    // backward), so "first" must mean chronologically-first, not
+    // first-processed. firstDialByUserId follows the true first dial —
+    // if that dial is unattributed, ownership is honestly unattributed.
+    const prevFirstDialAt = lead.firstDialAt ?? Infinity;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const firstDialPatch: Record<string, any> = {};
+    if (ev.occurredAt < prevFirstDialAt) {
+      firstDialPatch.firstDialAt = ev.occurredAt;
+      firstDialPatch.firstDialByUserId = ev.ghlUserId;
+    } else if (
+      ev.occurredAt === lead.firstDialAt &&
+      lead.firstDialByUserId === undefined &&
+      ev.ghlUserId !== undefined
+    ) {
+      // Same-timestamp replay that carries the attribution we were missing.
+      firstDialPatch.firstDialByUserId = ev.ghlUserId;
+    }
+
+    // connectedAt has the same order sensitivity: if we're already marked
+    // connected but an EARLIER qualifying connect replays in, adopt its
+    // timestamp/duration (the milestone event still fires only once, on
+    // the isConnected flip).
+    const connectPatch = becameConnected
+      ? {
+          isConnected: true,
+          connectedAt: ev.occurredAt,
+          connectedCallDurationSec: durationSec,
+        }
+      : lead.isConnected &&
+          isConnect &&
+          ev.occurredAt < (lead.connectedAt ?? Infinity)
         ? {
-            isConnected: true,
             connectedAt: ev.occurredAt,
             connectedCallDurationSec: durationSec,
           }
-        : {}),
+        : {};
+
+    await ctx.db.patch(lead._id, {
+      dialCount: lead.dialCount + 1,
+      ...firstDialPatch,
+      lastDialAt: maxTime(lead.lastDialAt, ev.occurredAt),
+      lastActivityAt: maxTime(lead.lastActivityAt, ev.occurredAt),
+      ...connectPatch,
     });
 
     if (becameConnected) {

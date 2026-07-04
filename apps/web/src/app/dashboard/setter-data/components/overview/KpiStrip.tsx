@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { Phone, Clock, AlertCircle, CalendarCheck } from "lucide-react";
+import { Phone, Clock, AlertCircle, CalendarCheck, Target } from "lucide-react";
 
 interface KpiStripData {
   totalLeads: number;
@@ -16,6 +16,28 @@ interface KpiStripData {
   totalShowed: number;
   totalNoShow: number;
   showRate: number | null;
+  // Company set rate — in-range leads with ≥1 booking.
+  leadsBooked?: number;
+  companySetRate?: number | null;
+  // Evidence-based show rate (waterfall: CRM status → post-call form →
+  // recording existence → coverage-gated assumption). The headline source.
+  showRateEvidence?: {
+    available: boolean;
+    activeClosers: number;
+    candidates: number;
+    settled: number;
+    showed: number;
+    noShow: number;
+    showRate: number | null;
+    coverage: number | null;
+    breakdown: {
+      fromStatus: number;
+      fromForm: number;
+      fromRecording: number;
+      assumedNoShow: number;
+      unknown: number;
+    };
+  };
   // Dashboard Phase 2 — show-rate computed from our own closer-side
   // calls table. Preferred over GHL data when available.
   closerSide: {
@@ -35,14 +57,13 @@ interface KpiStripProps {
 }
 
 /**
- * Four-card KPI strip. Phase 2 swaps "Total leads" for a Show Rate card
- * since show rate is a top-tier setter metric and lead count is already
- * visible on the Connections card. Untouched is clickable → drills to
- * Leads tab pre-filtered.
+ * Five-card KPI strip: Speed, Connections, Set rate (company lead→booked
+ * conversion), Show rate (evidence waterfall first), Untouched (clickable →
+ * drills to Leads tab pre-filtered).
  */
 export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
       <KpiCard
         icon={Clock}
         label="Speed to lead (avg)"
@@ -63,6 +84,20 @@ export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
           data.connectedRate !== null
             ? `${Math.round(data.connectedRate * 100)}% rate`
             : "—"
+        }
+      />
+      <KpiCard
+        icon={Target}
+        label="Set rate"
+        value={
+          data.companySetRate !== null && data.companySetRate !== undefined
+            ? `${Math.round(data.companySetRate * 100)}%`
+            : "—"
+        }
+        sub={
+          data.companySetRate !== null && data.companySetRate !== undefined
+            ? `${data.leadsBooked ?? 0} of ${data.totalLeads} leads booked`
+            : "No leads in range"
         }
       />
       <KpiCard
@@ -127,16 +162,42 @@ function KpiCard({ icon: Icon, label, value, sub, tone, onClick }: KpiCardProps)
 }
 
 /**
- * Decide which show-rate source to display. Closer-side (our calls table)
- * wins when available because it's not dependent on the customer putting
- * appointment data into GHL. Falls back to GHL appointment objects when
- * the closer-side hasn't matched anything yet. Final fallback is the
- * empty/onboarding state.
+ * Decide which show-rate source to display. Priority:
+ *   1. Evidence waterfall (per-appointment: CRM status → post-call form →
+ *      recording → coverage-gated assumption) — the most trustworthy.
+ *   2. Closer-side lead matching (legacy behavior-based rate).
+ *   3. GHL appointment statuses.
+ *   4. Empty/onboarding states.
  */
 function pickShowRateDisplay(data: KpiStripData): {
   value: string;
   sub: string;
 } {
+  const ev = data.showRateEvidence;
+  if (ev?.available && ev.showRate !== null) {
+    const evidenced =
+      ev.breakdown.fromStatus + ev.breakdown.fromForm + ev.breakdown.fromRecording;
+    return {
+      value: `${Math.round(ev.showRate * 100)}%`,
+      sub:
+        ev.breakdown.assumedNoShow > 0
+          ? `${ev.showed} of ${ev.settled} showed · ${evidenced} evidenced`
+          : `${ev.showed} of ${ev.settled} showed`,
+    };
+  }
+  // Evidence ran but couldn't resolve enough → say why instead of a fake 0%.
+  if (ev && ev.candidates > 0 && ev.activeClosers === 0) {
+    return {
+      value: "—",
+      sub: `${ev.candidates} booked — connect closers to track shows`,
+    };
+  }
+  if (ev && ev.candidates > 0 && ev.breakdown.unknown > 0 && !ev.available) {
+    return {
+      value: "—",
+      sub: `${ev.candidates} settled, not enough evidence yet`,
+    };
+  }
   const cs = data.closerSide;
   if (cs.available && cs.showRate !== null) {
     return {
