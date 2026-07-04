@@ -209,7 +209,7 @@ export const dispatch = internalMutation({
 // Per-event handlers
 // ----------------------------------------------------------------------------
 
-interface HandlerCtx {
+export interface HandlerCtx {
   teamId: Id<"teams">;
   installationId: Id<"setterGhlInstallations">;
   locationId: string;
@@ -734,7 +734,7 @@ async function getLatestTransitionTimestamp(
 // Calls / SMS — Phase 1
 // ----------------------------------------------------------------------------
 
-interface CallEventArgs {
+export interface CallEventArgs {
   ghlContactId: string;
   direction: "inbound" | "outbound";
   occurredAt: number;
@@ -742,9 +742,16 @@ interface CallEventArgs {
   ghlUserId: string | undefined;
   ghlEventKey: string | undefined;
   conversationId: string | undefined;
+  // Optional extra fields merged into the event `details` (e.g. Close's
+  // `disposition`). GHL callers don't pass this — additive, no behavior change.
+  extraDetails?: Record<string, unknown>;
 }
 
-async function recordCallEvent(
+// Exported so provider adapters (e.g. setterCloseIngest) can feed the same
+// normalized sink — dial counting, connection threshold, dedup, lead
+// lazy-create — instead of reimplementing it. The functions don't validate
+// provider origin; they take string IDs + a dedup key.
+export async function recordCallEvent(
   ctx: MutationCtx,
   args: HandlerCtx,
   ev: CallEventArgs,
@@ -810,6 +817,7 @@ async function recordCallEvent(
     details: {
       callDurationSec: durationSec,
       conversationId: ev.conversationId,
+      ...(ev.extraDetails ?? {}),
     },
     ghlEventKey: ev.ghlEventKey,
   });
@@ -861,7 +869,7 @@ async function recordCallEvent(
 
 }
 
-interface SmsEventArgs {
+export interface SmsEventArgs {
   ghlContactId: string;
   direction: "inbound" | "outbound";
   occurredAt: number;
@@ -870,7 +878,7 @@ interface SmsEventArgs {
   conversationId: string | undefined;
 }
 
-async function recordSmsEvent(
+export async function recordSmsEvent(
   ctx: MutationCtx,
   args: HandlerCtx,
   ev: SmsEventArgs,
@@ -936,7 +944,7 @@ async function findLead(
  * Webhook ordering across event types isn't guaranteed by GHL; an
  * OutboundMessage can arrive before the matching ContactCreate.
  */
-async function ensureLead(
+export async function ensureLead(
   ctx: MutationCtx,
   teamId: Id<"teams">,
   ghlContactId: string,
@@ -977,7 +985,7 @@ async function ensureLead(
   return created;
 }
 
-async function isDuplicateEvent(ctx: MutationCtx, ghlEventKey: string): Promise<boolean> {
+export async function isDuplicateEvent(ctx: MutationCtx, ghlEventKey: string): Promise<boolean> {
   const dup = await ctx.db
     .query("setterLeadEvents")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

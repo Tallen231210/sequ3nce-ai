@@ -13,6 +13,7 @@
 import { action, internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { closeFetch } from "./setterCloseClient";
 import { encryptApiKey } from "./lib/encrypt";
 
@@ -134,15 +135,19 @@ export const connectClose = action({
 
     // 3. Encrypt + persist (enforces one-CRM-per-team inside the mutation).
     const encrypted = encryptApiKey(key);
+    let installationId: Id<"setterGhlInstallations">;
     try {
-      await ctx.runMutation(internal.setterCloseInstall.upsertCloseInstallation, {
-        clerkId: args.clerkId,
-        teamId: args.teamId,
-        encryptedApiKey: encrypted,
-        closeOrganizationId: org.id,
-        orgName: org.name,
-        funnel,
-      });
+      installationId = await ctx.runMutation(
+        internal.setterCloseInstall.upsertCloseInstallation,
+        {
+          clerkId: args.clerkId,
+          teamId: args.teamId,
+          encryptedApiKey: encrypted,
+          closeOrganizationId: org.id,
+          orgName: org.name,
+          funnel,
+        },
+      );
     } catch (e) {
       // Convex surfaces a mutation throw as "Uncaught Error: <msg>\n  at ...".
       // Strip that wrapper so the one-CRM-per-team message (and any other
@@ -152,7 +157,10 @@ export const connectClose = action({
       return { success: false, error: clean || "Failed to save the connection." };
     }
 
-    // 4. TODO(next increment): kick off the windowed backfill (setterCloseSync).
+    // 4. Kick off the 90-day backfill — data starts populating within minutes.
+    await ctx.scheduler.runAfter(0, internal.setterCloseSync.closeFastBackfill, {
+      installationId,
+    });
 
     return { success: true, orgName: org.name, funnel };
   },
