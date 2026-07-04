@@ -280,6 +280,27 @@ export const patchInstallationTokens = internalMutation({
  * refresh_token expired after 1y, customer revoked access at GHL, scopes
  * stripped). The Settings UI surfaces the error and prompts reinstall.
  */
+/**
+ * One-time migration: tag every pre-Close installation row with
+ * `provider: "ghl"`. Idempotent — only patches rows where provider is unset,
+ * so it's safe to run repeatedly. Run via
+ *   npx convex run --prod setterGhlOauth:backfillInstallationProvider '{}'
+ */
+export const backfillInstallationProvider = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("setterGhlInstallations").collect();
+    let patched = 0;
+    for (const row of rows) {
+      if (row.provider === undefined) {
+        await ctx.db.patch(row._id, { provider: "ghl" });
+        patched++;
+      }
+    }
+    return { scanned: rows.length, patched };
+  },
+});
+
 export const markInstallationError = internalMutation({
   args: {
     installationId: v.id("setterGhlInstallations"),
@@ -422,7 +443,7 @@ export const getMyInstallationStatus = query({
 // wired up app-wide, so auth context can't be used).
 // ----------------------------------------------------------------------------
 
-async function resolveAuthUser(
+export async function resolveAuthUser(
   ctx: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     db: any;

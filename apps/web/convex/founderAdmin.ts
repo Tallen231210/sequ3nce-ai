@@ -13,8 +13,41 @@
  */
 
 import { v, ConvexError } from "convex/values";
-import { query, type QueryCtx } from "./_generated/server";
+import { query, internalMutation, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+
+/**
+ * Comp a B2B team (founder/partner/friend) — flips it to a paid-equivalent
+ * state WITHOUT Stripe. Sets subscriptionStatus="active" (what the paywall
+ * checks) + comped=true, and never sets a stripeCustomerId, so Stripe
+ * webhooks (which resolve teams by customer id) can never override it.
+ *
+ * The person must have SIGNED UP FIRST (creates their Clerk identity + team);
+ * this looks them up by their manager email. Internal-only — run via:
+ *   npx convex run --prod founderAdmin:compTeamByEmail '{"email":"..."}'
+ */
+export const compTeamByEmail = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const email = args.email.toLowerCase().trim();
+    const users = await ctx.db.query("users").collect();
+    const user = users.find((u) => (u.email || "").toLowerCase() === email);
+    if (!user) {
+      return {
+        ok: false as const,
+        error: `No manager account found for ${email}. Has he signed up on the web app yet?`,
+      };
+    }
+    const team = await ctx.db.get(user.teamId);
+    if (!team) return { ok: false as const, error: "Team not found for that user" };
+    await ctx.db.patch(user.teamId, {
+      subscriptionStatus: "active",
+      plan: "active",
+      comped: true,
+    });
+    return { ok: true as const, teamId: user.teamId, teamName: team.name };
+  },
+});
 
 /**
  * Allowlist of Sequ3nce founders. Kept in sync with FOUNDER_EMAILS in

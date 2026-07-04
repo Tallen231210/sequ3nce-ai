@@ -9,6 +9,11 @@ export default defineSchema({
     stripeSubscriptionId: v.optional(v.string()),
     plan: v.string(), // "active", "cancelled", "trialing", etc.
     subscriptionStatus: v.optional(v.string()), // "active", "past_due", "canceled", "unpaid", "trialing"
+    // Comped team (founder/partner/friend) — subscriptionStatus is set to
+    // "active" without a Stripe subscription. No stripeCustomerId, so Stripe
+    // webhooks (which look up by customer id) never touch it. Marker lets us
+    // exclude comped teams from revenue reporting.
+    comped: v.optional(v.boolean()),
     currentPeriodEnd: v.optional(v.number()), // Unix timestamp of when current billing period ends
     seatCount: v.optional(v.number()), // Number of paid closer seats
     customAiPrompt: v.optional(v.string()), // Company-specific ammo extraction instructions
@@ -1998,11 +2003,28 @@ export default defineSchema({
   // pending work without scanning every installation.
   setterGhlInstallations: defineTable({
     teamId: v.id("teams"),
-    // GHL identifiers
+    // CRM provider discriminator. Optional for backward-compat: existing rows
+    // predate Close support — a null provider is treated as "ghl" everywhere
+    // (a one-time migration backfills them). New GHL installs set "ghl";
+    // Close installs set "close".
+    provider: v.optional(v.union(v.literal("ghl"), v.literal("close"))),
+    // GHL identifiers (present for provider="ghl")
     locationId: v.string(),                // sub-account ID
     locationName: v.optional(v.string()),
     companyId: v.optional(v.string()),
-    // OAuth tokens — both encrypted (AES-256-GCM via encryptApiKey)
+    // Close identifier (present for provider="close"). The Close organization
+    // id (from /me/). GHL-specific fields (locationId/refreshToken/expiresAt/
+    // scopes) hold benign placeholders for Close rows so we don't have to
+    // relax their types across the GHL codebase; the encrypted Close API key
+    // is stored in `accessToken`, and `locationName` holds the org name.
+    closeOrganizationId: v.optional(v.string()),
+    // Funnel characterization captured at Close connect-time (from
+    // setterCloseConnect.detectFunnel). Powers the dashboard's "here's what we
+    // detected about your funnel" transparency summary without re-probing.
+    closeFunnel: v.optional(v.any()),
+    // OAuth tokens — both encrypted (AES-256-GCM via encryptApiKey).
+    // For Close: accessToken holds the encrypted API key; refreshToken holds a
+    // placeholder (Close keys don't expire/refresh); expiresAt is far-future.
     accessToken: v.string(),
     refreshToken: v.string(),
     expiresAt: v.number(),                 // Unix ms — when access_token expires

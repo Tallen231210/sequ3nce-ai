@@ -112,7 +112,12 @@ function SetterDataPageInner() {
       <>
         <Header title="Setter Data" />
         <div className="px-6 py-8">
-          <ConnectionGate teamId={team?._id} />
+          <ConnectionGate
+            teamId={team?._id}
+            showClose={(
+              (team as { betaFeatures?: string[] } | null | undefined)?.betaFeatures ?? []
+            ).includes("close_crm")}
+          />
           <ConnectionRedirectFlash />
         </div>
       </>
