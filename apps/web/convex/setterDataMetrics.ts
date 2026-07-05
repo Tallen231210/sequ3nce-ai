@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { buildMatcherIndex, findCallsForLead } from "./setterCloserMatcher";
+import { readDailyStatsRange, dayKeyOf, DAY_MS } from "./setterRollups";
 import {
   buildBookingMatcherIndex,
   type MatchedBooking,
@@ -146,8 +147,14 @@ export interface ScorecardData {
   /** Company set rate — in-range leads with ≥1 non-cancelled booking. */
   leadsBooked: number;
   companySetRate: number | null;
-  /** Evidence-based show rate (waterfall) — the headline show rate. */
-  showRateEvidence: ShowRateEvidence;
+  /** Evidence-based show rate (waterfall). Present only when the caller
+   *  opted in (ScorecardOpts.evidence) — the Overview UI reads it from the
+   *  dedicated getShowRateEvidence query instead. */
+  showRateEvidence?: ShowRateEvidence;
+  /** Cadence transparency: set when cadence was computed on a clamped
+   *  window / a capped event sample instead of the full range. */
+  cadenceClampedToDays?: number;
+  cadenceSampled?: boolean;
   /** Per-setter rows, sorted fastest avg-speed first. Setters with
    *  null avgSpeedMs (no dials in the window) are pushed to the end. */
   perSetter: ScorecardSetterRow[];
@@ -224,25 +231,223 @@ export interface BookingsData {
  * by design — callers (e.g. the cron's "yesterday in team tz" calc)
  * own the boundary computation.
  */
+/**
+ * Per-setter dial/connect counts for a rolling range. Rollup-backed when the
+ * team's backfill has completed: full interior UTC days come from
+ * setterDailyStats rows; the two partial edge days come from bounded raw
+ * event reads (≤1 day each) — byte-identical totals to a full event scan,
+ * without scanning the range's events. Legacy full scan for pre-backfill
+ * teams. Key "" = unattributed.
+ */
+async function readDialConnectCounts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: {
+    teamId: string;
+    rangeStart: number;
+    rangeEnd: number;
+    rollupsReady: boolean;
+  },
+): Promise<Map<string, { dials: number; connects: number }>> {
+  const counts = new Map<string, { dials: number; connects: number }>();
+  const bump = (sid: string, kind: "dials" | "connects", n: number) => {
+    if (n === 0) return;
+    const row = counts.get(sid) ?? { dials: 0, connects: 0 };
+    row[kind] += n;
+    counts.set(sid, row);
+  };
+
+  const scanEvents = async (winStart: number, winEnd: number) => {
+    if (winStart >= winEnd) return;
+    for (const [type, kind] of [
+      ["dial_outbound", "dials"],
+      ["connected", "connects"],
+    ] as const) {
+      const events: Doc<"setterLeadEvents">[] = await ctx.db
+        .query("setterLeadEvents")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_team_and_type_and_time", (q: any) =>
+          q
+            .eq("teamId", args.teamId)
+            .eq("eventType", type)
+            .gte("occurredAt", winStart)
+            .lt("occurredAt", winEnd),
+        )
+        .collect();
+      for (const e of events) bump(e.ghlUserId ?? "", kind, 1);
+    }
+  };
+
+  if (!args.rollupsReady) {
+    await scanEvents(args.rangeStart, args.rangeEnd);
+    return counts;
+  }
+
+  // Interior full UTC days ↔ rollups; partial edge days ↔ raw events.
+  const interiorStart = Math.ceil(args.rangeStart / DAY_MS) * DAY_MS;
+  const interiorEnd = Math.floor(args.rangeEnd / DAY_MS) * DAY_MS;
+
+  if (interiorStart >= interiorEnd) {
+    // Range doesn't span a full UTC day — pure event scan (≤2 days).
+    await scanEvents(args.rangeStart, args.rangeEnd);
+    return counts;
+  }
+
+  const rows = await readDailyStatsRange(
+    ctx,
+    args.teamId,
+    dayKeyOf(interiorStart),
+    dayKeyOf(interiorEnd - DAY_MS),
+  );
+  for (const r of rows) {
+    bump(r.setterId, "dials", r.dials);
+    bump(r.setterId, "connects", r.connects);
+  }
+  await scanEvents(args.rangeStart, interiorStart);
+  await scanEvents(interiorEnd, args.rangeEnd);
+  return counts;
+}
+
+/**
+ * Dial-cadence aggregation from raw dial events, with an explicit range
+ * clamp + document cap so the scan can never blow the transaction budget.
+ * Shared by computeScorecard (opt-in) and the public getCadence query.
+ */
+export async function computeCadence(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  args: {
+    teamId: string;
+    rangeStart: number;
+    rangeEnd: number;
+    clampDays: number;
+    cap: number;
+  },
+): Promise<{
+  bySetter: Map<string, ScorecardSetterCadence>;
+  clampedToDays?: number;
+  sampled: boolean;
+}> {
+  const clampMs = args.clampDays * 24 * 60 * 60 * 1000;
+  const start = Math.max(args.rangeStart, args.rangeEnd - clampMs);
+  const clampedToDays = start > args.rangeStart ? args.clampDays : undefined;
+
+  const events: Doc<"setterLeadEvents">[] = await ctx.db
+    .query("setterLeadEvents")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_type_and_time", (q: any) =>
+      q
+        .eq("teamId", args.teamId)
+        .eq("eventType", "dial_outbound")
+        .gte("occurredAt", start)
+        .lt("occurredAt", args.rangeEnd),
+    )
+    .take(args.cap);
+  const sampled = events.length >= args.cap;
+
+  interface PerLead {
+    dialCount: number;
+    firstDialAt: number;
+    lastDialAt: number;
+  }
+  const map = new Map<string, Map<string, PerLead>>();
+  for (const ev of events) {
+    if (!ev.ghlUserId) continue;
+    let leadMap = map.get(ev.ghlUserId);
+    if (!leadMap) {
+      leadMap = new Map();
+      map.set(ev.ghlUserId, leadMap);
+    }
+    const existing = leadMap.get(ev.ghlContactId);
+    if (existing) {
+      existing.dialCount += 1;
+      if (ev.occurredAt < existing.firstDialAt) existing.firstDialAt = ev.occurredAt;
+      if (ev.occurredAt > existing.lastDialAt) existing.lastDialAt = ev.occurredAt;
+    } else {
+      leadMap.set(ev.ghlContactId, {
+        dialCount: 1,
+        firstDialAt: ev.occurredAt,
+        lastDialAt: ev.occurredAt,
+      });
+    }
+  }
+
+  const bySetter = new Map<string, ScorecardSetterCadence>();
+  for (const [setterId, leadMap] of map) {
+    const values = Array.from(leadMap.values());
+    const leadsWithDials = values.length;
+    let avgDialsPerLead: number | null = null;
+    let pctLeadsThreeOrMoreAttempts: number | null = null;
+    if (leadsWithDials >= 5) {
+      const totalDials = values.reduce((s, v) => s + v.dialCount, 0);
+      avgDialsPerLead = totalDials / leadsWithDials;
+      pctLeadsThreeOrMoreAttempts =
+        values.filter((v) => v.dialCount >= 3).length / leadsWithDials;
+    }
+    const pursuitDays = values
+      .filter((v) => v.dialCount >= 2)
+      .map((v) => (v.lastDialAt - v.firstDialAt) / (24 * 60 * 60_000))
+      .sort((a, b) => a - b);
+    const medianPursuitDays =
+      pursuitDays.length > 0
+        ? pursuitDays[Math.floor(pursuitDays.length * 0.5)]
+        : null;
+    bySetter.set(setterId, {
+      leadsWithDials,
+      avgDialsPerLead,
+      pctLeadsThreeOrMoreAttempts,
+      medianPursuitDays,
+    });
+  }
+  return { bySetter, clampedToDays, sampled };
+}
+
+export interface ScorecardOpts {
+  /** Cadence needs raw dial-event scans — callers opt in with an explicit
+   *  clamp + cap so the read can never blow the 32k-doc transaction budget.
+   *  "none" (default) skips the event scan entirely; the Overview UI gets
+   *  cadence from the dedicated getCadence query instead. */
+  cadence?: "none" | { clampDays: number; cap: number };
+  /** Evidence show-rate waterfall — extra bounded reads; the Overview UI
+   *  gets it from the dedicated getShowRateEvidence query instead. */
+  evidence?: boolean;
+  /** Caller already read the in-range leads (getOverview needs them for its
+   *  extras) — pass them through so the fat leads table is read ONCE per
+   *  transaction, not twice. */
+  preloadedLeads?: Doc<"setterLeads">[];
+}
+
 export async function computeScorecard(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ctx: { db: any },
   args: { teamId: string; rangeStart: number; rangeEnd: number },
+  opts: ScorecardOpts = {},
 ): Promise<ScorecardData> {
-    // Pull every lead whose dateAdded falls in [rangeStart, rangeEnd).
-    // For a single team's daily window this is a small set (typical
-    // ~50 leads/day). Cast collect() result since the loose ctx.db: any
-    // type erases the inference Convex would give us.
-    const leads: Doc<"setterLeads">[] = await ctx.db
-      .query("setterLeads")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_team_and_date_added", (q: any) =>
-        q
-          .eq("teamId", args.teamId)
-          .gte("dateAdded", args.rangeStart)
-          .lt("dateAdded", args.rangeEnd),
-      )
-      .collect();
+    const cadenceOpt = opts.cadence ?? "none";
+
+    // Team config first: flow-type gating + the rollup migration gate
+    // (setterRollupsBackfilledAt) both need it before aggregation.
+    const team = (await ctx.db.get(args.teamId as Id<"teams">)) as
+      | Doc<"teams">
+      | null;
+    const flowTypeResolved = resolveFlowType(team);
+    const rollupsReady = team?.setterRollupsBackfilledAt !== undefined;
+
+    // Pull every lead whose dateAdded falls in [rangeStart, rangeEnd) —
+    // unless the caller already read them (getOverview passes its copy so
+    // the leads table is read once per transaction, not twice).
+    const leads: Doc<"setterLeads">[] =
+      opts.preloadedLeads ??
+      (await ctx.db
+        .query("setterLeads")
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .withIndex("by_team_and_date_added", (q: any) =>
+          q
+            .eq("teamId", args.teamId)
+            .gte("dateAdded", args.rangeStart)
+            .lt("dateAdded", args.rangeEnd),
+        )
+        .collect());
 
     const totalLeads = leads.length;
     const connectedLeads = leads.filter((l) => l.isConnected).length;
@@ -270,18 +475,19 @@ export async function computeScorecard(
       speedsMs.length > 0 ? speedsMs[Math.floor(speedsMs.length * 0.9)] : null;
 
     // Per-setter aggregation. We need rep names — fetch the rep list
-    // once and look up by ghlUserId.
+    // once and look up by ghlUserId. Guarded take: no realistic team has
+    // 500+ reps; the guard keeps a pathological table from blowing budgets.
     const reps: Doc<"setterReps">[] = await ctx.db
       .query("setterReps")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
-      .collect();
+      .take(500);
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
     type AccumRow = ScorecardSetterRow & {
       _speeds: number[];
       _noShowCount: number;
-      _ownedContacts: string[];
+      _ownedLeads: Array<{ booked: boolean }>;
     };
     const perSetterMap = new Map<string, AccumRow>();
 
@@ -316,7 +522,7 @@ export async function computeScorecard(
           dialsPerConnect: null,
           _speeds: [],
           _noShowCount: 0,
-          _ownedContacts: [],
+          _ownedLeads: [],
         };
         perSetterMap.set(setterId, created);
         row = created;
@@ -335,131 +541,84 @@ export async function computeScorecard(
         lead.assignedToGhlUserId ??
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (lead as any).firstDialByUserId;
-      if (owner) ensureRow(owner)._ownedContacts.push(lead.ghlContactId);
+      // "Booked" via the lead's appointmentCount snapshot (maintained by
+      // recomputeLeadAppointmentCounts, excludes Cancelled/Invalid) — this
+      // replaces the old ALL-TIME setterAppointments scan.
+      if (owner) {
+        ensureRow(owner)._ownedLeads.push({ booked: lead.appointmentCount > 0 });
+      }
     }
 
-    // Build a ghlContactId → dateAdded lookup for the in-range leads so
-    // we can compute per-setter speed-to-lead from dial events below.
-    const leadDateByContactId = new Map<string, number>();
+    // Pass 2: dials + connects attribution by the actor. Rollup-backed
+    // when the team's rollup backfill has completed (reads ≤ days×setters
+    // docs at ANY range); legacy event scan otherwise (pre-backfill teams).
+    const counts = await readDialConnectCounts(ctx, {
+      teamId: args.teamId,
+      rangeStart: args.rangeStart,
+      rangeEnd: args.rangeEnd,
+      rollupsReady,
+    });
+    for (const [setterId, c] of counts) {
+      if (setterId === "") continue; // unattributed — excluded from per-setter rows (as before)
+      const row = ensureRow(setterId);
+      row.dialCount += c.dials;
+      row.connectedCount += c.connects;
+    }
+
+    // Per-setter speed-to-lead from LEAD SNAPSHOTS (firstDialAt +
+    // firstDialByUserId, maintained with min-time semantics in the sink) —
+    // no event scan. Equivalent to the old event-join for in-range leads:
+    // a lead added in-range can't have been first-dialed before rangeStart,
+    // and dials after rangeEnd are excluded to match the old behavior.
     for (const lead of leads) {
-      leadDateByContactId.set(lead.ghlContactId, lead.dateAdded);
-    }
-
-    // Pass 2: dials + connects attribution by the actor (ghlUserId on
-    // the event), NOT by lead assignment. This fixes a bug where setters
-    // who dial leads they aren't assigned to — including unassigned
-    // leads, which is most of them for inbound-Calendly funnels —
-    // showed up as having made zero dials.
-    const dialEvents: Doc<"setterLeadEvents">[] = await ctx.db
-      .query("setterLeadEvents")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_team_and_type_and_time", (q: any) =>
-        q
-          .eq("teamId", args.teamId)
-          .eq("eventType", "dial_outbound")
-          .gte("occurredAt", args.rangeStart)
-          .lt("occurredAt", args.rangeEnd),
-      )
-      .collect();
-
-    const connectedEvents: Doc<"setterLeadEvents">[] = await ctx.db
-      .query("setterLeadEvents")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_team_and_type_and_time", (q: any) =>
-        q
-          .eq("teamId", args.teamId)
-          .eq("eventType", "connected")
-          .gte("occurredAt", args.rangeStart)
-          .lt("occurredAt", args.rangeEnd),
-      )
-      .collect();
-
-    // Earliest dial per contact, attributed to whoever placed it. Powers
-    // per-setter speed-to-lead (we credit the dialer who first reached
-    // the lead, not whoever the lead happened to be assigned to).
-    const firstDialByContact = new Map<
-      string,
-      { ghlUserId: string; occurredAt: number }
-    >();
-
-    for (const ev of dialEvents) {
-      if (!ev.ghlUserId) continue;
-      ensureRow(ev.ghlUserId).dialCount += 1;
-
-      const existing = firstDialByContact.get(ev.ghlContactId);
-      if (!existing || ev.occurredAt < existing.occurredAt) {
-        firstDialByContact.set(ev.ghlContactId, {
-          ghlUserId: ev.ghlUserId,
-          occurredAt: ev.occurredAt,
-        });
+      const by = (lead as any).firstDialByUserId as string | undefined;
+      if (
+        by !== undefined &&
+        typeof lead.firstDialAt === "number" &&
+        lead.firstDialAt < args.rangeEnd
+      ) {
+        ensureRow(by)._speeds.push(lead.firstDialAt - lead.dateAdded);
       }
     }
 
-    for (const ev of connectedEvents) {
-      if (!ev.ghlUserId) continue;
-      ensureRow(ev.ghlUserId).connectedCount += 1;
+    // Dashboard Phase 2 — dial cadence aggregation. Needs raw dial events;
+    // callers opt in with an explicit clamp + cap (the Overview dashboard
+    // uses the dedicated getCadence query instead).
+    let cadenceClampedToDays: number | undefined;
+    let cadenceSampled = false;
+    let cadenceBySetter = new Map<string, ScorecardSetterCadence>();
+    if (cadenceOpt !== "none") {
+      const cadence = await computeCadence(ctx, {
+        teamId: args.teamId,
+        rangeStart: args.rangeStart,
+        rangeEnd: args.rangeEnd,
+        clampDays: cadenceOpt.clampDays,
+        cap: cadenceOpt.cap,
+      });
+      cadenceClampedToDays = cadence.clampedToDays;
+      cadenceSampled = cadence.sampled;
+      cadenceBySetter = cadence.bySetter;
     }
 
-    // Speed-to-lead: for each first-dial-on-a-lead, attribute the gap
-    // (lead.dateAdded → first dial) to the dialer. Only counts leads
-    // whose dateAdded is in the same window (matches the team-level
-    // speed-to-lead calculation done above).
-    for (const [ghlContactId, first] of firstDialByContact) {
-      const dateAdded = leadDateByContactId.get(ghlContactId);
-      if (dateAdded === undefined) continue;
-      ensureRow(first.ghlUserId)._speeds.push(first.occurredAt - dateAdded);
-    }
-
-    // Dashboard Phase 2 — dial cadence aggregation. For each setter, group
-    // their dial events by lead (ghlContactId) and compute per-lead stats.
-    // The aggregator is keyed by (setter, lead) so multiple setters dialing
-    // the same lead get independent metrics.
-    interface PerLeadCadence {
-      dialCount: number;
-      firstDialAt: number;
-      lastDialAt: number;
-    }
-    const cadenceMap = new Map<string, Map<string, PerLeadCadence>>();
-    for (const ev of dialEvents) {
-      if (!ev.ghlUserId) continue;
-      let leadMap = cadenceMap.get(ev.ghlUserId);
-      if (!leadMap) {
-        leadMap = new Map();
-        cadenceMap.set(ev.ghlUserId, leadMap);
-      }
-      const existing = leadMap.get(ev.ghlContactId);
-      if (existing) {
-        existing.dialCount += 1;
-        if (ev.occurredAt < existing.firstDialAt) {
-          existing.firstDialAt = ev.occurredAt;
-        }
-        if (ev.occurredAt > existing.lastDialAt) {
-          existing.lastDialAt = ev.occurredAt;
-        }
-      } else {
-        leadMap.set(ev.ghlContactId, {
-          dialCount: 1,
-          firstDialAt: ev.occurredAt,
-          lastDialAt: ev.occurredAt,
-        });
-      }
-    }
-
-    // Phase 2 — Appointments aggregation. We attribute appointments by
-    // bookedByGhlUserId (the setter who booked it), filtered by bookedAt
-    // within the date range. Cancelled and Invalid don't count.
-    const appts: Doc<"setterAppointments">[] = await ctx.db
+    // Phase 2 — Appointments aggregation. Bookings with bookedAt in range,
+    // read via the by_team_and_booked_at index — bounded by the range, NOT
+    // the org's lifetime (the old all-time by_team collect grew forever).
+    const rangeAppts: Doc<"setterAppointments">[] = await ctx.db
       .query("setterAppointments")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .withIndex("by_team_and_booked_at", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .gte("bookedAt", args.rangeStart)
+          .lt("bookedAt", args.rangeEnd),
+      )
       .collect();
 
     let totalAppointments = 0;
     let totalShowed = 0;
     let totalNoShow = 0;
 
-    for (const apt of appts) {
-      if (apt.bookedAt < args.rangeStart || apt.bookedAt >= args.rangeEnd) continue;
+    for (const apt of rangeAppts) {
       if (apt.status === "Cancelled" || apt.status === "Invalid") continue;
       totalAppointments += 1;
       if (apt.status === "Showed") totalShowed += 1;
@@ -478,38 +637,23 @@ export async function computeScorecard(
     const settledTotal = totalShowed + totalNoShow;
     const showRate = settledTotal > 0 ? totalShowed / settledTotal : null;
 
-    // Lead → booking linkage for set rates. A lead counts as "booked" when
-    // it has ≥1 non-cancelled appointment EVER (a lead added this week and
-    // booked next week still converted). Company set rate = in-range leads
-    // that booked ÷ in-range leads — capped at 100% by construction.
-    const bookedContactIds = new Set<string>();
-    for (const apt of appts) {
-      if (apt.status === "Cancelled" || apt.status === "Invalid") continue;
-      bookedContactIds.add(apt.ghlContactId);
-    }
-    const leadsBooked = leads.filter((l) =>
-      bookedContactIds.has(l.ghlContactId),
-    ).length;
+    // Lead → booking linkage for set rates, via the appointmentCount
+    // snapshot on each lead (all-time, excludes Cancelled/Invalid — same
+    // semantics as the old bookedContactIds set, zero appointment reads).
+    const leadsBooked = leads.filter((l) => l.appointmentCount > 0).length;
     const companySetRate = totalLeads > 0 ? leadsBooked / totalLeads : null;
 
-    // Team config is needed BEFORE the per-setter mapping now: the lead
-    // set rate is gated on the resolved booking-flow type (per-setter set
-    // rate is meaningless for self-book funnels).
-    const team = (await ctx.db.get(args.teamId as Id<"teams">)) as
-      | Doc<"teams">
-      | null;
-    const flowTypeResolved = resolveFlowType(team);
-
-    // Evidence-based show rate (waterfall) — reuses the already-collected
-    // appointment rows.
-    const showRateEvidence = await computeShowRateEvidence(ctx, {
-      teamId: args.teamId,
-      rangeStart: args.rangeStart,
-      rangeEnd: args.rangeEnd,
-      appts,
-    });
+    // Evidence-based show rate (waterfall) — opt-in; it self-fetches
+    // bounded, startTime-indexed candidates.
+    const showRateEvidence = opts.evidence
+      ? await computeShowRateEvidence(ctx, {
+          teamId: args.teamId,
+          rangeStart: args.rangeStart,
+          rangeEnd: args.rangeEnd,
+        })
+      : undefined;
     const evidenceBySetter = new Map(
-      showRateEvidence.perSetter.map((p) => [p.ghlUserId, p]),
+      (showRateEvidence?.perSetter ?? []).map((p) => [p.ghlUserId, p]),
     );
 
     const perSetter: ScorecardSetterRow[] = Array.from(perSetterMap.values()).map((row) => {
@@ -524,39 +668,15 @@ export async function computeScorecard(
       const settled = row.showedCount + row._noShowCount;
       const setterShowRate = settled > 0 ? row.showedCount / settled : null;
 
-      // Per-setter cadence aggregation. Pull from the cadenceMap built
-      // above. Small-sample suppression for the rate-style metrics.
-      const leadMap = cadenceMap.get(row.ghlUserId) ?? new Map();
-      const leadCadenceValues: PerLeadCadence[] = Array.from(leadMap.values());
-      const leadsWithDials = leadCadenceValues.length;
-
-      let avgDialsPerLead: number | null = null;
-      let pctLeadsThreeOrMoreAttempts: number | null = null;
-      if (leadsWithDials >= 5) {
-        const totalDials = leadCadenceValues.reduce(
-          (s, v) => s + v.dialCount,
-          0,
-        );
-        avgDialsPerLead = totalDials / leadsWithDials;
-        pctLeadsThreeOrMoreAttempts =
-          leadCadenceValues.filter((v) => v.dialCount >= 3).length /
-          leadsWithDials;
-      }
-
-      const pursuitDays: number[] = leadCadenceValues
-        .filter((v) => v.dialCount >= 2)
-        .map((v) => (v.lastDialAt - v.firstDialAt) / (24 * 60 * 60_000));
-      pursuitDays.sort((a, b) => a - b);
-      const medianPursuitDays =
-        pursuitDays.length > 0
-          ? pursuitDays[Math.floor(pursuitDays.length * 0.5)]
-          : null;
-
-      const cadence: ScorecardSetterCadence = {
-        leadsWithDials,
-        avgDialsPerLead,
-        pctLeadsThreeOrMoreAttempts,
-        medianPursuitDays,
+      // Per-setter cadence — from the shared computeCadence helper (only
+      // populated when the caller opted into the event scan).
+      const cadence: ScorecardSetterCadence = cadenceBySetter.get(
+        row.ghlUserId,
+      ) ?? {
+        leadsWithDials: 0,
+        avgDialsPerLead: null,
+        pctLeadsThreeOrMoreAttempts: null,
+        medianPursuitDays: null,
       };
 
       // Dials-per-connect — productivity ratio. Suppressed below 3
@@ -567,10 +687,8 @@ export async function computeScorecard(
 
       // Lead set rate: owned-lead conversion. Gated on flow type (self-book
       // funnels don't have setter-driven booking) and small samples.
-      const ownedLeadCount = row._ownedContacts.length;
-      const ownedLeadsBooked = row._ownedContacts.filter((c) =>
-        bookedContactIds.has(c),
-      ).length;
+      const ownedLeadCount = row._ownedLeads.length;
+      const ownedLeadsBooked = row._ownedLeads.filter((l) => l.booked).length;
       const leadSetRate =
         flowTypeResolved === "self_book" ||
         ownedLeadCount < LEAD_SET_RATE_MIN_LEADS
@@ -646,6 +764,8 @@ export async function computeScorecard(
       leadsBooked,
       companySetRate,
       showRateEvidence,
+      cadenceClampedToDays,
+      cadenceSampled: cadenceSampled || undefined,
       perSetter,
       closerSide,
       bookings,
@@ -837,75 +957,45 @@ async function computeBookingsFromCalendarEvents(
     byDayOfWeek[dow]++;
   }
 
-  // Pre-call qualification + per-setter attribution. Both need per-contact
-  // event lookups. Batch the reads to avoid blowing the 16 MiB limit on
-  // teams with lots of bookings.
-  //
-  // Pre-call: fetch all dial_outbound + sms_outbound events for the team
-  // in the booking-range lookback window, group by ghlContactId →
-  // earliest event timestamp. Then check per-booking in memory.
-  const BOOKING_LOOKBACK_MS = 60 * 24 * 60 * 60_000;
-  const lookbackStart = args.rangeStart - BOOKING_LOOKBACK_MS;
-  const [dials, smsOut] = await Promise.all([
-    ctx.db
-      .query("setterLeadEvents")
-      .withIndex("by_team_and_type_and_time", (q: any) =>
-        q
-          .eq("teamId", args.teamId)
-          .eq("eventType", "dial_outbound")
-          .gte("occurredAt", lookbackStart)
-          .lt("occurredAt", args.rangeEnd),
-      )
-      .take(50_000),
-    ctx.db
-      .query("setterLeadEvents")
-      .withIndex("by_team_and_type_and_time", (q: any) =>
-        q
-          .eq("teamId", args.teamId)
-          .eq("eventType", "sms_outbound")
-          .gte("occurredAt", lookbackStart)
-          .lt("occurredAt", args.rangeEnd),
-      )
-      .take(50_000),
-  ]);
-  const earliestTouchByContact = new Map<string, number>();
-  for (const ev of [...dials, ...smsOut] as Array<{
-    ghlContactId: string;
-    occurredAt: number;
-  }>) {
-    const prev = earliestTouchByContact.get(ev.ghlContactId);
-    if (prev === undefined || ev.occurredAt < prev) {
-      earliestTouchByContact.set(ev.ghlContactId, ev.occurredAt);
+  // Pre-call qualification + per-setter attribution — from LEAD SNAPSHOTS.
+  // Each matched booking carries its setterLeadId, so we read the lead docs
+  // (bounded by the bookings count) instead of scanning the team's dial+SMS
+  // events over a 60-day lookback with two take(50_000)s — which was the
+  // single worst read in the metrics path (65-130k docs at 90d on the
+  // largest org, past the 32k/transaction scan limit on its own).
+  // firstDialAt / firstSmsOutboundAt / firstDialByUserId are maintained with
+  // min-time semantics in the sink and repaired by the rollup backfill.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const leadById = new Map<string, any>();
+  for (const b of matcher.bookings) {
+    const key = String(b.setterLeadId);
+    if (!leadById.has(key)) {
+      leadById.set(key, await ctx.db.get(b.setterLeadId));
     }
   }
 
   let preCallQualifiedCount = 0;
   for (const booking of matcher.bookings) {
-    const earliest = earliestTouchByContact.get(booking.ghlContactId);
-    if (earliest !== undefined && earliest < booking.calendarEventCreationTime) {
+    const lead = leadById.get(String(booking.setterLeadId));
+    if (!lead) continue;
+    const earliest = Math.min(
+      lead.firstDialAt ?? Infinity,
+      lead.firstSmsOutboundAt ?? Infinity,
+    );
+    if (earliest < booking.calendarEventCreationTime) {
       preCallQualifiedCount++;
     }
   }
   const preCallQualificationRate =
     total > 0 ? preCallQualifiedCount / total : null;
 
-  // Per-setter attribution. Group dial events by ghlContactId → first dialer
-  // (the lead's primary setter, same pattern as firstDialByContact above).
-  // For booked leads, count credit per primary setter.
-  const firstDialerByContact = new Map<string, string>();
-  for (const ev of dials as Array<{
-    ghlContactId: string;
-    ghlUserId?: string;
-    occurredAt: number;
-  }>) {
-    if (!ev.ghlUserId) continue;
-    const existing = firstDialerByContact.get(ev.ghlContactId);
-    if (!existing) firstDialerByContact.set(ev.ghlContactId, ev.ghlUserId);
-  }
+  // Per-setter attribution: the lead's first dialer (snapshot), falling
+  // back to CRM assignment — same semantics as the old event-derived map.
   const perSetterCounts = new Map<string, number>();
   for (const booking of matcher.bookings) {
+    const lead = leadById.get(String(booking.setterLeadId));
     const setterId =
-      firstDialerByContact.get(booking.ghlContactId) ??
+      (lead?.firstDialByUserId as string | undefined) ??
       booking.leadAssignedToGhlUserId ??
       null;
     if (!setterId) continue;
@@ -1052,15 +1142,13 @@ async function computeCloserSideShowRate(
  * arrive with manual statuses (tier 1 often resolves), Close meetings all
  * arrive "Confirmed" (tiers 2-3 do the work via closer-call evidence).
  */
-async function computeShowRateEvidence(
+export async function computeShowRateEvidence(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ctx: { db: any },
   args: {
     teamId: string;
     rangeStart: number;
     rangeEnd: number;
-    /** ALL of the team's setterAppointments rows (caller already has them). */
-    appts: Doc<"setterAppointments">[];
   },
 ): Promise<ShowRateEvidence> {
   const now = Date.now();
@@ -1074,10 +1162,19 @@ async function computeShowRateEvidence(
 
   // Candidates: startTime (NOT bookedAt — numbers must not mutate weeks
   // later as future bookings settle) in range, grace elapsed, not cancelled.
-  const candidates = args.appts.filter(
+  // Read via the startTime index — bounded by the range, never all-time.
+  const inRange: Doc<"setterAppointments">[] = await ctx.db
+    .query("setterAppointments")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_start_time", (q: any) =>
+      q
+        .eq("teamId", args.teamId)
+        .gte("startTime", args.rangeStart)
+        .lt("startTime", args.rangeEnd),
+    )
+    .collect();
+  const candidates = inRange.filter(
     (a) =>
-      a.startTime >= args.rangeStart &&
-      a.startTime < args.rangeEnd &&
       a.status !== "Cancelled" &&
       a.status !== "Invalid" &&
       a.startTime <= now - SHOW_GRACE_MS,
@@ -1281,8 +1378,23 @@ export const getScorecardData = internalQuery({
     teamId: v.id("teams"),
     rangeStart: v.number(),
     rangeEnd: v.number(),
+    // Optional opt-ins (see ScorecardOpts) — the cron omits them (1-day
+    // windows don't render cadence/evidence); tests + ad-hoc runs use them.
+    cadenceClampDays: v.optional(v.number()),
+    cadenceCap: v.optional(v.number()),
+    evidence: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<ScorecardData> => {
-    return await computeScorecard(ctx, args);
+    return await computeScorecard(
+      ctx,
+      { teamId: args.teamId, rangeStart: args.rangeStart, rangeEnd: args.rangeEnd },
+      {
+        cadence:
+          args.cadenceClampDays !== undefined
+            ? { clampDays: args.cadenceClampDays, cap: args.cadenceCap ?? 25_000 }
+            : "none",
+        evidence: args.evidence ?? false,
+      },
+    );
   },
 });

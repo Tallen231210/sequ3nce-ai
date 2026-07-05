@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // ============================================================================
 // Setter Data — sync-side mutations.
@@ -88,6 +89,15 @@ export const markFastBackfillComplete = internalMutation({
       // month 4 backwards via the cron extender.
       deepBackfillLastCompletedMonth: 3,
       lastSyncedAt: now,
+    });
+
+    // Kick the daily-stats rollup backfill now that the initial event
+    // ingest is complete (fires for BOTH providers — the GHL fastBackfill
+    // and the Close backfill call this). Idempotent per-day recounts; sets
+    // teams.setterRollupsBackfilledAt when done, which flips the scorecard
+    // from raw event scans to rollup reads.
+    await ctx.scheduler.runAfter(0, internal.setterRollups.backfillRollupsStep, {
+      teamId: installation.teamId,
     });
   },
 });

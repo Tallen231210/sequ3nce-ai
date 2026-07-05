@@ -9,6 +9,9 @@
  */
 
 import type * as _debugTestSetterScorecard from "../_debugTestSetterScorecard.js";
+import type * as _probeMarker from "../_probeMarker.js";
+import type * as _probeScale from "../_probeScale.js";
+import type * as _probeScaleClose from "../_probeScaleClose.js";
 import type * as adSpend from "../adSpend.js";
 import type * as adSpendInternal from "../adSpendInternal.js";
 import type * as admin from "../admin.js";
@@ -119,6 +122,7 @@ import type * as setterGhlOauthActions from "../setterGhlOauthActions.js";
 import type * as setterGhlSync from "../setterGhlSync.js";
 import type * as setterGhlSyncMutations from "../setterGhlSyncMutations.js";
 import type * as setterGhlWebhooks from "../setterGhlWebhooks.js";
+import type * as setterRollups from "../setterRollups.js";
 import type * as setterScorecardBackfill from "../setterScorecardBackfill.js";
 import type * as setterScorecardConfig from "../setterScorecardConfig.js";
 import type * as sharedLinks from "../sharedLinks.js";
@@ -140,6 +144,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   _debugTestSetterScorecard: typeof _debugTestSetterScorecard;
+  _probeMarker: typeof _probeMarker;
+  _probeScale: typeof _probeScale;
+  _probeScaleClose: typeof _probeScaleClose;
   adSpend: typeof adSpend;
   adSpendInternal: typeof adSpendInternal;
   admin: typeof admin;
@@ -250,6 +257,7 @@ declare const fullApi: ApiFromModules<{
   setterGhlSync: typeof setterGhlSync;
   setterGhlSyncMutations: typeof setterGhlSyncMutations;
   setterGhlWebhooks: typeof setterGhlWebhooks;
+  setterRollups: typeof setterRollups;
   setterScorecardBackfill: typeof setterScorecardBackfill;
   setterScorecardConfig: typeof setterScorecardConfig;
   sharedLinks: typeof sharedLinks;

@@ -37,8 +37,10 @@ interface OverviewTabProps {
  *   4. Action queue (full width)
  *   5. Two-column: How leads booked | Where traffic came from (Hyros)
  *
- * All data comes from a single getOverview query — the queries layer
- * fans out internally so the UI stays simple.
+ * Data is composed from several queries — each gets its own Convex read
+ * budget (getOverview alone used to brush the 32k-doc transaction limit on
+ * large orgs): getOverview (leads + rollup counts), getShowRateEvidence
+ * (waterfall), getCadence (raw dial-event distribution, clamped).
  */
 export function OverviewTab({
   rangeStart,
@@ -49,6 +51,14 @@ export function OverviewTab({
   const { clerkId } = useTeam();
   const data = useQuery(
     api.setterData.getOverview,
+    clerkId ? { clerkId, rangeStart, rangeEnd } : "skip",
+  );
+  const evidence = useQuery(
+    api.setterData.getShowRateEvidence,
+    clerkId ? { clerkId, rangeStart, rangeEnd } : "skip",
+  );
+  const cadence = useQuery(
+    api.setterData.getCadence,
     clerkId ? { clerkId, rangeStart, rangeEnd } : "skip",
   );
   const pipelines = useQuery(
@@ -93,15 +103,30 @@ export function OverviewTab({
             flowType={data.bookings.flowType}
             flowOverride={data.bookings.flowOverride}
           />
-          <KpiStrip data={data} onUntouchedClick={() => onDrillToLeads("untouched")} />
+          <KpiStrip
+            data={{ ...data, showRateEvidence: evidence ?? undefined }}
+            onUntouchedClick={() => onDrillToLeads("untouched")}
+          />
           <FunnelChart data={data} insight={data.funnelInsight} />
           <BookingsPanel bookings={data.bookings} insight={data.bookingsInsight} />
           <LeadAgeDecayCurve rangeStart={rangeStart} rangeEnd={rangeEnd} />
           <BestTimeToCallHeatmap rangeStart={rangeStart} rangeEnd={rangeEnd} />
-          <DialCadencePanel
-            perSetter={data.perSetter}
-            insight={data.cadenceInsight}
-          />
+          {cadence && cadence.perSetter.length > 0 && (
+            <DialCadencePanel
+              perSetter={cadence.perSetter.map((c) => {
+                const sc = data.perSetter.find(
+                  (r) => r.ghlUserId === c.ghlUserId,
+                );
+                return {
+                  ...c,
+                  dialsPerConnect: sc?.dialsPerConnect ?? null,
+                  connectedCount: sc?.connectedCount ?? 0,
+                };
+              })}
+              insight={cadence.insight}
+              clampedToDays={cadence.clampedToDays}
+            />
+          )}
           <CoverageGapPanel />
           {pipelines && pipelines.length > 0 && (
             <PipelineFunnel pipelines={pipelines} />

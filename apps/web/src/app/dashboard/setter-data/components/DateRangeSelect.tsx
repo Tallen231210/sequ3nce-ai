@@ -8,12 +8,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// Max preset is 90 days: metric reads are budgeted (Convex caps a
+// transaction at 32k docs / 16 MiB) for ≤90d on the largest orgs. A
+// 12-month option would need lead-count rollups first (Phase 2).
 const PRESETS: Array<{ id: string; label: string; days: number }> = [
   { id: "today", label: "Today", days: 1 },
   { id: "7d", label: "Last 7 days", days: 7 },
   { id: "30d", label: "Last 30 days", days: 30 },
   { id: "90d", label: "Last 90 days", days: 90 },
-  { id: "365d", label: "Last 12 months", days: 365 },
 ];
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;

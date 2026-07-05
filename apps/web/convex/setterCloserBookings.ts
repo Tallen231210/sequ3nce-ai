@@ -72,14 +72,18 @@ export async function buildBookingMatcherIndex(
     return e.attendees.some((a) => a.isOrganizer !== true);
   });
 
-  // Build email → lead lookup. by_team collect is the only available scan;
-  // setterLeads doesn't have an email index yet (see
-  // setter-data-wider-range-showrate memo for deferred follow-up).
+  // Build email → lead lookup. Capped at 20k docs, newest-first — this
+  // path only serves the calendarEvents fallback (teams with ≥10 in-range
+  // CRM appointments never reach it), and an uncapped collect over a
+  // 100k-lead org would blow the 32k-doc transaction budget on its own.
+  // Durable fix if a big team ever needs this path: the email index (see
+  // setter-data-wider-range-showrate memo).
   const leads = (await ctx.db
     .query("setterLeads")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
-    .collect()) as Doc<"setterLeads">[];
+    .withIndex("by_team_and_date_added", (q: any) => q.eq("teamId", teamId))
+    .order("desc")
+    .take(20_000)) as Doc<"setterLeads">[];
   const leadsByNormEmail = new Map<string, Doc<"setterLeads">>();
   for (const lead of leads) {
     const norm = normalizeEmail(lead.email);

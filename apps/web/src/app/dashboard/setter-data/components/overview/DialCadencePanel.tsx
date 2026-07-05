@@ -22,6 +22,9 @@ interface SetterCadenceRow {
 interface DialCadencePanelProps {
   perSetter: SetterCadenceRow[];
   insight?: PanelInsight | null;
+  /** Set when cadence was computed on a clamped trailing window (wide
+   *  ranges are too event-heavy to scan in full) — shown as a footnote. */
+  clampedToDays?: number | null;
 }
 
 /**
@@ -31,7 +34,11 @@ interface DialCadencePanelProps {
  * backend with null aggregates) appear at the bottom with "—" and a
  * footnote.
  */
-export function DialCadencePanel({ perSetter, insight }: DialCadencePanelProps) {
+export function DialCadencePanel({
+  perSetter,
+  insight,
+  clampedToDays,
+}: DialCadencePanelProps) {
   const populated = perSetter
     .filter((s) => s.cadence.avgDialsPerLead !== null)
     .sort(
@@ -57,6 +64,7 @@ export function DialCadencePanel({ perSetter, insight }: DialCadencePanelProps) 
               Persistence patterns per setter. Higher dials/lead and
               %≥3-attempts mean they keep trying. Low numbers mean they
               give up fast.
+              {clampedToDays ? ` Computed on the last ${clampedToDays} days.` : ""}
             </p>
           </div>
           <Phone className="h-4 w-4 text-muted-foreground" />

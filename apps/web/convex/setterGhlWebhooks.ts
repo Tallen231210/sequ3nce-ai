@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { bumpDailyStat } from "./setterRollups";
 
 // Convex's `v.optional(v.string())` validator means "field absent" — it
 // rejects explicit `null`. GHL freely sends null for unset fields like
@@ -888,6 +889,17 @@ export async function recordCallEvent(
     ghlEventKey: ev.ghlEventKey,
   });
 
+  // Daily rollup increment — same transaction as the event insert (and after
+  // the dedup early-return above, so redeliveries can never double-count).
+  // Wide-range scorecards read these instead of scanning event rows.
+  await bumpDailyStat(
+    ctx,
+    args.teamId,
+    ev.occurredAt,
+    ev.ghlUserId,
+    ev.direction === "outbound" ? "dials" : "callsInbound",
+  );
+
   // Outbound call → bump dial counters + maybe flip isConnected.
   if (ev.direction === "outbound") {
     const becameConnected = !lead.isConnected && isConnect;
@@ -951,6 +963,9 @@ export async function recordCallEvent(
         details: { callDurationSec: durationSec },
         ghlEventKey: ev.ghlEventKey ? `${ev.ghlEventKey}:connected` : undefined,
       });
+      // Rollup mirrors the milestone event 1:1 (it fires once per lead, on
+      // the isConnected flip — same rows the scorecard used to count).
+      await bumpDailyStat(ctx, args.teamId, ev.occurredAt, ev.ghlUserId, "connects");
     }
   } else {
     await ctx.db.patch(lead._id, {
@@ -1004,9 +1019,15 @@ export async function recordSmsEvent(
     nextStatus = "replied";
   }
 
+  // Min-time semantics for the first-outbound-SMS snapshot (backfills can
+  // replay newest-first — same reasoning as firstDialAt above).
+  const prevFirstSms = (lead as any).firstSmsOutboundAt ?? Infinity;
   await ctx.db.patch(lead._id, {
     smsOutboundCount: lead.smsOutboundCount + (ev.direction === "outbound" ? 1 : 0),
     smsInboundCount: lead.smsInboundCount + (ev.direction === "inbound" ? 1 : 0),
+    ...(ev.direction === "outbound" && ev.occurredAt < prevFirstSms
+      ? { firstSmsOutboundAt: ev.occurredAt }
+      : {}),
     smsStatus: nextStatus,
     lastActivityAt: maxTime(lead.lastActivityAt, ev.occurredAt),
   });

@@ -1,7 +1,11 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { computeScorecard } from "./setterDataMetrics";
+import {
+  computeScorecard,
+  computeCadence,
+  computeShowRateEvidence,
+} from "./setterDataMetrics";
 import {
   buildMatcherIndex,
   findCallsForLead,
@@ -117,15 +121,9 @@ export const getOverview = query({
     if (!user) return null;
     const teamId = user.teamId as Id<"teams">;
 
-    const scorecard = await computeScorecard(ctx, {
-      teamId,
-      rangeStart: args.rangeStart,
-      rangeEnd: args.rangeEnd,
-    });
-
-    // Extras specific to the Overview tab. We re-read leads here rather
-    // than threading them through computeScorecard because the scorecard
-    // is also used by the cron and we don't want to bloat its response.
+    // Read the in-range leads ONCE and share them with computeScorecard —
+    // lead rows are the fattest read in this transaction (Hyros attribution
+    // objects), so a duplicate collect meaningfully eats the 16 MiB budget.
     const leads = (await ctx.db
       .query("setterLeads")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -136,6 +134,19 @@ export const getOverview = query({
           .lt("dateAdded", args.rangeEnd),
       )
       .collect()) as Doc<"setterLeads">[];
+
+    // Cadence + evidence live in their own queries (getCadence /
+    // getShowRateEvidence) with their own read budgets — the Overview
+    // scorecard stays lean: leads + rollups + indexed appointments.
+    const scorecard = await computeScorecard(
+      ctx,
+      {
+        teamId,
+        rangeStart: args.rangeStart,
+        rangeEnd: args.rangeEnd,
+      },
+      { preloadedLeads: leads },
+    );
 
     // Two independent groupings — the panel that consumes these was
     // split (booking-funnel vs ad-attribution) because they answer
@@ -451,7 +462,7 @@ export const getOverview = query({
       .query("setterReps")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
-      .collect()) as Doc<"setterReps">[];
+      .take(500)) as Doc<"setterReps">[];
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
     // Wave 2 — Routing performance per ad.
@@ -651,20 +662,8 @@ export const getOverview = query({
     // Auto-generated panel insights — the "so what" layer under each chart.
     // Pure deterministic computation over data already in hand; no extra DB
     // reads. Each helper returns null when below its sample-size gate.
-    const cadenceInsight: PanelInsight | null = computeCadenceInsight(
-      scorecard.perSetter
-        .filter(
-          (r): r is typeof r & { cadence: { avgDialsPerLead: number } } =>
-            r.cadence.avgDialsPerLead != null,
-        )
-        .map((r) => ({
-          name: r.name,
-          leadsWithDials: r.cadence.leadsWithDials,
-          avgDialsPerLead: r.cadence.avgDialsPerLead,
-          pctLeadsThreeOrMoreAttempts: r.cadence.pctLeadsThreeOrMoreAttempts,
-        })),
-    );
-
+    // (cadenceInsight moved to the dedicated getCadence query — cadence
+    // needs raw dial-event scans that no longer run in this transaction.)
     const bookingsInsight: PanelInsight | null = computeBookingsInsight({
       total: scorecard.bookings.total,
       byDayOfWeek: scorecard.bookings.byDayOfWeek.map((count, day) => ({
@@ -732,12 +731,98 @@ export const getOverview = query({
       hyrosRoutingAdsHidden: routingAdsHidden,
       actionQueue,
       // Wave 1 insight payloads — null when below sample gate.
-      cadenceInsight,
       bookingsInsight,
       funnelInsight,
       hyrosAdSourcesInsight,
       routingInsight,
     };
+  },
+});
+
+// ----------------------------------------------------------------------------
+// getCadence — dial-cadence panel data, in its OWN query so the raw
+// dial-event scan gets a dedicated transaction budget (clamped + capped —
+// it can never crash regardless of team volume).
+// ----------------------------------------------------------------------------
+
+export const getCadence = query({
+  args: {
+    clerkId: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
+
+    const cadence = await computeCadence(ctx, {
+      teamId,
+      rangeStart: args.rangeStart,
+      rangeEnd: args.rangeEnd,
+      clampDays: 30,
+      cap: 25_000,
+    });
+
+    const reps = (await ctx.db
+      .query("setterReps")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .take(500)) as Doc<"setterReps">[];
+    const nameById = new Map(reps.map((r) => [r.ghlUserId, r.name]));
+
+    const perSetter = Array.from(cadence.bySetter.entries()).map(
+      ([ghlUserId, c]) => ({
+        ghlUserId,
+        name: nameById.get(ghlUserId) ?? "Unknown setter",
+        cadence: c,
+      }),
+    );
+
+    const insight: PanelInsight | null = computeCadenceInsight(
+      perSetter
+        .filter(
+          (r): r is typeof r & { cadence: { avgDialsPerLead: number } } =>
+            r.cadence.avgDialsPerLead != null,
+        )
+        .map((r) => ({
+          name: r.name,
+          leadsWithDials: r.cadence.leadsWithDials,
+          avgDialsPerLead: r.cadence.avgDialsPerLead,
+          pctLeadsThreeOrMoreAttempts: r.cadence.pctLeadsThreeOrMoreAttempts,
+        })),
+    );
+
+    return {
+      perSetter,
+      insight,
+      clampedToDays: cadence.clampedToDays ?? null,
+      sampled: cadence.sampled,
+    };
+  },
+});
+
+// ----------------------------------------------------------------------------
+// getShowRateEvidence — the evidence waterfall in its OWN query: its
+// per-appointment lead lookups + matcher reads get a dedicated budget
+// instead of sharing getOverview's.
+// ----------------------------------------------------------------------------
+
+export const getShowRateEvidence = query({
+  args: {
+    clerkId: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
+    return await computeShowRateEvidence(ctx, {
+      teamId,
+      rangeStart: args.rangeStart,
+      rangeEnd: args.rangeEnd,
+    });
   },
 });
 
@@ -777,6 +862,12 @@ export const getLeads = query({
     const pageSize = clamp(args.pageSize ?? 50, 1, 200);
     const page = Math.max(1, args.page ?? 1);
 
+    // Bounded read: search/status are post-filters, so this stays a
+    // range-scan — but capped so a huge org can never blow the 32k-doc
+    // transaction budget. Newest-first, so a truncated result drops the
+    // OLDEST leads (the least operationally relevant); UI ranges are capped
+    // at 90 days, which keeps even the largest org under this in practice.
+    const LEADS_SCAN_CAP = 25_000;
     let leads = (await ctx.db
       .query("setterLeads")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -786,7 +877,9 @@ export const getLeads = query({
           .gte("dateAdded", args.rangeStart)
           .lt("dateAdded", args.rangeEnd),
       )
-      .collect()) as Doc<"setterLeads">[];
+      .order("desc")
+      .take(LEADS_SCAN_CAP)) as Doc<"setterLeads">[];
+    const truncated = leads.length >= LEADS_SCAN_CAP;
 
     // Filter chain. Order matters minimally — all filters are O(n) over
     // the same array.
@@ -826,7 +919,7 @@ export const getLeads = query({
       .query("setterReps")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
-      .collect()) as Doc<"setterReps">[];
+      .take(500)) as Doc<"setterReps">[];
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
     return {
@@ -854,6 +947,9 @@ export const getLeads = query({
       page,
       pageSize,
       hasMore: total > page * pageSize,
+      // True when the range matched more leads than the scan cap — counts
+      // cover the newest LEADS_SCAN_CAP leads only.
+      truncated,
     };
   },
 });
@@ -897,7 +993,7 @@ export const getLeadActivity = query({
       .query("setterReps")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
-      .collect()) as Doc<"setterReps">[];
+      .take(500)) as Doc<"setterReps">[];
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
     // Look up transcripts for this lead's calls so the activity timeline
@@ -1195,11 +1291,15 @@ export const getSetterDetail = query({
       .first()) as Doc<"setterReps"> | null;
 
     // Reuse the scorecard helper, then pluck out this setter's row.
-    const scorecard = await computeScorecard(ctx, {
-      teamId,
-      rangeStart: args.rangeStart,
-      rangeEnd: args.rangeEnd,
-    });
+    const scorecard = await computeScorecard(
+      ctx,
+      {
+        teamId,
+        rangeStart: args.rangeStart,
+        rangeEnd: args.rangeEnd,
+      },
+      { cadence: { clampDays: 30, cap: 8_000 } },
+    );
     const myRow =
       scorecard.perSetter.find((r) => r.ghlUserId === args.ghlUserId) ?? null;
 
@@ -1780,7 +1880,7 @@ export const getConnectRateAnomaly = query({
             .gte("occurredAt", fullWindowStart)
             .lt("occurredAt", now),
         )
-        .take(50_000),
+        .take(25_000),
       ctx.db
         .query("setterLeadEvents")
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1791,7 +1891,7 @@ export const getConnectRateAnomaly = query({
             .gte("occurredAt", fullWindowStart)
             .lt("occurredAt", now),
         )
-        .take(50_000),
+        .take(25_000),
     ]);
 
     let thisWeekDials = 0;
@@ -1861,7 +1961,7 @@ export const getConnectRateAnomaly = query({
       .query("setterReps")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
-      .collect()) as Doc<"setterReps">[];
+      .take(500)) as Doc<"setterReps">[];
     const repNameByGhlUserId = new Map(reps.map((r) => [r.ghlUserId, r.name]));
 
     const contributors: Array<{
@@ -2422,11 +2522,18 @@ export const getSetterScorecard = query({
     const workingDaysInWindow = countWorkingDays(rangeStart, rangeEnd, timezone);
 
     // Reuse the scorecard helper — it already computes 6/7 KPIs we need.
-    const scorecard = await computeScorecard(ctx, {
-      teamId,
-      rangeStart,
-      rangeEnd,
-    });
+    // Opt into cadence (clamped 30d, capped sample — high-volume orgs would
+    // otherwise blow the 32k-doc transaction budget) + the evidence
+    // waterfall (feeds the verified show-rate cells).
+    const scorecard = await computeScorecard(
+      ctx,
+      {
+        teamId,
+        rangeStart,
+        rangeEnd,
+      },
+      { cadence: { clampDays: 30, cap: 8_000 }, evidence: true },
+    );
 
     // Team averages for dollar-leakage math. Compute from completed calls
     // in the same trailing window — gives us teamCloseRate + avgCashPerClose

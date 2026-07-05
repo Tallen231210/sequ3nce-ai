@@ -176,6 +176,10 @@ export default defineSchema({
     // Configurable per team because some sales orgs use 90 or 120.
     setterConnectionThresholdSec: v.optional(v.number()),
 
+    // Set when the setterDailyStats rollup backfill (setterRollups.ts) has
+    // completed for this team — the scorecard reads rollups only after this.
+    setterRollupsBackfilledAt: v.optional(v.number()),
+
     // Daily Scorecard Slack/Discord notification config
     setterDailyScorecardEnabled: v.optional(v.boolean()),
     setterDailyScorecardChannel: v.optional(v.string()), // "slack" | "discord"
@@ -2148,6 +2152,10 @@ export default defineSchema({
     // meetings backpatch names a lead first. Unset on GHL leads.
     enrichedAt: v.optional(v.number()),
     lastDialAt: v.optional(v.number()),
+    // Chronologically-first outbound SMS (min-time semantics, like
+    // firstDialAt). Powers pre-call qualification from snapshots instead of
+    // team-wide event scans.
+    firstSmsOutboundAt: v.optional(v.number()),
     smsOutboundCount: v.number(),
     smsInboundCount: v.number(),
     smsStatus: v.union(
@@ -2396,9 +2404,33 @@ export default defineSchema({
     .index("by_team_and_status", ["teamId", "status"])
     .index("by_team_and_contact", ["teamId", "ghlContactId"])
     .index("by_team_and_start_time", ["teamId", "startTime"])
+    // Range-bounded "bookings in window" reads (replaces the old all-time
+    // by_team collect in the scorecard — that scan grew with org lifetime).
+    .index("by_team_and_booked_at", ["teamId", "bookedAt"])
     // Idempotency for webhook redeliveries — handlers look up by
     // ghlAppointmentId before insert.
     .index("by_team_and_appointment_id", ["teamId", "ghlAppointmentId"]),
+
+  // ---------------------------------------------------------------------
+  // Setter Data — daily rollup sidecar. One row per (team, UTC day, setter)
+  // so per-setter dial/connect counts read ≤ days×setters docs at ANY range
+  // instead of scanning every setterLeadEvents row (Convex caps a
+  // transaction at 32k documents scanned — a 90-day event scan on a large
+  // org exceeds it). Per-SETTER rows (not one team-day doc) keep OCC write
+  // contention per-dialer; setterId "" buckets unattributed dials so
+  // sum(rows) equals true team totals. Maintained transactionally in
+  // recordCallEvent; repaired/backfilled via setterRollups.recountDay.
+  // ---------------------------------------------------------------------
+  setterDailyStats: defineTable({
+    teamId: v.id("teams"),
+    dayKey: v.string(), // UTC "YYYY-MM-DD"
+    setterId: v.string(), // provider user id; "" = unattributed
+    dials: v.number(),
+    connects: v.number(),
+    callsInbound: v.number(),
+  })
+    .index("by_team_and_day", ["teamId", "dayKey"])
+    .index("by_team_day_setter", ["teamId", "dayKey", "setterId"]),
 
   // Phase 3 — Cached pipeline metadata. Pipelines and their stages
   // change rarely; we cache the names so the UI doesn't have to make
