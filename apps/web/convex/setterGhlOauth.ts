@@ -120,7 +120,17 @@ export const getInstallationsForReconcile = internalQuery({
       .query("setterGhlInstallations")
       .filter((q) =>
         q.and(
-          q.eq(q.field("status"), "active"),
+          // Sweep BOTH active and errored installs. Errored installs used to
+          // be excluded, which made every marked error PERMANENT: the
+          // auto-heal in markInstallationSynced could never run, so a single
+          // misclassified transient failure (e.g. GHL's 400-HttpException
+          // search flake, Remotestack 2026-07-06) left the scary "Reconnect"
+          // banner up forever on a perfectly healthy connection. Retrying
+          // errored installs costs one API call per tick: a recovered
+          // install heals itself; a genuinely dead one fails again and
+          // stays errored (Sentry capture is transition-gated to avoid
+          // hourly noise). Only "uninstalled" is terminal.
+          q.neq(q.field("status"), "uninstalled"),
           q.neq(q.field("fastBackfillCompletedAt"), undefined),
           // GHL reconcile cron — never sweep Close installs (they're synced
           // by setterCloseSync, not the GHL reconcile path). provider is

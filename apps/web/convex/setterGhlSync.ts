@@ -68,6 +68,18 @@ function isTransientGhlError(err: unknown): boolean {
   // GHL rate limit (retry honor already lives in ghlFetch, but a
   // post-retry 429 can still surface — treat as transient).
   if (/GHL API 429/.test(msg)) return true;
+  // GHL's search service sometimes surfaces ITS OWN internal failure as a
+  // 400 HttpException ("Error occurred while searching for contact" +
+  // traceId) — a 500 wearing a 400's clothes. Verified transient on
+  // Remotestack 2026-07-06: the byte-identical request replayed 200 an
+  // hour after this 400 marked the install errored. Our request isn't
+  // malformed; their infra hiccuped.
+  if (
+    /GHL API 400/.test(msg) &&
+    /Error occurred while searching|"name":"HttpException"/.test(msg)
+  ) {
+    return true;
+  }
   // Generic fetch failures from Node's runtime (DNS, connection
   // reset, timeout). Common when GHL or our network has a blip.
   if (/fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(msg))
@@ -1295,10 +1307,20 @@ export const reconcile = internalAction({
             integration: "ghl-marketplace",
             extra: { installationId: installation._id, message },
           });
+        } else if (installation.status === "error") {
+          // Already errored (this sweep retries errored installs so they can
+          // self-heal). It failed again — refresh the persisted message via
+          // the clobber-protected mark, but DON'T re-capture to Sentry:
+          // a genuinely dead install would otherwise page us every hour.
+          await ctx.runMutation(internal.setterGhlOauth.markInstallationError, {
+            installationId: installation._id,
+            errorMessage: `reconcile: ${message}`.slice(0, 500),
+          });
         } else {
-          // Hard error — auth dead, scope revoked, malformed response,
-          // schema validation failure. Mark the install so the customer
-          // can see something needs attention.
+          // Hard error TRANSITION (active → error) — auth dead, scope
+          // revoked, malformed response, schema validation failure. Mark
+          // the install so the customer can see something needs attention,
+          // and capture once at the transition.
           await captureAndPersist(
             err,
             async () => {

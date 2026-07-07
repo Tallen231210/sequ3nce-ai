@@ -121,8 +121,15 @@ async function getValidAccessToken(
   if (!installation) {
     throw new Error(`GHL installation not found: ${installationId}`);
   }
-  if (installation.status !== "active") {
-    throw new Error(`GHL installation status is ${installation.status} — cannot make API calls`);
+  // Only "uninstalled" is a hard stop. An install marked "error" may have
+  // perfectly valid credentials (Remotestack 2026-07-06: a transient GHL
+  // search flake marked the install errored; this guard then blocked every
+  // retry with a generic message, making the error PERMANENT and clobbering
+  // the specific root cause). Letting errored installs attempt real calls is
+  // what enables the reconcile sweep to self-heal them — and when creds ARE
+  // dead, the call fails with the SPECIFIC GHL error instead of this guard.
+  if (installation.status === "uninstalled") {
+    throw new Error(`GHL installation status is uninstalled — cannot make API calls`);
   }
 
   const now = Date.now();
