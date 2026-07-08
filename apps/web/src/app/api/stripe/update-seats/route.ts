@@ -67,11 +67,22 @@ export async function POST(req: Request) {
       });
     }
 
-    // Update seat count in Convex
-    await convex.mutation(api.billing.updateTeamBilling, {
+    // Update seat count in Convex. Here (unlike the webhook, where an
+    // orphaned Stripe customer must ack 200) a missing team for an
+    // authenticated seat update is a REAL error — surface it.
+    const result = await convex.mutation(api.billing.updateTeamBilling, {
       stripeCustomerId: billing.stripeCustomerId!,
       seatCount,
     });
+    if (!result.success) {
+      console.error(
+        `update-seats: no team for stripeCustomerId=${billing.stripeCustomerId}`,
+      );
+      return NextResponse.json(
+        { error: "Team not found for billing account" },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({ success: true, seatCount });
   } catch (err) {

@@ -245,6 +245,33 @@ function mapStripeStatus(
 
 // ==================== B2B Handlers (existing) ====================
 
+/**
+ * updateTeamBilling wrapper for webhook handlers. An unknown
+ * stripeCustomerId (orphaned Stripe customer whose team was deleted) is NOT
+ * retriable — throwing would 500 the webhook, Stripe would retry for 72h,
+ * email warnings, and eventually risk auto-disabling the endpoint for ALL
+ * customers. Instead: capture to Sentry so WE see the orphan, and let the
+ * webhook ack 200.
+ */
+async function updateTeamBillingFromWebhook(args: {
+  stripeCustomerId: string;
+  stripeSubscriptionId?: string;
+  subscriptionStatus?: string;
+  currentPeriodEnd?: number;
+  seatCount?: number;
+  plan?: string;
+}): Promise<boolean> {
+  const convex = getConvex();
+  const result = await convex.mutation(api.billing.updateTeamBilling, args);
+  if (!result.success) {
+    const msg = `Stripe webhook: no team for stripeCustomerId=${args.stripeCustomerId} — orphaned customer, acking 200 (not retriable)`;
+    console.error(msg);
+    Sentry.captureMessage(msg, "warning");
+    return false;
+  }
+  return true;
+}
+
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const stripe = getStripe();
   const convex = getConvex();
@@ -273,7 +300,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       ? (subscription.current_period_end as number) * 1000
       : undefined;
 
-  await convex.mutation(api.billing.updateTeamBilling, {
+  await updateTeamBillingFromWebhook({
     stripeCustomerId: customerId,
     stripeSubscriptionId: subscriptionId,
     subscriptionStatus: subscription.status,
@@ -335,7 +362,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
       ? (subscription.current_period_end as number) * 1000
       : undefined;
 
-  await convex.mutation(api.billing.updateTeamBilling, {
+  await updateTeamBillingFromWebhook({
     stripeCustomerId: customerId,
     stripeSubscriptionId: subscription.id,
     subscriptionStatus: subscription.status,
@@ -352,7 +379,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   const convex = getConvex();
   const customerId = subscription.customer as string;
 
-  await convex.mutation(api.billing.updateTeamBilling, {
+  await updateTeamBillingFromWebhook({
     stripeCustomerId: customerId,
     subscriptionStatus: "canceled",
     plan: "canceled",
@@ -367,7 +394,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
 
   if (!customerId) return;
 
-  await convex.mutation(api.billing.updateTeamBilling, {
+  await updateTeamBillingFromWebhook({
     stripeCustomerId: customerId,
     subscriptionStatus: "past_due",
   });
@@ -393,7 +420,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       ? (subscription.current_period_end as number) * 1000
       : undefined;
 
-  await convex.mutation(api.billing.updateTeamBilling, {
+  await updateTeamBillingFromWebhook({
     stripeCustomerId: customerId,
     subscriptionStatus: subscription.status,
     currentPeriodEnd,

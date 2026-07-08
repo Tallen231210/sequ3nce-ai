@@ -83,7 +83,14 @@ export const updateTeamBilling = mutation({
       .first();
 
     if (!team) {
-      throw new Error(`No team found with stripeCustomerId: ${args.stripeCustomerId}`);
+      // Don't throw: the primary caller is the Stripe webhook, and a throw
+      // makes it 500 → Stripe retries for 72h → warning emails → eventual
+      // endpoint auto-disable risk. A missing team isn't retriable (an
+      // orphaned Stripe customer whose team was deleted — e.g. Zion's test
+      // account, July 2026 — can never heal by retrying). Callers decide
+      // how loud to be: the webhook logs to Sentry + acks 200; the seat
+      // route treats it as a real error.
+      return { success: false as const, reason: "team_not_found" as const };
     }
 
     // Build update object with only defined values
@@ -106,7 +113,7 @@ export const updateTeamBilling = mutation({
 
     await ctx.db.patch(team._id, updates);
 
-    return { success: true, teamId: team._id };
+    return { success: true as const, teamId: team._id };
   },
 });
 
