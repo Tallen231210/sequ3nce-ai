@@ -24,18 +24,11 @@ export default function AdminLayout({
   }, []);
 
   const checkAuth = async () => {
-    // Try to fetch a protected resource to check if cookie is valid
-    // For now, we'll just check if the cookie exists client-side by attempting an authenticated request
+    // GET verifies the signed session cookie server-side, so a valid
+    // session survives page refreshes instead of forcing re-login.
     try {
-      const response = await fetch("/api/admin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "__check__" }),
-      });
-      // If we get 401, we're not authenticated
-      // If we get 500, admin not configured
-      // We don't have a direct way to check the cookie, so we'll default to showing login
-      setIsAuthenticated(false);
+      const response = await fetch("/api/admin/verify", { method: "GET" });
+      setIsAuthenticated(response.ok);
     } catch {
       setIsAuthenticated(false);
     }

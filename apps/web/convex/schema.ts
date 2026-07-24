@@ -2505,4 +2505,16 @@ export default defineSchema({
     .index("by_team_and_pipeline", ["teamId", "ghlPipelineId"])
     .index("by_team_and_to_stage", ["teamId", "toStageId"])
     .index("by_team_and_transitioned_at", ["teamId", "transitionedAt"]),
+
+  // Founder/admin action audit trail. Impersonating a customer account is
+  // the most powerful action in the app; every one is recorded here so
+  // there's accountability (the whole reason this beats sharing logins).
+  adminAuditLog: defineTable({
+    action: v.string(), // e.g. "impersonate"
+    targetClerkId: v.optional(v.string()),
+    targetEmail: v.optional(v.string()),
+    targetTeamId: v.optional(v.id("teams")),
+    targetTeamName: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"]),
 });
