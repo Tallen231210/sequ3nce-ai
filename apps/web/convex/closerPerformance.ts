@@ -20,7 +20,7 @@ import {
 //   Closes  = outcome === "closed"
 //   Cash    = sum of cashCollected
 //   Booked  = calendar events classified as sales calls (see classifyEvent)
-//   Slots   = booked + open working time / typical call length
+//   Slots   = booked + time the closer left unblocked / typical call length
 //
 // Recounts write ABSOLUTE values and are idempotent, so a row may be
 // recomputed any time. Manual corrections live in `closerDailyOverrides`
@@ -28,14 +28,7 @@ import {
 // ============================================================================
 
 export const DEFAULT_TIMEZONE = "America/New_York";
-export const DEFAULT_WORKDAY_START_MIN = 9 * 60;
-export const DEFAULT_WORKDAY_END_MIN = 17 * 60;
-export const DEFAULT_WORKDAYS = [1, 2, 3, 4, 5]; // Mon–Fri
 export const DEFAULT_CALL_LENGTH_MIN = 45;
-
-const WEEKDAY_INDEX: Record<string, number> = {
-  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-};
 
 /** Team-local "YYYY-MM-DD" for a UTC instant. */
 export function dayKeyInTz(ms: number, tz: string): string {
@@ -47,14 +40,6 @@ export function dayKeyInTz(ms: number, tz: string): string {
 export function monthKeyInTz(ms: number, tz: string): string {
   const z = formatInTimeZone(new Date(ms), tz);
   return `${z.year}-${pad2(z.month)}`;
-}
-
-/** 0=Sun..6=Sat for a team-local day key. */
-function weekdayOfDayKey(dayKey: string, tz: string): number {
-  const { startMs } = getLocalDateRangeUtc(dayKey, tz);
-  // Probe midday to dodge DST edges.
-  const z = formatInTimeZone(new Date(startMs + 12 * 60 * 60 * 1000), tz);
-  return WEEKDAY_INDEX[z.weekday] ?? 1;
 }
 
 type CalendarEvent = Doc<"calendarEvents">;
@@ -83,10 +68,45 @@ export function classifyEvent(
   return external ? "call" : "block";
 }
 
-/** Overlap of [aStart,aEnd) and [bStart,bEnd) in ms. */
-function overlapMs(aS: number, aE: number, bS: number, bE: number): number {
-  return Math.max(0, Math.min(aE, bE) - Math.max(aS, bS));
+export type Interval = [start: number, end: number];
+
+/**
+ * Total time covered by these intervals, counting overlaps once.
+ *
+ * Summing durations instead would double-count: a real closer's calendar
+ * carries overlapping blocks routinely (a 3-hour "Unavailable" sitting inside
+ * an all-day "OOO"), and one live team summed to 36 hours of blocked time in
+ * a 24-hour day.
+ */
+export function unionMs(intervals: Interval[]): number {
+  if (intervals.length === 0) return 0;
+  const sorted = [...intervals]
+    .filter(([s, e]) => e > s)
+    .sort((a, b) => a[0] - b[0]);
+  if (sorted.length === 0) return 0;
+
+  let total = 0;
+  let [curStart, curEnd] = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    const [s, e] = sorted[i];
+    if (s > curEnd) {
+      total += curEnd - curStart;
+      curStart = s;
+      curEnd = e;
+    } else if (e > curEnd) {
+      curEnd = e;
+    }
+  }
+  return total + (curEnd - curStart);
 }
+
+/**
+ * Below this much declared-unavailable time in a day, we can't treat the
+ * calendar as a statement of availability. A rep who blocks nothing would
+ * otherwise appear to offer ~24 hours of capacity, making Booked% a fiction.
+ * The board reports capacity as unmeasured instead — see computeCapacitySignal.
+ */
+export const MIN_BLOCKED_MS_FOR_CAPACITY = 8 * 60 * 60 * 1000;
 
 export interface CloserDayTotals {
   slots: number;
@@ -303,13 +323,14 @@ async function recountDayImpl(
     )
     .take(5000)) as CalendarEvent[];
 
-  const weekday = weekdayOfDayKey(dayKey, tz);
-  const workdays = team.closerWorkdays ?? DEFAULT_WORKDAYS;
-  const isWorkday = workdays.includes(weekday);
-  const winStartMs =
-    startMs + (team.closerWorkdayStartMin ?? DEFAULT_WORKDAY_START_MIN) * 60_000;
-  const winEndMs =
-    startMs + (team.closerWorkdayEndMin ?? DEFAULT_WORKDAY_END_MIN) * 60_000;
+  // Capacity is bounded by the whole local day, NOT by assumed office hours.
+  // These teams don't work one timezone: a closer may run a late shift into
+  // 9pm Eastern to reach a Pacific prospect at dinner time. A fixed 9-5 window
+  // counted those calls as booked while never counting the time they occupied,
+  // which drove Booked% toward a meaningless 100%. Availability is instead
+  // whatever the closer did NOT mark off — which is how they actually set it.
+  const dayStartMs = startMs;
+  const dayEndMs = endMs;
   const callLenMs =
     (team.closerTypicalCallLengthMin ?? DEFAULT_CALL_LENGTH_MIN) * 60_000;
 
@@ -349,8 +370,25 @@ async function recountDayImpl(
     return ownSubIds.has(String(ev.subscriptionId));
   };
 
-  const blockedMsByCloser = new Map<string, number>();
-  const bookedMsByCloser = new Map<string, number>();
+  // Intervals rather than running totals: overlapping blocks are normal, and
+  // summing them double-counts. Unioned once the day's events are collected.
+  const blockedIntervals = new Map<string, Interval[]>();
+  const bookedIntervals = new Map<string, Interval[]>();
+  const pushInterval = (
+    map: Map<string, Interval[]>,
+    key: string,
+    start: number,
+    end: number,
+  ) => {
+    // Clamp to the local day so an overnight event can't consume more than
+    // the day it lands in.
+    const s = Math.max(start, dayStartMs);
+    const e = Math.min(end, dayEndMs);
+    if (e <= s) return;
+    const list = map.get(key) ?? [];
+    list.push([s, e]);
+    map.set(key, list);
+  };
   let bookedUnattributed = 0;
   // Reps named on bookings who hold no Sequ3nce seat, e.g. a closer the team
   // never onboarded. Surfaced so the gap reads as a fact about the roster
@@ -389,10 +427,9 @@ async function recountDayImpl(
     );
     const isCall = !!linkedCloser || hasExternalAttendee;
 
-    // All-day events (OOO, holidays) wipe the whole working window.
-    const evStart = ev.isAllDay ? winStartMs : ev.startTime;
-    const evEnd = ev.isAllDay ? winEndMs : ev.endTime;
-    const inWindow = overlapMs(evStart, evEnd, winStartMs, winEndMs);
+    // An all-day event (OOO, a holiday) covers the entire day.
+    const evStart = ev.isAllDay ? dayStartMs : ev.startTime;
+    const evEnd = ev.isAllDay ? dayEndMs : ev.endTime;
 
     if (isCall) {
       const { closerId: ownerId, unknownRep } = attributeBooking(
@@ -402,10 +439,9 @@ async function recountDayImpl(
       );
       if (ownerId && byCloser.has(ownerId)) {
         byCloser.get(ownerId)!.booked += 1;
-        bookedMsByCloser.set(
-          ownerId,
-          (bookedMsByCloser.get(ownerId) ?? 0) + inWindow,
-        );
+        // A call occupies the closer who took it, whichever calendar it
+        // synced through.
+        pushInterval(bookedIntervals, ownerId, evStart, evEnd);
       } else {
         // Not ours to credit — counts for the team, not for any rep.
         bookedUnattributed += 1;
@@ -426,7 +462,7 @@ async function recountDayImpl(
         if (!byCloser.has(key) || charged.has(key)) continue;
         if (!isOwnCapacitySource(copy, key)) continue;
         charged.add(key);
-        blockedMsByCloser.set(key, (blockedMsByCloser.get(key) ?? 0) + inWindow);
+        pushInterval(blockedIntervals, key, evStart, evEnd);
       }
     }
   }
@@ -455,21 +491,37 @@ async function recountDayImpl(
     }),
   );
 
-  const windowMs = Math.max(0, winEndMs - winStartMs);
+  // Capacity = the time a closer left open on their own calendar.
+  //
+  //   available = day − union(their blocks ∪ their booked calls)
+  //   slots     = booked + available / typical call length
+  //
+  // No assumed office hours: the closer's blocks ARE the statement of when
+  // they're unavailable, which is how they actually set availability, and it
+  // travels across timezones and late shifts without configuration.
+  const dayMs = Math.max(0, dayEndMs - dayStartMs);
   for (const [closerKey, row] of byCloser) {
-    const capacityReadable = !!hasCalendar.get(closerKey);
-    if (!isWorkday || !capacityReadable) {
-      // Off-day, or no calendar of their own to read: only actual bookings
-      // count as capacity, so Booked% can't be diluted by a weekend the team
-      // never meant to work, nor inflated by capacity we assumed.
+    const blocks = blockedIntervals.get(closerKey) ?? [];
+    const booked = bookedIntervals.get(closerKey) ?? [];
+    const blockedMs = unionMs(blocks);
+
+    // Two ways capacity is unknowable: no calendar of theirs to read, or a
+    // calendar so sparsely blocked it isn't declaring availability at all.
+    // Treating either as "fully available" would invent the denominator, so
+    // slots fall back to bookings and the board suppresses Booked%.
+    const capacityReadable =
+      !!hasCalendar.get(closerKey) && blockedMs >= MIN_BLOCKED_MS_FOR_CAPACITY;
+
+    if (!capacityReadable) {
       row.slots = row.booked;
-      // An off-day isn't an unknown — we know capacity was intentionally nil.
-      row.capacityKnown = isWorkday ? false : true;
+      row.capacityKnown = false;
       continue;
     }
-    const blocked = blockedMsByCloser.get(closerKey) ?? 0;
-    const bookedTime = bookedMsByCloser.get(closerKey) ?? 0;
-    const openMs = Math.max(0, windowMs - blocked - bookedTime);
+
+    // Union blocks and calls together — a call scheduled inside a blocked
+    // period must not subtract its time twice.
+    const busyMs = unionMs([...blocks, ...booked]);
+    const openMs = Math.max(0, dayMs - busyMs);
     row.slots = row.booked + Math.floor(openMs / callLenMs);
     row.capacityKnown = true;
   }
