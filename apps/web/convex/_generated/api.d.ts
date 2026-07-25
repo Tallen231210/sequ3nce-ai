@@ -69,6 +69,7 @@ import type * as closerPerformance from "../closerPerformance.js";
 import type * as closerPerformanceMetrics from "../closerPerformanceMetrics.js";
 import type * as closerPerformanceMutations from "../closerPerformanceMutations.js";
 import type * as closerPerformanceQueries from "../closerPerformanceQueries.js";
+import type * as closerPerformanceSweep from "../closerPerformanceSweep.js";
 import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
 import type * as dataMigrations from "../dataMigrations.js";
@@ -208,6 +209,7 @@ declare const fullApi: ApiFromModules<{
   closerPerformanceMetrics: typeof closerPerformanceMetrics;
   closerPerformanceMutations: typeof closerPerformanceMutations;
   closerPerformanceQueries: typeof closerPerformanceQueries;
+  closerPerformanceSweep: typeof closerPerformanceSweep;
   closers: typeof closers;
   crons: typeof crons;
   dataMigrations: typeof dataMigrations;

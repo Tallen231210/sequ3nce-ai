@@ -344,11 +344,32 @@ async function recountDayImpl(
     }
   }
 
+  // Slots are inferred from what a calendar says is free. With no calendar
+  // connected there is nothing to infer from, so claiming a full working day
+  // of capacity would be inventing the Booked% denominator — and would show
+  // every not-yet-onboarded team a red 0% against capacity we made up.
+  // No calendar means no capacity signal: slots fall back to actual bookings.
+  // Credentials alone are too narrow a test: on a real team, two closers had
+  // no token on their own record yet plainly had synced calendars, because
+  // their events arrive through a teammate's subscription. Actual events for
+  // that day are the direct evidence that a calendar is being read for them.
+  const hasCalendar = new Map(
+    activeClosers.map((c) => [
+      String(c._id),
+      !!(c.googleCalendarRefreshToken || c.icsUrl || c.calendarProvider),
+    ]),
+  );
+  for (const ev of events) {
+    const key = String(ev.closerId);
+    if (hasCalendar.has(key)) hasCalendar.set(key, true);
+  }
+
   const windowMs = Math.max(0, winEndMs - winStartMs);
   for (const [closerKey, row] of byCloser) {
-    if (!isWorkday) {
-      // Off-day: only actual booked calls count as capacity, so Booked%
-      // can't be diluted by a weekend the team never intended to work.
+    if (!isWorkday || !hasCalendar.get(closerKey)) {
+      // Off-day, or no calendar to read: only actual booked calls count as
+      // capacity, so Booked% can't be diluted by a weekend the team never
+      // intended to work, or by capacity we assumed rather than observed.
       row.slots = row.booked;
       continue;
     }
