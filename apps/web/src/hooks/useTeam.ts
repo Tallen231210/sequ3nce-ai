@@ -23,30 +23,44 @@ export function useTeam() {
     clerkId ? { clerkId } : "skip"
   );
 
-  // Mutation to create team if needed
-  const createTeamAndUser = useMutation(api.teams.createTeamAndUser);
-
-  // Create team on first login
+  // Ensure a team exists on first login.
+  //
+  // Goes through /api/auth/bootstrap rather than calling Convex directly:
+  // that route verifies the Clerk session server-side and reads the
+  // VERIFIED email from Clerk's backend, which is what allows it to
+  // reattach a returning manager to their existing team (e.g. after they
+  // deleted and recreated their Clerk login) without letting anyone claim
+  // a team by simply asserting someone else's email.
   useEffect(() => {
+    let cancelled = false;
     async function ensureTeamExists() {
       if (!isUserLoaded || !user) return;
       if (team === undefined) return; // Still loading
       if (team !== null) return; // Team already exists
 
-      // Team doesn't exist, create one
       try {
-        await createTeamAndUser({
-          clerkId: user.id,
-          email: user.emailAddresses[0]?.emailAddress ?? "",
-          name: user.fullName ?? user.firstName ?? undefined,
-        });
+        const res = await fetch("/api/auth/bootstrap", { method: "POST" });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `bootstrap ${res.status}`);
+        }
+        const data = await res.json();
+        if (!cancelled && data.reattached) {
+          // Reconnected to a pre-existing account — reload so every query
+          // re-runs against the restored team.
+          window.location.reload();
+        }
       } catch (error) {
-        console.error("Failed to create team:", error);
+        console.error("Failed to bootstrap team:", error);
+        Sentry.captureException(error);
       }
     }
 
     ensureTeamExists();
-  }, [isUserLoaded, user, team, createTeamAndUser]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserLoaded, user, team]);
 
   // Tag every Sentry event with which user hit it. Single biggest debugging
   // force-multiplier — turns "some user got this error" into "this specific

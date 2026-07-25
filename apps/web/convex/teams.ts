@@ -35,6 +35,101 @@ export const getMyUser = query({
 });
 
 // Create a new team and user (for first-time signup)
+/**
+ * Ensure the signed-in Clerk user has a team — with reattach-by-email.
+ *
+ * Why this exists: a manager who deletes their Clerk login (Clerk's
+ * "Delete account" button in Manage Account) keeps their team, billing and
+ * data, but comes back with a BRAND NEW Clerk id. Matching on clerkId alone
+ * (see createTeamAndUser) would strand them in a fresh empty team while
+ * their real account sits orphaned — exactly what happened to Create
+ * Freedom in July 2026. Matching a verified email instead re-points the
+ * existing user row at the new Clerk id, so they land back in their own
+ * account with everything intact.
+ *
+ * SECURITY: reattaching by email is only safe when the email is *proven*.
+ * Convex is not wired to Clerk JWTs here (no auth.config.ts), so a public
+ * mutation taking a client-supplied email would be account takeover —
+ * anyone could claim any team. Hence: ADMIN_SECRET-gated and callable ONLY
+ * from /api/auth/bootstrap, which verifies the Clerk session server-side
+ * and reads the verified primary email from Clerk's backend API.
+ */
+export const ensureUserTeam = mutation({
+  args: {
+    adminSecret: v.string(),
+    clerkId: v.string(),
+    email: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const secret = process.env.ADMIN_SECRET;
+    if (!secret || args.adminSecret !== secret) {
+      throw new Error("Unauthorized");
+    }
+
+    // 1. Known Clerk id — the normal path.
+    const byClerkId = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (byClerkId) {
+      const team = await ctx.db.get(byClerkId.teamId);
+      return {
+        teamId: byClerkId.teamId,
+        userId: byClerkId._id,
+        team,
+        reattached: false,
+        created: false,
+      };
+    }
+
+    // 2. Unknown Clerk id, but we know this (verified) email — the account
+    //    was recreated. Re-point the existing row instead of duplicating.
+    //    One row per manager, so this table stays tiny; scan + case-
+    //    insensitive compare is correct where an exact index wouldn't be.
+    const target = args.email.trim().toLowerCase();
+    const allUsers = await ctx.db.query("users").take(5000);
+    const byEmail = allUsers
+      .filter((u) => (u.email || "").trim().toLowerCase() === target)
+      .sort((a, b) => a.createdAt - b.createdAt)[0];
+    if (byEmail) {
+      await ctx.db.patch(byEmail._id, {
+        clerkId: args.clerkId,
+        ...(args.name ? { name: args.name } : {}),
+      });
+      const team = await ctx.db.get(byEmail.teamId);
+      console.log(
+        `[ensureUserTeam] reattached ${target} to existing team ${byEmail.teamId}`,
+      );
+      return {
+        teamId: byEmail.teamId,
+        userId: byEmail._id,
+        team,
+        reattached: true,
+        created: false,
+      };
+    }
+
+    // 3. Genuinely new — create team + admin user (same shape as
+    //    createTeamAndUser).
+    const teamId = await ctx.db.insert("teams", {
+      name: `${args.name || "My"}'s Team`,
+      plan: "active",
+      createdAt: Date.now(),
+    });
+    const userId = await ctx.db.insert("users", {
+      clerkId: args.clerkId,
+      email: args.email,
+      name: args.name,
+      teamId,
+      role: "admin",
+      createdAt: Date.now(),
+    });
+    const team = await ctx.db.get(teamId);
+    return { teamId, userId, team, reattached: false, created: true };
+  },
+});
+
 export const createTeamAndUser = mutation({
   args: {
     clerkId: v.string(),
