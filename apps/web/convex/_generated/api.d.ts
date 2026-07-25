@@ -65,6 +65,7 @@ import type * as calls from "../calls.js";
 import type * as clientErrors from "../clientErrors.js";
 import type * as closerCalendarSubscriptions from "../closerCalendarSubscriptions.js";
 import type * as closerMagicLink from "../closerMagicLink.js";
+import type * as closerPerformance from "../closerPerformance.js";
 import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
 import type * as dataMigrations from "../dataMigrations.js";
@@ -200,6 +201,7 @@ declare const fullApi: ApiFromModules<{
   clientErrors: typeof clientErrors;
   closerCalendarSubscriptions: typeof closerCalendarSubscriptions;
   closerMagicLink: typeof closerMagicLink;
+  closerPerformance: typeof closerPerformance;
   closers: typeof closers;
   crons: typeof crons;
   dataMigrations: typeof dataMigrations;

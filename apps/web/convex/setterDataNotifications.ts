@@ -1166,7 +1166,9 @@ function formatHourSlack(h: number): string {
 // Time / date helpers
 // ----------------------------------------------------------------------------
 
-interface ZonedDate {
+// Exported so the closer-side Team Performance rollups can reuse the exact
+// same team-local day math instead of reimplementing timezone handling.
+export interface ZonedDate {
   year: number;
   month: number; // 1-12
   day: number; // 1-31
@@ -1180,7 +1182,7 @@ interface ZonedDate {
  * team tz" math). Avoids pulling in date-fns-tz; Intl.DateTimeFormat
  * is built into the runtime.
  */
-function formatInTimeZone(date: Date, tz: string): ZonedDate {
+export function formatInTimeZone(date: Date, tz: string): ZonedDate {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     year: "numeric",
@@ -1209,7 +1211,7 @@ function formatInTimeZone(date: Date, tz: string): ZonedDate {
  * formatting noon of that day and seeing which UTC instant produces
  * that local string — Intl doesn't expose offsets directly.
  */
-function getLocalDateRangeUtc(
+export function getLocalDateRangeUtc(
   yyyyMmDd: string,
   tz: string,
 ): { startMs: number; endMs: number } {
@@ -1239,7 +1241,7 @@ function getLocalDateRangeUtc(
   };
 }
 
-function pad2(n: number): string {
+export function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 

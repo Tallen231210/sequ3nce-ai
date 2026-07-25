@@ -263,6 +263,31 @@ export default defineSchema({
     setterCoverageGapHourLocal: v.optional(v.number()), // 0-23 in team.timezone, default 9
     setterCoverageGapMinLeadsThreshold: v.optional(v.number()), // default 3
 
+    // ---- Team Performance Sheet (closer-side scoreboard) ----
+    // Manager KPI targets, as PERCENTAGES (0-100). Rendered green/amber/red
+    // via the same statusForDelta thresholds the setter scorecard uses.
+    closerBookedPctTarget: v.optional(v.number()),      // default 70 — booked ÷ slots
+    closerShowPctTarget: v.optional(v.number()),        // default 65 — taken ÷ booked
+    closerOfferClosePctTarget: v.optional(v.number()),  // default 40 — closes ÷ offers
+    closerClosePctTarget: v.optional(v.number()),       // default 25 — closes ÷ taken
+    // Unit economics. Ad spend is monthly; weeks divide it evenly for now.
+    closerAdSpendMonthly: v.optional(v.number()),
+    closerCompPct: v.optional(v.number()),              // default 20 — rep commission %
+    // Slot capacity. Slots are derived from each closer's calendar (open
+    // working time ÷ typical call length + booked calls); these configure
+    // the working window. Per-team defaults; closers may override.
+    closerWorkdayStartMin: v.optional(v.number()),      // minutes from local midnight, default 540 (9am)
+    closerWorkdayEndMin: v.optional(v.number()),        // default 1020 (5pm)
+    closerWorkdays: v.optional(v.array(v.number())),    // 0=Sun..6=Sat, default [1,2,3,4,5]
+    closerTypicalCallLengthMin: v.optional(v.number()), // default 45; seeded from real avg duration
+    // Team cash goal — defaults to the sum of per-closer goals; set here to
+    // override with a stretch target.
+    closerTeamCashGoalOverride: v.optional(v.number()),
+    // Prize race (manager-set, purely motivational).
+    closerPrizeName: v.optional(v.string()),
+    closerPrizeEmoji: v.optional(v.string()),
+    closerPrizeTarget: v.optional(v.number()),
+
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.
     // All optional + additive; null/undefined means "not yet" for each.
@@ -2517,4 +2542,93 @@ export default defineSchema({
     targetTeamName: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_created", ["createdAt"]),
+
+  // =========================================================================
+  // Team Performance Sheet — closer-side daily scoreboard
+  // Funnel: Slots -> Booked -> Taken -> Offers -> Closes -> Cash
+  // =========================================================================
+
+  /**
+   * DERIVED per-closer daily rollup. Recomputed from `calls` + `calendarEvents`
+   * by setterless recount (closerPerformanceRollups.recountCloserDay) — treat
+   * every row as disposable: a recount overwrites it with absolute values.
+   * Manual edits live in closerDailyOverrides so they survive recounts.
+   *
+   * dayKey is the TEAM-LOCAL date ("YYYY-MM-DD" in team.timezone), not UTC —
+   * an 8pm call belongs to the day the rep worked it, which is what a daily
+   * sales scoreboard means by "today".
+   *
+   * Exists (rather than aggregating calls on read) because the Year view
+   * spans 12 months; Convex caps a transaction at 32k documents scanned.
+   */
+  closerDailyStats: defineTable({
+    teamId: v.id("teams"),
+    dayKey: v.string(),
+    closerId: v.id("closers"),
+    slots: v.number(),          // capacity: booked + open working time / call length
+    booked: v.number(),         // calendar events classified as sales calls
+    taken: v.number(),          // completed calls with an outcome
+    offers: v.number(),         // calls where a price was pitched (contractValue > 0)
+    closes: v.number(),         // outcome === "closed"
+    cash: v.number(),           // sum cashCollected
+    contractValue: v.number(),  // sum contractValue (commitments, not collected)
+    // Calls we recorded where the closer never completed the post-call form.
+    // Closes/Cash/Offers can only come from that form, so surfacing this
+    // turns an invisible data gap into a visible coaching prompt.
+    missingOutcomes: v.optional(v.number()),
+    recountedAt: v.number(),
+  })
+    .index("by_team_and_day", ["teamId", "dayKey"])
+    .index("by_team_day_closer", ["teamId", "dayKey", "closerId"]),
+
+  /**
+   * MANUAL overrides for a given closer-day. Never written by the recount.
+   * Any field present here wins over the derived value at read time, and the
+   * UI marks the cell as edited. This is how a manager corrects a number the
+   * automation got wrong without us losing the underlying measurement.
+   */
+  closerDailyOverrides: defineTable({
+    teamId: v.id("teams"),
+    dayKey: v.string(),
+    closerId: v.id("closers"),
+    slots: v.optional(v.number()),
+    booked: v.optional(v.number()),
+    taken: v.optional(v.number()),
+    offers: v.optional(v.number()),
+    closes: v.optional(v.number()),
+    cash: v.optional(v.number()),
+    updatedByClerkId: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_team_and_day", ["teamId", "dayKey"])
+    .index("by_team_day_closer", ["teamId", "dayKey", "closerId"]),
+
+  /**
+   * Team-level daily figures that genuinely belong to nobody in particular.
+   * Bookings on a SHARED calendar can't always be attributed to one closer
+   * (teams often subscribe to each other's calendars), and inventing an
+   * owner would corrupt per-rep numbers. These land here instead so team
+   * totals stay correct while per-closer stays honest.
+   */
+  closerDailyTeamStats: defineTable({
+    teamId: v.id("teams"),
+    dayKey: v.string(),
+    bookedUnattributed: v.number(),
+    recountedAt: v.number(),
+  }).index("by_team_and_day", ["teamId", "dayKey"]),
+
+  /**
+   * Per-closer monthly cash goal, keyed by month so history stays truthful —
+   * the Year view compares each month against the goal that was actually set
+   * at the time, not today's number.
+   */
+  closerGoals: defineTable({
+    teamId: v.id("teams"),
+    closerId: v.id("closers"),
+    monthKey: v.string(), // "YYYY-MM", team-local
+    cashGoal: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_and_month", ["teamId", "monthKey"])
+    .index("by_team_month_closer", ["teamId", "monthKey", "closerId"]),
 });
