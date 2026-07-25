@@ -119,6 +119,9 @@ export interface CloserDayTotals {
   missingOutcomes: number;
   /** False when we had no calendar of this closer's own to read that day. */
   capacityKnown: boolean;
+  /** Capacity inputs, surfaced so a low Booked% can be interpreted. */
+  blockedMinutes: number;
+  openMinutes: number;
 }
 
 /** Local part of an email/calendar address, lowercased. */
@@ -289,6 +292,7 @@ async function recountDayImpl(
   const blank = (): CloserDayTotals => ({
     slots: 0, booked: 0, taken: 0, offers: 0, closes: 0, cash: 0,
     contractValue: 0, missingOutcomes: 0, capacityKnown: false,
+    blockedMinutes: 0, openMinutes: 0,
   });
   for (const c of activeClosers) byCloser.set(String(c._id), blank());
 
@@ -512,9 +516,12 @@ async function recountDayImpl(
     const capacityReadable =
       !!hasCalendar.get(closerKey) && blockedMs >= MIN_BLOCKED_MS_FOR_CAPACITY;
 
+    row.blockedMinutes = Math.round(blockedMs / 60_000);
+
     if (!capacityReadable) {
       row.slots = row.booked;
       row.capacityKnown = false;
+      row.openMinutes = 0;
       continue;
     }
 
@@ -523,6 +530,7 @@ async function recountDayImpl(
     const busyMs = unionMs([...blocks, ...booked]);
     const openMs = Math.max(0, dayMs - busyMs);
     row.slots = row.booked + Math.floor(openMs / callLenMs);
+    row.openMinutes = Math.round(openMs / 60_000);
     row.capacityKnown = true;
   }
 

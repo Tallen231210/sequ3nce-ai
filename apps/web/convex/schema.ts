@@ -2595,6 +2595,14 @@ export default defineSchema({
      * invented. Undefined on rows written before this field existed.
      */
     capacityKnown: v.optional(v.boolean()),
+    /**
+     * The capacity inputs behind `slots`, kept so a manager can see WHY a
+     * Booked% is low. A rep who leaves 7h open and books 36% of it is a
+     * different problem from one who works a tight 3h window and books 60%,
+     * and the rate alone cannot tell them apart.
+     */
+    blockedMinutes: v.optional(v.number()),
+    openMinutes: v.optional(v.number()),
     recountedAt: v.number(),
   })
     .index("by_team_and_day", ["teamId", "dayKey"])

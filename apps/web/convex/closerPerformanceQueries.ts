@@ -123,6 +123,9 @@ export const getTeamPerformance = query({
     const totalsByCloser = new Map<string, FunnelTotals>();
     // Capacity is only quotable where we could read the rep's own calendar.
     const capByCloser = new Map<string, { known: number; unknown: number }>();
+    // Capacity inputs, so the UI can explain a low Booked% rather than just
+    // assert one. Averaged over days the closer actually had activity.
+    const openByCloser = new Map<string, { openMin: number; days: number }>();
     const overriddenByCloser = new Map<string, Set<string>>();
     // Week buckets power the sparkline + WoW trend.
     const weekCashTeam = [0, 0, 0, 0, 0];
@@ -154,6 +157,12 @@ export const getTeamPerformance = query({
       if (row.capacityKnown === false) cap.unknown += 1;
       else cap.known += 1;
       capByCloser.set(key, cap);
+      if (row.capacityKnown !== false && typeof row.openMinutes === "number") {
+        const o = openByCloser.get(key) ?? { openMin: 0, days: 0 };
+        o.openMin += row.openMinutes;
+        o.days += 1;
+        openByCloser.set(key, o);
+      }
       totalsByCloser.set(
         key,
         addTotals(totalsByCloser.get(key) ?? emptyTotals(), totals),
@@ -216,6 +225,12 @@ export const getTeamPerformance = query({
           rates,
           rag: ragForRates(rates, targets),
           capacity,
+          // Average hours left unbooked per active day — the denominator's
+          // story, without which Booked% can't be interpreted.
+          openHoursPerDay: (() => {
+            const o = openByCloser.get(closerId);
+            return o && o.days > 0 ? o.openMin / 60 / o.days : null;
+          })(),
           avgDeal: totals.closes > 0 ? totals.cash / totals.closes : null,
           net: repNet(totals.cash, totals.booked, economics.costPerBooked, compPct),
           goal,

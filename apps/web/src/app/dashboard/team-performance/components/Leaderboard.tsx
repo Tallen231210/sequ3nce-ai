@@ -29,6 +29,8 @@ export interface CloserRow {
   pctGoal: number | null;
   wowPct: number | null;
   overriddenFields: string[];
+  /** Average hours left unbooked per active day. Null when unmeasurable. */
+  openHoursPerDay?: number | null;
 }
 
 function GoalCell({ pct, goal }: { pct: number | null; goal: number | null }) {
@@ -115,13 +117,15 @@ export function Leaderboard({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px]">
+        <table className="w-full min-w-[1120px]">
           <thead className="border-b border-border bg-muted/30">
             <tr>
               <th className={TH + " w-10 text-center"}>#</th>
               <th className={TH + " text-left"}>Closer</th>
               <th className={TH + " text-right"}>Booked</th>
+              <th className={TH + " text-right"}>Booked %</th>
               <th className={TH + " text-right"}>Taken</th>
+              <th className={TH + " text-right"}>Open/day</th>
               <th className={TH + " text-right"}>Show</th>
               <th className={TH + " text-right"}>Offers</th>
               <th className={TH + " text-right"}>Closes</th>
@@ -177,7 +181,25 @@ export function Leaderboard({
                   </td>
 
                   <td className={TD + " text-right"}>{fmtNum(r.totals.booked)}</td>
+                  <td className={TD + " text-right " + RAG_TEXT[r.rag.bookedPct]}>
+                    {r.rates.bookedPct === null ? "—" : fmtPct(r.rates.bookedPct)}
+                  </td>
                   <td className={TD + " text-right"}>{fmtNum(r.totals.taken)}</td>
+                  {/* The denominator's story: 7h open at 36% booked is a very
+                      different problem from 3h open at 60%, and Booked% alone
+                      cannot distinguish them. */}
+                  <td
+                    className={TD + " text-right text-muted-foreground"}
+                    title={
+                      r.openHoursPerDay == null
+                        ? "Availability not measured — this closer's calendar doesn't show when they're unavailable"
+                        : "Average time left unbooked per active day"
+                    }
+                  >
+                    {r.openHoursPerDay == null
+                      ? "—"
+                      : `${r.openHoursPerDay.toFixed(1)}h`}
+                  </td>
                   <td className={TD + " text-right " + RAG_TEXT[r.rag.showPct]}>
                     {fmtPct(r.rates.showPct)}
                   </td>
