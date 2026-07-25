@@ -89,8 +89,44 @@ function WowCell({ pct }: { pct: number | null }) {
 }
 
 const TH =
-  "px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap";
-const TD = "px-3 py-3 text-sm tabular-nums whitespace-nowrap";
+  "px-2.5 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap";
+const TD = "px-2.5 py-2.5 text-sm tabular-nums whitespace-nowrap";
+
+/**
+ * A funnel count with the conversion that produced it, stacked. Keeping the
+ * pair together halves the column count and puts each rate next to the number
+ * it came from, instead of stranding them at opposite ends of a wide table.
+ */
+function CountRate({
+  count,
+  rate,
+  tone,
+  dim,
+}: {
+  count: number;
+  rate?: number | null;
+  tone?: Rag;
+  dim?: boolean;
+}) {
+  return (
+    <div className="text-right leading-tight">
+      <div
+        className={"text-sm tabular-nums " + (dim ? "text-muted-foreground" : "")}
+      >
+        {fmtNum(count)}
+      </div>
+      {rate !== undefined && (
+        <div
+          className={
+            "text-[11px] tabular-nums " + (tone ? RAG_TEXT[tone] : "text-muted-foreground")
+          }
+        >
+          {rate === null ? "—" : fmtPct(rate)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Leaderboard({
   rows,
@@ -117,19 +153,16 @@ export function Leaderboard({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px]">
+        <table className="w-full min-w-[900px]">
           <thead className="border-b border-border bg-muted/30">
             <tr>
-              <th className={TH + " w-10 text-center"}>#</th>
+              <th className={TH + " w-9 text-center"}>#</th>
               <th className={TH + " text-left"}>Closer</th>
-              <th className={TH + " text-right"}>Booked</th>
-              <th className={TH + " text-right"}>Booked %</th>
-              <th className={TH + " text-right"}>Taken</th>
               <th className={TH + " text-right"}>Open/day</th>
-              <th className={TH + " text-right"}>Show</th>
+              <th className={TH + " text-right"}>Booked</th>
+              <th className={TH + " text-right"}>Taken</th>
               <th className={TH + " text-right"}>Offers</th>
               <th className={TH + " text-right"}>Closes</th>
-              <th className={TH + " text-right"}>Close</th>
               <th className={TH + " text-right"}>Cash</th>
               <th className={TH + " text-right"}>Avg deal</th>
               <th className={TH + " text-right"}>Net</th>
@@ -180,14 +213,6 @@ export function Leaderboard({
                     </div>
                   </td>
 
-                  <td className={TD + " text-right"}>{fmtNum(r.totals.booked)}</td>
-                  <td className={TD + " text-right " + RAG_TEXT[r.rag.bookedPct]}>
-                    {r.rates.bookedPct === null ? "—" : fmtPct(r.rates.bookedPct)}
-                  </td>
-                  <td className={TD + " text-right"}>{fmtNum(r.totals.taken)}</td>
-                  {/* The denominator's story: 7h open at 36% booked is a very
-                      different problem from 3h open at 60%, and Booked% alone
-                      cannot distinguish them. */}
                   <td
                     className={TD + " text-right text-muted-foreground"}
                     title={
@@ -200,27 +225,30 @@ export function Leaderboard({
                       ? "—"
                       : `${r.openHoursPerDay.toFixed(1)}h`}
                   </td>
-                  <td className={TD + " text-right " + RAG_TEXT[r.rag.showPct]}>
-                    {fmtPct(r.rates.showPct)}
+                  <td className="px-2.5 py-2.5">
+                    <CountRate
+                      count={r.totals.booked}
+                      rate={r.rates.bookedPct}
+                      tone={r.rag.bookedPct}
+                    />
                   </td>
-                  <td
-                    className={
-                      TD + " text-right " +
-                      (gateBelowTaken ? "text-muted-foreground" : "")
-                    }
-                  >
-                    {fmtNum(r.totals.offers)}
+                  <td className="px-2.5 py-2.5">
+                    <CountRate
+                      count={r.totals.taken}
+                      rate={r.rates.showPct}
+                      tone={r.rag.showPct}
+                    />
                   </td>
-                  <td
-                    className={
-                      TD + " text-right font-medium " +
-                      (gateBelowTaken ? "text-muted-foreground" : "")
-                    }
-                  >
-                    {fmtNum(r.totals.closes)}
+                  <td className="px-2.5 py-2.5">
+                    <CountRate count={r.totals.offers} dim={gateBelowTaken} />
                   </td>
-                  <td className={TD + " text-right " + RAG_TEXT[r.rag.closePct]}>
-                    {fmtPct(r.rates.closePct)}
+                  <td className="px-2.5 py-2.5">
+                    <CountRate
+                      count={r.totals.closes}
+                      rate={r.rates.closePct}
+                      tone={r.rag.closePct}
+                      dim={gateBelowTaken}
+                    />
                   </td>
                   <td className={TD + " text-right font-semibold"}>
                     {fmtCurrency(r.totals.cash)}

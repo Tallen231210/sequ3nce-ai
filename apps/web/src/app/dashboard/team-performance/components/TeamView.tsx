@@ -87,8 +87,13 @@ export function TeamView({
             capacityReliable={data.capacity?.reliable !== false}
           />
 
-          <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
-            <div className="space-y-5">
+          {/* The leaderboard sits OUTSIDE this grid, full width. Squeezed
+              beside a 300px rail it needed ~200px of sideways scrolling at
+              normal dashboard widths, and a table you have to drag is a table
+              nobody reads. Breakpoints can't solve it — they measure the
+              viewport and know nothing about the 256px app sidebar. */}
+          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="min-w-0 space-y-5">
               <div className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-card px-5 py-4 sm:grid-cols-4">
                 <Stat
                   label="Closers"
@@ -114,23 +119,24 @@ export function TeamView({
 
               <FunnelChart totals={t} gateBelowTaken={gateBelowTaken} />
 
-              <Leaderboard
-                rows={data.perCloser as CloserRow[]}
-                gateBelowTaken={gateBelowTaken}
-              />
-            </div>
-
-            <div className="space-y-5">
-              <ProjectionCard projection={data.projection} />
-              <PrizeCard prize={data.prize} />
-              <EconomicsCard economics={data.economics} compPct={data.compPct} />
               <WeekSparkline
                 weekCash={data.weekCash}
                 weekIndex={weekIndex}
                 onWeekChange={onWeekChange}
               />
             </div>
+
+            <div className="min-w-0 space-y-5">
+              <ProjectionCard projection={data.projection} />
+              <PrizeCard prize={data.prize} />
+              <EconomicsCard economics={data.economics} compPct={data.compPct} />
+            </div>
           </div>
+
+          <Leaderboard
+            rows={data.perCloser as CloserRow[]}
+            gateBelowTaken={gateBelowTaken}
+          />
         </>
       )}
     </>
