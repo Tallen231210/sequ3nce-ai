@@ -64,6 +64,7 @@ import type * as callStats from "../callStats.js";
 import type * as calls from "../calls.js";
 import type * as clientErrors from "../clientErrors.js";
 import type * as closerCalendarSubscriptions from "../closerCalendarSubscriptions.js";
+import type * as closerCapacitySettings from "../closerCapacitySettings.js";
 import type * as closerMagicLink from "../closerMagicLink.js";
 import type * as closerPerformance from "../closerPerformance.js";
 import type * as closerPerformanceMetrics from "../closerPerformanceMetrics.js";
@@ -204,6 +205,7 @@ declare const fullApi: ApiFromModules<{
   calls: typeof calls;
   clientErrors: typeof clientErrors;
   closerCalendarSubscriptions: typeof closerCalendarSubscriptions;
+  closerCapacitySettings: typeof closerCapacitySettings;
   closerMagicLink: typeof closerMagicLink;
   closerPerformance: typeof closerPerformance;
   closerPerformanceMetrics: typeof closerPerformanceMetrics;

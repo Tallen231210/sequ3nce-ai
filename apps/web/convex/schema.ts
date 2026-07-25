@@ -413,6 +413,17 @@ export default defineSchema({
     label: v.string(), // user-customizable display name; defaults to the calendar's summary on add
     calendarBackgroundColor: v.optional(v.string()), // hex from Google's backgroundColor; refreshed every sync
     accessRole: v.optional(v.string()), // "owner" | "writer" | "reader" | "freeBusyReader"
+    /**
+     * Whether events on this calendar consume THIS closer's bookable capacity
+     * on the Team Performance board. Unset = infer it (a calendar is the
+     * closer's own when it is "primary" or its address matches their email).
+     *
+     * Exists because inference can't always be right: teams subscribe to each
+     * other's calendars, and on one live team every subscription reports
+     * accessRole "owner" because they share a Google Workspace. A manager can
+     * state directly which calendars represent a rep's availability.
+     */
+    countsTowardCapacity: v.optional(v.boolean()),
     enabled: v.boolean(),
     // Set when sync hits a fatal error for this sub. UI surfaces the tag;
     // sync skips disabled subs. null = healthy.
@@ -2576,6 +2587,14 @@ export default defineSchema({
     // Closes/Cash/Offers can only come from that form, so surfacing this
     // turns an invisible data gap into a visible coaching prompt.
     missingOutcomes: v.optional(v.number()),
+    /**
+     * Whether we could actually observe this closer's free time on this day.
+     * False when they have no calendar of their own to read, in which case
+     * `slots` falls back to bookings and Booked% would be a meaningless 100%.
+     * The dashboard suppresses the rate rather than assert a number we
+     * invented. Undefined on rows written before this field existed.
+     */
+    capacityKnown: v.optional(v.boolean()),
     recountedAt: v.number(),
   })
     .index("by_team_and_day", ["teamId", "dayKey"])

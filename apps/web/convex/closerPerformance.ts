@@ -97,6 +97,51 @@ export interface CloserDayTotals {
   cash: number;
   contractValue: number;
   missingOutcomes: number;
+  /** False when we had no calendar of this closer's own to read that day. */
+  capacityKnown: boolean;
+}
+
+/** Local part of an email/calendar address, lowercased. */
+function localPart(address: string): string {
+  return address.trim().toLowerCase().split("@")[0] ?? "";
+}
+
+/**
+ * Does this subscribed calendar represent the subscriber's OWN availability?
+ *
+ * Teams routinely subscribe to each other's calendars, so a closer's feed
+ * carries far more than their own diary — on one live team a single closer's
+ * feed held 1,869 events in a month, most of them teammates'. Counting all of
+ * it as "time blocked" consumed their entire working window and collapsed
+ * their capacity to zero.
+ *
+ * `accessRole` cannot decide this: on a shared Google Workspace every
+ * subscription reports "owner". The address can: it is either "primary" or
+ * the calendar owner's email.
+ *
+ * An explicit `countsTowardCapacity` set by a manager always wins — inference
+ * is a default, not a verdict.
+ */
+export function isOwnCapacityCalendar(
+  sub: { googleCalendarId: string; countsTowardCapacity?: boolean },
+  closerEmail: string | undefined,
+): boolean {
+  if (typeof sub.countsTowardCapacity === "boolean") {
+    return sub.countsTowardCapacity;
+  }
+  const cal = sub.googleCalendarId.trim().toLowerCase();
+  if (cal === "primary") return true;
+  if (!closerEmail) return false;
+  const mine = localPart(closerEmail);
+  if (!mine) return false;
+  const theirs = localPart(cal);
+  // Reps commonly run a second calendar ("nick@" plus "nick2@"), so match the
+  // local part with an optional numeric suffix rather than requiring equality.
+  return theirs === mine || new RegExp(`^${escapeRe(mine)}\\d+$`).test(theirs);
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -223,7 +268,7 @@ async function recountDayImpl(
   const byCloser = new Map<string, CloserDayTotals>();
   const blank = (): CloserDayTotals => ({
     slots: 0, booked: 0, taken: 0, offers: 0, closes: 0, cash: 0,
-    contractValue: 0, missingOutcomes: 0,
+    contractValue: 0, missingOutcomes: 0, capacityKnown: false,
   });
   for (const c of activeClosers) byCloser.set(String(c._id), blank());
 
@@ -267,6 +312,42 @@ async function recountDayImpl(
     startMs + (team.closerWorkdayEndMin ?? DEFAULT_WORKDAY_END_MIN) * 60_000;
   const callLenMs =
     (team.closerTypicalCallLengthMin ?? DEFAULT_CALL_LENGTH_MIN) * 60_000;
+
+  // --- Which calendars represent each closer's own availability -----------
+  const subs = (await ctx.db
+    .query("closerCalendarSubscriptions")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+    .take(1000)) as Doc<"closerCalendarSubscriptions">[];
+
+  const emailByCloser = new Map(
+    activeClosers.map((c) => [String(c._id), c.email]),
+  );
+  /** Subscription ids that carry their subscriber's own availability. */
+  const ownSubIds = new Set<string>();
+  /** Closers who have at least one readable calendar of their own. */
+  const closersWithOwnCalendar = new Set<string>();
+  /** Closers who subscribe to any calendar at all. */
+  const closersWithAnySub = new Set<string>();
+  for (const sub of subs) {
+    if (sub.enabled === false) continue;
+    const owner = String(sub.closerId);
+    closersWithAnySub.add(owner);
+    if (!isOwnCapacityCalendar(sub, emailByCloser.get(owner))) continue;
+    ownSubIds.add(String(sub._id));
+    closersWithOwnCalendar.add(owner);
+  }
+
+  /**
+   * An event counts against `closerKey`'s capacity only if it arrived on a
+   * calendar they own. Events with no subscription came through the closer's
+   * direct calendar connection, so they are theirs by definition.
+   */
+  const isOwnCapacitySource = (ev: CalendarEvent, closerKey: string) => {
+    if (String(ev.closerId) !== closerKey) return false;
+    if (!ev.subscriptionId) return true;
+    return ownSubIds.has(String(ev.subscriptionId));
+  };
 
   const blockedMsByCloser = new Map<string, number>();
   const bookedMsByCloser = new Map<string, number>();
@@ -336,9 +417,15 @@ async function recountDayImpl(
         }
       }
     } else {
-      // A block only removes capacity from the calendars it actually sits on.
-      for (const key of new Set(copies.map((c) => String(c.closerId)))) {
-        if (!byCloser.has(key)) continue;
+      // A block removes capacity only from a calendar the closer actually
+      // owns. Without this test, a teammate's block arriving through a
+      // subscription eats capacity from everyone subscribed to it.
+      const charged = new Set<string>();
+      for (const copy of copies) {
+        const key = String(copy.closerId);
+        if (!byCloser.has(key) || charged.has(key)) continue;
+        if (!isOwnCapacitySource(copy, key)) continue;
+        charged.add(key);
         blockedMsByCloser.set(key, (blockedMsByCloser.get(key) ?? 0) + inWindow);
       }
     }
@@ -349,34 +436,42 @@ async function recountDayImpl(
   // of capacity would be inventing the Booked% denominator — and would show
   // every not-yet-onboarded team a red 0% against capacity we made up.
   // No calendar means no capacity signal: slots fall back to actual bookings.
-  // Credentials alone are too narrow a test: on a real team, two closers had
-  // no token on their own record yet plainly had synced calendars, because
-  // their events arrive through a teammate's subscription. Actual events for
-  // that day are the direct evidence that a calendar is being read for them.
+  // Capacity is inferred from a calendar's free time, so it can only be
+  // computed for a closer whose own calendar we can read.
+  //
+  // Order matters: once a closer has subscriptions, those decide it — a
+  // manager who marks every calendar as "not my availability" is telling us
+  // capacity is unmeasurable, and a stale OAuth token on the closer record
+  // must not silently overrule them. The credential fallback applies only to
+  // closers with no subscriptions at all, whose events arrive directly.
   const hasCalendar = new Map(
-    activeClosers.map((c) => [
-      String(c._id),
-      !!(c.googleCalendarRefreshToken || c.icsUrl || c.calendarProvider),
-    ]),
+    activeClosers.map((c) => {
+      const id = String(c._id);
+      if (closersWithAnySub.has(id)) return [id, closersWithOwnCalendar.has(id)];
+      return [
+        id,
+        !!(c.googleCalendarRefreshToken || c.icsUrl || c.calendarProvider),
+      ];
+    }),
   );
-  for (const ev of events) {
-    const key = String(ev.closerId);
-    if (hasCalendar.has(key)) hasCalendar.set(key, true);
-  }
 
   const windowMs = Math.max(0, winEndMs - winStartMs);
   for (const [closerKey, row] of byCloser) {
-    if (!isWorkday || !hasCalendar.get(closerKey)) {
-      // Off-day, or no calendar to read: only actual booked calls count as
-      // capacity, so Booked% can't be diluted by a weekend the team never
-      // intended to work, or by capacity we assumed rather than observed.
+    const capacityReadable = !!hasCalendar.get(closerKey);
+    if (!isWorkday || !capacityReadable) {
+      // Off-day, or no calendar of their own to read: only actual bookings
+      // count as capacity, so Booked% can't be diluted by a weekend the team
+      // never meant to work, nor inflated by capacity we assumed.
       row.slots = row.booked;
+      // An off-day isn't an unknown — we know capacity was intentionally nil.
+      row.capacityKnown = isWorkday ? false : true;
       continue;
     }
     const blocked = blockedMsByCloser.get(closerKey) ?? 0;
     const bookedTime = bookedMsByCloser.get(closerKey) ?? 0;
     const openMs = Math.max(0, windowMs - blocked - bookedTime);
     row.slots = row.booked + Math.floor(openMs / callLenMs);
+    row.capacityKnown = true;
   }
 
   // --- Persist absolute values --------------------------------------------

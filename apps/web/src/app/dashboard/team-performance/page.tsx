@@ -9,6 +9,7 @@ import { Header } from "@/components/dashboard/header";
 import { DailyGrid } from "./components/DailyGrid";
 import { PeriodNav } from "./components/PeriodNav";
 import { TeamView } from "./components/TeamView";
+import { CapacitySettings } from "./components/CapacitySettings";
 
 const HEADER = {
   title: "Team Performance",
@@ -18,6 +19,7 @@ const HEADER = {
 const TABS = [
   ["team", "Team"],
   ["daily", "Daily numbers"],
+  ["capacity", "Availability"],
 ] as const;
 
 type Tab = (typeof TABS)[number][0];
@@ -114,6 +116,7 @@ export default function TeamPerformancePage() {
           ))}
         </nav>
 
+        {tab !== "capacity" && (
         <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey={thisMonth}
@@ -126,16 +129,17 @@ export default function TeamPerformancePage() {
           }}
           onWeekChange={setWeekIndex}
         />
+        )}
 
-        {tab === "team" ? (
+        {tab === "team" && (
           <TeamView
             data={data}
             weekIndex={weekIndex}
             onWeekChange={setWeekIndex}
           />
-        ) : (
-          <DailyGrid monthKey={data.monthKey} />
         )}
+        {tab === "daily" && <DailyGrid monthKey={data.monthKey} />}
+        {tab === "capacity" && <CapacitySettings />}
       </div>
     </>
   );

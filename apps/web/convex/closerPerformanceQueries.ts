@@ -7,6 +7,7 @@ import {
   DEFAULT_TARGETS,
   addTotals,
   applyOverride,
+  computeCapacitySignal,
   computeCoverage,
   computeEconomics,
   computeProjection,
@@ -120,6 +121,8 @@ export const getTeamPerformance = query({
 
     // --- Aggregate per closer ----------------------------------------------
     const totalsByCloser = new Map<string, FunnelTotals>();
+    // Capacity is only quotable where we could read the rep's own calendar.
+    const capByCloser = new Map<string, { known: number; unknown: number }>();
     const overriddenByCloser = new Map<string, Set<string>>();
     // Week buckets power the sparkline + WoW trend.
     const weekCashTeam = [0, 0, 0, 0, 0];
@@ -147,6 +150,10 @@ export const getTeamPerformance = query({
       weekCashByCloser.set(key, wcb);
 
       if (!inScope(row.dayKey)) continue;
+      const cap = capByCloser.get(key) ?? { known: 0, unknown: 0 };
+      if (row.capacityKnown === false) cap.unknown += 1;
+      else cap.known += 1;
+      capByCloser.set(key, cap);
       totalsByCloser.set(
         key,
         addTotals(totalsByCloser.get(key) ?? emptyTotals(), totals),
@@ -175,6 +182,14 @@ export const getTeamPerformance = query({
     let teamTotals = emptyTotals();
     for (const [, t] of totalsByCloser) teamTotals = addTotals(teamTotals, t);
 
+    let capKnown = 0;
+    let capUnknown = 0;
+    for (const [, c] of capByCloser) {
+      capKnown += c.known;
+      capUnknown += c.unknown;
+    }
+    const capacity = computeCapacitySignal(capKnown, capUnknown);
+
     const economics = computeEconomics(teamTotals, adSpendForPeriod, compPct);
 
     // Which week is "current" for WoW — the latest week with any activity.
@@ -186,7 +201,12 @@ export const getTeamPerformance = query({
     const nameById = new Map(closers.map((c) => [String(c._id), c.name]));
     const rows: CloserRow[] = Array.from(totalsByCloser.entries())
       .map(([closerId, totals]) => {
+        const cap = capByCloser.get(closerId) ?? { known: 0, unknown: 0 };
+        const capacity = computeCapacitySignal(cap.known, cap.unknown);
         const rates = computeRates(totals);
+        // Slots we had to assume can't support a rate. Suppress rather than
+        // publish a confident-looking number built on a guessed denominator.
+        if (!capacity.reliable) rates.bookedPct = null;
         const goal = goalByCloser.get(closerId) ?? null;
         const wcb = weekCashByCloser.get(closerId) ?? [0, 0, 0, 0, 0];
         return {
@@ -195,6 +215,7 @@ export const getTeamPerformance = query({
           totals,
           rates,
           rag: ragForRates(rates, targets),
+          capacity,
           avgDeal: totals.closes > 0 ? totals.cash / totals.closes : null,
           net: repNet(totals.cash, totals.booked, economics.costPerBooked, compPct),
           goal,
@@ -252,6 +273,9 @@ export const getTeamPerformance = query({
     };
 
     const scopedTeamRows = teamRows.filter((r) => inScope(r.dayKey));
+    const teamRates = computeRates(teamTotals);
+    if (!capacity.reliable) teamRates.bookedPct = null;
+
     const bookedUnattributed = scopedTeamRows.reduce(
       (s, r) => s + r.bookedUnattributed,
       0,
@@ -280,8 +304,10 @@ export const getTeamPerformance = query({
       targets,
       compPct,
       teamTotals,
-      teamRates: computeRates(teamTotals),
-      teamRatesRag: ragForRates(computeRates(teamTotals), targets),
+      teamRates: teamRates,
+      teamRatesRag: ragForRates(teamRates, targets),
+      // Whether Slots were measured well enough to quote Booked% at all.
+      capacity,
       // Bookings on shared calendars we refuse to attribute to one rep.
       bookedUnattributed,
       // Named reps behind those bookings who have no seat — actionable.

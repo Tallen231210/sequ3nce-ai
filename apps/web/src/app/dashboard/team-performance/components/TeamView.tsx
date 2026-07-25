@@ -84,6 +84,7 @@ export function TeamView({
             rates={data.teamRates}
             rag={data.teamRatesRag}
             targets={data.targets}
+            capacityReliable={data.capacity?.reliable !== false}
           />
 
           <div className="grid gap-5 lg:grid-cols-[1fr_300px]">

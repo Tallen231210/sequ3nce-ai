@@ -111,6 +111,40 @@ export function computeRates(t: FunnelTotals): Rates {
   };
 }
 
+export interface CapacitySignal {
+  /** Closer-days where we could read the rep's own calendar. */
+  knownDays: number;
+  /** Closer-days where we could not, so slots fell back to bookings. */
+  unknownDays: number;
+  /**
+   * True when capacity is measured well enough to quote Booked% at all.
+   * Below this bar the rate is suppressed rather than shown as a confident
+   * number derived from capacity we had to assume.
+   */
+  reliable: boolean;
+}
+
+/**
+ * How much of the period's capacity we actually observed.
+ *
+ * Slots are inferred from free time on a calendar, so a rep whose calendar we
+ * can't read has slots equal to their bookings — which would render as a
+ * flawless 100% Booked. Quoting that as a rate would be the board asserting
+ * something it does not know.
+ */
+export function computeCapacitySignal(
+  knownDays: number,
+  unknownDays: number,
+): CapacitySignal {
+  const total = knownDays + unknownDays;
+  return {
+    knownDays,
+    unknownDays,
+    // Any material share of unmeasured days makes the denominator untrustworthy.
+    reliable: total > 0 && knownDays / total >= 0.8,
+  };
+}
+
 export interface Coverage {
   taken: number;
   missingOutcomes: number;
