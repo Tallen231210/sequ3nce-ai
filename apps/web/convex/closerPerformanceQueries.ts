@@ -281,6 +281,7 @@ export const getTeamPerformance = query({
       compPct,
       teamTotals,
       teamRates: computeRates(teamTotals),
+      teamRatesRag: ragForRates(computeRates(teamTotals), targets),
       // Bookings on shared calendars we refuse to attribute to one rep.
       bookedUnattributed,
       // Named reps behind those bookings who have no seat — actionable.
