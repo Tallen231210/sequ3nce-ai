@@ -30,8 +30,12 @@ export const logAdminAction = mutation({
 
 /** Resolve a Clerk user id → their team (for the impersonate confirm label). */
 export const teamForClerkId = query({
-  args: { clerkId: v.string() },
+  args: { adminSecret: v.string(), clerkId: v.string() },
   handler: async (ctx, args) => {
+    const secret = process.env.ADMIN_SECRET;
+    if (!secret || args.adminSecret !== secret) {
+      throw new Error("Unauthorized");
+    }
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
@@ -47,8 +51,15 @@ export const teamForClerkId = query({
 });
 
 export const recentAdminActions = query({
-  args: { limit: v.optional(v.number()) },
+  args: { adminSecret: v.string(), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    // Gated: Convex queries are publicly callable by anyone holding the
+    // deployment URL, and this returns customer emails/team names. Only
+    // /api/admin/* (behind the signed admin session) may call it.
+    const secret = process.env.ADMIN_SECRET;
+    if (!secret || args.adminSecret !== secret) {
+      throw new Error("Unauthorized");
+    }
     const rows = await ctx.db
       .query("adminAuditLog")
       .withIndex("by_created")

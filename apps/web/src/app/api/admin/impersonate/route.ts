@@ -29,39 +29,57 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let email: string;
+  // Accept either a clerkId (precise — picked from the account list) or an
+  // email (typed manually). clerkId wins when both are present.
+  let email = "";
+  let clerkId = "";
   try {
     const body = await request.json();
     email = String(body.email ?? "").trim().toLowerCase();
+    clerkId = String(body.clerkId ?? "").trim();
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!clerkId && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json(
       { error: "Enter a valid email" },
       { status: 400 },
     );
   }
 
-  // Resolve the Clerk user by email.
   const client = await clerkClient();
-  const { data: users } = await client.users.getUserList({
-    emailAddress: [email],
-  });
-  if (users.length === 0) {
-    return NextResponse.json(
-      { error: `No account found for ${email}` },
-      { status: 404 },
-    );
+  let target;
+  if (clerkId) {
+    try {
+      target = await client.users.getUser(clerkId);
+    } catch {
+      return NextResponse.json(
+        { error: "That account no longer exists in Clerk" },
+        { status: 404 },
+      );
+    }
+  } else {
+    const { data: users } = await client.users.getUserList({
+      emailAddress: [email],
+    });
+    if (users.length === 0) {
+      return NextResponse.json(
+        { error: `No account found for ${email}` },
+        { status: 404 },
+      );
+    }
+    if (users.length > 1) {
+      // Extremely rare; surface it rather than guess who to become.
+      return NextResponse.json(
+        { error: `Multiple accounts share ${email} — pick from the list instead` },
+        { status: 409 },
+      );
+    }
+    target = users[0];
   }
-  if (users.length > 1) {
-    // Extremely rare; surface it rather than guess who to become.
-    return NextResponse.json(
-      { error: `Multiple accounts share ${email} — resolve in Clerk first` },
-      { status: 409 },
-    );
-  }
-  const target = users[0];
+  // Normalize the label email to whatever Clerk has on the resolved user.
+  email =
+    target.emailAddresses?.[0]?.emailAddress?.toLowerCase() || email || "";
 
   // Friendly confirmation label from our own DB (team name).
   let teamName: string | null = null;
@@ -69,6 +87,7 @@ export async function POST(request: NextRequest) {
   try {
     const convex = getConvex();
     const info = await convex.query(api.adminAudit.teamForClerkId, {
+      adminSecret: process.env.ADMIN_SECRET ?? "",
       clerkId: target.id,
     });
     teamName = info?.teamName ?? null;

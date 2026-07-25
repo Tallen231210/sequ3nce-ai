@@ -13,6 +13,7 @@ import type * as _probeTeamStripe from "../_probeTeamStripe.js";
 import type * as adSpend from "../adSpend.js";
 import type * as adSpendInternal from "../adSpendInternal.js";
 import type * as admin from "../admin.js";
+import type * as adminAccounts from "../adminAccounts.js";
 import type * as adminAudit from "../adminAudit.js";
 import type * as ai from "../ai.js";
 import type * as analytics from "../analytics.js";
@@ -147,6 +148,7 @@ declare const fullApi: ApiFromModules<{
   adSpend: typeof adSpend;
   adSpendInternal: typeof adSpendInternal;
   admin: typeof admin;
+  adminAccounts: typeof adminAccounts;
   adminAudit: typeof adminAudit;
   ai: typeof ai;
   analytics: typeof analytics;
