@@ -100,41 +100,83 @@ export interface CloserDayTotals {
 }
 
 /**
+ * Booking-title convention used by Calendly, GHL and Zoom scheduler:
+ * "Prospect Name and Rep Name", sometimes prefixed with a status word.
+ * Returns the rep half, or null when the title doesn't follow the pattern.
+ */
+export function repNameFromTitle(title: string | undefined): string | null {
+  if (!title) return null;
+  const cleaned = title
+    .replace(/^\s*(canceled|cancelled|rescheduled|second call|follow[- ]?up)\s*:\s*/i, "")
+    .trim();
+  const m = cleaned.match(/\band\s+(.{2,60})$/i);
+  if (!m) return null;
+  // Drop trailing qualifiers ("Nick Rowe second call") so the name matches.
+  return m[1]
+    .replace(/\s+(second call|follow[- ]?up|call|meeting|discovery)\s*$/i, "")
+    .trim() || null;
+}
+
+function nameMatchesCloser(repName: string, closerName: string): boolean {
+  const rep = repName.toLowerCase();
+  const full = closerName.trim().toLowerCase();
+  if (full.length > 2 && (rep === full || rep.includes(full) || full.includes(rep))) {
+    return true;
+  }
+  // Closers are often stored by first name only ("Nick" vs "Nick Rowe").
+  const first = full.split(/\s+/)[0] ?? "";
+  return first.length > 2 && rep.split(/\s+/)[0] === first;
+}
+
+export interface BookingAttribution {
+  /** The closer who owns this booking, or null if we can't say. */
+  closerId: string | null;
+  /** Rep named in the title who isn't a Sequ3nce closer — surfaced to the
+   *  manager rather than silently folded into an anonymous bucket. */
+  unknownRep: string | null;
+}
+
+/**
  * Pick which closer owns a booking when the same meeting appears on several
  * calendars. Teams commonly subscribe to each other's calendars, so the
  * `closerId` on any single copy is not authoritative — verified on a live
  * team where 389 of 390 unique meetings appeared on multiple calendars.
  *
- * Priority: an actual recorded call wins; then a single unambiguous copy;
- * then the closer named in the meeting title (Calendly writes
- * "Prospect and Closer"). If none resolve it we return null and the booking
- * counts toward the TEAM only — inventing an owner would quietly corrupt
- * every per-rep rate on the leaderboard.
+ * Priority:
+ *  1. an actual recorded call — provider-agnostic and unambiguous;
+ *  2. the rep named in the title. This outranks calendar ownership because
+ *     the title states who is ON the call while the calendar only says whose
+ *     subscription it synced through. A live team runs a fourth rep who
+ *     isn't a Sequ3nce user; when their booking lands on a single teammate's
+ *     calendar, trusting ownership credited the wrong person;
+ *  3. only then, a single unambiguous copy.
+ *
+ * A title naming a non-closer STOPS attribution — we'd rather report "210
+ * bookings belong to Callum B, who isn't on Sequ3nce" than credit them to
+ * whoever happened to subscribe. Inventing an owner quietly corrupts every
+ * per-rep rate on the leaderboard.
  */
 export function attributeBooking(
   copies: CalendarEvent[],
   closerIdFromCall: string | null,
   closerNames: Array<{ id: string; name: string }>,
-): string | null {
-  if (closerIdFromCall) return closerIdFromCall;
+): BookingAttribution {
+  if (closerIdFromCall) return { closerId: closerIdFromCall, unknownRep: null };
+
+  const repName = repNameFromTitle(copies[0]?.title);
+  if (repName) {
+    const hits = closerNames.filter((c) => nameMatchesCloser(repName, c.name));
+    if (hits.length === 1) return { closerId: hits[0].id, unknownRep: null };
+    // Named a rep we don't recognise: attributable to a person, just not to
+    // anyone with a seat. Report who, so the manager can act on it.
+    if (hits.length === 0) return { closerId: null, unknownRep: repName };
+    // Ambiguous name (two closers match) — fall through to calendar evidence.
+  }
 
   const distinct = Array.from(new Set(copies.map((c) => String(c.closerId))));
-  if (distinct.length === 1) return distinct[0];
+  if (distinct.length === 1) return { closerId: distinct[0], unknownRep: null };
 
-  const title = (copies[0]?.title ?? "").toLowerCase();
-  if (title) {
-    const candidates = closerNames.filter(
-      (c) => c.name.trim().length > 2 && title.includes(c.name.trim().toLowerCase()),
-    );
-    if (candidates.length === 1) return candidates[0].id;
-    // Fall back to a unique first-name match ("Nick" in "... and Nick Rowe").
-    const firstNameHits = closerNames.filter((c) => {
-      const first = c.name.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
-      return first.length > 2 && title.includes(first);
-    });
-    if (firstNameHits.length === 1) return firstNameHits[0].id;
-  }
-  return null;
+  return { closerId: null, unknownRep: null };
 }
 
 /**
@@ -229,6 +271,10 @@ async function recountDayImpl(
   const blockedMsByCloser = new Map<string, number>();
   const bookedMsByCloser = new Map<string, number>();
   let bookedUnattributed = 0;
+  // Reps named on bookings who hold no Sequ3nce seat, e.g. a closer the team
+  // never onboarded. Surfaced so the gap reads as a fact about the roster
+  // rather than as a defect in the numbers.
+  const unknownRepCounts = new Map<string, number>();
 
   // Collapse duplicate copies of the same meeting FIRST. Shared/subscribed
   // calendars mean one appointment can land on several closers' calendars —
@@ -268,7 +314,11 @@ async function recountDayImpl(
     const inWindow = overlapMs(evStart, evEnd, winStartMs, winEndMs);
 
     if (isCall) {
-      const ownerId = attributeBooking(copies, linkedCloser, closerNames);
+      const { closerId: ownerId, unknownRep } = attributeBooking(
+        copies,
+        linkedCloser,
+        closerNames,
+      );
       if (ownerId && byCloser.has(ownerId)) {
         byCloser.get(ownerId)!.booked += 1;
         bookedMsByCloser.set(
@@ -276,8 +326,14 @@ async function recountDayImpl(
           (bookedMsByCloser.get(ownerId) ?? 0) + inWindow,
         );
       } else {
-        // Genuinely ambiguous — counts for the team, not for any rep.
+        // Not ours to credit — counts for the team, not for any rep.
         bookedUnattributed += 1;
+        if (unknownRep) {
+          unknownRepCounts.set(
+            unknownRep,
+            (unknownRepCounts.get(unknownRep) ?? 0) + 1,
+          );
+        }
       }
     } else {
       // A block only removes capacity from the calendars it actually sits on.
@@ -346,14 +402,24 @@ async function recountDayImpl(
       q.eq("teamId", teamId).eq("dayKey", dayKey),
     )
     .first()) as Doc<"closerDailyTeamStats"> | null;
+  const unknownReps = Array.from(unknownRepCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+
   if (teamRow) {
     if (bookedUnattributed === 0) await ctx.db.delete(teamRow._id);
-    else await ctx.db.patch(teamRow._id, { bookedUnattributed, recountedAt: now });
+    else
+      await ctx.db.patch(teamRow._id, {
+        bookedUnattributed,
+        unknownReps,
+        recountedAt: now,
+      });
   } else if (bookedUnattributed > 0) {
     await ctx.db.insert("closerDailyTeamStats", {
       teamId,
       dayKey,
       bookedUnattributed,
+      unknownReps,
       recountedAt: now,
     });
   }

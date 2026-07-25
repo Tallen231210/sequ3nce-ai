@@ -251,9 +251,26 @@ export const getTeamPerformance = query({
       remaining: Math.max(0, prizeTarget - monthTotals.cash),
     };
 
-    const bookedUnattributed = teamRows
-      .filter((r) => inScope(r.dayKey))
-      .reduce((s, r) => s + r.bookedUnattributed, 0);
+    const scopedTeamRows = teamRows.filter((r) => inScope(r.dayKey));
+    const bookedUnattributed = scopedTeamRows.reduce(
+      (s, r) => s + r.bookedUnattributed,
+      0,
+    );
+
+    // Roll the per-day unknown-rep tallies up to the period. Keyed
+    // case-insensitively so "Callum B" and "callum b" don't split.
+    const repTally = new Map<string, { name: string; count: number }>();
+    for (const r of scopedTeamRows) {
+      for (const u of r.unknownReps ?? []) {
+        const k = u.name.trim().toLowerCase();
+        const cur = repTally.get(k);
+        if (cur) cur.count += u.count;
+        else repTally.set(k, { name: u.name.trim(), count: u.count });
+      }
+    }
+    const unknownReps = Array.from(repTally.values()).sort(
+      (a, b) => b.count - a.count,
+    );
 
     return {
       monthKey,
@@ -266,6 +283,8 @@ export const getTeamPerformance = query({
       teamRates: computeRates(teamTotals),
       // Bookings on shared calendars we refuse to attribute to one rep.
       bookedUnattributed,
+      // Named reps behind those bookings who have no seat — actionable.
+      unknownReps,
       // Drives the "log your outcomes" state instead of a wall of zeros.
       coverage: computeCoverage(teamTotals),
       economics,

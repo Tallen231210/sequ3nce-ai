@@ -2614,6 +2614,15 @@ export default defineSchema({
     teamId: v.id("teams"),
     dayKey: v.string(),
     bookedUnattributed: v.number(),
+    /**
+     * Of the unattributed bookings, those whose title names a rep who holds
+     * no Sequ3nce seat. Lets the dashboard say "210 bookings belong to
+     * Callum B, who isn't on Sequ3nce" instead of showing an anonymous gap —
+     * the difference between a data defect and an actionable roster fact.
+     */
+    unknownReps: v.optional(
+      v.array(v.object({ name: v.string(), count: v.number() })),
+    ),
     recountedAt: v.number(),
   }).index("by_team_and_day", ["teamId", "dayKey"]),
 
