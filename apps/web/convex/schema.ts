@@ -204,6 +204,8 @@ export default defineSchema({
      * better answer than the blanket "skip quiet days" rule alone.
      */
     closerDailyScorecardDays: v.optional(v.array(v.number())),
+    /** Last manual "send test" — throttles repeat posts into a live channel. */
+    closerDailyScorecardTestSentAt: v.optional(v.number()),
 
     // Untouched-lead alert config (Phase 2). Off by default — some teams
     // love real-time alerts, some hate the noise. When enabled, the

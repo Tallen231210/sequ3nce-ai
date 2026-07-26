@@ -1,5 +1,11 @@
 import { v } from "convex/values";
-import { action, internalQuery, mutation, query } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
@@ -152,12 +158,34 @@ export const sendTestScorecard = action({
     if (!target.canEdit) {
       throw new Error("Only managers can send a test scoreboard");
     }
-    return await ctx.runAction(
+
+    const since = target.lastTestAt ? Date.now() - target.lastTestAt : Infinity;
+    if (since < TEST_SEND_COOLDOWN_MS) {
+      const wait = Math.ceil((TEST_SEND_COOLDOWN_MS - since) / 1000);
+      throw new Error(`Just sent one — try again in ${wait}s.`);
+    }
+
+    const result = await ctx.runAction(
       internal.closerPerformanceNotifications.sendScorecardForTeamNow,
       { teamId: target.teamId },
     );
+    // Only a real post starts the cooldown; a misconfigured channel should be
+    // fixable and retryable immediately.
+    if (result.sent) {
+      await ctx.runMutation(internal.closerScorecardSettings.markTestSent, {
+        teamId: target.teamId,
+      });
+    }
+    return result;
   },
 });
+
+/**
+ * Minimum gap between manual test posts. The button writes into a real Slack
+ * channel that real people read, and a stuck UI or an impatient click should
+ * not turn into a burst of identical messages.
+ */
+const TEST_SEND_COOLDOWN_MS = 60_000;
 
 /** Auth check for the test send. Returns an id and a permission, nothing else. */
 export const resolveTestTarget = internalQuery({
@@ -165,9 +193,28 @@ export const resolveTestTarget = internalQuery({
   handler: async (
     ctx,
     args,
-  ): Promise<{ teamId: Id<"teams">; canEdit: boolean } | null> => {
+  ): Promise<{
+    teamId: Id<"teams">;
+    canEdit: boolean;
+    lastTestAt: number | null;
+  } | null> => {
     const user = await resolveAuthUser(ctx, args.clerkId);
     if (!user) return null;
-    return { teamId: user.teamId as Id<"teams">, canEdit: canEdit(user) };
+    const team = await ctx.db.get(user.teamId as Id<"teams">);
+    return {
+      teamId: user.teamId as Id<"teams">,
+      canEdit: canEdit(user),
+      lastTestAt: team?.closerDailyScorecardTestSentAt ?? null,
+    };
+  },
+});
+
+/** Stamped only after a send actually succeeded, so a failure is retryable. */
+export const markTestSent = internalMutation({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.teamId, {
+      closerDailyScorecardTestSentAt: Date.now(),
+    });
   },
 });
