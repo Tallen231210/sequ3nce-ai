@@ -388,14 +388,17 @@ coupling), which carried the Convex concurrency circuit-breaker across intact.
 omitting it defers the browser-microphone question entirely.
 
 **Still open:**
-- The post-call questionnaire. Deliberately NOT ported — section 12 changes
-  what it is. Build the new end-of-day flow rather than copying the old form.
+- ~~The post-call questionnaire~~ **DONE.** Ported as-is and rendered as a
+  dialog over the call list, addressable via `?questionnaire=<callId>`.
+  Section 12's end-of-day redesign applies to the **lower tiers**, not to this
+  port — this milestone is parity with the desktop app.
 - The bot lifecycle: `ActiveCallView`, `QuickBotModal`, `BotOnboardingView` and
   the `MeetingBotHub` orchestration. Tier 3 only and the most Electron-coupled
   part of the app.
-- Converting the remaining ~270 routes to session auth (step 7 covers the five
-  My Numbers routes; the rest still read `closerId` from the body).
-- Retiring the installed desktop app.
+- ~~Converting the remaining routes to session auth~~ **34 of them done**
+  (5 + 29). Everything the closer client POSTs now resolves identity from the
+  session. Still open: GET routes that pass identity in the query string, and
+  updating the desktop client to send a token so the fallback can go.
 
 ### The steps
 
@@ -422,7 +425,9 @@ omitting it defers the browser-microphone question entirely.
 
 **Step 6 — Verify.** The renderer runs in a browser today (see [[team-performance-sheet]] memory for the harness), so every view can be exercised before release. Test as a real closer on a real team.
 
-**Step 7 — Retire the installed app.** Ship a final desktop version pointing users to the web. Do not silently break it — it will keep launching on people's machines for months. Tell managers before closers notice.
+**Step 7 — Offer the web app alongside the desktop app.** Decided 2026-07-26: **the desktop app is NOT being retired.** The web version is an additional option — for closers who prefer a browser, and for **Windows users, who have no desktop app at all today.** That is the immediate win: a whole platform goes from unsupported to supported.
+
+Consequence for auth: the `closerId` fallback in `convex/closerSession.ts` cannot simply be deleted on a retirement date, because the desktop app keeps running indefinitely. To require sessions everywhere, the desktop client needs updating to store and send a session token too — the backend already issues one on every login, including from the desktop, so that is a client-side change only.
 
 ### Do not forget
 
