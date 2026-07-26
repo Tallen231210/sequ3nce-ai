@@ -5,20 +5,24 @@ import {
   getCloserDailyEntries,
   saveCloserDailyEntry,
   getTeamLeaderboardForCloser,
+  getCloserYearPerformance,
   type SelfPerformance,
+  type SelfYearPerformance,
   type DailyEntryRow,
   type LeaderboardRow,
 } from '../convex';
 import { PerformanceDayForm } from './PerformanceDayForm';
 import { PerformanceGrid } from './PerformanceGrid';
 import { PerformanceStats } from './PerformanceStats';
+import { PerformanceYear } from './PerformanceYear';
 
-type Section = 'today' | 'history' | 'stats';
+type Section = 'today' | 'history' | 'stats' | 'year';
 
 const SECTIONS: Array<[Section, string]> = [
   ['today', 'Today'],
   ['history', 'Previous days'],
   ['stats', 'My stats'],
+  ['year', 'Year'],
 ];
 
 function currentMonthKey(): string {
@@ -48,6 +52,9 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
   const [perf, setPerf] = useState<SelfPerformance | null>(null);
   const [rows, setRows] = useState<DailyEntryRow[]>([]);
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
+  const [year, setYear] = useState<number>(() => new Date().getFullYear());
+  const [yearData, setYearData] = useState<SelfYearPerformance | null>(null);
+  const [yearLoading, setYearLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingDay, setSavingDay] = useState<string | null>(null);
   const [errorDay, setErrorDay] = useState<Record<string, string | null>>({});
@@ -65,6 +72,20 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
   }, [closerInfo.closerId, monthKey]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Fetched only once the Year tab is opened — it reads a year of the team's
+  // daily rows, which is no small query to run for a tab nobody clicked.
+  useEffect(() => {
+    if (section !== 'year') return;
+    let cancelled = false;
+    setYearLoading(true);
+    void getCloserYearPerformance(closerInfo.closerId, year).then((d) => {
+      if (cancelled) return;
+      setYearData(d);
+      setYearLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [section, year, closerInfo.closerId]);
 
   const submitDay = async (dayKey: string, values: Record<string, number | null>) => {
     setSavingDay(dayKey);
@@ -197,6 +218,16 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
 
       {section === 'stats' && (
         <PerformanceStats perf={perf} board={board} />
+      )}
+
+      {section === 'year' && (
+        yearLoading && !yearData ? (
+          <div className="text-[13px] text-gray-400 py-8 text-center">
+            Loading your year…
+          </div>
+        ) : (
+          <PerformanceYear data={yearData} onYearChange={setYear} />
+        )
       )}
     </div>
   );

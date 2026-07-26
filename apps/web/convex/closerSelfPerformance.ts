@@ -357,3 +357,135 @@ export const getLeaderboardForCloser = internalQuery({
     return { monthKey, rows };
   },
 });
+
+/**
+ * Twelve months of the closer's own reported numbers.
+ *
+ * Reads the same rollup with the same reported-only rule as everything else,
+ * so their year and their manager's year can never disagree. Excludes the
+ * ad-spend columns the manager board carries — cost per booked and net both
+ * expose the team's ad budget.
+ */
+export const getSelfYearPerformance = internalQuery({
+  args: { closerId: v.id("closers"), year: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<any> => {
+    const info = await loadCloser(ctx, args.closerId);
+    if (!info) return null;
+    const { closer, tz } = info;
+    const teamId = closer.teamId as Id<"teams">;
+
+    const todayKey = dayKeyInTz(Date.now(), tz);
+    const currentYear = parseInt(todayKey.slice(0, 4), 10);
+    const year = args.year ?? currentYear;
+    if (!Number.isInteger(year) || year < 2000 || year > currentYear + 1) return null;
+
+    const start = `${year}-01-01`;
+    const end = `${year}-12-31`;
+    // A year of one team's daily rows. Capped for the same reason the manager
+    // year view is: a large team must degrade visibly, not fail.
+    const MAX_ROWS = 25_000;
+
+    const [stats, overrides, entries, goals] = await Promise.all([
+      ctx.db
+        .query("closerDailyStats")
+        .withIndex("by_team_and_day", (q: any) =>
+          q.eq("teamId", teamId).gte("dayKey", start).lte("dayKey", end),
+        )
+        .take(MAX_ROWS),
+      ctx.db
+        .query("closerDailyOverrides")
+        .withIndex("by_team_and_day", (q: any) =>
+          q.eq("teamId", teamId).gte("dayKey", start).lte("dayKey", end),
+        )
+        .take(MAX_ROWS),
+      ctx.db
+        .query("closerDailyEntries")
+        .withIndex("by_closer_and_day", (q: any) =>
+          q.eq("closerId", args.closerId).gte("dayKey", start).lte("dayKey", end),
+        )
+        .take(MAX_ROWS),
+      ctx.db
+        .query("closerGoals")
+        .withIndex("by_team_and_month", (q: any) => q.eq("teamId", teamId))
+        .take(2000),
+    ]);
+
+    const goalByMonth = new Map(
+      goals
+        .filter(
+          (g) =>
+            String(g.closerId) === String(args.closerId) &&
+            g.monthKey.startsWith(`${year}-`),
+        )
+        .map((g) => [g.monthKey, g.cashGoal]),
+    );
+
+    const byMonth = new Map<
+      string,
+      { totals: ReturnType<typeof emptyTotals>; daysSubmitted: number }
+    >();
+    for (const row of mergeDailyRows(stats, overrides, entries)) {
+      if (row.closerId !== String(args.closerId)) continue;
+      if (!row.confirmed && row.overridden.length === 0) continue;
+      const mk = row.dayKey.slice(0, 7);
+      const b = byMonth.get(mk) ?? { totals: emptyTotals(), daysSubmitted: 0 };
+      b.totals = addTotals(b.totals, row.totals);
+      if (row.confirmed) b.daysSubmitted += 1;
+      byMonth.set(mk, b);
+    }
+
+    const currentMonthKey = todayKey.slice(0, 7);
+    const months = [];
+    let prevCash: number | null = null;
+    for (let m = 1; m <= 12; m++) {
+      const monthKey = `${year}-${String(m).padStart(2, "0")}`;
+      const bucket = byMonth.get(monthKey);
+      const totals = bucket?.totals ?? emptyTotals();
+      const hasData = (bucket?.daysSubmitted ?? 0) > 0;
+      const goal = goalByMonth.get(monthKey) ?? null;
+
+      months.push({
+        monthKey,
+        monthIndex: m,
+        isCurrent: monthKey === currentMonthKey,
+        isFuture: monthKey > currentMonthKey,
+        hasData,
+        totals,
+        rates: computeRates(totals),
+        daysSubmitted: bucket?.daysSubmitted ?? 0,
+        daysInMonth: daysInMonth(monthKey),
+        avgCash: totals.closes > 0 ? totals.cash / totals.closes : null,
+        avgDeal: totals.closes > 0 ? totals.contractValue / totals.closes : null,
+        goal,
+        pctGoal: goal && goal > 0 ? (totals.cash / goal) * 100 : null,
+        // Only between two months that both happened — comparing against a
+        // month with nothing submitted would read as a collapse, not a gap.
+        momPct:
+          prevCash !== null && prevCash > 0 && hasData
+            ? ((totals.cash - prevCash) / prevCash) * 100
+            : null,
+      });
+      if (hasData) prevCash = totals.cash;
+    }
+
+    let yearTotals = emptyTotals();
+    for (const m of months) yearTotals = addTotals(yearTotals, m.totals);
+    const active = months.filter((m) => m.hasData);
+    const best = active.reduce(
+      (acc, m) => (acc === null || m.totals.cash > acc.totals.cash ? m : acc),
+      null as (typeof months)[number] | null,
+    );
+
+    return {
+      year,
+      currentYear,
+      months,
+      yearTotals,
+      activeMonths: active.length,
+      bestMonthKey: best?.monthKey ?? null,
+      avgCashPerActiveMonth:
+        active.length > 0 ? yearTotals.cash / active.length : 0,
+      truncated: stats.length >= MAX_ROWS,
+    };
+  },
+});

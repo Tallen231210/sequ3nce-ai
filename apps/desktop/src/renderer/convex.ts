@@ -2370,3 +2370,59 @@ export async function getTeamLeaderboardForCloser(
     return null;
   }
 }
+
+export interface YearMonthRow {
+  monthKey: string;
+  monthIndex: number;
+  isCurrent: boolean;
+  isFuture: boolean;
+  hasData: boolean;
+  totals: {
+    slots: number; booked: number; taken: number; offers: number;
+    closes: number; cash: number; contractValue: number;
+  };
+  rates: {
+    bookedPct: number | null; showPct: number | null;
+    offerPct: number | null; closePct: number | null;
+  };
+  daysSubmitted: number;
+  daysInMonth: number;
+  avgCash: number | null;
+  avgDeal: number | null;
+  goal: number | null;
+  pctGoal: number | null;
+  momPct: number | null;
+}
+
+export interface SelfYearPerformance {
+  year: number;
+  currentYear: number;
+  months: YearMonthRow[];
+  yearTotals: YearMonthRow["totals"];
+  activeMonths: number;
+  bestMonthKey: string | null;
+  avgCashPerActiveMonth: number;
+  truncated: boolean;
+}
+
+/** Twelve months of the closer's own reported numbers. */
+export async function getCloserYearPerformance(
+  closerId: string,
+  year?: number,
+): Promise<SelfYearPerformance | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserYearPerformance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, ...(typeof year === "number" ? { year } : {}) }),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get year performance:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCloserYearPerformance", integration: "convex" },
+    });
+    return null;
+  }
+}

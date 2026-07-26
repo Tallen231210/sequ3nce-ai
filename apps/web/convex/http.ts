@@ -11866,6 +11866,33 @@ http.route({
 });
 closerPreflight("/getTeamLeaderboardForCloser");
 
+/** Their own twelve months. */
+http.route({
+  path: "/getCloserYearPerformance",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { closerId, year } = await request.json();
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400, headers: CLOSER_JSON,
+        });
+      }
+      const data = await ctx.runQuery(internal.closerSelfPerformance.getSelfYearPerformance, {
+        closerId: closerId as Id<"closers">,
+        ...(typeof year === "number" ? { year } : {}),
+      });
+      return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] getCloserYearPerformance:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/getCloserYearPerformance");
+
 
 export default http;
 
