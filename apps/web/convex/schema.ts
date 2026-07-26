@@ -389,6 +389,29 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_clerk_id", ["clerkId"]),
 
+  // Proof that a closer actually signed in.
+  //
+  // Without this, every closer request simply asserts "I am closer X" and the
+  // backend believes it — so a closer could submit numbers as a teammate.
+  // Login now issues a random token; we store only its hash and resolve the
+  // closer FROM the session rather than from anything the client claims.
+  //
+  // A table rather than fields on `closers` so one closer can be signed in on
+  // several devices at once and a single session can be revoked on sign-out.
+  closerSessions: defineTable({
+    closerId: v.id("closers"),
+    teamId: v.id("teams"),
+    tokenHash: v.string(), // SHA-256 hex of the token; the raw token is never stored
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    lastUsedAt: v.number(),
+    revokedAt: v.optional(v.number()), // set on sign-out; kept for auditability
+    // Coarse client hint for support ("which browser was this?"). Never trusted.
+    userAgent: v.optional(v.string()),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_closer", ["closerId"]),
+
   // Calendar events (synced from closer ICS feeds or Google Calendar API)
   calendarEvents: defineTable({
     closerId: v.id("closers"),

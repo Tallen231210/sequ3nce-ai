@@ -79,6 +79,7 @@ import type * as closerPerformanceYear from "../closerPerformanceYear.js";
 import type * as closerScorecardData from "../closerScorecardData.js";
 import type * as closerScorecardSettings from "../closerScorecardSettings.js";
 import type * as closerSelfPerformance from "../closerSelfPerformance.js";
+import type * as closerSession from "../closerSession.js";
 import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
 import type * as dataMigrations from "../dataMigrations.js";
@@ -228,6 +229,7 @@ declare const fullApi: ApiFromModules<{
   closerScorecardData: typeof closerScorecardData;
   closerScorecardSettings: typeof closerScorecardSettings;
   closerSelfPerformance: typeof closerSelfPerformance;
+  closerSession: typeof closerSession;
   closers: typeof closers;
   crons: typeof crons;
   dataMigrations: typeof dataMigrations;

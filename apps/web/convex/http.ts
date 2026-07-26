@@ -11748,19 +11748,45 @@ function closerPreflight(path: string) {
 }
 
 /** Their own month: funnel, rates, goal, submission count. */
+/**
+ * Who is this closer request actually from?
+ *
+ * With a session token, the closer comes from the SESSION — any closerId in
+ * the body is ignored, which is the point: the body is the part the client
+ * controls. Without one, falls back to trusting the body, because installed
+ * desktop apps keep running for months after we stop shipping them and would
+ * all break at once otherwise. See convex/closerSession.ts.
+ */
+async function closerFromBody(
+  ctx: any,
+  body: { sessionToken?: string; closerId?: string },
+): Promise<Id<"closers"> | null> {
+  const resolved = await ctx.runQuery(internal.closerSession.resolveCloser, {
+    ...(body.sessionToken ? { sessionToken: body.sessionToken } : {}),
+    ...(body.closerId ? { closerId: body.closerId } : {}),
+  });
+  return resolved ? (resolved.closerId as Id<"closers">) : null;
+}
+
+const CLOSER_UNAUTHORISED = new Response(
+  JSON.stringify({ error: "Not signed in" }),
+  { status: 401 },
+);
+
 http.route({
   path: "/getCloserPerformance",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const { closerId, monthKey } = await request.json();
-      if (!closerId) {
-        return new Response(JSON.stringify({ error: "closerId is required" }), {
-          status: 400, headers: CLOSER_JSON,
+      const { sessionToken, closerId, monthKey } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
         });
       }
       const data = await ctx.runQuery(internal.closerSelfPerformance.getSelfPerformance, {
-        closerId: closerId as Id<"closers">,
+        closerId: authedCloserId,
         ...(monthKey ? { monthKey } : {}),
       });
       return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
@@ -11780,14 +11806,21 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const { closerId, monthKey } = await request.json();
-      if (!closerId || !monthKey) {
-        return new Response(JSON.stringify({ error: "closerId and monthKey are required" }), {
+      const { sessionToken, closerId, monthKey } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      // closerId comes from the session, not the body — see saveCloserDailyEntry.
+      if (!monthKey) {
+        return new Response(JSON.stringify({ error: "monthKey is required" }), {
           status: 400, headers: CLOSER_JSON,
         });
       }
       const data = await ctx.runQuery(internal.closerSelfPerformance.getSelfDailyEntries, {
-        closerId: closerId as Id<"closers">,
+        closerId: authedCloserId,
         monthKey,
       });
       return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
@@ -11807,14 +11840,23 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const { closerId, dayKey, values } = await request.json();
-      if (!closerId || !dayKey) {
-        return new Response(JSON.stringify({ error: "closerId and dayKey are required" }), {
+      const { sessionToken, closerId, dayKey, values } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      // closerId is deliberately NOT required — a session-authenticated caller
+      // never sends one, and requiring it would be asking the client to name
+      // the very thing we refuse to take its word for.
+      if (!dayKey) {
+        return new Response(JSON.stringify({ error: "dayKey is required" }), {
           status: 400, headers: CLOSER_JSON,
         });
       }
       await ctx.runMutation(internal.closerPerformanceMutations.saveCloserDailyEntry, {
-        closerId: closerId as Id<"closers">,
+        closerId: authedCloserId,
         dayKey,
         values: values ?? {},
       });
@@ -11845,14 +11887,15 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const { closerId, monthKey } = await request.json();
-      if (!closerId) {
-        return new Response(JSON.stringify({ error: "closerId is required" }), {
-          status: 400, headers: CLOSER_JSON,
+      const { sessionToken, closerId, monthKey } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
         });
       }
       const data = await ctx.runQuery(internal.closerSelfPerformance.getLeaderboardForCloser, {
-        closerId: closerId as Id<"closers">,
+        closerId: authedCloserId,
         ...(monthKey ? { monthKey } : {}),
       });
       return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
@@ -11872,14 +11915,15 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const { closerId, year } = await request.json();
-      if (!closerId) {
-        return new Response(JSON.stringify({ error: "closerId is required" }), {
-          status: 400, headers: CLOSER_JSON,
+      const { sessionToken, closerId, year } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
         });
       }
       const data = await ctx.runQuery(internal.closerSelfPerformance.getSelfYearPerformance, {
-        closerId: closerId as Id<"closers">,
+        closerId: authedCloserId,
         ...(typeof year === "number" ? { year } : {}),
       });
       return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
@@ -11892,6 +11936,58 @@ http.route({
   }),
 });
 closerPreflight("/getCloserYearPerformance");
+
+/** Extend an active session. Called once when the closer app loads. */
+http.route({
+  path: "/closer/session/refresh",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { sessionToken } = await request.json();
+      if (!sessionToken) {
+        return new Response(JSON.stringify({ valid: false }), {
+          status: 200, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runMutation(api.closerSession.refreshSession, {
+        sessionToken,
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] closer/session/refresh:", error);
+      return new Response(JSON.stringify({ valid: false }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/session/refresh");
+
+/** Sign out. Idempotent, and silent on an unknown token so it can't be used
+ *  to probe which tokens exist. */
+http.route({
+  path: "/closer/session/revoke",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { sessionToken } = await request.json();
+      if (sessionToken) {
+        await ctx.runMutation(api.closerSession.revokeSession, { sessionToken });
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    } catch (error) {
+      console.error("[HTTP] closer/session/revoke:", error);
+      // Sign-out must never appear to fail — the client clears its token
+      // regardless, and a stuck "couldn't sign out" is worse than a stale row.
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/session/revoke");
 
 
 export default http;

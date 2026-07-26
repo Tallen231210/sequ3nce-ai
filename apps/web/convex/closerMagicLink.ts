@@ -20,6 +20,7 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { issueSession } from "./closerSession";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CODE_REGEX = /^\d{6}$/;
@@ -434,6 +435,7 @@ export const verifyCloserMagicLink = mutation({
     | {
         success: true;
         kind: "signed_in";
+        sessionToken: string;
         closer: CloserAuthInfo;
       }
     | {
@@ -570,9 +572,12 @@ export const verifyCloserMagicLink = mutation({
       }
       await ctx.db.patch(matched._id, loginUpdates);
       const team = await ctx.db.get(matched.teamId);
+      // Proof of login for every request that follows.
+      const sessionToken = await issueSession(ctx, matched);
       return {
         success: true,
         kind: "signed_in",
+        sessionToken,
         closer: {
           closerId: matched._id,
           teamId: matched.teamId,
@@ -633,6 +638,7 @@ export const pickCloserTeam = mutation({
   ): Promise<{
     success: boolean;
     error?: string;
+    sessionToken?: string;
     closer?: CloserAuthInfo;
   }> => {
     const token = args.pickerToken.trim();
@@ -696,9 +702,14 @@ export const pickCloserTeam = mutation({
     await ctx.db.patch(closer._id, loginUpdates);
 
     const team = await ctx.db.get(closer.teamId);
+    // The picker is the moment this closer is actually signed in, so the
+    // session is issued here rather than at verify — at verify we didn't yet
+    // know WHICH of their team memberships they meant.
+    const sessionToken = await issueSession(ctx, closer);
 
     return {
       success: true,
+      sessionToken,
       closer: {
         closerId: closer._id,
         teamId: closer.teamId,

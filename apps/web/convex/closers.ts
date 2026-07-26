@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { Id, Doc } from "./_generated/dataModel";
 import { api } from "./_generated/api";
+import { issueSession } from "./closerSession";
 
 // Simple password hashing using Web Crypto API (available in Convex runtime)
 // In production, you might want to use a more robust solution
@@ -1098,6 +1099,8 @@ export const loginCloser = mutation({
   args: {
     email: v.string(),
     password: v.string(),
+    // Optional, for support ("which browser was this?"). Never trusted.
+    userAgent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const email = args.email.trim().toLowerCase();
@@ -1166,8 +1169,13 @@ export const loginCloser = mutation({
     // Get team info
     const team = await ctx.db.get(closer.teamId);
 
+    // Proof of login, so later requests don't have to be taken on trust.
+    // Additive: existing desktop clients ignore this field and keep working.
+    const sessionToken = await issueSession(ctx, closer, args.userAgent);
+
     return {
       success: true,
+      sessionToken,
       closer: {
         closerId: closer._id,
         teamId: closer.teamId,
