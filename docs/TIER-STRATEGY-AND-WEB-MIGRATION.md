@@ -389,6 +389,19 @@ coupling), which carried the Convex concurrency circuit-breaker across intact.
 omitting it defers the browser-microphone question entirely.
 
 **Still open:**
+- **Closer onboarding is desktop-only and now actively wrong for Windows.**
+  The welcome email (`convex/closerMagicLink.ts`, ~line 236) is built entirely
+  around the installed app: the primary button is a `sequ3nce://` deep link
+  that opens the desktop app, the first-time email's step one is "download",
+  and the code-entry fallback reads *"Open Sequ3nce on the computer where you
+  use it"*. A Windows closer is currently emailed instructions to install an
+  app that does not exist for them. Needs revamping to offer a choice — Mac
+  users pick either, Windows users go straight to the web. Decision needed on
+  how to present it: choice in the email, or detect the platform.
+- **Nobody has opened the web app on Windows.** Tyler has no Windows machine.
+  It is plain Next.js with no platform-specific code, so the risk is low, but
+  it is untested and Windows is the main reason this exists. Cover it by
+  asking a Windows customer during the first rollout.
 - ~~The post-call questionnaire~~ **DONE.** Ported as-is and rendered as a
   dialog over the call list, addressable via `?questionnaire=<callId>`.
   Section 12's end-of-day redesign applies to the **lower tiers**, not to this
