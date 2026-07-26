@@ -349,3 +349,60 @@ So the screen must pay them back: their own stats, their rank, progress to goal,
 **Show it first.** Opening the page should show how they are doing *before* asking for anything. Reward, then ask — not a form with their stats hidden behind a tab.
 
 This is the highest-leverage UX decision on the lower tiers and it costs nothing, because the pieces are built.
+
+---
+
+## 13. Phase 1 work plan — desktop app becomes a web app
+
+Audited 2026-07-26. This is the executable plan; sections 1–12 are the reasoning behind it.
+
+### What the audit found
+
+**Only three files in the entire renderer touch Electron.** Everything else — all 24 views, including the 1,081-line `CoachingView`, the 704-line `ActiveCallView`, `StatsView`, `CallHistoryView`, `PostCallQuestionnaire` — is ordinary React talking over HTTPS to `convex.site`. This is a much better starting position than expected.
+
+| File | Bridge calls | What it needs |
+|---|---|---|
+| `src/renderer/App.tsx` | 18 | schedule ×6, training ×3, chat ×3, `app.setWindowSize` ×2, ammo ×2, `app.getVersion`, `app.getPlatform` |
+| `src/renderer/views/MeetingBotHub.tsx` | 8 | `chat.onUnreadCountChanged`, `chat.getUnreadCount`, `bot.callStarted`, `bot.callEnded`, `bot.openQuestionnaire` ×3, `ammo.toggle` |
+| `src/renderer/views/SettingsView.tsx` | 1 | `diagnostics.collect` |
+
+**The app is six windows, not one.** `src/index.ts` creates: `mainWindow`, `ammoTrackerWindow`, `postCallWindow`, `roleplayWindow`, `scheduleWindow`, `trainingWindow`. Each has its own renderer entry point (`ammo-tracker-renderer.ts`, `post-call-renderer.ts`, `roleplay-renderer.ts`, `schedule-renderer.ts`, `training-renderer.ts`). **On the web each becomes a route or an in-app modal.** This is the real shape of the migration — not "port a page", but "collapse six windows into one app".
+
+**Clerk will not get in the way.** `apps/web/src/middleware.ts` only protects `/dashboard`, `/team`, `/billing`, `/settings`, `/calls`. A new closer route outside those paths is unprotected by default, which is what we want since closers use native auth. **Do not put the closer app under `/settings` or `/calls`** — those are already Clerk-protected and would bounce closers to a manager login.
+
+### Recommended shape
+
+Put the closer app in `apps/web` as a new route group under a fresh prefix (`/closer` or `/app`). It shares the Convex client, the components and the deploy. A separate Next.js app would duplicate all three for no benefit.
+
+### The steps
+
+**Step 1 — Scaffold and shell.** New route group. Port `App.tsx` and `MeetingBotHub.tsx` as the shell and navigation, with the bridge calls removed rather than stubbed. Nothing else yet. Deploy it — it is unreachable without a link and gated by `betaFeatures`.
+
+**Step 2 — Closer auth on the web.** They log in against the `closers` table today (email/password, plus magic link), which already works over HTTP. Decide here whether to fix the "trusted ID" weakness (see section 5) — doing it now is far cheaper than later, and this is the only moment the auth code is open.
+
+**Step 3 — Port the views.** Roughly in this order, since it front-loads the things closers use daily: `DashboardView`, `PerformanceView` (+ its five files — already verified working in a browser), `StatsView`, `CallHistoryView` + `CallDetailSheet` + its tabs, `ResourcesView`, `MessagesView`, `SettingsView`, `CoachingView`, `RolePlayView`. These need no Electron work; the job is routing and layout.
+
+**Step 4 — Collapse the five secondary windows.**
+- `postCallWindow` → in-app route or modal. Note section 12 changes what this *is*; do not port the old questionnaire verbatim without checking that first.
+- `scheduleWindow` → route (takes closer email + team ID, previously passed over the bridge)
+- `trainingWindow` → route (takes closer ID)
+- `roleplayWindow` → route. **Check microphone permissions in the browser early** — this is the one with unknown risk.
+- `ammoTrackerWindow` → **delete entirely.** Decided; see section 10.
+
+**Step 5 — Replace the bridge capabilities.** About ten distinct things:
+- `chat.startPolling` / `getUnreadCount` / `onUnreadCountChanged` → poll or subscribe from React
+- `bot.callStarted` / `callEnded` / `openQuestionnaire` → tier 3 only; in-app state instead of window messages
+- `schedule.*`, `training.*` → route parameters
+- `app.getVersion` / `getPlatform` → build constant and browser detection
+- `app.setWindowSize`, `ammo.*` → delete
+- `diagnostics.collect` → browser-side equivalent, or drop it
+
+**Step 6 — Verify.** The renderer runs in a browser today (see [[team-performance-sheet]] memory for the harness), so every view can be exercised before release. Test as a real closer on a real team.
+
+**Step 7 — Retire the installed app.** Ship a final desktop version pointing users to the web. Do not silently break it — it will keep launching on people's machines for months. Tell managers before closers notice.
+
+### Do not forget
+
+- `Quick Bot` and the whole bot lifecycle are tier 3 only — hide, don't delete.
+- Desktop notifications become browser notifications, which need permission and behave differently.
+- The B2C Personal app is a **separate Electron app** and is not in scope. It shares the Convex backend, so schema changes stay additive.
