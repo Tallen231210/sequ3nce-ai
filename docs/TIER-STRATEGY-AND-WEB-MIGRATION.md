@@ -86,7 +86,13 @@ Before Phase 3 — ideally before Phase 1 — we need:
 - Stripe test mode used for all billing development, with live keys not present in the development environment at all
 - Test accounts for each of the three tiers, so gating can be verified rather than assumed
 
-Treat this as its own small piece of work with its own sign-off. Everything downstream is riskier without it.
+**Agreed scope: about a day, not a project.** Point local work at the dev deployment, seed a few fake teams (one per tier) using the existing seed script, use Stripe test keys locally and remove the live key from the local environment, and deploy to production deliberately rather than on save.
+
+The real danger is not "building against production" — that has been fine. It is running the auto-deploying dev command against production, where **every file save ships to customers.** That is the thing to stop.
+
+Nothing is lost for debugging: the command-line tools read production regardless of what the local app points at.
+
+Google Calendar, GoHighLevel and Fathom each need to know the dev address before they will talk to it. Do those one at a time as you first touch them, not upfront — otherwise it becomes three days of plumbing before any feature work.
 
 ---
 
@@ -284,4 +290,51 @@ Answer these before or during the phase they belong to.
 
 **Whenever:**
 7. Do we fix the "trusted ID" auth weakness during the web migration, or accept it and schedule it separately?
-8. Does the post-call form survive at all, or does the daily numbers sheet replace it? The daily sheet asks once a day instead of after every call, which is less work for the closer — but the post-call form is where objection data comes from, and that feeds the whole Analytics tab. **If the form goes, Analytics goes with it on every tier.** This is more consequential than it looks.
+8. ~~Does the post-call form survive?~~ **Answered — see section 12.**
+
+---
+
+## 12. How closers report their day (proposed 2026-07-26)
+
+Replaces the old post-call form. Resolves the "one daily report vs one form per call" tension by making them the same screen.
+
+### Ask about calls, derive the totals
+
+Today the daily sheet asks a closer for their totals — taken, offers, closes. That makes them count their own day: annoying, and unreliable because people misremember.
+
+Instead, show **today's calls as a list** and ask what happened to each. The totals then compute themselves. One interaction yields both the aggregate numbers and the per-call detail, for less work than today.
+
+Where the call list comes from: the closer's **calendar** on tier 1, **Fathom** on tier 2, the **bot** on tier 3. This is what makes per-call reporting possible on a tier with no recording at all.
+
+### The interaction
+
+Each call is a row. Questions reveal progressively, so only what is relevant gets asked:
+
+- Did they show? → no-show ends the row in one tap
+- Showed → did you make an offer?
+- Offer → did it close?
+- Closed → cash collected, contract value
+- Not closed → **what got in the way** (this is the objection field the entire Analytics tab runs on)
+
+Most rows are two or three taps. A whole day should take well under a minute, with no arithmetic anywhere.
+
+**Objections are only asked on calls that did not close** — typically a minority. That is the whole reason this is cheaper than the current per-call form.
+
+### Immediate vs end-of-day: not a choice
+
+It is one screen — today's calls, some filled in, some not. Fill a row straight after a call at 10am, or do the lot at 6pm. Same list either way. **Do not build two things.**
+
+### Must get right
+
+- **Calls not on the calendar.** Rescheduled, ad-hoc, or a prospect who rang instead. There must be an obvious "add a call" option, or closers hit a wall on day two and stop trusting it.
+- **Recall accuracy.** Asking at 6pm about a 9am call gives fuzzier answers, objections especially. Accepted trade: near-complete roughly-right data beats ~50% precise data, which is what the current form actually achieves.
+
+### The UX principle for the lower tiers
+
+On tier 3 a closer gets something back — transcripts, coaching, reviews. **On tier 1 they get nothing.** They are typing numbers into their manager's dashboard. That is the real reason data entry dies everywhere it has been tried.
+
+So the screen must pay them back: their own stats, their rank, progress to goal, what they have earned. All of it already exists — leaderboard, pace card, prize, funnel.
+
+**Show it first.** Opening the page should show how they are doing *before* asking for anything. Reward, then ask — not a form with their stats hidden behind a tab.
+
+This is the highest-leverage UX decision on the lower tiers and it costs nothing, because the pieces are built.
