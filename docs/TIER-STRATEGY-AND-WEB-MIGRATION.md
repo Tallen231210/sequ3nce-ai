@@ -282,6 +282,8 @@ Do not reopen these without a reason.
 - Fathom first. Zoom later, if at all.
 - **No separate development environment.** Backend is production; front ends are tested locally and gated behind `betaFeatures` once deployed. See section 4 for the rules that keep this safe. Considered and rejected 2026-07-26 — testing everything twice costs more than it saves.
 - Section 12 (how closers report their day) is agreed, including both risks it flags and the reward-before-ask rule.
+- **Fix the "trusted ID" auth weakness during Phase 1** (decided 2026-07-26). Doing it while the login code is already open is far cheaper than a separate project later. Closes open question 7.
+- **The web version must look like a web app, not a ported desktop app.** Especially the login screen. Do not copy desktop chrome, window-sized layouts or desktop-native affordances across. This is a design requirement, not a nice-to-have — these tiers are sold on the experience being effortless.
 
 ---
 
@@ -300,7 +302,7 @@ Answer these before or during the phase they belong to.
 6. Does an inactive closer occupy a paid seat?
 
 **Whenever:**
-7. Do we fix the "trusted ID" auth weakness during the web migration, or accept it and schedule it separately?
+7. ~~Fix the "trusted ID" weakness now or later?~~ **Answered: fix it in Phase 1.**
 8. ~~Does the post-call form survive?~~ **Answered — see section 12.**
 
 ---
