@@ -321,9 +321,10 @@ export const requestCloserMagicLink = action({
 
         <div style="background: #fafafa; border: 1px solid #eaeaea; border-radius: 12px; padding: 20px 24px; margin-bottom: 24px;">
           <p style="color: #555; font-size: 14px; line-height: 1.6; margin: 0;">
-            Inside you'll find your calls, your numbers, your schedule and
-            anything your manager has shared with you. Bookmark it and you're
-            set — you'll stay signed in.
+            <strong style="color: #111;">First thing you'll do:</strong>
+            connect your calendar. That's how Sequ3nce knows which meetings are
+            yours — it takes about a minute, and nothing works until it's done.
+            Bookmark the page while you're there; you'll stay signed in.
           </p>
         </div>
 

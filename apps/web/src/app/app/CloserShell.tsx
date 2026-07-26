@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { useActiveCall } from "./_components/useActiveCall";
+import { needsCalendarOnboarding } from "@/lib/closer/client";
 import { ActiveCallProvider } from "./_components/ActiveCallContext";
 import { PostCallModal } from "./_components/PostCallModal";
 import { QuickBotModal } from "./_components/QuickBotModal";
@@ -80,7 +81,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
     setCloser(info);
     // One call: validates the session, extends it, and tells us whether this
     // team is switched on yet.
-    void fetchMe().then((me) => {
+    void fetchMe().then(async (me) => {
       if (!me.valid) {
         router.replace("/app/login");
         return;
@@ -88,8 +89,22 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
       if (me.closer) setCloser(me.closer);
       setEnabled(me.webAppEnabled !== false);
       setChecked(true);
+
+      // A closer with no calendar connected generates no schedule, no slots
+      // and — on the bot tier — no calls at all, so they'd sit in front of an
+      // empty app forever without ever being told why. The desktop app asked
+      // on launch; on the web nothing did until now.
+      if (pathname === "/app/setup") return;
+      try {
+        if (await needsCalendarOnboarding(info.closerId)) {
+          router.replace("/app/setup");
+        }
+      } catch {
+        // Never block the app on this check. Worst case they connect their
+        // calendar from Settings, which has always been possible.
+      }
     });
-  }, [router]);
+  }, [router, pathname]);
 
   // Nothing renders until we know the session is real — otherwise a closer
   // sees their name and an empty page for a beat before being bounced.
