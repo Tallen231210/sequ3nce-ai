@@ -6,7 +6,7 @@ import { ScorecardSettings } from "./ScorecardSettings";
 import { TargetsSettings } from "./TargetsSettings";
 
 const SECTIONS = [
-  ["targets", "Targets & goals"],
+  ["targets", "Goals & prize"],
   ["availability", "Availability"],
   ["post", "Daily post"],
 ] as const;

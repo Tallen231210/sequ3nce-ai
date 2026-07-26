@@ -39,6 +39,14 @@ export function CapacitySettings() {
   const setCapacity = useMutation(
     api.closerCapacitySettings.setCalendarCapacity,
   );
+  // Call length lives here rather than with targets: it's the divisor that
+  // turns open calendar time into slots, so it's a capacity setting.
+  const config = useQuery(
+    api.closerPerformanceConfig.getConfig,
+    user ? { clerkId: user.id } : "skip",
+  );
+  const updateConfig = useMutation(api.closerPerformanceConfig.updateConfig);
+  const [lengthDraft, setLengthDraft] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +95,41 @@ export function CapacitySettings() {
       {error && (
         <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-2.5 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300">
           {error}
+        </div>
+      )}
+
+      {config && (
+        <div className="rounded-xl border border-border bg-card px-5 py-4">
+          <label className="text-xs font-medium" htmlFor="cap-len">
+            Typical call length
+          </label>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Open time on a calendar is divided by this to count slots. A wrong
+            value shifts every Slots figure on the board.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              id="cap-len"
+              type="number"
+              disabled={!config.canEdit}
+              value={lengthDraft ?? String(config.typicalCallLengthMin)}
+              onChange={(e) => setLengthDraft(e.target.value)}
+              onBlur={(e) => {
+                setLengthDraft(null);
+                const v = Number(e.target.value.trim());
+                if (!Number.isFinite(v) || v === config.typicalCallLengthMin) return;
+                setError(null);
+                void updateConfig({
+                  clerkId: user!.id,
+                  typicalCallLengthMin: v,
+                }).catch((err) =>
+                  setError(err instanceof Error ? err.message : "Could not save"),
+                );
+              }}
+              className="w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm tabular-nums outline-none focus:border-foreground disabled:opacity-60"
+            />
+            <span className="text-xs text-muted-foreground">minutes</span>
+          </div>
         </div>
       )}
 

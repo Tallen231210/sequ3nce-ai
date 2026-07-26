@@ -112,86 +112,17 @@ export function TargetsSettings() {
         </div>
       )}
 
-      {/* Targets */}
-      <div className="rounded-xl border border-border bg-card">
-        <div className="border-b border-border px-5 py-3.5">
-          <h3 className="text-sm font-semibold">Targets</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            What each rate is measured against. Green within 5 points, amber
-            within 15, red beyond.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-5 px-5 py-4 sm:grid-cols-4">
-          <Field
-            label="Booked %"
-            hint="Booked ÷ Slots"
-            value={data.targets.bookedPct}
-            suffix="%"
-            disabled={disabled}
-            onSave={(v) => v !== null && save({ bookedPctTarget: v })}
-          />
-          <Field
-            label="Show %"
-            hint="Taken ÷ Booked"
-            value={data.targets.showPct}
-            suffix="%"
-            disabled={disabled}
-            onSave={(v) => v !== null && save({ showPctTarget: v })}
-          />
-          <Field
-            label="Offer → Close"
-            hint="Closes ÷ Offers"
-            value={data.targets.offerClosePct}
-            suffix="%"
-            disabled={disabled}
-            onSave={(v) => v !== null && save({ offerClosePctTarget: v })}
-          />
-          <Field
-            label="Close %"
-            hint="Closes ÷ Taken"
-            value={data.targets.closePct}
-            suffix="%"
-            disabled={disabled}
-            onSave={(v) => v !== null && save({ closePctTarget: v })}
-          />
-        </div>
-      </div>
-
-      {/* Economics */}
-      <div className="rounded-xl border border-border bg-card">
-        <div className="border-b border-border px-5 py-3.5">
-          <h3 className="text-sm font-semibold">Economics</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Drives cost per booked call and net after commission. Leave ad spend
-            empty and the Economics card stays hidden rather than showing zeros.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-5 px-5 py-4 sm:grid-cols-3">
-          <Field
-            label="Monthly ad spend"
-            value={data.adSpendMonthly}
-            suffix="/ month"
-            placeholder="not set"
-            disabled={disabled}
-            onSave={(v) => save({ adSpendMonthly: v })}
-          />
-          <Field
-            label="Closer commission"
-            hint="Share of cash paid to closers"
-            value={data.compPct}
-            suffix="%"
-            disabled={disabled}
-            onSave={(v) => v !== null && save({ compPct: v })}
-          />
-          <Field
-            label="Typical call length"
-            hint="Used to turn open calendar time into slots"
-            value={data.typicalCallLengthMin}
-            suffix="min"
-            disabled={disabled}
-            onSave={(v) => v !== null && save({ typicalCallLengthMin: v })}
-          />
-        </div>
+      {/* One home per setting. Targets and economics are edited on the board
+          itself, beside the results they govern — but say so here, because
+          Settings is where someone will look for them first. */}
+      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Rate targets, monthly ad spend and rep commission are edited directly
+          on the <span className="font-medium text-foreground">Team</span> tab,
+          in the strip above the funnel — so they can be adjusted against the
+          numbers they govern rather than from memory.
+        </p>
       </div>
 
       {/* Goals */}
