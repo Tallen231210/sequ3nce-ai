@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import type { DailyEntryRow } from '@/lib/closer/api';
+import type { DailyEntryRow } from '@/lib/closer/client';
 
 interface DayField {
   key: string;

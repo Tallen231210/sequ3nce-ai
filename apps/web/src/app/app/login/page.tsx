@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  loginWithPassword,
-  requestSignInCode,
-  verifySignInCode,
-  pickTeam,
+  loginCloser,
+  requestMagicLink,
+  verifyMagicLink,
+  pickCloserTeam,
   type LoginResult,
+  type VerifyMagicLinkResult,
   type TeamChoice,
-} from "@/lib/closer/api";
+} from "@/lib/closer/client";
 import { saveSession } from "@/lib/closer/session";
 
 type Step = "email" | "code" | "password" | "pick_team";
@@ -41,14 +42,20 @@ export default function CloserLoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   /** Both sign-in paths land here, so the two can't drift apart. */
-  const complete = (result: LoginResult): boolean => {
-    if (result.kind === "team_picker" && result.pickerToken) {
+  const complete = (result: LoginResult | VerifyMagicLinkResult): boolean => {
+    if ("kind" in result && result.kind === "team_picker" && result.pickerToken) {
       setPickerToken(result.pickerToken);
       setChoices(result.choices ?? []);
       setStep("pick_team");
       return true;
     }
-    if (result.success && result.sessionToken && result.closer) {
+    if (
+      result.success &&
+      "closer" in result &&
+      result.closer &&
+      "sessionToken" in result &&
+      result.sessionToken
+    ) {
       saveSession(result.sessionToken, result.closer);
       router.push("/app/numbers");
       return true;
@@ -56,12 +63,16 @@ export default function CloserLoginPage() {
     return false;
   };
 
-  const run = async (fn: () => Promise<LoginResult>, fallback: string) => {
+  const run = async (
+    fn: () => Promise<LoginResult | VerifyMagicLinkResult>,
+    fallback: string,
+  ) => {
     setBusy(true);
     setError(null);
     try {
       const result = await fn();
-      if (!complete(result)) setError(result.error ?? fallback);
+      if (!complete(result))
+        setError(("error" in result ? result.error : null) ?? fallback);
     } catch {
       setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
@@ -73,7 +84,7 @@ export default function CloserLoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await requestSignInCode(email.trim().toLowerCase());
+      const res = await requestMagicLink(email.trim().toLowerCase());
       if (res.success) {
         setStep("code");
       } else {
@@ -136,7 +147,7 @@ export default function CloserLoginPage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 void run(
-                  () => verifySignInCode(email.trim().toLowerCase(), code.trim()),
+                  () => verifyMagicLink(email.trim().toLowerCase(), code.trim()),
                   "That code isn't right, or it's expired.",
                 );
               }}
@@ -178,7 +189,7 @@ export default function CloserLoginPage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 void run(
-                  () => loginWithPassword(email.trim().toLowerCase(), password),
+                  () => loginCloser(email.trim().toLowerCase(), password),
                   "Invalid email or password.",
                 );
               }}
@@ -222,7 +233,7 @@ export default function CloserLoginPage() {
                   disabled={busy}
                   onClick={() =>
                     void run(
-                      () => pickTeam(pickerToken, choice.closerId),
+                      () => pickCloserTeam(pickerToken, choice.closerId),
                       "That selection didn't work. Try signing in again.",
                     )
                   }

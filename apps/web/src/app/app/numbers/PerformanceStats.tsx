@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import type { SelfPerformance, LeaderboardRow } from '@/lib/closer/api';
+import type { SelfPerformance, LeaderboardRow } from '@/lib/closer/client';
 
 const money = (n: number | null | undefined, compact = false) => {
   if (n === null || n === undefined) return '—';

@@ -79,20 +79,31 @@ export class SessionExpiredError extends Error {
 /**
  * Every closer API call goes through here.
  *
- * Attaches the session token and, critically, does NOT send a closerId — the
- * server resolves that from the session. Sending one would be pointless at
- * best, and at worst would keep the old habit alive on routes that still
- * accept it.
+ * Attaches the session token, which is what actually establishes identity: on
+ * a converted route the server resolves the closer from the session and
+ * ignores anything the body claims.
+ *
+ * It also sends `closerId` for now, because most routes haven't been converted
+ * yet and still read it from the body. That is not a weakening — a converted
+ * route discards it, and an unconverted one is exactly as trusting as it is
+ * for the desktop app today. Routes are converted as each view is ported; when
+ * the last one is done, drop the `closerId` line below and the fallback in
+ * convex/closerSession.ts together.
  */
 export async function closerFetch<T>(
   path: string,
   body: Record<string, unknown> = {},
 ): Promise<T> {
   const token = getToken();
+  const legacyCloserId = getCloserInfo()?.closerId;
   const response = await fetch(`${CONVEX_SITE_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, ...(token ? { sessionToken: token } : {}) }),
+    body: JSON.stringify({
+      ...(legacyCloserId ? { closerId: legacyCloserId } : {}),
+      ...body,
+      ...(token ? { sessionToken: token } : {}),
+    }),
   });
 
   if (response.status === 401) {

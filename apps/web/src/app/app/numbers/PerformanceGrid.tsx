@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { DailyEntryRow } from '@/lib/closer/api';
+import type { DailyEntryRow } from '@/lib/closer/client';
 
 /**
  * `width` matters more than it looks. Each cell holds an <input>, and an input

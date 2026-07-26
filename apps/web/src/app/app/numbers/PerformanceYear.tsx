@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import type { SelfYearPerformance, YearMonthRow } from '@/lib/closer/api';
+import type { SelfYearPerformance, YearMonthRow } from '@/lib/closer/client';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

@@ -12,8 +12,8 @@ import {
   type SelfYearPerformance,
   type DailyEntryRow,
   type LeaderboardRow,
-} from "@/lib/closer/api";
-import { SessionExpiredError } from "@/lib/closer/session";
+} from "@/lib/closer/client";
+import { getCloserInfo } from "@/lib/closer/session";
 import { PerformanceDayForm } from "./PerformanceDayForm";
 import { PerformanceGrid } from "./PerformanceGrid";
 import { PerformanceStats } from "./PerformanceStats";
@@ -69,30 +69,28 @@ export function NumbersView() {
   const [savingDay, setSavingDay] = useState<string | null>(null);
   const [errorDay, setErrorDay] = useState<Record<string, string | null>>({});
 
-  /** An expired session is a normal event, not an error to display. */
-  const guard = useCallback(
-    (err: unknown) => {
-      if (err instanceof SessionExpiredError) router.replace("/app/login");
-    },
-    [router],
-  );
+  const closerId = getCloserInfo()?.closerId ?? "";
+
+  /** Any failure here means we couldn't establish who this is — sign in again
+   *  rather than showing an error the closer can do nothing about. */
+  const guard = useCallback(() => router.replace("/app/login"), [router]);
 
   const load = useCallback(async () => {
     try {
       const [p, entries, lb] = await Promise.all([
-        getCloserPerformance(monthKey),
-        getCloserDailyEntries(monthKey),
-        getTeamLeaderboardForCloser(monthKey),
+        getCloserPerformance(closerId, monthKey),
+        getCloserDailyEntries(closerId, monthKey),
+        getTeamLeaderboardForCloser(closerId, monthKey),
       ]);
       setPerf(p);
       setRows(entries?.rows ?? []);
       setBoard(lb?.rows ?? []);
-    } catch (err) {
-      guard(err);
+    } catch {
+      guard();
     } finally {
       setLoading(false);
     }
-  }, [monthKey, guard]);
+  }, [monthKey, closerId, guard]);
 
   useEffect(() => {
     void load();
@@ -104,21 +102,21 @@ export function NumbersView() {
     if (section !== "year") return;
     let cancelled = false;
     setYearLoading(true);
-    void getCloserYearPerformance(year)
+    void getCloserYearPerformance(closerId, year)
       .then((d) => {
         if (cancelled) return;
         setYearData(d);
         setYearLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        guard(err);
+        guard();
         setYearLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [section, year, guard]);
+  }, [section, year, closerId, guard]);
 
   const submitDay = async (
     dayKey: string,
@@ -126,7 +124,7 @@ export function NumbersView() {
   ) => {
     setSavingDay(dayKey);
     setErrorDay((e) => ({ ...e, [dayKey]: null }));
-    const res = await saveCloserDailyEntry(dayKey, values);
+    const res = await saveCloserDailyEntry(closerId, dayKey, values);
     if (!res.success) {
       setErrorDay((e) => ({ ...e, [dayKey]: res.error ?? "Could not save" }));
       setSavingDay(null);
