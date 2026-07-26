@@ -48,6 +48,7 @@ export function CapacitySettings() {
   );
   const updateConfig = useMutation(api.closerPerformanceConfig.updateConfig);
   const [lengthDraft, setLengthDraft] = useState<string | null>(null);
+  const [perSlotDraft, setPerSlotDraft] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,6 +131,41 @@ export function CapacitySettings() {
               className={`w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm ${MONO} outline-none focus:border-foreground disabled:opacity-60`}
             />
             <span className="text-xs text-muted-foreground">minutes</span>
+          </div>
+
+          <label className="mt-5 block text-xs font-medium" htmlFor="cap-perslot">
+            Prospects booked per time slot
+          </label>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Leave at 1 unless you deliberately book more than one prospect into
+            the same slot to absorb no-shows. This describes what you accept,
+            not what actually books — the gap between the two is what Booked %
+            measures.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              id="cap-perslot"
+              type="number"
+              min={1}
+              max={5}
+              disabled={!config.canEdit}
+              value={perSlotDraft ?? String(config.bookingsPerSlot ?? 1)}
+              onChange={(e) => setPerSlotDraft(e.target.value)}
+              onBlur={(e) => {
+                setPerSlotDraft(null);
+                const v = Number(e.target.value.trim());
+                if (!Number.isFinite(v) || v === (config.bookingsPerSlot ?? 1)) return;
+                setError(null);
+                void updateConfig({
+                  clerkId: user!.id,
+                  bookingsPerSlot: v,
+                }).catch((err) =>
+                  setError(err instanceof Error ? err.message : "Could not save"),
+                );
+              }}
+              className="w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-foreground disabled:opacity-60"
+            />
+            <span className="text-xs text-muted-foreground">per slot</span>
           </div>
         </div>
       )}

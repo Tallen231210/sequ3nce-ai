@@ -254,7 +254,7 @@ export function Leaderboard({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1030px]">
+        <table className="w-full min-w-[1120px]">
           <thead className="border-b border-border bg-muted/30">
             <tr>
               <th className={TH + " w-9 text-center"}>#</th>
@@ -266,7 +266,18 @@ export function Leaderboard({
               <th className={TH + " text-right"}>Offers</th>
               <th className={TH + " text-right"}>Closes</th>
               <th className={TH + " text-right"}>Cash</th>
-              <th className={TH + " text-right"}>Avg deal</th>
+              <th
+                className={TH + " text-right"}
+                title="Cash collected per close. Payment plans make this smaller than the deal signed."
+              >
+                Avg cash
+              </th>
+              <th
+                className={TH + " text-right"}
+                title="Contract value per close — the size of the deal signed, before payment terms"
+              >
+                Avg deal
+              </th>
               <th
                 className={TH + " text-right"}
                 title="Cash returned per dollar of ad spend on the calls this closer took. Below 1x they return less than their leads cost."
@@ -380,6 +391,13 @@ export function Leaderboard({
                   </td>
                   <td className={TD + " text-right text-muted-foreground"}>
                     {fmtCurrency(r.avgDeal)}
+                  </td>
+                  <td className={TD + " text-right text-muted-foreground"}>
+                    {fmtCurrency(
+                      r.totals.closes > 0
+                        ? r.totals.contractValue / r.totals.closes
+                        : null,
+                    )}
                   </td>
                   <td className={TD + " text-right"}>
                     <RoasCell roas={r.roas} adCost={r.adCost} />

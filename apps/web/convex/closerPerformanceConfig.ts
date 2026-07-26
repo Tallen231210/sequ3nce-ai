@@ -107,6 +107,7 @@ export const getConfig = query({
       compPct: team.closerCompPct ?? DEFAULT_COMP_PCT,
       typicalCallLengthMin:
         team.closerTypicalCallLengthMin ?? DEFAULT_CALL_LENGTH_MIN,
+      bookingsPerSlot: team.closerBookingsPerSlot ?? 1,
       teamCashGoalOverride: team.closerTeamCashGoalOverride ?? null,
       prize: {
         name: team.closerPrizeName ?? null,
@@ -135,6 +136,7 @@ export const updateConfig = mutation({
     adSpendMonthly: v.optional(v.union(v.number(), v.null())),
     compPct: v.optional(v.number()),
     typicalCallLengthMin: v.optional(v.number()),
+    bookingsPerSlot: v.optional(v.number()),
     teamCashGoalOverride: v.optional(v.union(v.number(), v.null())),
     prizeName: v.optional(v.union(v.string(), v.null())),
     prizeEmoji: v.optional(v.union(v.string(), v.null())),
@@ -192,6 +194,13 @@ export const updateConfig = mutation({
         throw new Error("Typical call length must be between 5 and 240 minutes");
       }
       patch.closerTypicalCallLengthMin = m;
+    }
+    if (args.bookingsPerSlot !== undefined) {
+      const n = args.bookingsPerSlot;
+      if (!Number.isInteger(n) || n < 1 || n > 5) {
+        throw new Error("Prospects per slot must be a whole number from 1 to 5");
+      }
+      patch.closerBookingsPerSlot = n;
     }
     if (args.prizeName !== undefined) {
       const n = args.prizeName?.trim();

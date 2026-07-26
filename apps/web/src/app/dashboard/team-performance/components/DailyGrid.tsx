@@ -22,7 +22,11 @@ interface GridRow {
   dayKey: string;
   closerId: string;
   measured: Record<string, number>;
+  /** What the closer submitted for this day. */
+  reported: Record<string, number>;
   overridden: Record<string, number>;
+  /** Set when the closer submitted the day at all, changed or not. */
+  confirmedAt: number | null;
   missingOutcomes: number;
   measuredExists: boolean;
   updatedAt: number | null;
@@ -79,7 +83,10 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
     };
     for (const r of rows) {
       for (const f of FIELDS) {
-        acc[f.key] += r.overridden[f.key] ?? r.measured[f.key] ?? 0;
+        // Only submitted days count, matching the board exactly.
+        if (!r.confirmedAt && Object.keys(r.overridden).length === 0) continue;
+        acc[f.key] +=
+          r.overridden[f.key] ?? r.reported?.[f.key] ?? r.measured[f.key] ?? 0;
       }
     }
     return acc;
@@ -152,8 +159,8 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
           <PencilLine className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
           <p className="text-xs text-amber-800 dark:text-amber-300">
             <span className="font-semibold">
-              {editedCount} {editedCount === 1 ? "day contains" : "days contain"}{" "}
-              manually entered figures
+              {editedCount} {editedCount === 1 ? "day has" : "days have"}{" "}
+              a manager correction
             </span>{" "}
             that don&apos;t match what Sequ3nce recorded. Totals and rates below
             use the entered values.
@@ -224,6 +231,7 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                       <td key={f.key} className="px-3 py-2 text-right text-sm">
                         <EditableCell
                           measured={r.measured[f.key] ?? 0}
+                          reported={r.reported?.[f.key]}
                           override={r.overridden[f.key]}
                           field={f.key}
                           editable={data.canEdit}

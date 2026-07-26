@@ -298,7 +298,18 @@ export default defineSchema({
     closerWorkdayStartMin: v.optional(v.number()),      // minutes from local midnight, default 540 (9am)
     closerWorkdayEndMin: v.optional(v.number()),        // default 1020 (5pm)
     closerWorkdays: v.optional(v.array(v.number())),    // 0=Sun..6=Sat, default [1,2,3,4,5]
-    closerTypicalCallLengthMin: v.optional(v.number()), // default 45; seeded from real avg duration
+    closerTypicalCallLengthMin: v.optional(v.number()),
+    /**
+     * Prospects this team books into a single time slot. Default 1.
+     *
+     * Teams that over-book to absorb no-shows have capacity that a 1:1 slot
+     * model can't express — one live team books 2+ per slot deliberately, so
+     * Booked% read like they'd filled 200% of their day. This describes the
+     * POLICY (what we'll accept), not the outcome (what actually booked), so
+     * a day where only some slots doubled is exactly what Booked% should be
+     * measuring rather than a distortion of it.
+     */
+    closerBookingsPerSlot: v.optional(v.number()), // default 45; seeded from real avg duration
     // Team cash goal — defaults to the sum of per-closer goals; set here to
     // override with a stretch target.
     closerTeamCashGoalOverride: v.optional(v.number()),

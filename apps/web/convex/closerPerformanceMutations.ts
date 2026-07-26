@@ -162,7 +162,7 @@ export const getDailyGrid = query({
     const start = `${args.monthKey}-01`;
     const end = `${args.monthKey}-31`;
 
-    const [stats, overrides, closers] = await Promise.all([
+    const [stats, overrides, entries, closers] = await Promise.all([
       ctx.db
         .query("closerDailyStats")
         .withIndex("by_team_and_day", (q: any) =>
@@ -171,6 +171,12 @@ export const getDailyGrid = query({
         .collect(),
       ctx.db
         .query("closerDailyOverrides")
+        .withIndex("by_team_and_day", (q: any) =>
+          q.eq("teamId", teamId).gte("dayKey", start).lte("dayKey", end),
+        )
+        .collect(),
+      ctx.db
+        .query("closerDailyEntries")
         .withIndex("by_team_and_day", (q: any) =>
           q.eq("teamId", teamId).gte("dayKey", start).lte("dayKey", end),
         )
@@ -189,6 +195,9 @@ export const getDailyGrid = query({
     );
     const statByKey = new Map(
       stats.map((r) => [`${r.dayKey}|${String(r.closerId)}`, r]),
+    );
+    const entryByKey = new Map(
+      entries.map((e) => [`${e.dayKey}|${String(e.closerId)}`, e]),
     );
 
     // Emit EVERY day of the month up to today, not just days we recorded
@@ -213,6 +222,7 @@ export const getDailyGrid = query({
         const key = `${dayKey}|${String(closer._id)}`;
         const st = statByKey.get(key);
         const ov = ovByKey.get(key);
+        const en = entryByKey.get(key);
         const measured: Record<string, number> = {
           slots: st?.slots ?? 0, booked: st?.booked ?? 0, taken: st?.taken ?? 0,
           offers: st?.offers ?? 0, closes: st?.closes ?? 0, cash: st?.cash ?? 0,
@@ -222,11 +232,20 @@ export const getDailyGrid = query({
           const val = ov?.[f];
           if (typeof val === "number") overridden[f] = val;
         }
+        // What the closer themselves submitted, kept separate from the
+        // manager's correction so the grid can show both.
+        const reported: Record<string, number> = {};
+        for (const f of ENTRY_FIELDS) {
+          const val = en?.[f];
+          if (typeof val === "number") reported[f] = val;
+        }
         rows.push({
           dayKey,
           closerId: String(closer._id),
           measured,
+          reported,
           overridden,
+          confirmedAt: en?.confirmedAt ?? null,
           missingOutcomes: st?.missingOutcomes ?? 0,
           // No measurement at all — the grid dims it so a manager can tell
           // "we recorded a zero" from "we recorded nothing".

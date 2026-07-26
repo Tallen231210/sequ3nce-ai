@@ -13,21 +13,29 @@ import { MONO } from "@/components/analytics/primitives/typography";
  */
 export function EditableCell({
   measured,
+  reported,
   override,
   field,
   editable,
   onCommit,
 }: {
   measured: number;
+  /** What the closer submitted, if anything. */
+  reported?: number;
   override: number | undefined;
   field: string;
   editable: boolean;
   onCommit: (value: number | null) => Promise<void>;
 }) {
-  const isCash = field === "cash";
-  const effective = override ?? measured;
-  const edited = override !== undefined;
-  const diverges = edited && override !== measured;
+  const isCash = field === "cash" || field === "contractValue";
+  // manager override > closer entry > measured, same order as the board.
+  const effective = override ?? reported ?? measured;
+  const source: "manager" | "closer" | "measured" =
+    override !== undefined ? "manager" : reported !== undefined ? "closer" : "measured";
+  // Only flag a difference from what the closer said — a manager confirming
+  // the same number isn't a correction worth marking.
+  const base = reported ?? measured;
+  const diverges = source !== "measured" && effective !== base;
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -56,8 +64,8 @@ export function EditableCell({
       setError("Whole numbers only");
       return;
     }
-    // Typing the measured value back in is a revert, not an override.
-    await save(parsed === measured ? null : parsed);
+    // Typing the underlying value back in is a revert, not a correction.
+    await save(parsed === base ? null : parsed);
   }
 
   async function save(value: number | null) {
@@ -117,17 +125,25 @@ export function EditableCell({
         type="button"
         onClick={() => setEditing(true)}
         title={
-          diverges
-            ? `Manually entered. Sequ3nce recorded ${
-                isCash ? fmtCurrency(measured) : fmtNum(measured)
-              }.`
-            : "Click to edit"
+          source === "manager"
+            ? `You corrected this. Closer reported ${
+                reported === undefined
+                  ? "nothing"
+                  : isCash ? fmtCurrency(reported) : fmtNum(reported)
+              }; we recorded ${isCash ? fmtCurrency(measured) : fmtNum(measured)}.`
+            : source === "closer"
+              ? `Reported by the closer. We recorded ${
+                  isCash ? fmtCurrency(measured) : fmtNum(measured)
+                }.`
+              : "Not reported — this is what we recorded. Click to enter a value."
         }
         className={
           "rounded px-1 py-0.5 " + MONO + " transition-colors hover:bg-muted " +
-          (diverges
+          (source === "manager"
             ? "font-semibold text-amber-700 underline decoration-amber-500/60 decoration-dotted underline-offset-2 dark:text-amber-400"
-            : "")
+            : source === "closer"
+              ? "font-medium"
+              : "text-muted-foreground")
         }
       >
         {display}
@@ -137,7 +153,9 @@ export function EditableCell({
         <button
           type="button"
           onClick={() => void save(null)}
-          title={`Reset to ${isCash ? fmtCurrency(measured) : fmtNum(measured)} (what Sequ3nce recorded)`}
+          title={`Remove your correction and go back to ${
+            isCash ? fmtCurrency(base) : fmtNum(base)
+          }`}
           className="opacity-0 transition-opacity group-hover/cell:opacity-100"
         >
           <RotateCcw className="h-3 w-3 text-muted-foreground hover:text-foreground" />

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowRight, ClipboardList, UserPlus } from "lucide-react";
 import { fmtNum, fmtPct } from "../lib/format";
 import { MONO } from "@/components/analytics/primitives/typography";
 
@@ -147,6 +147,94 @@ export function UnknownRepsNotice({
               <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface Confirmation {
+  daysConfirmed: number;
+  daysInPeriod: number;
+  closerDaysConfirmed: number;
+  closerDaysExpected: number;
+  incomplete: boolean;
+}
+
+/**
+ * How much of the period closers have actually submitted.
+ *
+ * The board counts only reported days, which means an incomplete month and a
+ * bad month look identical — both simply show a smaller number. Without this,
+ * a manager comparing June to July where compliance differed would draw a
+ * confident wrong conclusion and nothing on screen would contradict them.
+ */
+export function ConfirmationNotice({
+  confirmation,
+  monthLabel,
+}: {
+  confirmation: Confirmation;
+  monthLabel: string;
+}) {
+  if (!confirmation.incomplete) return null;
+
+  const { daysConfirmed, daysInPeriod, closerDaysConfirmed, closerDaysExpected } =
+    confirmation;
+  const pct =
+    closerDaysExpected > 0
+      ? (closerDaysConfirmed / closerDaysExpected) * 100
+      : 0;
+  // Nothing at all reads differently from a partly-filled month: one is "this
+  // hasn't started", the other is "these totals are short".
+  const nothingYet = closerDaysConfirmed === 0;
+
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-5 dark:border-amber-800/70 dark:bg-amber-950/20">
+      <div className="flex items-start gap-3.5">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
+          <ClipboardList className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            {nothingYet
+              ? `No days submitted yet for ${monthLabel}`
+              : `${fmtNum(daysConfirmed)} of ${fmtNum(daysInPeriod)} days submitted`}
+          </h3>
+          <p className="mt-1.5 text-sm leading-relaxed text-amber-800 dark:text-amber-300/85">
+            {nothingYet ? (
+              <>
+                This board shows what closers report in the desktop app. Until
+                they start filling in their day, there is nothing to show —
+                the calls we recorded are used to pre-fill their sheet, not to
+                stand in for it.
+              </>
+            ) : (
+              <>
+                Totals below cover only the days closers have submitted, so
+                they understate the month. A quiet month and an unsubmitted one
+                look the same here — check the gap before reading anything into
+                the numbers.
+              </>
+            )}
+          </p>
+
+          {!nothingYet && (
+            <div className="mt-3.5 max-w-sm">
+              <div className="flex items-center justify-between text-[11px] font-medium text-amber-800 dark:text-amber-300/80">
+                <span>Closer-days submitted</span>
+                <span className={MONO}>
+                  {fmtNum(closerDaysConfirmed)} / {fmtNum(closerDaysExpected)}
+                </span>
+              </div>
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-amber-200/70 dark:bg-amber-900/50">
+                <div
+                  className="h-full rounded-full bg-amber-500 transition-all"
+                  style={{ width: `${Math.max(pct, 1.5)}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

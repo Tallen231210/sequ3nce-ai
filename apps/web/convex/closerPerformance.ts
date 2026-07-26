@@ -166,6 +166,11 @@ async function recountDayImpl(
   const dayEndMs = endMs;
   const callLenMs =
     (team.closerTypicalCallLengthMin ?? DEFAULT_CALL_LENGTH_MIN) * 60_000;
+  // Over-booking teams fit more than one prospect in a slot; 1 for everyone else.
+  const bookingsPerSlot = Math.max(
+    1,
+    Math.min(5, team.closerBookingsPerSlot ?? 1),
+  );
 
   // --- Which calendars represent each closer's own availability -----------
   const subs = (await ctx.db
@@ -358,7 +363,8 @@ async function recountDayImpl(
     // period must not subtract its time twice.
     const busyMs = unionMs([...blocks, ...booked]);
     const openMs = Math.max(0, dayMs - busyMs);
-    row.slots = row.booked + Math.floor(openMs / callLenMs);
+    row.slots =
+      row.booked + Math.floor(openMs / callLenMs) * bookingsPerSlot;
     row.openMinutes = Math.round(openMs / 60_000);
     row.capacityKnown = true;
   }

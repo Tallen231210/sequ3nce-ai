@@ -3,7 +3,11 @@
 import { useState } from "react";
 
 import { Users } from "lucide-react";
-import { CoverageNotice, UnknownRepsNotice } from "./CoverageNotice";
+import {
+  ConfirmationNotice,
+  CoverageNotice,
+  UnknownRepsNotice,
+} from "./CoverageNotice";
 import { FunnelChart } from "./FunnelChart";
 import { KpiStrip } from "./KpiStrip";
 import { ManagerStrip } from "./ManagerStrip";
@@ -11,6 +15,7 @@ import { Leaderboard, type CloserRow } from "./Leaderboard";
 import { WeekSparkline } from "./PeriodNav";
 import { PrizeCard, ProjectionCard } from "./SidePanels";
 import { CloserFocusCard } from "./CloserFocusCard";
+import { monthLabel } from "../lib/format";
 
 function NoActivity() {
   return (
@@ -66,6 +71,13 @@ export function TeamView({
     <>
       {/* Data-quality notices lead the page — they explain the numbers below,
           so they must be read before them, not after. */}
+      {/* Submission gap first — it explains the size of everything below it. */}
+      {data.confirmation && (
+        <ConfirmationNotice
+          confirmation={data.confirmation}
+          monthLabel={monthLabel(data.monthKey, true)}
+        />
+      )}
       <CoverageNotice coverage={data.coverage} />
       <UnknownRepsNotice
         unknownReps={data.unknownReps}
