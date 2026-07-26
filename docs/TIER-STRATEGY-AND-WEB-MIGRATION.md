@@ -71,28 +71,38 @@ Zoom, and any other recording source, comes after all of this. Zoom requires an 
 
 ---
 
-## 4. Prerequisite: we need a real development environment
+## 4. How we build safely against production
 
-**This blocks the "test everything in development first" requirement, and it is not optional.**
+**Decided 2026-07-26: we are NOT building a separate development environment.** This was considered and rejected. Testing everything twice — once in dev, once again in production — costs more time than it saves, and for this app testing is the expensive part. Do not reopen this without a new reason.
 
-Two facts about the current setup:
+So: the backend is production, and the front end is tested locally before it is deployed. That is the operating model for all three phases.
 
-1. **Local development points at production.** `apps/web/.env.local` sets `CONVEX_DEPLOYMENT` to `ideal-ram-982`, which is production. Running the app on localhost reads and writes real customer data. The dev deployment (`fastidious-dragon-782`) exists but nothing uses it.
-2. **`.env.local` contains a live Stripe secret key.** Phase 3 is billing work. Doing billing work against live Stripe is how you accidentally charge somebody.
+### Why this is workable
 
-Before Phase 3 — ideally before Phase 1 — we need:
+**New front ends are invisible until deployed.** A page on a laptop doesn't exist for customers. And once deployed, the `betaFeatures` array on the team record hides it until we choose otherwise — the same mechanism already hiding the Setter Data tab.
 
-- The dev Convex deployment actually populated and pointed at, with a way to seed realistic test data (`_demoSeed.ts` is a starting point)
-- Stripe test mode used for all billing development, with live keys not present in the development environment at all
-- Test accounts for each of the three tiers, so gating can be verified rather than assumed
+**A new backend function that nothing calls is harmless.** This is the key point. The risk was never "deploying to production" — it is *changing* things in production. Adding is safe. Modifying is not.
 
-**Agreed scope: about a day, not a project.** Point local work at the dev deployment, seed a few fake teams (one per tier) using the existing seed script, use Stripe test keys locally and remove the live key from the local environment, and deploy to production deliberately rather than on save.
+### The rules
 
-The real danger is not "building against production" — that has been fine. It is running the auto-deploying dev command against production, where **every file save ships to customers.** That is the thing to stop.
+These matter more without a dev environment, not less.
 
-Nothing is lost for debugging: the command-line tools read production regardless of what the local app points at.
+1. **Add, never change.** New features get new functions. Do not modify functions that are running today. If something must behave differently, write a second version alongside and switch over deliberately.
+2. **New database fields must be optional; new tables are free.** An optional field nothing reads is harmless. Removing or renaming an existing one breaks live customers — and the B2C app shares this database.
+3. **Do not touch the path that creates calls from the bot.** The single riskiest area. When Fathom arrives, calls come from a second source: build it as a separate route into the same place. A bug in the Fathom path must not take down recording for everyone.
+4. **Default every team to current behaviour.** When the tier field is added, every existing team is already on the full tier without anyone setting it. Nothing changes for anybody until deliberately changed.
+5. **Gate every new front end behind `betaFeatures`** until it is ready to sell.
+6. **Deploy backend additions freely, front ends deliberately.** The backend addition is inert until a UI calls it.
 
-Google Calendar, GoHighLevel and Fathom each need to know the dev address before they will talk to it. Do those one at a time as you first touch them, not upfront — otherwise it becomes three days of plumbing before any feature work.
+### The one narrow exception: billing
+
+When Phase 3 arrives, build and test the payment flows against **Stripe test mode**. Not because of the environment question — because a mistake in billing charges real money, and that is not recoverable by fixing the code afterwards. This is a keys-and-config change for that phase only, not a dev environment.
+
+Note `apps/web/.env.local` currently holds a live Stripe secret key. Be conscious of that during Phase 3.
+
+### Timing note
+
+As of 2026-07-26 two clients need to supply new card details before their accounts unlock, so there is a short window of very low real usage. Useful for the riskier early work — but it closes, and the rules above hold regardless.
 
 ---
 
@@ -270,7 +280,8 @@ Do not reopen these without a reason.
 - Both World A and World B must be supported.
 - Cheap tiers cannibalising expensive ones is acceptable; margins make it worthwhile.
 - Fathom first. Zoom later, if at all.
-- Everything gets built and tested in development before production.
+- **No separate development environment.** Backend is production; front ends are tested locally and gated behind `betaFeatures` once deployed. See section 4 for the rules that keep this safe. Considered and rejected 2026-07-26 — testing everything twice costs more than it saves.
+- Section 12 (how closers report their day) is agreed, including both risks it flags and the reward-before-ask rule.
 
 ---
 
@@ -294,7 +305,7 @@ Answer these before or during the phase they belong to.
 
 ---
 
-## 12. How closers report their day (proposed 2026-07-26)
+## 12. How closers report their day (agreed 2026-07-26)
 
 Replaces the old post-call form. Resolves the "one daily report vs one form per call" tension by making them the same screen.
 
