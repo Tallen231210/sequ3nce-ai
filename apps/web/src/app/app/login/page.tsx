@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,8 +30,9 @@ type Step = "email" | "code" | "password" | "pick_team";
  * added now is code-only — but 44 of 50 existing closers still have one, so
  * removing it would strand people.
  */
-export default function CloserLoginPage() {
+function CloserLogin() {
   const router = useRouter();
+  const params = useSearchParams();
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -79,6 +80,37 @@ export default function CloserLoginPage() {
       setBusy(false);
     }
   };
+
+  // The welcome email links here with the code already attached, so clicking
+  // it signs them in rather than making them retype six digits. Runs once —
+  // codes are single-use, and retrying a spent one would show a failure on a
+  // sign-in that actually worked.
+  const autoTried = useRef(false);
+  const linkEmail = params.get("email");
+  const linkCode = params.get("code");
+  useEffect(() => {
+    if (autoTried.current || !linkEmail || !linkCode) return;
+    autoTried.current = true;
+    setEmail(linkEmail);
+    setCode(linkCode);
+    setBusy(true);
+    void verifyMagicLink(linkEmail.trim().toLowerCase(), linkCode.trim())
+      .then((result) => {
+        if (complete(result)) return;
+        // A dead link is the common case: a stale email, or a second click on
+        // one already used. Send them back to the email step rather than
+        // stranding them on a code box with a spent code in it — from here
+        // the obvious next action, "email me a new one", is one tap away.
+        setStep("email");
+        setCode("");
+        setError("That sign-in link has already been used or expired. Send yourself a new one below.");
+      })
+      .catch(() =>
+        setError("Couldn't reach the server. Check your connection and try again."),
+      )
+      .finally(() => setBusy(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkEmail, linkCode]);
 
   const sendCode = async () => {
     setBusy(true);
@@ -287,5 +319,13 @@ export default function CloserLoginPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function CloserLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <CloserLogin />
+    </Suspense>
   );
 }
