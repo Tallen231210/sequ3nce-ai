@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import { fmtCurrency, fmtNum, fmtPct } from "../lib/format";
 
 interface Totals {
@@ -16,45 +16,52 @@ interface Stage {
   key: string;
   label: string;
   value: number;
-  hint: string;
   /** Conversion from the stage above, as a percentage. */
   fromPrev: number | null;
+  /** How many were lost between the stage above and this one. */
+  lost: number;
+  /** What that loss means in plain words. */
+  lostLabel: string;
   /** True when the post-call form gates this number. */
   gated: boolean;
 }
 
 function buildStages(t: Totals, gateBelowTaken: boolean): Stage[] {
   const rate = (num: number, den: number) => (den > 0 ? (num / den) * 100 : null);
+  const lost = (a: number, b: number) => Math.max(0, a - b);
   return [
-    {
-      key: "slots", label: "Slots", value: t.slots,
-      hint: "Bookable capacity on calendars", fromPrev: null, gated: false,
-    },
+    { key: "slots", label: "Slots", value: t.slots, fromPrev: null, lost: 0, lostLabel: "", gated: false },
     {
       key: "booked", label: "Booked", value: t.booked,
-      hint: "Appointments set", fromPrev: rate(t.booked, t.slots), gated: false,
+      fromPrev: rate(t.booked, t.slots),
+      lost: lost(t.slots, t.booked), lostLabel: "unfilled", gated: false,
     },
     {
       key: "taken", label: "Taken", value: t.taken,
-      hint: "Calls that happened", fromPrev: rate(t.taken, t.booked), gated: false,
+      fromPrev: rate(t.taken, t.booked),
+      lost: lost(t.booked, t.taken), lostLabel: "no-showed", gated: false,
     },
     {
       key: "offers", label: "Offers", value: t.offers,
-      hint: "A price was presented", fromPrev: rate(t.offers, t.taken),
-      gated: gateBelowTaken,
+      fromPrev: rate(t.offers, t.taken),
+      lost: lost(t.taken, t.offers), lostLabel: "no offer made", gated: gateBelowTaken,
     },
     {
       key: "closes", label: "Closes", value: t.closes,
-      hint: "Deals won", fromPrev: rate(t.closes, t.offers),
-      gated: gateBelowTaken,
+      fromPrev: rate(t.closes, t.offers),
+      lost: lost(t.offers, t.closes), lostLabel: "didn't close", gated: gateBelowTaken,
     },
   ];
 }
 
 /**
- * Where deals die, at a glance. Bars are scaled against the widest stage
- * rather than against Slots, so a funnel that loses 90% at the first step
- * still shows readable bars further down.
+ * Where deals die.
+ *
+ * The count at each stage is the easy half; the number that earns a manager's
+ * attention is how many were LOST getting there, so that is given equal weight
+ * and the worst leak is called out by name. Bars scale against the widest
+ * stage, so a funnel that loses most of its volume early still leaves the
+ * later stages readable.
  */
 export function FunnelChart({
   totals,
@@ -66,100 +73,124 @@ export function FunnelChart({
   const stages = buildStages(totals, gateBelowTaken);
   const max = Math.max(...stages.map((s) => s.value), 1);
 
+  // Name the biggest leak once, at the top — a manager reading a funnel is
+  // looking for the answer to "where do I focus", not for five numbers.
+  const leak = stages
+    .filter((s) => !s.gated && s.lost > 0)
+    .reduce<Stage | null>(
+      (worst, s) => (worst === null || s.lost > worst.lost ? s : worst),
+      null,
+    );
+  const leakIndex = leak ? stages.findIndex((s) => s.key === leak.key) : -1;
+
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-3.5">
-        <h3 className="text-sm font-semibold">Funnel</h3>
-        <p className="text-xs text-muted-foreground">
-          Conversion shown between stages
-        </p>
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-3.5">
+        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          Funnel
+        </h3>
+        {leak && leakIndex > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Biggest drop-off{" "}
+            <span className="font-medium text-foreground">
+              {stages[leakIndex - 1].label} → {leak.label}
+            </span>
+            {" · "}
+            <span className="font-medium text-foreground tabular-nums">
+              {fmtNum(leak.lost)} {leak.lostLabel}
+            </span>
+          </p>
+        )}
       </div>
 
-      <div className="space-y-1 px-5 py-4">
+      <div className="px-5 py-5">
         {stages.map((s, i) => {
-          const widthPct = Math.max((s.value / max) * 100, s.value > 0 ? 2 : 0);
+          const widthPct = Math.max((s.value / max) * 100, s.value > 0 ? 1.5 : 0);
           const dim = s.gated && s.value === 0;
+          const isWorst = leak?.key === s.key;
+
           return (
             <div key={s.key}>
-              {/* Conversion connector from the previous stage */}
+              {/* Connector carries the conversion AND the loss it implies. */}
               {i > 0 && (
-                <div className="flex items-center gap-1.5 py-1 pl-[104px] text-[11px] text-muted-foreground">
-                  <ChevronDown className="h-3 w-3 shrink-0" />
-                  <span className="tabular-nums font-medium">
+                <div className="flex items-center gap-2 py-2 pl-[76px] text-[11px]">
+                  <span
+                    className={
+                      "tabular-nums font-medium " +
+                      (dim ? "text-muted-foreground" : "text-foreground")
+                    }
+                  >
                     {fmtPct(s.fromPrev, s.fromPrev !== null && s.fromPrev < 10 ? 1 : 0)}
                   </span>
-                  <span className="truncate">
-                    of {stages[i - 1].label.toLowerCase()}
-                  </span>
+                  {!dim && s.lost > 0 && (
+                    <span
+                      className={
+                        isWorst
+                          ? "font-medium text-amber-600 dark:text-amber-400"
+                          : "text-muted-foreground"
+                      }
+                    >
+                      · {fmtNum(s.lost)} {s.lostLabel}
+                    </span>
+                  )}
+                  {dim && (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <Lock className="h-3 w-3" />
+                      needs post-call form
+                    </span>
+                  )}
                 </div>
               )}
 
               <div className="flex items-center gap-3">
-                <div className="w-[92px] shrink-0 text-right">
-                  <div
+                <div className="w-[64px] shrink-0 text-right">
+                  <span
                     className={
-                      "text-sm font-medium " + (dim ? "text-muted-foreground" : "")
+                      "text-[11px] font-medium uppercase tracking-wider " +
+                      (dim ? "text-muted-foreground/60" : "text-muted-foreground")
                     }
                   >
                     {s.label}
-                  </div>
+                  </span>
                 </div>
 
-                <div className="relative h-9 flex-1 overflow-hidden rounded-md bg-muted/50">
+                <span
+                  className={
+                    "w-[68px] shrink-0 text-right text-xl font-semibold tabular-nums " +
+                    (dim ? "text-muted-foreground/50" : "")
+                  }
+                >
+                  {fmtNum(s.value)}
+                </span>
+
+                <div className="h-10 flex-1 overflow-hidden rounded bg-muted/60">
                   <div
                     className={
-                      "h-full rounded-md transition-all duration-500 " +
-                      (dim
-                        ? "bg-muted"
-                        : s.key === "closes"
-                          ? "bg-foreground"
-                          : "bg-foreground/70")
+                      "h-full rounded transition-all duration-500 " +
+                      (dim ? "bg-muted" : "bg-foreground")
                     }
                     style={{ width: `${widthPct}%` }}
                   />
-                  <div className="absolute inset-0 flex items-center justify-between px-3">
-                    {/* The label sits at the bar's left edge, so it only needs
-                        enough fill behind it to be legible — not the near-half
-                        width an earlier threshold demanded, which left short
-                        bars rendering dark text on a dark fill. */}
-                    <span
-                      className={
-                        "text-sm font-semibold tabular-nums " +
-                        (widthPct >= 7 && !dim
-                          ? "text-background"
-                          : "text-foreground")
-                      }
-                    >
-                      {fmtNum(s.value)}
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                      {dim && <Lock className="h-3 w-3" />}
-                      <span className="hidden sm:inline">
-                        {dim ? "needs post-call form" : s.hint}
-                      </span>
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>
           );
         })}
 
-        {/* Cash sits outside the count funnel — different unit, same story. */}
-        <div className="!mt-3 flex items-center gap-3 border-t border-border pt-3">
-          <div className="w-[92px] shrink-0 text-right text-sm font-medium">
+        {/* Cash is the outcome the whole funnel exists to produce, so it gets
+            the weight rather than sitting as another row. */}
+        <div className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-border pt-5 pl-[76px]">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Cash
-          </div>
-          <div className="flex flex-1 items-baseline gap-2">
-            <span className="text-xl font-semibold tabular-nums">
-              {fmtCurrency(totals.cash)}
+          </span>
+          <span className="text-2xl font-semibold tabular-nums">
+            {fmtCurrency(totals.cash)}
+          </span>
+          {totals.closes > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {fmtCurrency(totals.cash / totals.closes)} average deal
             </span>
-            {totals.closes > 0 && (
-              <span className="text-xs text-muted-foreground">
-                {fmtCurrency(totals.cash / totals.closes)} avg deal
-              </span>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -19,7 +19,7 @@ export function ProjectionCard({ projection }: { projection: Projection }) {
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center gap-2">
         <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">
+        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           {p.isFinal ? "Final" : "Pace"}
         </h3>
         {!p.isFinal && hasTarget && (
@@ -117,7 +117,7 @@ export function PrizeCard({ prize }: { prize: Prize }) {
     >
       <div className="flex items-center gap-2">
         <Gift className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">Team prize</h3>
+        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Team prize</h3>
       </div>
 
       <div className="mt-3 flex items-center gap-3">

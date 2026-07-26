@@ -119,11 +119,16 @@ export function WeekSparkline({
   if (!anyCash) return null;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <h3 className="text-sm font-semibold">Cash by week</h3>
-      {/* The bar track needs an explicit height: a percentage height inside a
-          flex-1 parent has no basis to resolve against and collapses to zero. */}
-      <div className="mt-4 flex items-end gap-2">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
+        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          Cash by week
+        </h3>
+        <span className="text-[11px] text-muted-foreground">
+          click to filter
+        </span>
+      </div>
+      <div className="flex items-end gap-2 px-5 py-4">
         {weekCash.map((c, i) => {
           const active = weekIndex === i;
           return (
@@ -134,24 +139,34 @@ export function WeekSparkline({
               className="group flex flex-1 flex-col items-center gap-1.5"
               title={`WK${i + 1} · ${fmtCurrency(c)}`}
             >
-              <div className="flex h-20 w-full items-end">
+              <span
+                className={
+                  "text-[10px] tabular-nums " +
+                  (active
+                    ? "font-semibold text-foreground"
+                    : "text-muted-foreground")
+                }
+              >
+                {c > 0 ? fmtCurrency(c, true) : ""}
+              </span>
+              <div className="flex h-16 w-full items-end">
                 <div
                   className={
-                    "w-full rounded-t transition-all " +
+                    "w-full rounded-sm transition-all " +
                     (active
                       ? "bg-foreground"
-                      : "bg-foreground/25 group-hover:bg-foreground/45")
+                      : "bg-foreground/20 group-hover:bg-foreground/40")
                   }
                   style={{ height: `${Math.max((c / max) * 100, c > 0 ? 4 : 2)}%` }}
                 />
               </div>
               <span
                 className={
-                  "text-[10px] " +
+                  "text-[10px] uppercase tracking-wider " +
                   (active ? "font-semibold" : "text-muted-foreground")
                 }
               >
-                WK{i + 1}
+                W{i + 1}
               </span>
             </button>
           );

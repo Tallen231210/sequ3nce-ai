@@ -8,26 +8,6 @@ import { ManagerStrip } from "./ManagerStrip";
 import { Leaderboard, type CloserRow } from "./Leaderboard";
 import { WeekSparkline } from "./PeriodNav";
 import { PrizeCard, ProjectionCard } from "./SidePanels";
-import { fmtCurrency, fmtNum } from "../lib/format";
-
-/** A compact figure for the summary rail above the funnel. */
-function Stat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-0.5 text-lg font-semibold tabular-nums">{value}</div>
-      {hint && <div className="text-[11px] text-muted-foreground">{hint}</div>}
-    </div>
-  );
-}
 
 function NoActivity() {
   return (
@@ -105,41 +85,17 @@ export function TeamView({
               viewport and know nothing about the 256px app sidebar. */}
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
             <div className="min-w-0 space-y-5">
-              <div className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-card px-5 py-4 sm:grid-cols-4">
-                <Stat
-                  label="Closers"
-                  value={fmtNum(data.perCloser.length)}
-                  hint={`${data.activeClosers} active on team`}
-                />
-                <Stat
-                  label="Booked"
-                  value={fmtNum(t.booked)}
-                  hint={
-                    data.bookedUnattributed > 0
-                      ? `+${fmtNum(data.bookedUnattributed)} unattributed`
-                      : undefined
-                  }
-                />
-                <Stat label="Calls taken" value={fmtNum(t.taken)} />
-                <Stat
-                  label="Cash collected"
-                  value={fmtCurrency(t.cash)}
-                  hint={t.closes > 0 ? `${fmtNum(t.closes)} closes` : undefined}
-                />
-              </div>
-
               <FunnelChart totals={t} gateBelowTaken={gateBelowTaken} />
-
-              <WeekSparkline
-                weekCash={data.weekCash}
-                weekIndex={weekIndex}
-                onWeekChange={onWeekChange}
-              />
             </div>
 
             <div className="min-w-0 space-y-5">
               <ProjectionCard projection={data.projection} />
               <PrizeCard prize={data.prize} />
+              <WeekSparkline
+                weekCash={data.weekCash}
+                weekIndex={weekIndex}
+                onWeekChange={onWeekChange}
+              />
             </div>
           </div>
 

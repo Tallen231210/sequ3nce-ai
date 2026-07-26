@@ -169,7 +169,7 @@ export function Leaderboard({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-3.5">
-        <h3 className="text-sm font-semibold">Leaderboard</h3>
+        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Leaderboard</h3>
         <p className="text-xs text-muted-foreground">Ranked by cash collected</p>
       </div>
 
