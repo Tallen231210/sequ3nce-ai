@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import type { CloserInfo } from '../convex';
-import { connectCalendar, syncCalendar, markOnboardingCompleted } from '../convex';
+import {
+  connectCalendar,
+  syncCalendar,
+  markOnboardingCompleted,
+  getCalendarStatus,
+} from '../convex';
 import logoImage from '../../assets/logo.png';
 
 const APP_URL = 'https://sequ3nce.ai';
@@ -33,6 +38,33 @@ export function BotOnboardingView({ closerInfo, onComplete }: BotOnboardingViewP
     window.addEventListener('calendar:connected', handleCalendarConnected);
     return () => window.removeEventListener('calendar:connected', handleCalendarConnected);
   }, []);
+
+  // Fallback: ask the server whether the calendar connected, rather than
+  // relying solely on the sequ3nce:// deep link coming back.
+  //
+  // The OAuth itself finishes server-side the moment the user approves in
+  // their browser. The deep link only tells this window about it — so any
+  // failure to hand back leaves a completed connection behind a modal that
+  // spins forever. That happens reliably in dev (macOS routes the protocol to
+  // the bare Electron binary, which opens a blank second window instead of
+  // this one) and can happen in production if the browser drops the handoff.
+  useEffect(() => {
+    if (!isWaitingForOAuth) return;
+    let cancelled = false;
+
+    const check = async () => {
+      const status = await getCalendarStatus(closerInfo.email, closerInfo.teamId);
+      if (cancelled || !status?.connected) return;
+      setIsWaitingForOAuth(false);
+      setStep(2);
+    };
+
+    // Slow enough not to add meaningful load, quick enough that a user who
+    // already approved isn't left staring at a spinner.
+    const id = setInterval(() => { void check(); }, 3000);
+    void check();
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isWaitingForOAuth, closerInfo.email, closerInfo.teamId]);
 
   function handleGoogleConnect() {
     setIsWaitingForOAuth(true);
