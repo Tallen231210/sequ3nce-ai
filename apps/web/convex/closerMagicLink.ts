@@ -103,6 +103,8 @@ export const generateMagicLinkCode = internalMutation({
     isReturning?: boolean;
     reason?: "cooldown" | "unknown_email" | "invalid_format";
     retryAfterSeconds?: number;
+    /** Whether any of this closer's teams has the web app switched on. */
+    webAppEnabled?: boolean;
   }> => {
     const email = args.email.trim().toLowerCase();
     if (!EMAIL_REGEX.test(email)) {
@@ -168,10 +170,24 @@ export const generateMagicLinkCode = internalMutation({
     // has lastLoginAt yet) get the full welcome with download step.
     const isReturning = eligible.some((c) => c.lastLoginAt != null);
 
+    // Does the web app even work for them yet? The email leads with a browser
+    // link, and sending someone to a "Not available yet" page is a worse first
+    // impression than not mentioning it at all. Any of their teams counts — a
+    // closer on several picks which one after signing in.
+    let webAppEnabled = false;
+    for (const c of eligible) {
+      const team = await ctx.db.get(c.teamId);
+      if ((team?.betaFeatures ?? []).includes("closerWebApp")) {
+        webAppEnabled = true;
+        break;
+      }
+    }
+
     return {
       code,
       closerName: greetingCloser.name,
       isReturning,
+      webAppEnabled,
     };
   },
 });
@@ -272,7 +288,12 @@ export const requestCloserMagicLink = action({
 
     const codeFormatted = `${result.code.slice(0, 3)}-${result.code.slice(3)}`;
     const greetingName = result.closerName?.trim() || "there";
+    // Unless the web app isn't switched on for their team yet — mentioning it
+    // then would send them to a "Not available yet" page, which is a worse
+    // first impression than not offering it. Those teams get the desktop-only
+    // email, and start getting the web one the moment they're switched on.
     const isReturning = !!result.isReturning;
+    const webReady = result.webAppEnabled === true;
 
     // Two ways in now, so the email has to present both without making
     // either look like the consolation prize. The browser link leads because
@@ -298,14 +319,35 @@ export const requestCloserMagicLink = action({
           </div>
         </div>`;
 
+    const primaryAction = webReady
+      ? `
+        <div style="text-align: center; margin-bottom: 28px;">
+          <a href="${webUrl}" style="${BTN}">Open Sequ3nce →</a>
+          <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
+            Opens in your browser — works on any device.
+          </p>
+        </div>`
+      : `
+        <div style="text-align: center; margin-bottom: 28px;">
+          <a href="${launchUrl}" style="${BTN}">Sign in to Sequ3nce →</a>
+          <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
+            Opens the Sequ3nce app on this computer.
+          </p>
+        </div>`;
+
     const desktopNote = `
         <div style="border-top: 1px solid #eee; padding-top: 20px; margin-bottom: 24px;">
           <p style="color: #666; font-size: 13px; line-height: 1.6; margin: 0;">
-            <strong style="color: #444;">Prefer a desktop app?</strong>
-            Sequ3nce also runs as an app for Mac and Windows —
-            <a href="${appUrl}/download" style="color: #555;">download it here</a>,
-            then <a href="${launchUrl}" style="color: #555;">use this link</a> to
-            sign in once it's installed.
+            ${webReady
+              ? `<strong style="color: #444;">Prefer a desktop app?</strong>
+                 Sequ3nce also runs as an app for Mac and Windows —
+                 <a href="${appUrl}/download" style="color: #555;">download it here</a>,
+                 then <a href="${launchUrl}" style="color: #555;">use this link</a>
+                 to sign in once it's installed.`
+              : `<strong style="color: #444;">Don't have the app yet?</strong>
+                 Get it for Mac or Windows at
+                 <a href="${appUrl}/download" style="color: #555;">sequ3nce.ai/download</a>,
+                 then come back and click the button above.`}
           </p>
         </div>`;
 
@@ -317,12 +359,7 @@ export const requestCloserMagicLink = action({
           Hi ${greetingName}, here's your sign-in link.
         </p>
 
-        <div style="text-align: center; margin-bottom: 28px;">
-          <a href="${webUrl}" style="${BTN}">Open Sequ3nce →</a>
-          <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
-            Opens in your browser — works on any device.
-          </p>
-        </div>
+        ${primaryAction}
 
         ${codeBlock("Already signed in somewhere else? Open Sequ3nce there, choose <em>Email me a sign-in code</em>, and enter:")}
         ${desktopNote}
@@ -337,16 +374,11 @@ export const requestCloserMagicLink = action({
       <div style="${WRAP}">
         <h2 style="color: #111; margin-bottom: 8px;">Welcome to Sequ3nce 👋</h2>
         <p style="color: #555; font-size: 15px; line-height: 1.6; margin-bottom: 28px;">
-          Hi ${greetingName}, your manager added you to the team. One click and
-          you're in — there's nothing to install.
+          Hi ${greetingName}, your manager added you to the team.
+          ${webReady ? "One click and you're in — there's nothing to install." : "Two quick steps and you're set up."}
         </p>
 
-        <div style="text-align: center; margin-bottom: 28px;">
-          <a href="${webUrl}" style="${BTN}">Open Sequ3nce →</a>
-          <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
-            Opens in your browser — works on any device.
-          </p>
-        </div>
+        ${primaryAction}
 
         <div style="background: #fafafa; border: 1px solid #eaeaea; border-radius: 12px; padding: 20px 24px; margin-bottom: 24px;">
           <p style="color: #555; font-size: 14px; line-height: 1.6; margin: 0;">

@@ -190,15 +190,22 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Wide screens: a proper sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-border px-4 py-5 lg:flex">
-        <Logo height={24} />
-        <div className="mt-6 min-w-0">
-          <div className="truncate text-sm font-semibold">{closer.name}</div>
-          <div className="truncate text-xs text-muted-foreground">
-            {closer.teamName ?? closer.email}
+      <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-border px-4 py-6 lg:flex">
+        {/* Logo and identity centred as one block, with even spacing above and
+            below. Left-aligned they sat at the sidebar's padding while the nav
+            labels sat further in again — three different left edges in a 240px
+            column, which is what made it look off rather than any one item
+            being wrong. */}
+        <div className="flex flex-col items-center gap-4 pb-6 text-center">
+          <Logo height={24} />
+          <div className="min-w-0 max-w-full">
+            <div className="truncate text-sm font-semibold">{closer.name}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {closer.teamName ?? closer.email}
+            </div>
           </div>
         </div>
-        <div className="mt-6 flex-1">{navLinks}</div>
+        <div className="flex-1">{navLinks}</div>
         <button
           type="button"
           onClick={() => setQuickBotOpen(true)}
