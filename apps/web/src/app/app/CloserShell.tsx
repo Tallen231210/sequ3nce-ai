@@ -12,12 +12,16 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Plus,
   Settings,
   TrendingUp,
   Video,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
+import { useActiveCall } from "./_components/useActiveCall";
+import { PostCallModal } from "./_components/PostCallModal";
+import { QuickBotModal } from "./_components/QuickBotModal";
 import {
   getCloserInfo,
   fetchMe,
@@ -58,6 +62,13 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
   const [checked, setChecked] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [quickBotOpen, setQuickBotOpen] = useState(false);
+
+  // Lives in the shell rather than on one page: a call can start while the
+  // closer is anywhere in the app, and the post-call form has to find them
+  // wherever that is. On desktop the main process handled this by opening a
+  // window over everything; here the app itself has to.
+  const { activeCall, endedCall, dismissEnded } = useActiveCall(closer);
 
   useEffect(() => {
     const info = getCloserInfo();
@@ -174,6 +185,14 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
         <div className="mt-6 flex-1">{navLinks}</div>
         <button
           type="button"
+          onClick={() => setQuickBotOpen(true)}
+          className="mb-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <Plus className="h-4 w-4" />
+          Quick Bot
+        </button>
+        <button
+          type="button"
           onClick={() => void handleSignOut()}
           className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
@@ -183,7 +202,40 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* min-w-0 so wide tables scroll inside the page instead of stretching it */}
-      <main className="min-w-0 flex-1">{children}</main>
+      <main className="min-w-0 flex-1">
+        {activeCall && (
+          <Link
+            href="/app/live"
+            className="flex items-center gap-2.5 border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900 transition-colors hover:bg-emerald-100 sm:px-6"
+          >
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
+            </span>
+            <span className="min-w-0 truncate">
+              <span className="font-semibold">Call in progress</span>
+              {activeCall.prospectName ? ` — ${activeCall.prospectName}` : ""}
+            </span>
+            <span aria-hidden className="ml-auto shrink-0 text-emerald-700">
+              Open →
+            </span>
+          </Link>
+        )}
+        {children}
+      </main>
+
+      {/* The bot finished a call. Ask for the outcome while it's fresh. */}
+      {endedCall && (
+        <PostCallModal
+          closerInfo={closer}
+          callId={endedCall.callId}
+          prospectName={endedCall.prospectName}
+          onClose={dismissEnded}
+        />
+      )}
+      {quickBotOpen && (
+        <QuickBotModal closerInfo={closer} onClose={() => setQuickBotOpen(false)} />
+      )}
     </div>
   );
 }
