@@ -389,19 +389,12 @@ coupling), which carried the Convex concurrency circuit-breaker across intact.
 omitting it defers the browser-microphone question entirely.
 
 **Still open:**
-- **Closer onboarding is desktop-only and now actively wrong for Windows.**
-  The welcome email (`convex/closerMagicLink.ts`, ~line 236) is built entirely
-  around the installed app: the primary button is a `sequ3nce://` deep link
-  that opens the desktop app, the first-time email's step one is "download",
-  and the code-entry fallback reads *"Open Sequ3nce on the computer where you
-  use it"*. A Windows closer is currently emailed instructions to install an
-  app that does not exist for them. Needs revamping to offer a choice — Mac
-  users pick either, Windows users go straight to the web. Decision needed on
-  how to present it: choice in the email, or detect the platform.
-- **Nobody has opened the web app on Windows.** Tyler has no Windows machine.
-  It is plain Next.js with no platform-specific code, so the risk is low, but
-  it is untested and Windows is the main reason this exists. Cover it by
-  asking a Windows customer during the first rollout.
+- **The closer welcome email needs rewriting.** It predates the web app and
+  only mentions the desktop one: the primary button is a `sequ3nce://` deep
+  link, the first-time email's step one is "download", and the code fallback
+  says *"Open Sequ3nce on the computer where you use it"* (see
+  `convex/closerMagicLink.ts`, ~line 236). Now that the web app exists it
+  should offer both, without implying either is the lesser option.
 - ~~The post-call questionnaire~~ **DONE.** Ported as-is and rendered as a
   dialog over the call list, addressable via `?questionnaire=<callId>`.
   Section 12's end-of-day redesign applies to the **lower tiers**, not to this
@@ -441,7 +434,7 @@ omitting it defers the browser-microphone question entirely.
 
 **Step 6 — Verify.** The renderer runs in a browser today (see [[team-performance-sheet]] memory for the harness), so every view can be exercised before release. Test as a real closer on a real team.
 
-**Step 7 — Offer the web app alongside the desktop app.** Decided 2026-07-26: **the desktop app is NOT being retired.** The web version is an additional option — for closers who prefer a browser, and for **Windows users, who have no desktop app at all today.** That is the immediate win: a whole platform goes from unsupported to supported.
+**Step 7 — Offer the web app alongside the desktop app.** Decided 2026-07-26: **the desktop app is NOT being retired.** The web version is an additional option — for closers who prefer a browser, and as a way out of maintaining two desktop builds. There **is** a Windows build of the Electron app — its quality is simply unverified, since Tyler has no Windows machine to test on. The win is not "Windows becomes supported"; it is that a browser removes per-platform packaging, per-platform bugs, and an untestable build from the critical path.
 
 Consequence for auth: the `closerId` fallback in `convex/closerSession.ts` cannot simply be deleted on a retirement date, because the desktop app keeps running indefinitely. To require sessions everywhere, the desktop client needs updating to store and send a session token too — the backend already issues one on every login, including from the desktop, so that is a client-side change only.
 
