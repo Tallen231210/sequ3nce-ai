@@ -11963,6 +11963,30 @@ http.route({
 });
 closerPreflight("/closer/session/refresh");
 
+/** Session check + closer info + feature flags, in one call on app load. */
+http.route({
+  path: "/closer/me",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { sessionToken } = await request.json();
+      if (!sessionToken) {
+        return new Response(JSON.stringify({ valid: false }), {
+          status: 200, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runMutation(api.closerSession.me, { sessionToken });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] closer/me:", error);
+      return new Response(JSON.stringify({ valid: false }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/me");
+
 /** Sign out. Idempotent, and silent on an unknown token so it can't be used
  *  to probe which tokens exist. */
 http.route({

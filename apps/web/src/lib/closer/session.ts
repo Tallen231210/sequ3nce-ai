@@ -105,23 +105,36 @@ export async function closerFetch<T>(
   return (await response.json()) as T;
 }
 
-/** Extends the session. Called once when the app loads, not per request. */
-export async function refreshSession(): Promise<boolean> {
+export interface CloserMe {
+  valid: boolean;
+  closer?: CloserInfo;
+  /** Staged rollout flag on the team. False = show "not available yet". */
+  webAppEnabled?: boolean;
+  /** True when the check couldn't run, so callers don't treat it as denial. */
+  offline?: boolean;
+}
+
+/**
+ * One call on app load: is the session still good, who is it, and is this team
+ * switched on yet. Extends the session as a side effect, which is why it isn't
+ * called per request.
+ */
+export async function fetchMe(): Promise<CloserMe> {
   const token = getToken();
-  if (!token) return false;
+  if (!token) return { valid: false };
   try {
-    const res = await fetch(`${CONVEX_SITE_URL}/closer/session/refresh`, {
+    const res = await fetch(`${CONVEX_SITE_URL}/closer/me`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionToken: token }),
     });
-    const data = (await res.json()) as { valid?: boolean };
+    const data = (await res.json()) as CloserMe;
     if (!data.valid) clearSession();
-    return !!data.valid;
+    return data;
   } catch {
-    // A network blip is not a signed-out state. Keep the session and let the
-    // next real request decide.
-    return true;
+    // A network blip is not a signed-out state, and it certainly isn't a
+    // "you don't have access" state. Say so, and let the caller keep going.
+    return { valid: true, offline: true, webAppEnabled: true };
   }
 }
 

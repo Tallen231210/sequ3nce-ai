@@ -247,3 +247,54 @@ export const purgeDeadSessions = internalMutation({
     return { deleted: stale.length };
   },
 });
+
+/**
+ * Everything the closer app needs on load, in one round trip: is the session
+ * still good, who is it, and what is this team allowed to see.
+ *
+ * Extends the session as a side effect, which is why this is a mutation —
+ * it replaces a separate refresh call rather than adding to it.
+ */
+export const me = mutation({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, args) => {
+    const hash = await sha256Hex(args.sessionToken);
+    const session = await ctx.db
+      .query("closerSessions")
+      .withIndex("by_token_hash", (q) => q.eq("tokenHash", hash))
+      .unique();
+    if (!session || session.revokedAt || session.expiresAt < Date.now()) {
+      return { valid: false as const };
+    }
+
+    const closer = await ctx.db.get(session.closerId);
+    if (!closer || closer.status === "deactivated") {
+      return { valid: false as const };
+    }
+
+    const now = Date.now();
+    if (now - session.lastUsedAt >= TOUCH_INTERVAL_MS) {
+      await ctx.db.patch(session._id, {
+        lastUsedAt: now,
+        expiresAt: now + SESSION_TTL_MS,
+      });
+    }
+
+    const team = await ctx.db.get(closer.teamId);
+    return {
+      valid: true as const,
+      closer: {
+        closerId: String(closer._id),
+        teamId: String(closer.teamId),
+        name: closer.name,
+        email: closer.email,
+        status: closer.status,
+        teamName: team?.name,
+      },
+      // Staged rollout, same mechanism the Setter Data tab uses. Until a team
+      // is added, they see a plain "not available yet" rather than a half-built
+      // app — and a closer who guesses the URL gets nothing.
+      webAppEnabled: (team?.betaFeatures ?? []).includes("closerWebApp"),
+    };
+  },
+});

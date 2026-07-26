@@ -7,7 +7,7 @@ import { BarChart3, LogOut, Menu, X } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import {
   getCloserInfo,
-  refreshSession,
+  fetchMe,
   signOut,
   type CloserInfo,
 } from "@/lib/closer/session";
@@ -30,6 +30,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [closer, setCloser] = useState<CloserInfo | null>(null);
   const [checked, setChecked] = useState(false);
+  const [enabled, setEnabled] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -39,13 +40,15 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
       return;
     }
     setCloser(info);
-    // Extend the session once, here, rather than on every request. If the
-    // server says it's dead, the closer signs in again.
-    void refreshSession().then((valid) => {
-      if (!valid) {
+    // One call: validates the session, extends it, and tells us whether this
+    // team is switched on yet.
+    void fetchMe().then((me) => {
+      if (!me.valid) {
         router.replace("/app/login");
         return;
       }
+      if (me.closer) setCloser(me.closer);
+      setEnabled(me.webAppEnabled !== false);
       setChecked(true);
     });
   }, [router]);
@@ -56,6 +59,20 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-dvh items-center justify-center text-sm text-muted-foreground">
         Loading…
+      </div>
+    );
+  }
+
+  // Staged rollout. A closer who finds the URL before their team is switched
+  // on gets a plain sentence, not a half-finished app.
+  if (!enabled) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
+        <h1 className="text-lg font-semibold">Not available yet</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          The web app isn&apos;t switched on for your team yet. Keep using the
+          desktop app — we&apos;ll let your manager know when it&apos;s ready.
+        </p>
       </div>
     );
   }
