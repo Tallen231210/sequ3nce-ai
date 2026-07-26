@@ -77,8 +77,26 @@ export function KpiStrip({
               />
             </div>
 
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              {unmeasured ? "Availability not measured" : formula}
+            {/* The gap is the number a manager reacts to; making them subtract
+                two figures every time is friction for no reason. */}
+            <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              {value !== null && !unmeasured && (
+                <span
+                  className={
+                    "font-medium " +
+                    (value - target >= 0
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-muted-foreground")
+                  }
+                >
+                  {value - target >= 0 ? "+" : ""}
+                  {(value - target).toFixed(Math.abs(value - target) < 1 ? 1 : 0)}
+                  {" pts"}
+                </span>
+              )}
+              <span className="truncate">
+                {unmeasured ? "Availability not measured" : formula}
+              </span>
             </p>
           </div>
         );

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { Users } from "lucide-react";
 import { CoverageNotice, UnknownRepsNotice } from "./CoverageNotice";
 import { FunnelChart } from "./FunnelChart";
@@ -8,6 +10,7 @@ import { ManagerStrip } from "./ManagerStrip";
 import { Leaderboard, type CloserRow } from "./Leaderboard";
 import { WeekSparkline } from "./PeriodNav";
 import { PrizeCard, ProjectionCard } from "./SidePanels";
+import { CloserFocusCard } from "./CloserFocusCard";
 
 function NoActivity() {
   return (
@@ -40,7 +43,19 @@ export function TeamView({
   weekIndex: number | null;
   onWeekChange: (w: number | null) => void;
 }) {
-  const t = data.teamTotals;
+  // Focusing a closer re-scopes the funnel, the rates and the week chart to
+  // them. Done client-side from data already loaded, so it's instant and the
+  // leaderboard keeps its full ranking as context.
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const focused =
+    (data.perCloser as CloserRow[]).find((r) => r.closerId === focusId) ?? null;
+  // Clear a stale selection if the period changes and that rep drops out.
+  if (focusId && !focused) setFocusId(null);
+
+  const t = focused ? focused.totals : data.teamTotals;
+  const rates = focused ? focused.rates : data.teamRates;
+  const rag = focused ? focused.rag : data.teamRatesRag;
+  const weekCash = focused ? focused.weekCash : data.weekCash;
   const hasAnyActivity =
     t.booked > 0 || t.taken > 0 || data.bookedUnattributed > 0;
   // Offers/Closes/Cash all come from the post-call form. When barely anyone
@@ -72,10 +87,14 @@ export function TeamView({
       ) : (
         <>
           <KpiStrip
-            rates={data.teamRates}
-            rag={data.teamRatesRag}
+            rates={rates}
+            rag={rag}
             targets={data.targets}
-            capacityReliable={data.capacity?.reliable !== false}
+            capacityReliable={
+              focused
+                ? focused.capacity?.reliable !== false
+                : data.capacity?.reliable !== false
+            }
           />
 
           {/* The leaderboard sits OUTSIDE this grid, full width. Squeezed
@@ -89,10 +108,16 @@ export function TeamView({
             </div>
 
             <div className="min-w-0 space-y-5">
-              <ProjectionCard projection={data.projection} />
-              <PrizeCard prize={data.prize} />
+              {focused ? (
+                <CloserFocusCard row={focused} onClear={() => setFocusId(null)} />
+              ) : (
+                <>
+                  <ProjectionCard projection={data.projection} />
+                  <PrizeCard prize={data.prize} />
+                </>
+              )}
               <WeekSparkline
-                weekCash={data.weekCash}
+                weekCash={weekCash}
                 weekIndex={weekIndex}
                 onWeekChange={onWeekChange}
               />
@@ -103,6 +128,8 @@ export function TeamView({
             rows={data.perCloser as CloserRow[]}
             gateBelowTaken={gateBelowTaken}
             wowDaysCompared={data.wowWindow?.daysCompared}
+            selectedCloserId={focusId}
+            onSelectCloser={setFocusId}
           />
         </>
       )}

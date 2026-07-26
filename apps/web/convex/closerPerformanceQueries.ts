@@ -276,6 +276,9 @@ export const getTeamPerformance = query({
                 )
               : null,
           overriddenFields: Array.from(overriddenByCloser.get(closerId) ?? []),
+          // Weekly cash for this rep — powers the row sparkline and the
+          // per-closer view when the board is filtered to them.
+          weekCash: (grid ?? []).map((wk) => wk.reduce((a, b) => a + b, 0)),
         };
       })
       .sort((a, b) => b.totals.cash - a.totals.cash);

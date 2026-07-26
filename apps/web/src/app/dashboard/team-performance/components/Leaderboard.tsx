@@ -32,6 +32,38 @@ export interface CloserRow {
   overriddenFields: string[];
   /** Average hours left unbooked per active day. Null when unmeasurable. */
   openHoursPerDay?: number | null;
+  /** Cash per week, for the row sparkline. */
+  weekCash?: number[];
+  /** This rep's own capacity signal. Booked% is suppressed per rep, so a
+   *  focused view must honour their signal rather than the team's. */
+  capacity?: { reliable: boolean };
+}
+
+/**
+ * A rep's cash across the month's weeks, at row scale.
+ *
+ * Scaled per row rather than against the whole board: the question this
+ * answers is "is this person climbing or fading", which is about their own
+ * shape over time, not how they rank. Cross-rep comparison is what the Cash
+ * column is for.
+ */
+function RowSpark({ weeks }: { weeks?: number[] }) {
+  if (!weeks || weeks.every((w) => w === 0)) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const max = Math.max(...weeks, 1);
+  return (
+    <span className="inline-flex h-6 items-end gap-[3px]" aria-hidden>
+      {weeks.map((w, i) => (
+        <span
+          key={i}
+          title={`WK${i + 1}`}
+          className="w-[5px] rounded-[1px] bg-foreground/25"
+          style={{ height: `${Math.max((w / max) * 100, w > 0 ? 12 : 6)}%` }}
+        />
+      ))}
+    </span>
+  );
 }
 
 function GoalCell({ pct, goal }: { pct: number | null; goal: number | null }) {
@@ -151,11 +183,16 @@ export function Leaderboard({
   rows,
   gateBelowTaken,
   wowDaysCompared,
+  selectedCloserId,
+  onSelectCloser,
 }: {
   rows: CloserRow[];
   gateBelowTaken: boolean;
   /** How many elapsed days WoW compared, so the column can say so. */
   wowDaysCompared?: number;
+  selectedCloserId?: string | null;
+  /** Clicking a row focuses the whole board on that rep. */
+  onSelectCloser?: (closerId: string | null) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -171,15 +208,20 @@ export function Leaderboard({
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-3.5">
         <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Leaderboard</h3>
-        <p className="text-xs text-muted-foreground">Ranked by cash collected</p>
+        <p className="text-xs text-muted-foreground">
+          {onSelectCloser
+            ? "Ranked by cash · click a row to focus"
+            : "Ranked by cash collected"}
+        </p>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px]">
+        <table className="w-full min-w-[960px]">
           <thead className="border-b border-border bg-muted/30">
             <tr>
               <th className={TH + " w-9 text-center"}>#</th>
               <th className={TH + " text-left"}>Closer</th>
+              <th className={TH + " text-right"}>Trend</th>
               <th className={TH + " text-right"}>Open/day</th>
               <th className={TH + " text-right"}>Booked</th>
               <th className={TH + " text-right"}>Taken</th>
@@ -204,9 +246,18 @@ export function Leaderboard({
               return (
                 <tr
                   key={r.closerId}
+                  onClick={() =>
+                    onSelectCloser?.(
+                      selectedCloserId === r.closerId ? null : r.closerId,
+                    )
+                  }
                   className={
-                    "transition-colors hover:bg-muted/40 " +
-                    (leader ? "bg-amber-50/40 dark:bg-amber-950/10" : "")
+                    "transition-colors " +
+                    (onSelectCloser ? "cursor-pointer " : "") +
+                    (selectedCloserId === r.closerId
+                      ? "bg-muted "
+                      : "hover:bg-muted/40 " +
+                        (leader ? "bg-amber-50/40 dark:bg-amber-950/10 " : ""))
                   }
                 >
                   <td className={TD + " text-center text-muted-foreground"}>
@@ -240,6 +291,9 @@ export function Leaderboard({
                     </div>
                   </td>
 
+                  <td className="px-2.5 py-2.5 text-right">
+                    <RowSpark weeks={r.weekCash} />
+                  </td>
                   <td
                     className={TD + " text-right text-muted-foreground"}
                     title={

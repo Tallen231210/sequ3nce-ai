@@ -335,6 +335,11 @@ export interface CloserRow {
   pctGoal: number | null;
   wowPct: number | null; // this week's cash vs last week's
   overriddenFields: string[];
+  /** Cash per week (5 buckets), for the row sparkline. */
+  weekCash: number[];
+  /** Whether this rep's own capacity was measurable — Booked% is suppressed
+   *  per rep, so a focused view must honour that rep's signal, not the team's. */
+  capacity: CapacitySignal;
 }
 
 export function ragForRates(

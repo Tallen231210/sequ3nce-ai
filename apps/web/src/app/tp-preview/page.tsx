@@ -44,7 +44,7 @@ const LOW_COVERAGE = {
       rates: { bookedPct: 82.3, showPct: 9.3, offerClosePct: null, closePct: 0 },
       rag: RAG_ALL("green", "red", "na", "red"),
       avgDeal: null, net: 0, goal: null, pctGoal: null, wowPct: null,
-      overriddenFields: [], openHoursPerDay: 4.5,
+      overriddenFields: [], openHoursPerDay: 4.5, weekCash: [0,0,0,0,0], capacity: { reliable: true },
     },
     {
       closerId: "b", name: "Anthony",
@@ -52,7 +52,7 @@ const LOW_COVERAGE = {
       rates: { bookedPct: 83.4, showPct: 3.5, offerClosePct: null, closePct: 0 },
       rag: RAG_ALL("green", "red", "na", "red"),
       avgDeal: null, net: 0, goal: null, pctGoal: null, wowPct: null,
-      overriddenFields: [], openHoursPerDay: 4.0,
+      overriddenFields: [], openHoursPerDay: 4.0, weekCash: [0,0,0,0,0], capacity: { reliable: true },
     },
     {
       closerId: "c", name: "Nick",
@@ -60,7 +60,7 @@ const LOW_COVERAGE = {
       rates: { bookedPct: 81.5, showPct: 17.6, offerClosePct: null, closePct: 0 },
       rag: RAG_ALL("green", "red", "na", "red"),
       avgDeal: null, net: 0, goal: null, pctGoal: null, wowPct: null,
-      overriddenFields: [], openHoursPerDay: 7.2,
+      overriddenFields: [], openHoursPerDay: 7.2, weekCash: [0,0,0,0,0], capacity: { reliable: true },
     },
   ],
   weekCash: [0, 0, 0, 0, 0],
@@ -94,7 +94,7 @@ const HEALTHY = {
       rates: { bookedPct: 75.7, showPct: 75, offerClosePct: 38, closePct: 32.1 },
       rag: RAG_ALL("green", "green", "green", "green"),
       avgDeal: 7259, net: 134_400, goal: 180_000, pctGoal: 108.9, wowPct: 14,
-      overriddenFields: [], openHoursPerDay: 2.4,
+      overriddenFields: [], openHoursPerDay: 2.4, weekCash: [42000,58000,51000,45000,0], capacity: { reliable: true },
     },
     {
       closerId: "b", name: "Priya Raman",
@@ -102,7 +102,7 @@ const HEALTHY = {
       rates: { bookedPct: 76.1, showPct: 70.4, offerClosePct: 36.2, closePct: 27.6 },
       rag: RAG_ALL("green", "green", "amber", "green"),
       avgDeal: 7214, net: 99_600, goal: 160_000, pctGoal: 94.7, wowPct: -6,
-      overriddenFields: ["taken"], openHoursPerDay: 3.1,
+      overriddenFields: ["taken"], openHoursPerDay: 3.1, weekCash: [31000,44000,38000,38500,0], capacity: { reliable: true },
     },
     {
       closerId: "c", name: "Dev Okonkwo",
@@ -110,7 +110,7 @@ const HEALTHY = {
       rates: { bookedPct: 69.2, showPct: 60, offerClosePct: 33.3, closePct: 24.1 },
       rag: RAG_ALL("green", "amber", "amber", "green"),
       avgDeal: 6154, net: 46_000, goal: 150_000, pctGoal: 53.3, wowPct: -22,
-      overriddenFields: [], openHoursPerDay: 6.8,
+      overriddenFields: [], openHoursPerDay: 6.8, weekCash: [15000,30500,18000,16500,0], capacity: { reliable: true },
     },
   ],
   weekCash: [88_000, 132_000, 96_500, 111_000, 0],
