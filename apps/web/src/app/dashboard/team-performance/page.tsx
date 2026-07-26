@@ -97,7 +97,7 @@ export default function TeamPerformancePage() {
     <>
       <Header {...HEADER} />
 
-      <div className="max-w-full space-y-5 overflow-x-hidden px-6 pb-16 pt-4">
+      <div className="space-y-5 px-6 pb-16 pt-4">
         <nav className="flex gap-1 border-b border-border">
           {TABS.map(([id, label]) => (
             <button

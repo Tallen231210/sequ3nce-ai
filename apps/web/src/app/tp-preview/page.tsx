@@ -152,7 +152,7 @@ export default function Preview() {
         ))}
       </div>
 
-      <div className="max-w-full space-y-5 overflow-x-hidden px-6 pb-16 pt-4">
+      <div className="space-y-5 px-6 pb-16 pt-4">
         <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey="2026-07"
