@@ -102,6 +102,7 @@ export const generateMagicLinkCode = internalMutation({
     closerName?: string;
     isReturning?: boolean;
     reason?: "cooldown" | "unknown_email" | "invalid_format";
+    retryAfterSeconds?: number;
   }> => {
     const email = args.email.trim().toLowerCase();
     if (!EMAIL_REGEX.test(email)) {
@@ -117,17 +118,28 @@ export const generateMagicLinkCode = internalMutation({
       return { code: null, reason: "unknown_email" };
     }
 
-    // Cooldown: if ANY of the matching closers had a recent send, skip
-    // silently. We never return retryAfter — that's an account-enumeration
-    // side channel since unknown emails would have no cooldown to report.
+    // Cooldown: one send per minute per address.
+    //
+    // This used to return silently, on the reasoning that reporting a wait
+    // would leak whether the address exists. That reasoning no longer holds —
+    // the caller above already answers "we couldn't find a closer with that
+    // email" outright, which was a deliberate decision for an invite-only
+    // product. Withholding the cooldown therefore protects nothing and costs
+    // a great deal: the screen said "we sent you a code" when nothing had
+    // been sent, and there was no way to tell that from a lost email.
     const now = Date.now();
-    const recentlySent = eligible.some(
-      (c) =>
-        c.magicLinkLastSentAt &&
-        now - c.magicLinkLastSentAt < RESEND_COOLDOWN_MS,
+    const lastSent = Math.max(
+      ...eligible.map((c) => c.magicLinkLastSentAt ?? 0),
     );
-    if (recentlySent) {
-      return { code: null, reason: "cooldown" };
+    if (lastSent && now - lastSent < RESEND_COOLDOWN_MS) {
+      return {
+        code: null,
+        reason: "cooldown",
+        retryAfterSeconds: Math.max(
+          1,
+          Math.ceil((RESEND_COOLDOWN_MS - (now - lastSent)) / 1000),
+        ),
+      };
     }
 
     const code = generate6DigitCode();
@@ -174,18 +186,24 @@ export const generateMagicLinkCode = internalMutation({
  *   - Manager Team tab ("Resend sign-in link" dropdown action)
  *   - addCloserViaMagicLink mutation (auto-fires on closer add)
  *
- * Returns { success: true } even when the email doesn't match a closer
- * OR when the resend cooldown is active — prevents account enumeration
- * via response timing. Cooldown is enforced silently server-side; the
- * client never knows whether the silence is "we sent it" or "we won't
- * send right now."
+ * Reports failures honestly: an unknown address says so, and an active
+ * cooldown says how long is left. Both were once silent to prevent account
+ * enumeration, but this is invite-only — a manager adds every closer — and
+ * a sign-in screen that claims to have sent a code it didn't send costs far
+ * more than the enumeration it prevented. Only a deactivated closer still
+ * gets silence, since there is nothing useful or safe to tell them.
  */
 export const requestCloserMagicLink = action({
   args: { email: v.string() },
   handler: async (
     ctx,
     args,
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    /** Seconds until another code may be requested. */
+    retryAfter?: number;
+  }> => {
     const normalizedEmail = args.email.trim().toLowerCase();
 
     if (!EMAIL_REGEX.test(normalizedEmail)) {
@@ -211,8 +229,19 @@ export const requestCloserMagicLink = action({
       };
     }
 
-    // Cooldown or deactivated — silent success (don't leak whether
-    // the address exists via response timing or content).
+    // Cooldown — say so. A code was genuinely sent moments ago, so the most
+    // useful thing to say is "check your inbox", with the wait as the fallback.
+    if (result.reason === "cooldown") {
+      const wait = result.retryAfterSeconds ?? 60;
+      return {
+        success: false,
+        error: `We already sent a code in the last minute — check your inbox and spam folder. You can request another in ${wait} second${wait === 1 ? "" : "s"}.`,
+        retryAfter: wait,
+      };
+    }
+
+    // Deactivated closer: still silent, since there is nothing useful or safe
+    // to tell someone whose access was removed.
     if (!result.code) {
       return { success: true };
     }
@@ -620,6 +649,8 @@ export const pickCloserTeam = mutation({
   ): Promise<{
     success: boolean;
     error?: string;
+    /** Seconds until another code may be requested. */
+    retryAfter?: number;
     sessionToken?: string;
     closer?: CloserAuthInfo;
   }> => {
