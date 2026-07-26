@@ -378,10 +378,11 @@ Put the closer app in `apps/web` as a new route group under a fresh prefix (`/cl
 
 ### Progress (2026-07-26)
 
-**Steps 1–6 done and deployed.** `/app` is live behind the `closerWebApp` beta
-flag, with real session auth and all nine sections serving live data:
-Dashboard, My Numbers, Stats, Calls, Schedule, Messages, Coaching, Resources,
-Settings. The whole of `convex.ts` was ported (75 functions, no Electron
+**Phase 1 is functionally complete.** Steps 1–7 done and deployed. `/app` is live behind the `closerWebApp` beta
+flag, with real session auth. Eleven routes serving live data: Dashboard, My
+Numbers, Stats, Calls, Schedule, Messages, Coaching, Resources, Settings, plus
+the live call view and calendar setup. No `window.electron` references and no
+`dark:` variants remain anywhere in it. The whole of `convex.ts` was ported (75 functions, no Electron
 coupling), which carried the Convex concurrency circuit-breaker across intact.
 
 **Role Play** is ported but not linked — Tyler's call, it never gets used, and
@@ -392,9 +393,11 @@ omitting it defers the browser-microphone question entirely.
   dialog over the call list, addressable via `?questionnaire=<callId>`.
   Section 12's end-of-day redesign applies to the **lower tiers**, not to this
   port — this milestone is parity with the desktop app.
-- The bot lifecycle: `ActiveCallView`, `QuickBotModal`, `BotOnboardingView` and
-  the `MeetingBotHub` orchestration. Tier 3 only and the most Electron-coupled
-  part of the app.
+- ~~The bot lifecycle~~ **DONE.** A live call is a banner in the shell plus a
+  `/app/live` route; Quick Bot is in the sidebar; calendar onboarding is at
+  `/app/setup`. The watched call is persisted, so a mid-call refresh still ends
+  with the post-call form — the desktop's main process used to remember that
+  and a browser tab cannot.
 - ~~Converting the remaining routes to session auth~~ **34 of them done**
   (5 + 29). Everything the closer client POSTs now resolves identity from the
   session. Still open: GET routes that pass identity in the query string, and
