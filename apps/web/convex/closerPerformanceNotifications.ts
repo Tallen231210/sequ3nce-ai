@@ -29,6 +29,14 @@ import { DEFAULT_TIMEZONE } from "./closerPerformance";
 type ActionCtx = any;
 type TeamDoc = Doc<"teams">;
 
+/** 0=Sun..6=Sat, matching JS getDay() and the schema field. */
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+/** Report on Mon-Fri activity unless the team says otherwise. */
+export const DEFAULT_REPORT_DAYS = [1, 2, 3, 4, 5];
+
 const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n)}%`);
 /** "1 close" / "2 closes" — a scoreboard reading "1 closes" looks unfinished. */
@@ -191,6 +199,16 @@ export async function maybeSendForTeam(
 
   const yesterday = formatInTimeZone(new Date(nowMs - 86_400_000), tz);
   const dayKey = `${yesterday.year}-${pad2(yesterday.month)}-${pad2(yesterday.day)}`;
+
+  // Gate on the weekday of the day being REPORTED, not the day we post. A
+  // team that works Mon-Fri wants Friday's numbers on Saturday morning if
+  // that's their delivery hour; what they don't want is a Monday post about
+  // a dead Sunday.
+  const reportedWeekday = WEEKDAY_INDEX[yesterday.weekday] ?? -1;
+  const allowedDays = team.closerDailyScorecardDays ?? DEFAULT_REPORT_DAYS;
+  if (!opts?.force && !allowedDays.includes(reportedWeekday)) {
+    return { sent: false, reason: `weekday ${reportedWeekday} not selected` };
+  }
   const monthKey = dayKey.slice(0, 7);
 
   const dedupKey = `${team._id}_closer_scorecard_${dayKey}${opts?.dedupSuffix ?? ""}`;

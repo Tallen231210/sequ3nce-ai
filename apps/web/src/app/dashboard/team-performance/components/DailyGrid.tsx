@@ -23,6 +23,7 @@ interface GridRow {
   measured: Record<string, number>;
   overridden: Record<string, number>;
   missingOutcomes: number;
+  measuredExists: boolean;
   updatedAt: number | null;
 }
 
@@ -128,8 +129,8 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
           {data.canEdit ? (
             <>
               Every number here is what Sequ3nce measured. Click any cell to
-              correct it — useful when a rep took a call without the bot
-              running. Corrections are{" "}
+              correct it — including on days we recorded nothing at all, which
+              is what happens when a rep takes calls without the bot running. Corrections are{" "}
               <span className="font-medium text-amber-700 dark:text-amber-400">
                 highlighted
               </span>
@@ -180,7 +181,7 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     colSpan={FIELDS.length + 2}
                     className="px-3 py-10 text-center text-sm text-muted-foreground"
                   >
-                    No recorded days for this closer in {monthKey}.
+                    No days to show for this closer in {monthKey}.
                   </td>
                 </tr>
               )}
@@ -192,7 +193,12 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     key={r.dayKey + r.closerId}
                     className={
                       "hover:bg-muted/30 " +
-                      (isToday ? "bg-muted/40" : "")
+                      (isToday ? "bg-muted/40 " : "") +
+                      // Nothing measured at all reads differently from a
+                      // recorded zero, and a manager needs to tell them apart.
+                      (!r.measuredExists && Object.keys(r.overridden).length === 0
+                        ? "text-muted-foreground/60"
+                        : "")
                     }
                   >
                     <td className="whitespace-nowrap px-3 py-2">

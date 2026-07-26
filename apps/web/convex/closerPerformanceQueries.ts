@@ -13,6 +13,7 @@ import {
   computeProjection,
   computeRates,
   emptyTotals,
+  mergeDailyRows,
   pctOfGoal,
   ragForRates,
   repNet,
@@ -131,18 +132,13 @@ export const getTeamPerformance = query({
     const weekCashTeam = [0, 0, 0, 0, 0];
     const weekCashByCloser = new Map<string, number[]>();
 
-    for (const row of stats) {
-      const key = String(row.closerId);
-      const ov = overrideByKey.get(`${row.dayKey}|${key}`);
-      const { totals, overridden } = applyOverride(
-        {
-          slots: row.slots, booked: row.booked, taken: row.taken,
-          offers: row.offers, closes: row.closes, cash: row.cash,
-          contractValue: row.contractValue,
-          missingOutcomes: row.missingOutcomes ?? 0,
-        },
-        ov,
-      );
+    // Union of measured rows and corrections — a manager's entry on a day we
+    // measured nothing must still appear. See mergeDailyRows.
+    const merged = mergeDailyRows(stats, overrides);
+
+    for (const row of merged) {
+      const key = row.closerId;
+      const totals = row.totals;
 
       // Week buckets always span the whole month (the sparkline shows the
       // month even when the table is scoped to one week).
@@ -155,9 +151,10 @@ export const getTeamPerformance = query({
       if (!inScope(row.dayKey)) continue;
       const cap = capByCloser.get(key) ?? { known: 0, unknown: 0 };
       if (row.capacityKnown === false) cap.unknown += 1;
-      else cap.known += 1;
+      else if (row.capacityKnown === true) cap.known += 1;
       capByCloser.set(key, cap);
-      if (row.capacityKnown !== false && typeof row.openMinutes === "number") {
+
+      if (row.capacityKnown === true && typeof row.openMinutes === "number") {
         const o = openByCloser.get(key) ?? { openMin: 0, days: 0 };
         o.openMin += row.openMinutes;
         o.days += 1;
@@ -167,9 +164,9 @@ export const getTeamPerformance = query({
         key,
         addTotals(totalsByCloser.get(key) ?? emptyTotals(), totals),
       );
-      if (overridden.length > 0) {
+      if (row.overridden.length > 0) {
         const set = overriddenByCloser.get(key) ?? new Set<string>();
-        overridden.forEach((f) => set.add(f));
+        row.overridden.forEach((f) => set.add(f));
         overriddenByCloser.set(key, set);
       }
     }
@@ -255,19 +252,8 @@ export const getTeamPerformance = query({
     // Month totals (not week-scoped) drive pacing — a month projection from
     // one week's cash would be nonsense.
     let monthTotals = emptyTotals();
-    for (const row of stats) {
-      const ov = overrideByKey.get(`${row.dayKey}|${String(row.closerId)}`);
-      const { totals } = applyOverride(
-        {
-          slots: row.slots, booked: row.booked, taken: row.taken,
-          offers: row.offers, closes: row.closes, cash: row.cash,
-          contractValue: row.contractValue,
-          missingOutcomes: row.missingOutcomes ?? 0,
-        },
-        ov,
-      );
-      monthTotals = addTotals(monthTotals, totals);
-    }
+    for (const row of merged) monthTotals = addTotals(monthTotals, row.totals);
+
     const projection = computeProjection(
       monthTotals.cash,
       teamTarget,

@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { DEFAULT_TIMEZONE } from "./closerPerformance";
+import { DEFAULT_REPORT_DAYS } from "./closerPerformanceNotifications";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,6 +42,7 @@ export const getScorecardSettings = query({
       slackChannelName: team.closerDailyScorecardSlackChannelName ?? null,
       discordWebhookUrl: team.closerDailyScorecardDiscordWebhookUrl ?? null,
       hourLocal: team.closerDailyScorecardHourLocal ?? 9,
+      reportDays: team.closerDailyScorecardDays ?? DEFAULT_REPORT_DAYS,
       // Whether the team could actually receive a Slack post today.
       slackConnected: !!team.slackAccessToken,
       defaultSlackChannelId: team.slackChannelId ?? null,
@@ -57,6 +59,7 @@ export const updateScorecardSettings = mutation({
     slackChannelName: v.optional(v.string()),
     discordWebhookUrl: v.optional(v.string()),
     hourLocal: v.optional(v.number()),
+    reportDays: v.optional(v.array(v.number())),
   },
   handler: async (ctx, args) => {
     const user = await resolveAuthUser(ctx, args.clerkId);
@@ -74,6 +77,18 @@ export const updateScorecardSettings = mutation({
       (!Number.isInteger(args.hourLocal) || args.hourLocal < 0 || args.hourLocal > 23)
     ) {
       throw new Error("hourLocal must be an integer between 0 and 23");
+    }
+    if (args.reportDays !== undefined) {
+      const days = args.reportDays;
+      if (days.length === 0) {
+        throw new Error("Pick at least one day, or switch the scoreboard off");
+      }
+      if (days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+        throw new Error("Days must be 0 (Sunday) through 6 (Saturday)");
+      }
+      if (new Set(days).size !== days.length) {
+        throw new Error("Duplicate days");
+      }
     }
     if (args.slackChannelId !== undefined && args.slackChannelId.length > 100) {
       throw new Error("slackChannelId is too long");
@@ -105,6 +120,9 @@ export const updateScorecardSettings = mutation({
     }
     if (args.hourLocal !== undefined) {
       patch.closerDailyScorecardHourLocal = args.hourLocal;
+    }
+    if (args.reportDays !== undefined) {
+      patch.closerDailyScorecardDays = [...args.reportDays].sort((a, b) => a - b);
     }
 
     await ctx.db.patch(teamId, patch);

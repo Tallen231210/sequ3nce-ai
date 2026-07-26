@@ -197,6 +197,13 @@ export default defineSchema({
     closerDailyScorecardSlackChannelName: v.optional(v.string()),
     closerDailyScorecardDiscordWebhookUrl: v.optional(v.string()),
     closerDailyScorecardHourLocal: v.optional(v.number()), // 0-23 in team.timezone
+    /**
+     * Weekdays the post goes out, 0=Sun..6=Sat, in team.timezone. Undefined
+     * means Mon-Fri. Teams work different weeks — some run Saturdays, some
+     * don't want a Monday post about a dead Sunday — and picking days is a
+     * better answer than the blanket "skip quiet days" rule alone.
+     */
+    closerDailyScorecardDays: v.optional(v.array(v.number())),
 
     // Untouched-lead alert config (Phase 2). Off by default — some teams
     // love real-time alerts, some hate the noise. When enabled, the

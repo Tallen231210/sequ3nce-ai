@@ -93,6 +93,85 @@ export function applyOverride(
   return { totals: out, overridden };
 }
 
+/**
+ * Merge derived daily rows with manual corrections, keyed by (day, closer).
+ *
+ * Critically this is a UNION, not a walk of the derived rows. A recount
+ * deletes a day that measured nothing, so a manager correcting a day the
+ * meeting bot missed entirely would otherwise have their entry vanish: no
+ * derived row means nothing to iterate. That is the exact case the override
+ * exists for — a rep took calls without the bot running — so it has to work
+ * when there is no measurement at all.
+ */
+export function mergeDailyRows(
+  stats: Array<Doc<"closerDailyStats">>,
+  overrides: Array<Doc<"closerDailyOverrides">>,
+): Array<{
+  dayKey: string;
+  closerId: string;
+  totals: FunnelTotals;
+  overridden: string[];
+  capacityKnown: boolean | undefined;
+  /** Minutes of observed free time — powers the Open/day column. */
+  openMinutes: number | undefined;
+  measured: FunnelTotals;
+}> {
+  const byKey = new Map<
+    string,
+    {
+      dayKey: string;
+      closerId: string;
+      measured: FunnelTotals;
+      capacityKnown: boolean | undefined;
+      openMinutes: number | undefined;
+    }
+  >();
+
+  for (const r of stats) {
+    byKey.set(`${r.dayKey}|${String(r.closerId)}`, {
+      dayKey: r.dayKey,
+      closerId: String(r.closerId),
+      capacityKnown: r.capacityKnown,
+      openMinutes: r.openMinutes,
+      measured: {
+        slots: r.slots, booked: r.booked, taken: r.taken,
+        offers: r.offers, closes: r.closes, cash: r.cash,
+        contractValue: r.contractValue,
+        missingOutcomes: r.missingOutcomes ?? 0,
+      },
+    });
+  }
+
+  const ovByKey = new Map(
+    overrides.map((o) => [`${o.dayKey}|${String(o.closerId)}`, o]),
+  );
+
+  // Corrections on days we measured nothing for still need a row.
+  for (const [key, o] of ovByKey) {
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      dayKey: o.dayKey,
+      closerId: String(o.closerId),
+      capacityKnown: undefined,
+      openMinutes: undefined,
+      measured: emptyTotals(),
+    });
+  }
+
+  return Array.from(byKey.entries()).map(([key, base]) => {
+    const { totals, overridden } = applyOverride(base.measured, ovByKey.get(key));
+    return {
+      dayKey: base.dayKey,
+      closerId: base.closerId,
+      totals,
+      overridden,
+      capacityKnown: base.capacityKnown,
+      openMinutes: base.openMinutes,
+      measured: base.measured,
+    };
+  });
+}
+
 export interface Rates {
   bookedPct: number | null;   // booked / slots
   showPct: number | null;     // taken / booked

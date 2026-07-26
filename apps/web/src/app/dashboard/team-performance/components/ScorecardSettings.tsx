@@ -187,6 +187,47 @@ export function ScorecardSettings() {
             </div>
           )}
 
+          {/* Report days */}
+          <div>
+            <div className="text-xs font-medium">Report on</div>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Which days&apos; results to report. A Mon–Fri team gets
+              Friday&apos;s numbers on Saturday morning, and no post about a
+              dead Sunday.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[
+                [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"],
+                [5, "Fri"], [6, "Sat"], [0, "Sun"],
+              ].map(([d, label]) => {
+                const on = (data.reportDays as number[]).includes(d as number);
+                return (
+                  <button
+                    key={String(d)}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => {
+                      const cur = data.reportDays as number[];
+                      const next = on
+                        ? cur.filter((x) => x !== d)
+                        : [...cur, d as number];
+                      if (next.length === 0) return; // handled server-side too
+                      void save({ reportDays: next });
+                    }}
+                    className={
+                      "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors " +
+                      (on
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border text-muted-foreground hover:bg-muted hover:text-foreground")
+                    }
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Delivery hour */}
           <div>
             <label className="text-xs font-medium" htmlFor="cs-hour">

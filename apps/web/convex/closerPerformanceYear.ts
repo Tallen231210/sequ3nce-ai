@@ -9,6 +9,7 @@ import {
   computeCapacitySignal,
   computeRates,
   emptyTotals,
+  mergeDailyRows,
   type FunnelTotals,
 } from "./closerPerformanceMetrics";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
@@ -76,10 +77,6 @@ export const getYearPerformance = query({
 
     const truncated = stats.length >= MAX_YEAR_ROWS;
 
-    const overrideByKey = new Map(
-      overrides.map((o) => [`${o.dayKey}|${String(o.closerId)}`, o]),
-    );
-
     // Goals are per closer per month; the year table compares against the sum.
     const goalByMonth = new Map<string, number>();
     for (const g of goals) {
@@ -92,24 +89,15 @@ export const getYearPerformance = query({
       { totals: FunnelTotals; capKnown: number; capUnknown: number }
     >();
 
-    for (const row of stats) {
+    // Union so a corrected day with no measurement still lands in the year.
+    for (const row of mergeDailyRows(stats, overrides)) {
       const monthKey = row.dayKey.slice(0, 7);
-      const ov = overrideByKey.get(`${row.dayKey}|${String(row.closerId)}`);
-      const { totals } = applyOverride(
-        {
-          slots: row.slots, booked: row.booked, taken: row.taken,
-          offers: row.offers, closes: row.closes, cash: row.cash,
-          contractValue: row.contractValue,
-          missingOutcomes: row.missingOutcomes ?? 0,
-        },
-        ov,
-      );
       const bucket =
         byMonth.get(monthKey) ??
         { totals: emptyTotals(), capKnown: 0, capUnknown: 0 };
-      bucket.totals = addTotals(bucket.totals, totals);
+      bucket.totals = addTotals(bucket.totals, row.totals);
       if (row.capacityKnown === false) bucket.capUnknown += 1;
-      else bucket.capKnown += 1;
+      else if (row.capacityKnown === true) bucket.capKnown += 1;
       byMonth.set(monthKey, bucket);
     }
 

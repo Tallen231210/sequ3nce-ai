@@ -3,11 +3,11 @@ import { internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   addTotals,
-  applyOverride,
   computeCapacitySignal,
   computeCoverage,
   computeRates,
   emptyTotals,
+  mergeDailyRows,
   type FunnelTotals,
 } from "./closerPerformanceMetrics";
 
@@ -86,26 +86,18 @@ export const getCloserScorecardData = internalQuery({
       rows: Doc<"closerDailyStats">[],
       overrides: Doc<"closerDailyOverrides">[],
     ) => {
-      const ovByKey = new Map(
-        overrides.map((o) => [`${o.dayKey}|${String(o.closerId)}`, o]),
-      );
       const byCloser = new Map<string, FunnelTotals>();
       let capKnown = 0;
       let capUnknown = 0;
-      for (const r of rows) {
-        const key = String(r.closerId);
-        const { totals } = applyOverride(
-          {
-            slots: r.slots, booked: r.booked, taken: r.taken,
-            offers: r.offers, closes: r.closes, cash: r.cash,
-            contractValue: r.contractValue,
-            missingOutcomes: r.missingOutcomes ?? 0,
-          },
-          ovByKey.get(`${r.dayKey}|${key}`),
+      // Union, so a day the bot missed entirely but a manager corrected still
+      // reaches the post.
+      for (const row of mergeDailyRows(rows, overrides)) {
+        byCloser.set(
+          row.closerId,
+          addTotals(byCloser.get(row.closerId) ?? emptyTotals(), row.totals),
         );
-        byCloser.set(key, addTotals(byCloser.get(key) ?? emptyTotals(), totals));
-        if (r.capacityKnown === false) capUnknown += 1;
-        else capKnown += 1;
+        if (row.capacityKnown === false) capUnknown += 1;
+        else if (row.capacityKnown === true) capKnown += 1;
       }
       return { byCloser, capKnown, capUnknown };
     };

@@ -36,6 +36,14 @@ const DEFAULT_BACKFILL_DAYS = 60;
 
 const DAY_MS = 86_400_000;
 
+/**
+ * Teams recounted per sweep. Each team costs SWEEP_WINDOW_DAYS sequential
+ * mutations, so this bounds a run at ~600 and keeps it well inside an action's
+ * lifetime. Past this we log rather than silently truncate — the fix at that
+ * scale is to shard teams across the hourly runs, not to raise the number.
+ */
+const MAX_TEAMS_PER_SWEEP = 200;
+
 function recentDayKeys(tz: string, days: number, startOffset = 0): string[] {
   const now = Date.now();
   const out: string[] = [];
@@ -71,16 +79,28 @@ export const runSweep = internalAction({
   handler: async (
     ctx,
     args,
-  ): Promise<{ teams: number; days: number; failures: number }> => {
+  ): Promise<{
+    teams: number;
+    days: number;
+    failures: number;
+    skippedTeams: number;
+  }> => {
     const teams = await ctx.runQuery(
       internal.closerPerformanceSweep.listTeamsForSweep,
       {},
     );
     const days = Math.max(1, Math.min(args.days ?? SWEEP_WINDOW_DAYS, 30));
 
+    if (teams.length > MAX_TEAMS_PER_SWEEP) {
+      console.error(
+        `[closerPerformance] ${teams.length} teams exceeds the ${MAX_TEAMS_PER_SWEEP} sweep cap — ` +
+          `teams beyond the cap are NOT being recounted. Shard by hour to fix.`,
+      );
+    }
+
     let ok = 0;
     let failures = 0;
-    for (const team of teams) {
+    for (const team of teams.slice(0, MAX_TEAMS_PER_SWEEP)) {
       for (const dayKey of recentDayKeys(team.timezone, days)) {
         try {
           await ctx.runMutation(internal.closerPerformance.recountCloserDay, {
@@ -99,7 +119,7 @@ export const runSweep = internalAction({
       }
       ok += 1;
     }
-    return { teams: ok, days, failures };
+    return { teams: ok, days, failures, skippedTeams: Math.max(0, teams.length - MAX_TEAMS_PER_SWEEP) };
   },
 });
 

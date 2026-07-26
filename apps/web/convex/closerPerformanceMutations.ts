@@ -182,46 +182,70 @@ export const getDailyGrid = query({
     ]);
 
     const closerId = args.closerId ?? null;
+    const activeClosers = closers.filter((c) => c.status !== "deactivated");
+
     const ovByKey = new Map(
       overrides.map((o) => [`${o.dayKey}|${String(o.closerId)}`, o]),
     );
+    const statByKey = new Map(
+      stats.map((r) => [`${r.dayKey}|${String(r.closerId)}`, r]),
+    );
 
-    const rows = stats
-      .filter((s) => closerId === null || String(s.closerId) === String(closerId))
-      .map((s) => {
-        const ov = ovByKey.get(`${s.dayKey}|${String(s.closerId)}`);
+    // Emit EVERY day of the month up to today, not just days we recorded
+    // something for. A recount deletes a day that measured nothing, so
+    // walking the derived rows would leave a manager unable to enter figures
+    // for exactly the day the meeting bot missed — the case this grid exists
+    // to handle. Future days are excluded: they can't be corrected, only
+    // guessed at.
+    const todayKey = dayKeyInTz(Date.now(), tz);
+    const [yy, mm] = args.monthKey.split("-").map((x) => parseInt(x, 10));
+    const daysInMonth = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+
+    const targets = closerId
+      ? activeClosers.filter((c) => String(c._id) === String(closerId))
+      : activeClosers;
+
+    const rows = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dayKey = `${args.monthKey}-${String(d).padStart(2, "0")}`;
+      if (dayKey > todayKey) break;
+      for (const closer of targets) {
+        const key = `${dayKey}|${String(closer._id)}`;
+        const st = statByKey.get(key);
+        const ov = ovByKey.get(key);
         const measured: Record<string, number> = {
-          slots: s.slots, booked: s.booked, taken: s.taken,
-          offers: s.offers, closes: s.closes, cash: s.cash,
+          slots: st?.slots ?? 0, booked: st?.booked ?? 0, taken: st?.taken ?? 0,
+          offers: st?.offers ?? 0, closes: st?.closes ?? 0, cash: st?.cash ?? 0,
         };
         const overridden: Record<string, number> = {};
         for (const f of OVERRIDE_FIELDS) {
           const val = ov?.[f];
           if (typeof val === "number") overridden[f] = val;
         }
-        return {
-          dayKey: s.dayKey,
-          closerId: String(s.closerId),
+        rows.push({
+          dayKey,
+          closerId: String(closer._id),
           measured,
           overridden,
-          missingOutcomes: s.missingOutcomes ?? 0,
+          missingOutcomes: st?.missingOutcomes ?? 0,
+          // No measurement at all — the grid dims it so a manager can tell
+          // "we recorded a zero" from "we recorded nothing".
+          measuredExists: !!st,
           updatedAt: ov?.updatedAt ?? null,
-        };
-      })
-      .sort((a, b) =>
-        a.dayKey === b.dayKey
-          ? a.closerId.localeCompare(b.closerId)
-          : a.dayKey.localeCompare(b.dayKey),
-      );
+        });
+      }
+    }
+    rows.reverse(); // most recent day first — that's what a manager checks
 
     return {
       monthKey: args.monthKey,
       timezone: tz,
       canEdit: canEdit(user),
       todayKey: dayKeyInTz(Date.now(), tz),
-      closers: closers
-        .filter((c) => c.status !== "deactivated")
-        .map((c) => ({ closerId: String(c._id), name: c.name ?? "Unknown" })),
+      closers: activeClosers.map((c) => ({
+        closerId: String(c._id),
+        name: c.name ?? "Unknown",
+      })),
       rows,
     };
   },
