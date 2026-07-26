@@ -43,7 +43,11 @@ function assertMoney(name: string, value: number): void {
 }
 
 export const getConfig = query({
-  args: { clerkId: v.string() },
+  args: {
+    clerkId: v.string(),
+    /** Month whose ad spend to return. Defaults to the current month. */
+    monthKey: v.optional(v.string()),
+  },
   handler: async (ctx, args): Promise<any> => {
     const user = await resolveAuthUser(ctx, args.clerkId);
     if (!user) return null;
@@ -52,7 +56,10 @@ export const getConfig = query({
     if (!team) return null;
 
     const tz = team.timezone || DEFAULT_TIMEZONE;
-    const monthKey = monthKeyInTz(Date.now(), tz);
+    const monthKey =
+      args.monthKey && /^\d{4}-\d{2}$/.test(args.monthKey)
+        ? args.monthKey
+        : monthKeyInTz(Date.now(), tz);
 
     const [closers, goals] = await Promise.all([
       ctx.db
@@ -71,6 +78,13 @@ export const getConfig = query({
       goals.map((g) => [String(g.closerId), g.cashGoal]),
     );
 
+    const monthSpend = await ctx.db
+      .query("closerAdSpend")
+      .withIndex("by_team_and_month", (q: any) =>
+        q.eq("teamId", teamId).eq("monthKey", monthKey),
+      )
+      .first();
+
     return {
       canEdit: canEdit(user),
       monthKey,
@@ -84,7 +98,12 @@ export const getConfig = query({
       },
       // Nulls rather than defaults: the UI shows an empty box, so a manager can
       // tell "nobody has set this" from "someone chose zero".
-      adSpendMonthly: team.closerAdSpendMonthly ?? null,
+      // What this month actually cost, if recorded; otherwise the team's
+      // standing figure. The UI needs to know WHICH, so a manager can tell a
+      // recorded month from an assumed one.
+      adSpendMonthly: monthSpend?.amount ?? team.closerAdSpendMonthly ?? null,
+      adSpendIsForThisMonth: !!monthSpend,
+      adSpendDefault: team.closerAdSpendMonthly ?? null,
       compPct: team.closerCompPct ?? DEFAULT_COMP_PCT,
       typicalCallLengthMin:
         team.closerTypicalCallLengthMin ?? DEFAULT_CALL_LENGTH_MIN,
@@ -194,6 +213,58 @@ export const updateConfig = mutation({
 
     await ctx.db.patch(teamId, patch);
     return { success: true };
+  },
+});
+
+/**
+ * Record what was spent on ads in a given month.
+ *
+ * Editing ad spend while looking at July means "July cost this much", not
+ * "change my standing figure" — so the write lands on the month in view.
+ * Clearing it falls back to the team default rather than storing a zero,
+ * because "not recorded" and "we spent nothing" are different claims.
+ */
+export const setMonthlyAdSpend = mutation({
+  args: {
+    clerkId: v.string(),
+    monthKey: v.string(),
+    amount: v.union(v.number(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new Error("Not authorised");
+    if (!canEdit(user)) throw new Error("Only managers can set ad spend");
+    if (!/^\d{4}-\d{2}$/.test(args.monthKey)) throw new Error("Invalid month");
+    if (args.amount !== null) assertMoney("Ad spend", args.amount);
+
+    const teamId = user.teamId as Id<"teams">;
+    const existing = await ctx.db
+      .query("closerAdSpend")
+      .withIndex("by_team_and_month", (q: any) =>
+        q.eq("teamId", teamId).eq("monthKey", args.monthKey),
+      )
+      .first();
+
+    if (args.amount === null) {
+      if (existing) await ctx.db.delete(existing._id);
+      return { cleared: true };
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        amount: args.amount,
+        updatedAt: Date.now(),
+        updatedByClerkId: args.clerkId,
+      });
+    } else {
+      await ctx.db.insert("closerAdSpend", {
+        teamId,
+        monthKey: args.monthKey,
+        amount: args.amount,
+        updatedAt: Date.now(),
+        updatedByClerkId: args.clerkId,
+      });
+    }
+    return { cleared: false };
   },
 });
 

@@ -56,7 +56,7 @@ export const getYearPerformance = query({
     const startKey = `${year}-01-01`;
     const endKey = `${year}-12-31`;
 
-    const [stats, overrides, goals, teamRows] = await Promise.all([
+    const [stats, overrides, goals, teamRows, adSpendRows] = await Promise.all([
       ctx.db
         .query("closerDailyStats")
         .withIndex("by_team_and_day", (q: any) =>
@@ -79,7 +79,15 @@ export const getYearPerformance = query({
           q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
         )
         .take(MAX_YEAR_ROWS),
+      ctx.db
+        .query("closerAdSpend")
+        .withIndex("by_team_and_month", (q: any) =>
+          q.eq("teamId", teamId).gte("monthKey", `${year}-01`).lte("monthKey", `${year}-12`),
+        )
+        .take(24),
     ]);
+
+    const spendByMonth = new Map(adSpendRows.map((r) => [r.monthKey, r.amount]));
 
     // Unattributed bookings per month. They cost money like any other, so
     // leaving them out of cost-per-booked overstates it — see computeEconomics.
@@ -119,7 +127,7 @@ export const getYearPerformance = query({
     }
 
     const compPct = team.closerCompPct ?? DEFAULT_COMP_PCT;
-    const monthlyAdSpend = team.closerAdSpendMonthly ?? 0;
+    const defaultAdSpend = team.closerAdSpendMonthly ?? 0;
     const currentMonthKey = todayKey.slice(0, 7);
 
     // Always emit all twelve months so the chart keeps a stable x-axis and a
@@ -147,6 +155,7 @@ export const getYearPerformance = query({
           : null;
 
       const goal = goalByMonth.get(monthKey) ?? null;
+      const monthAdSpend = spendByMonth.get(monthKey) ?? defaultAdSpend;
 
       months.push({
         monthKey,
@@ -167,13 +176,16 @@ export const getYearPerformance = query({
           if (!hasData) return null;
           const totalBooked =
             totals.booked + (unattributedByMonth.get(monthKey) ?? 0);
-          return monthlyAdSpend > 0 && totalBooked > 0
-            ? monthlyAdSpend / totalBooked
+          return monthAdSpend > 0 && totalBooked > 0
+            ? monthAdSpend / totalBooked
             : null;
         })(),
         net: hasData
-          ? totals.cash - monthlyAdSpend - totals.cash * (compPct / 100)
+          ? totals.cash - monthAdSpend - totals.cash * (compPct / 100)
           : null,
+        adSpend: hasData ? monthAdSpend : null,
+        // Lets the row say whether its economics rest on a recorded figure.
+        adSpendRecorded: spendByMonth.has(monthKey),
         goal,
         pctGoal: goal && goal > 0 ? (totals.cash / goal) * 100 : null,
         momPct,
@@ -196,7 +208,10 @@ export const getYearPerformance = query({
       currentYear,
       // So the table can say the economics columns rest on today's ad spend
       // rather than a figure recorded at the time.
-      adSpendIsCurrentMonthly: monthlyAdSpend > 0,
+      // True only when some month is falling back to the standing figure.
+      adSpendIsCurrentMonthly:
+        defaultAdSpend > 0 &&
+        months.some((m) => m.hasData && !m.adSpendRecorded),
       timezone: tz,
       truncated,
       months,

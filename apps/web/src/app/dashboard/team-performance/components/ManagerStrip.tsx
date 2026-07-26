@@ -43,6 +43,7 @@ function EditableStat({
   prefix,
   suffix,
   disabled,
+  hint,
   onSave,
 }: {
   label: string;
@@ -50,6 +51,7 @@ function EditableStat({
   prefix?: string;
   suffix?: string;
   disabled: boolean;
+  hint?: string;
   onSave: (v: number | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -86,6 +88,11 @@ function EditableStat({
           </span>
         )}
       </div>
+      {hint && (
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
@@ -149,11 +156,14 @@ export function ManagerStrip({
   isCurrentMonth: boolean;
 }) {
   const { user } = useUser();
+  // Scoped to the month on screen: editing ad spend while looking at July
+  // means "July cost this much", not "change my standing figure".
   const config = useQuery(
     api.closerPerformanceConfig.getConfig,
-    user ? { clerkId: user.id } : "skip",
+    user ? { clerkId: user.id, monthKey } : "skip",
   );
   const update = useMutation(api.closerPerformanceConfig.updateConfig);
+  const setSpend = useMutation(api.closerPerformanceConfig.setMonthlyAdSpend);
   const [error, setError] = useState<string | null>(null);
 
   if (!config) return null;
@@ -217,11 +227,25 @@ export function ManagerStrip({
       {/* Economics: what the manager sets, then what it produces */}
       <div className="flex flex-wrap divide-border overflow-hidden rounded-xl border border-border bg-card sm:flex-nowrap sm:divide-x">
         <EditableStat
-          label="Ad spend / mo"
+          label={`Ad spend · ${monthLabel(monthKey)}`}
           value={config.adSpendMonthly}
           prefix="$"
           disabled={disabled}
-          onSave={(v) => save({ adSpendMonthly: v })}
+          hint={
+            config.adSpendIsForThisMonth
+              ? "recorded for this month"
+              : "your standing figure — save to record it for this month"
+          }
+          onSave={(v) => {
+            setError(null);
+            void setSpend({
+              clerkId: user!.id,
+              monthKey,
+              amount: v,
+            }).catch((e) =>
+              setError(e instanceof Error ? e.message : "Could not save"),
+            );
+          }}
         />
         <EditableStat
           label="Rep comp %"

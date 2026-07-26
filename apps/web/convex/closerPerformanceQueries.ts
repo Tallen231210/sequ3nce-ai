@@ -80,7 +80,8 @@ export const getTeamPerformance = query({
     const endKey = allDayKeys[allDayKeys.length - 1];
 
     // --- Derived rows + manual overrides for the month ---------------------
-    const [stats, overrides, teamRows, closers, goals] = await Promise.all([
+    const [stats, overrides, teamRows, closers, goals, monthSpend] =
+      await Promise.all([
       ctx.db
         .query("closerDailyStats")
         .withIndex("by_team_and_day", (q: any) =>
@@ -109,6 +110,12 @@ export const getTeamPerformance = query({
           q.eq("teamId", teamId).eq("monthKey", monthKey),
         )
         .collect(),
+      ctx.db
+        .query("closerAdSpend")
+        .withIndex("by_team_and_month", (q: any) =>
+          q.eq("teamId", teamId).eq("monthKey", monthKey),
+        )
+        .first(),
     ]);
 
     const inScope = (dayKey: string) =>
@@ -188,8 +195,11 @@ export const getTeamPerformance = query({
     };
     const compPct = team.closerCompPct ?? DEFAULT_COMP_PCT;
 
-    // Ad spend scoped to the period: whole month, or a fifth of it per week.
-    const monthlyAdSpend = team.closerAdSpendMonthly ?? 0;
+    // What this month actually cost, where recorded; otherwise the team's
+    // standing figure. Recording per month is what stops the Year view
+    // projecting today's spend backwards over months it never applied to.
+    const monthlyAdSpend =
+      monthSpend?.amount ?? team.closerAdSpendMonthly ?? 0;
     const adSpendForPeriod =
       args.weekIndex === undefined ? monthlyAdSpend : monthlyAdSpend / 5;
 
@@ -371,6 +381,8 @@ export const getTeamPerformance = query({
       teamRatesRag: ragForRates(teamRates, targets),
       // Whether Slots were measured well enough to quote Booked% at all.
       capacity,
+      // True when this month's ad spend was recorded rather than assumed.
+      adSpendIsForThisMonth: !!monthSpend,
       // Bookings on shared calendars we refuse to attribute to one rep.
       bookedUnattributed,
       // Named reps behind those bookings who have no seat — actionable.

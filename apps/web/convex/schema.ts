@@ -2673,6 +2673,27 @@ export default defineSchema({
   }).index("by_team_and_day", ["teamId", "dayKey"]),
 
   /**
+   * Ad spend recorded against a specific month.
+   *
+   * teams.closerAdSpendMonthly is a single CURRENT figure, so applying it to
+   * past months made the Year view assert things that never happened — nine
+   * dormant months each showing a $62k loss, and a half-month of data charged
+   * a full month's spend, putting cost-per-booked at $1,107 against $153 the
+   * month after.
+   *
+   * A row here is what was ACTUALLY spent that month. Months with no row fall
+   * back to the team default, so nothing breaks for teams that never set it
+   * and the Year view can say which months are recorded and which are assumed.
+   */
+  closerAdSpend: defineTable({
+    teamId: v.id("teams"),
+    monthKey: v.string(), // "YYYY-MM", team-local
+    amount: v.number(),
+    updatedAt: v.number(),
+    updatedByClerkId: v.optional(v.string()),
+  }).index("by_team_and_month", ["teamId", "monthKey"]),
+
+  /**
    * Per-closer monthly cash goal, keyed by month so history stays truthful —
    * the Year view compares each month against the goal that was actually set
    * at the time, not today's number.
