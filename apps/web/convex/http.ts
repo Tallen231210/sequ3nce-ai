@@ -11717,6 +11717,156 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+
+// ============================================================================
+// Team Performance — closer-facing routes for the desktop app.
+//
+// The desktop app cannot call Convex functions directly; it POSTs here. Each
+// route has an OPTIONS twin: the renderer runs on localhost in dev, so a JSON
+// content-type triggers a preflight, and a missing one has taken this app
+// down before.
+//
+// NOTE ON AUTH: these trust the closerId in the body, matching every existing
+// desktop route. For the write below that means a closer could in principle
+// submit as a teammate. Called out rather than left implicit; it belongs with
+// the wider Convex-auth work, not smuggled in here.
+// ============================================================================
+
+const CLOSER_CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+};
+const CLOSER_JSON = { "Content-Type": "application/json", ...CLOSER_CORS };
+
+function closerPreflight(path: string) {
+  http.route({
+    path,
+    method: "OPTIONS",
+    handler: httpAction(async () => new Response(null, { status: 204, headers: CLOSER_CORS })),
+  });
+}
+
+/** Their own month: funnel, rates, goal, submission count. */
+http.route({
+  path: "/getCloserPerformance",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { closerId, monthKey } = await request.json();
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400, headers: CLOSER_JSON,
+        });
+      }
+      const data = await ctx.runQuery(internal.closerSelfPerformance.getSelfPerformance, {
+        closerId: closerId as Id<"closers">,
+        ...(monthKey ? { monthKey } : {}),
+      });
+      return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] getCloserPerformance:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/getCloserPerformance");
+
+/** Their sheet for a month, pre-filled from what we measured. */
+http.route({
+  path: "/getCloserDailyEntries",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { closerId, monthKey } = await request.json();
+      if (!closerId || !monthKey) {
+        return new Response(JSON.stringify({ error: "closerId and monthKey are required" }), {
+          status: 400, headers: CLOSER_JSON,
+        });
+      }
+      const data = await ctx.runQuery(internal.closerSelfPerformance.getSelfDailyEntries, {
+        closerId: closerId as Id<"closers">,
+        monthKey,
+      });
+      return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] getCloserDailyEntries:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/getCloserDailyEntries");
+
+/** Submit one day. Sending no values still confirms it. */
+http.route({
+  path: "/saveCloserDailyEntry",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { closerId, dayKey, values } = await request.json();
+      if (!closerId || !dayKey) {
+        return new Response(JSON.stringify({ error: "closerId and dayKey are required" }), {
+          status: 400, headers: CLOSER_JSON,
+        });
+      }
+      await ctx.runMutation(internal.closerPerformanceMutations.saveCloserDailyEntry, {
+        closerId: closerId as Id<"closers">,
+        dayKey,
+        values: values ?? {},
+      });
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      // Validation failures are the closer's to see and fix, so pass the
+      // message through rather than swallowing it into a generic 500 — but
+      // strip Convex's wrapper and stack trace first. "cash cannot be
+      // negative" is useful; a file path and line number is not.
+      const raw = error instanceof Error ? error.message : "Could not save";
+      const message =
+        raw
+          .replace(/^Uncaught Error:\s*/, "")
+          .split("\n")[0]
+          .trim() || "Could not save";
+      console.error("[HTTP] saveCloserDailyEntry:", message);
+      return new Response(JSON.stringify({ success: false, error: message }), {
+        status: 400, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/saveCloserDailyEntry");
+
+/** Team leaderboard, without the columns that expose ad spend. */
+http.route({
+  path: "/getTeamLeaderboardForCloser",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { closerId, monthKey } = await request.json();
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "closerId is required" }), {
+          status: 400, headers: CLOSER_JSON,
+        });
+      }
+      const data = await ctx.runQuery(internal.closerSelfPerformance.getLeaderboardForCloser, {
+        closerId: closerId as Id<"closers">,
+        ...(monthKey ? { monthKey } : {}),
+      });
+      return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] getTeamLeaderboardForCloser:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/getTeamLeaderboardForCloser");
+
+
 export default http;
 
 // ============================================
