@@ -220,4 +220,14 @@ crons.cron(
   {},
 );
 
+// Team Performance daily scoreboard. Hourly, gated per team on their local
+// delivery hour — same pattern as the setter scorecard above, including the
+// crons.cron (never crons.interval) rule that outage taught us.
+crons.cron(
+  "closer-daily-scorecard",
+  "5 * * * *",
+  internal.closerPerformanceNotifications.runCloserScorecards,
+  {},
+);
+
 export default crons;

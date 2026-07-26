@@ -11,6 +11,7 @@ import { PeriodNav } from "./components/PeriodNav";
 import { TeamView } from "./components/TeamView";
 import { CapacitySettings } from "./components/CapacitySettings";
 import { YearView } from "./components/YearView";
+import { ScorecardSettings } from "./components/ScorecardSettings";
 
 const HEADER = {
   title: "Team Performance",
@@ -22,6 +23,7 @@ const TABS = [
   ["daily", "Daily numbers"],
   ["year", "Year"],
   ["capacity", "Availability"],
+  ["alerts", "Daily post"],
 ] as const;
 
 type Tab = (typeof TABS)[number][0];
@@ -118,7 +120,7 @@ export default function TeamPerformancePage() {
           ))}
         </nav>
 
-        {tab !== "capacity" && tab !== "year" && (
+        {tab !== "capacity" && tab !== "year" && tab !== "alerts" && (
         <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey={thisMonth}
@@ -153,6 +155,7 @@ export default function TeamPerformancePage() {
           />
         )}
         {tab === "capacity" && <CapacitySettings />}
+        {tab === "alerts" && <ScorecardSettings />}
       </div>
     </>
   );

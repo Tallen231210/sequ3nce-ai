@@ -188,6 +188,16 @@ export default defineSchema({
     setterDailyScorecardDiscordWebhookUrl: v.optional(v.string()),
     setterDailyScorecardHourLocal: v.optional(v.number()), // 0-23 in team.timezone
 
+    // Team Performance daily scoreboard. Deliberately mirrors the setter
+    // scorecard fields above: same shape, same semantics, same delivery
+    // machinery — a manager who has configured one already understands this.
+    closerDailyScorecardEnabled: v.optional(v.boolean()),
+    closerDailyScorecardChannel: v.optional(v.string()), // "slack" | "discord"
+    closerDailyScorecardSlackChannelId: v.optional(v.string()),
+    closerDailyScorecardSlackChannelName: v.optional(v.string()),
+    closerDailyScorecardDiscordWebhookUrl: v.optional(v.string()),
+    closerDailyScorecardHourLocal: v.optional(v.number()), // 0-23 in team.timezone
+
     // Untouched-lead alert config (Phase 2). Off by default — some teams
     // love real-time alerts, some hate the noise. When enabled, the
     // sweep cron pings the configured channel any time a lead has been
