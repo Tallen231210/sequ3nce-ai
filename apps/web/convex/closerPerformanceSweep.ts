@@ -100,6 +100,8 @@ export const runSweep = internalAction({
 
     let ok = 0;
     let failures = 0;
+    let firstError: { teamId: string; dayKey: string; message: string } | null =
+      null;
     for (const team of teams.slice(0, MAX_TEAMS_PER_SWEEP)) {
       for (const dayKey of recentDayKeys(team.timezone, days)) {
         try {
@@ -108,18 +110,35 @@ export const runSweep = internalAction({
             dayKey,
           });
         } catch (err) {
-          // One team's bad data must not stop the rest of the sweep. Logged,
-          // not swallowed, so it surfaces in Convex logs.
+          // One team's bad data must not stop the rest of the sweep.
           failures += 1;
+          const message = err instanceof Error ? err.message : String(err);
           console.error(
             `[closerPerformance] sweep failed for team ${team.teamId} on ${dayKey}:`,
-            err,
+            message,
           );
+          firstError ??= { teamId: String(team.teamId), dayKey, message };
         }
       }
       ok += 1;
     }
-    return { teams: ok, days, failures, skippedTeams: Math.max(0, teams.length - MAX_TEAMS_PER_SWEEP) };
+    // One alert per run, not one per failure — a systemic break (a bad deploy,
+    // a Convex limit) would otherwise fire hundreds of identical events and
+    // bury the signal it was meant to raise.
+    if (firstError) {
+      await ctx.runAction(internal.lib.sentry.captureFromIsolate, {
+        message: `Closer performance sweep failed on ${failures} team-day(s): ${firstError.message}`,
+        feature: "closer-performance-sweep",
+        extra: { failures, teamsProcessed: ok, sample: firstError },
+      });
+    }
+
+    return {
+      teams: ok,
+      days,
+      failures,
+      skippedTeams: Math.max(0, teams.length - MAX_TEAMS_PER_SWEEP),
+    };
   },
 });
 

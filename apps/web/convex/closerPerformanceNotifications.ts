@@ -303,10 +303,17 @@ export const runCloserScorecards = internalAction({
       } catch (err) {
         // One team's misconfigured webhook must not stop everyone else's post.
         errored++;
-        console.error(
-          `[runCloserScorecards] Error for team ${team._id}:`,
-          err instanceof Error ? err.message : String(err),
-        );
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[runCloserScorecards] Error for team ${team._id}:`, message);
+        // Convex logs alone would leave this invisible: an expired Slack token
+        // stops the morning post and nothing else changes, so the only signal
+        // is a channel going quiet. Page someone instead.
+        await ctx.runAction(internal.lib.sentry.captureFromIsolate, {
+          message: `Closer scoreboard failed to send: ${message}`,
+          feature: "closer-daily-scorecard",
+          integration: team.closerDailyScorecardChannel ?? "unknown",
+          extra: { teamId: String(team._id) },
+        });
       }
     }
 
