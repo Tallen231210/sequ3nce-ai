@@ -376,6 +376,27 @@ Audited 2026-07-26. This is the executable plan; sections 1–12 are the reasoni
 
 Put the closer app in `apps/web` as a new route group under a fresh prefix (`/closer` or `/app`). It shares the Convex client, the components and the deploy. A separate Next.js app would duplicate all three for no benefit.
 
+### Progress (2026-07-26)
+
+**Steps 1–6 done and deployed.** `/app` is live behind the `closerWebApp` beta
+flag, with real session auth and all nine sections serving live data:
+Dashboard, My Numbers, Stats, Calls, Schedule, Messages, Coaching, Resources,
+Settings. The whole of `convex.ts` was ported (75 functions, no Electron
+coupling), which carried the Convex concurrency circuit-breaker across intact.
+
+**Role Play** is ported but not linked — Tyler's call, it never gets used, and
+omitting it defers the browser-microphone question entirely.
+
+**Still open:**
+- The post-call questionnaire. Deliberately NOT ported — section 12 changes
+  what it is. Build the new end-of-day flow rather than copying the old form.
+- The bot lifecycle: `ActiveCallView`, `QuickBotModal`, `BotOnboardingView` and
+  the `MeetingBotHub` orchestration. Tier 3 only and the most Electron-coupled
+  part of the app.
+- Converting the remaining ~270 routes to session auth (step 7 covers the five
+  My Numbers routes; the rest still read `closerId` from the body).
+- Retiring the installed desktop app.
+
 ### The steps
 
 **Step 1 — Scaffold and shell.** New route group. Port `App.tsx` and `MeetingBotHub.tsx` as the shell and navigation, with the bridge calls removed rather than stubbed. Nothing else yet. Deploy it — it is unreachable without a link and gated by `betaFeatures`.
