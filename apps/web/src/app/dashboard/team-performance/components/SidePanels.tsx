@@ -1,6 +1,6 @@
 "use client";
 
-import { Gift, TrendingUp, Wallet } from "lucide-react";
+import { Gift, TrendingUp } from "lucide-react";
 import { fmtCurrency, fmtPct } from "../lib/format";
 
 interface Projection {
@@ -155,76 +155,6 @@ export function PrizeCard({ prize }: { prize: Prize }) {
           </span>
         )}
       </p>
-    </div>
-  );
-}
-
-interface Economics {
-  adSpend: number;
-  costPerBooked: number | null;
-  teamNet: number;
-}
-
-/** Unit economics. Only meaningful once ad spend is configured. */
-export function EconomicsCard({
-  economics,
-  compPct,
-}: {
-  economics: Economics;
-  compPct: number;
-}) {
-  const configured = economics.adSpend > 0;
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center gap-2">
-        <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">Economics</h3>
-      </div>
-
-      {configured ? (
-        <dl className="mt-3 space-y-2.5 text-xs">
-          <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">Ad spend</dt>
-            <dd className="font-medium tabular-nums">
-              {fmtCurrency(economics.adSpend)}
-            </dd>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">Cost / booked call</dt>
-            <dd className="font-medium tabular-nums">
-              {fmtCurrency(economics.costPerBooked)}
-            </dd>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <dt className="text-muted-foreground">Closer comp</dt>
-            <dd className="font-medium tabular-nums">{compPct}%</dd>
-          </div>
-          <div className="flex items-baseline justify-between border-t border-border pt-2.5">
-            <dt className="font-medium">Team net</dt>
-            <dd
-              className={
-                "text-base font-semibold tabular-nums " +
-                (economics.teamNet < 0
-                  ? "text-rose-600 dark:text-rose-400"
-                  : "text-emerald-600 dark:text-emerald-400")
-              }
-            >
-              {fmtCurrency(economics.teamNet)}
-            </dd>
-          </div>
-        </dl>
-      ) : (
-        <div className="mt-3">
-          <div className="text-xs font-medium text-muted-foreground">
-            Ad spend not set
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Add your monthly ad spend in settings to see cost per booked call
-            and team net after closer commission.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

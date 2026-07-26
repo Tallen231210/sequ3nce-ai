@@ -70,6 +70,7 @@ const LOW_COVERAGE = {
   teamTarget: 0, sumRepGoals: 0,
   prize: { name: null, emoji: null, target: 0, collected: 0, pct: null, unlocked: false, remaining: 0 },
   activeClosers: 3,
+  capacity: { knownDays: 60, unknownDays: 0, reliable: true },
 };
 
 /** A team using the product fully — the state this board is designed for. */

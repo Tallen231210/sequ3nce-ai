@@ -4,9 +4,10 @@ import { Users } from "lucide-react";
 import { CoverageNotice, UnknownRepsNotice } from "./CoverageNotice";
 import { FunnelChart } from "./FunnelChart";
 import { KpiStrip } from "./KpiStrip";
+import { ManagerStrip } from "./ManagerStrip";
 import { Leaderboard, type CloserRow } from "./Leaderboard";
 import { WeekSparkline } from "./PeriodNav";
-import { EconomicsCard, PrizeCard, ProjectionCard } from "./SidePanels";
+import { PrizeCard, ProjectionCard } from "./SidePanels";
 import { fmtCurrency, fmtNum } from "../lib/format";
 
 /** A compact figure for the summary rail above the funnel. */
@@ -76,6 +77,16 @@ export function TeamView({
         bookedUnattributed={data.bookedUnattributed}
       />
 
+      {/* Manager band first: the settings a manager controls, and what those
+          settings produce. Gianni's mockup puts these at the top of the page
+          because they're revised while looking at results. */}
+      <ManagerStrip
+        monthKey={data.monthKey}
+        teamCash={t.cash}
+        booked={t.booked}
+        isCurrentMonth={data.isCurrentMonth}
+      />
+
       {!hasAnyActivity ? (
         <NoActivity />
       ) : (
@@ -129,7 +140,6 @@ export function TeamView({
             <div className="min-w-0 space-y-5">
               <ProjectionCard projection={data.projection} />
               <PrizeCard prize={data.prize} />
-              <EconomicsCard economics={data.economics} compPct={data.compPct} />
             </div>
           </div>
 
