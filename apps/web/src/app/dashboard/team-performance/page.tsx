@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { GeistMono } from "geist/font/mono";
 import { useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Loader2, Users } from "lucide-react";
@@ -99,7 +100,7 @@ export default function TeamPerformancePage() {
     <>
       <Header {...HEADER} />
 
-      <div className="space-y-5 px-6 pb-16 pt-4">
+      <div className={`${GeistMono.variable} space-y-5 px-6 pb-16 pt-4`}>
         <nav className="flex gap-1 border-b border-border">
           {TABS.map(([id, label]) => (
             <button

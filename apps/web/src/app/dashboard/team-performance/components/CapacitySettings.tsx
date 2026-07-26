@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { CalendarCheck, Info, Loader2, RotateCcw } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 interface CalendarRow {
   subscriptionId: string;
@@ -126,7 +127,7 @@ export function CapacitySettings() {
                   setError(err instanceof Error ? err.message : "Could not save"),
                 );
               }}
-              className="w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm tabular-nums outline-none focus:border-foreground disabled:opacity-60"
+              className={`w-24 rounded-lg border border-border bg-background px-3 py-1.5 text-sm ${MONO} outline-none focus:border-foreground disabled:opacity-60`}
             />
             <span className="text-xs text-muted-foreground">minutes</span>
           </div>

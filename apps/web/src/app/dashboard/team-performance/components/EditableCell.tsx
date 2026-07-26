@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { fmtCurrency, fmtNum } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 /**
  * One number in the daily grid. Shows the measured value until a manager
@@ -74,7 +75,7 @@ export function EditableCell({
 
   if (!editable) {
     return (
-      <span className={"tabular-nums " + (diverges ? "font-semibold" : "")}>
+      <span className={MONO + " " + (diverges ? "font-semibold" : "")}>
         {display}
       </span>
     );
@@ -95,7 +96,7 @@ export function EditableCell({
             }
           }}
           disabled={saving}
-          className="w-20 rounded border border-foreground bg-background px-1.5 py-0.5 text-right text-sm tabular-nums outline-none disabled:opacity-60"
+          className={`w-20 rounded border border-foreground bg-background px-1.5 py-0.5 text-right text-sm ${MONO} outline-none disabled:opacity-60`}
           aria-label={`Edit ${field}`}
         />
         {saving && (
@@ -123,7 +124,7 @@ export function EditableCell({
             : "Click to edit"
         }
         className={
-          "rounded px-1 py-0.5 tabular-nums transition-colors hover:bg-muted " +
+          "rounded px-1 py-0.5 " + MONO + " transition-colors hover:bg-muted " +
           (diverges
             ? "font-semibold text-amber-700 underline decoration-amber-500/60 decoration-dotted underline-offset-2 dark:text-amber-400"
             : "")

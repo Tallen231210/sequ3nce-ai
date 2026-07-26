@@ -2,6 +2,7 @@
 
 import { Gift, TrendingUp } from "lucide-react";
 import { fmtCurrency, fmtPct } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 interface Projection {
   projectedCash: number; target: number; collected: number; remaining: number;
@@ -19,7 +20,7 @@ export function ProjectionCard({ projection }: { projection: Projection }) {
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center gap-2">
         <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {p.isFinal ? "Final" : "Pace"}
         </h3>
         {!p.isFinal && hasTarget && (
@@ -37,7 +38,7 @@ export function ProjectionCard({ projection }: { projection: Projection }) {
       </div>
 
       <div className="mt-3">
-        <div className="text-2xl font-semibold tabular-nums">
+        <div className={`text-2xl font-semibold tracking-tight ${MONO}`}>
           {fmtCurrency(p.collected)}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
@@ -57,7 +58,7 @@ export function ProjectionCard({ projection }: { projection: Projection }) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <div className="mt-1.5 flex justify-between text-[11px] tabular-nums text-muted-foreground">
+          <div className={`mt-1.5 flex justify-between text-[11px] ${MONO} text-muted-foreground`}>
             <span>{fmtPct(p.pctOfTarget)}</span>
             <span>{fmtCurrency(p.remaining)} to go</span>
           </div>
@@ -68,21 +69,21 @@ export function ProjectionCard({ projection }: { projection: Projection }) {
         <dl className="mt-4 space-y-2 border-t border-border pt-3 text-xs">
           <div className="flex justify-between">
             <dt className="text-muted-foreground">Projected</dt>
-            <dd className="font-medium tabular-nums">
+            <dd className={`font-medium ${MONO}`}>
               {fmtCurrency(p.projectedCash)}
             </dd>
           </div>
           {hasTarget && p.daysLeft > 0 && (
             <div className="flex justify-between">
               <dt className="text-muted-foreground">Needed / day</dt>
-              <dd className="font-medium tabular-nums">
+              <dd className={`font-medium ${MONO}`}>
                 {fmtCurrency(p.needPerDay)}
               </dd>
             </div>
           )}
           <div className="flex justify-between">
             <dt className="text-muted-foreground">Days left</dt>
-            <dd className="font-medium tabular-nums">{p.daysLeft}</dd>
+            <dd className={`font-medium ${MONO}`}>{p.daysLeft}</dd>
           </div>
         </dl>
       )}
@@ -117,7 +118,7 @@ export function PrizeCard({ prize }: { prize: Prize }) {
     >
       <div className="flex items-center gap-2">
         <Gift className="h-3.5 w-3.5 text-muted-foreground" />
-        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Team prize</h3>
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Team prize</h3>
       </div>
 
       <div className="mt-3 flex items-center gap-3">
@@ -128,7 +129,7 @@ export function PrizeCard({ prize }: { prize: Prize }) {
         )}
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{prize.name}</p>
-          <p className="text-xs text-muted-foreground tabular-nums">
+          <p className={`text-xs text-muted-foreground ${MONO}`}>
             {fmtCurrency(prize.collected)} / {fmtCurrency(prize.target)}
           </p>
         </div>
@@ -150,7 +151,7 @@ export function PrizeCard({ prize }: { prize: Prize }) {
             Unlocked
           </span>
         ) : (
-          <span className="text-muted-foreground tabular-nums">
+          <span className={`text-muted-foreground ${MONO}`}>
             {fmtCurrency(prize.remaining)} to unlock
           </span>
         )}

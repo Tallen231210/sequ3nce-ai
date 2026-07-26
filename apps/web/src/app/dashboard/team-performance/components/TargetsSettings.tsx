@@ -6,6 +6,7 @@ import { useUser } from "@clerk/nextjs";
 import { Info, Loader2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import { fmtCurrency, monthLabel } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -54,7 +55,7 @@ function Field({
             if (next !== null && !Number.isFinite(next)) return;
             if (next !== value) onSave(next);
           }}
-          className="w-28 rounded-lg border border-border bg-background px-3 py-1.5 text-sm tabular-nums outline-none focus:border-foreground disabled:opacity-60"
+          className={`w-28 rounded-lg border border-border bg-background px-3 py-1.5 text-sm ${MONO} outline-none focus:border-foreground disabled:opacity-60`}
         />
         {suffix && (
           <span className="text-xs text-muted-foreground">{suffix}</span>

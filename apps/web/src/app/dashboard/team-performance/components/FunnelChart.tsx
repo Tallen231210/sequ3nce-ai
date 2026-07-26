@@ -2,6 +2,7 @@
 
 import { Lock } from "lucide-react";
 import { fmtCurrency, fmtNum, fmtPct } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 interface Totals {
   slots: number;
@@ -86,7 +87,7 @@ export function FunnelChart({
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-3.5">
-        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           Funnel
         </h3>
         {leak && leakIndex > 0 && (
@@ -96,7 +97,7 @@ export function FunnelChart({
               {stages[leakIndex - 1].label} → {leak.label}
             </span>
             {" · "}
-            <span className="font-medium text-foreground tabular-nums">
+            <span className={`font-medium text-foreground ${MONO}`}>
               {fmtNum(leak.lost)} {leak.lostLabel}
             </span>
           </p>
@@ -116,7 +117,7 @@ export function FunnelChart({
                 <div className="flex items-center gap-2 py-2 pl-[76px] text-[11px]">
                   <span
                     className={
-                      "tabular-nums font-medium " +
+                      MONO + " font-medium " +
                       (dim ? "text-muted-foreground" : "text-foreground")
                     }
                   >
@@ -156,17 +157,17 @@ export function FunnelChart({
 
                 <span
                   className={
-                    "w-[68px] shrink-0 text-right text-xl font-semibold tabular-nums " +
+                    "w-[68px] shrink-0 text-right text-xl font-semibold " + MONO + " " +
                     (dim ? "text-muted-foreground/50" : "")
                   }
                 >
                   {fmtNum(s.value)}
                 </span>
 
-                <div className="h-10 flex-1 overflow-hidden rounded bg-muted/60">
+                <div className="h-10 flex-1 overflow-hidden rounded-md bg-muted/60">
                   <div
                     className={
-                      "h-full rounded transition-all duration-500 " +
+                      "h-full rounded-md transition-all duration-500 " +
                       (dim ? "bg-muted" : "bg-foreground")
                     }
                     style={{ width: `${widthPct}%` }}
@@ -180,10 +181,10 @@ export function FunnelChart({
         {/* Cash is the outcome the whole funnel exists to produce, so it gets
             the weight rather than sitting as another row. */}
         <div className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-border pt-5 pl-[76px]">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
             Cash
           </span>
-          <span className="text-2xl font-semibold tabular-nums">
+          <span className={`text-2xl font-semibold tracking-tight ${MONO}`}>
             {fmtCurrency(totals.cash)}
           </span>
           {totals.closes > 0 && (

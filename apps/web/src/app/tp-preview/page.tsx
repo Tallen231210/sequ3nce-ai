@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { GeistMono } from "geist/font/mono";
 import { notFound } from "next/navigation";
 import { TeamView } from "../dashboard/team-performance/components/TeamView";
 import { PeriodNav } from "../dashboard/team-performance/components/PeriodNav";
@@ -153,7 +154,7 @@ export default function Preview() {
         ))}
       </div>
 
-      <div className="space-y-5 px-6 pb-16 pt-4">
+      <div className={`${GeistMono.variable} space-y-5 px-6 pb-16 pt-4`}>
         <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey="2026-07"

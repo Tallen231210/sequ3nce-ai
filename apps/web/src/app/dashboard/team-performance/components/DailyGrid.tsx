@@ -7,6 +7,7 @@ import { Info, Loader2, PencilLine } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import { EditableCell } from "./EditableCell";
 import { fmtCurrency, fmtNum, fmtPct } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 const FIELDS = [
   { key: "slots", label: "Slots" },
@@ -40,7 +41,7 @@ function dayLabel(dayKey: string): { day: string; weekday: string } {
 }
 
 const TH =
-  "px-3 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap";
+  "px-3 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap";
 
 /**
  * Day-by-day numbers for one closer, editable in place.
@@ -207,7 +208,7 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     }
                   >
                     <td className="whitespace-nowrap px-3 py-2">
-                      <span className="text-sm font-medium tabular-nums">
+                      <span className={`text-sm font-medium ${MONO}`}>
                         {day}
                       </span>
                       <span className="ml-1.5 text-xs text-muted-foreground">
@@ -240,7 +241,7 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     ))}
                     <td
                       className={
-                        "px-3 py-2 text-right text-sm tabular-nums " +
+                        "px-3 py-2 text-right text-sm " + MONO + " " +
                         (r.missingOutcomes > 0
                           ? "text-amber-700 dark:text-amber-400"
                           : "text-muted-foreground")
@@ -260,13 +261,13 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
             {rows.length > 0 && (
               <tfoot className="border-t-2 border-border bg-muted/30">
                 <tr>
-                  <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                     Total
                   </td>
                   {FIELDS.map((f) => (
                     <td
                       key={f.key}
-                      className="px-3 py-2.5 text-right text-sm font-semibold tabular-nums"
+                      className={`px-3 py-2.5 text-right text-sm font-semibold ${MONO}`}
                     >
                       {f.key === "cash"
                         ? fmtCurrency(totals.cash)
@@ -283,19 +284,19 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
                       <span>
                         Show{" "}
-                        <span className="font-semibold tabular-nums text-foreground">
+                        <span className={`font-semibold ${MONO} text-foreground`}>
                           {fmtPct(showPct)}
                         </span>
                       </span>
                       <span>
                         Close{" "}
-                        <span className="font-semibold tabular-nums text-foreground">
+                        <span className={`font-semibold ${MONO} text-foreground`}>
                           {fmtPct(closePct)}
                         </span>
                       </span>
                       <span>
                         Avg deal{" "}
-                        <span className="font-semibold tabular-nums text-foreground">
+                        <span className={`font-semibold ${MONO} text-foreground`}>
                           {fmtCurrency(
                             totals.closes > 0 ? totals.cash / totals.closes : null,
                           )}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, UserPlus } from "lucide-react";
 import { fmtNum, fmtPct } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 interface Coverage {
   taken: number;
@@ -42,7 +43,7 @@ export function CoverageNotice({ coverage }: { coverage: Coverage }) {
             ) : (
               <>
                 Only{" "}
-                <span className="font-semibold tabular-nums">
+                <span className={`font-semibold ${MONO}`}>
                   {fmtPct(pct)}
                 </span>{" "}
                 of calls this period have one,
@@ -57,7 +58,7 @@ export function CoverageNotice({ coverage }: { coverage: Coverage }) {
           <div className="mt-3.5 max-w-sm">
             <div className="flex items-center justify-between text-[11px] font-medium text-amber-800 dark:text-amber-300/80">
               <span>Outcome coverage</span>
-              <span className="tabular-nums">
+              <span className={`${MONO}`}>
                 {fmtNum(logged)} / {fmtNum(coverage.taken)}
               </span>
             </div>
@@ -128,7 +129,7 @@ export function UnknownRepsNotice({
                 className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs"
               >
                 <span className="font-medium">{r.name}</span>
-                <span className="tabular-nums text-muted-foreground">
+                <span className={`${MONO} text-muted-foreground`}>
                   {fmtNum(r.count)}
                 </span>
               </span>

@@ -10,6 +10,7 @@ import {
   RAG_TEXT,
   type Rag,
 } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 export interface CloserRow {
   closerId: string;
@@ -44,13 +45,13 @@ function GoalCell({ pct, goal }: { pct: number | null; goal: number | null }) {
       <div className="flex items-baseline justify-between">
         <span
           className={
-            "text-xs font-semibold tabular-nums " +
+            "text-xs font-semibold " + MONO + " " +
             (hit ? "text-emerald-600 dark:text-emerald-400" : "")
           }
         >
           {fmtPct(pct)}
         </span>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
+        <span className={`text-[10px] text-muted-foreground ${MONO}`}>
           {fmtCurrency(goal, true)}
         </span>
       </div>
@@ -94,7 +95,7 @@ function WowCell({
           : undefined
       }
       className={
-        "inline-flex items-center gap-1 text-xs font-medium tabular-nums " +
+        "inline-flex items-center gap-1 text-xs font-medium " + MONO + " " +
         (up
           ? "text-emerald-600 dark:text-emerald-400"
           : "text-rose-600 dark:text-rose-400")
@@ -107,8 +108,8 @@ function WowCell({
 }
 
 const TH =
-  "px-2.5 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap";
-const TD = "px-2.5 py-2.5 text-sm tabular-nums whitespace-nowrap";
+  "px-2.5 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap";
+const TD = "px-2.5 py-2.5 text-sm " + MONO + " whitespace-nowrap";
 
 /**
  * A funnel count with the conversion that produced it, stacked. Keeping the
@@ -129,14 +130,14 @@ function CountRate({
   return (
     <div className="text-right leading-tight">
       <div
-        className={"text-sm tabular-nums " + (dim ? "text-muted-foreground" : "")}
+        className={"text-sm " + MONO + " " + (dim ? "text-muted-foreground" : "")}
       >
         {fmtNum(count)}
       </div>
       {rate !== undefined && (
         <div
           className={
-            "text-[11px] tabular-nums " + (tone ? RAG_TEXT[tone] : "text-muted-foreground")
+            "text-[11px] " + MONO + " " + (tone ? RAG_TEXT[tone] : "text-muted-foreground")
           }
         >
           {rate === null ? "—" : fmtPct(rate)}
@@ -169,7 +170,7 @@ export function Leaderboard({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-3.5">
-        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Leaderboard</h3>
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Leaderboard</h3>
         <p className="text-xs text-muted-foreground">Ranked by cash collected</p>
       </div>
 

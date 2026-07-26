@@ -18,6 +18,7 @@ import {
   fmtSigned,
   RAG_TEXT,
 } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 const MONTH_LABELS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -61,7 +62,7 @@ function YearChart({
               title={`${MONTH_LABELS[m.monthIndex - 1]} — ${fmtCurrency(m.totals.cash)}`}
               className="group flex flex-1 flex-col items-center gap-1.5 disabled:cursor-default"
             >
-              <span className="text-[10px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+              <span className={`text-[10px] ${MONO} text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100`}>
                 {m.totals.cash > 0 ? fmtCurrency(m.totals.cash, true) : ""}
               </span>
               <div className="flex h-full w-full items-end">
@@ -100,8 +101,8 @@ function YearChart({
 }
 
 const TH =
-  "px-2.5 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground whitespace-nowrap";
-const TD = "px-2.5 py-2.5 text-sm tabular-nums whitespace-nowrap";
+  "px-2.5 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap";
+const TD = "px-2.5 py-2.5 text-sm " + MONO + " whitespace-nowrap";
 
 export function YearView({
   onOpenMonth,
@@ -142,7 +143,7 @@ export function YearView({
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <span className="min-w-[72px] text-center text-sm font-semibold tabular-nums">
+        <span className={`min-w-[72px] text-center text-sm font-semibold ${MONO}`}>
           {shown}
         </span>
         <button
@@ -179,7 +180,7 @@ export function YearView({
           <div className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-card px-5 py-4 sm:grid-cols-4">
             <div>
               <div className="text-xs text-muted-foreground">Cash collected</div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums">
+              <div className={`mt-0.5 text-lg font-semibold ${MONO}`}>
                 {fmtCurrency(data.yearTotals.cash)}
               </div>
               <div className="text-[11px] text-muted-foreground">
@@ -189,13 +190,13 @@ export function YearView({
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Closes</div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums">
+              <div className={`mt-0.5 text-lg font-semibold ${MONO}`}>
                 {fmtNum(data.yearTotals.closes)}
               </div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Calls taken</div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums">
+              <div className={`mt-0.5 text-lg font-semibold ${MONO}`}>
                 {fmtNum(data.yearTotals.taken)}
               </div>
             </div>
@@ -203,7 +204,7 @@ export function YearView({
               <div className="text-xs text-muted-foreground">
                 Avg / active month
               </div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums">
+              <div className={`mt-0.5 text-lg font-semibold ${MONO}`}>
                 {fmtCurrency(data.avgCashPerActiveMonth)}
               </div>
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { fmtPct, RAG_BAR, RAG_TEXT, type Rag } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 interface Rates {
   bookedPct: number | null;
@@ -54,12 +55,12 @@ export function KpiStrip({
             key={key}
             className="rounded-xl border border-border bg-card px-4 py-3.5"
           >
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
 
             <div className="mt-2 flex items-baseline gap-1.5">
               <span
                 className={
-                  "text-2xl font-semibold tabular-nums " + RAG_TEXT[tone]
+                  "text-2xl font-semibold tracking-tight " + MONO + " " + RAG_TEXT[tone]
                 }
               >
                 {fmtPct(value, value !== null && value < 10 ? 1 : 0)}

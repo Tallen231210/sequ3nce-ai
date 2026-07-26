@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { fmtCurrency, monthLabel, shiftMonth } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 const WEEKS = [
   { index: null, label: "Month" },
@@ -121,7 +122,7 @@ export function WeekSparkline({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-baseline justify-between gap-3 border-b border-border px-5 py-3">
-        <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           Cash by week
         </h3>
         <span className="text-[11px] text-muted-foreground">
@@ -141,7 +142,7 @@ export function WeekSparkline({
             >
               <span
                 className={
-                  "text-[10px] tabular-nums " +
+                  "text-[10px] " + MONO + " " +
                   (active
                     ? "font-semibold text-foreground"
                     : "text-muted-foreground")

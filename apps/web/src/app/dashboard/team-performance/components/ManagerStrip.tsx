@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { api } from "../../../../../convex/_generated/api";
 import { fmtCurrency, monthLabel } from "../lib/format";
+import { MONO } from "@/components/analytics/primitives/typography";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -56,7 +57,7 @@ function EditableStat({
   return (
     <div className="min-w-0 flex-1 px-5 py-4">
       <div className="flex items-center gap-1.5">
-        <span className="truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {label}
         </span>
         <Badge kind="MGR" />
@@ -77,7 +78,7 @@ function EditableStat({
             if (next !== null && !Number.isFinite(next)) return;
             if (next !== value) onSave(next);
           }}
-          className="w-full min-w-0 border-b border-dashed border-muted-foreground/40 bg-transparent text-xl font-semibold tabular-nums outline-none transition-colors focus:border-foreground disabled:cursor-default disabled:border-transparent"
+          className={`w-full min-w-0 border-b border-dashed border-muted-foreground/40 bg-transparent text-xl font-semibold tracking-tight ${MONO} outline-none transition-colors focus:border-foreground disabled:cursor-default disabled:border-transparent`}
         />
         {suffix && (
           <span className="text-xl font-semibold text-muted-foreground">
@@ -104,14 +105,14 @@ function ComputedStat({
   return (
     <div className="min-w-0 flex-1 px-5 py-4">
       <div className="flex items-center gap-1.5">
-        <span className="truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
           {label}
         </span>
         <Badge kind="F" />
       </div>
       <div
         className={
-          "mt-1.5 text-xl font-semibold tabular-nums " +
+          "mt-1.5 text-xl font-semibold " + MONO + " " +
           (tone === "positive"
             ? "text-emerald-600 dark:text-emerald-400"
             : tone === "negative"
