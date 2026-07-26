@@ -93,29 +93,46 @@ export function applyOverride(
   return { totals: out, overridden };
 }
 
+/** Fields a closer or manager can state a value for. */
+const REPORTABLE = [
+  "slots", "booked", "taken", "offers", "closes", "cash", "contractValue",
+] as const;
+
+export interface MergedDailyRow {
+  dayKey: string;
+  closerId: string;
+  /** What the board should use: override over entry over measured. */
+  totals: FunnelTotals;
+  /** What we derived from calls and calendars. Kept for pre-fill and for
+   *  showing a manager where a rep's report diverges from what we saw. */
+  measured: FunnelTotals;
+  /** Fields the closer stated a value for. */
+  reportedFields: string[];
+  /** Fields a manager corrected on top. */
+  overridden: string[];
+  /** True when the closer submitted this day at all — changed or not. */
+  confirmed: boolean;
+  capacityKnown: boolean | undefined;
+  openMinutes: number | undefined;
+}
+
 /**
- * Merge derived daily rows with manual corrections, keyed by (day, closer).
+ * Merge the three layers for a (day, closer): what we measured, what the
+ * closer reported, and what a manager corrected.
  *
- * Critically this is a UNION, not a walk of the derived rows. A recount
- * deletes a day that measured nothing, so a manager correcting a day the
- * meeting bot missed entirely would otherwise have their entry vanish: no
- * derived row means nothing to iterate. That is the exact case the override
- * exists for — a rep took calls without the bot running — so it has to work
- * when there is no measurement at all.
+ *     manager override  >  closer entry  >  measured
+ *
+ * A UNION, not a walk of the derived rows. A recount deletes a day that
+ * measured nothing, so a closer reporting a day the meeting bot missed
+ * entirely would otherwise vanish — and that is the exact case manual entry
+ * exists for. All three values are preserved so the UI can show which number
+ * came from where rather than presenting one merged figure as fact.
  */
 export function mergeDailyRows(
   stats: Array<Doc<"closerDailyStats">>,
   overrides: Array<Doc<"closerDailyOverrides">>,
-): Array<{
-  dayKey: string;
-  closerId: string;
-  totals: FunnelTotals;
-  overridden: string[];
-  capacityKnown: boolean | undefined;
-  /** Minutes of observed free time — powers the Open/day column. */
-  openMinutes: number | undefined;
-  measured: FunnelTotals;
-}> {
+  entries: Array<Doc<"closerDailyEntries">> = [],
+): MergedDailyRow[] {
   const byKey = new Map<
     string,
     {
@@ -142,16 +159,19 @@ export function mergeDailyRows(
     });
   }
 
+  const entryByKey = new Map(
+    entries.map((e) => [`${e.dayKey}|${String(e.closerId)}`, e]),
+  );
   const ovByKey = new Map(
     overrides.map((o) => [`${o.dayKey}|${String(o.closerId)}`, o]),
   );
 
-  // Corrections on days we measured nothing for still need a row.
-  for (const [key, o] of ovByKey) {
+  // A reported or corrected day still needs a row when nothing was measured.
+  for (const [key, src] of [...entryByKey, ...ovByKey]) {
     if (byKey.has(key)) continue;
     byKey.set(key, {
-      dayKey: o.dayKey,
-      closerId: String(o.closerId),
+      dayKey: src.dayKey,
+      closerId: String(src.closerId),
       capacityKnown: undefined,
       openMinutes: undefined,
       measured: emptyTotals(),
@@ -159,15 +179,37 @@ export function mergeDailyRows(
   }
 
   return Array.from(byKey.entries()).map(([key, base]) => {
-    const { totals, overridden } = applyOverride(base.measured, ovByKey.get(key));
+    const entry = entryByKey.get(key);
+    const override = ovByKey.get(key);
+
+    const totals = { ...base.measured };
+    const reportedFields: string[] = [];
+    const overridden: string[] = [];
+
+    for (const f of REPORTABLE) {
+      const reported = entry?.[f];
+      if (typeof reported === "number") {
+        totals[f] = reported;
+        reportedFields.push(f);
+      }
+      // Manager last, so a correction always wins.
+      const corrected = f === "contractValue" ? undefined : override?.[f];
+      if (typeof corrected === "number") {
+        totals[f] = corrected;
+        overridden.push(f);
+      }
+    }
+
     return {
       dayKey: base.dayKey,
       closerId: base.closerId,
       totals,
+      measured: base.measured,
+      reportedFields,
       overridden,
+      confirmed: !!entry,
       capacityKnown: base.capacityKnown,
       openMinutes: base.openMinutes,
-      measured: base.measured,
     };
   });
 }
@@ -221,6 +263,44 @@ export function computeCapacitySignal(
     unknownDays,
     // Any material share of unmeasured days makes the denominator untrustworthy.
     reliable: total > 0 && knownDays / total >= 0.8,
+  };
+}
+
+export interface Confirmation {
+  /** Distinct days in the period with at least one closer submission. */
+  daysConfirmed: number;
+  /** Calendar days in the month — deliberately not "working days", because
+   *  nobody has to agree on what a working day is for it to be readable. */
+  daysInPeriod: number;
+  /** Closer-days submitted vs closers x days: how complete the month is. */
+  closerDaysConfirmed: number;
+  closerDaysExpected: number;
+  /** True when enough is missing that month totals understate reality. */
+  incomplete: boolean;
+}
+
+/**
+ * How much of the period closers have actually reported.
+ *
+ * Once the board counts only submitted days, an incomplete month and a bad
+ * month look identical — both just show a smaller number. This is what lets
+ * the UI say "18 of 31 days" so a manager chases the gap instead of drawing a
+ * conclusion from it.
+ */
+export function computeConfirmation(
+  daysConfirmed: number,
+  daysInPeriod: number,
+  closerDaysConfirmed: number,
+  closerDaysExpected: number,
+): Confirmation {
+  return {
+    daysConfirmed,
+    daysInPeriod,
+    closerDaysConfirmed,
+    closerDaysExpected,
+    incomplete:
+      closerDaysExpected > 0 &&
+      closerDaysConfirmed < closerDaysExpected,
   };
 }
 

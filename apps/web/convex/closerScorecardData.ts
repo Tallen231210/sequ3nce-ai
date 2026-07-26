@@ -42,8 +42,11 @@ export const getCloserScorecardData = internalQuery({
   handler: async (ctx, args): Promise<any> => {
     const teamId = args.teamId as Id<"teams">;
 
-    const [dayRows, dayOverrides, monthRows, monthOverrides, closers] =
-      await Promise.all([
+    const [
+      dayRows, dayOverrides, dayEntries,
+      monthRows, monthOverrides, monthEntries,
+      closers,
+    ] = await Promise.all([
         ctx.db
           .query("closerDailyStats")
           .withIndex("by_team_and_day", (q: any) =>
@@ -52,6 +55,12 @@ export const getCloserScorecardData = internalQuery({
           .collect(),
         ctx.db
           .query("closerDailyOverrides")
+          .withIndex("by_team_and_day", (q: any) =>
+            q.eq("teamId", teamId).eq("dayKey", args.dayKey),
+          )
+          .collect(),
+        ctx.db
+          .query("closerDailyEntries")
           .withIndex("by_team_and_day", (q: any) =>
             q.eq("teamId", teamId).eq("dayKey", args.dayKey),
           )
@@ -67,6 +76,15 @@ export const getCloserScorecardData = internalQuery({
           .collect(),
         ctx.db
           .query("closerDailyOverrides")
+          .withIndex("by_team_and_day", (q: any) =>
+            q
+              .eq("teamId", teamId)
+              .gte("dayKey", `${args.monthKey}-01`)
+              .lte("dayKey", `${args.monthKey}-31`),
+          )
+          .collect(),
+        ctx.db
+          .query("closerDailyEntries")
           .withIndex("by_team_and_day", (q: any) =>
             q
               .eq("teamId", teamId)
@@ -85,13 +103,16 @@ export const getCloserScorecardData = internalQuery({
     const merge = (
       rows: Doc<"closerDailyStats">[],
       overrides: Doc<"closerDailyOverrides">[],
+      entries: Doc<"closerDailyEntries">[],
     ) => {
       const byCloser = new Map<string, FunnelTotals>();
       let capKnown = 0;
       let capUnknown = 0;
       // Union, so a day the bot missed entirely but a manager corrected still
       // reaches the post.
-      for (const row of mergeDailyRows(rows, overrides)) {
+      for (const row of mergeDailyRows(rows, overrides, entries)) {
+        // Reported only — the post must not claim numbers nobody submitted.
+        if (!row.confirmed && row.overridden.length === 0) continue;
         byCloser.set(
           row.closerId,
           addTotals(byCloser.get(row.closerId) ?? emptyTotals(), row.totals),
@@ -102,8 +123,8 @@ export const getCloserScorecardData = internalQuery({
       return { byCloser, capKnown, capUnknown };
     };
 
-    const day = merge(dayRows, dayOverrides);
-    const month = merge(monthRows, monthOverrides);
+    const day = merge(dayRows, dayOverrides, dayEntries);
+    const month = merge(monthRows, monthOverrides, monthEntries);
 
     let dayTotals = emptyTotals();
     for (const [, t] of day.byCloser) dayTotals = addTotals(dayTotals, t);

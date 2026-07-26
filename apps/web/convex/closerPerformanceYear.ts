@@ -56,7 +56,8 @@ export const getYearPerformance = query({
     const startKey = `${year}-01-01`;
     const endKey = `${year}-12-31`;
 
-    const [stats, overrides, goals, teamRows, adSpendRows] = await Promise.all([
+    const [stats, overrides, entries, goals, teamRows, adSpendRows] =
+      await Promise.all([
       ctx.db
         .query("closerDailyStats")
         .withIndex("by_team_and_day", (q: any) =>
@@ -65,6 +66,12 @@ export const getYearPerformance = query({
         .take(MAX_YEAR_ROWS),
       ctx.db
         .query("closerDailyOverrides")
+        .withIndex("by_team_and_day", (q: any) =>
+          q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
+        )
+        .take(MAX_YEAR_ROWS),
+      ctx.db
+        .query("closerDailyEntries")
         .withIndex("by_team_and_day", (q: any) =>
           q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
         )
@@ -114,8 +121,10 @@ export const getYearPerformance = query({
       { totals: FunnelTotals; capKnown: number; capUnknown: number }
     >();
 
-    // Union so a corrected day with no measurement still lands in the year.
-    for (const row of mergeDailyRows(stats, overrides)) {
+    // Reported days only, matching the month view — a year built from a
+    // different rule than the month it drills into would disagree with itself.
+    for (const row of mergeDailyRows(stats, overrides, entries)) {
+      if (!row.confirmed && row.overridden.length === 0) continue;
       const monthKey = row.dayKey.slice(0, 7);
       const bucket =
         byMonth.get(monthKey) ??

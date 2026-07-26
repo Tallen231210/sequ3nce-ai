@@ -8,6 +8,7 @@ import {
   addTotals,
   applyOverride,
   computeCapacitySignal,
+  computeConfirmation,
   computeCoverage,
   computeEconomics,
   computeProjection,
@@ -80,7 +81,7 @@ export const getTeamPerformance = query({
     const endKey = allDayKeys[allDayKeys.length - 1];
 
     // --- Derived rows + manual overrides for the month ---------------------
-    const [stats, overrides, teamRows, closers, goals, monthSpend] =
+    const [stats, overrides, entries, teamRows, closers, goals, monthSpend] =
       await Promise.all([
       ctx.db
         .query("closerDailyStats")
@@ -90,6 +91,12 @@ export const getTeamPerformance = query({
         .collect(),
       ctx.db
         .query("closerDailyOverrides")
+        .withIndex("by_team_and_day", (q: any) =>
+          q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
+        )
+        .collect(),
+      ctx.db
+        .query("closerDailyEntries")
         .withIndex("by_team_and_day", (q: any) =>
           q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
         )
@@ -145,9 +152,16 @@ export const getTeamPerformance = query({
 
     // Union of measured rows and corrections — a manager's entry on a day we
     // measured nothing must still appear. See mergeDailyRows.
-    const merged = mergeDailyRows(stats, overrides);
+    const merged = mergeDailyRows(stats, overrides, entries);
+
+    // The board reports what closers said, not what we inferred. A day nobody
+    // submitted contributes nothing — showing a measured number as if it were
+    // reported is the confusion manual entry exists to remove.
+    const isReported = (r: (typeof merged)[number]) =>
+      r.confirmed || r.overridden.length > 0;
 
     for (const row of merged) {
+      if (!isReported(row)) continue;
       const key = row.closerId;
       const totals = row.totals;
 
@@ -185,6 +199,28 @@ export const getTeamPerformance = query({
         overriddenByCloser.set(key, set);
       }
     }
+
+    // Confirmation coverage. Expected = active closers x days elapsed, so a
+    // month in progress isn't reported as 90% missing on the 3rd.
+    const confirmedDayKeys = new Set<string>();
+    let closerDaysConfirmed = 0;
+    for (const row of merged) {
+      if (!inScope(row.dayKey) || !row.confirmed) continue;
+      confirmedDayKeys.add(row.dayKey);
+      closerDaysConfirmed += 1;
+    }
+    const activeCloserCount = closers.filter(
+      (c) => c.status === "active",
+    ).length;
+    const daysElapsedInMonth = isCurrentMonth
+      ? parseInt(todayKey.slice(8, 10), 10)
+      : daysInMonth(monthKey);
+    const confirmation = computeConfirmation(
+      confirmedDayKeys.size,
+      daysElapsedInMonth,
+      closerDaysConfirmed,
+      activeCloserCount * daysElapsedInMonth,
+    );
 
     const targets = {
       bookedPct: team.closerBookedPctTarget ?? DEFAULT_TARGETS.bookedPct,
@@ -324,7 +360,10 @@ export const getTeamPerformance = query({
     // Month totals (not week-scoped) drive pacing — a month projection from
     // one week's cash would be nonsense.
     let monthTotals = emptyTotals();
-    for (const row of merged) monthTotals = addTotals(monthTotals, row.totals);
+    for (const row of merged) {
+      if (!isReported(row)) continue;
+      monthTotals = addTotals(monthTotals, row.totals);
+    }
 
     const projection = computeProjection(
       monthTotals.cash,
@@ -389,6 +428,8 @@ export const getTeamPerformance = query({
       unknownReps,
       // Drives the "log your outcomes" state instead of a wall of zeros.
       coverage: computeCoverage(teamTotals),
+      // How much of the month closers have actually submitted.
+      confirmation,
       economics: {
         ...economics,
         // Team ROAS: every dollar of cash against every dollar of ad spend.

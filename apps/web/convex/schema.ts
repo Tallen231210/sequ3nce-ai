@@ -2673,6 +2673,44 @@ export default defineSchema({
   }).index("by_team_and_day", ["teamId", "dayKey"]),
 
   /**
+   * What a closer reported for one of their days.
+   *
+   * Sits between the derived rollup and manager corrections:
+   *
+   *     manager override  >  closer entry  >  measured
+   *
+   * A separate table rather than writing into closerDailyOverrides, because a
+   * manager correcting a rep must not destroy what the rep originally said —
+   * the gap between the two is the signal a manager acts on.
+   *
+   * Fields are optional so a closer can report the parts they know. A row with
+   * confirmedAt and no changed values means "I looked, the measured numbers
+   * are right" — which is different from never having opened the day, and the
+   * board counts only days that have a row.
+   */
+  closerDailyEntries: defineTable({
+    teamId: v.id("teams"),
+    dayKey: v.string(), // team-local "YYYY-MM-DD"
+    closerId: v.id("closers"),
+    slots: v.optional(v.number()),
+    booked: v.optional(v.number()),
+    taken: v.optional(v.number()),
+    offers: v.optional(v.number()),
+    closes: v.optional(v.number()),
+    cash: v.optional(v.number()),
+    /** Total contract value written, so avg DEAL size is distinguishable from
+     *  avg cash collected — a $12k contract with $3k upfront is not a $3k deal. */
+    contractValue: v.optional(v.number()),
+    /** Set whenever the closer submits the day, changed or unchanged. */
+    confirmedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_and_day", ["teamId", "dayKey"])
+    .index("by_team_day_closer", ["teamId", "dayKey", "closerId"])
+    // The desktop app reads one closer's own month.
+    .index("by_closer_and_day", ["closerId", "dayKey"]),
+
+  /**
    * Ad spend recorded against a specific month.
    *
    * teams.closerAdSpendMonthly is a single CURRENT figure, so applying it to

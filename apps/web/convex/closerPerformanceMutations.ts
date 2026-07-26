@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
@@ -248,5 +248,117 @@ export const getDailyGrid = query({
       })),
       rows,
     };
+  },
+});
+
+// ============================================================================
+// Closer-reported days.
+//
+// The board counts only what closers submit, so this is the primary write path
+// for the whole feature. Deliberately internal: the desktop app reaches it
+// through an HTTP action, and nothing should be able to call it directly.
+// ============================================================================
+
+/** Fields a closer may report. contractValue is reportable; slots is too. */
+const ENTRY_FIELDS = [
+  "slots", "booked", "taken", "offers", "closes", "cash", "contractValue",
+] as const;
+type EntryField = (typeof ENTRY_FIELDS)[number];
+
+const MAX_ENTRY_COUNT = 1000;
+const MAX_ENTRY_CASH = 100_000_000;
+
+function validateEntry(field: EntryField, value: number): string | null {
+  if (!Number.isFinite(value)) return `${field} must be a number`;
+  // Refunds are recorded by reducing the original day, never as a negative —
+  // so cash has no reason to go below zero.
+  if (value < 0) return `${field} cannot be negative`;
+  if (field === "cash" || field === "contractValue") {
+    if (value > MAX_ENTRY_CASH) return `${field} is unrealistically large`;
+  } else {
+    if (!Number.isInteger(value)) return `${field} must be a whole number`;
+    if (value > MAX_ENTRY_COUNT) return `${field} is unrealistically large`;
+  }
+  return null;
+}
+
+export const saveCloserDailyEntry = internalMutation({
+  args: {
+    closerId: v.id("closers"),
+    dayKey: v.string(),
+    /** Only the fields the closer filled. Null clears one back to measured. */
+    values: v.object({
+      slots: v.optional(v.union(v.number(), v.null())),
+      booked: v.optional(v.union(v.number(), v.null())),
+      taken: v.optional(v.union(v.number(), v.null())),
+      offers: v.optional(v.union(v.number(), v.null())),
+      closes: v.optional(v.union(v.number(), v.null())),
+      cash: v.optional(v.union(v.number(), v.null())),
+      contractValue: v.optional(v.union(v.number(), v.null())),
+    }),
+  },
+  handler: async (ctx, args): Promise<{ saved: boolean }> => {
+    if (!DAY_KEY_RE.test(args.dayKey)) throw new Error("Invalid date");
+
+    // teamId comes from the closer record, never from the caller.
+    const closer = await ctx.db.get(args.closerId);
+    if (!closer) throw new Error("Closer not found");
+    if (closer.status === "deactivated") {
+      throw new Error("This closer is deactivated");
+    }
+    const teamId = closer.teamId as Id<"teams">;
+
+    const team = await ctx.db.get(teamId);
+    const tz = team?.timezone || DEFAULT_TIMEZONE;
+    // Past days stay editable indefinitely — refunds and balance payments
+    // arrive weeks later and have to land on the day of the sale. Future days
+    // can only be guesses.
+    if (args.dayKey > dayKeyInTz(Date.now(), tz)) {
+      throw new Error("Cannot report a future date");
+    }
+
+    const patch: Record<string, unknown> = {};
+    for (const f of ENTRY_FIELDS) {
+      const val = args.values[f];
+      if (val === undefined) continue;
+      if (val === null) {
+        patch[f] = undefined;
+        continue;
+      }
+      const err = validateEntry(f, val);
+      if (err) throw new Error(err);
+      patch[f] = val;
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("closerDailyEntries")
+      .withIndex("by_team_day_closer", (q: any) =>
+        q
+          .eq("teamId", teamId)
+          .eq("dayKey", args.dayKey)
+          .eq("closerId", args.closerId),
+      )
+      .first();
+
+    if (existing) {
+      // confirmedAt always moves: submitting an unchanged day is still the
+      // closer vouching for it, which is the whole point of the confirm step.
+      await ctx.db.patch(existing._id, {
+        ...patch,
+        confirmedAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("closerDailyEntries", {
+        teamId,
+        dayKey: args.dayKey,
+        closerId: args.closerId,
+        ...patch,
+        confirmedAt: now,
+        updatedAt: now,
+      });
+    }
+    return { saved: true };
   },
 });
