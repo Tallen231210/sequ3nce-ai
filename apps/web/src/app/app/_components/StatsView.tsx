@@ -89,7 +89,7 @@ export function StatsView({ closerInfo }: StatsViewProps) {
   }, []);
 
   return (
-    <div className="p-8 max-w-[960px]">
+    <div className="mx-auto w-full max-w-[1200px] p-6 lg:p-8">
       {/* Header + Period Selector */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-black">Performance</h1>

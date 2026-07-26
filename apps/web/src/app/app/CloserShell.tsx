@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import { useActiveCall } from "./_components/useActiveCall";
+import { ActiveCallProvider } from "./_components/ActiveCallContext";
 import { PostCallModal } from "./_components/PostCallModal";
 import { QuickBotModal } from "./_components/QuickBotModal";
 import {
@@ -146,7 +147,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="min-h-dvh bg-background lg:flex">
+    <div className="flex h-dvh flex-col bg-background lg:flex-row lg:overflow-hidden">
       {/* Narrow screens: a top bar with a disclosure, not a squeezed sidebar */}
       <header className="flex items-center justify-between border-b border-border px-4 py-3 lg:hidden">
         <Logo height={22} />
@@ -174,7 +175,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Wide screens: a proper sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-border px-4 py-5 lg:flex">
+      <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-border px-4 py-5 lg:flex">
         <Logo height={24} />
         <div className="mt-6 min-w-0">
           <div className="truncate text-sm font-semibold">{closer.name}</div>
@@ -201,8 +202,9 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
         </button>
       </aside>
 
-      {/* min-w-0 so wide tables scroll inside the page instead of stretching it */}
-      <main className="min-w-0 flex-1">
+      {/* The scroll container for everything below the chrome. min-w-0 so wide
+          tables scroll inside themselves rather than stretching the layout. */}
+      <main className="min-w-0 flex-1 overflow-y-auto">
         {activeCall && (
           <Link
             href="/app/live"
@@ -221,7 +223,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
         )}
-        {children}
+        <ActiveCallProvider value={{ activeCall }}>{children}</ActiveCallProvider>
       </main>
 
       {/* The bot finished a call. Ask for the outcome while it's fresh. */}

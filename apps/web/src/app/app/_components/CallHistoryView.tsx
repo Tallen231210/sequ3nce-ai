@@ -90,7 +90,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="mx-auto flex h-full w-full max-w-[1400px] flex-col">
       {/* Call Detail Sheet (overlay) */}
       {selectedCall && (
         <CallDetailSheet

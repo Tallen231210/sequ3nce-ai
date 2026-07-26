@@ -156,7 +156,7 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="mx-auto flex h-full w-full max-w-[1100px] flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-5 pb-3 shrink-0">
         <h1 className="text-2xl font-bold text-black">Coaching</h1>
@@ -780,7 +780,7 @@ function CallReviewPanel({
   })();
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="mx-auto flex h-full w-full max-w-[1100px] flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 shrink-0">
         <button onClick={onClose} className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors">

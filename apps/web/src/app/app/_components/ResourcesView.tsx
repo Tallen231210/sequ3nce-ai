@@ -118,7 +118,7 @@ export function ResourcesView({ closerInfo }: ResourcesViewProps) {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="mx-auto flex h-full w-full max-w-[1100px] flex-col">
       <div className="px-6 pt-5 pb-3 shrink-0">
         <h1 className="text-2xl font-bold text-black">Resources</h1>
         <p className="text-[14px] text-gray-500 mt-1">Sales scripts, payment links, and documents from your manager.</p>

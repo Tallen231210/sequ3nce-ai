@@ -132,7 +132,7 @@ export function MessagesView({ closerInfo }: MessagesViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="mx-auto flex h-full w-full max-w-[900px] flex-col">
       {/* Header */}
       <div className="px-6 pt-5 pb-3 shrink-0">
         <h1 className="text-2xl font-bold text-black">Messages</h1>

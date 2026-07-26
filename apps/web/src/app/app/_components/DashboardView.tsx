@@ -80,7 +80,7 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
   const dateStr = formatDate(new Date());
 
   return (
-    <div className="p-8 max-w-[960px]">
+    <div className="mx-auto w-full max-w-[1200px] p-6 lg:p-8">
       {/* Welcome Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-black">{greeting}</h1>
