@@ -56,23 +56,23 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
       {/* Week grid */}
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Day headers */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700 shrink-0">
+        <div className="flex border-b border-gray-200 shrink-0">
           {/* Spacer for time column */}
           <div style={{ width: TIME_COLUMN_WIDTH }} className="shrink-0" />
 
           {weekDates.map((date, i) => {
             const isToday = date.toDateString() === todayStr;
             return (
-              <div key={i} className="flex-1 flex flex-col items-center py-2 border-l border-gray-100 dark:border-gray-800">
+              <div key={i} className="flex-1 flex flex-col items-center py-2 border-l border-gray-100">
                 <span className={`text-[10px] font-semibold tracking-wide ${
-                  isToday ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
+                  isToday ? 'text-blue-500' : 'text-gray-500'
                 }`}>
                   {DAY_NAMES[i]}
                 </span>
                 <span className={`w-7 h-7 flex items-center justify-center text-[14px] rounded-full mt-0.5 ${
                   isToday
                     ? 'bg-blue-500 text-white font-bold'
-                    : 'text-black dark:text-white'
+                    : 'text-black'
                 }`}>
                   {date.getDate()}
                 </span>
@@ -89,7 +89,7 @@ export function ScheduleWeekView({ events, weekDates, now, closerEmail, onEventC
               {hours.map((hour) => (
                 <div
                   key={hour}
-                  className="absolute right-2 text-[10px] font-mono font-medium text-gray-400 dark:text-gray-500"
+                  className="absolute right-2 text-[10px] font-mono font-medium text-gray-400"
                   style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT - 6 }}
                 >
                   {formatHourLabel(hour)}
@@ -152,17 +152,17 @@ function WeekDayColumn({
   const positioned = useMemo(() => layoutOverlappingEvents(dayEvents), [dayEvents]);
 
   return (
-    <div className="flex-1 relative border-l border-gray-100 dark:border-gray-800">
+    <div className="flex-1 relative border-l border-gray-100">
       {/* Today highlight */}
       {isToday && (
-        <div className="absolute inset-0 bg-blue-50/50 dark:bg-blue-950/20" />
+        <div className="absolute inset-0 bg-blue-50/50" />
       )}
 
       {/* Hour grid lines */}
       {hours.map((hour) => (
         <div
           key={hour}
-          className="absolute w-full border-t border-gray-100 dark:border-gray-800"
+          className="absolute w-full border-t border-gray-100"
           style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT }}
         />
       ))}

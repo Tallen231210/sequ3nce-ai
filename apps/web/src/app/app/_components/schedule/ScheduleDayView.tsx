@@ -130,10 +130,10 @@ export function ScheduleDayView({
     <div className="flex flex-1 overflow-hidden">
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Day header (full-width across calendar columns) */}
-        <div className="flex items-center justify-center gap-3 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
+        <div className="flex items-center justify-center gap-3 py-2 border-b border-gray-200 shrink-0">
           <span
             className={`text-[12px] font-semibold tracking-wide ${
-              isToday ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
+              isToday ? 'text-blue-500' : 'text-gray-500'
             }`}
           >
             {FULL_DAY_NAMES[date.getDay()].toUpperCase()}
@@ -142,7 +142,7 @@ export function ScheduleDayView({
             className={`w-8 h-8 flex items-center justify-center text-[16px] rounded-full ${
               isToday
                 ? 'bg-blue-500 text-white font-bold'
-                : 'text-black dark:text-white'
+                : 'text-black'
             }`}
           >
             {date.getDate()}
@@ -159,13 +159,13 @@ export function ScheduleDayView({
           <div className="flex flex-col" style={columnsContainerStyle}>
             {/* Sticky-ish header row — using regular div, not sticky, since
                 scrollContainer drives both axes. */}
-            <div className="flex border-b border-gray-200 dark:border-gray-700 shrink-0 bg-white dark:bg-gray-900">
+            <div className="flex border-b border-gray-200 shrink-0 bg-white">
               {/* Time column spacer */}
               <div style={{ width: TIME_COLUMN_WIDTH }} className="shrink-0" />
               {columns.map((col) => (
                 <div
                   key={col.key}
-                  className="flex-1 flex items-center justify-center gap-2 px-2 py-1.5 border-l border-gray-100 dark:border-gray-800 min-w-0"
+                  className="flex-1 flex items-center justify-center gap-2 px-2 py-1.5 border-l border-gray-100 min-w-0"
                   style={{ minWidth: MIN_CALENDAR_COLUMN_WIDTH }}
                 >
                   <div
@@ -175,7 +175,7 @@ export function ScheduleDayView({
                   >
                     {col.label.charAt(0).toUpperCase()}
                   </div>
-                  <span className="text-[12px] font-medium text-gray-700 dark:text-gray-300 truncate">
+                  <span className="text-[12px] font-medium text-gray-700 truncate">
                     {col.label}
                   </span>
                 </div>
@@ -189,7 +189,7 @@ export function ScheduleDayView({
                 {hours.map((hour) => (
                   <div
                     key={hour}
-                    className="absolute right-2 text-[10px] font-mono font-medium text-gray-400 dark:text-gray-500"
+                    className="absolute right-2 text-[10px] font-mono font-medium text-gray-400"
                     style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT - 6 }}
                   >
                     {formatHourLabel(hour)}
@@ -240,19 +240,19 @@ function DayCalendarColumn({
 
   return (
     <div
-      className="flex-1 relative border-l border-gray-100 dark:border-gray-800"
+      className="flex-1 relative border-l border-gray-100"
       style={{ minWidth: MIN_CALENDAR_COLUMN_WIDTH }}
     >
       {/* Today highlight */}
       {isToday && (
-        <div className="absolute inset-0 bg-blue-50/50 dark:bg-blue-950/20" />
+        <div className="absolute inset-0 bg-blue-50/50" />
       )}
 
       {/* Hour grid lines */}
       {hours.map((hour) => (
         <div
           key={hour}
-          className="absolute w-full border-t border-gray-100 dark:border-gray-800"
+          className="absolute w-full border-t border-gray-100"
           style={{ top: (hour - GRID_START_HOUR) * HOUR_HEIGHT }}
         />
       ))}

@@ -27,12 +27,12 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
 
   return (
     <div
-      className={`relative p-4 bg-white dark:bg-gray-900 rounded-xl border transition-colors ${
+      className={`relative p-4 bg-white rounded-xl border transition-colors ${
         urgency === 'now'
-          ? 'border-red-200 dark:border-red-800 shadow-[0_2px_8px_rgba(242,51,51,0.1)]'
+          ? 'border-red-200 shadow-[0_2px_8px_rgba(242,51,51,0.1)]'
           : isPast
-          ? 'border-gray-100 dark:border-gray-800 opacity-60'
-          : 'border-gray-100 dark:border-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)]'
+          ? 'border-gray-100 opacity-60'
+          : 'border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-[0_2px_12px_rgba(0,0,0,0.08)]'
       }`}
     >
       {/* Google calendar color accent — left edge strip. Skipped for "now"
@@ -51,23 +51,23 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
         >
           {badge.label}
         </span>
-        <span className="text-[12px] text-gray-500 dark:text-gray-400 font-mono">
+        <span className="text-[12px] text-gray-500 font-mono">
           {formatTime(event.startTime)} – {formatTime(event.endTime)}
         </span>
       </div>
 
       {/* Title */}
-      <h4 className="text-[15px] font-semibold text-black dark:text-white mb-1.5 line-clamp-2">
+      <h4 className="text-[15px] font-semibold text-black mb-1.5 line-clamp-2">
         {event.title}
       </h4>
 
       {/* Prospect attendee */}
       {prospect && (
         <div className="flex items-center gap-1.5 mb-2">
-          <svg className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
           </svg>
-          <span className="text-[12px] text-gray-600 dark:text-gray-400">
+          <span className="text-[12px] text-gray-600">
             {prospect.name || prospect.email}
           </span>
         </div>
@@ -90,7 +90,7 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
         {!isPast && event.meetingUrl && (
           <button
             onClick={() => onJoinRequest(event)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-semibold text-white bg-black dark:bg-white dark:text-black rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[13px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800:bg-gray-200 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
               <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
@@ -102,7 +102,7 @@ export function ScheduleEventCard({ event, now, closerEmail, onExclude, onJoinRe
           <button
             onClick={() => onExclude(event)}
             title="Exclude from auto-bot"
-            className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+            className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-gray-50:bg-gray-800"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />

@@ -370,7 +370,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, currentPassword, newPassword } = body;
+      const { closerId: claimedCloserId, currentPassword, newPassword } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       console.log("[changePassword] Request received for closerId:", closerId);
 
@@ -1770,7 +1779,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { teamId, closerId, userName } = body;
+      const { teamId, closerId: claimedCloserId, userName } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!teamId || !closerId || !userName) {
         return new Response(JSON.stringify({ error: "teamId, closerId, and userName are required" }), {
@@ -1831,7 +1849,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { teamId, closerId } = body;
+      const { teamId, closerId: claimedCloserId } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!teamId || !closerId) {
         return new Response(JSON.stringify({ error: "teamId and closerId are required" }), {
@@ -2757,7 +2784,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { callId, visitorCallId, teamId, closerId } = body;
+      const { callId, visitorCallId, teamId, closerId: claimedCloserId } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!callId || !visitorCallId || !teamId || !closerId) {
         return new Response(JSON.stringify({ error: "callId, visitorCallId, teamId, and closerId are required" }), {
@@ -3322,7 +3358,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId } = body;
+      const { closerId: claimedCloserId } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -3385,7 +3430,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { teamId, closerId, closerName, callId, message } = body;
+      const { teamId, closerId: claimedCloserId, closerName, callId, message } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!teamId || !closerId || !closerName) {
         return new Response(JSON.stringify({ error: "teamId, closerId, and closerName are required" }), {
@@ -3816,7 +3870,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, callId, teamId, estimatedMinutes } = body;
+      const { closerId: claimedCloserId, callId, teamId, estimatedMinutes } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId || !teamId) {
         return new Response(
@@ -4471,7 +4534,15 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const closerId = body.closerId;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, body);
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -4520,7 +4591,15 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const closerId = body.closerId;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, body);
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -4569,7 +4648,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId } = body;
+      const { closerId: claimedCloserId } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId required" }), {
           status: 400,
@@ -4615,7 +4703,15 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const closerId = body.closerId;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, body);
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -4671,7 +4767,15 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const closerId = body.closerId;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, body);
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -4720,7 +4824,15 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const closerId = body.closerId;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, body);
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -4818,7 +4930,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { meetingUrl, closerId, teamId, prospectName } = body;
+      const { meetingUrl, closerId: claimedCloserId, teamId, prospectName } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!meetingUrl || !closerId || !teamId) {
         return new Response(JSON.stringify({ error: "meetingUrl, closerId, and teamId are required" }), {
@@ -4870,7 +4991,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, calendarEventId, eventTitle } = body;
+      const { closerId: claimedCloserId, calendarEventId, eventTitle } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId || !calendarEventId) {
         return new Response(JSON.stringify({ error: "closerId and calendarEventId are required" }), {
@@ -4921,7 +5051,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, period, customStart, customEnd } = body;
+      const { closerId: claimedCloserId, period, customStart, customEnd } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -4974,7 +5113,15 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const closerId = body.closerId;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, body);
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -5023,7 +5170,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, platform } = body;
+      const { closerId: claimedCloserId, platform } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId || !platform) {
         return new Response(JSON.stringify({ error: "closerId and platform are required" }), {
@@ -5073,7 +5229,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, limit } = body;
+      const { closerId: claimedCloserId, limit } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -5172,7 +5337,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, meetingUrl, meetingTitle, prospectName } = body;
+      const { closerId: claimedCloserId, teamId, meetingUrl, meetingTitle, prospectName } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId || !teamId || !meetingUrl) {
         return new Response(JSON.stringify({ error: "closerId, teamId, and meetingUrl are required" }), {
@@ -5237,7 +5411,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, period, customStart, customEnd } = body;
+      const { closerId: claimedCloserId, teamId, period, customStart, customEnd } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId || !teamId) {
         return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
@@ -5291,7 +5474,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, period, customStart, customEnd } = body;
+      const { closerId: claimedCloserId, teamId, period, customStart, customEnd } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId || !teamId) {
         return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
@@ -5345,7 +5537,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, period, customStart, customEnd } = body;
+      const { closerId: claimedCloserId, teamId, period, customStart, customEnd } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId || !teamId) {
         return new Response(JSON.stringify({ error: "closerId and teamId are required" }), {
@@ -5403,7 +5604,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, limit } = body;
+      const { closerId: claimedCloserId, limit } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -5671,7 +5881,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, limit } = body;
+      const { closerId: claimedCloserId, limit } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -5734,7 +5953,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId } = body;
+      const { closerId: claimedCloserId } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
           status: 400,
@@ -5780,7 +6008,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId } = body;
+      const { closerId: claimedCloserId } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
           status: 400,
@@ -5826,7 +6063,16 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId } = body;
+      const { closerId: claimedCloserId } = body;
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
 
       if (!closerId) {
         return new Response(JSON.stringify({ error: "closerId is required" }), {
@@ -11359,7 +11605,16 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const { closerId } = await request.json();
+      const { sessionToken, closerId: claimedCloserId } = await request.json();
+      // Identity comes from the session; the body is only a fallback for
+      // installed desktop clients. See convex/closerSession.ts.
+      const closerId = await closerFromBody(ctx, { sessionToken, closerId: claimedCloserId });
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
       if (typeof closerId !== "string") {
         return b2cJsonResponse({ error: "closerId is required" }, 400);
       }

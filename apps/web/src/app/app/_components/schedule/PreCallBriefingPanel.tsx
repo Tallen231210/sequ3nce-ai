@@ -47,8 +47,8 @@ export function PreCallBriefingPanel({
 
   if (data === undefined) {
     return (
-      <div className="w-full mb-4 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-        <div className="flex items-center gap-2 text-[12px] text-gray-500 dark:text-gray-400">
+      <div className="w-full mb-4 px-4 py-3 bg-gray-50 rounded-lg">
+        <div className="flex items-center gap-2 text-[12px] text-gray-500">
           <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent" />
           Loading prospect context…
         </div>
@@ -67,31 +67,31 @@ export function PreCallBriefingPanel({
   const callAge = humanAgo(t.occurredAt);
 
   return (
-    <div className="w-full mb-4 px-4 py-3 bg-blue-50/60 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 rounded-lg">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-300 mb-2">
+    <div className="w-full mb-4 px-4 py-3 bg-blue-50/60 border border-blue-100 rounded-lg">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 mb-2">
         📞 Pre-call briefing
       </div>
-      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+      <div className="text-[11px] text-gray-500 mb-2">
         Qualifying call{data.setterName ? ` by ${data.setterName}` : ''}{' '}
         {callAge} · {t.direction === 'inbound' ? 'inbound' : 'outbound'}
         {typeof t.durationSec === 'number' &&
           ` · ${formatDurationShort(t.durationSec)}`}
       </div>
-      <div className="text-[13px] text-gray-800 dark:text-gray-200 whitespace-pre-line leading-relaxed mb-3">
+      <div className="text-[13px] text-gray-800 whitespace-pre-line leading-relaxed mb-3">
         {t.aiSummary}
       </div>
       {talkRatio && (
         <div>
           <div className="flex items-center gap-2 text-[11px] mb-1">
-            <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+            <span className="text-emerald-700 font-medium">
               Setter {talkRatio.setterPct}%
             </span>
             <span className="text-gray-400">·</span>
-            <span className="text-blue-700 dark:text-blue-400 font-medium">
+            <span className="text-blue-700 font-medium">
               Prospect {talkRatio.prospectPct}%
             </span>
           </div>
-          <div className="flex h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+          <div className="flex h-1 overflow-hidden rounded-full bg-gray-200">
             <div
               className="bg-emerald-500"
               style={{ width: `${talkRatio.setterPct}%` }}

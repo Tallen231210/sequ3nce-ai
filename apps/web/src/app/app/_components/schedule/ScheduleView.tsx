@@ -195,9 +195,9 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const monthData = getMonthDates(monthOffset);
 
   return (
-    <div className="flex flex-col h-full bg-gray-50/50 dark:bg-gray-950">
+    <div className="flex flex-col h-full bg-gray-50/50">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shrink-0">
+      <div className="bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center justify-between px-4 py-2.5">
           {/* Sync status */}
           <div className="flex items-center gap-1.5">
@@ -206,7 +206,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
                 <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
-                <span className="text-[12px] text-gray-500 dark:text-gray-400">
+                <span className="text-[12px] text-gray-500">
                   Synced {formatRelative(status.lastSynced)}
                 </span>
               </>
@@ -214,15 +214,15 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
           </div>
 
           {/* View mode toggle — 4 options matching Google Calendar */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5" style={{ width: 220 }}>
+          <div className="flex bg-gray-100 rounded-lg p-0.5" style={{ width: 220 }}>
             {(['list', 'day', 'week', 'month'] as ViewMode[]).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
                 className={`flex-1 text-[12px] font-medium py-1 rounded-md transition-colors capitalize ${
                   viewMode === mode
-                    ? 'bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                    ? 'bg-white text-black shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {mode}
@@ -235,7 +235,7 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
             <button
               onClick={handleSync}
               disabled={isSyncing}
-              className="flex items-center gap-1 px-2 py-1 text-[12px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 text-[12px] font-medium text-gray-500 hover:text-gray-700:text-gray-300 transition-colors"
             >
               <svg className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -254,14 +254,14 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
         {/* Per-view navigation bar — prev / today / next / label.
             Hidden in list mode (list is a forward-rolling 7-day window). */}
         {viewMode !== 'list' && (
-          <div className="flex items-center justify-center gap-3 px-4 py-2 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-center gap-3 px-4 py-2 border-t border-gray-100">
             <button
               onClick={() => {
                 if (viewMode === 'day') setDayOffset((o) => o - 1);
                 else if (viewMode === 'week') setWeekOffset((o) => o - 1);
                 else if (viewMode === 'month') setMonthOffset((o) => o - 1);
               }}
-              className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              className="p-1 text-gray-400 hover:text-gray-700:text-gray-300 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -278,8 +278,8 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
                 (viewMode === 'day' && dayOffset === 0) ||
                 (viewMode === 'week' && weekOffset === 0) ||
                 (viewMode === 'month' && monthOffset === 0)
-                  ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-800'
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'bg-gray-100 text-gray-600 hover:text-gray-800'
               }`}
             >
               Today
@@ -291,14 +291,14 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
                 else if (viewMode === 'week') setWeekOffset((o) => o + 1);
                 else if (viewMode === 'month') setMonthOffset((o) => o + 1);
               }}
-              className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              className="p-1 text-gray-400 hover:text-gray-700:text-gray-300 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
             </button>
 
-            <span className="text-[13px] font-medium text-black dark:text-white ml-1">
+            <span className="text-[13px] font-medium text-black ml-1">
               {viewMode === 'day' && formatDayLabel(dayDate)}
               {viewMode === 'week' && formatWeekLabel(weekDates)}
               {viewMode === 'month' && formatMonthLabel(monthData.monthAnchor)}

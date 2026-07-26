@@ -42,11 +42,11 @@ export function ScheduleMonthView({
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       {/* Weekday header row */}
-      <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700 shrink-0">
+      <div className="grid grid-cols-7 border-b border-gray-200 shrink-0">
         {WEEKDAY_HEADERS.map((label) => (
           <div
             key={label}
-            className="text-[10px] font-semibold tracking-wide text-gray-500 dark:text-gray-400 text-center py-2"
+            className="text-[10px] font-semibold tracking-wide text-gray-500 text-center py-2"
           >
             {label}
           </div>
@@ -68,10 +68,10 @@ export function ScheduleMonthView({
             <button
               key={i}
               onClick={() => onDayClick(date)}
-              className={`text-left flex flex-col gap-0.5 border-r border-b border-gray-100 dark:border-gray-800 px-1.5 py-1 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors overflow-hidden ${
+              className={`text-left flex flex-col gap-0.5 border-r border-b border-gray-100 px-1.5 py-1 hover:bg-gray-50:bg-gray-900 transition-colors overflow-hidden ${
                 isInMonth
-                  ? 'bg-white dark:bg-gray-950'
-                  : 'bg-gray-50/60 dark:bg-gray-900/40'
+                  ? 'bg-white'
+                  : 'bg-gray-50/60'
               }`}
             >
               {/* Day number — circled if today, dimmed if outside current month */}
@@ -81,8 +81,8 @@ export function ScheduleMonthView({
                     isToday
                       ? 'bg-blue-500 text-white'
                       : isInMonth
-                        ? 'text-gray-900 dark:text-gray-100'
-                        : 'text-gray-400 dark:text-gray-600'
+                        ? 'text-gray-900'
+                        : 'text-gray-400'
                   }`}
                 >
                   {date.getDate()}
@@ -105,7 +105,7 @@ export function ScheduleMonthView({
                   />
                 ))}
                 {extra > 0 && (
-                  <span className="text-[9px] font-semibold text-gray-500 dark:text-gray-400 px-1">
+                  <span className="text-[9px] font-semibold text-gray-500 px-1">
                     +{extra} more
                   </span>
                 )}

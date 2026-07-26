@@ -28,7 +28,7 @@ export function ScheduleConnectForm({
         </svg>
       </div>
 
-      <h2 className="text-lg font-semibold text-black dark:text-white mb-1">Connect Your Calendar</h2>
+      <h2 className="text-lg font-semibold text-black mb-1">Connect Your Calendar</h2>
       <p className="text-[14px] text-gray-500 text-center mb-6 max-w-sm">
         See your schedule and join meetings with one click.
       </p>
@@ -43,7 +43,7 @@ export function ScheduleConnectForm({
           value={icsUrl}
           onChange={(e) => onIcsUrlChange(e.target.value)}
           placeholder="https://calendar.google.com/calendar/ical/..."
-          className="w-full px-3.5 py-3 text-[14px] border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-gray-400"
+          className="w-full px-3.5 py-3 text-[14px] border border-gray-200 rounded-xl bg-white text-black focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-gray-400"
         />
 
         {connectError && (
@@ -82,9 +82,9 @@ export function ScheduleConnectForm({
 
         {/* Help Content — Google Calendar only */}
         {showHelp && (
-          <div className="p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-[12px] text-gray-500">
-            <p className="font-semibold text-black dark:text-white text-[13px] mb-2">Google Calendar</p>
-            <ol className="list-decimal list-inside space-y-1 text-gray-500 dark:text-gray-400">
+          <div className="p-4 bg-white rounded-xl border border-gray-100 text-[12px] text-gray-500">
+            <p className="font-semibold text-black text-[13px] mb-2">Google Calendar</p>
+            <ol className="list-decimal list-inside space-y-1 text-gray-500">
               <li>Go to calendar.google.com</li>
               <li>Click the three dots next to your calendar</li>
               <li>Click "Settings and sharing"</li>
