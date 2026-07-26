@@ -204,7 +204,19 @@ export const getTeamPerformance = query({
     }
     const capacity = computeCapacitySignal(capKnown, capUnknown);
 
-    const economics = computeEconomics(teamTotals, adSpendForPeriod, compPct);
+    // Derived before economics: unattributed bookings belong in the
+    // cost-per-booked denominator.
+    const scopedTeamRowsEarly = teamRows.filter((r) => inScope(r.dayKey));
+    const unattributedForPeriod = scopedTeamRowsEarly.reduce(
+      (s, r) => s + r.bookedUnattributed,
+      0,
+    );
+    const economics = computeEconomics(
+      teamTotals,
+      adSpendForPeriod,
+      compPct,
+      unattributedForPeriod,
+    );
 
     // --- Week-over-week window ------------------------------------------
     // Anchor on the week in progress (or, for a past month, the last week with

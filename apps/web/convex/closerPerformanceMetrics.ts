@@ -260,10 +260,22 @@ export function computeEconomics(
   t: FunnelTotals,
   adSpendForPeriod: number,
   compPct: number,
+  /**
+   * Bookings we could not attribute to a rep. They still cost money, so they
+   * belong in the denominator: the spend bought every booking, not only the
+   * ones we could name an owner for.
+   *
+   * Omitting them inflated cost-per-booked on any team with shared calendars —
+   * on one live team, 226 of 730 bookings were unattributed, making every
+   * booking look 45% more expensive and every rep's ROAS correspondingly worse
+   * than it really was.
+   */
+  bookedUnattributed = 0,
 ): Economics {
+  const totalBooked = t.booked + Math.max(0, bookedUnattributed);
   return {
     adSpend: adSpendForPeriod,
-    costPerBooked: t.booked > 0 ? adSpendForPeriod / t.booked : null,
+    costPerBooked: totalBooked > 0 ? adSpendForPeriod / totalBooked : null,
     teamNet: t.cash - adSpendForPeriod - t.cash * (compPct / 100),
   };
 }

@@ -56,7 +56,7 @@ export const getYearPerformance = query({
     const startKey = `${year}-01-01`;
     const endKey = `${year}-12-31`;
 
-    const [stats, overrides, goals] = await Promise.all([
+    const [stats, overrides, goals, teamRows] = await Promise.all([
       ctx.db
         .query("closerDailyStats")
         .withIndex("by_team_and_day", (q: any) =>
@@ -73,7 +73,24 @@ export const getYearPerformance = query({
         .query("closerGoals")
         .withIndex("by_team_and_month", (q: any) => q.eq("teamId", teamId))
         .take(2000),
+      ctx.db
+        .query("closerDailyTeamStats")
+        .withIndex("by_team_and_day", (q: any) =>
+          q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
+        )
+        .take(MAX_YEAR_ROWS),
     ]);
+
+    // Unattributed bookings per month. They cost money like any other, so
+    // leaving them out of cost-per-booked overstates it — see computeEconomics.
+    const unattributedByMonth = new Map<string, number>();
+    for (const r of teamRows) {
+      const mk = r.dayKey.slice(0, 7);
+      unattributedByMonth.set(
+        mk,
+        (unattributedByMonth.get(mk) ?? 0) + r.bookedUnattributed,
+      );
+    }
 
     const truncated = stats.length >= MAX_YEAR_ROWS;
 
@@ -141,10 +158,13 @@ export const getYearPerformance = query({
         rates,
         capacityReliable: capacity.reliable,
         avgDeal: totals.closes > 0 ? totals.cash / totals.closes : null,
-        costPerBooked:
-          monthlyAdSpend > 0 && totals.booked > 0
-            ? monthlyAdSpend / totals.booked
-            : null,
+        costPerBooked: (() => {
+          const totalBooked =
+            totals.booked + (unattributedByMonth.get(monthKey) ?? 0);
+          return monthlyAdSpend > 0 && totalBooked > 0
+            ? monthlyAdSpend / totalBooked
+            : null;
+        })(),
         net: totals.cash - monthlyAdSpend - totals.cash * (compPct / 100),
         goal,
         pctGoal: goal && goal > 0 ? (totals.cash / goal) * 100 : null,
