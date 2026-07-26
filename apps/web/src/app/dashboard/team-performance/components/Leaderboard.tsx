@@ -37,6 +37,44 @@ export interface CloserRow {
   /** This rep's own capacity signal. Booked% is suppressed per rep, so a
    *  focused view must honour their signal rather than the team's. */
   capacity?: { reliable: boolean };
+  /** Ad spend on the calls they took, and cash returned per dollar of it. */
+  adCost?: number | null;
+  roas?: number | null;
+}
+
+/**
+ * Return per dollar of ad spend on this rep's calls.
+ *
+ * Banded on the break-even line rather than against a target: below 1x the
+ * rep returns less than the leads they consumed cost, and that boundary is the
+ * entire reason to show the number.
+ */
+function RoasCell({ roas, adCost }: { roas?: number | null; adCost?: number | null }) {
+  if (roas === null || roas === undefined) {
+    return (
+      <span className="text-xs text-muted-foreground" title="Needs ad spend set">
+        —
+      </span>
+    );
+  }
+  const tone =
+    roas < 1
+      ? "text-rose-600 dark:text-rose-400"
+      : roas < 2
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-emerald-600 dark:text-emerald-400";
+  return (
+    <span
+      className={"font-semibold " + MONO + " " + tone}
+      title={
+        adCost != null
+          ? `${fmtCurrency(adCost)} of ad spend on their calls returned ${roas.toFixed(2)}x`
+          : undefined
+      }
+    >
+      {roas.toFixed(1)}x
+    </span>
+  );
 }
 
 /**
@@ -216,7 +254,7 @@ export function Leaderboard({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[960px]">
+        <table className="w-full min-w-[1030px]">
           <thead className="border-b border-border bg-muted/30">
             <tr>
               <th className={TH + " w-9 text-center"}>#</th>
@@ -229,6 +267,12 @@ export function Leaderboard({
               <th className={TH + " text-right"}>Closes</th>
               <th className={TH + " text-right"}>Cash</th>
               <th className={TH + " text-right"}>Avg deal</th>
+              <th
+                className={TH + " text-right"}
+                title="Cash returned per dollar of ad spend on the calls this closer took. Below 1x they return less than their leads cost."
+              >
+                ROAS
+              </th>
               <th className={TH + " text-right"}>Net</th>
               <th className={TH + " text-left"}>Goal</th>
               <th
@@ -336,6 +380,9 @@ export function Leaderboard({
                   </td>
                   <td className={TD + " text-right text-muted-foreground"}>
                     {fmtCurrency(r.avgDeal)}
+                  </td>
+                  <td className={TD + " text-right"}>
+                    <RoasCell roas={r.roas} adCost={r.adCost} />
                   </td>
                   <td
                     className={

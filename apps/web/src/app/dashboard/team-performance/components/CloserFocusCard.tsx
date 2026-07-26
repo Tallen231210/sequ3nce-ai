@@ -74,6 +74,28 @@ export function CloserFocusCard({
           <dd className={"font-medium " + MONO}>{fmtCurrency(row.avgDeal)}</dd>
         </div>
         <div className="flex justify-between">
+          <dt className="text-muted-foreground">ROAS</dt>
+          <dd
+            className={
+              "font-medium " + MONO + " " +
+              (row.roas == null
+                ? ""
+                : row.roas < 1
+                  ? "text-rose-600 dark:text-rose-400"
+                  : row.roas < 2
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-emerald-600 dark:text-emerald-400")
+            }
+            title={
+              row.adCost != null
+                ? `${fmtCurrency(row.adCost)} of ad spend on their calls`
+                : undefined
+            }
+          >
+            {row.roas == null ? "—" : `${row.roas.toFixed(1)}x`}
+          </dd>
+        </div>
+        <div className="flex justify-between">
           <dt className="text-muted-foreground">Net contribution</dt>
           <dd
             className={

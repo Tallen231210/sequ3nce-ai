@@ -17,6 +17,7 @@ import {
   pctOfGoal,
   ragForRates,
   repNet,
+  repRoas,
   wow,
   type CloserRow,
   type FunnelTotals,
@@ -264,6 +265,14 @@ export const getTeamPerformance = query({
           })(),
           avgDeal: totals.closes > 0 ? totals.cash / totals.closes : null,
           net: repNet(totals.cash, totals.booked, economics.costPerBooked, compPct),
+          // What the company put into this rep's lead flow, and what came back.
+          // Charged on calls taken: show rate is the setter's responsibility,
+          // so a closer isn't billed for prospects who never turned up.
+          adCost:
+            economics.costPerBooked !== null
+              ? economics.costPerBooked * totals.taken
+              : null,
+          roas: repRoas(totals.cash, totals.taken, economics.costPerBooked),
           goal,
           pctGoal: pctOfGoal(totals.cash, goal),
           // Null in week 1 (nothing to compare against) and on a day-zero
@@ -356,7 +365,12 @@ export const getTeamPerformance = query({
       unknownReps,
       // Drives the "log your outcomes" state instead of a wall of zeros.
       coverage: computeCoverage(teamTotals),
-      economics,
+      economics: {
+        ...economics,
+        // Team ROAS: every dollar of cash against every dollar of ad spend.
+        roas:
+          adSpendForPeriod > 0 ? teamTotals.cash / adSpendForPeriod : null,
+      },
       perCloser: rows,
       weekCash: weekCashTeam,
       // So the UI can state what WoW actually compared.

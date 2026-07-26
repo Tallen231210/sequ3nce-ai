@@ -172,6 +172,7 @@ export function ManagerStrip({
   // is not a number a manager should be shown.
   const costPerBooked = adSpend > 0 && booked > 0 ? adSpend / booked : null;
   const teamNet = teamCash - adSpend - teamCash * (compPct / 100);
+  const roas = adSpend > 0 ? teamCash / adSpend : null;
 
   return (
     <div className="space-y-3">
@@ -238,6 +239,12 @@ export function ManagerStrip({
           label="Cost / booked"
           value={costPerBooked === null ? "—" : fmtCurrency(costPerBooked)}
           formula="ad spend ÷ booked"
+        />
+        <ComputedStat
+          label="ROAS"
+          value={roas === null ? "—" : `${roas.toFixed(1)}x`}
+          formula="cash ÷ ad spend"
+          tone={roas === null ? undefined : roas >= 1 ? "positive" : "negative"}
         />
         <ComputedStat
           label="Team net"

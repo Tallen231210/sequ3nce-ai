@@ -86,7 +86,7 @@ const HEALTHY = {
   bookedUnattributed: 4,
   unknownReps: [],
   coverage: { taken: 214, missingOutcomes: 12, outcomeCoverage: 0.944, lowCoverage: false },
-  economics: { adSpend: 62_000, costPerBooked: 200, teamNet: 280_900 },
+  economics: { adSpend: 62_000, costPerBooked: 200, teamNet: 280_900, roas: 6.9 },
   perCloser: [
     {
       closerId: "a", name: "Marcus Webb",
@@ -94,7 +94,7 @@ const HEALTHY = {
       rates: { bookedPct: 75.7, showPct: 75, offerClosePct: 38, closePct: 32.1 },
       rag: RAG_ALL("green", "green", "green", "green"),
       avgDeal: 7259, net: 134_400, goal: 180_000, pctGoal: 108.9, wowPct: 14,
-      overriddenFields: [], openHoursPerDay: 2.4, weekCash: [42000,58000,51000,45000,0], capacity: { reliable: true },
+      overriddenFields: [], openHoursPerDay: 2.4, weekCash: [42000,58000,51000,45000,0], capacity: { reliable: true }, adCost: 16800, roas: 11.7,
     },
     {
       closerId: "b", name: "Priya Raman",
@@ -102,7 +102,7 @@ const HEALTHY = {
       rates: { bookedPct: 76.1, showPct: 70.4, offerClosePct: 36.2, closePct: 27.6 },
       rag: RAG_ALL("green", "green", "amber", "green"),
       avgDeal: 7214, net: 99_600, goal: 160_000, pctGoal: 94.7, wowPct: -6,
-      overriddenFields: ["taken"], openHoursPerDay: 3.1, weekCash: [31000,44000,38000,38500,0], capacity: { reliable: true },
+      overriddenFields: ["taken"], openHoursPerDay: 3.1, weekCash: [31000,44000,38000,38500,0], capacity: { reliable: true }, adCost: 15200, roas: 10.0,
     },
     {
       closerId: "c", name: "Dev Okonkwo",
@@ -110,7 +110,7 @@ const HEALTHY = {
       rates: { bookedPct: 69.2, showPct: 60, offerClosePct: 33.3, closePct: 24.1 },
       rag: RAG_ALL("green", "amber", "amber", "green"),
       avgDeal: 6154, net: 46_000, goal: 150_000, pctGoal: 53.3, wowPct: -22,
-      overriddenFields: [], openHoursPerDay: 6.8, weekCash: [15000,30500,18000,16500,0], capacity: { reliable: true },
+      overriddenFields: [], openHoursPerDay: 6.8, weekCash: [15000,30500,18000,16500,0], capacity: { reliable: true }, adCost: 10800, roas: 0.7,
     },
   ],
   weekCash: [88_000, 132_000, 96_500, 111_000, 0],

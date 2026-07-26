@@ -268,6 +268,45 @@ export function computeEconomics(
   };
 }
 
+/**
+ * Return on ad spend for one rep: cash collected ÷ what the company spent on
+ * the calls they actually took.
+ *
+ * Charged on calls TAKEN, not booked. Whether a lead shows up is the setter's
+ * job, not the closer's — so billing a closer for no-shows measures someone
+ * else's performance and reports it as theirs. This statistic answers "what
+ * does this closer do with the conversations they get".
+ *
+ * The business-level question — is this rep's whole lead allocation
+ * profitable, no-shows included — is answered by the Net column, which is
+ * charged on bookings. The two are deliberately different lenses and the
+ * board carries both.
+ *
+ * Null when there is no ad spend or no calls taken: a ratio against zero
+ * investment is not a performance signal.
+ */
+export function repRoas(
+  repCash: number,
+  repTaken: number,
+  costPerBooked: number | null,
+): number | null {
+  if (costPerBooked === null || costPerBooked <= 0 || repTaken <= 0) return null;
+  const invested = costPerBooked * repTaken;
+  return invested > 0 ? repCash / invested : null;
+}
+
+/**
+ * Banding for ROAS. Below 1x the rep costs more in leads than they return —
+ * that is the line the whole statistic exists to draw, so it is absolute
+ * rather than relative to a target.
+ */
+export function roasBand(roas: number | null): "good" | "thin" | "losing" | "na" {
+  if (roas === null) return "na";
+  if (roas < 1) return "losing";
+  if (roas < 2) return "thin";
+  return "good";
+}
+
 /** A rep's net contribution: cash minus their share of ads minus commission. */
 export function repNet(
   repCash: number,
@@ -334,6 +373,9 @@ export interface CloserRow {
   goal: number | null;
   pctGoal: number | null;
   wowPct: number | null; // this week's cash vs last week's
+  /** Ad spend attributed to this rep, and cash returned per dollar of it. */
+  adCost: number | null;
+  roas: number | null;
   overriddenFields: string[];
   /** Cash per week (5 buckets), for the row sparkline. */
   weekCash: number[];
