@@ -9,9 +9,8 @@ import { Header } from "@/components/dashboard/header";
 import { DailyGrid } from "./components/DailyGrid";
 import { PeriodNav } from "./components/PeriodNav";
 import { TeamView } from "./components/TeamView";
-import { CapacitySettings } from "./components/CapacitySettings";
 import { YearView } from "./components/YearView";
-import { ScorecardSettings } from "./components/ScorecardSettings";
+import { SettingsTab } from "./components/SettingsTab";
 
 const HEADER = {
   title: "Team Performance",
@@ -22,8 +21,7 @@ const TABS = [
   ["team", "Team"],
   ["daily", "Daily numbers"],
   ["year", "Year"],
-  ["capacity", "Availability"],
-  ["alerts", "Daily post"],
+  ["settings", "Settings"],
 ] as const;
 
 type Tab = (typeof TABS)[number][0];
@@ -120,7 +118,7 @@ export default function TeamPerformancePage() {
           ))}
         </nav>
 
-        {tab !== "capacity" && tab !== "year" && tab !== "alerts" && (
+        {tab !== "settings" && tab !== "year" && (
         <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey={thisMonth}
@@ -154,8 +152,7 @@ export default function TeamPerformancePage() {
             }}
           />
         )}
-        {tab === "capacity" && <CapacitySettings />}
-        {tab === "alerts" && <ScorecardSettings />}
+        {tab === "settings" && <SettingsTab />}
       </div>
     </>
   );

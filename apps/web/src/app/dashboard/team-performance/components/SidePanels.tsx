@@ -1,6 +1,6 @@
 "use client";
 
-import { Gift, Target, TrendingUp, Wallet } from "lucide-react";
+import { Gift, TrendingUp, Wallet } from "lucide-react";
 import { fmtCurrency, fmtPct } from "../lib/format";
 
 interface Projection {
@@ -216,8 +216,7 @@ export function EconomicsCard({
         </dl>
       ) : (
         <div className="mt-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Target className="h-3.5 w-3.5" />
+          <div className="text-xs font-medium text-muted-foreground">
             Ad spend not set
           </div>
           <p className="mt-2 text-xs text-muted-foreground">

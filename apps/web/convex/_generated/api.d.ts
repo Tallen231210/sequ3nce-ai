@@ -69,6 +69,7 @@ import type * as closerCapacitySettings from "../closerCapacitySettings.js";
 import type * as closerMagicLink from "../closerMagicLink.js";
 import type * as closerPerformance from "../closerPerformance.js";
 import type * as closerPerformanceAttribution from "../closerPerformanceAttribution.js";
+import type * as closerPerformanceConfig from "../closerPerformanceConfig.js";
 import type * as closerPerformanceMetrics from "../closerPerformanceMetrics.js";
 import type * as closerPerformanceMutations from "../closerPerformanceMutations.js";
 import type * as closerPerformanceNotifications from "../closerPerformanceNotifications.js";
@@ -216,6 +217,7 @@ declare const fullApi: ApiFromModules<{
   closerMagicLink: typeof closerMagicLink;
   closerPerformance: typeof closerPerformance;
   closerPerformanceAttribution: typeof closerPerformanceAttribution;
+  closerPerformanceConfig: typeof closerPerformanceConfig;
   closerPerformanceMetrics: typeof closerPerformanceMetrics;
   closerPerformanceMutations: typeof closerPerformanceMutations;
   closerPerformanceNotifications: typeof closerPerformanceNotifications;

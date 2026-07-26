@@ -171,7 +171,12 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     {f.label}
                   </th>
                 ))}
-                <th className={TH + " text-right"}>Missing</th>
+                <th
+                  className={TH + " text-right"}
+                  title="Calls we recorded where no post-call form was submitted. Closes and cash for that day are understated by this many calls."
+                >
+                  No outcome
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -233,7 +238,19 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                         />
                       </td>
                     ))}
-                    <td className="px-3 py-2 text-right text-sm tabular-nums text-muted-foreground">
+                    <td
+                      className={
+                        "px-3 py-2 text-right text-sm tabular-nums " +
+                        (r.missingOutcomes > 0
+                          ? "text-amber-700 dark:text-amber-400"
+                          : "text-muted-foreground")
+                      }
+                      title={
+                        r.missingOutcomes > 0
+                          ? `${r.missingOutcomes} call(s) that day have no post-call form, so closes and cash are understated`
+                          : undefined
+                      }
+                    >
                       {r.missingOutcomes > 0 ? r.missingOutcomes : "—"}
                     </td>
                   </tr>
