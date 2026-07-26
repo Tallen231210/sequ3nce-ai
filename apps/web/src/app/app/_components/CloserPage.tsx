@@ -24,9 +24,18 @@ export function useCloserPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setCloserInfo(getCloserInfo());
+    const info = getCloserInfo();
+    setCloserInfo(info);
     setReady(true);
-  }, []);
+    // Send them to sign in from HERE, not from the shell.
+    //
+    // Every page returns null while `ready` is false, so the shell — which
+    // used to own this redirect — never got the chance to render and do it.
+    // The result was a permanently blank page with no way out, reachable any
+    // time the stored session went missing: an expired session clears it, and
+    // then any direct navigation or refresh lands on white.
+    if (!info) router.replace("/app/login");
+  }, [router]);
 
   return {
     closerInfo: closerInfo as CloserInfo,
