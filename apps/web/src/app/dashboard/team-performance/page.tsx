@@ -10,6 +10,7 @@ import { DailyGrid } from "./components/DailyGrid";
 import { PeriodNav } from "./components/PeriodNav";
 import { TeamView } from "./components/TeamView";
 import { CapacitySettings } from "./components/CapacitySettings";
+import { YearView } from "./components/YearView";
 
 const HEADER = {
   title: "Team Performance",
@@ -19,6 +20,7 @@ const HEADER = {
 const TABS = [
   ["team", "Team"],
   ["daily", "Daily numbers"],
+  ["year", "Year"],
   ["capacity", "Availability"],
 ] as const;
 
@@ -116,7 +118,7 @@ export default function TeamPerformancePage() {
           ))}
         </nav>
 
-        {tab !== "capacity" && (
+        {tab !== "capacity" && tab !== "year" && (
         <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey={thisMonth}
@@ -139,6 +141,17 @@ export default function TeamPerformancePage() {
           />
         )}
         {tab === "daily" && <DailyGrid monthKey={data.monthKey} />}
+        {tab === "year" && (
+          <YearView
+            onOpenMonth={(m) => {
+              // Clicking a month drops you into the full Team view for it —
+              // the trend is only useful if you can chase down what caused it.
+              setMonthKey(m);
+              setWeekIndex(null);
+              setTab("team");
+            }}
+          />
+        )}
         {tab === "capacity" && <CapacitySettings />}
       </div>
     </>
