@@ -22,6 +22,7 @@ import {
   Briefcase,
   UserCheck,
   Sparkles,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
@@ -34,6 +35,10 @@ const baseNavigation = [
   { name: "Completed", href: "/dashboard/calls", icon: Phone },
   { name: "Call Reviews", href: "/dashboard/call-reviews", icon: MessageSquareText },
   { name: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
+  // Team-level daily scoreboard (funnel, rates, cash by closer). Sits above
+  // Closer Stats deliberately: this is the floor-wide view, Closer Stats is
+  // the per-rep drilldown.
+  { name: "Team Performance", href: "/dashboard/team-performance", icon: Trophy },
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
   // Setter Data tab — always visible to B2B admins. ConnectionGate inside
   // handles the not-yet-installed state. Hidden only when an admin
@@ -93,13 +98,20 @@ export function Sidebar() {
   const filteredBase = team?.setterDataEnabled === false
     ? baseNavigation.filter((item) => item.href !== "/dashboard/setter-data")
     : baseNavigation;
-  const baseWithIntegrations = integrationItems.length > 0
-    ? [
-        ...filteredBase.slice(0, 11), // Dashboard through Team (now includes Setter Data)
-        ...integrationItems,
-        ...filteredBase.slice(11), // Billing, Settings
-      ]
-    : filteredBase;
+  // Integration sync pages slot in just above Billing. Located by href rather
+  // than a fixed index — a hardcoded slice silently misplaces them whenever a
+  // nav item is added, or whenever the Setter Data kill switch removes one.
+  const billingIdx = filteredBase.findIndex(
+    (item) => item.href === "/dashboard/billing",
+  );
+  const baseWithIntegrations =
+    integrationItems.length > 0 && billingIdx >= 0
+      ? [
+          ...filteredBase.slice(0, billingIdx),
+          ...integrationItems,
+          ...filteredBase.slice(billingIdx),
+        ]
+      : filteredBase;
   // Onboarding item slots right after Dashboard, only when not yet
   // complete — once the team finishes the 5-step checklist the item
   // disappears from the nav so it doesn't clutter the sidebar forever.

@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import { Id, Doc } from "./_generated/dataModel";
 import { buildCallStartedBlocks } from "./slack";
 import { upsertCallContentTx, getContentForCallTx } from "./callContent";
+import { scheduleCloserRecount } from "./closerPerformanceSweep";
 
 // Create a new call record (called by audio processor when call starts)
 export const createCall = mutation({
@@ -940,6 +941,14 @@ export const completeCallWithOutcome = mutation({
       completedAt: Date.now(),
     });
 
+    // Refresh the Team Performance rollup for the day this call belongs to.
+    // Scheduled, so a rollup failure can never fail the submission that
+    // recorded the call; the hourly sweep repairs anything missed.
+    // createdAt, not startedAt: the rollup buckets calls by createdAt (it
+    // scans by_team_and_date), so any other field could recount a different
+    // day than the one this call actually lands in.
+    await scheduleCloserRecount(ctx, call.teamId, call.createdAt);
+
     // Mark the linked meeting bot's questionnaire as completed (so pending count decreases)
     if (call.meetingBotId) {
       const bot = await ctx.db.get(call.meetingBotId);
@@ -1060,6 +1069,13 @@ export const updateCallData = mutation({
 
     if (Object.keys(updates).length > 0) {
       await ctx.db.patch(args.callId, updates);
+
+      // Managers correct outcomes and cash here after the fact, so the
+      // scoreboard has to follow the edit rather than keep the original.
+      const call = await ctx.db.get(args.callId);
+      if (call) {
+        await scheduleCloserRecount(ctx, call.teamId, call.createdAt);
+      }
     }
 
     return { success: true };

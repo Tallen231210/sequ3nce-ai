@@ -499,7 +499,7 @@ interface SlackPostArgs {
   blocks: unknown[];
 }
 
-async function postSlackMessage(args: SlackPostArgs): Promise<{ ok: boolean; error?: string }> {
+export async function postSlackMessage(args: SlackPostArgs): Promise<{ ok: boolean; error?: string }> {
   const response = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
@@ -525,7 +525,7 @@ interface DiscordPostArgs {
   embed: unknown;
 }
 
-async function postDiscordWebhook(args: DiscordPostArgs): Promise<{ ok: boolean; error?: string }> {
+export async function postDiscordWebhook(args: DiscordPostArgs): Promise<{ ok: boolean; error?: string }> {
   const response = await fetch(args.webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1245,7 +1245,7 @@ export function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-function humanReadableDate(zd: ZonedDate): string {
+export function humanReadableDate(zd: ZonedDate): string {
   const monthNames = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

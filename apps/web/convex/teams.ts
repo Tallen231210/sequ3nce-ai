@@ -227,6 +227,22 @@ export const updateUserName = mutation({
   },
 });
 
+/**
+ * Reject anything that isn't a real IANA zone.
+ *
+ * An unvalidated string reaches formatInTimeZone in the rollups, the setter
+ * scorecard and the closer scoreboard, where it throws — so a typo here would
+ * surface later as several unrelated features failing at once.
+ */
+function assertValidTimezone(tz: string): void {
+  if (!tz || tz.length > 64) throw new Error("Invalid timezone");
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+  } catch {
+    throw new Error(`Unknown timezone: ${tz}`);
+  }
+}
+
 // Update team timezone
 export const updateTeamTimezone = mutation({
   args: {
@@ -243,9 +259,46 @@ export const updateTeamTimezone = mutation({
       throw new Error("User not found");
     }
 
+    assertValidTimezone(args.timezone);
     await ctx.db.patch(user.teamId, { timezone: args.timezone });
 
     return { success: true };
+  },
+});
+
+/**
+ * Adopt the signed-in manager's own timezone as the team's, but ONLY if the
+ * team has never had one set.
+ *
+ * Day boundaries, the daily rollup and every scheduled post are computed in
+ * team.timezone. Unset, everything silently falls back to America/New_York —
+ * which is simply wrong for a West Coast team: bookings after 9pm land on the
+ * following day and the morning post fires at 5am. Every team in production
+ * is currently on that fallback, none of them deliberately.
+ *
+ * Only-if-unset matters: managers in different offices sign in on different
+ * days, and last-writer-wins would make the team's day boundary wander. An
+ * explicit choice in Settings always survives.
+ */
+export const adoptTimezoneIfUnset = mutation({
+  args: {
+    clerkId: v.string(),
+    timezone: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) return { set: false, reason: "unknown user" };
+
+    const team = await ctx.db.get(user.teamId);
+    if (!team) return { set: false, reason: "unknown team" };
+    if (team.timezone) return { set: false, reason: "already set" };
+
+    assertValidTimezone(args.timezone);
+    await ctx.db.patch(user.teamId, { timezone: args.timezone });
+    return { set: true, timezone: args.timezone };
   },
 });
 

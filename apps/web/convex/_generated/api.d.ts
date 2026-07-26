@@ -9,6 +9,7 @@
  */
 
 import type * as _debugTestSetterScorecard from "../_debugTestSetterScorecard.js";
+import type * as _probeCov from "../_probeCov.js";
 import type * as _probeTeamStripe from "../_probeTeamStripe.js";
 import type * as adSpend from "../adSpend.js";
 import type * as adSpendInternal from "../adSpendInternal.js";
@@ -64,10 +65,18 @@ import type * as callStats from "../callStats.js";
 import type * as calls from "../calls.js";
 import type * as clientErrors from "../clientErrors.js";
 import type * as closerCalendarSubscriptions from "../closerCalendarSubscriptions.js";
+import type * as closerCapacitySettings from "../closerCapacitySettings.js";
 import type * as closerMagicLink from "../closerMagicLink.js";
 import type * as closerPerformance from "../closerPerformance.js";
+import type * as closerPerformanceAttribution from "../closerPerformanceAttribution.js";
 import type * as closerPerformanceMetrics from "../closerPerformanceMetrics.js";
+import type * as closerPerformanceMutations from "../closerPerformanceMutations.js";
+import type * as closerPerformanceNotifications from "../closerPerformanceNotifications.js";
 import type * as closerPerformanceQueries from "../closerPerformanceQueries.js";
+import type * as closerPerformanceSweep from "../closerPerformanceSweep.js";
+import type * as closerPerformanceYear from "../closerPerformanceYear.js";
+import type * as closerScorecardData from "../closerScorecardData.js";
+import type * as closerScorecardSettings from "../closerScorecardSettings.js";
 import type * as closers from "../closers.js";
 import type * as crons from "../crons.js";
 import type * as dataMigrations from "../dataMigrations.js";
@@ -147,6 +156,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   _debugTestSetterScorecard: typeof _debugTestSetterScorecard;
+  _probeCov: typeof _probeCov;
   _probeTeamStripe: typeof _probeTeamStripe;
   adSpend: typeof adSpend;
   adSpendInternal: typeof adSpendInternal;
@@ -202,10 +212,18 @@ declare const fullApi: ApiFromModules<{
   calls: typeof calls;
   clientErrors: typeof clientErrors;
   closerCalendarSubscriptions: typeof closerCalendarSubscriptions;
+  closerCapacitySettings: typeof closerCapacitySettings;
   closerMagicLink: typeof closerMagicLink;
   closerPerformance: typeof closerPerformance;
+  closerPerformanceAttribution: typeof closerPerformanceAttribution;
   closerPerformanceMetrics: typeof closerPerformanceMetrics;
+  closerPerformanceMutations: typeof closerPerformanceMutations;
+  closerPerformanceNotifications: typeof closerPerformanceNotifications;
   closerPerformanceQueries: typeof closerPerformanceQueries;
+  closerPerformanceSweep: typeof closerPerformanceSweep;
+  closerPerformanceYear: typeof closerPerformanceYear;
+  closerScorecardData: typeof closerScorecardData;
+  closerScorecardSettings: typeof closerScorecardSettings;
   closers: typeof closers;
   crons: typeof crons;
   dataMigrations: typeof dataMigrations;

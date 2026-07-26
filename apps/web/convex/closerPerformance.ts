@@ -6,6 +6,26 @@ import {
   getLocalDateRangeUtc,
   pad2,
 } from "./setterDataNotifications";
+import {
+  MIN_BLOCKED_MS_FOR_CAPACITY,
+  attributeBooking,
+  isOwnCapacityCalendar,
+  unionMs,
+  type CalendarEvent,
+  type Interval,
+} from "./closerPerformanceAttribution";
+
+// Re-exported so callers keep one obvious import site and existing importers
+// don't need to know the file was split.
+export {
+  attributeBooking,
+  classifyEvent,
+  isOwnCapacityCalendar,
+  repNameFromTitle,
+  unionMs,
+  MIN_BLOCKED_MS_FOR_CAPACITY,
+} from "./closerPerformanceAttribution";
+export type { CalendarEvent, Interval } from "./closerPerformanceAttribution";
 
 // ============================================================================
 // Team Performance Sheet — closer-side daily rollups.
@@ -20,7 +40,7 @@ import {
 //   Closes  = outcome === "closed"
 //   Cash    = sum of cashCollected
 //   Booked  = calendar events classified as sales calls (see classifyEvent)
-//   Slots   = booked + open working time / typical call length
+//   Slots   = booked + time the closer left unblocked / typical call length
 //
 // Recounts write ABSOLUTE values and are idempotent, so a row may be
 // recomputed any time. Manual corrections live in `closerDailyOverrides`
@@ -28,14 +48,7 @@ import {
 // ============================================================================
 
 export const DEFAULT_TIMEZONE = "America/New_York";
-export const DEFAULT_WORKDAY_START_MIN = 9 * 60;
-export const DEFAULT_WORKDAY_END_MIN = 17 * 60;
-export const DEFAULT_WORKDAYS = [1, 2, 3, 4, 5]; // Mon–Fri
 export const DEFAULT_CALL_LENGTH_MIN = 45;
-
-const WEEKDAY_INDEX: Record<string, number> = {
-  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-};
 
 /** Team-local "YYYY-MM-DD" for a UTC instant. */
 export function dayKeyInTz(ms: number, tz: string): string {
@@ -49,44 +62,6 @@ export function monthKeyInTz(ms: number, tz: string): string {
   return `${z.year}-${pad2(z.month)}`;
 }
 
-/** 0=Sun..6=Sat for a team-local day key. */
-function weekdayOfDayKey(dayKey: string, tz: string): number {
-  const { startMs } = getLocalDateRangeUtc(dayKey, tz);
-  // Probe midday to dodge DST edges.
-  const z = formatInTimeZone(new Date(startMs + 12 * 60 * 60 * 1000), tz);
-  return WEEKDAY_INDEX[z.weekday] ?? 1;
-}
-
-type CalendarEvent = Doc<"calendarEvents">;
-
-/**
- * Is this calendar event a sales call, or the closer blocking time out?
- *
- * This is what makes Slots real: closers create availability by blocking
- * their calendars, so we must tell "Gym"/"OOO" (capacity removed) from an
- * actual booked call (capacity consumed by a prospect).
- *
- *   1. The event produced a real recorded call  -> sales call.
- *      Works on EVERY calendar provider, because it's our own data.
- *   2. The event has an external attendee       -> sales call.
- *      Google-only: the ICS/Microsoft sync path never populates attendees.
- *   3. Otherwise                                -> personal block.
- */
-export function classifyEvent(
-  event: CalendarEvent,
-  eventIdsWithCalls: Set<string>,
-): "call" | "block" {
-  if (eventIdsWithCalls.has(String(event._id))) return "call";
-  const external = (event.attendees ?? []).some(
-    (a) => a.isOrganizer !== true && !!a.email,
-  );
-  return external ? "call" : "block";
-}
-
-/** Overlap of [aStart,aEnd) and [bStart,bEnd) in ms. */
-function overlapMs(aS: number, aE: number, bS: number, bE: number): number {
-  return Math.max(0, Math.min(aE, bE) - Math.max(aS, bS));
-}
 
 export interface CloserDayTotals {
   slots: number;
@@ -97,92 +72,14 @@ export interface CloserDayTotals {
   cash: number;
   contractValue: number;
   missingOutcomes: number;
+  /** False when we had no calendar of this closer's own to read that day. */
+  capacityKnown: boolean;
+  /** Capacity inputs, surfaced so a low Booked% can be interpreted. */
+  blockedMinutes: number;
+  openMinutes: number;
 }
 
-/**
- * Booking-title convention used by Calendly, GHL and Zoom scheduler:
- * "Prospect Name and Rep Name", sometimes prefixed with a status word.
- * Returns the rep half, or null when the title doesn't follow the pattern.
- */
-export function repNameFromTitle(title: string | undefined): string | null {
-  if (!title) return null;
-  const cleaned = title
-    .replace(/^\s*(canceled|cancelled|rescheduled|second call|follow[- ]?up)\s*:\s*/i, "")
-    .trim();
-  const m = cleaned.match(/\band\s+(.{2,60})$/i);
-  if (!m) return null;
-  // Drop trailing qualifiers ("Nick Rowe second call") so the name matches.
-  return m[1]
-    .replace(/\s+(second call|follow[- ]?up|call|meeting|discovery)\s*$/i, "")
-    .trim() || null;
-}
-
-function nameMatchesCloser(repName: string, closerName: string): boolean {
-  const rep = repName.toLowerCase();
-  const full = closerName.trim().toLowerCase();
-  if (full.length > 2 && (rep === full || rep.includes(full) || full.includes(rep))) {
-    return true;
-  }
-  // Closers are often stored by first name only ("Nick" vs "Nick Rowe").
-  const first = full.split(/\s+/)[0] ?? "";
-  return first.length > 2 && rep.split(/\s+/)[0] === first;
-}
-
-export interface BookingAttribution {
-  /** The closer who owns this booking, or null if we can't say. */
-  closerId: string | null;
-  /** Rep named in the title who isn't a Sequ3nce closer — surfaced to the
-   *  manager rather than silently folded into an anonymous bucket. */
-  unknownRep: string | null;
-}
-
-/**
- * Pick which closer owns a booking when the same meeting appears on several
- * calendars. Teams commonly subscribe to each other's calendars, so the
- * `closerId` on any single copy is not authoritative — verified on a live
- * team where 389 of 390 unique meetings appeared on multiple calendars.
- *
- * Priority:
- *  1. an actual recorded call — provider-agnostic and unambiguous;
- *  2. the rep named in the title. This outranks calendar ownership because
- *     the title states who is ON the call while the calendar only says whose
- *     subscription it synced through. A live team runs a fourth rep who
- *     isn't a Sequ3nce user; when their booking lands on a single teammate's
- *     calendar, trusting ownership credited the wrong person;
- *  3. only then, a single unambiguous copy.
- *
- * A title naming a non-closer STOPS attribution — we'd rather report "210
- * bookings belong to Callum B, who isn't on Sequ3nce" than credit them to
- * whoever happened to subscribe. Inventing an owner quietly corrupts every
- * per-rep rate on the leaderboard.
- */
-export function attributeBooking(
-  copies: CalendarEvent[],
-  closerIdFromCall: string | null,
-  closerNames: Array<{ id: string; name: string }>,
-): BookingAttribution {
-  if (closerIdFromCall) return { closerId: closerIdFromCall, unknownRep: null };
-
-  const repName = repNameFromTitle(copies[0]?.title);
-  if (repName) {
-    const hits = closerNames.filter((c) => nameMatchesCloser(repName, c.name));
-    if (hits.length === 1) return { closerId: hits[0].id, unknownRep: null };
-    // Named a rep we don't recognise: attributable to a person, just not to
-    // anyone with a seat. Report who, so the manager can act on it.
-    if (hits.length === 0) return { closerId: null, unknownRep: repName };
-    // Ambiguous name (two closers match) — fall through to calendar evidence.
-  }
-
-  const distinct = Array.from(new Set(copies.map((c) => String(c.closerId))));
-  if (distinct.length === 1) return { closerId: distinct[0], unknownRep: null };
-
-  return { closerId: null, unknownRep: null };
-}
-
-/**
- * Recompute one team-local day for every closer on the team, writing
- * absolute values. Idempotent — safe to re-run at any time.
- */
+/** Local part of an email/calendar address, lowercased. */
 async function recountDayImpl(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ctx: any,
@@ -223,7 +120,8 @@ async function recountDayImpl(
   const byCloser = new Map<string, CloserDayTotals>();
   const blank = (): CloserDayTotals => ({
     slots: 0, booked: 0, taken: 0, offers: 0, closes: 0, cash: 0,
-    contractValue: 0, missingOutcomes: 0,
+    contractValue: 0, missingOutcomes: 0, capacityKnown: false,
+    blockedMinutes: 0, openMinutes: 0,
   });
   for (const c of activeClosers) byCloser.set(String(c._id), blank());
 
@@ -258,18 +156,72 @@ async function recountDayImpl(
     )
     .take(5000)) as CalendarEvent[];
 
-  const weekday = weekdayOfDayKey(dayKey, tz);
-  const workdays = team.closerWorkdays ?? DEFAULT_WORKDAYS;
-  const isWorkday = workdays.includes(weekday);
-  const winStartMs =
-    startMs + (team.closerWorkdayStartMin ?? DEFAULT_WORKDAY_START_MIN) * 60_000;
-  const winEndMs =
-    startMs + (team.closerWorkdayEndMin ?? DEFAULT_WORKDAY_END_MIN) * 60_000;
+  // Capacity is bounded by the whole local day, NOT by assumed office hours.
+  // These teams don't work one timezone: a closer may run a late shift into
+  // 9pm Eastern to reach a Pacific prospect at dinner time. A fixed 9-5 window
+  // counted those calls as booked while never counting the time they occupied,
+  // which drove Booked% toward a meaningless 100%. Availability is instead
+  // whatever the closer did NOT mark off — which is how they actually set it.
+  const dayStartMs = startMs;
+  const dayEndMs = endMs;
   const callLenMs =
     (team.closerTypicalCallLengthMin ?? DEFAULT_CALL_LENGTH_MIN) * 60_000;
 
-  const blockedMsByCloser = new Map<string, number>();
-  const bookedMsByCloser = new Map<string, number>();
+  // --- Which calendars represent each closer's own availability -----------
+  const subs = (await ctx.db
+    .query("closerCalendarSubscriptions")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+    .take(1000)) as Doc<"closerCalendarSubscriptions">[];
+
+  const emailByCloser = new Map(
+    activeClosers.map((c) => [String(c._id), c.email]),
+  );
+  /** Subscription ids that carry their subscriber's own availability. */
+  const ownSubIds = new Set<string>();
+  /** Closers who have at least one readable calendar of their own. */
+  const closersWithOwnCalendar = new Set<string>();
+  /** Closers who subscribe to any calendar at all. */
+  const closersWithAnySub = new Set<string>();
+  for (const sub of subs) {
+    if (sub.enabled === false) continue;
+    const owner = String(sub.closerId);
+    closersWithAnySub.add(owner);
+    if (!isOwnCapacityCalendar(sub, emailByCloser.get(owner))) continue;
+    ownSubIds.add(String(sub._id));
+    closersWithOwnCalendar.add(owner);
+  }
+
+  /**
+   * An event counts against `closerKey`'s capacity only if it arrived on a
+   * calendar they own. Events with no subscription came through the closer's
+   * direct calendar connection, so they are theirs by definition.
+   */
+  const isOwnCapacitySource = (ev: CalendarEvent, closerKey: string) => {
+    if (String(ev.closerId) !== closerKey) return false;
+    if (!ev.subscriptionId) return true;
+    return ownSubIds.has(String(ev.subscriptionId));
+  };
+
+  // Intervals rather than running totals: overlapping blocks are normal, and
+  // summing them double-counts. Unioned once the day's events are collected.
+  const blockedIntervals = new Map<string, Interval[]>();
+  const bookedIntervals = new Map<string, Interval[]>();
+  const pushInterval = (
+    map: Map<string, Interval[]>,
+    key: string,
+    start: number,
+    end: number,
+  ) => {
+    // Clamp to the local day so an overnight event can't consume more than
+    // the day it lands in.
+    const s = Math.max(start, dayStartMs);
+    const e = Math.min(end, dayEndMs);
+    if (e <= s) return;
+    const list = map.get(key) ?? [];
+    list.push([s, e]);
+    map.set(key, list);
+  };
   let bookedUnattributed = 0;
   // Reps named on bookings who hold no Sequ3nce seat, e.g. a closer the team
   // never onboarded. Surfaced so the gap reads as a fact about the roster
@@ -308,10 +260,9 @@ async function recountDayImpl(
     );
     const isCall = !!linkedCloser || hasExternalAttendee;
 
-    // All-day events (OOO, holidays) wipe the whole working window.
-    const evStart = ev.isAllDay ? winStartMs : ev.startTime;
-    const evEnd = ev.isAllDay ? winEndMs : ev.endTime;
-    const inWindow = overlapMs(evStart, evEnd, winStartMs, winEndMs);
+    // An all-day event (OOO, a holiday) covers the entire day.
+    const evStart = ev.isAllDay ? dayStartMs : ev.startTime;
+    const evEnd = ev.isAllDay ? dayEndMs : ev.endTime;
 
     if (isCall) {
       const { closerId: ownerId, unknownRep } = attributeBooking(
@@ -321,10 +272,9 @@ async function recountDayImpl(
       );
       if (ownerId && byCloser.has(ownerId)) {
         byCloser.get(ownerId)!.booked += 1;
-        bookedMsByCloser.set(
-          ownerId,
-          (bookedMsByCloser.get(ownerId) ?? 0) + inWindow,
-        );
+        // A call occupies the closer who took it, whichever calendar it
+        // synced through.
+        pushInterval(bookedIntervals, ownerId, evStart, evEnd);
       } else {
         // Not ours to credit — counts for the team, not for any rep.
         bookedUnattributed += 1;
@@ -336,26 +286,81 @@ async function recountDayImpl(
         }
       }
     } else {
-      // A block only removes capacity from the calendars it actually sits on.
-      for (const key of new Set(copies.map((c) => String(c.closerId)))) {
-        if (!byCloser.has(key)) continue;
-        blockedMsByCloser.set(key, (blockedMsByCloser.get(key) ?? 0) + inWindow);
+      // A block removes capacity only from a calendar the closer actually
+      // owns. Without this test, a teammate's block arriving through a
+      // subscription eats capacity from everyone subscribed to it.
+      const charged = new Set<string>();
+      for (const copy of copies) {
+        const key = String(copy.closerId);
+        if (!byCloser.has(key) || charged.has(key)) continue;
+        if (!isOwnCapacitySource(copy, key)) continue;
+        charged.add(key);
+        pushInterval(blockedIntervals, key, evStart, evEnd);
       }
     }
   }
 
-  const windowMs = Math.max(0, winEndMs - winStartMs);
+  // Slots are inferred from what a calendar says is free. With no calendar
+  // connected there is nothing to infer from, so claiming a full working day
+  // of capacity would be inventing the Booked% denominator — and would show
+  // every not-yet-onboarded team a red 0% against capacity we made up.
+  // No calendar means no capacity signal: slots fall back to actual bookings.
+  // Capacity is inferred from a calendar's free time, so it can only be
+  // computed for a closer whose own calendar we can read.
+  //
+  // Order matters: once a closer has subscriptions, those decide it — a
+  // manager who marks every calendar as "not my availability" is telling us
+  // capacity is unmeasurable, and a stale OAuth token on the closer record
+  // must not silently overrule them. The credential fallback applies only to
+  // closers with no subscriptions at all, whose events arrive directly.
+  const hasCalendar = new Map(
+    activeClosers.map((c) => {
+      const id = String(c._id);
+      if (closersWithAnySub.has(id)) return [id, closersWithOwnCalendar.has(id)];
+      return [
+        id,
+        !!(c.googleCalendarRefreshToken || c.icsUrl || c.calendarProvider),
+      ];
+    }),
+  );
+
+  // Capacity = the time a closer left open on their own calendar.
+  //
+  //   available = day − union(their blocks ∪ their booked calls)
+  //   slots     = booked + available / typical call length
+  //
+  // No assumed office hours: the closer's blocks ARE the statement of when
+  // they're unavailable, which is how they actually set availability, and it
+  // travels across timezones and late shifts without configuration.
+  const dayMs = Math.max(0, dayEndMs - dayStartMs);
   for (const [closerKey, row] of byCloser) {
-    if (!isWorkday) {
-      // Off-day: only actual booked calls count as capacity, so Booked%
-      // can't be diluted by a weekend the team never intended to work.
+    const blocks = blockedIntervals.get(closerKey) ?? [];
+    const booked = bookedIntervals.get(closerKey) ?? [];
+    const blockedMs = unionMs(blocks);
+
+    // Two ways capacity is unknowable: no calendar of theirs to read, or a
+    // calendar so sparsely blocked it isn't declaring availability at all.
+    // Treating either as "fully available" would invent the denominator, so
+    // slots fall back to bookings and the board suppresses Booked%.
+    const capacityReadable =
+      !!hasCalendar.get(closerKey) && blockedMs >= MIN_BLOCKED_MS_FOR_CAPACITY;
+
+    row.blockedMinutes = Math.round(blockedMs / 60_000);
+
+    if (!capacityReadable) {
       row.slots = row.booked;
+      row.capacityKnown = false;
+      row.openMinutes = 0;
       continue;
     }
-    const blocked = blockedMsByCloser.get(closerKey) ?? 0;
-    const bookedTime = bookedMsByCloser.get(closerKey) ?? 0;
-    const openMs = Math.max(0, windowMs - blocked - bookedTime);
+
+    // Union blocks and calls together — a call scheduled inside a blocked
+    // period must not subtract its time twice.
+    const busyMs = unionMs([...blocks, ...booked]);
+    const openMs = Math.max(0, dayMs - busyMs);
     row.slots = row.booked + Math.floor(openMs / callLenMs);
+    row.openMinutes = Math.round(openMs / 60_000);
+    row.capacityKnown = true;
   }
 
   // --- Persist absolute values --------------------------------------------

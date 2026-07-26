@@ -200,4 +200,34 @@ crons.daily(
   internal.adSpend.runDailyMetaSync,
 );
 
+// Team Performance rollup sweep. closerDailyStats is derived, so it only
+// exists if something recomputes it — a write hook fires on call completion
+// and outcome edits, and this repairs whatever the hook missed (failed
+// scheduled mutations, calls written by an unhooked path, calendar events
+// that synced late).
+//
+// Hourly rather than daily so a team that connects a calendar during the
+// working day sees a populated board within the hour instead of tomorrow.
+// Recounts write absolute values, so re-running a day is always harmless.
+//
+// Wall-clock cron, never crons.interval — interval crons reset their next
+// fire on every deploy and, with several deploys a day, would never fire.
+// See the setter-daily-scorecard note above for the outage that taught us.
+crons.cron(
+  "closer-performance-sweep",
+  "20 * * * *",
+  internal.closerPerformanceSweep.runSweep,
+  {},
+);
+
+// Team Performance daily scoreboard. Hourly, gated per team on their local
+// delivery hour — same pattern as the setter scorecard above, including the
+// crons.cron (never crons.interval) rule that outage taught us.
+crons.cron(
+  "closer-daily-scorecard",
+  "5 * * * *",
+  internal.closerPerformanceNotifications.runCloserScorecards,
+  {},
+);
+
 export default crons;

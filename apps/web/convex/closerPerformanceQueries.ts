@@ -7,11 +7,13 @@ import {
   DEFAULT_TARGETS,
   addTotals,
   applyOverride,
+  computeCapacitySignal,
   computeCoverage,
   computeEconomics,
   computeProjection,
   computeRates,
   emptyTotals,
+  mergeDailyRows,
   pctOfGoal,
   ragForRates,
   repNet,
@@ -120,23 +122,23 @@ export const getTeamPerformance = query({
 
     // --- Aggregate per closer ----------------------------------------------
     const totalsByCloser = new Map<string, FunnelTotals>();
+    // Capacity is only quotable where we could read the rep's own calendar.
+    const capByCloser = new Map<string, { known: number; unknown: number }>();
+    // Capacity inputs, so the UI can explain a low Booked% rather than just
+    // assert one. Averaged over days the closer actually had activity.
+    const openByCloser = new Map<string, { openMin: number; days: number }>();
     const overriddenByCloser = new Map<string, Set<string>>();
     // Week buckets power the sparkline + WoW trend.
     const weekCashTeam = [0, 0, 0, 0, 0];
     const weekCashByCloser = new Map<string, number[]>();
 
-    for (const row of stats) {
-      const key = String(row.closerId);
-      const ov = overrideByKey.get(`${row.dayKey}|${key}`);
-      const { totals, overridden } = applyOverride(
-        {
-          slots: row.slots, booked: row.booked, taken: row.taken,
-          offers: row.offers, closes: row.closes, cash: row.cash,
-          contractValue: row.contractValue,
-          missingOutcomes: row.missingOutcomes ?? 0,
-        },
-        ov,
-      );
+    // Union of measured rows and corrections — a manager's entry on a day we
+    // measured nothing must still appear. See mergeDailyRows.
+    const merged = mergeDailyRows(stats, overrides);
+
+    for (const row of merged) {
+      const key = row.closerId;
+      const totals = row.totals;
 
       // Week buckets always span the whole month (the sparkline shows the
       // month even when the table is scoped to one week).
@@ -147,13 +149,24 @@ export const getTeamPerformance = query({
       weekCashByCloser.set(key, wcb);
 
       if (!inScope(row.dayKey)) continue;
+      const cap = capByCloser.get(key) ?? { known: 0, unknown: 0 };
+      if (row.capacityKnown === false) cap.unknown += 1;
+      else if (row.capacityKnown === true) cap.known += 1;
+      capByCloser.set(key, cap);
+
+      if (row.capacityKnown === true && typeof row.openMinutes === "number") {
+        const o = openByCloser.get(key) ?? { openMin: 0, days: 0 };
+        o.openMin += row.openMinutes;
+        o.days += 1;
+        openByCloser.set(key, o);
+      }
       totalsByCloser.set(
         key,
         addTotals(totalsByCloser.get(key) ?? emptyTotals(), totals),
       );
-      if (overridden.length > 0) {
+      if (row.overridden.length > 0) {
         const set = overriddenByCloser.get(key) ?? new Set<string>();
-        overridden.forEach((f) => set.add(f));
+        row.overridden.forEach((f) => set.add(f));
         overriddenByCloser.set(key, set);
       }
     }
@@ -175,6 +188,14 @@ export const getTeamPerformance = query({
     let teamTotals = emptyTotals();
     for (const [, t] of totalsByCloser) teamTotals = addTotals(teamTotals, t);
 
+    let capKnown = 0;
+    let capUnknown = 0;
+    for (const [, c] of capByCloser) {
+      capKnown += c.known;
+      capUnknown += c.unknown;
+    }
+    const capacity = computeCapacitySignal(capKnown, capUnknown);
+
     const economics = computeEconomics(teamTotals, adSpendForPeriod, compPct);
 
     // Which week is "current" for WoW — the latest week with any activity.
@@ -186,7 +207,12 @@ export const getTeamPerformance = query({
     const nameById = new Map(closers.map((c) => [String(c._id), c.name]));
     const rows: CloserRow[] = Array.from(totalsByCloser.entries())
       .map(([closerId, totals]) => {
+        const cap = capByCloser.get(closerId) ?? { known: 0, unknown: 0 };
+        const capacity = computeCapacitySignal(cap.known, cap.unknown);
         const rates = computeRates(totals);
+        // Slots we had to assume can't support a rate. Suppress rather than
+        // publish a confident-looking number built on a guessed denominator.
+        if (!capacity.reliable) rates.bookedPct = null;
         const goal = goalByCloser.get(closerId) ?? null;
         const wcb = weekCashByCloser.get(closerId) ?? [0, 0, 0, 0, 0];
         return {
@@ -195,6 +221,13 @@ export const getTeamPerformance = query({
           totals,
           rates,
           rag: ragForRates(rates, targets),
+          capacity,
+          // Average hours left unbooked per active day — the denominator's
+          // story, without which Booked% can't be interpreted.
+          openHoursPerDay: (() => {
+            const o = openByCloser.get(closerId);
+            return o && o.days > 0 ? o.openMin / 60 / o.days : null;
+          })(),
           avgDeal: totals.closes > 0 ? totals.cash / totals.closes : null,
           net: repNet(totals.cash, totals.booked, economics.costPerBooked, compPct),
           goal,
@@ -219,19 +252,8 @@ export const getTeamPerformance = query({
     // Month totals (not week-scoped) drive pacing — a month projection from
     // one week's cash would be nonsense.
     let monthTotals = emptyTotals();
-    for (const row of stats) {
-      const ov = overrideByKey.get(`${row.dayKey}|${String(row.closerId)}`);
-      const { totals } = applyOverride(
-        {
-          slots: row.slots, booked: row.booked, taken: row.taken,
-          offers: row.offers, closes: row.closes, cash: row.cash,
-          contractValue: row.contractValue,
-          missingOutcomes: row.missingOutcomes ?? 0,
-        },
-        ov,
-      );
-      monthTotals = addTotals(monthTotals, totals);
-    }
+    for (const row of merged) monthTotals = addTotals(monthTotals, row.totals);
+
     const projection = computeProjection(
       monthTotals.cash,
       teamTarget,
@@ -252,6 +274,9 @@ export const getTeamPerformance = query({
     };
 
     const scopedTeamRows = teamRows.filter((r) => inScope(r.dayKey));
+    const teamRates = computeRates(teamTotals);
+    if (!capacity.reliable) teamRates.bookedPct = null;
+
     const bookedUnattributed = scopedTeamRows.reduce(
       (s, r) => s + r.bookedUnattributed,
       0,
@@ -280,7 +305,10 @@ export const getTeamPerformance = query({
       targets,
       compPct,
       teamTotals,
-      teamRates: computeRates(teamTotals),
+      teamRates: teamRates,
+      teamRatesRag: ragForRates(teamRates, targets),
+      // Whether Slots were measured well enough to quote Booked% at all.
+      capacity,
       // Bookings on shared calendars we refuse to attribute to one rep.
       bookedUnattributed,
       // Named reps behind those bookings who have no seat — actionable.
