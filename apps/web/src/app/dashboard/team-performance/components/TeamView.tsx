@@ -92,6 +92,8 @@ export function TeamView({
         teamCash={t.cash}
         booked={t.booked}
         isCurrentMonth={data.isCurrentMonth}
+        weekIndex={weekIndex}
+        economics={data.economics}
       />
 
       {!hasAnyActivity ? (

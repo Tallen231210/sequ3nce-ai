@@ -28,6 +28,9 @@ function cellValue(row: DailyEntryRow, key: string): string {
   const reported = row.reported?.[key];
   if (typeof reported === 'number') return String(reported);
   if (row.measuredExists) return String(row.measured[key] ?? 0);
+  // A submitted day with nothing behind it still counts — as zero. Leaving it
+  // blank reads as "no data", which is the opposite of what submitting meant.
+  if (row.confirmedAt) return '0';
   return '';
 }
 
@@ -49,6 +52,10 @@ function Cell({
   const initial = cellValue(row, col.key);
   const [draft, setDraft] = useState(initial);
   const ref = useRef<HTMLInputElement>(null);
+  // Escape calls setDraft and blur in the same tick, so onBlur's closure still
+  // holds the typed value and would commit the edit we just abandoned. A ref
+  // is readable synchronously; the state isn't.
+  const escaped = useRef(false);
 
   useEffect(() => { setDraft(cellValue(row, col.key)); }, [row.confirmedAt, row.dayKey, initial]);
 
@@ -74,9 +81,14 @@ function Cell({
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          if (e.key === 'Escape') { setDraft(initial); (e.target as HTMLInputElement).blur(); }
+          if (e.key === 'Escape') {
+            escaped.current = true;
+            setDraft(initial);
+            (e.target as HTMLInputElement).blur();
+          }
         }}
         onBlur={() => {
+          if (escaped.current) { escaped.current = false; setDraft(initial); return; }
           if (isCorrected || draft === initial) return;
           const t = draft.trim();
           onCommit(col.key, t === '' ? null : Number(t.replace(/[$,\s]/g, '')));

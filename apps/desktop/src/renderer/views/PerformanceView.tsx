@@ -190,11 +190,15 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
           </div>
 
           {/* The prompt has to differ. Asking someone to "confirm" a row of
-              zeros we never recorded is how you teach them the tool is wrong. */}
+              zeros we never recorded is how you teach them the tool is wrong —
+              and telling someone who already submitted that "nothing is filled
+              in" contradicts the filled-in form directly below it. */}
           <p className="text-[12px] text-gray-500 leading-relaxed mb-4">
-            {today.measuredExists
-              ? 'These are the calls we recorded today. Check them, fix anything that’s off, and submit.'
-              : 'We only capture numbers automatically when the meeting bot joins your calls — it didn’t today, so nothing is filled in. Enter your day below.'}
+            {today.confirmedAt
+              ? 'You’ve submitted today. Change anything that needs correcting and hit Update — you can do this any time, including weeks from now.'
+              : today.measuredExists
+                ? 'These are the calls we recorded today. Check them, fix anything that’s off, and submit.'
+                : 'We only capture numbers automatically when the meeting bot joins your calls — it didn’t today, so nothing is filled in. Enter your day below.'}
           </p>
 
           <PerformanceDayForm

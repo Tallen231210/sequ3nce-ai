@@ -149,11 +149,27 @@ export function ManagerStrip({
   teamCash,
   booked,
   isCurrentMonth,
+  weekIndex,
+  economics,
 }: {
   monthKey: string;
   teamCash: number;
   booked: number;
   isCurrentMonth: boolean;
+  /** Which week pill is active, if any — the figures are scoped to it. */
+  weekIndex: number | null;
+  /**
+   * Period-scoped economics from the board query. Recomputing these here from
+   * the standing monthly ad spend silently mixed scopes: with a week pill
+   * active, cash and bookings covered one week while the spend covered the
+   * whole month, so ROAS read ~5x too low and every loss ~5x too deep.
+   */
+  economics: {
+    adSpend: number;
+    costPerBooked: number | null;
+    teamNet: number;
+    roas: number | null;
+  };
 }) {
   const { user } = useUser();
   // Scoped to the month on screen: editing ad spend while looking at July
@@ -176,13 +192,10 @@ export function ManagerStrip({
  );
   };
 
-  const adSpend = config.adSpendMonthly ?? 0;
-  const compPct = config.compPct ?? 0;
-  // Only quote cost-per-booked once both sides are real; ad spend ÷ 0 bookings
-  // is not a number a manager should be shown.
-  const costPerBooked = adSpend > 0 && booked > 0 ? adSpend / booked : null;
-  const teamNet = teamCash - adSpend - teamCash * (compPct / 100);
-  const roas = adSpend > 0 ? teamCash / adSpend : null;
+  // The editable input still shows the standing monthly figure — that is what
+  // a manager types. The derived figures come from the query, which scopes ad
+  // spend to whatever period is on screen.
+  const { costPerBooked, teamNet, roas } = economics;
 
   return (
     <div className="space-y-3">
@@ -257,7 +270,11 @@ export function ManagerStrip({
         <ComputedStat
           label="Team cash"
  value={fmtCurrency(teamCash)}
-          formula={`${monthLabel(monthKey)}${isCurrentMonth ? " (MTD)" : ""}`}
+          formula={
+            weekIndex === null
+              ? `${monthLabel(monthKey)}${isCurrentMonth ? " (MTD)" : ""}`
+              : `${monthLabel(monthKey)} · week ${weekIndex + 1}`
+          }
  />
         <ComputedStat
           label="Cost / booked"

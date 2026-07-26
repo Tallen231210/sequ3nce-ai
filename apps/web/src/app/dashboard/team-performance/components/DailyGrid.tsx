@@ -136,19 +136,20 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
  <p className="text-xs leading-relaxed text-muted-foreground">
  {data.canEdit ? (
             <>
-              Every number here is what Sequ3nce measured. Click any cell to
+              These are the numbers your closers submitted, falling back to what
+              Sequ3nce measured on days they haven't. Click any cell to
               correct it — including on days we recorded nothing at all, which
               is what happens when a rep takes calls without the bot running. Corrections are{" "}
  <span className="font-medium text-amber-700">
  highlighted
               </span>
-              , show the measured value on hover, and can be reset at any time.
-              Nothing you enter overwrites what we recorded.
+              , show what they reported on hover, and can be reset at any time.
+              Nothing you enter overwrites what they submitted.
             </>
           ) : (
             <>
-              These are the daily numbers Sequ3nce measured. Only managers can
-              enter corrections.
+              These are the daily numbers your closers submitted. Only managers
+              can enter corrections.
             </>
           )}
         </p>
