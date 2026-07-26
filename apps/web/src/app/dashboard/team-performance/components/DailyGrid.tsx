@@ -10,16 +10,16 @@ import { fmtCurrency, fmtNum, fmtPct } from "../lib/format";
 import { MONO } from "@/components/analytics/primitives/typography";
 
 const FIELDS = [
-  { key: "slots", label: "Slots" },
-  { key: "booked", label: "Booked" },
-  { key: "taken", label: "Taken" },
-  { key: "offers", label: "Offers" },
-  { key: "closes", label: "Closes" },
-  { key: "cash", label: "Cash" },
+ { key: "slots", label: "Slots" },
+ { key: "booked", label: "Booked" },
+ { key: "taken", label: "Taken" },
+ { key: "offers", label: "Offers" },
+ { key: "closes", label: "Closes" },
+ { key: "cash", label: "Cash" },
 ] as const;
 
 interface GridRow {
-  dayKey: string;
+ dayKey: string;
   closerId: string;
   measured: Record<string, number>;
   /** What the closer submitted for this day. */
@@ -34,13 +34,13 @@ interface GridRow {
 
 function dayLabel(dayKey: string): { day: string; weekday: string } {
   const [y, m, d] = dayKey.split("-").map((s) => parseInt(s, 10));
-  const dt = new Date(Date.UTC(y, m - 1, d));
+ const dt = new Date(Date.UTC(y, m - 1, d));
   return {
     day: String(d),
     weekday: dt.toLocaleDateString("en-US", {
-      weekday: "short",
-      timeZone: "UTC",
-    }),
+ weekday: "short",
+ timeZone: "UTC",
+ }),
   };
 }
 
@@ -56,13 +56,13 @@ const TH =
  * never overwrite the measurement.
  */
 export function DailyGrid({ monthKey }: { monthKey: string }) {
-  const { user } = useUser();
+ const { user } = useUser();
   const [closerId, setCloserId] = useState<string | null>(null);
 
   const data = useQuery(
     api.closerPerformanceMutations.getDailyGrid,
     user ? { clerkId: user.id, monthKey } : "skip",
-  );
+ );
   const setOverride = useMutation(
     api.closerPerformanceMutations.setDailyOverride,
   );
@@ -95,8 +95,8 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
   if (data === undefined) {
     return (
       <div className="flex h-40 items-center justify-center rounded-xl border border-border bg-card">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-      </div>
+ <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+ </div>
     );
   }
   if (!data) return null;
@@ -110,19 +110,19 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Closer picker */}
+ {/* Closer picker */}
       <div className="flex flex-wrap items-center gap-2">
-        {data.closers.map((c: { closerId: string; name: string }) => (
+ {data.closers.map((c: { closerId: string; name: string }) => (
           <button
             key={c.closerId}
             type="button"
-            onClick={() => setCloserId(c.closerId)}
+ onClick={() => setCloserId(c.closerId)}
             className={
               "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors " +
-              (selected === c.closerId
+ (selected === c.closerId
                 ? "border-foreground bg-foreground text-background"
-                : "border-border text-muted-foreground hover:bg-muted hover:text-foreground")
-            }
+ : "border-border text-muted-foreground hover:bg-muted hover:text-foreground")
+ }
           >
             {c.name}
           </button>
@@ -132,15 +132,15 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
       {/* How editing works — stated once, up front, rather than as a tooltip
           nobody hovers. */}
       <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {data.canEdit ? (
+ <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+ <p className="text-xs leading-relaxed text-muted-foreground">
+ {data.canEdit ? (
             <>
               Every number here is what Sequ3nce measured. Click any cell to
               correct it — including on days we recorded nothing at all, which
               is what happens when a rep takes calls without the bot running. Corrections are{" "}
-              <span className="font-medium text-amber-700 dark:text-amber-400">
-                highlighted
+ <span className="font-medium text-amber-700">
+ highlighted
               </span>
               , show the measured value on hover, and can be reset at any time.
               Nothing you enter overwrites what we recorded.
@@ -155,45 +155,45 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
       </div>
 
       {editedCount > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-4 py-2.5 dark:border-amber-800/70 dark:bg-amber-950/20">
-          <PencilLine className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" />
-          <p className="text-xs text-amber-800 dark:text-amber-300">
-            <span className="font-semibold">
-              {editedCount} {editedCount === 1 ? "day has" : "days have"}{" "}
-              a manager correction
+        <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-4 py-2.5">
+ <PencilLine className="h-3.5 w-3.5 shrink-0 text-amber-700" />
+ <p className="text-xs text-amber-800">
+ <span className="font-semibold">
+ {editedCount} {editedCount === 1 ? "day has" : "days have"}{" "}
+ a manager correction
             </span>{" "}
-            that don&apos;t match what Sequ3nce recorded. Totals and rates below
+ that don&apos;t match what Sequ3nce recorded. Totals and rates below
             use the entered values.
           </p>
         </div>
       )}
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px]">
-            <thead className="border-b border-border bg-muted/30">
-              <tr>
+ <div className="overflow-x-auto">
+ <table className="w-full min-w-[720px]">
+ <thead className="border-b border-border bg-muted/30">
+ <tr>
                 <th className={TH + " text-left"}>Day</th>
-                {FIELDS.map((f) => (
+ {FIELDS.map((f) => (
                   <th key={f.key} className={TH + " text-right"}>
-                    {f.label}
+ {f.label}
                   </th>
                 ))}
                 <th
                   className={TH + " text-right"}
-                  title="Calls we recorded where no post-call form was submitted. Closes and cash for that day are understated by this many calls."
-                >
+ title="Calls we recorded where no post-call form was submitted. Closes and cash for that day are understated by this many calls."
+ >
                   No outcome
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.length === 0 && (
+ {rows.length === 0 && (
                 <tr>
                   <td
                     colSpan={FIELDS.length + 2}
                     className="px-3 py-10 text-center text-sm text-muted-foreground"
-                  >
+ >
                     No days to show for this closer in {monthKey}.
                   </td>
                 </tr>
@@ -206,30 +206,30 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     key={r.dayKey + r.closerId}
                     className={
                       "hover:bg-muted/30 " +
-                      (isToday ? "bg-muted/40 " : "") +
-                      // Nothing measured at all reads differently from a
+ (isToday ? "bg-muted/40 " : "") +
+ // Nothing measured at all reads differently from a
                       // recorded zero, and a manager needs to tell them apart.
                       (!r.measuredExists && Object.keys(r.overridden).length === 0
                         ? "text-muted-foreground/60"
-                        : "")
-                    }
+ : "")
+ }
                   >
                     <td className="whitespace-nowrap px-3 py-2">
-                      <span className={`text-sm font-medium ${MONO}`}>
+ <span className={`text-sm font-medium ${MONO}`}>
                         {day}
                       </span>
                       <span className="ml-1.5 text-xs text-muted-foreground">
-                        {weekday}
+ {weekday}
                       </span>
                       {isToday && (
-                        <span className="ml-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                          TODAY
+                        <span className="ml-1.5 text-[10px] font-semibold text-emerald-600">
+ TODAY
                         </span>
                       )}
                     </td>
                     {FIELDS.map((f) => (
                       <td key={f.key} className="px-3 py-2 text-right text-sm">
-                        <EditableCell
+ <EditableCell
                           measured={r.measured[f.key] ?? 0}
                           reported={r.reported?.[f.key]}
                           override={r.overridden[f.key]}
@@ -250,10 +250,10 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                     <td
                       className={
                         "px-3 py-2 text-right text-sm " + MONO + " " +
-                        (r.missingOutcomes > 0
-                          ? "text-amber-700 dark:text-amber-400"
-                          : "text-muted-foreground")
-                      }
+ (r.missingOutcomes > 0
+                          ? "text-amber-700"
+ : "text-muted-foreground")
+ }
                       title={
                         r.missingOutcomes > 0
                           ? `${r.missingOutcomes} call(s) that day have no post-call form, so closes and cash are understated`
@@ -261,16 +261,16 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                       }
                     >
                       {r.missingOutcomes > 0 ? r.missingOutcomes : "—"}
-                    </td>
+ </td>
                   </tr>
                 );
               })}
             </tbody>
             {rows.length > 0 && (
               <tfoot className="border-t-2 border-border bg-muted/30">
-                <tr>
+ <tr>
                   <td className="px-3 py-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                    Total
+ Total
                   </td>
                   {FIELDS.map((f) => (
                     <td
@@ -278,27 +278,27 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
                       className={`px-3 py-2.5 text-right text-sm font-semibold ${MONO}`}
                     >
                       {f.key === "cash"
-                        ? fmtCurrency(totals.cash)
+ ? fmtCurrency(totals.cash)
                         : fmtNum(totals[f.key])}
                     </td>
                   ))}
                   <td />
                 </tr>
                 <tr className="border-t border-border">
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    Rates
+ <td className="px-3 py-2 text-xs text-muted-foreground">
+ Rates
                   </td>
                   <td colSpan={FIELDS.length + 1} className="px-3 py-2">
-                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
-                      <span>
+ <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+ <span>
                         Show{" "}
-                        <span className={`font-semibold ${MONO} text-foreground`}>
+ <span className={`font-semibold ${MONO} text-foreground`}>
                           {fmtPct(showPct)}
                         </span>
                       </span>
                       <span>
                         Close{" "}
-                        <span className={`font-semibold ${MONO} text-foreground`}>
+ <span className={`font-semibold ${MONO} text-foreground`}>
                           {fmtPct(closePct)}
                         </span>
                       </span>

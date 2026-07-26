@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { Users } from "lucide-react";
 import {
-  ConfirmationNotice,
+ ConfirmationNotice,
   CoverageNotice,
   UnknownRepsNotice,
 } from "./CoverageNotice";
@@ -18,17 +18,17 @@ import { CloserFocusCard } from "./CloserFocusCard";
 import { monthLabel } from "../lib/format";
 
 function NoActivity() {
-  return (
+ return (
     <div className="rounded-xl border border-border bg-card px-6 py-16">
-      <div className="mx-auto max-w-md text-center">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
-          <Users className="h-5 w-5 text-muted-foreground" />
-        </div>
+ <div className="mx-auto max-w-md text-center">
+ <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-muted">
+ <Users className="h-5 w-5 text-muted-foreground" />
+ </div>
         <h2 className="mt-4 text-base font-semibold">
-          Nothing recorded this period
+ Nothing recorded this period
         </h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          This board fills in from your closers&apos; calendars and completed
+ This board fills in from your closers&apos; calendars and completed
           calls. Try another month, or check that your team has connected their
           calendars.
         </p>
@@ -65,7 +65,7 @@ export function TeamView({
     t.booked > 0 || t.taken > 0 || data.bookedUnattributed > 0;
   // Offers/Closes/Cash all come from the post-call form. When barely anyone
   // fills it in, render those stages as "not known" rather than as zero.
-  const gateBelowTaken = data.coverage.lowCoverage;
+ const gateBelowTaken = data.coverage.lowCoverage;
 
   return (
     <>
@@ -115,8 +115,8 @@ export function TeamView({
               nobody reads. Breakpoints can't solve it — they measure the
               viewport and know nothing about the 256px app sidebar. */}
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-            <div className="flex min-w-0 flex-col">
-              <FunnelChart totals={t} gateBelowTaken={gateBelowTaken} />
+ <div className="flex min-w-0 flex-col">
+ <FunnelChart totals={t} gateBelowTaken={gateBelowTaken} />
             </div>
 
             <div className="min-w-0 space-y-5">

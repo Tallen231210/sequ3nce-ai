@@ -26,14 +26,22 @@ export function fmtSigned(n: number | null | undefined): string {
 }
 
 /**
- * RAG → text colour. Deliberately colour-plus-shape everywhere it's used:
+ * RAG -> text colour.
+ *
+ * Light-only, like the rest of the app. There is no dark theme here — the
+ * palette comes from CSS variables with no dark values — so a `dark:` utility
+ * would be the only thing that flipped on a machine set to dark mode, putting
+ * light-mode text on a light background. Analytics, the reference for this
+ * tab, uses none either.
+ *
+ * Deliberately colour-plus-shape everywhere it's used:
  * a sales floor board gets read at a glance and ~8% of men have some form of
  * colour-vision deficiency, so red/green alone would fail a chunk of users.
  */
 export const RAG_TEXT: Record<Rag, string> = {
-  green: "text-emerald-600 dark:text-emerald-400",
-  amber: "text-amber-600 dark:text-amber-400",
-  red: "text-rose-600 dark:text-rose-400",
+  green: "text-emerald-600",
+  amber: "text-amber-600",
+  red: "text-rose-600",
   na: "text-muted-foreground",
 };
 

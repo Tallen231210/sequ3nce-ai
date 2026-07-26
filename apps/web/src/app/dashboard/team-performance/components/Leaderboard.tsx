@@ -2,7 +2,7 @@
 
 import { Crown, PencilLine, TrendingDown, TrendingUp } from "lucide-react";
 import {
-  fmtCurrency,
+ fmtCurrency,
   fmtNum,
   fmtPct,
   fmtSigned,
@@ -13,7 +13,7 @@ import {
 import { MONO } from "@/components/analytics/primitives/typography";
 
 export interface CloserRow {
-  closerId: string;
+ closerId: string;
   name: string;
   totals: {
     slots: number; booked: number; taken: number; offers: number;
@@ -24,7 +24,7 @@ export interface CloserRow {
     offerClosePct: number | null; closePct: number | null;
   };
   rag: Record<"bookedPct" | "showPct" | "offerClosePct" | "closePct", Rag>;
-  avgDeal: number | null;
+ avgDeal: number | null;
   net: number;
   goal: number | null;
   pctGoal: number | null;
@@ -53,20 +53,20 @@ function RoasCell({ roas, adCost }: { roas?: number | null; adCost?: number | nu
   if (roas === null || roas === undefined) {
     return (
       <span className="text-xs text-muted-foreground" title="Needs ad spend set">
-        —
+ —
       </span>
     );
   }
   const tone =
     roas < 1
-      ? "text-rose-600 dark:text-rose-400"
-      : roas < 2
-        ? "text-amber-600 dark:text-amber-400"
-        : "text-emerald-600 dark:text-emerald-400";
-  return (
+      ? "text-rose-600"
+ : roas < 2
+        ? "text-amber-600"
+ : "text-emerald-600";
+ return (
     <span
       className={"font-semibold " + MONO + " " + tone}
-      title={
+ title={
         adCost != null
           ? `${fmtCurrency(adCost)} of ad spend on their calls returned ${roas.toFixed(2)}x`
           : undefined
@@ -86,18 +86,18 @@ function RoasCell({ roas, adCost }: { roas?: number | null; adCost?: number | nu
  * column is for.
  */
 function RowSpark({ weeks }: { weeks?: number[] }) {
-  if (!weeks || weeks.every((w) => w === 0)) {
+ if (!weeks || weeks.every((w) => w === 0)) {
     return <span className="text-xs text-muted-foreground">—</span>;
-  }
+ }
   const max = Math.max(...weeks, 1);
   return (
     <span className="inline-flex h-6 items-end gap-[3px]" aria-hidden>
-      {weeks.map((w, i) => (
+ {weeks.map((w, i) => (
         <span
           key={i}
           title={`WK${i + 1}`}
           className="w-[5px] rounded-[1px] bg-foreground/25"
-          style={{ height: `${Math.max((w / max) * 100, w > 0 ? 12 : 6)}%` }}
+ style={{ height: `${Math.max((w / max) * 100, w > 0 ? 12 : 6)}%` }}
         />
       ))}
     </span>
@@ -107,17 +107,17 @@ function RowSpark({ weeks }: { weeks?: number[] }) {
 function GoalCell({ pct, goal }: { pct: number | null; goal: number | null }) {
   if (goal === null || goal <= 0) {
     return <span className="text-xs text-muted-foreground">No goal set</span>;
-  }
+ }
   const clamped = Math.min(100, Math.max(0, pct ?? 0));
   const hit = (pct ?? 0) >= 100;
   return (
     <div className="w-[104px]">
-      <div className="flex items-baseline justify-between">
-        <span
+ <div className="flex items-baseline justify-between">
+ <span
           className={
             "text-xs font-semibold " + MONO + " " +
-            (hit ? "text-emerald-600 dark:text-emerald-400" : "")
-          }
+ (hit ? "text-emerald-600" : "")
+ }
         >
           {fmtPct(pct)}
         </span>
@@ -126,11 +126,11 @@ function GoalCell({ pct, goal }: { pct: number | null; goal: number | null }) {
         </span>
       </div>
       <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
-        <div
+ <div
           className={
             "h-full rounded-full transition-all " +
-            (hit ? "bg-emerald-500" : "bg-foreground/60")
-          }
+ (hit ? "bg-emerald-500" : "bg-foreground/60")
+ }
           style={{ width: `${clamped}%` }}
         />
       </div>
@@ -149,8 +149,8 @@ function WowCell({
     return (
       <span
         className="text-xs text-muted-foreground"
-        title="No prior week to compare against yet"
-      >
+ title="No prior week to compare against yet"
+ >
         —
       </span>
     );
@@ -162,17 +162,17 @@ function WowCell({
       title={
         daysCompared
           ? `This week's first ${daysCompared} day${daysCompared === 1 ? "" : "s"} vs the same ${daysCompared} last week`
-          : undefined
+ : undefined
       }
       className={
         "inline-flex items-center gap-1 text-xs font-medium " + MONO + " " +
-        (up
-          ? "text-emerald-600 dark:text-emerald-400"
-          : "text-rose-600 dark:text-rose-400")
-      }
+ (up
+          ? "text-emerald-600"
+ : "text-rose-600")
+ }
     >
       <Icon className="h-3 w-3" />
-      {fmtSigned(pct)}
+ {fmtSigned(pct)}
     </span>
   );
 }
@@ -187,7 +187,7 @@ const TD = "px-2.5 py-2.5 text-sm " + MONO + " whitespace-nowrap";
  * it came from, instead of stranding them at opposite ends of a wide table.
  */
 function CountRate({
-  count,
+ count,
   rate,
   tone,
   dim,
@@ -199,19 +199,19 @@ function CountRate({
 }) {
   return (
     <div className="text-right leading-tight">
-      <div
+ <div
         className={"text-sm " + MONO + " " + (dim ? "text-muted-foreground" : "")}
-      >
+ >
         {fmtNum(count)}
       </div>
       {rate !== undefined && (
         <div
           className={
             "text-[11px] " + MONO + " " + (tone ? RAG_TEXT[tone] : "text-muted-foreground")
-          }
+ }
         >
           {rate === null ? "—" : fmtPct(rate)}
-        </div>
+ </div>
       )}
     </div>
   );
@@ -235,8 +235,8 @@ export function Leaderboard({
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card px-5 py-10 text-center">
-        <p className="text-sm text-muted-foreground">
-          No closer activity recorded for this period.
+ <p className="text-sm text-muted-foreground">
+ No closer activity recorded for this period.
         </p>
       </div>
     );
@@ -244,58 +244,58 @@ export function Leaderboard({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-3.5">
-        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Leaderboard</h3>
-        <p className="text-xs text-muted-foreground">
-          {onSelectCloser
+ <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-3.5">
+ <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Leaderboard</h3>
+ <p className="text-xs text-muted-foreground">
+ {onSelectCloser
             ? "Ranked by cash · click a row to focus"
-            : "Ranked by cash collected"}
-        </p>
+ : "Ranked by cash collected"}
+ </p>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1120px]">
-          <thead className="border-b border-border bg-muted/30">
-            <tr>
+ <table className="w-full min-w-[1120px]">
+ <thead className="border-b border-border bg-muted/30">
+ <tr>
               <th className={TH + " w-9 text-center"}>#</th>
-              <th className={TH + " text-left"}>Closer</th>
-              <th className={TH + " text-right"}>Trend</th>
-              <th className={TH + " text-right"}>Open/day</th>
-              <th className={TH + " text-right"}>Booked</th>
-              <th className={TH + " text-right"}>Taken</th>
-              <th className={TH + " text-right"}>Offers</th>
-              <th className={TH + " text-right"}>Closes</th>
-              <th className={TH + " text-right"}>Cash</th>
-              <th
+ <th className={TH + " text-left"}>Closer</th>
+ <th className={TH + " text-right"}>Trend</th>
+ <th className={TH + " text-right"}>Open/day</th>
+ <th className={TH + " text-right"}>Booked</th>
+ <th className={TH + " text-right"}>Taken</th>
+ <th className={TH + " text-right"}>Offers</th>
+ <th className={TH + " text-right"}>Closes</th>
+ <th className={TH + " text-right"}>Cash</th>
+ <th
                 className={TH + " text-right"}
-                title="Cash collected per close. Payment plans make this smaller than the deal signed."
-              >
+ title="Cash collected per close. Payment plans make this smaller than the deal signed."
+ >
                 Avg cash
               </th>
               <th
                 className={TH + " text-right"}
-                title="Contract value per close — the size of the deal signed, before payment terms"
-              >
+ title="Contract value per close — the size of the deal signed, before payment terms"
+ >
                 Avg deal
               </th>
               <th
                 className={TH + " text-right"}
-                title="Cash returned per dollar of ad spend on the calls this closer took. Below 1x they return less than their leads cost."
-              >
+ title="Cash returned per dollar of ad spend on the calls this closer took. Below 1x they return less than their leads cost."
+ >
                 ROAS
               </th>
               <th className={TH + " text-right"}>Net</th>
-              <th className={TH + " text-left"}>Goal</th>
-              <th
+ <th className={TH + " text-left"}>Goal</th>
+ <th
                 className={TH + " text-right"}
-                title="Week over week, comparing only the days elapsed so far against the same days last week"
-              >
+ title="Week over week, comparing only the days elapsed so far against the same days last week"
+ >
                 WoW
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((r, i) => {
+ {rows.map((r, i) => {
               const leader = i === 0 && r.totals.cash > 0;
               const edited = r.overriddenFields.length > 0;
               return (
@@ -308,78 +308,78 @@ export function Leaderboard({
                   }
                   className={
                     "transition-colors " +
-                    (onSelectCloser ? "cursor-pointer " : "") +
-                    (selectedCloserId === r.closerId
+ (onSelectCloser ? "cursor-pointer " : "") +
+ (selectedCloserId === r.closerId
                       ? "bg-muted "
-                      : "hover:bg-muted/40 " +
-                        (leader ? "bg-amber-50/40 dark:bg-amber-950/10 " : ""))
-                  }
+ : "hover:bg-muted/40 " +
+ (leader ? "bg-amber-50/40 " : ""))
+ }
                 >
                   <td className={TD + " text-center text-muted-foreground"}>
-                    {leader ? (
+ {leader ? (
                       <Crown
                         className="mx-auto h-3.5 w-3.5 text-amber-500"
-                        aria-label="Top performer"
-                      />
+ aria-label="Top performer"
+ />
                     ) : (
                       i + 1
                     )}
                   </td>
 
                   <td className="px-3 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-                        {initials(r.name)}
+ <div className="flex items-center gap-2.5">
+ <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+ {initials(r.name)}
                       </span>
                       <span className="truncate text-sm font-medium">
-                        {r.name}
+ {r.name}
                       </span>
                       {edited && (
                         <span
                           className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-                          title="Contains manually entered values that differ from what Sequ3nce recorded"
-                        >
+ title="Contains manually entered values that differ from what Sequ3nce recorded"
+ >
                           <PencilLine className="h-2.5 w-2.5" />
-                          Edited
+ Edited
                         </span>
                       )}
                     </div>
                   </td>
 
                   <td className="px-2.5 py-2.5 text-right">
-                    <RowSpark weeks={r.weekCash} />
+ <RowSpark weeks={r.weekCash} />
                   </td>
                   <td
                     className={TD + " text-right text-muted-foreground"}
-                    title={
+ title={
                       r.openHoursPerDay == null
                         ? "Availability not measured — this closer's calendar doesn't show when they're unavailable"
-                        : "Average time left unbooked per active day"
-                    }
+ : "Average time left unbooked per active day"
+ }
                   >
                     {r.openHoursPerDay == null
                       ? "—"
-                      : `${r.openHoursPerDay.toFixed(1)}h`}
+ : `${r.openHoursPerDay.toFixed(1)}h`}
                   </td>
                   <td className="px-2.5 py-2.5">
-                    <CountRate
+ <CountRate
                       count={r.totals.booked}
                       rate={r.rates.bookedPct}
                       tone={r.rag.bookedPct}
                     />
                   </td>
                   <td className="px-2.5 py-2.5">
-                    <CountRate
+ <CountRate
                       count={r.totals.taken}
                       rate={r.rates.showPct}
                       tone={r.rag.showPct}
                     />
                   </td>
                   <td className="px-2.5 py-2.5">
-                    <CountRate count={r.totals.offers} dim={gateBelowTaken} />
+ <CountRate count={r.totals.offers} dim={gateBelowTaken} />
                   </td>
                   <td className="px-2.5 py-2.5">
-                    <CountRate
+ <CountRate
                       count={r.totals.closes}
                       rate={r.rates.closePct}
                       tone={r.rag.closePct}
@@ -387,31 +387,31 @@ export function Leaderboard({
                     />
                   </td>
                   <td className={TD + " text-right font-semibold"}>
-                    {fmtCurrency(r.totals.cash)}
+ {fmtCurrency(r.totals.cash)}
                   </td>
                   <td className={TD + " text-right text-muted-foreground"}>
-                    {fmtCurrency(r.avgDeal)}
+ {fmtCurrency(r.avgDeal)}
                   </td>
                   <td className={TD + " text-right text-muted-foreground"}>
-                    {fmtCurrency(
+ {fmtCurrency(
                       r.totals.closes > 0
                         ? r.totals.contractValue / r.totals.closes
                         : null,
                     )}
                   </td>
                   <td className={TD + " text-right"}>
-                    <RoasCell roas={r.roas} adCost={r.adCost} />
+ <RoasCell roas={r.roas} adCost={r.adCost} />
                   </td>
                   <td
                     className={
                       TD + " text-right " +
-                      (r.net < 0 ? "text-rose-600 dark:text-rose-400" : "")
-                    }
+ (r.net < 0 ? "text-rose-600" : "")
+ }
                   >
                     {fmtCurrency(r.net)}
                   </td>
                   <td className="px-3 py-3">
-                    <GoalCell pct={r.pctGoal} goal={r.goal} />
+ <GoalCell pct={r.pctGoal} goal={r.goal} />
                   </td>
                   <td className={TD + " text-right"}>
                     <WowCell pct={r.wowPct} daysCompared={wowDaysCompared} />

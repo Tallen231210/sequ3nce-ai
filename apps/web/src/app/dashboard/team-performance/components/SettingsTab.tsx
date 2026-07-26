@@ -6,9 +6,9 @@ import { ScorecardSettings } from "./ScorecardSettings";
 import { TargetsSettings } from "./TargetsSettings";
 
 const SECTIONS = [
-  ["targets", "Goals & prize"],
-  ["availability", "Availability"],
-  ["post", "Daily post"],
+ ["targets", "Goals & prize"],
+ ["availability", "Availability"],
+ ["post", "Daily post"],
 ] as const;
 
 type Section = (typeof SECTIONS)[number][0];
@@ -21,22 +21,22 @@ type Section = (typeof SECTIONS)[number][0];
  * pointed managers at "settings" that didn't exist anywhere.
  */
 export function SettingsTab() {
-  const [section, setSection] = useState<Section>("targets");
+ const [section, setSection] = useState<Section>("targets");
 
-  return (
+ return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border p-1">
-        {SECTIONS.map(([id, label]) => (
+ <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border p-1">
+ {SECTIONS.map(([id, label]) => (
           <button
             key={id}
             type="button"
-            onClick={() => setSection(id)}
+ onClick={() => setSection(id)}
             className={
               "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
-              (section === id
+ (section === id
                 ? "bg-foreground text-background"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground")
-            }
+ : "text-muted-foreground hover:bg-muted hover:text-foreground")
+ }
           >
             {label}
           </button>
@@ -44,8 +44,8 @@ export function SettingsTab() {
       </div>
 
       {section === "targets" && <TargetsSettings />}
-      {section === "availability" && <CapacitySettings />}
-      {section === "post" && <ScorecardSettings />}
+ {section === "availability" && <CapacitySettings />}
+ {section === "post" && <ScorecardSettings />}
     </div>
   );
 }
