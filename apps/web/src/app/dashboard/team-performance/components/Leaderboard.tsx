@@ -67,14 +67,32 @@ function GoalCell({ pct, goal }: { pct: number | null; goal: number | null }) {
   );
 }
 
-function WowCell({ pct }: { pct: number | null }) {
+function WowCell({
+  pct,
+  daysCompared,
+}: {
+  pct: number | null;
+  daysCompared?: number;
+}) {
   if (pct === null) {
-    return <span className="text-xs text-muted-foreground">—</span>;
+    return (
+      <span
+        className="text-xs text-muted-foreground"
+        title="No prior week to compare against yet"
+      >
+        —
+      </span>
+    );
   }
   const up = pct >= 0;
   const Icon = up ? TrendingUp : TrendingDown;
   return (
     <span
+      title={
+        daysCompared
+          ? `This week's first ${daysCompared} day${daysCompared === 1 ? "" : "s"} vs the same ${daysCompared} last week`
+          : undefined
+      }
       className={
         "inline-flex items-center gap-1 text-xs font-medium tabular-nums " +
         (up
@@ -131,9 +149,12 @@ function CountRate({
 export function Leaderboard({
   rows,
   gateBelowTaken,
+  wowDaysCompared,
 }: {
   rows: CloserRow[];
   gateBelowTaken: boolean;
+  /** How many elapsed days WoW compared, so the column can say so. */
+  wowDaysCompared?: number;
 }) {
   if (rows.length === 0) {
     return (
@@ -167,7 +188,12 @@ export function Leaderboard({
               <th className={TH + " text-right"}>Avg deal</th>
               <th className={TH + " text-right"}>Net</th>
               <th className={TH + " text-left"}>Goal</th>
-              <th className={TH + " text-right"}>WoW</th>
+              <th
+                className={TH + " text-right"}
+                title="Week over week, comparing only the days elapsed so far against the same days last week"
+              >
+                WoW
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -268,7 +294,7 @@ export function Leaderboard({
                     <GoalCell pct={r.pctGoal} goal={r.goal} />
                   </td>
                   <td className={TD + " text-right"}>
-                    <WowCell pct={r.wowPct} />
+                    <WowCell pct={r.wowPct} daysCompared={wowDaysCompared} />
                   </td>
                 </tr>
               );

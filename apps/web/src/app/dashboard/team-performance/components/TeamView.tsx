@@ -146,6 +146,7 @@ export function TeamView({
           <Leaderboard
             rows={data.perCloser as CloserRow[]}
             gateBelowTaken={gateBelowTaken}
+            wowDaysCompared={data.wowWindow?.daysCompared}
           />
         </>
       )}

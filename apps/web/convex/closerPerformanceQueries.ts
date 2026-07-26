@@ -128,9 +128,12 @@ export const getTeamPerformance = query({
     // assert one. Averaged over days the closer actually had activity.
     const openByCloser = new Map<string, { openMin: number; days: number }>();
     const overriddenByCloser = new Map<string, Set<string>>();
-    // Week buckets power the sparkline + WoW trend.
+    // Week buckets power the sparkline.
     const weekCashTeam = [0, 0, 0, 0, 0];
-    const weekCashByCloser = new Map<string, number[]>();
+    // Cash per closer per week per day-within-week. WoW needs day resolution:
+    // comparing a part-finished week against a completed one is arithmetic,
+    // not performance, and it reported a collapse every Monday.
+    const weekDayCash = new Map<string, number[][]>();
 
     // Union of measured rows and corrections — a manager's entry on a day we
     // measured nothing must still appear. See mergeDailyRows.
@@ -142,11 +145,15 @@ export const getTeamPerformance = query({
 
       // Week buckets always span the whole month (the sparkline shows the
       // month even when the table is scoped to one week).
+      const dayOfMonth = parseInt(row.dayKey.slice(8, 10), 10);
       const wi = weekIndexOfDayKey(row.dayKey);
+      const offsetInWeek = (dayOfMonth - 1) % 7;
       weekCashTeam[wi] += totals.cash;
-      const wcb = weekCashByCloser.get(key) ?? [0, 0, 0, 0, 0];
-      wcb[wi] += totals.cash;
-      weekCashByCloser.set(key, wcb);
+      const grid =
+        weekDayCash.get(key) ??
+        Array.from({ length: 5 }, () => new Array(7).fill(0) as number[]);
+      grid[wi][offsetInWeek] += totals.cash;
+      weekDayCash.set(key, grid);
 
       if (!inScope(row.dayKey)) continue;
       const cap = capByCloser.get(key) ?? { known: 0, unknown: 0 };
@@ -198,11 +205,38 @@ export const getTeamPerformance = query({
 
     const economics = computeEconomics(teamTotals, adSpendForPeriod, compPct);
 
-    // Which week is "current" for WoW — the latest week with any activity.
-    const lastActiveWeek = weekCashTeam.reduce(
-      (acc, c, i) => (c > 0 ? i : acc),
+    // --- Week-over-week window ------------------------------------------
+    // Anchor on the week in progress (or, for a past month, the last week with
+    // activity), then compare only the days that have actually elapsed in it
+    // against the SAME number of days in the prior week. Without that, every
+    // reading before Sunday compares a partial week to a full one and shows a
+    // drop that is purely calendar arithmetic.
+    const dim = daysInMonth(monthKey);
+    const todayDayOfMonth = parseInt(todayKey.slice(8, 10), 10);
+    const anchorWeek = isCurrentMonth
+      ? weekIndexOfDayKey(todayKey)
+      : weekCashTeam.reduce((acc, c, i) => (c > 0 ? i : acc), 0);
+
+    const weekStartDay = anchorWeek * 7 + 1;
+    const daysExisting = Math.min(7, dim - weekStartDay + 1);
+    const daysElapsedInWeek = Math.max(
       0,
+      isCurrentMonth
+        ? Math.min(daysExisting, todayDayOfMonth - weekStartDay + 1)
+        : daysExisting,
     );
+
+    /** Cash in the first `days` days of a given week for one closer. */
+    const cashInWeekPrefix = (
+      grid: number[][] | undefined,
+      week: number,
+      days: number,
+    ): number => {
+      if (!grid || week < 0 || days <= 0) return 0;
+      let sum = 0;
+      for (let i = 0; i < days && i < 7; i++) sum += grid[week][i];
+      return sum;
+    };
 
     const nameById = new Map(closers.map((c) => [String(c._id), c.name]));
     const rows: CloserRow[] = Array.from(totalsByCloser.entries())
@@ -214,7 +248,7 @@ export const getTeamPerformance = query({
         // publish a confident-looking number built on a guessed denominator.
         if (!capacity.reliable) rates.bookedPct = null;
         const goal = goalByCloser.get(closerId) ?? null;
-        const wcb = weekCashByCloser.get(closerId) ?? [0, 0, 0, 0, 0];
+        const grid = weekDayCash.get(closerId);
         return {
           closerId: closerId as Id<"closers">,
           name: nameById.get(closerId) ?? "Unknown closer",
@@ -232,9 +266,14 @@ export const getTeamPerformance = query({
           net: repNet(totals.cash, totals.booked, economics.costPerBooked, compPct),
           goal,
           pctGoal: pctOfGoal(totals.cash, goal),
+          // Null in week 1 (nothing to compare against) and on a day-zero
+          // week, rather than inventing a comparison.
           wowPct:
-            lastActiveWeek > 0
-              ? wow(wcb[lastActiveWeek], wcb[lastActiveWeek - 1])
+            anchorWeek > 0 && daysElapsedInWeek > 0
+              ? wow(
+                  cashInWeekPrefix(grid, anchorWeek, daysElapsedInWeek),
+                  cashInWeekPrefix(grid, anchorWeek - 1, daysElapsedInWeek),
+                )
               : null,
           overriddenFields: Array.from(overriddenByCloser.get(closerId) ?? []),
         };
@@ -247,8 +286,7 @@ export const getTeamPerformance = query({
       0,
     );
     const teamTarget = team.closerTeamCashGoalOverride ?? sumRepGoals;
-    const dim = daysInMonth(monthKey);
-    const elapsed = isCurrentMonth ? parseInt(todayKey.slice(8, 10), 10) : dim;
+    const elapsed = isCurrentMonth ? todayDayOfMonth : dim;
     // Month totals (not week-scoped) drive pacing — a month projection from
     // one week's cash would be nonsense.
     let monthTotals = emptyTotals();
@@ -318,6 +356,8 @@ export const getTeamPerformance = query({
       economics,
       perCloser: rows,
       weekCash: weekCashTeam,
+      // So the UI can state what WoW actually compared.
+      wowWindow: { weekIndex: anchorWeek, daysCompared: daysElapsedInWeek },
       projection,
       teamTarget,
       sumRepGoals,
