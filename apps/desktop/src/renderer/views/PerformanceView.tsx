@@ -10,6 +10,7 @@ import {
   type LeaderboardRow,
 } from '../convex';
 import { PerformanceDayForm } from './PerformanceDayForm';
+import { PerformanceGrid } from './PerformanceGrid';
 import { PerformanceStats } from './PerformanceStats';
 
 type Section = 'today' | 'history' | 'stats';
@@ -79,6 +80,11 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
     await load();
     setSavingDay(null);
   };
+
+  // Editing a cell submits that day: a closer correcting a number IS a closer
+  // telling us the day is right, so it needs no separate confirm action.
+  const commitCell = (dayKey: string, key: string, value: number | null) =>
+    submitDay(dayKey, { [key]: value });
 
   if (loading) {
     return (
@@ -180,49 +186,13 @@ export function PerformanceView({ closerInfo }: { closerInfo: CloserInfo }) {
       )}
 
       {section === 'history' && (
-        <div className="space-y-3">
-          {previous.length === 0 && (
-            <p className="text-[13px] text-gray-400">No earlier days this month.</p>
-          )}
-          {previous.map((row) => (
-            <details
-              key={row.dayKey}
-              className="bg-[#fafafa] border border-gray-200/60 rounded-lg overflow-hidden"
-            >
-              <summary className="flex items-center justify-between px-4 py-3 cursor-pointer list-none">
-                <span className="flex items-center gap-2.5">
-                  <span
-                    className={
-                      'w-1.5 h-1.5 rounded-full ' +
-                      (row.confirmedAt ? 'bg-emerald-500' : 'bg-gray-300')
-                    }
-                  />
-                  <span className="text-[13px] font-medium text-black">
-                    {dayLabel(row.dayKey)}
-                  </span>
-                </span>
-                <span className="text-[12px] font-mono text-gray-500">
-                  {row.confirmedAt
-                    ? `$${(row.reported?.cash ?? row.measured.cash ?? 0).toLocaleString()}`
-                    : 'not submitted'}
-                </span>
-              </summary>
-              <div className="px-4 pb-4 pt-1 border-t border-gray-200/60">
-                <PerformanceDayForm
-                  compact
-                  row={row}
-                  saving={savingDay === row.dayKey}
-                  error={errorDay[row.dayKey] ?? null}
-                  onSubmit={(v) => void submitDay(row.dayKey, v)}
-                />
-              </div>
-            </details>
-          ))}
-          <p className="text-[11px] text-gray-400 pt-1">
-            Any day stays editable — refunds and balance payments belong on the
-            day of the sale, however long after they land.
-          </p>
-        </div>
+        <PerformanceGrid
+          rows={previous}
+          savingDay={savingDay}
+          errors={errorDay}
+          onCommit={(d, k, v) => void commitCell(d, k, v)}
+          onConfirm={(d) => void submitDay(d, {})}
+        />
       )}
 
       {section === 'stats' && (

@@ -5,6 +5,7 @@ import {
   DEFAULT_TARGETS,
   addTotals,
   computeCapacitySignal,
+  computeProjection,
   computeRates,
   emptyTotals,
   mergeDailyRows,
@@ -56,7 +57,7 @@ export const getSelfPerformance = internalQuery({
     const start = `${monthKey}-01`;
     const end = `${monthKey}-31`;
 
-    const [stats, overrides, entries, goal] = await Promise.all([
+    const [stats, overrides, entries, teamEntries, goal] = await Promise.all([
       ctx.db
         .query("closerDailyStats")
         .withIndex("by_team_and_day", (q: any) =>
@@ -73,6 +74,12 @@ export const getSelfPerformance = internalQuery({
         .query("closerDailyEntries")
         .withIndex("by_closer_and_day", (q: any) =>
           q.eq("closerId", args.closerId).gte("dayKey", start).lte("dayKey", end),
+        )
+        .collect(),
+      ctx.db
+        .query("closerDailyEntries")
+        .withIndex("by_team_and_day", (q: any) =>
+          q.eq("teamId", teamId).gte("dayKey", start).lte("dayKey", end),
         )
         .collect(),
       ctx.db
@@ -94,13 +101,25 @@ export const getSelfPerformance = internalQuery({
     let capKnown = 0;
     let capUnknown = 0;
     let daysSubmitted = 0;
+    // Their cash by week, for the same sparkline the manager board carries.
+    const weekCash = [0, 0, 0, 0, 0];
     for (const row of mine) {
       // Reported-only, matching the manager board exactly.
       if (!row.confirmed && row.overridden.length === 0) continue;
       totals = addTotals(totals, row.totals);
+      const wi = Math.min(4, Math.floor((parseInt(row.dayKey.slice(8, 10), 10) - 1) / 7));
+      weekCash[wi] += row.totals.cash;
       if (row.confirmed) daysSubmitted += 1;
       if (row.capacityKnown === false) capUnknown += 1;
       else if (row.capacityKnown === true) capKnown += 1;
+    }
+
+    // Team cash for the shared prize. The prize belongs to the whole floor, so
+    // showing a closer only their own share of it would misrepresent the race.
+    let teamCash = 0;
+    for (const row of mergeDailyRows(stats, overrides, teamEntries)) {
+      if (!row.confirmed && row.overridden.length === 0) continue;
+      teamCash += row.totals.cash;
     }
 
     const targets = {
@@ -137,6 +156,27 @@ export const getSelfPerformance = internalQuery({
       // Their own submission rate — the nudge lives here, not on a manager screen.
       daysSubmitted,
       daysElapsed,
+      weekCash,
+      // Paced against their own goal, not the team's.
+      projection: computeProjection(
+        totals.cash,
+        goal?.cashGoal ?? 0,
+        daysInMonth(monthKey),
+        daysElapsed,
+        !isCurrentMonth,
+      ),
+      prize:
+        team.closerPrizeName && (team.closerPrizeTarget ?? 0) > 0
+          ? {
+              name: team.closerPrizeName,
+              emoji: team.closerPrizeEmoji ?? null,
+              target: team.closerPrizeTarget as number,
+              collected: teamCash,
+              pct: (teamCash / (team.closerPrizeTarget as number)) * 100,
+              unlocked: teamCash >= (team.closerPrizeTarget as number),
+              remaining: Math.max(0, (team.closerPrizeTarget as number) - teamCash),
+            }
+          : null,
     };
   },
 });
