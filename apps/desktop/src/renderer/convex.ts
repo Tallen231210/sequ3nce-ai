@@ -2228,3 +2228,145 @@ export async function getUnreadMessageCount(closerId: string): Promise<number> {
     return 0;
   }
 }
+
+// ============================================================================
+// Team Performance — the closer's own numbers.
+//
+// The board reports what closers submit, so these are the primary write path
+// for the feature, not a supplement. Reads pre-fill the sheet from what the
+// meeting bot recorded; nothing reaches a manager's board until the closer
+// submits the day.
+// ============================================================================
+
+export interface PerfTotals {
+  slots: number; booked: number; taken: number; offers: number;
+  closes: number; cash: number; contractValue: number; missingOutcomes: number;
+}
+
+export interface SelfPerformance {
+  monthKey: string;
+  timezone: string;
+  closerName: string;
+  totals: PerfTotals;
+  rates: {
+    bookedPct: number | null; showPct: number | null;
+    offerClosePct: number | null; closePct: number | null;
+  };
+  rag: Record<string, "green" | "amber" | "red" | "na">;
+  targets: Record<string, number>;
+  capacityReliable: boolean;
+  avgCash: number | null;
+  avgDeal: number | null;
+  goal: number | null;
+  pctGoal: number | null;
+  daysSubmitted: number;
+  daysElapsed: number;
+}
+
+export interface DailyEntryRow {
+  dayKey: string;
+  measured: Record<string, number>;
+  /** False when the bot recorded nothing — ask them to fill it in, not confirm. */
+  measuredExists: boolean;
+  reported: Record<string, number | undefined> | null;
+  confirmedAt: number | null;
+  managerCorrected: Record<string, number | undefined> | null;
+}
+
+export interface LeaderboardRow {
+  closerId: string;
+  name: string;
+  isYou: boolean;
+  booked: number; taken: number; offers: number; closes: number; cash: number;
+  avgCash: number | null; avgDeal: number | null;
+  showPct: number | null; closePct: number | null;
+}
+
+export async function getCloserPerformance(
+  closerId: string,
+  monthKey?: string,
+): Promise<SelfPerformance | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserPerformance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, ...(monthKey ? { monthKey } : {}) }),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get closer performance:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCloserPerformance", integration: "convex" },
+    });
+    return null;
+  }
+}
+
+export async function getCloserDailyEntries(
+  closerId: string,
+  monthKey: string,
+): Promise<{ monthKey: string; todayKey: string; rows: DailyEntryRow[] } | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserDailyEntries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, monthKey }),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get daily entries:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCloserDailyEntries", integration: "convex" },
+    });
+    return null;
+  }
+}
+
+/**
+ * Submit one day. Passing no values still marks it submitted — confirming
+ * that our numbers are right is the point of the confirm step, not a no-op.
+ * Returns the server's message on failure so the closer can fix the value.
+ */
+export async function saveCloserDailyEntry(
+  closerId: string,
+  dayKey: string,
+  values: Record<string, number | null>,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/saveCloserDailyEntry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, dayKey, values }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to save daily entry:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "saveCloserDailyEntry", integration: "convex" },
+    });
+    return { success: false, error: "Couldn't reach the server. Try again." };
+  }
+}
+
+export async function getTeamLeaderboardForCloser(
+  closerId: string,
+  monthKey?: string,
+): Promise<{ monthKey: string; rows: LeaderboardRow[] } | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getTeamLeaderboardForCloser`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, ...(monthKey ? { monthKey } : {}) }),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get leaderboard:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getTeamLeaderboardForCloser", integration: "convex" },
+    });
+    return null;
+  }
+}

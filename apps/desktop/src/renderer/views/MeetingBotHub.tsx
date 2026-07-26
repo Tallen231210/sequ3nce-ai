@@ -13,6 +13,7 @@ import { useTheme } from '../ThemeContext';
 import logoImage from '../../assets/logo.png';
 import { DashboardView } from './DashboardView';
 import { StatsView } from './StatsView';
+import { PerformanceView } from './PerformanceView';
 import { CallHistoryView } from './CallHistoryView';
 import { CoachingView } from './CoachingView';
 import { BotOnboardingView } from './BotOnboardingView';
@@ -28,6 +29,7 @@ type SidebarItem =
   | 'dashboard'
   | 'stats'
   | 'calls'
+  | 'performance'
   | 'schedule'
   | 'roleplay'
   | 'messages'
@@ -57,6 +59,15 @@ const NAV_ITEMS: NavItem[] = [
     icon: (
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
         <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'performance',
+    label: 'My Numbers',
+    icon: (
+      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M5 2a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V4a2 2 0 00-2-2H5zm3 3a1 1 0 000 2h4a1 1 0 100-2H8zm-1 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm1 3a1 1 0 100 2h4a1 1 0 100-2H8z" clipRule="evenodd" />
       </svg>
     ),
   },
@@ -489,6 +500,8 @@ function renderContent(
       return <DashboardView closerInfo={closerInfo} onNavigate={(id) => onNavigate(id as SidebarItem)} />;
     case 'stats':
       return <StatsView closerInfo={closerInfo} />;
+    case 'performance':
+      return <PerformanceView closerInfo={closerInfo} />;
     case 'calls':
       return <CallHistoryView closerInfo={closerInfo} onOpenQuestionnaire={onOpenQuestionnaire} />;
     case 'coaching':
