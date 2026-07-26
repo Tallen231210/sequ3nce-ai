@@ -140,9 +140,16 @@ export function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navigation.map((item) => {
+            // Match on a path SEGMENT boundary, not a raw prefix. A bare
+            // startsWith lights up every link whose href is a string prefix of
+            // another: /dashboard/team-performance made "Team" active too,
+            // because it starts with /dashboard/team. The old special case for
+            // "/dashboard" was the same bug patched one route at a time.
             const isActive =
-              pathname === item.href ||
-              (item.href !== "/dashboard" && pathname.startsWith(item.href));
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname === item.href ||
+                  pathname.startsWith(item.href + "/");
 
             const badge =
               item.name === "Call Reviews" && callReviewsBadge
