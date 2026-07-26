@@ -84,7 +84,7 @@ export function TeamView({
               nobody reads. Breakpoints can't solve it — they measure the
               viewport and know nothing about the 256px app sidebar. */}
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-            <div className="min-w-0 space-y-5">
+            <div className="flex min-w-0 flex-col">
               <FunnelChart totals={t} gateBelowTaken={gateBelowTaken} />
             </div>
 

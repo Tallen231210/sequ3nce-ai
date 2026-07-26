@@ -84,7 +84,7 @@ export function FunnelChart({
   const leakIndex = leak ? stages.findIndex((s) => s.key === leak.key) : -1;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-3.5">
         <h3 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Funnel
@@ -103,7 +103,7 @@ export function FunnelChart({
         )}
       </div>
 
-      <div className="px-5 py-5">
+      <div className="flex flex-1 flex-col justify-between px-5 py-5">
         {stages.map((s, i) => {
           const widthPct = Math.max((s.value / max) * 100, s.value > 0 ? 1.5 : 0);
           const dim = s.gated && s.value === 0;
