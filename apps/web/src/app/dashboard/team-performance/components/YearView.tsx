@@ -49,7 +49,7 @@ function YearChart({
         <p className="text-xs text-muted-foreground">Click a month to open it</p>
       </div>
 
-      <div className="mt-5 flex h-44 items-end gap-1.5">
+      <div className="mt-5 flex items-end gap-1.5">
         {months.map((m) => {
           const pct = (m.totals.cash / max) * 100;
           const isBest = m.monthKey === bestMonthKey && m.totals.cash > 0;
@@ -65,7 +65,11 @@ function YearChart({
               <span className={`text-[10px] ${MONO} text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100`}>
                 {m.totals.cash > 0 ? fmtCurrency(m.totals.cash, true) : ""}
               </span>
-              <div className="flex h-full w-full items-end">
+              {/* Explicit height: the row uses items-end, so buttons are sized
+                  by content and a percentage height inside them has nothing to
+                  resolve against — the bars collapsed to zero and the chart
+                  rendered blank. */}
+              <div className="flex h-36 w-full items-end">
                 <div
                   className={
                     "w-full rounded-t transition-all " +
@@ -217,8 +221,16 @@ export function YearView({
           />
 
           <div className="overflow-hidden rounded-xl border border-border bg-card">
-            <div className="border-b border-border px-5 py-3.5">
-              <h3 className="text-sm font-semibold">Month by month</h3>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-3.5">
+              <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                Month by month
+              </h3>
+              {data.adSpendIsCurrentMonthly && (
+                <p className="text-[11px] text-muted-foreground">
+                  Cost / booked and Net use today&apos;s monthly ad spend, not
+                  what was spent at the time
+                </p>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px]">
@@ -300,15 +312,19 @@ export function YearView({
                           {fmtPct(m.rates.closePct)}
                         </td>
                         <td className={TD + " text-right text-muted-foreground"}>
-                          {fmtCurrency(m.costPerBooked)}
+                          {m.costPerBooked == null
+                            ? "—"
+                            : fmtCurrency(m.costPerBooked)}
                         </td>
                         <td
                           className={
                             TD + " text-right " +
-                            (m.net < 0 ? "text-rose-600 dark:text-rose-400" : "")
+                            (m.net != null && m.net < 0
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "")
                           }
                         >
-                          {fmtCurrency(m.net)}
+                          {m.net == null ? "—" : fmtCurrency(m.net)}
                         </td>
                       </tr>
                     ))}

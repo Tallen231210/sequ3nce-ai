@@ -158,14 +158,22 @@ export const getYearPerformance = query({
         rates,
         capacityReliable: capacity.reliable,
         avgDeal: totals.closes > 0 ? totals.cash / totals.closes : null,
+        // Ad spend is a single CURRENT monthly figure, so anything derived
+        // from it is an assumption about the past. Quote it only for months
+        // that actually traded: charging a dormant month reported nine months
+        // of losses that never happened, and charging a partial month put
+        // cost-per-booked at $1,107 against $153 the month after.
         costPerBooked: (() => {
+          if (!hasData) return null;
           const totalBooked =
             totals.booked + (unattributedByMonth.get(monthKey) ?? 0);
           return monthlyAdSpend > 0 && totalBooked > 0
             ? monthlyAdSpend / totalBooked
             : null;
         })(),
-        net: totals.cash - monthlyAdSpend - totals.cash * (compPct / 100),
+        net: hasData
+          ? totals.cash - monthlyAdSpend - totals.cash * (compPct / 100)
+          : null,
         goal,
         pctGoal: goal && goal > 0 ? (totals.cash / goal) * 100 : null,
         momPct,
@@ -186,6 +194,9 @@ export const getYearPerformance = query({
     return {
       year,
       currentYear,
+      // So the table can say the economics columns rest on today's ad spend
+      // rather than a figure recorded at the time.
+      adSpendIsCurrentMonthly: monthlyAdSpend > 0,
       timezone: tz,
       truncated,
       months,
