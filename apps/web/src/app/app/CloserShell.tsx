@@ -3,7 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, LogOut, Menu, X } from "lucide-react";
+import {
+  BarChart3,
+  Calendar,
+  FolderOpen,
+  GraduationCap,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Settings,
+  TrendingUp,
+  Video,
+  X,
+} from "lucide-react";
 import { Logo } from "@/components/ui/logo";
 import {
   getCloserInfo,
@@ -13,10 +26,23 @@ import {
 } from "@/lib/closer/session";
 
 /**
- * Nav for the closer app. Only what's ported so far — the rest of the desktop
- * app's sections land here as they move across.
+ * Nav for the closer app.
+ *
+ * Role Play is deliberately absent. The code is ported and the route would
+ * work, but it is not linked — Tyler's call, it never gets used, and leaving
+ * it out avoids browser microphone permissions entirely for now.
  */
-const NAV = [{ href: "/app/numbers", label: "My Numbers", icon: BarChart3 }];
+const NAV = [
+  { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/app/numbers", label: "My Numbers", icon: BarChart3 },
+  { href: "/app/stats", label: "Stats", icon: TrendingUp },
+  { href: "/app/calls", label: "Calls", icon: Video },
+  { href: "/app/schedule", label: "Schedule", icon: Calendar },
+  { href: "/app/messages", label: "Messages", icon: MessageSquare },
+  { href: "/app/coaching", label: "Coaching", icon: GraduationCap },
+  { href: "/app/resources", label: "Resources", icon: FolderOpen },
+  { href: "/app/settings", label: "Settings", icon: Settings },
+];
 
 /**
  * The closer app's frame.
