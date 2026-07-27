@@ -61,7 +61,7 @@ export const getTeamBilling = query({
       plan: team.plan,
       // Which product they bought. Absent means they predate tiers, and
       // everyone who predates tiers bought the whole thing.
-      productTier: team.productTierOverride ?? team.productTier ?? "full",
+      productTier: team.productTierOverride ?? team.productTier ?? "overwatch",
       /** True when the tier was pinned by hand rather than derived from Stripe. */
       productTierPinned: !!team.productTierOverride,
     };
@@ -201,7 +201,7 @@ export const setProductTierOverride = internalMutation({
       await ctx.db.patch(args.teamId, { productTierOverride: undefined });
       return { pinned: false };
     }
-    if (!["scoreboard", "fathom", "full"].includes(args.tier)) {
+    if (!["overview", "oversight", "overwatch"].includes(args.tier)) {
       throw new Error(`Unknown tier: ${args.tier}`);
     }
     await ctx.db.patch(args.teamId, {

@@ -39,7 +39,11 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const requested = String(body?.tier ?? "");
-    if (requested !== "scoreboard" && requested !== "fathom" && requested !== "full") {
+    if (
+      requested !== "overview" &&
+      requested !== "oversight" &&
+      requested !== "overwatch"
+    ) {
       return NextResponse.json({ error: "Unknown plan" }, { status: 400 });
     }
     const target: Tier = requested;
@@ -106,7 +110,7 @@ export async function POST(req: Request) {
         items,
         // Upgrades charge the difference now; downgrades leave a credit against
         // the next invoice. The alternative — waiting for the period to end —
-        // means someone can pay for Scoreboard while using the bot all month.
+        // means someone can pay for Overview while using the bot all month.
         proration_behavior: "create_prorations",
       });
     }

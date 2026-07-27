@@ -12,7 +12,7 @@
 // webhook and read by everything else.
 // ============================================================================
 
-export type Tier = "scoreboard" | "fathom" | "full";
+export type Tier = "overview" | "oversight" | "overwatch";
 
 /**
  * Absent means full, deliberately.
@@ -22,12 +22,29 @@ export type Tier = "scoreboard" | "fathom" | "full";
  * their subscription is created, so the gap only ever applies to people who
  * are already entitled to everything.
  */
-export const DEFAULT_TIER: Tier = "full";
+export const DEFAULT_TIER: Tier = "overwatch";
+
+/**
+ * Also accepts the keys these tiers had before they were named.
+ *
+ * "fathom" was the worst of them: it named the tier after the one recorder it
+ * happened to support first, and that tier is meant to take Zoom and Gong too.
+ * Mapping the old values means no data migration is required to read them, and
+ * anything still holding one resolves correctly instead of silently landing on
+ * the default.
+ */
+const LEGACY_KEYS: Record<string, Tier> = {
+  scoreboard: "overview",
+  fathom: "oversight",
+  full: "overwatch",
+};
 
 export function normaliseTier(value: string | null | undefined): Tier {
-  return value === "scoreboard" || value === "fathom" || value === "full"
-    ? value
-    : DEFAULT_TIER;
+  if (value === "overview" || value === "oversight" || value === "overwatch") {
+    return value;
+  }
+  if (value && LEGACY_KEYS[value]) return LEGACY_KEYS[value];
+  return DEFAULT_TIER;
 }
 
 interface TierPrices {
@@ -44,17 +61,17 @@ interface TierPrices {
  */
 function pricesFor(tier: Tier): TierPrices {
   switch (tier) {
-    case "scoreboard":
+    case "overview":
       return {
-        platform: process.env.STRIPE_SCOREBOARD_PLATFORM_PRICE_ID,
-        seat: process.env.STRIPE_SCOREBOARD_SEAT_PRICE_ID,
+        platform: process.env.STRIPE_OVERVIEW_PLATFORM_PRICE_ID,
+        seat: process.env.STRIPE_OVERVIEW_SEAT_PRICE_ID,
       };
-    case "fathom":
+    case "oversight":
       return {
-        platform: process.env.STRIPE_FATHOM_PLATFORM_PRICE_ID,
-        seat: process.env.STRIPE_FATHOM_SEAT_PRICE_ID,
+        platform: process.env.STRIPE_OVERSIGHT_PLATFORM_PRICE_ID,
+        seat: process.env.STRIPE_OVERSIGHT_SEAT_PRICE_ID,
       };
-    case "full":
+    case "overwatch":
       // Falls back to the original price IDs.
       //
       // Full IS the product as it exists today, so until dedicated prices are
@@ -64,10 +81,10 @@ function pricesFor(tier: Tier): TierPrices {
       // set yet. Not hypothetical: it shipped that way and this is the fix.
       return {
         platform:
-          process.env.STRIPE_FULL_PLATFORM_PRICE_ID ??
+          process.env.STRIPE_OVERWATCH_PLATFORM_PRICE_ID ??
           process.env.STRIPE_PLATFORM_PRICE_ID,
         seat:
-          process.env.STRIPE_FULL_SEAT_PRICE_ID ??
+          process.env.STRIPE_OVERWATCH_SEAT_PRICE_ID ??
           process.env.STRIPE_SEAT_PRICE_ID,
       };
   }
@@ -105,7 +122,7 @@ export function classifyPrice(
 ): { tier: Tier; kind: "platform" | "seat" } | null {
   if (!priceId) return null;
 
-  for (const tier of ["scoreboard", "fathom", "full"] as const) {
+  for (const tier of ["overview", "oversight", "overwatch"] as const) {
     const prices = pricesFor(tier);
     if (priceId === prices.platform) return { tier, kind: "platform" };
     if (priceId === prices.seat) return { tier, kind: "seat" };
@@ -113,10 +130,10 @@ export function classifyPrice(
 
   // The prices every existing customer is on, from before tiers existed.
   if (priceId === process.env.STRIPE_PLATFORM_PRICE_ID) {
-    return { tier: "full", kind: "platform" };
+    return { tier: "overwatch", kind: "platform" };
   }
   if (priceId === process.env.STRIPE_SEAT_PRICE_ID) {
-    return { tier: "full", kind: "seat" };
+    return { tier: "overwatch", kind: "seat" };
   }
 
   return null;
@@ -136,7 +153,7 @@ export function isLegacyPrice(priceId: string | null | undefined): boolean {
   // prices are created these stop overlapping; until then the Full tier falls
   // back to exactly these IDs, and nobody is "legacy" for being on the only
   // prices we sell.
-  const isCurrentTierPrice = (["scoreboard", "fathom", "full"] as const).some(
+  const isCurrentTierPrice = (["overview", "oversight", "overwatch"] as const).some(
     (tier) => {
       const prices = pricesFor(tier);
       return priceId === prices.platform || priceId === prices.seat;
@@ -180,13 +197,13 @@ export function tierForPriceId(priceId: string | null | undefined): Tier | null 
  */
 export const TIER_FEATURES = {
   /** Our bot joins calls: live view, video review, clips, playbook, coaching. */
-  meetingBot: { scoreboard: false, fathom: false, full: true },
+  meetingBot: { overview: false, oversight: false, overwatch: true },
   /** Connect an outside recorder — Fathom today. */
-  externalRecording: { scoreboard: false, fathom: true, full: true },
+  externalRecording: { overview: false, oversight: true, overwatch: true },
   /** Transcripts, AI summaries and call analysis. Needs a recording of some kind. */
-  callIntelligence: { scoreboard: false, fathom: true, full: true },
+  callIntelligence: { overview: false, oversight: true, overwatch: true },
   /** The scoreboard itself: numbers, targets, Setter Data. Everyone gets this. */
-  performance: { scoreboard: true, fathom: true, full: true },
+  performance: { overview: true, oversight: true, overwatch: true },
 } as const;
 
 export type Feature = keyof typeof TIER_FEATURES;
@@ -203,42 +220,45 @@ export function tierHas(tier: Tier | string | undefined, feature: Feature): bool
  */
 export const TIER_INFO: Record<
   Tier,
-  { name: string; tagline: string; includes: string[] }
+  { name: string; tagline: string; promise: string; includes: string[] }
 > = {
-  scoreboard: {
-    name: "Scoreboard",
-    tagline: "Tracking and visibility, working the day you sign up",
+  overview: {
+    name: "Overview",
+    tagline: "See the shape of your funnel",
+    promise: "You know the numbers your team reports.",
     includes: [
       "Team performance board and daily numbers",
       "Setter Data from your CRM",
-      "Calendar-based booking and show rates",
+      "Booking and show rates from calendars",
       "Analytics and targets",
     ],
   },
-  fathom: {
-    name: "Bring your own recording",
-    tagline: "See what's actually being said, without changing how you record",
+  oversight: {
+    name: "Oversight",
+    tagline: "See what's really happening",
+    promise: "You know whether those numbers are true.",
     includes: [
-      "Everything in Scoreboard",
-      "Connect Fathom — calls arrive automatically",
+      "Everything in Overview",
+      "Connect the recorder you already use",
       "Full transcripts and AI call analysis",
-      "Check whether reported numbers are true",
+      "Check reported numbers against the calls",
     ],
   },
-  full: {
-    name: "Full",
-    tagline: "Everything, for teams who do a lot of call review",
+  overwatch: {
+    name: "Overwatch",
+    tagline: "See everything, as it happens",
+    promise: "Nothing happens on your floor you can't see.",
     includes: [
-      "Everything in Bring your own recording",
-      "Our meeting bot joins and records every call",
+      "Everything in Oversight",
+      "Our bot records every call automatically",
       "Watch calls live as they happen",
-      "Video review with timestamped comments, clips and playbook",
+      "Video review, timestamped comments, clips and playbook",
     ],
   },
 };
 
 /** Ordered cheapest to most expensive, for deciding upgrade vs downgrade. */
-export const TIER_ORDER: Tier[] = ["scoreboard", "fathom", "full"];
+export const TIER_ORDER: Tier[] = ["overview", "oversight", "overwatch"];
 
 export function isDowngrade(from: Tier, to: Tier): boolean {
   return TIER_ORDER.indexOf(to) < TIER_ORDER.indexOf(from);
@@ -258,7 +278,9 @@ export function featuresLostMovingTo(from: Tier, to: Tier): string[] {
     lost.push("Live call view, video review, clips and the playbook");
   }
   if (tierHas(from, "externalRecording") && !tierHas(to, "externalRecording")) {
-    lost.push("Your Fathom connection will stop bringing in calls");
+    // Not "your Fathom connection" — this tier is meant to take Zoom and Gong
+            // too, and copy that names one vendor goes stale the day we add another.
+    lost.push("Your connected recording tool will stop bringing in calls");
   }
   if (tierHas(from, "callIntelligence") && !tierHas(to, "callIntelligence")) {
     lost.push("Transcripts and AI analysis on new calls");

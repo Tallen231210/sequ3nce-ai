@@ -19,9 +19,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Which product they're buying. Defaults to full so an older client that
+    // Which product they're buying. Defaults to the top tier so an older client that
     // posts nothing behaves exactly as it did before tiers existed.
-    let tier: Tier = "full";
+    let tier: Tier = "overwatch";
     try {
       const body = await req.json();
       if (body?.tier) tier = normaliseTier(String(body.tier));
