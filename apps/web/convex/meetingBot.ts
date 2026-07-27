@@ -2111,6 +2111,7 @@ export const getCallHistoryForCloser = query({
       classifiedAs: call.classifiedAs,
       classifiedBy: call.classifiedBy,
       countsTowardStats: call.countsTowardStats,
+      isHistorical: call.isHistorical,
     }));
   },
 });

@@ -654,6 +654,18 @@ export default defineSchema({
     classifiedBy: v.optional(v.string()), // "auto" | "closer"
     /** Absent means counted, so nothing about existing calls changes. */
     countsTowardStats: v.optional(v.boolean()), // Link to Google Calendar event (for prospect email)
+    /**
+     * Pulled from Fathom history at connect time, rather than arriving live.
+     *
+     * These never count toward stats on arrival no matter how confident the
+     * classifier is, because the numbers that matter — outcome, cash collected,
+     * contract value — only ever come from the closer's post-call form, and a
+     * historical call has none. Counting them would put every backfilled call
+     * in the denominator of the close rate and none in the numerator, so a
+     * closer's first day would show a month of calls and a 0% close rate.
+     * Filling in the outcome promotes them.
+     */
+    isHistorical: v.optional(v.boolean()),
     flaggedForReview: v.optional(v.boolean()),       // Closer flagged this for manager review
     flaggedAt: v.optional(v.number()),               // When flagged
     reviewStatus: v.optional(v.string()),            // "pending" | "reviewed"

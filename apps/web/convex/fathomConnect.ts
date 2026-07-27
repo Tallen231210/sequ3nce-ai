@@ -159,6 +159,13 @@ export const connect = internalAction({
       webhookSecret: String(hook.secret),
     });
 
+    // Bring in this month's calls in the background. Scheduled rather than
+    // awaited: it can take a while on a busy account, and a customer who has
+    // just pasted a key should see "connected" immediately, not a spinner.
+    await ctx.scheduler.runAfter(0, internal.fathomConnect.backfillMonthToDate, {
+      teamId: args.teamId,
+    });
+
     return { success: true, scope };
   },
 });
@@ -185,6 +192,116 @@ export const disconnect = internalAction({
       connectionId: args.connectionId,
     });
     return { success: true };
+  },
+});
+
+/**
+ * Bring in this calendar month's calls when someone connects.
+ *
+ * Month-to-date rather than everything, and rather than nothing.
+ *
+ * Nothing means a closer connects and stares at an empty app, with no way to
+ * see the thing working. Everything is unbounded — a heavy account could be
+ * thousands of calls nobody will ever look at, and it makes the first
+ * impression a progress bar.
+ *
+ * A month gives every closer a complete first month whenever they join: the
+ * backfill covers the 1st up to today, and live delivery covers today to the
+ * month's end. Join on the 5th or the 26th and July is still a whole July.
+ *
+ * What it does NOT give them is comparable numbers, and that distinction is
+ * the reason `historical` exists. Someone who joined on the 26th has 25 days of
+ * calls with no outcome recorded against them; someone who joined on the 5th
+ * has almost none. Counting both would make the late joiner look far worse for
+ * a reason that has nothing to do with selling. So these arrive as history —
+ * visible, searchable, coachable — and start counting only once a human says
+ * how the call went.
+ *
+ * The window is UTC. A call late at night on the 1st in a western timezone
+ * could fall outside it; that is a rounding error on a convenience feature,
+ * not worth per-team timezone handling.
+ */
+export const backfillMonthToDate = internalAction({
+  args: {
+    teamId: v.id("teams"),
+    /**
+     * Override the window. Defaults to the 1st of the current month, which is
+     * what connecting uses. Exists so the reconciliation sweep can reuse this
+     * to re-check a narrow recent window without a second implementation.
+     */
+    sinceIso: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ success: boolean; imported: number; pages: number; error?: string }> => {
+    const conn = await ctx.runQuery(
+      internal.fathomConnections.getConnectionForTeam,
+      { teamId: args.teamId },
+    );
+    if (!conn?.apiKey) {
+      return { success: false, imported: 0, pages: 0, error: "Not connected to Fathom." };
+    }
+
+    const now = new Date();
+    const since =
+      args.sinceIso ??
+      new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0),
+      ).toISOString();
+
+    let cursor: string | null = null;
+    let imported = 0;
+    let pages = 0;
+
+    // A hard stop, not a target. Without it a misbehaving cursor loops until
+    // the action times out, and the failure would look like a hang.
+    const MAX_PAGES = 20;
+
+    while (pages < MAX_PAGES) {
+      const qs = new URLSearchParams({
+        include_transcript: "true",
+        created_after: since,
+      });
+      if (cursor) qs.set("cursor", cursor);
+
+      const res = await fathom(conn.apiKey, `/meetings?${qs.toString()}`);
+      if (!res.ok) {
+        // Report what we managed rather than throwing it all away. These are
+        // heavy requests and Fathom drops to five a minute when busy, so
+        // hitting a limit part-way through is a normal Tuesday.
+        return {
+          success: imported > 0,
+          imported,
+          pages,
+          error: `Fathom returned ${res.status} after ${imported} calls. Try again shortly.`,
+        };
+      }
+
+      const payload = res.body as { items?: unknown[]; data?: unknown[]; next_cursor?: string | null };
+      const meetings = payload.items ?? payload.data ?? [];
+      pages++;
+
+      for (const meeting of meetings) {
+        // Sequentially. Each is a write transaction against the same table and
+        // firing a page of them at once is how concurrent chains OCC-thrash
+        // each other — the lesson from the setter-data sync work.
+        const out = await ctx.runMutation(internal.fathom.ingestMeeting, {
+          teamId: args.teamId,
+          meeting,
+          historical: true,
+        });
+        if (out.status === "created") imported++;
+      }
+
+      cursor = payload.next_cursor ?? null;
+      if (!cursor || meetings.length === 0) break;
+    }
+
+    await ctx.runMutation(internal.fathomConnections.markSynced, {
+      connectionId: conn._id as Id<"fathomConnections">,
+    });
+    return { success: true, imported, pages };
   },
 });
 

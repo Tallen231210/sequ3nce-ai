@@ -939,6 +939,19 @@ export const completeCallWithOutcome = mutation({
       prospectWasDecisionMaker: args.prospectWasDecisionMaker,
       status: "completed",
       completedAt: Date.now(),
+      // A Fathom call the closer has now told us about. Saying how it went is
+      // the strongest possible statement that it WAS a sales call, so it stops
+      // being history and starts counting. Set together with the status above,
+      // never separately — letting these two drift once left a call marked
+      // internal still counting toward a close rate.
+      ...(call.source === "fathom"
+        ? {
+            isHistorical: false,
+            countsTowardStats: true,
+            classifiedAs: "sales",
+            classifiedBy: "closer",
+          }
+        : {}),
     });
 
     // Refresh the Team Performance rollup for the day this call belongs to.

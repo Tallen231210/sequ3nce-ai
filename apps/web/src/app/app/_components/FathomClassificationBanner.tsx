@@ -19,6 +19,8 @@ interface Props {
   classifiedAs?: string;
   classifiedBy?: string;
   countsTowardStats?: boolean;
+  /** Came from the backfill at connect time, so it has no outcome recorded. */
+  isHistorical?: boolean;
   /** So the parent can refresh its list once the answer changes the numbers. */
   onChanged?: () => void;
 }
@@ -28,6 +30,7 @@ export function FathomClassificationBanner({
   classifiedAs,
   classifiedBy,
   countsTowardStats,
+  isHistorical,
   onChanged,
 }: Props) {
   const [saving, setSaving] = useState<null | "sales" | "internal">(null);
@@ -81,6 +84,28 @@ export function FathomClassificationBanner({
           onClick={() => answer(false)}
           disabled={saving !== null}
           className="font-medium text-gray-700 hover:text-black underline"
+        >
+          Not a sales call
+        </button>
+      </div>
+    );
+  }
+
+  // Backfilled from before they connected. Asking "was this a sales call?"
+  // is the wrong question — we mostly know, and answering it still wouldn't
+  // give us the outcome or the cash figure, which is what the numbers need.
+  // Point them at the thing that actually completes the record.
+  if (isHistorical) {
+    return (
+      <div className="flex items-center gap-2 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-[12px] text-gray-600 flex-wrap">
+        <span>
+          From before you connected Fathom. Add what happened on this call and
+          it&apos;ll count toward your numbers.
+        </span>
+        <button
+          onClick={() => answer(false)}
+          disabled={saving !== null}
+          className="font-medium text-gray-500 hover:text-gray-800 underline"
         >
           Not a sales call
         </button>

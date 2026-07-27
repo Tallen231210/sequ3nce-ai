@@ -1446,6 +1446,8 @@ export interface CallHistoryItem {
   classifiedAs?: string;
   classifiedBy?: string;
   countsTowardStats?: boolean;
+  /** Pulled from Fathom history at connect, rather than arriving live. */
+  isHistorical?: boolean;
 }
 
 export async function getCallHistory(closerId: string, limit?: number): Promise<CallHistoryItem[]> {

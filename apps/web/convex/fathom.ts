@@ -170,6 +170,8 @@ export const ingestMeeting = internalMutation({
   args: {
     teamId: v.id("teams"),
     meeting: v.any(),
+    /** Pulled from history rather than arriving live. See `isHistorical`. */
+    historical: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{
     status: "created" | "updated" | "skipped";
@@ -279,12 +281,20 @@ export const ingestMeeting = internalMutation({
       // around twenty of them — so giving an unconfirmed call a different
       // status excludes it from all of them without editing a single one. The
       // call history query is widened separately so the closer still sees it.
-      status: verdict.countsTowardStats ? "completed" : "unclassified",
+      status:
+        !args.historical && verdict.countsTowardStats
+          ? "completed"
+          : "unclassified",
+      ...(args.historical ? { isHistorical: true } : {}),
       // Only ever set automatically. A closer's own correction wins and is
       // never overwritten by a later sync — see the guard below.
       classifiedAs: verdict.classification,
       classifiedBy: "auto",
-      countsTowardStats: verdict.countsTowardStats,
+      // A historical call never counts on arrival, however sure we are it was
+      // a sales call — it has no outcome and no cash figure, and those only
+      // come from the closer. It shows, it's searchable, the AI can read it;
+      // it just doesn't move a number until someone says what happened.
+      countsTowardStats: args.historical ? false : verdict.countsTowardStats,
     };
 
     let callId: Id<"calls">;

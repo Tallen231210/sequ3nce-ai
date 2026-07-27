@@ -260,6 +260,7 @@ export function CallDetailSheet({
             classifiedAs={call.classifiedAs}
             classifiedBy={call.classifiedBy}
             countsTowardStats={call.countsTowardStats}
+            isHistorical={call.isHistorical}
           />
         )}
 
