@@ -137,142 +137,128 @@ export function PostCallQuestionnaire({
         <p className="text-[11px] text-gray-500">Complete the questionnaire to log this call</p>
       </div>
 
-      {/* Form content — two compact rows */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {/* Row 1: Name + Outcome + Objection */}
-        <div className="flex items-start gap-3">
-          {/* Prospect name */}
-          <div className="w-[180px] shrink-0">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Prospect</label>
-            <input
-              value={prospectName}
-              onChange={(e) => setProspectName(e.target.value)}
-              placeholder="Name..."
-              className="w-full px-2.5 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400:border-zinc-400"
-            />
+      {/* A vertical form, not a horizontal strip.
+          
+          This was laid out for the desktop app, where it was its own wide,
+          short window — two rows of fixed-width blocks separated by vertical
+          rules. Dropped into a modal, the right-hand half simply fell off the
+          edge and you had to scroll sideways to reach Cash Collected, which is
+          the one field the whole product depends on.
+          
+          Everything is full width and stacked now, so the only scrolling is
+          up and down and nothing can be hidden off-screen at any width. */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        {/* Prospect */}
+        <Field label="Prospect">
+          <input
+            value={prospectName}
+            onChange={(e) => setProspectName(e.target.value)}
+            placeholder="Name..."
+            className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+          />
+        </Field>
+
+        {/* Outcome — two up on narrow screens, four across when there's room */}
+        <Field label="Outcome">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {OUTCOMES.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => {
+                  setOutcome(o.value);
+                  setPrimaryObjection(null);
+                  setObjectionsOvercome(null);
+                }}
+                className={`py-2.5 text-[12.5px] font-semibold rounded-lg transition-colors ${
+                  outcome === o.value
+                    ? `${o.color} text-white`
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
           </div>
+        </Field>
 
-          {/* Divider */}
-          <div className="w-px h-[52px] bg-gray-200 self-end mb-0" />
-
-          {/* Outcome buttons */}
-          <div className="flex-1">
-            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Outcome</label>
-            <div className="flex gap-1.5">
-              {OUTCOMES.map((o) => (
-                <button
-                  key={o.value}
-                  onClick={() => {
-                    setOutcome(o.value);
-                    setPrimaryObjection(null);
-                    setObjectionsOvercome(null);
-                  }}
-                  className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-colors ${
-                    outcome === o.value
-                      ? `${o.color} text-white`
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200:bg-zinc-600'
-                  }`}
-                >
-                  {o.label}
-                </button>
+        {showObjection && (
+          <Field label="Objection">
+            <select
+              value={primaryObjection || ''}
+              onChange={(e) => setPrimaryObjection(e.target.value || null)}
+              className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+            >
+              <option value="">Select...</option>
+              {OBJECTION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
-            </div>
-          </div>
-
-          {/* Objection dropdown — conditional */}
-          {showObjection && (
-            <>
-              <div className="w-px h-[52px] bg-gray-200 self-end mb-0" />
-              <div className="w-[160px] shrink-0">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Objection</label>
-                <select
-                  value={primaryObjection || ''}
-                  onChange={(e) => setPrimaryObjection(e.target.value || null)}
-                  className="w-full px-2 py-2 text-[12px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400:border-zinc-400 appearance-none"
-                >
-                  <option value="">Select...</option>
-                  {OBJECTION_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
-
-          {showOvercome && (
-            <>
-              <div className="w-px h-[52px] bg-gray-200 self-end mb-0" />
-              <div className="w-[160px] shrink-0">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Overcome</label>
-                <select
-                  value={objectionsOvercome || ''}
-                  onChange={(e) => setObjectionsOvercome(e.target.value || null)}
-                  className="w-full px-2 py-2 text-[12px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400:border-zinc-400 appearance-none"
-                >
-                  <option value="">Select...</option>
-                  {OVERCOME_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Other objection text */}
-        {showObjection && primaryObjection === 'other' && (
-          <input
-            value={primaryObjectionOther}
-            onChange={(e) => setPrimaryObjectionOther(e.target.value)}
-            placeholder="Describe the objection..."
-            className="w-full px-2.5 py-2 text-[12px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400:border-zinc-400"
-          />
-        )}
-        {showOvercome && objectionsOvercome === 'other' && (
-          <input
-            value={objectionsOvercomeOther}
-            onChange={(e) => setObjectionsOvercomeOther(e.target.value)}
-            placeholder="Describe the objection overcome..."
-            className="w-full px-2.5 py-2 text-[12px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400:border-zinc-400"
-          />
+            </select>
+            {primaryObjection === 'other' && (
+              <input
+                value={primaryObjectionOther}
+                onChange={(e) => setPrimaryObjectionOther(e.target.value)}
+                placeholder="Describe the objection..."
+                className="mt-2 w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+              />
+            )}
+          </Field>
         )}
 
-        {/* Row 2: Decision maker + Lead quality + Values + Notes */}
+        {showOvercome && (
+          <Field label="Objections overcome">
+            <select
+              value={objectionsOvercome || ''}
+              onChange={(e) => setObjectionsOvercome(e.target.value || null)}
+              className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+            >
+              <option value="">Select...</option>
+              {OVERCOME_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {objectionsOvercome === 'other' && (
+              <input
+                value={objectionsOvercomeOther}
+                onChange={(e) => setObjectionsOvercomeOther(e.target.value)}
+                placeholder="Describe the objection overcome..."
+                className="mt-2 w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
+              />
+            )}
+          </Field>
+        )}
+
         {outcome && outcome !== 'no_show' && (
-          <div className="flex items-start gap-3">
-            {/* Decision Maker (lost/follow_up only) */}
+          <>
             {showDecisionMaker && (
-              <div className="shrink-0">
-                <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Decision Maker?</label>
-                <div className="flex gap-1">
+              <Field label="Was the prospect the decision maker?">
+                <div className="flex gap-2">
                   {[
                     { value: 'yes', label: 'Yes' },
                     { value: 'no', label: 'No' },
-                    { value: 'unclear', label: '?' },
+                    { value: 'unclear', label: 'Not sure' },
                   ].map((dm) => (
                     <button
                       key={dm.value}
                       onClick={() => setProspectWasDecisionMaker(dm.value)}
-                      className={`px-3 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
+                      className={`flex-1 py-2 text-[12.5px] font-medium rounded-lg transition-colors ${
                         prospectWasDecisionMaker === dm.value
                           ? 'bg-black text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200:bg-zinc-600'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
                       {dm.label}
                     </button>
                   ))}
                 </div>
-              </div>
+              </Field>
             )}
 
-            {/* Lead Quality 1-10 */}
-            <div className="shrink-0">
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Lead Quality</label>
-              <div className="flex gap-0.5">
+            {/* Ten buttons that wrap rather than run off the edge. */}
+            <Field label="Lead quality">
+              <div className="flex flex-wrap gap-1.5">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
                   const isSelected = leadQualityScore === n;
-                  let bgColor = 'bg-gray-100 text-gray-600 hover:bg-gray-200:bg-zinc-600';
+                  let bgColor = 'bg-gray-100 text-gray-600 hover:bg-gray-200';
                   if (isSelected) {
                     if (n <= 3) bgColor = 'bg-red-500 text-white';
                     else if (n <= 6) bgColor = 'bg-amber-500 text-white';
@@ -282,28 +268,25 @@ export function PostCallQuestionnaire({
                     <button
                       key={n}
                       onClick={() => setLeadQualityScore(n)}
-                      className={`w-[26px] h-[30px] text-[11px] font-medium rounded-md transition-colors ${bgColor}`}
+                      className={`w-9 h-9 text-[12px] font-medium rounded-lg transition-colors ${bgColor}`}
                     >
                       {n}
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </Field>
 
-            <div className="w-px h-[52px] bg-gray-200 self-end mb-0" />
-
-            {/* Cash Collected + Contract Value (closed) */}
             {showClosedValues && (
               <>
                 <ValueField
-                  label="Cash Collected"
+                  label="Cash collected"
                   value={cashCollected}
                   onChange={setCashCollected}
                   presets={[1000, 3000, 5000, 10000, 15000]}
                 />
                 <ValueField
-                  label="Contract Value"
+                  label="Contract value"
                   value={contractValue}
                   onChange={setContractValue}
                   presets={[3000, 5000, 10000, 15000, 25000]}
@@ -311,35 +294,27 @@ export function PostCallQuestionnaire({
               </>
             )}
 
-            {/* Pitched Value (lost/follow_up) */}
             {showPitchedValue && (
               <ValueField
-                label="Pitched Value"
+                label="Pitched value"
                 value={pitchedValue}
                 onChange={setPitchedValue}
                 presets={[3000, 5000, 10000, 15000, 25000]}
               />
             )}
 
-            <div className="w-px h-[52px] bg-gray-200 self-end mb-0" />
-
-            {/* Notes */}
-            <div className="flex-1 min-w-[120px]">
-              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Notes</label>
+            <Field label="Notes">
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Quick notes..."
-                className="w-full px-2.5 py-2 text-[12px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400:border-zinc-400"
+                className="w-full px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
               />
-            </div>
-          </div>
+            </Field>
+          </>
         )}
 
-        {/* Error message */}
-        {error && (
-          <p className="text-[12px] text-red-600 px-1">{error}</p>
-        )}
+        {error && <p className="text-[12px] text-red-600">{error}</p>}
       </div>
 
       {/* Submit bar */}
@@ -380,9 +355,10 @@ function ValueField({
   presets: number[];
 }) {
   return (
-    <div className="shrink-0">
-      <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</label>
-      <div className="flex items-center gap-1">
+    <Field label={label}>
+      {/* Wraps. Five presets plus a custom box does not fit on one line in a
+          modal, and the custom box was the part that fell off. */}
+      <div className="flex flex-wrap items-center gap-1.5">
         {presets.map((p) => {
           const display = p >= 1000 ? `$${p / 1000}k` : `$${p}`;
           const isSelected = value === String(p);
@@ -390,7 +366,7 @@ function ValueField({
             <button
               key={p}
               onClick={() => onChange(String(p))}
-              className={`px-2 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
+              className={`px-3 py-2 text-[12.5px] font-medium rounded-lg transition-colors ${
                 isSelected
                   ? 'bg-black text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200:bg-zinc-600'
@@ -400,16 +376,28 @@ function ValueField({
             </button>
           );
         })}
-        <div className="flex items-center gap-0.5 ml-0.5">
-          <span className="text-[12px] text-gray-400">$</span>
+        <div className="flex items-center gap-1">
+          <span className="text-[13px] text-gray-400">$</span>
           <input
             value={presets.includes(parseInt(value)) ? '' : value}
             onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder="Custom"
-            className="w-[60px] px-1.5 py-1.5 text-[11px] bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:border-gray-400:border-zinc-400 text-gray-900 placeholder-gray-400"
+            className="w-[90px] px-2 py-2 text-[12.5px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400 text-gray-900 placeholder-gray-400"
           />
         </div>
       </div>
+    </Field>
+  );
+}
+
+/** One labelled block. Every field in the form is one of these. */
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[10.5px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+        {label}
+      </label>
+      {children}
     </div>
   );
 }
