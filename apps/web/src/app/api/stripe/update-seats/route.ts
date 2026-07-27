@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { pricesForTier, normaliseTier, classifyPrice } from "@/lib/tiers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { ConvexHttpClient } from "convex/browser";
@@ -45,24 +46,37 @@ export async function POST(req: Request) {
       billing.stripeSubscriptionId
     );
 
-    // Find if seat price already exists in subscription
+    // The seat price for THIS team's tier, not one global price.
+    //
+    // Charging every team the same per-seat rate regardless of plan is how a
+    // Scoreboard customer ends up billed the Full tier's $150 a head. The tier
+    // comes from Convex, which the Stripe webhook keeps in sync with the
+    // subscription itself.
+    const tier = normaliseTier(billing.productTier);
+    const seatPriceId = pricesForTier(tier).seat;
+
+    // Match any seat price we know, not just the current tier's — a
+    // subscription mid-change can still be carrying the previous tier's seat
+    // line, and we must update that item rather than adding a second one.
     const seatItem = subscription.items.data.find(
-      (item) => item.price.id === process.env.STRIPE_SEAT_PRICE_ID
+      (item) => classifyPrice(item.price.id)?.kind === "seat",
     );
 
     if (seatCount === 0 && seatItem) {
       // Remove seat line item entirely
       await stripe.subscriptionItems.del(seatItem.id);
     } else if (seatCount > 0 && seatItem) {
-      // Update existing seat quantity
+      // Quantity, and the price too if they've changed tier since this item
+      // was created. Leaving a stale price here bills the old rate forever.
       await stripe.subscriptionItems.update(seatItem.id, {
         quantity: seatCount,
+        ...(seatItem.price.id !== seatPriceId ? { price: seatPriceId } : {}),
       });
     } else if (seatCount > 0 && !seatItem) {
       // Add seat line item to subscription
       await stripe.subscriptionItems.create({
         subscription: billing.stripeSubscriptionId,
-        price: process.env.STRIPE_SEAT_PRICE_ID!,
+        price: seatPriceId,
         quantity: seatCount,
       });
     }

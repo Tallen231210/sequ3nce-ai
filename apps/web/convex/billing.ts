@@ -59,6 +59,9 @@ export const getTeamBilling = query({
       seatCount: team.seatCount || 0,
       activeCloserCount,
       plan: team.plan,
+      // Which product they bought. Absent means they predate tiers, and
+      // everyone who predates tiers bought the whole thing.
+      productTier: team.productTier ?? "full",
     };
   },
 });
@@ -72,6 +75,13 @@ export const updateTeamBilling = mutation({
     currentPeriodEnd: v.optional(v.number()),
     seatCount: v.optional(v.number()),
     plan: v.optional(v.string()),
+    /**
+     * Which product they're paying for, derived from the Stripe price on their
+     * subscription. Optional and only ever passed when we RECOGNISED the price
+     * — an unknown price must leave the existing tier alone rather than
+     * downgrade a paying customer because someone mistyped an env var.
+     */
+    productTier: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Find team by Stripe customer ID
@@ -109,6 +119,9 @@ export const updateTeamBilling = mutation({
     }
     if (args.plan !== undefined) {
       updates.plan = args.plan;
+    }
+    if (args.productTier !== undefined) {
+      updates.productTier = args.productTier;
     }
 
     await ctx.db.patch(team._id, updates);

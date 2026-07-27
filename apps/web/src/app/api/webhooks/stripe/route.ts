@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { classifyPrice, type Tier } from "@/lib/tiers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import * as Sentry from "@sentry/nextjs";
@@ -260,6 +261,8 @@ async function updateTeamBillingFromWebhook(args: {
   currentPeriodEnd?: number;
   seatCount?: number;
   plan?: string;
+  /** Only ever set when the subscription's price was recognised. */
+  productTier?: string;
 }): Promise<boolean> {
   const convex = getConvex();
   const result = await convex.mutation(api.billing.updateTeamBilling, args);
@@ -348,12 +351,37 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   const convex = getConvex();
   const customerId = subscription.customer as string;
 
-  // Calculate seat count
+  // Read the subscription's line items for both seats and tier.
+  //
+  // Seats used to be counted by matching one hardcoded price ID, which meant a
+  // team on any tier other than the original would have been recorded as
+  // having zero paid seats. Classifying each price fixes that and answers the
+  // tier question from the same pass.
   let seatCount = 0;
+  let tier: Tier | null = null;
+  let unrecognised: string[] = [];
+
   for (const item of subscription.items.data) {
-    if (item.price.id === process.env.STRIPE_SEAT_PRICE_ID) {
-      seatCount = item.quantity || 0;
+    const classified = classifyPrice(item.price.id);
+    if (!classified) {
+      unrecognised.push(item.price.id);
+      continue;
     }
+    if (classified.kind === "seat") seatCount = item.quantity || 0;
+    // The platform fee is what identifies the plan — a subscription always has
+    // one, and seats are optional.
+    if (classified.kind === "platform") tier = classified.tier;
+  }
+
+  if (unrecognised.length > 0) {
+    // Loudly, and without changing anything. A price that exists in Stripe but
+    // not in our env is a deploy mistake, and treating it as "no tier" would
+    // silently strip a paying customer's access.
+    console.error(
+      `[stripe] subscription ${subscription.id} has price(s) we don't ` +
+        `recognise: ${unrecognised.join(", ")}. Tier left unchanged. ` +
+        `Check the STRIPE_*_PRICE_ID env vars.`,
+    );
   }
 
   // Access current_period_end safely
@@ -368,10 +396,14 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
     subscriptionStatus: subscription.status,
     currentPeriodEnd,
     seatCount,
+    // Only when we actually recognised the plan. Omitted means "leave it as it
+    // was", which is the safe direction to fail in.
+    ...(tier ? { productTier: tier } : {}),
   });
 
   console.log(
-    `Subscription updated for customer ${customerId}: ${subscription.status}`
+    `Subscription updated for customer ${customerId}: ${subscription.status}` +
+      (tier ? ` (${tier})` : " (tier unchanged)"),
   );
 }
 
