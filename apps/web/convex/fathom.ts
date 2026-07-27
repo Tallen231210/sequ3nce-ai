@@ -459,16 +459,37 @@ export const ingestMeeting = internalMutation({
         });
       }
 
-      // Same pipeline the bot uses. Only for calls that count — running AI
-      // over a team standup costs money and tells nobody anything.
-      if (verdict.countsTowardStats && status === "created") {
+      // Same pipeline the bot uses.
+      //
+      // Gated on "not a team meeting" rather than "counts toward stats". Those
+      // are different questions, and using the wrong one meant nothing was
+      // ever analysed: a call we're unsure about doesn't count, so it got no
+      // analysis, so the tab was empty on almost every call. An unsure call is
+      // usually a real sales call we simply couldn't verify, and it needs the
+      // analysis ready for the moment someone confirms it.
+      //
+      // Keyed on the work being missing rather than on the call being new, so
+      // a call that was ingested before this pipeline existed — or whose
+      // analysis failed — picks it up on the next sync instead of staying
+      // permanently blank.
+      const existingContent = await ctx.db
+        .query("callContent")
+        .withIndex("by_call", (q) => q.eq("callId", callId))
+        .first();
+      const worthAnalysing = verdict.classification !== "internal";
+      const needsSummary = worthAnalysing && !existingContent?.summary;
+      const needsAnalysis = worthAnalysing && !existingContent?.callAnalysis;
+
+      if (needsSummary) {
         await ctx.scheduler.runAfter(0, internal.ai.generateCallSummary, {
           callId,
           transcript: text,
           ...(prospectName ? { prospectName } : {}),
         });
-        // The deep analysis too — chapters and the five scores. Leaving this
-        // out is why the Analysis tab said "not available for this call".
+      }
+      // The deep analysis — chapters and the five scores. Scheduled separately
+      // from the summary so one failing doesn't cost us the other.
+      if (needsAnalysis) {
         await ctx.scheduler.runAfter(0, internal.ai.generateCallAnalysis, {
           callId,
           transcript: text,
