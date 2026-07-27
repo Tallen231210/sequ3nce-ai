@@ -230,6 +230,14 @@ export const backfillMonthToDate = internalAction({
      * to re-check a narrow recent window without a second implementation.
      */
     sinceIso: v.optional(v.string()),
+    /**
+     * Whether these arrive as history. True for the connect-time backfill.
+     * MUST be false for the reconciliation sweep: those are live calls the
+     * webhook failed to deliver minutes ago, and treating them as history
+     * would keep genuine sales calls out of the numbers forever — the exact
+     * silent loss the sweep exists to prevent.
+     */
+    historical: v.optional(v.boolean()),
   },
   handler: async (
     ctx,
@@ -289,7 +297,7 @@ export const backfillMonthToDate = internalAction({
         const out = await ctx.runMutation(internal.fathom.ingestMeeting, {
           teamId: args.teamId,
           meeting,
-          historical: true,
+          historical: args.historical !== false,
         });
         if (out.status === "created") imported++;
       }
@@ -364,5 +372,65 @@ export const syncRecent = internalAction({
       connectionId: conn._id as Id<"fathomConnections">,
     });
     return { success: true, created, updated, skipped };
+  },
+});
+
+/**
+ * Catch the calls the webhook didn't deliver.
+ *
+ * Fathom pushes each meeting to us once when it finishes. If we're mid-deploy,
+ * or their delivery fails, or the request times out, that call is simply gone —
+ * and nobody finds out, because the symptom is a call that never appears.
+ * Silent loss is the worst kind: the closer assumes it recorded, the manager
+ * sees a smaller number, and there is nothing to debug from.
+ *
+ * So every few hours we ask Fathom for the last few days and re-ingest. Ingest
+ * is idempotent on the recording id, so anything we already have is updated
+ * rather than duplicated, and anything we missed quietly appears.
+ *
+ * Three days rather than one: a delivery lost during a weekend outage still
+ * needs to be caught on Monday, and re-checking a call we already hold costs
+ * one page of a rate limit we aren't otherwise using.
+ *
+ * NOT marked historical. These are live calls that should have arrived through
+ * the webhook minutes ago, not history pulled in at connect time — treating
+ * them as history would quietly keep genuine sales calls out of the numbers.
+ */
+export const reconcile = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ teams: number; recovered: number }> => {
+    const connections = await ctx.runQuery(
+      internal.fathomConnections.listActiveConnections,
+      {},
+    );
+
+    const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    let recovered = 0;
+
+    for (const conn of connections) {
+      // Sequentially across teams. These are Fathom's heavy requests, capped
+      // as low as five a minute when they are busy, and firing every customer
+      // at once would rate-limit us out of our own reconciliation.
+      try {
+        const result = await ctx.runAction(
+          internal.fathomConnect.backfillMonthToDate,
+          { teamId: conn.teamId, sinceIso: since, historical: false },
+        );
+        recovered += result.imported;
+        if (result.imported > 0) {
+          // Worth a log line. If this is ever consistently non-zero, the
+          // webhook is broken and the sweep is quietly papering over it.
+          console.warn(
+            `[fathom] reconcile recovered ${result.imported} missed call(s) ` +
+              `for team ${conn.teamId} — webhook may not be delivering`,
+          );
+        }
+      } catch (error) {
+        // One team's expired key must not stop the sweep for everyone else.
+        console.error(`[fathom] reconcile failed for team ${conn.teamId}:`, error);
+      }
+    }
+
+    return { teams: connections.length, recovered };
   },
 });

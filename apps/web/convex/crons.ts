@@ -230,4 +230,14 @@ crons.cron(
   {},
 );
 
+// Catch Fathom calls the webhook never delivered. crons.cron, not
+// crons.interval — an outage must not leave a backlog of overlapping sweeps
+// all hammering the same rate limit when the deployment comes back.
+crons.cron(
+  "fathom-reconcile",
+  "20 */6 * * *",
+  internal.fathomConnect.reconcile,
+  {},
+);
+
 export default crons;

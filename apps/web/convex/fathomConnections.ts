@@ -263,3 +263,19 @@ export const setCloserFathomEmail = internalMutation({
     return { success: true };
   },
 });
+
+/**
+ * Every live Fathom connection, for the reconciliation sweep.
+ *
+ * Returns the key, so this must stay internal — it exists only to be called
+ * by the sweep, never by anything that reaches a browser.
+ */
+export const listActiveConnections = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("fathomConnections").collect();
+    return all
+      .filter((c) => c.status === "active" && !!c.apiKey)
+      .map((c) => ({ connectionId: c._id, teamId: c.teamId }));
+  },
+});
