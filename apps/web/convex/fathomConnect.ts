@@ -113,25 +113,40 @@ export const connect = internalAction({
     //    account, which is a completely normal way for a closer to be set up,
     //    so fall back rather than treating it as an error.
     const destination = `${process.env.CONVEX_SITE_URL}/webhooks/fathom?team=${args.teamId}`;
+    // Transcript only. We generate our own summary and analysis from it, so
+    // asking Fathom for theirs adds nothing — and if their delivery waits for
+    // every requested piece to finish generating, requesting more can only
+    // make a call arrive later.
     const payload = {
       destination_url: destination,
       include_transcript: true,
-      include_summary: true,
-      include_action_items: true,
     };
 
-    let scope = "team";
-    let created = await fathom(apiKey, "/webhooks", {
+    // Ask what this account actually has, rather than sending the team scopes
+    // and treating a rejection as the answer.
+    //
+    // Fathom does NOT reject a scope the account can't satisfy — it accepts
+    // the request and returns a webhook. So the old try-team-then-fall-back
+    // never fell back, and an individual account ended up registered with
+    // `my_shared_with_team_recordings`, a Team-plan-only trigger. That webhook
+    // then delivered nothing at all: verified against a real personal account
+    // where a recording sat undelivered for 25 minutes with no attempt ever
+    // reaching us, and re-registering with personal scopes alone was the fix.
+    //
+    // An empty /teams list is the signal. It costs one cheap request at
+    // connect time and turns a silent, invisible failure into a decision.
+    const teamsRes = await fathom(apiKey, "/teams");
+    const teamsBody = teamsRes.body as { items?: unknown[] } | null;
+    const hasTeams = teamsRes.ok && (teamsBody?.items?.length ?? 0) > 0;
+    const scope = hasTeams ? "team" : "personal";
+
+    const created = await fathom(apiKey, "/webhooks", {
       method: "POST",
-      body: JSON.stringify({ ...payload, triggered_for: TEAM_SCOPES }),
+      body: JSON.stringify({
+        ...payload,
+        triggered_for: hasTeams ? TEAM_SCOPES : SOLO_SCOPES,
+      }),
     });
-    if (!created.ok) {
-      scope = "personal";
-      created = await fathom(apiKey, "/webhooks", {
-        method: "POST",
-        body: JSON.stringify({ ...payload, triggered_for: SOLO_SCOPES }),
-      });
-    }
     if (!created.ok) {
       const msg = (created.body as FathomError)?.message ?? "";
       return {
