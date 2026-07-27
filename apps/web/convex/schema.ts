@@ -17,6 +17,21 @@ export default defineSchema({
      * honestly in the meantime rather than everyone seeing everything.
      */
     productTier: v.optional(v.string()),
+    /**
+     * A tier set by hand that Stripe must not overwrite.
+     *
+     * Normally the tier is derived from the price a team pays, and that's the
+     * point — entitlement can't drift from billing. But two real cases have no
+     * subscription to derive from, or a subscription that says the wrong
+     * thing: comped teams (founders, partners), and internal accounts being
+     * used to test a tier they aren't paying for.
+     *
+     * When this is set, the Stripe webhook leaves `productTier` alone. Without
+     * it, a manually-set tier survives right up until the next invoice and
+     * then silently reverts — which is worse than not supporting it at all,
+     * because it looks like it worked.
+     */
+    productTierOverride: v.optional(v.string()),
     name: v.string(),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),

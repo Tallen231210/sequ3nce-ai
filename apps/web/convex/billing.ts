@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 
 // Founder team IDs that always have free access (comma-separated in env var)
 // Set FOUNDER_TEAM_IDS in Convex dashboard to grant free access
@@ -61,7 +61,9 @@ export const getTeamBilling = query({
       plan: team.plan,
       // Which product they bought. Absent means they predate tiers, and
       // everyone who predates tiers bought the whole thing.
-      productTier: team.productTier ?? "full",
+      productTier: team.productTierOverride ?? team.productTier ?? "full",
+      /** True when the tier was pinned by hand rather than derived from Stripe. */
+      productTierPinned: !!team.productTierOverride,
     };
   },
 });
@@ -121,7 +123,17 @@ export const updateTeamBilling = mutation({
       updates.plan = args.plan;
     }
     if (args.productTier !== undefined) {
-      updates.productTier = args.productTier;
+      // An override means someone deliberately pinned this team's tier, and a
+      // routine invoice must not undo that. Skipping the write is the whole
+      // mechanism — see the field's comment in schema.ts.
+      if (team.productTierOverride) {
+        console.log(
+          `[billing] team ${team._id} is pinned to ` +
+            `"${team.productTierOverride}" — ignoring tier "${args.productTier}" from Stripe`,
+        );
+      } else {
+        updates.productTier = args.productTier;
+      }
     }
 
     await ctx.db.patch(team._id, updates);
@@ -168,5 +180,34 @@ export const getTeamByStripeCustomer = query({
       .first();
 
     return team;
+  },
+});
+
+/**
+ * Pin a team to a tier regardless of what they pay.
+ *
+ * For comped accounts and internal testing only. Writes both the override and
+ * the effective tier so the change is visible immediately rather than at the
+ * next Stripe event — which for a pinned team never comes.
+ */
+export const setProductTierOverride = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    /** Pass null to unpin and let Stripe decide again. */
+    tier: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    if (args.tier === null) {
+      await ctx.db.patch(args.teamId, { productTierOverride: undefined });
+      return { pinned: false };
+    }
+    if (!["scoreboard", "fathom", "full"].includes(args.tier)) {
+      throw new Error(`Unknown tier: ${args.tier}`);
+    }
+    await ctx.db.patch(args.teamId, {
+      productTierOverride: args.tier,
+      productTier: args.tier,
+    });
+    return { pinned: true, tier: args.tier };
   },
 });
