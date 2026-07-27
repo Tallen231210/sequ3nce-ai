@@ -58,12 +58,19 @@ export const getCallsForReview = query({
       return [];
     }
 
-    // Filter to completed calls with video recordings
+    // Completed calls a manager can actually review.
+    //
+    // "has a video file" used to be the whole test, which silently excluded
+    // every Fathom call — Fathom keeps the media on their side and gives us
+    // only a link, so a manager on the bring-your-own-recording product would
+    // have opened this page and seen nothing at all. A Fathom call still has
+    // the transcript, the summary and the AI analysis, which is most of what
+    // this page is for, so it belongs here with a link out instead of a player.
     let filtered = allCalls.filter(
       (c) =>
         c.status === "completed" &&
-        c.recordingUrl &&
-        c.recordingType === "video"
+        ((c.recordingUrl && c.recordingType === "video") ||
+          (c.source === "fathom" && !!c.externalShareUrl))
     );
 
     // Apply closer filter
@@ -125,6 +132,9 @@ export const getCallsForReview = query({
           startedAt: call.startedAt,
           endedAt: call.endedAt,
           summary: content?.summary,
+          // Fathom calls have no file to play, only a link to their player.
+          source: call.source,
+          externalShareUrl: call.externalShareUrl,
         };
       })
     );
@@ -373,6 +383,9 @@ export const getCallForReview = query({
       createdAt: call.createdAt,
       startedAt: call.startedAt,
       endedAt: call.endedAt,
+      // Fathom hosts the media; this link is the only way to watch it back.
+      source: call.source,
+      externalShareUrl: call.externalShareUrl,
     };
   },
 });

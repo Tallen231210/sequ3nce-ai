@@ -211,6 +211,20 @@ export default function CallReviewPage({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Fathom keeps the recording on their side, so there is no player
+              on this page and nothing for the share dialog to share. Send the
+              manager to the one place the video actually exists. */}
+          {call.source === 'fathom' && call.externalShareUrl && (
+            <Button size="sm" variant="outline" asChild>
+              <a
+                href={call.externalShareUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Watch on Fathom
+              </a>
+            </Button>
+          )}
           {call.recordingUrl && (
             <Button size="sm" variant="outline" onClick={handleOpenShareDialog}>
               <Share2 className="h-4 w-4 mr-1" />
