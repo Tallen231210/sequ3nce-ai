@@ -12529,10 +12529,18 @@ http.route({
       return new Response(JSON.stringify({ error: "missing team" }), { status: 400 });
     }
 
-    const connection = await ctx.runQuery(
-      internal.fathomConnections.getConnectionForTeam,
-      { teamId: teamId as Id<"teams"> },
-    );
+    // A malformed id throws inside the query rather than returning null, which
+    // surfaced as a 500 and would fill Sentry with noise from anyone probing
+    // the endpoint. This is a public URL; a bad team is a 404, not a crash.
+    let connection = null;
+    try {
+      connection = await ctx.runQuery(
+        internal.fathomConnections.getConnectionForTeam,
+        { teamId: teamId as Id<"teams"> },
+      );
+    } catch {
+      return new Response(JSON.stringify({ error: "unknown" }), { status: 404 });
+    }
     if (!connection?.webhookSecret) {
       // Unknown team, or one that never registered a webhook. Say as little as
       // possible — this endpoint is public.
