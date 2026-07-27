@@ -240,4 +240,15 @@ crons.cron(
   {},
 );
 
+// The daily outcome nudge. 5pm UTC — late enough in a US afternoon that the
+// day's calls are done, early enough that it isn't overnight mail. Only goes
+// to closers on a team with a live Fathom connection who actually have calls
+// outstanding, so nobody else can receive one.
+crons.cron(
+  "fathom-outcome-nudge",
+  "0 17 * * *",
+  internal.fathomNudge.runDailyNudges,
+  {},
+);
+
 export default crons;

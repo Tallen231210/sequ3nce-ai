@@ -12426,6 +12426,35 @@ http.route({
 closerPreflight("/closer/fathom/reclassify");
 
 http.route({
+  path: "/closer/fathom/needsOutcome",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runQuery(
+        internal.fathomOutcomes.getCallsNeedingOutcome,
+        { closerId: caller.closerId },
+      );
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] fathom/needsOutcome:", error);
+      // An empty queue rather than an error. This drives a banner on the
+      // dashboard, and a broken banner is worse than an absent one.
+      return new Response(JSON.stringify({ total: 0, calls: [] }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/fathom/needsOutcome");
+
+http.route({
   path: "/closer/fathom/sync",
   method: "POST",
   handler: httpAction(async (ctx, request) => {

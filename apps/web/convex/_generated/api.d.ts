@@ -90,6 +90,8 @@ import type * as fathom from "../fathom.js";
 import type * as fathomClassify from "../fathomClassify.js";
 import type * as fathomConnect from "../fathomConnect.js";
 import type * as fathomConnections from "../fathomConnections.js";
+import type * as fathomNudge from "../fathomNudge.js";
+import type * as fathomOutcomes from "../fathomOutcomes.js";
 import type * as founderAdmin from "../founderAdmin.js";
 import type * as ghl from "../ghl.js";
 import type * as ghlActions from "../ghlActions.js";
@@ -244,6 +246,8 @@ declare const fullApi: ApiFromModules<{
   fathomClassify: typeof fathomClassify;
   fathomConnect: typeof fathomConnect;
   fathomConnections: typeof fathomConnections;
+  fathomNudge: typeof fathomNudge;
+  fathomOutcomes: typeof fathomOutcomes;
   founderAdmin: typeof founderAdmin;
   ghl: typeof ghl;
   ghlActions: typeof ghlActions;

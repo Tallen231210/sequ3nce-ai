@@ -94,3 +94,27 @@ export function reclassifyFathomCall(
 ): Promise<{ success: boolean; error?: string } | null> {
   return post("/closer/fathom/reclassify", { callId, isSalesCall });
 }
+
+export interface OutcomeQueueItem {
+  _id: string;
+  prospectName: string;
+  startedAt: number;
+  duration?: number;
+  externalShareUrl?: string;
+  classifiedAs?: string;
+  isHistorical: boolean;
+}
+
+/**
+ * Calls waiting on the closer to say how they went.
+ *
+ * Without an outcome a call contributes nothing to close rate or revenue, so
+ * this queue is the only thing standing between a Fathom-only team and an
+ * empty scoreboard.
+ */
+export function getCallsNeedingOutcome(): Promise<{
+  total: number;
+  calls: OutcomeQueueItem[];
+} | null> {
+  return post("/closer/fathom/needsOutcome");
+}

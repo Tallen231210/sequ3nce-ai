@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from 'react';
+import { OutcomeQueue } from './OutcomeQueue';
 import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem } from '@/lib/closer/client';
 import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting } from '@/lib/closer/client';
 import { extractProspectName } from './schedule/scheduleUtils';
@@ -85,6 +86,13 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-black">{greeting}</h1>
         <p className="text-sm text-gray-500 mt-1">{dateStr}</p>
+      </div>
+
+      {/* Above the stats on purpose. These calls are missing FROM those very
+          numbers, so showing the numbers first would have a closer reading a
+          close rate that's wrong in a way the fix is sitting right below. */}
+      <div className="mb-6">
+        <OutcomeQueue closerInfo={closerInfo} />
       </div>
 
       {/* Quick Stats Row */}
