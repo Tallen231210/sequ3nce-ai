@@ -1,6 +1,6 @@
 # Fathom integration — research and viability
 
-**Researched 2026-07-26 from Fathom's developer documentation.** Nothing built. Sources are `developers.fathom.ai` (full doc index at `/llms.txt`, machine-readable spec at `/api-reference/openapi.yaml`) and Fathom's help centre.
+**Researched 2026-07-26 from Fathom's developer documentation.** Phase 1 is now built and running against production — see "What building it actually taught us" at the bottom, which corrects three things this document got wrong. Sources are `developers.fathom.ai` (full doc index at `/llms.txt`, machine-readable spec at `/api-reference/openapi.yaml`) and Fathom's help centre.
 
 Marked throughout: **[confirmed]** from the docs, **[inferred]** reasoning from them, **[unknown]** needs Fathom or a live customer to answer.
 
@@ -156,3 +156,82 @@ None of that is Fathom-specific, and none of it is hard — but it is a second p
 5. **Productise**: Stripe, tiering, sign-up.
 
 Step 1 is small and answers the only questions that could still sink this.
+
+
+---
+
+## 10. What building it actually taught us
+
+Added 2026-07-26 after Phase 1 shipped. **Three things above are wrong.** Trust
+this section over the research where they conflict.
+
+### `calendar_invitees_domains_type` cannot be trusted — §4 was wrong
+
+Section 4 claimed this field "answers sales call vs internal standup". It does
+not. Checked against 27 real meetings on a live account:
+
+- It reported **26 of 27** as having an external person present.
+- All twelve impromptu meetings were flagged that way when the invitee list
+  contained only the account owner.
+
+The flag means "not in your Fathom workspace", which is a different question
+from "not a colleague". Believing it would have counted every ad-hoc internal
+call as a sales call and destroyed every close rate on the board — the exact
+failure §4 claimed it prevented.
+
+**What we do instead** (`convex/fathomClassify.ts`): compare everyone on the
+call against the team roster we already hold. Emails decide where we have them.
+
+### The invitee list is wrong, not just sparse
+
+Worth stating separately because it changes the design. On impromptu meetings
+Fathom lists only the account owner **even when other people attended** — the
+transcripts for those same meetings carry three to six named speakers.
+
+So the classifier falls back to who actually spoke. Names are weak identifiers
+(real examples from one account include "jodip" and "Team Club"), so they only
+rule a call OUT: every voice a colleague means internal; an unrecognised voice
+means we ask rather than guess.
+
+**The classifier is only as good as the roster.** Someone who joins calls and
+isn't registered — a manager, a VA — reads as an outsider. That is the known
+failure mode and the reason the closer-facing correction exists.
+
+### There is no way to list your webhooks
+
+`POST /webhooks`, `POST /webhooks/{id}`, `DELETE /webhooks/{id}` — no GET. The
+id returned at creation is the only record that a webhook exists. Lose it and it
+delivers to us forever with no way to find or remove it. So: store the id before
+anything else can fail, and always delete the old one before creating a new one.
+
+### Scopes are not additive the way they look
+
+On a Team plan `my_recordings` **excludes** anything shared with a team. Asking
+for it alone misses most of a sales team's calls. We request every scope and
+narrow only if Fathom refuses, which is what makes both a personal account and a
+company account work through one code path.
+
+### Rate limits were less of a problem than §5 feared
+
+Live traffic costs nothing, as expected — but `GET /meetings?include_transcript=true`
+returns full transcripts inline for a page of meetings in a single request. Ten
+meetings with transcripts up to 68,000 characters came back in one call. Backfill
+still needs a queue, but the "one heavy request per recording" assumption that
+made it look 90 minutes long does not apply to the list endpoint.
+
+### Keeping calls out of the numbers
+
+Not a Fathom fact, but the thing most likely to be got wrong by whoever picks
+this up next. Roughly twenty queries aggregate the calls table and every one of
+them narrows to `status === "completed"`. Unconfirmed calls therefore carry
+`status: "unclassified"`, which excludes them everywhere without editing a
+single query, and the closer's own history is widened to still show them.
+
+`status` and `countsTowardStats` must never be set independently — they drifted
+once already, leaving a call the closer had marked internal still counting.
+Status is now always derived from the classification.
+
+### Still not built
+
+Backfill beyond the most recent page, the reconciliation sweep for missed
+webhooks, OAuth, and everything in §8 (Stripe, tiering, upgrade/downgrade).
