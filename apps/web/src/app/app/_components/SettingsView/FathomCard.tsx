@@ -20,6 +20,7 @@ import {
   connectFathom,
   disconnectFathom,
   setFathomEmail,
+  setOutcomeReminders,
   syncFathomNow,
   type FathomStatus,
 } from "@/lib/closer/fathom";
@@ -30,6 +31,9 @@ export function FathomCard() {
   const [apiKey, setApiKey] = useState("");
   const [teamWide, setTeamWide] = useState(false);
   const [busy, setBusy] = useState<null | "connect" | "disconnect" | "sync" | "email">(null);
+  // Mirrored locally so the switch responds instantly; the server is the
+  // authority and a failure snaps it back.
+  const [reminders, setReminders] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [emailDraft, setEmailDraft] = useState("");
@@ -46,6 +50,7 @@ export function FathomCard() {
     if (!mounted.current) return;
     setStatus(next);
     setEmailDraft(next?.fathomEmail ?? "");
+    setReminders(next?.outcomeRemindersEnabled === true);
     setLoading(false);
   }, []);
 
@@ -239,6 +244,33 @@ export function FathomCard() {
               tell us which one — it&apos;s how we know which calls are yours.
             </p>
           </div>
+
+          {/* Opt-in, and off by default. An unrequested daily email is the
+              fastest way to teach a team to filter everything we send. */}
+          <label className="flex items-start gap-2.5 max-w-md cursor-pointer">
+            <input
+              type="checkbox"
+              checked={reminders}
+              onChange={async (e) => {
+                const next = e.target.checked;
+                setReminders(next);
+                const result = await setOutcomeReminders(next);
+                if (!mounted.current) return;
+                if (!result?.success) {
+                  setReminders(!next);
+                  setError("Couldn't save that preference.");
+                }
+              }}
+              className="mt-0.5"
+            />
+            <span className="text-[12.5px] text-gray-700">
+              Email me a daily reminder
+              <span className="block text-[11.5px] text-gray-500">
+                One message a day, only when you actually have calls waiting on
+                an outcome. Nothing otherwise.
+              </span>
+            </span>
+          </label>
 
           {/* Meetings arrive on their own, so this is not how calls get here.
               Its real use is re-running the sales-call check after the team

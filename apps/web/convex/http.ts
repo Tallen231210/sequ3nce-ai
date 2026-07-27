@@ -12426,6 +12426,35 @@ http.route({
 closerPreflight("/closer/fathom/reclassify");
 
 http.route({
+  path: "/closer/fathom/reminders",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      await ctx.runMutation(internal.fathomConnections.setOutcomeReminders, {
+        closerId: caller.closerId,
+        enabled: body.enabled === true,
+      });
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    } catch (error) {
+      console.error("[HTTP] fathom/reminders:", error);
+      return new Response(JSON.stringify({ success: false }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/fathom/reminders");
+
+http.route({
   path: "/closer/fathom/needsOutcome",
   method: "POST",
   handler: httpAction(async (ctx, request) => {

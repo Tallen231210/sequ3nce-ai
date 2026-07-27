@@ -355,6 +355,15 @@ export default defineSchema({
 
   // Closers (sales reps who use the desktop app)
   closers: defineTable({
+    /**
+     * Whether this closer wants the daily "calls need an outcome" email.
+     *
+     * Opt-IN, and absent means no. Nobody should receive mail from us because
+     * a feature shipped — an unrequested daily email is the fastest way to
+     * teach a whole team to filter everything we send, including the ones that
+     * matter.
+     */
+    outcomeRemindersEnabled: v.optional(v.boolean()),
     email: v.string(),
     name: v.string(),
     teamId: v.id("teams"),

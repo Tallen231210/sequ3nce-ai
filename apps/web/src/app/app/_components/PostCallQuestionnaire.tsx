@@ -63,29 +63,36 @@ export function PostCallQuestionnaire({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isValid = (() => {
-    const hasName = prospectName.trim().length > 0;
-    if (!hasName || !outcome) return false;
+  /**
+   * What's still missing, in words.
+   *
+   * The button used to sit greyed out with nothing explaining why, and the
+   * two fields most often forgotten — decision maker and objections — are
+   * below the fold on a small screen. Someone fills in the obvious things,
+   * finds Save still dead, and has no way to know what it wants. Naming the
+   * gaps costs one line and removes the guessing.
+   */
+  const missing = (() => {
+    const gaps: string[] = [];
+    if (!prospectName.trim()) gaps.push('a prospect name');
+    if (!outcome) return ['an outcome'];
 
-    switch (outcome) {
-      case 'closed':
-        return (parseInt(cashCollected) || 0) > 0 &&
-               (parseInt(contractValue) || 0) > 0 &&
-               leadQualityScore !== null &&
-               prospectWasDecisionMaker !== null &&
-               objectionsOvercome !== null;
-      case 'lost':
-      case 'follow_up':
-        return (parseInt(pitchedValue) || 0) > 0 &&
-               primaryObjection !== null &&
-               leadQualityScore !== null &&
-               prospectWasDecisionMaker !== null;
-      case 'no_show':
-        return true;
-      default:
-        return false;
+    if (outcome === 'closed') {
+      if (!((parseInt(cashCollected) || 0) > 0)) gaps.push('cash collected');
+      if (!((parseInt(contractValue) || 0) > 0)) gaps.push('contract value');
+      if (leadQualityScore === null) gaps.push('lead quality');
+      if (prospectWasDecisionMaker === null) gaps.push('decision maker');
+      if (objectionsOvercome === null) gaps.push('objections overcome');
+    } else if (outcome === 'lost' || outcome === 'follow_up') {
+      if (!((parseInt(pitchedValue) || 0) > 0)) gaps.push('pitched value');
+      if (primaryObjection === null) gaps.push('the objection');
+      if (leadQualityScore === null) gaps.push('lead quality');
+      if (prospectWasDecisionMaker === null) gaps.push('decision maker');
     }
+    return gaps;
   })();
+
+  const isValid = missing.length === 0 && !!outcome;
 
   async function handleSubmit() {
     if (!isValid || !outcome) return;
@@ -327,7 +334,10 @@ export function PostCallQuestionnaire({
       </div>
 
       {/* Submit bar */}
-      <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-gray-200/60 shrink-0">
+      <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-gray-200/60 shrink-0">
+        <p className="text-[11.5px] text-gray-500 min-w-0">
+          {outcome && missing.length > 0 ? `Still needed: ${missing.join(', ')}` : ''}
+        </p>
         <button
           onClick={handleSubmit}
           disabled={!isValid || isSubmitting}

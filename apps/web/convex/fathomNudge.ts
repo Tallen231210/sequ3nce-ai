@@ -49,6 +49,8 @@ export const findClosersToNudge = internalQuery({
         // Only people actually working here. A deactivated closer must not
         // receive mail from us, and a pending one has never signed in.
         if (!closer.email || closer.status !== "active") continue;
+        // And only people who asked for it. Opt-in, so absent means no.
+        if (closer.outcomeRemindersEnabled !== true) continue;
         const calls = await ctx.db
           .query("calls")
           .withIndex("by_closer", (q) => q.eq("closerId", closer._id))

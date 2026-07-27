@@ -24,6 +24,8 @@ export interface FathomStatus {
   email: string | null;
   /** Fathom accounts sending us recordings that match nobody on the team. */
   unmatchedRecorders: Array<{ email: string; count: number; lastSeenAt: number }>;
+  /** Opt-in for the daily "calls need an outcome" email. */
+  outcomeRemindersEnabled: boolean;
 }
 
 export interface FathomSyncResult {
@@ -117,4 +119,10 @@ export function getCallsNeedingOutcome(): Promise<{
   calls: OutcomeQueueItem[];
 } | null> {
   return post("/closer/fathom/needsOutcome");
+}
+
+export function setOutcomeReminders(
+  enabled: boolean,
+): Promise<{ success: boolean } | null> {
+  return post("/closer/fathom/reminders", { enabled });
 }

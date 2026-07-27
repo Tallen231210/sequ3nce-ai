@@ -84,6 +84,7 @@ export const getStatusForCloser = internalQuery({
       // Recordings arriving from an address nobody here owns. Shown so it can
       // be fixed, because the symptom otherwise is just missing calls.
       unmatchedRecorders: conn?.unmatchedRecorders ?? [],
+      outcomeRemindersEnabled: closer?.outcomeRemindersEnabled === true,
     };
   },
 });
@@ -277,5 +278,16 @@ export const listActiveConnections = internalQuery({
     return all
       .filter((c) => c.status === "active" && !!c.apiKey)
       .map((c) => ({ connectionId: c._id, teamId: c.teamId }));
+  },
+});
+
+/** The closer choosing whether we may email them. Theirs alone to set. */
+export const setOutcomeReminders = internalMutation({
+  args: { closerId: v.id("closers"), enabled: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.closerId, {
+      outcomeRemindersEnabled: args.enabled,
+    });
+    return { success: true };
   },
 });
