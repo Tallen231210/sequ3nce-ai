@@ -502,3 +502,26 @@ export const ingestMeeting = internalMutation({
     return { status, callId };
   },
 });
+
+/**
+ * Which of these have we already got?
+ *
+ * Lets the poller ask one cheap question before deciding whether to spend a
+ * rate-limited request on a transcript.
+ */
+export const whichExist = internalQuery({
+  args: { recordingIds: v.array(v.string()) },
+  handler: async (ctx, args): Promise<string[]> => {
+    const found: string[] = [];
+    for (const id of args.recordingIds) {
+      const hit = await ctx.db
+        .query("calls")
+        .withIndex("by_external_recording", (q) =>
+          q.eq("externalRecordingId", id),
+        )
+        .first();
+      if (hit) found.push(id);
+    }
+    return found;
+  },
+});

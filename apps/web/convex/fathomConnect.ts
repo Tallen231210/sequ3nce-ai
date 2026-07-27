@@ -36,6 +36,12 @@ const TEAM_SCOPES = [
 /** An individual Fathom account has no teams, and the team scopes are rejected. */
 const SOLO_SCOPES = ["my_recordings", "shared_external_recordings"];
 
+/** Just enough of a listed meeting to decide whether we already have it. */
+interface FathomListItem {
+  recording_id?: number | string;
+  [key: string]: unknown;
+}
+
 interface FathomError {
   status?: number;
   message?: string;
@@ -447,5 +453,91 @@ export const reconcile = internalAction({
     }
 
     return { teams: connections.length, recovered };
+  },
+});
+
+/**
+ * Check for new recordings, often.
+ *
+ * Fathom's webhook never delivered. Three webhooks against a real account —
+ * the last two shown correctly in Fathom's own settings UI — produced not one
+ * delivery attempt across two recordings and forty minutes. Our endpoint was
+ * answering and verifying the whole time. So we stopped waiting to be told and
+ * started asking.
+ *
+ * Polling gets a bad name from the version that re-downloads everything. This
+ * one doesn't. The list call without transcripts is 2KB and a fifth of a
+ * second, and it sits on Fathom's standard 60/min limit rather than the heavy
+ * one. Only a recording we've never seen costs a transcript fetch, and those
+ * happen as often as a closer finishes a call — which is to say, rarely.
+ *
+ * Steady state per team is therefore one small request every few minutes, and
+ * the expensive work scales with actual calls rather than with clock ticks.
+ */
+export const pollForNewMeetings = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ teams: number; imported: number }> => {
+    const connections = await ctx.runQuery(
+      internal.fathomConnections.listActiveConnections,
+      {},
+    );
+
+    // Two hours, not five minutes. The window has to survive a deploy, a
+    // Fathom blip, or a few missed runs — anything shorter turns a brief
+    // outage into permanently missing calls, which is the failure this exists
+    // to prevent. Re-seeing a call we already hold costs one array lookup.
+    const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    let imported = 0;
+
+    for (const conn of connections) {
+      try {
+        const full = await ctx.runQuery(
+          internal.fathomConnections.getConnectionForTeam,
+          { teamId: conn.teamId },
+        );
+        if (!full?.apiKey) continue;
+
+        // Cheap: no transcripts, so this is the standard rate limit.
+        const listed = await fathom(
+          full.apiKey,
+          `/meetings?created_after=${encodeURIComponent(since)}`,
+        );
+        if (!listed.ok) continue;
+
+        const body = listed.body as { items?: FathomListItem[] };
+        const meetings = body.items ?? [];
+        if (meetings.length === 0) continue;
+
+        const ids = meetings
+          .map((m) => String(m.recording_id ?? ""))
+          .filter(Boolean);
+        const known = await ctx.runQuery(internal.fathom.whichExist, {
+          recordingIds: ids,
+        });
+        const knownSet = new Set(known);
+
+        for (const meeting of meetings) {
+          const id = String(meeting.recording_id ?? "");
+          if (!id || knownSet.has(id)) continue;
+
+          // Only now do we spend a heavy request, and only for this one.
+          const t = await fathom(full.apiKey, `/recordings/${id}/transcript`);
+          const transcript = t.ok
+            ? (t.body as { transcript?: unknown[] })?.transcript
+            : undefined;
+
+          const out = await ctx.runMutation(internal.fathom.ingestMeeting, {
+            teamId: conn.teamId,
+            meeting: { ...meeting, transcript: transcript ?? null },
+          });
+          if (out.status === "created") imported++;
+        }
+      } catch (error) {
+        // One team's expired key must not stop everyone else's calls arriving.
+        console.error(`[fathom] poll failed for team ${conn.teamId}:`, error);
+      }
+    }
+
+    return { teams: connections.length, imported };
   },
 });

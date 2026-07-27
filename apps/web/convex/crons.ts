@@ -230,12 +230,31 @@ crons.cron(
   {},
 );
 
-// Catch Fathom calls the webhook never delivered. crons.cron, not
+// How Fathom calls actually arrive.
+//
+// This was meant to be a backstop behind the webhook. The webhook never
+// delivered once — three of them, two confirmed correct in Fathom's own UI —
+// so polling is the primary path and the webhook is the bonus if it ever
+// starts working. Every five minutes: a closer finishing a call shouldn't wait
+// longer than that to see it.
+//
+// Cheap by construction. The list call carries no transcripts, so it sits on
+// the standard rate limit, and only a recording we've never seen costs
+// anything more.
+crons.cron(
+  "fathom-poll",
+  "*/5 * * * *",
+  internal.fathomConnect.pollForNewMeetings,
+  {},
+);
+
+// The deeper sweep, once a day. The poll looks back two hours; this looks back
+// three days and catches anything a longer outage swallowed. crons.cron, not
 // crons.interval — an outage must not leave a backlog of overlapping sweeps
 // all hammering the same rate limit when the deployment comes back.
 crons.cron(
   "fathom-reconcile",
-  "20 */6 * * *",
+  "20 4 * * *",
   internal.fathomConnect.reconcile,
   {},
 );
