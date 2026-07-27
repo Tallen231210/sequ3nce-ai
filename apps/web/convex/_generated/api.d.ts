@@ -11,7 +11,6 @@
 import type * as _debugTestSetterScorecard from "../_debugTestSetterScorecard.js";
 import type * as _demoSeed from "../_demoSeed.js";
 import type * as _probeTeamStripe from "../_probeTeamStripe.js";
-import type * as _v from "../_v.js";
 import type * as adSpend from "../adSpend.js";
 import type * as adSpendInternal from "../adSpendInternal.js";
 import type * as admin from "../admin.js";
@@ -169,7 +168,6 @@ declare const fullApi: ApiFromModules<{
   _debugTestSetterScorecard: typeof _debugTestSetterScorecard;
   _demoSeed: typeof _demoSeed;
   _probeTeamStripe: typeof _probeTeamStripe;
-  _v: typeof _v;
   adSpend: typeof adSpend;
   adSpendInternal: typeof adSpendInternal;
   admin: typeof admin;
