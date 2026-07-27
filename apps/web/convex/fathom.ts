@@ -43,23 +43,89 @@ function ms(iso?: string): number | undefined {
   return Number.isFinite(t) ? t : undefined;
 }
 
+/** Fathom marks each transcript line "HH:MM:SS" from the start of the call. */
+function hmsToSeconds(hms?: string): number | undefined {
+  if (!hms) return undefined;
+  const parts = hms.split(":").map((n) => Number(n));
+  if (parts.some((n) => !Number.isFinite(n))) return undefined;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return undefined;
+}
+
+/** Nothing anyone would call a sales call runs longer than this. */
+const MAX_CREDIBLE_CALL_SECONDS = 12 * 60 * 60;
+
 /**
- * Flatten Fathom's transcript into the plain text our AI functions expect.
+ * How long was the call, really?
  *
- * All three of them take a string, so a Fathom transcript feeds the existing
- * summary and analysis pipeline with no changes at all.
+ * Fathom's own sample recording claims it started in 2021 and ended in 2025,
+ * which rendered as "1749665m 44s" on the call. Third-party timestamps are not
+ * trustworthy, so an implausible span is discarded rather than stored, and we
+ * fall back to where the transcript actually stops — which is derived from the
+ * content itself and can't be off by years.
  */
-function transcriptToText(t: FathomMeeting["transcript"]): string | undefined {
-  if (!t?.length) return undefined;
-  return t
-    .map((seg) => {
-      const who = seg.speaker?.display_name?.trim();
-      const text = (seg.text ?? "").trim();
-      if (!text) return "";
-      return who ? `${who}: ${text}` : text;
-    })
-    .filter(Boolean)
-    .join("\n");
+function credibleDuration(
+  startedAt: number,
+  endedAt: number | undefined,
+  transcript: FathomMeeting["transcript"],
+): number | undefined {
+  if (endedAt) {
+    const span = Math.round((endedAt - startedAt) / 1000);
+    if (span > 0 && span <= MAX_CREDIBLE_CALL_SECONDS) return span;
+  }
+  // Last line's offset from the start. Good to the second, and immune to a
+  // wrong end timestamp.
+  for (let i = (transcript?.length ?? 0) - 1; i >= 0; i--) {
+    const secs = hmsToSeconds(transcript?.[i]?.timestamp);
+    if (secs !== undefined && secs > 0 && secs <= MAX_CREDIBLE_CALL_SECONDS) {
+      return secs;
+    }
+  }
+  return undefined;
+}
+
+interface Turn {
+  speaker: string;
+  text: string;
+  timestamp: number;
+}
+
+/**
+ * Collapse Fathom's transcript into turns.
+ *
+ * Fathom emits roughly one sentence per segment, each tagged with the speaker,
+ * so joining them naively produces "Richard White: All right. Richard White:
+ * Hello. Richard White: And welcome to Fathom." — unreadable, and it wastes
+ * tokens when the text goes to the AI. Consecutive lines from the same person
+ * are one turn.
+ */
+function toTurns(t: FathomMeeting["transcript"]): Turn[] {
+  const turns: Turn[] = [];
+  for (const seg of t ?? []) {
+    const text = (seg.text ?? "").trim();
+    if (!text) continue;
+    const who = seg.speaker?.display_name?.trim() || "Unknown";
+    const at = hmsToSeconds(seg.timestamp) ?? 0;
+    const last = turns[turns.length - 1];
+    if (last && last.speaker === who) {
+      last.text += ` ${text}`;
+    } else {
+      turns.push({ speaker: who, text, timestamp: at });
+    }
+  }
+  return turns;
+}
+
+/**
+ * Flatten to the plain text our AI functions expect.
+ *
+ * All three take a string, so a Fathom transcript feeds the existing summary
+ * and analysis pipeline with no changes at all.
+ */
+function turnsToText(turns: Turn[]): string | undefined {
+  if (!turns.length) return undefined;
+  return turns.map((t) => `${t.speaker}: ${t.text}`).join("\n\n");
 }
 
 /**
@@ -151,6 +217,12 @@ export const reclassifyCall = internalMutation({
           callId: args.callId,
           transcript: content.transcriptText,
           ...(call.prospectName ? { prospectName: call.prospectName } : {}),
+        });
+        await ctx.scheduler.runAfter(0, internal.ai.generateCallAnalysis, {
+          callId: args.callId,
+          transcript: content.transcriptText,
+          ...(call.prospectName ? { prospectName: call.prospectName } : {}),
+          ...(call.duration !== undefined ? { duration: call.duration } : {}),
         });
       }
     }
@@ -245,8 +317,12 @@ export const ingestMeeting = internalMutation({
     });
 
     const startedAt = ms(m.recording_start_time) ?? ms(m.created_at) ?? Date.now();
-    const endedAt = ms(m.recording_end_time);
-    const duration = endedAt ? Math.max(0, Math.round((endedAt - startedAt) / 1000)) : undefined;
+    const rawEndedAt = ms(m.recording_end_time);
+    const duration = credibleDuration(startedAt, rawEndedAt, m.transcript);
+    // Keep the end time only if it agrees with the duration we trust, so the
+    // two can't tell a viewer different stories.
+    const endedAt =
+      duration !== undefined ? startedAt + duration * 1000 : undefined;
 
     // The prospect is whoever isn't a colleague. Best effort — a call with no
     // identifiable outsider keeps the meeting title instead of inventing a name.
@@ -343,13 +419,46 @@ export const ingestMeeting = internalMutation({
 
     // Transcript and summary go to the sibling table, never onto the call row —
     // that split exists because heavy blobs on `calls` blew Convex's read limit.
-    const text = transcriptToText(m.transcript);
+    const turns = toTurns(m.transcript);
+    const text = turnsToText(turns);
     if (text) {
       await upsertCallContentTx(ctx, {
         callId,
         teamId: args.teamId,
         transcriptText: text,
       });
+
+      // Write the segments too. Without them the transcript tab has nothing to
+      // render and falls back to the 500-character preview meant for list rows,
+      // which is why a full hour of conversation showed as three lines and
+      // stopped mid-sentence.
+      //
+      // Speaker is "closer" or "prospect" here, not a name — that is what the
+      // rest of the app expects, and the recorder is by definition the closer.
+      const recorderName = (m.recorded_by?.name ?? "").trim().toLowerCase();
+      const existingSegments = await ctx.db
+        .query("transcriptSegments")
+        .withIndex("by_call", (q) => q.eq("callId", callId))
+        .collect();
+      // Replace rather than append. A re-sync must not double the transcript.
+      for (const seg of existingSegments) await ctx.db.delete(seg._id);
+
+      // Bounded. A very long call could otherwise push a single transaction
+      // toward Convex's document limit, and nobody reads 5,000 turns.
+      for (const turn of turns.slice(0, 3000)) {
+        await ctx.db.insert("transcriptSegments", {
+          callId,
+          teamId: args.teamId,
+          speaker:
+            turn.speaker.trim().toLowerCase() === recorderName
+              ? "closer"
+              : "prospect",
+          text: turn.text,
+          timestamp: turn.timestamp,
+          createdAt: Date.now(),
+        });
+      }
+
       // Same pipeline the bot uses. Only for calls that count — running AI
       // over a team standup costs money and tells nobody anything.
       if (verdict.countsTowardStats && status === "created") {
@@ -357,6 +466,14 @@ export const ingestMeeting = internalMutation({
           callId,
           transcript: text,
           ...(prospectName ? { prospectName } : {}),
+        });
+        // The deep analysis too — chapters and the five scores. Leaving this
+        // out is why the Analysis tab said "not available for this call".
+        await ctx.scheduler.runAfter(0, internal.ai.generateCallAnalysis, {
+          callId,
+          transcript: text,
+          ...(prospectName ? { prospectName } : {}),
+          ...(duration !== undefined ? { duration } : {}),
         });
       }
     }

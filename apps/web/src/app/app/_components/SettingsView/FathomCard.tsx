@@ -101,8 +101,8 @@ export function FathomCard() {
     const added = result.created;
     setNotice(
       added > 0
-        ? `Brought in ${added} ${added === 1 ? "meeting" : "meetings"}.`
-        : "Up to date — nothing new since last time.",
+        ? `Brought in ${added} new ${added === 1 ? "meeting" : "meetings"}.`
+        : "Nothing new to bring in — we re-checked which of your calls were sales calls.",
     );
     await refresh();
   };
@@ -240,13 +240,23 @@ export function FathomCard() {
             </p>
           </div>
 
+          {/* Meetings arrive on their own, so this is not how calls get here.
+              Its real use is re-running the sales-call check after the team
+              roster changes — which the label needs to say, because "check for
+              new meetings" reads as the thing that makes the feature work. */}
+          <p className="text-[11.5px] text-gray-500 leading-relaxed max-w-md">
+            New calls arrive on their own within a minute of finishing. Use this
+            after someone joins or leaves your team — it re-checks which of your
+            calls were sales calls using the updated roster.
+          </p>
+
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={handleSync}
               disabled={busy !== null}
               className="px-4 py-2 text-[12px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 disabled:bg-gray-300 transition-colors"
             >
-              {busy === "sync" ? "Checking..." : "Check for new meetings"}
+              {busy === "sync" ? "Re-checking..." : "Re-check my calls"}
             </button>
             {!status.connectedBySomeoneElse && (
               <button

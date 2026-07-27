@@ -26,7 +26,12 @@ export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo }: CallDe
         </DetailSection>
       )}
 
-      {/* Ammo Analysis */}
+      {/* Ammo Analysis — only ever produced by our own meeting bot, which
+          captures prospect quotes live as the call happens. A Fathom call was
+          recorded by something else entirely, so there is nothing to show and
+          an empty "No ammo items recorded" panel just advertises a feature
+          this product line doesn't include. */}
+      {call.source !== 'fathom' && (
       <DetailSection title="Ammo Analysis">
         {isLoadingAmmo ? (
           <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
@@ -43,6 +48,7 @@ export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo }: CallDe
           </div>
         )}
       </DetailSection>
+      )}
 
       {/* Post-Call Data */}
       <DetailSection title="Post-Call Data">
