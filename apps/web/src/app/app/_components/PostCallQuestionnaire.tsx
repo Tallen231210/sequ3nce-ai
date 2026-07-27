@@ -129,7 +129,16 @@ export function PostCallQuestionnaire({
   const showDecisionMaker = outcome === 'closed' || outcome === 'lost' || outcome === 'follow_up';
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    // min-h-0 and flex-1 together, not h-full.
+    //
+    // h-full only resolves against a parent with a definite height. Both
+    // modals that host this are flex columns capped with max-h, so the form
+    // simply grew to its natural height, pushed Notes and the Save button
+    // past the bottom edge, and the parent's overflow-hidden clipped them —
+    // leaving a form that couldn't be submitted or scrolled. flex-1 makes it
+    // take the space available and min-h-0 lets it shrink below its content,
+    // which is what finally lets the inner overflow-y-auto do its job.
+    <div className="flex flex-col min-h-0 flex-1 bg-white">
       {/* On desktop this was its own window, so it carried the logo. Inside the
           web app that's just chrome repeated — the app frame is already there. */}
       <div className="px-5 py-3 border-b border-gray-200/60 shrink-0">

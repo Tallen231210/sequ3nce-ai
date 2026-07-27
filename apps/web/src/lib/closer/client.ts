@@ -110,6 +110,12 @@ export interface CloserInfo {
   email: string;
   status: string;
   teamName?: string;
+  /**
+   * "bot" (or absent) is the full product. "fathom" is bring-your-own-
+   * recording, where we never join the call — so features that depend on us
+   * being in the room aren't part of what they bought.
+   */
+  productTier?: string;
 }
 
 export interface LinkCloserResult {

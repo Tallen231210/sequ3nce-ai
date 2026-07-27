@@ -18,6 +18,12 @@ export interface CloserInfo {
   email: string;
   status: string;
   teamName?: string;
+  /**
+   * "bot" (or absent) is the full product. "fathom" is bring-your-own-
+   * recording — we never join the call, so features that depend on us being
+   * in the room aren't part of what that team bought.
+   */
+  productTier?: string;
 }
 
 export const CONVEX_SITE_URL =

@@ -45,10 +45,19 @@ const NAV = [
   { href: "/app/calls", label: "Calls", icon: Video },
   { href: "/app/schedule", label: "Schedule", icon: Calendar },
   { href: "/app/messages", label: "Messages", icon: MessageSquare },
-  { href: "/app/coaching", label: "Coaching", icon: GraduationCap },
+  // Coaching is built around live call review with our own bot in the room.
+  // On the bring-your-own-recording tier we're never in the call, so the tab
+  // would only ever be empty — showing it advertises something they didn't buy.
+  { href: "/app/coaching", label: "Coaching", icon: GraduationCap, notOn: ["fathom"] },
   { href: "/app/resources", label: "Resources", icon: FolderOpen },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
+
+/** The tabs this team's product actually includes. */
+function navFor(productTier?: string) {
+  const tier = productTier ?? "bot";
+  return NAV.filter((item) => !item.notOn?.includes(tier));
+}
 
 /**
  * The closer app's frame.
@@ -121,7 +130,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
 
   const navLinks = (
     <nav className="flex flex-col gap-0.5">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {navFor(closer?.productTier).map(({ href, label, icon: Icon }) => {
         // Segment-boundary match, so /app/numbers-something can never light up
         // /app/numbers. This exact bug shipped once on the manager sidebar.
         const active = pathname === href || pathname.startsWith(`${href}/`);

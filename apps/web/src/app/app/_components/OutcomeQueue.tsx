@@ -169,6 +169,7 @@ export function OutcomeQueue({ closerInfo, onCountChange }: Props) {
                 </button>
               </div>
             </div>
+            {/* The header above is fixed; this is the part that flexes. */}
             <PostCallQuestionnaire
               closerInfo={closerInfo}
               callId={active._id}

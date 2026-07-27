@@ -4,6 +4,19 @@ import { v } from "convex/values";
 export default defineSchema({
   // Teams (companies using the platform)
   teams: defineTable({
+    /**
+     * Which product this team bought.
+     *
+     * "bot" (or unset) is the full product we've always sold — our meeting bot
+     * joins the call and captures ammo live. "fathom" is the bring-your-own-
+     * recording tier: we never join, so anything that depends on us being in
+     * the room isn't part of what they're paying for and shouldn't be shown.
+     *
+     * Deliberately just a label. Pricing, Stripe products and upgrade paths
+     * are a separate piece of work — this exists so features can be gated
+     * honestly in the meantime rather than everyone seeing everything.
+     */
+    productTier: v.optional(v.string()),
     name: v.string(),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
