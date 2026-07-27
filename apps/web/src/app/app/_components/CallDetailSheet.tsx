@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { FathomClassificationBanner } from './FathomClassificationBanner';
 import type {
   CloserInfo,
   CallHistoryItem,
@@ -228,6 +229,20 @@ export function CallDetailSheet({
             />
           )}
 
+          {/* Fathom keeps the recording on their side and only ever gives us a
+              link, so there is nothing to play here. Send them there rather
+              than showing an empty player. */}
+          {call.source === 'fathom' && call.externalShareUrl && (
+            <a
+              href={call.externalShareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium rounded-md border bg-white text-gray-600 border-gray-300 hover:bg-gray-50 transition-colors"
+            >
+              Watch on Fathom
+            </a>
+          )}
+
           {/* Close */}
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -235,6 +250,18 @@ export function CallDetailSheet({
             </svg>
           </button>
         </div>
+
+        {/* Fathom calls carry a classification the closer can overrule. Sits
+            directly under the header so the question is answered before they
+            start reading the call. */}
+        {call.source === 'fathom' && (
+          <FathomClassificationBanner
+            callId={call._id}
+            classifiedAs={call.classifiedAs}
+            classifiedBy={call.classifiedBy}
+            countsTowardStats={call.countsTowardStats}
+          />
+        )}
 
         {/* Video Player (pinned) */}
         {hasVideo && (

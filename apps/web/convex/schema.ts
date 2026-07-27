@@ -435,6 +435,24 @@ export default defineSchema({
     errorMessage: v.optional(v.string()),
     errorAt: v.optional(v.number()),
     lastSyncedAt: v.optional(v.number()),
+    /**
+     * Fathom addresses we've received recordings for that match nobody here.
+     *
+     * The single likeliest way this integration disappoints someone: a closer
+     * whose Fathom is a personal Gmail records every call, we can't tell whose
+     * they are, and their manager sees an empty column with no explanation.
+     * Kept on the connection so it can be shown and fixed rather than only
+     * appearing in a log nobody reads.
+     */
+    unmatchedRecorders: v.optional(
+      v.array(
+        v.object({
+          email: v.string(),
+          count: v.number(),
+          lastSeenAt: v.number(),
+        }),
+      ),
+    ),
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])

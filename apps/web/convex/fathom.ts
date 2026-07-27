@@ -94,6 +94,72 @@ export const findCloserByFathomEmail = internalQuery({
 });
 
 /**
+ * The closer telling us we got it wrong.
+ *
+ * Their answer outranks ours permanently — `classifiedBy: "closer"` is the
+ * flag that stops every later sync from flipping it back. That guard is in
+ * ingestMeeting, and it is the whole reason this is safe to expose.
+ *
+ * Confirming a call also earns it an AI summary. We skip that at ingest for
+ * anything we aren't sure about, because running analysis over a team standup
+ * costs money and tells nobody anything — but once a human says it was a sales
+ * call, it should get the same treatment as any other.
+ */
+export const reclassifyCall = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    closerId: v.id("closers"),
+    isSalesCall: v.boolean(),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return { success: false, error: "That call no longer exists." };
+
+    // Yours to correct, not anyone's. A closer editing another closer's call
+    // would let one person quietly move numbers on the team board.
+    if (String(call.closerId) !== String(args.closerId)) {
+      return { success: false, error: "That isn't your call." };
+    }
+
+    // Also checks the status agrees. Without that last clause a row whose
+    // status had drifted from its classification would take this early exit
+    // and never be repaired — the same drift that was letting a call marked
+    // internal go on being counted.
+    const alreadyRight =
+      call.classifiedBy === "closer" &&
+      call.countsTowardStats === args.isSalesCall &&
+      call.status === (args.isSalesCall ? "completed" : "unclassified");
+    if (alreadyRight) return { success: true };
+
+    await ctx.db.patch(args.callId, {
+      classifiedAs: args.isSalesCall ? "sales" : "internal",
+      classifiedBy: "closer",
+      countsTowardStats: args.isSalesCall,
+      // The half that actually moves the numbers.
+      status: args.isSalesCall ? "completed" : "unclassified",
+    });
+
+    // Only on the way up, and only once — a call flipped back and forth must
+    // not queue a fresh summary every time.
+    if (args.isSalesCall && !call.countsTowardStats) {
+      const content = await ctx.db
+        .query("callContent")
+        .withIndex("by_call", (q) => q.eq("callId", args.callId))
+        .first();
+      if (content?.transcriptText) {
+        await ctx.scheduler.runAfter(0, internal.ai.generateCallSummary, {
+          callId: args.callId,
+          transcript: content.transcriptText,
+          ...(call.prospectName ? { prospectName: call.prospectName } : {}),
+        });
+      }
+    }
+
+    return { success: true };
+  },
+});
+
+/**
  * Turn one Fathom meeting into a call.
  *
  * Idempotent on Fathom's recording id: a replayed webhook, or the
@@ -138,6 +204,10 @@ export const ingestMeeting = internalMutation({
         `[fathom] no closer on team ${args.teamId} matches ${recorderEmail} — ` +
           `recording ${recordingId} not ingested, needs manual mapping`,
       );
+      await ctx.runMutation(internal.fathomConnections.noteUnmatchedRecorder, {
+        teamId: args.teamId,
+        email: recorderEmail,
+      });
       return { status: "skipped", reason: `unmatched recorder: ${recorderEmail}` };
     }
 
@@ -147,12 +217,29 @@ export const ingestMeeting = internalMutation({
       if (c.email) teamEmails.add(c.email.toLowerCase());
       if (c.fathomEmail) teamEmails.add(c.fathomEmail.toLowerCase());
     }
+    const teamNames = new Set<string>();
+    for (const c of roster) {
+      if (c.name) teamNames.add(c.name);
+    }
+    // Who actually spoke. On impromptu meetings this is the ONLY record of who
+    // was there — Fathom's invitee list names the account owner and nobody else.
+    const speakerNames = Array.from(
+      new Set(
+        (m.transcript ?? [])
+          .map((seg) => seg.speaker?.display_name?.trim() ?? "")
+          .filter(Boolean),
+      ),
+    );
+
     const verdict = classifyMeeting({
       inviteeEmails: (m.calendar_invitees ?? [])
         .map((i) => i.email ?? "")
         .filter(Boolean),
       recorderEmail,
+      recorderName: m.recorded_by?.name,
       teamEmails,
+      teamNames,
+      speakerNames,
     });
 
     const startedAt = ms(m.recording_start_time) ?? ms(m.created_at) ?? Date.now();
@@ -187,6 +274,12 @@ export const ingestMeeting = internalMutation({
       endedAt,
       duration,
       externalShareUrl: m.share_url,
+      // This is what actually keeps a team standup out of someone's close rate.
+      // Every stats query in the codebase already narrows to "completed" —
+      // around twenty of them — so giving an unconfirmed call a different
+      // status excludes it from all of them without editing a single one. The
+      // call history query is widened separately so the closer still sees it.
+      status: verdict.countsTowardStats ? "completed" : "unclassified",
       // Only ever set automatically. A closer's own correction wins and is
       // never overwritten by a later sync — see the guard below.
       classifiedAs: verdict.classification,
@@ -208,6 +301,12 @@ export const ingestMeeting = internalMutation({
               classifiedAs: existing.classifiedAs,
               classifiedBy: existing.classifiedBy,
               countsTowardStats: existing.countsTowardStats,
+              // Derived from their decision, never copied from the stored
+              // status. Copying it let the two drift: a call the closer had
+              // marked internal kept an old "completed" status and went on
+              // being counted, and every later sync preserved the mistake.
+              // Deriving it here means any such row self-heals on next sync.
+              status: existing.countsTowardStats ? "completed" : "unclassified",
             }
           : {}),
       });
@@ -221,7 +320,6 @@ export const ingestMeeting = internalMutation({
       callId = await ctx.db.insert("calls", {
         closerId: closer._id,
         teamId: args.teamId,
-        status: "completed",
         speakerCount: (m.calendar_invitees ?? []).length || 2,
         createdAt: startedAt,
         source: "fathom",

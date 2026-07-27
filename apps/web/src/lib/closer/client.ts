@@ -7,7 +7,7 @@ import * as Sentry from "@sentry/nextjs";
 import { getToken, getCloserInfo } from "./session";
 
 // HTTP Action endpoint - hosted at .convex.site (not .convex.cloud)
-const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
+export const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
 // ============================================================================
 // convexFetch — circuit-breaker wrapper around fetch()
@@ -54,7 +54,7 @@ function withSession(init?: RequestInit): RequestInit | undefined {
   }
 }
 
-async function convexFetch(
+export async function convexFetch(
   input: string,
   rawInit?: RequestInit,
 ): Promise<Response> {
@@ -1439,6 +1439,13 @@ export interface CallHistoryItem {
   contractValue?: number;
   callAnalysis?: CallAnalysis;
   endedAt?: number;
+  /** "bot" or "fathom" — absent on everything recorded before Fathom existed. */
+  source?: string;
+  /** Fathom hosts the media; this is the only way to watch it back. */
+  externalShareUrl?: string;
+  classifiedAs?: string;
+  classifiedBy?: string;
+  countsTowardStats?: boolean;
 }
 
 export async function getCallHistory(closerId: string, limit?: number): Promise<CallHistoryItem[]> {

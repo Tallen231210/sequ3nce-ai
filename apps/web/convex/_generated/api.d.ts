@@ -88,6 +88,7 @@ import type * as diagnostics from "../diagnostics.js";
 import type * as discord from "../discord.js";
 import type * as fathom from "../fathom.js";
 import type * as fathomClassify from "../fathomClassify.js";
+import type * as fathomConnect from "../fathomConnect.js";
 import type * as fathomConnections from "../fathomConnections.js";
 import type * as founderAdmin from "../founderAdmin.js";
 import type * as ghl from "../ghl.js";
@@ -241,6 +242,7 @@ declare const fullApi: ApiFromModules<{
   discord: typeof discord;
   fathom: typeof fathom;
   fathomClassify: typeof fathomClassify;
+  fathomConnect: typeof fathomConnect;
   fathomConnections: typeof fathomConnections;
   founderAdmin: typeof founderAdmin;
   ghl: typeof ghl;

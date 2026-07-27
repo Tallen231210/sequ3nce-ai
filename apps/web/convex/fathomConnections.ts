@@ -51,6 +51,43 @@ export const listConnectionsForTeam = internalQuery({
   },
 });
 
+/**
+ * What the closer app shows on the Fathom card.
+ *
+ * Returns no credential of any kind — this crosses the network to a browser.
+ * `connectedBySomeoneElse` is the case that matters for a team-wide setup: the
+ * closer has nothing to do, and should be told that rather than being shown an
+ * empty box asking for a key they don't have.
+ */
+export const getStatusForCloser = internalQuery({
+  args: { teamId: v.id("teams"), closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    const closer = await ctx.db.get(args.closerId);
+    const all = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    const live = all.filter((c) => c.status === "active");
+    const teamWide = live.find((c) => !c.closerId);
+    const mine = live.find((c) => String(c.closerId) === String(args.closerId));
+    const conn = mine ?? teamWide ?? null;
+
+    return {
+      connected: !!conn,
+      connectionId: conn?._id ?? null,
+      // Whether this closer connected it, or it came with the company account.
+      connectedBySomeoneElse: !mine && !!teamWide,
+      lastSyncedAt: conn?.lastSyncedAt ?? null,
+      errorMessage: conn?.status === "error" ? conn.errorMessage : null,
+      fathomEmail: closer?.fathomEmail ?? null,
+      email: closer?.email ?? null,
+      // Recordings arriving from an address nobody here owns. Shown so it can
+      // be fixed, because the symptom otherwise is just missing calls.
+      unmatchedRecorders: conn?.unmatchedRecorders ?? [],
+    };
+  },
+});
+
 export const saveConnection = internalMutation({
   args: {
     teamId: v.id("teams"),
@@ -116,6 +153,86 @@ export const markConnectionError = internalMutation({
   },
 });
 
+/**
+ * Turn a connection off.
+ *
+ * Keeps the row rather than deleting it. The calls it already brought in stay
+ * on the board, and a customer who reconnects next week should see continuity
+ * rather than a blank slate. The key is cleared, so a revoked connection can't
+ * quietly keep working.
+ */
+export const revokeConnection = internalMutation({
+  args: { connectionId: v.id("fathomConnections") },
+  handler: async (ctx, args) => {
+    const c = await ctx.db.get(args.connectionId);
+    if (!c) return;
+    await ctx.db.patch(args.connectionId, {
+      status: "revoked",
+      apiKey: "",
+      webhookId: undefined,
+      webhookSecret: undefined,
+    });
+  },
+});
+
+/**
+ * Remember a Fathom account we couldn't match to anyone on the team.
+ *
+ * Capped at twenty. This is a prompt for a human to fix something, not a log —
+ * and an unbounded array on a row we read constantly is how documents quietly
+ * grow until a query starts failing.
+ */
+export const noteUnmatchedRecorder = internalMutation({
+  args: { teamId: v.id("teams"), email: v.string() },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    if (!email) return;
+    const all = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    const conn = all.find((c) => c.status === "active" && !c.closerId) ?? all.find((c) => c.status === "active");
+    if (!conn) return;
+
+    const seen = [...(conn.unmatchedRecorders ?? [])];
+    const hit = seen.find((u) => u.email === email);
+    if (hit) {
+      hit.count += 1;
+      hit.lastSeenAt = Date.now();
+    } else {
+      if (seen.length >= 20) return;
+      seen.push({ email, count: 1, lastSeenAt: Date.now() });
+    }
+    await ctx.db.patch(conn._id, { unmatchedRecorders: seen });
+  },
+});
+
+/** Once the closer is added or their Fathom email set, stop nagging. */
+export const clearUnmatchedRecorder = internalMutation({
+  args: { teamId: v.id("teams"), email: v.string() },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const all = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    for (const c of all) {
+      if (!c.unmatchedRecorders?.length) continue;
+      const kept = c.unmatchedRecorders.filter((u) => u.email !== email);
+      if (kept.length !== c.unmatchedRecorders.length) {
+        await ctx.db.patch(c._id, { unmatchedRecorders: kept });
+      }
+    }
+  },
+});
+
+export const markSynced = internalMutation({
+  args: { connectionId: v.id("fathomConnections") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.connectionId, { lastSyncedAt: Date.now() });
+  },
+});
+
 /** Which closer said this is their Fathom address. Set once, by them. */
 export const setCloserFathomEmail = internalMutation({
   args: { closerId: v.id("closers"), fathomEmail: v.string() },
@@ -125,6 +242,24 @@ export const setCloserFathomEmail = internalMutation({
       throw new Error("That doesn't look like an email address");
     }
     await ctx.db.patch(args.closerId, { fathomEmail: email });
+
+    // If this is the address we'd been failing to place, the problem is solved
+    // — stop asking about it. Their past calls still need a re-sync to attach,
+    // which the "check for new meetings" button does.
+    const closer = await ctx.db.get(args.closerId);
+    if (closer) {
+      const conns = await ctx.db
+        .query("fathomConnections")
+        .withIndex("by_team", (q) => q.eq("teamId", closer.teamId))
+        .collect();
+      for (const c of conns) {
+        if (!c.unmatchedRecorders?.length) continue;
+        const kept = c.unmatchedRecorders.filter((u) => u.email !== email);
+        if (kept.length !== c.unmatchedRecorders.length) {
+          await ctx.db.patch(c._id, { unmatchedRecorders: kept });
+        }
+      }
+    }
     return { success: true };
   },
 });

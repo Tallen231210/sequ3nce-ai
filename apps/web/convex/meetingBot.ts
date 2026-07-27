@@ -2056,9 +2056,19 @@ export const getCallHistoryForCloser = query({
       .take(maxResults + 10);
 
     // Only show finished calls — exclude active/waiting/scheduled calls
-    // that have no recording, summary, or transcript yet
+    // that have no recording, summary, or transcript yet.
+    //
+    // "unclassified" is a finished Fathom call we aren't sure was a sales
+    // call. It is shown but deliberately left out of every stats query, which
+    // narrows to "completed". Hiding it instead would mean nobody could ever
+    // confirm it, and a closer would just see a call go missing.
     const calls = allCalls
-      .filter((c) => c.status === "completed" || c.status === "no_show")
+      .filter(
+        (c) =>
+          c.status === "completed" ||
+          c.status === "no_show" ||
+          c.status === "unclassified",
+      )
       .slice(0, maxResults);
 
     // Pull blob fields from callContent siblings — one row each.
@@ -2093,6 +2103,14 @@ export const getCallHistoryForCloser = query({
       reviewStatus: call.reviewStatus,
       commentCount: call.commentCount,
       callAnalysis: content?.callAnalysis,
+      // Where it came from, and whether we're confident it was a sales call.
+      // Additive — the bot's own calls have none of these set, and every
+      // existing reader ignores fields it doesn't know about.
+      source: call.source,
+      externalShareUrl: call.externalShareUrl,
+      classifiedAs: call.classifiedAs,
+      classifiedBy: call.classifiedBy,
+      countsTowardStats: call.countsTowardStats,
     }));
   },
 });

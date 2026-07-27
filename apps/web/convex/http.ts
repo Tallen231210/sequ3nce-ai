@@ -1,5 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 
@@ -12241,6 +12242,215 @@ http.route({
   }),
 });
 closerPreflight("/closer/me");
+
+// ============================================================================
+// Fathom: the closer-facing side — connect, disconnect, and say which Fathom
+// account is yours.
+//
+// Every one of these resolves the closer from their session token rather than
+// trusting an id in the body. Connecting an integration on someone else's
+// behalf, or reading whether they've connected one, is not something a
+// teammate should be able to do by editing a request.
+// ============================================================================
+
+/** Shared by all the routes below: who is asking, or null. */
+async function fathomCaller(ctx: ActionCtx, body: { sessionToken?: string }) {
+  if (!body?.sessionToken) return null;
+  return await ctx.runQuery(internal.closerSession.resolveCloser, {
+    sessionToken: body.sessionToken,
+  });
+}
+
+http.route({
+  path: "/closer/fathom/status",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const status = await ctx.runQuery(internal.fathomConnections.getStatusForCloser, {
+        teamId: caller.teamId,
+        closerId: caller.closerId,
+      });
+      return new Response(JSON.stringify(status), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] fathom/status:", error);
+      return new Response(JSON.stringify({ error: "Couldn't load Fathom status" }), {
+        status: 500, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/fathom/status");
+
+http.route({
+  path: "/closer/fathom/connect",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const apiKey = String(body.apiKey ?? "").trim();
+      if (apiKey.length < 8 || apiKey.length > 500) {
+        return new Response(
+          JSON.stringify({ success: false, error: "That doesn't look like a Fathom API key." }),
+          { status: 200, headers: CLOSER_JSON },
+        );
+      }
+      // Scoped to this closer unless they say otherwise. A personal key that
+      // silently became the company-wide connection would route a teammate's
+      // calls through one person's Fathom account.
+      const result = await ctx.runAction(internal.fathomConnect.connect, {
+        teamId: caller.teamId,
+        ...(body.teamWide === true ? {} : { closerId: caller.closerId }),
+        apiKey,
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] fathom/connect:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: "Couldn't reach Fathom. Try again in a moment." }),
+        { status: 200, headers: CLOSER_JSON },
+      );
+    }
+  }),
+});
+closerPreflight("/closer/fathom/connect");
+
+http.route({
+  path: "/closer/fathom/disconnect",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const status = await ctx.runQuery(internal.fathomConnections.getStatusForCloser, {
+        teamId: caller.teamId,
+        closerId: caller.closerId,
+      });
+      if (!status.connectionId) {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200, headers: CLOSER_JSON,
+        });
+      }
+      await ctx.runAction(internal.fathomConnect.disconnect, {
+        teamId: caller.teamId,
+        connectionId: status.connectionId,
+      });
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    } catch (error) {
+      console.error("[HTTP] fathom/disconnect:", error);
+      return new Response(JSON.stringify({ success: false, error: "Couldn't disconnect" }), {
+        status: 500, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/fathom/disconnect");
+
+http.route({
+  path: "/closer/fathom/email",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      await ctx.runMutation(internal.fathomConnections.setCloserFathomEmail, {
+        closerId: caller.closerId,
+        fathomEmail: String(body.fathomEmail ?? ""),
+      });
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.includes("email address")
+          ? "That doesn't look like an email address"
+          : "Couldn't save that";
+      return new Response(JSON.stringify({ success: false, error: message }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/fathom/email");
+
+http.route({
+  path: "/closer/fathom/reclassify",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runMutation(internal.fathom.reclassifyCall, {
+        callId: body.callId as Id<"calls">,
+        closerId: caller.closerId,
+        isSalesCall: body.isSalesCall === true,
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] fathom/reclassify:", error);
+      return new Response(JSON.stringify({ success: false, error: "Couldn't save that" }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/fathom/reclassify");
+
+http.route({
+  path: "/closer/fathom/sync",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runAction(internal.fathomConnect.syncRecent, {
+        teamId: caller.teamId,
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] fathom/sync:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: "Couldn't sync from Fathom" }),
+        { status: 200, headers: CLOSER_JSON },
+      );
+    }
+  }),
+});
+closerPreflight("/closer/fathom/sync");
 
 // ============================================================================
 // Fathom: a meeting finished and its content is ready.

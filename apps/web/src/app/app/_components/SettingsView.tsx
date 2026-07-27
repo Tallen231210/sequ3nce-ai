@@ -14,6 +14,7 @@ import {
   toggleCalendarSubscription,
 } from '@/lib/closer/client';
 import { AddCalendarPicker } from './SettingsView/AddCalendarPicker';
+import { FathomCard } from './SettingsView/FathomCard';
 
 interface SettingsViewProps {
   closerInfo: CloserInfo;
@@ -331,6 +332,12 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
               </div>
             </div>
           )}
+        </SettingsSection>
+
+        {/* Fathom. Sits above the calendar because a closer who records with
+            Fathom needs this first — the calendar only schedules the bot. */}
+        <SettingsSection title="Fathom">
+          <FathomCard />
         </SettingsSection>
 
         {/* Calendar Section */}
