@@ -55,9 +55,20 @@ function pricesFor(tier: Tier): TierPrices {
         seat: process.env.STRIPE_FATHOM_SEAT_PRICE_ID,
       };
     case "full":
+      // Falls back to the original price IDs.
+      //
+      // Full IS the product as it exists today, so until dedicated prices are
+      // created it must resolve to exactly what we already charge. Without
+      // this, introducing tiers silently broke checkout and adding a closer —
+      // both call this and both would have thrown on a variable nobody has
+      // set yet. Not hypothetical: it shipped that way and this is the fix.
       return {
-        platform: process.env.STRIPE_FULL_PLATFORM_PRICE_ID,
-        seat: process.env.STRIPE_FULL_SEAT_PRICE_ID,
+        platform:
+          process.env.STRIPE_FULL_PLATFORM_PRICE_ID ??
+          process.env.STRIPE_PLATFORM_PRICE_ID,
+        seat:
+          process.env.STRIPE_FULL_SEAT_PRICE_ID ??
+          process.env.STRIPE_SEAT_PRICE_ID,
       };
   }
 }
@@ -109,6 +120,39 @@ export function classifyPrice(
   }
 
   return null;
+}
+
+/**
+ * Is this one of the prices from before tiers existed?
+ *
+ * Distinct from "unrecognised", which is what this used to be checked as —
+ * and wrongly, because legacy prices ARE recognised: they map to Full. The
+ * warning that depends on this ("changing plan gives up your original rate")
+ * therefore never fired for the one group it exists to protect.
+ */
+export function isLegacyPrice(priceId: string | null | undefined): boolean {
+  if (!priceId) return false;
+  // Only legacy if it isn't also a current tier price. Once STRIPE_FULL_*
+  // prices are created these stop overlapping; until then the Full tier falls
+  // back to exactly these IDs, and nobody is "legacy" for being on the only
+  // prices we sell.
+  const isCurrentTierPrice = (["scoreboard", "fathom", "full"] as const).some(
+    (tier) => {
+      const prices = pricesFor(tier);
+      return priceId === prices.platform || priceId === prices.seat;
+    },
+  );
+  if (isCurrentTierPrice) return false;
+  return (
+    priceId === process.env.STRIPE_PLATFORM_PRICE_ID ||
+    priceId === process.env.STRIPE_SEAT_PRICE_ID
+  );
+}
+
+/** Whether a tier can actually be sold — its prices exist in the environment. */
+export function tierIsAvailable(tier: Tier): boolean {
+  const prices = pricesFor(tier);
+  return !!prices.platform && !!prices.seat;
 }
 
 /**

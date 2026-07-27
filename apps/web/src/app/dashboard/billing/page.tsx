@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { PlanSelector } from "./plan-selector";
+import type { Tier } from "@/lib/tiers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ interface SubscriptionSummary {
   lines: SubscriptionLine[];
   monthlyTotalCents: number | null;
   isLegacyPricing?: boolean;
+  availableTiers?: string[];
 }
 
 function money(cents: number, currency = "usd"): string {
@@ -363,6 +365,7 @@ function BillingPageContent() {
           <CardContent>
             <PlanSelector
               currentTier={summary?.tier ?? billing?.productTier}
+              availableTiers={(summary?.availableTiers ?? []) as Tier[]}
               isLegacyPricing={summary?.isLegacyPricing}
               onChanged={() => {
                 // Stripe's webhook writes the new tier, and it lands a moment

@@ -26,14 +26,23 @@ import {
 export function PlanSelector({
   currentTier,
   isLegacyPricing,
+  availableTiers,
   onChanged,
 }: {
   currentTier: string | undefined;
+  /** Tiers with prices configured. Anything else can't be bought yet. */
+  availableTiers: Tier[];
   /** On a price that predates tiers — changing plan gives that rate up. */
   isLegacyPricing?: boolean;
   onChanged: () => void;
 }) {
   const current = normaliseTier(currentTier);
+  // Never offer a plan we can't actually sell. A tier whose prices aren't
+  // configured yet would take the click, fail at the API, and read as broken —
+  // their own plan always shows so the card can't disappear underneath them.
+  const sellable = TIER_ORDER.filter(
+    (t) => availableTiers.includes(t) || t === current,
+  );
   const [pending, setPending] = useState<Tier | null>(null);
   const [confirming, setConfirming] = useState<Tier | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +90,7 @@ export function PlanSelector({
       )}
 
       <div className="grid gap-4 md:grid-cols-3">
-        {TIER_ORDER.map((tier) => {
+        {sellable.map((tier) => {
           const info = TIER_INFO[tier];
           const isCurrent = tier === current;
           const down = isDowngrade(current, tier);

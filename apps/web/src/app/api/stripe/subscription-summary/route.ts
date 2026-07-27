@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
-import { classifyPrice, normaliseTier } from "@/lib/tiers";
+import {
+  classifyPrice,
+  normaliseTier,
+  isLegacyPrice,
+  tierIsAvailable,
+  TIER_ORDER,
+} from "@/lib/tiers";
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY!);
 const getConvex = () => new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -46,6 +52,7 @@ export async function GET() {
         lines: [],
         monthlyTotalCents: null,
         currency: "usd",
+        availableTiers: TIER_ORDER.filter(tierIsAvailable),
       });
     }
 
@@ -84,9 +91,13 @@ export async function GET() {
       // True when they're on a price that isn't one of the current tier
       // prices — i.e. grandfathered. Worth knowing before offering to move
       // them, because a "change plan" click would give up that rate forever.
-      isLegacyPricing: subscription.items.data.some(
-        (item) => classifyPrice(item.price.id) === null,
+      isLegacyPricing: subscription.items.data.some((item) =>
+        isLegacyPrice(item.price.id),
       ),
+      // Which plans can actually be bought. The price IDs live server-side, so
+      // the browser can't work this out for itself — and offering a plan whose
+      // prices don't exist yet produces a button that fails on click.
+      availableTiers: TIER_ORDER.filter(tierIsAvailable),
     });
   } catch (err) {
     console.error("subscription-summary failed:", err);
