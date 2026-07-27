@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { PendingOutcomesNotice } from "./components/PendingOutcomesNotice";
 import { GeistMono } from "geist/font/mono";
 import { useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
@@ -118,6 +119,11 @@ export default function TeamPerformancePage() {
             </button>
           ))}
         </nav>
+
+        {/* Sits above the board, because the board is what looks wrong. */}
+        {tab !== "settings" && (
+          <PendingOutcomesNotice teamId={data.teamId} />
+        )}
 
         {tab !== "settings" && tab !== "year" && (
  <PeriodNav

@@ -148,10 +148,16 @@ export function PerformanceStats({
             </div>
           ))}
         </div>
+        {/* Names the calendar explicitly. The old copy only offered to let them
+            type Slots in by hand, which hid the fact that we count these
+            automatically from a connected calendar — and on the bring-your-own-
+            recording tier there's no bot to make connecting one feel necessary,
+            so nobody would ever discover it. */}
         {!perf.capacityReliable && (
           <p className="mt-2 text-[11px] text-gray-400">
-            Booked % needs a Slots figure to measure against — fill it in on your
-            daily numbers and it will appear.
+            Booked % needs a Slots figure to measure against. We count these from
+            your connected calendar — connect one in Settings, or fill them in on
+            your daily numbers.
           </p>
         )}
       </div>

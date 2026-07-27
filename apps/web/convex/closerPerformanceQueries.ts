@@ -409,6 +409,9 @@ export const getTeamPerformance = query({
     );
 
     return {
+      // So the page can ask about calls still waiting on a closer's outcome
+      // without re-resolving the team from the Clerk id.
+      teamId,
       monthKey,
       isCurrentMonth,
       weekIndex: args.weekIndex ?? null,

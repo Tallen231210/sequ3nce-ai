@@ -342,6 +342,19 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
 
         {/* Calendar Section */}
         <SettingsSection title="Calendar Connection">
+          {/* On the bring-your-own-recording tier there's no bot to schedule,
+              so the calendar looks optional — and a closer who skips it loses
+              the entire top of their funnel without ever being told. A booked
+              call nobody joined leaves no recording anywhere, so show rate and
+              booked % cannot be derived from Fathom at all. */}
+          {closerInfo.productTier === 'fathom' && !calStatus?.connected && (
+            <p className="mb-3 text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2.5 max-w-md">
+              Worth connecting even though we don&apos;t send a bot. Your booked
+              calls and show rate come from here — a call that gets booked and
+              no-showed leaves no recording, so it&apos;s the only way we can
+              see it happened.
+            </p>
+          )}
           {isLoadingCal ? (
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
