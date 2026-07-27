@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { tierHas } from "@/lib/tiers";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -48,15 +49,16 @@ const NAV = [
   // Coaching is built around live call review with our own bot in the room.
   // On the bring-your-own-recording tier we're never in the call, so the tab
   // would only ever be empty — showing it advertises something they didn't buy.
-  { href: "/app/coaching", label: "Coaching", icon: GraduationCap, notOn: ["fathom"] },
+  // Coaching is call review with our bot in the room, so it lives or dies with
+  // the meetingBot feature rather than with a hardcoded tier name.
+  { href: "/app/coaching", label: "Coaching", icon: GraduationCap, needs: "meetingBot" as const },
   { href: "/app/resources", label: "Resources", icon: FolderOpen },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
 /** The tabs this team's product actually includes. */
 function navFor(productTier?: string) {
-  const tier = productTier ?? "bot";
-  return NAV.filter((item) => !item.notOn?.includes(tier));
+  return NAV.filter((item) => !item.needs || tierHas(productTier, item.needs));
 }
 
 /**
@@ -199,6 +201,9 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="flex-1">{navLinks}</div>
+        {/* Quick Bot sends OUR meeting bot into a call. On the tiers without
+            it there is nothing to send, so the button would only ever fail. */}
+        {tierHas(closer?.productTier, "meetingBot") && (
         <button
           type="button"
           onClick={() => setQuickBotOpen(true)}
@@ -207,6 +212,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
           <Plus className="h-4 w-4" />
           Quick Bot
         </button>
+        )}
         <button
           type="button"
           onClick={() => void handleSignOut()}

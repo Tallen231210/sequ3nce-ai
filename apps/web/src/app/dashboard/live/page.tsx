@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { RequiresFeature } from "@/components/dashboard/requires-feature";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { useTeam } from "@/hooks/useTeam";
@@ -427,7 +428,7 @@ function EmptyState() {
 }
 
 // Main Page Component
-export default function LiveCallsPage() {
+function LiveCallsPageInner() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
 
@@ -490,5 +491,18 @@ export default function LiveCallsPage() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * This page only means anything when our meeting bot is in the call, so it
+ * belongs to the Full tier. The sidebar already hides it; this stops the URL
+ * working for a team that hasn't bought it.
+ */
+export default function LiveCallsPage() {
+  return (
+    <RequiresFeature feature="meetingBot">
+      <LiveCallsPageInner />
+    </RequiresFeature>
   );
 }

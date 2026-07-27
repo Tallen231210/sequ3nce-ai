@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
+import { PlanSelector } from "./plan-selector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,8 +20,37 @@ import {
   ExternalLink,
 } from "lucide-react";
 
-const PLATFORM_FEE = 199;
-const SEAT_FEE = 99;
+// The old constants ($199 / $99) are gone deliberately. They were testing-account
+// prices shown to every customer regardless of what they actually paid, so a
+// team on $500 plus three seats at $150 saw $496 against a real $950 invoice.
+// Prices now come from Stripe, which is the only place that knows — and has to,
+// because customers are grandfathered onto whatever rate they signed at.
+interface SubscriptionLine {
+  kind: string;
+  label: string;
+  unitAmountCents: number;
+  quantity: number;
+  subtotalCents: number;
+  interval: string;
+}
+
+interface SubscriptionSummary {
+  tier: string;
+  hasSubscription: boolean;
+  status?: string;
+  currency: string;
+  lines: SubscriptionLine[];
+  monthlyTotalCents: number | null;
+  isLegacyPricing?: boolean;
+}
+
+function money(cents: number, currency = "usd"): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100);
+}
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
@@ -76,6 +106,23 @@ function BillingPageContent() {
     api.billing.getTeamBilling,
     clerkId ? { clerkId } : "skip"
   );
+
+  // The real numbers, from Stripe. Fetched rather than derived so a
+  // grandfathered price is shown as what it is instead of as today's rate.
+  const [summary, setSummary] = useState<SubscriptionSummary | null>(null);
+  const loadSummary = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stripe/subscription-summary");
+      if (!res.ok) return;
+      setSummary((await res.json()) as SubscriptionSummary);
+    } catch {
+      // Leave it null — the card falls back to saying it can't show a price
+      // rather than showing a wrong one.
+    }
+  }, []);
+  useEffect(() => {
+    void loadSummary();
+  }, [loadSummary]);
 
   // Handle success/canceled URL params and clear them
   useEffect(() => {
@@ -150,8 +197,7 @@ function BillingPageContent() {
     billing?.subscriptionStatus === "active" ||
     billing?.subscriptionStatus === "trialing";
 
-  const monthlyTotal =
-    PLATFORM_FEE + (billing?.seatCount || 0) * SEAT_FEE;
+  const currency = summary?.currency ?? "usd";
 
   return (
     <>
@@ -271,46 +317,60 @@ function BillingPageContent() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between py-2 border-b">
-              <div>
-                <p className="font-medium">Platform Fee</p>
-                <p className="text-sm text-muted-foreground">
-                  Access to Sequ3nce dashboard
-                </p>
-              </div>
-              <span className="font-medium">${PLATFORM_FEE}/mo</span>
-            </div>
-
-            <div className="flex items-center justify-between py-2 border-b">
-              <div className="flex items-center gap-3">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">Closer Seats</p>
-                  <p className="text-sm text-muted-foreground">
-                    {hasActiveSubscription
-                      ? `${billing?.seatCount || 0} paid seats (${billing?.activeCloserCount || 0} closers)`
-                      : "Billed automatically when you add closers"}
-                  </p>
+            {summary?.hasSubscription && summary.lines.length > 0 ? (
+              <>
+                {summary.lines.map((line, i) => (
+                  <div
+                    key={`${line.label}-${i}`}
+                    className="flex items-center justify-between border-b py-2"
+                  >
+                    <div>
+                      <p className="font-medium">{line.label}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {line.kind === "seat"
+                          ? `${line.quantity} paid ${line.quantity === 1 ? "seat" : "seats"} (${billing?.activeCloserCount ?? 0} closers) at ${money(line.unitAmountCents, currency)} each`
+                          : `Access to Sequ3nce dashboard`}
+                      </p>
+                    </div>
+                    <span className="font-medium">
+                      {money(line.subtotalCents, currency)}/{line.interval}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between pt-2">
+                  <span className="font-semibold">Monthly Total</span>
+                  <span className="text-lg font-semibold">
+                    {money(summary.monthlyTotalCents ?? 0, currency)}/mo
+                  </span>
                 </div>
-              </div>
-              <span className="font-medium">
-                ${SEAT_FEE}/seat/mo
-              </span>
-            </div>
-
-            {hasActiveSubscription && (
-              <div className="flex items-center justify-between pt-2">
-                <span className="font-semibold">Monthly Total</span>
-                <span className="font-semibold text-lg">${monthlyTotal}/mo</span>
-              </div>
+              </>
+            ) : summary && !summary.hasSubscription ? (
+              <p className="py-2 text-sm text-muted-foreground">
+                No active subscription. Pick a plan below to get started.
+              </p>
+            ) : (
+              <p className="py-2 text-sm text-muted-foreground">
+                Loading your current pricing…
+              </p>
             )}
+          </CardContent>
+        </Card>
 
-            {!hasActiveSubscription && (
-              <div className="flex items-center justify-between pt-2 text-muted-foreground">
-                <span>Starting at</span>
-                <span>${PLATFORM_FEE}/mo</span>
-              </div>
-            )}
+        <Card>
+          <CardHeader>
+            <CardTitle>Plans</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PlanSelector
+              currentTier={summary?.tier ?? billing?.productTier}
+              isLegacyPricing={summary?.isLegacyPricing}
+              onChanged={() => {
+                // Stripe's webhook writes the new tier, and it lands a moment
+                // after the API returns. Re-reading immediately would show the
+                // old plan and look like the change failed.
+                setTimeout(() => void loadSummary(), 1500);
+              }}
+            />
           </CardContent>
         </Card>
 

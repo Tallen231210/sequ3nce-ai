@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { RequiresFeature } from "@/components/dashboard/requires-feature";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Header } from "@/components/dashboard/header";
@@ -276,7 +277,7 @@ function VideoRecordingCard({
   );
 }
 
-export default function RecordingsPage() {
+function RecordingsPageInner() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const router = useRouter();
 
@@ -490,5 +491,18 @@ export default function RecordingsPage() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * This page only means anything when our meeting bot is in the call, so it
+ * belongs to the Full tier. The sidebar already hides it; this stops the URL
+ * working for a team that hasn't bought it.
+ */
+export default function RecordingsPage() {
+  return (
+    <RequiresFeature feature="meetingBot">
+      <RecordingsPageInner />
+    </RequiresFeature>
   );
 }

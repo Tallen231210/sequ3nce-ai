@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { RequiresFeature } from "@/components/dashboard/requires-feature";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
@@ -572,7 +573,7 @@ function SharedMomentCard({ moment }: { moment: {
   );
 }
 
-export default function PlaybookPage() {
+function PlaybookPageInner() {
   const { team, clerkId, isLoading: isTeamLoading } = useTeam();
 
   // Tab state
@@ -798,5 +799,18 @@ export default function PlaybookPage() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * This page only means anything when our meeting bot is in the call, so it
+ * belongs to the Full tier. The sidebar already hides it; this stops the URL
+ * working for a team that hasn't bought it.
+ */
+export default function PlaybookPage() {
+  return (
+    <RequiresFeature feature="meetingBot">
+      <PlaybookPageInner />
+    </RequiresFeature>
   );
 }

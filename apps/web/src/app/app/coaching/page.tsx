@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { tierHas } from "@/lib/tiers";
 import { useRouter } from "next/navigation";
 import { CloserShell } from "../CloserShell";
 import { CoachingView } from "../_components/CoachingView";
@@ -14,7 +15,7 @@ export default function Page() {
   // bookmark or an old link would walk straight into a page this team's
   // product doesn't include. Coaching is built around our bot being in the
   // call; on the bring-your-own-recording tier it would only ever be empty.
-  const excluded = closerInfo?.productTier === "fathom";
+  const excluded = !!closerInfo && !tierHas(closerInfo.productTier, "meetingBot");
 
   useEffect(() => {
     if (ready && excluded) router.replace("/app/dashboard");

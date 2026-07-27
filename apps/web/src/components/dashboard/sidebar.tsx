@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { tierHas } from "@/lib/tiers";
 import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -27,6 +28,13 @@ import {
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
 import { Logo } from "@/components/ui/logo";
+
+/** Pages that only mean anything when our bot is in the call. */
+const BOT_ONLY_ROUTES = new Set([
+  "/dashboard/live",
+  "/dashboard/playbook",
+  "/dashboard/recordings",
+]);
 
 const baseNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -95,9 +103,19 @@ export function Sidebar() {
     integrationItems.push({ name: "Hyros Sync", href: "/dashboard/hyros-sync", icon: Zap });
   }
   // Filter out Setter Data tab if explicitly disabled (admin kill switch).
-  const filteredBase = team?.setterDataEnabled === false
+  const setterFiltered = team?.setterDataEnabled === false
     ? baseNavigation.filter((item) => item.href !== "/dashboard/setter-data")
     : baseNavigation;
+
+  // Then by what this team's plan actually includes.
+  //
+  // Live Calls, Playbook and Recordings all exist because our meeting bot is
+  // in the call. On the tiers where it isn't, these pages can only ever be
+  // empty — showing them advertises something the customer didn't buy and
+  // makes the product look broken rather than smaller.
+  const filteredBase = tierHas(team?.productTier, "meetingBot")
+    ? setterFiltered
+    : setterFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
   // Integration sync pages slot in just above Billing. Located by href rather
   // than a fixed index — a hardcoded slice silently misplaces them whenever a
   // nav item is added, or whenever the Setter Data kill switch removes one.
