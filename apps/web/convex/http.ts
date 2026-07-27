@@ -12242,6 +12242,129 @@ http.route({
 });
 closerPreflight("/closer/me");
 
+// ============================================================================
+// Fathom: a meeting finished and its content is ready.
+// ============================================================================
+
+/**
+ * Verifies a Fathom webhook using the Standard Webhooks scheme.
+ *
+ * Signed content is `${id}.${timestamp}.${body}`, HMAC-SHA256 with the secret
+ * that Fathom returned when we registered the webhook, base64 encoded. The
+ * header can carry several space-separated `v1,<sig>` values during a secret
+ * rotation, so any one matching is a pass.
+ *
+ * This is not optional. Without it, anyone who learns the URL can post
+ * fabricated calls into a customer's account.
+ */
+async function verifyFathomSignature(
+  rawBody: string,
+  secret: string,
+  webhookId: string | null,
+  timestamp: string | null,
+  signatureHeader: string | null,
+): Promise<boolean> {
+  if (!webhookId || !timestamp || !signatureHeader) return false;
+
+  // Reject anything older than five minutes so a captured request can't be
+  // replayed indefinitely.
+  const sent = Number(timestamp) * 1000;
+  if (!Number.isFinite(sent) || Math.abs(Date.now() - sent) > 5 * 60 * 1000) {
+    return false;
+  }
+
+  const key = secret.startsWith("whsec_") ? secret.slice(6) : secret;
+  let keyBytes: Uint8Array;
+  try {
+    keyBytes = Uint8Array.from(atob(key), (c) => c.charCodeAt(0));
+  } catch {
+    keyBytes = new TextEncoder().encode(key);
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBytes as unknown as ArrayBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signed = new TextEncoder().encode(`${webhookId}.${timestamp}.${rawBody}`);
+  const mac = await crypto.subtle.sign("HMAC", cryptoKey, signed as unknown as ArrayBuffer);
+  const expected = btoa(String.fromCharCode(...new Uint8Array(mac)));
+
+  // Constant-time compare across every offered signature.
+  let ok = false;
+  for (const part of signatureHeader.split(" ")) {
+    const candidate = part.includes(",") ? part.split(",")[1] : part;
+    if (candidate.length !== expected.length) continue;
+    let diff = 0;
+    for (let i = 0; i < expected.length; i++) {
+      diff |= expected.charCodeAt(i) ^ candidate.charCodeAt(i);
+    }
+    if (diff === 0) ok = true;
+  }
+  return ok;
+}
+
+http.route({
+  path: "/webhooks/fathom",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    // Read the body ONCE and verify against exactly those bytes. Re-serialising
+    // parsed JSON would change whitespace and every signature would fail.
+    const rawBody = await request.text();
+
+    const teamId = new URL(request.url).searchParams.get("team");
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "missing team" }), { status: 400 });
+    }
+
+    const connection = await ctx.runQuery(
+      internal.fathomConnections.getConnectionForTeam,
+      { teamId: teamId as Id<"teams"> },
+    );
+    if (!connection?.webhookSecret) {
+      // Unknown team, or one that never registered a webhook. Say as little as
+      // possible — this endpoint is public.
+      return new Response(JSON.stringify({ error: "unknown" }), { status: 404 });
+    }
+
+    const valid = await verifyFathomSignature(
+      rawBody,
+      connection.webhookSecret,
+      request.headers.get("webhook-id"),
+      request.headers.get("webhook-timestamp"),
+      request.headers.get("webhook-signature"),
+    );
+    if (!valid) {
+      console.warn(`[fathom] rejected an unverified webhook for team ${teamId}`);
+      return new Response(JSON.stringify({ error: "bad signature" }), { status: 401 });
+    }
+
+    let meeting: unknown;
+    try {
+      meeting = JSON.parse(rawBody);
+    } catch {
+      return new Response(JSON.stringify({ error: "bad json" }), { status: 400 });
+    }
+
+    try {
+      const result = await ctx.runMutation(internal.fathom.ingestMeeting, {
+        teamId: teamId as Id<"teams">,
+        meeting,
+      });
+      // Always 200 once verified. A non-2xx would make Fathom retry a payload
+      // we have already decided about — a skipped meeting is a decision, not a
+      // failure.
+      return new Response(JSON.stringify(result), { status: 200 });
+    } catch (error) {
+      console.error("[fathom] ingest failed:", error);
+      // A genuine failure DOES deserve a retry.
+      return new Response(JSON.stringify({ error: "ingest failed" }), { status: 500 });
+    }
+  }),
+});
+
 /** Sign out. Idempotent, and silent on an unknown token so it can't be used
  *  to probe which tokens exist. */
 http.route({

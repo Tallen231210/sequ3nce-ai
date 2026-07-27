@@ -384,6 +384,11 @@ export default defineSchema({
     // closer redeems it via pickCloserTeam to sign into a specific team.
     magicLinkPickerTokenHash: v.optional(v.string()),
     magicLinkPickerExpiresAt: v.optional(v.number()),
+    // The email on this closer's Fathom account, which they tell us once.
+    // Fathom says who recorded a call; this is how we know which closer that
+    // is. Kept separate from `email` because the two are often different —
+    // a work login here, a personal Google account on Fathom.
+    fathomEmail: v.optional(v.string()),
   })
     .index("by_team", ["teamId"])
     .index("by_email", ["email"])
@@ -410,6 +415,29 @@ export default defineSchema({
     userAgent: v.optional(v.string()),
   })
     .index("by_token_hash", ["tokenHash"])
+    .index("by_closer", ["closerId"]),
+
+  // A connected Fathom account.
+  //
+  // Two shapes have to work, because customers differ and we can't make them
+  // change: a company paying for Fathom Teams connects once and we see
+  // everyone's calls, or each closer connects their own personal account.
+  // `closerId` present means the latter. Same code path either way.
+  fathomConnections: defineTable({
+    teamId: v.id("teams"),
+    /** Set when one closer connected their own account; absent for team-wide. */
+    closerId: v.optional(v.id("closers")),
+    apiKey: v.string(),
+    /** Fathom's webhook id and signing secret, from when we registered it. */
+    webhookId: v.optional(v.string()),
+    webhookSecret: v.optional(v.string()),
+    status: v.string(), // "active" | "error" | "disconnected"
+    errorMessage: v.optional(v.string()),
+    errorAt: v.optional(v.number()),
+    lastSyncedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
     .index("by_closer", ["closerId"]),
 
   // Calendar events (synced from closer ICS feeds or Google Calendar API)
@@ -589,7 +617,25 @@ export default defineSchema({
     }))),
 
     // Call review fields
-    calendarEventId: v.optional(v.id("calendarEvents")), // Link to Google Calendar event (for prospect email)
+    calendarEventId: v.optional(v.id("calendarEvents")),
+    // Where this call came from. Absent on everything recorded before Fathom
+    // existed, which is the same thing as "bot".
+    source: v.optional(v.string()), // "bot" | "fathom"
+    /** Fathom's recording id — the dedup key, so a replayed webhook or a
+     *  reconciliation sweep can't create the call twice. */
+    externalRecordingId: v.optional(v.string()),
+    /** Fathom hosts the media; we only ever get a link to their player. */
+    externalShareUrl: v.optional(v.string()),
+    // Fathom records EVERYTHING a closer sits in, including team meetings.
+    // Our bot only ever joined calls it was pointed at, so this problem is new.
+    //
+    // Rather than guess and hide, we show every call and only COUNT the ones
+    // we're confident about — a closer noticing a real call went missing is
+    // far worse than seeing one extra row they can dismiss.
+    classifiedAs: v.optional(v.string()), // "sales" | "internal" | "unsure"
+    classifiedBy: v.optional(v.string()), // "auto" | "closer"
+    /** Absent means counted, so nothing about existing calls changes. */
+    countsTowardStats: v.optional(v.boolean()), // Link to Google Calendar event (for prospect email)
     flaggedForReview: v.optional(v.boolean()),       // Closer flagged this for manager review
     flaggedAt: v.optional(v.number()),               // When flagged
     reviewStatus: v.optional(v.string()),            // "pending" | "reviewed"
@@ -616,6 +662,9 @@ export default defineSchema({
     .index("by_team_and_status", ["teamId", "status"])
     .index("by_team_and_date", ["teamId", "createdAt"])
     .index("by_closer_and_startedAt", ["closerId", "startedAt"])
+    // Dedup: a replayed webhook or a reconciliation sweep must find the call
+    // that already exists rather than making a second one.
+    .index("by_external_recording", ["externalRecordingId"])
     // Narrow scans for sidebar badge counters — without these indexes,
     // the badge queries collect() over every call for a team and blow
     // past Convex's 16 MiB per-query read limit on high-volume teams.
