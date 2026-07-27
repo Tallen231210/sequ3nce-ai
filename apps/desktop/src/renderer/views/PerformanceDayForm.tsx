@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import type { DailyEntryRow } from '../convex';
 
-export const FIELDS = [
+interface DayField {
+  key: string;
+  label: string;
+  hint: string;
+  /** Renders a currency prefix and skips the hint line. */
+  money?: boolean;
+}
+
+export const FIELDS: readonly DayField[] = [
   { key: 'slots', label: 'Slots', hint: 'appointments you could take' },
   { key: 'booked', label: 'Booked', hint: 'appointments on your calendar' },
   { key: 'taken', label: 'Taken', hint: 'calls that actually happened' },
@@ -9,7 +17,7 @@ export const FIELDS = [
   { key: 'closes', label: 'Closes', hint: 'deals won' },
   { key: 'cash', label: 'Cash collected', money: true, hint: 'money in today' },
   { key: 'contractValue', label: 'Contract value', money: true, hint: 'total deals signed' },
-] as const;
+];
 
 export type FieldKey = (typeof FIELDS)[number]['key'];
 

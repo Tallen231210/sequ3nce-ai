@@ -161,7 +161,7 @@ export function PerformanceStats({
           <div className={CARD + ' p-4'}>
             <div className="flex items-center justify-between mb-2">
               <span className={LABEL}>{p?.isFinal ? 'Final' : 'Pace'}</span>
-              {!p?.isFinal && perf.goal ? (
+              {p && !p.isFinal && perf.goal ? (
                 <span className={
                   'text-[10px] font-semibold px-1.5 py-0.5 rounded ' +
                   (p.onTrack ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700')

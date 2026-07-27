@@ -2261,6 +2261,33 @@ export interface SelfPerformance {
   pctGoal: number | null;
   daysSubmitted: number;
   daysElapsed: number;
+  // Returned by the API and read by PerformanceStats, but absent from this
+  // type until now — the webpack build catches it even though `tsc --noEmit`
+  // does not, because the installed Node types are unparseable by this
+  // TypeScript version and it quietly stops checking. Shapes taken from the
+  // live response.
+  weekCash: number[];
+  projection: {
+    collected: number;
+    target: number;
+    projectedCash: number;
+    needPerDay: number;
+    remaining: number;
+    daysElapsed: number;
+    daysLeft: number;
+    pctOfTarget: number;
+    onTrack: boolean;
+    isFinal: boolean;
+  } | null;
+  prize: {
+    name: string;
+    emoji: string;
+    target: number;
+    collected: number;
+    remaining: number;
+    pct: number;
+    unlocked: boolean;
+  } | null;
 }
 
 export interface DailyEntryRow {
