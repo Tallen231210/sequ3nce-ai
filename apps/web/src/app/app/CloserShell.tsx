@@ -62,7 +62,6 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [closer, setCloser] = useState<CloserInfo | null>(null);
   const [checked, setChecked] = useState(false);
-  const [enabled, setEnabled] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [quickBotOpen, setQuickBotOpen] = useState(false);
 
@@ -87,7 +86,6 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
         return;
       }
       if (me.closer) setCloser(me.closer);
-      setEnabled(me.webAppEnabled !== false);
       setChecked(true);
 
       // A closer with no calendar connected generates no schedule, no slots
@@ -112,20 +110,6 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-dvh items-center justify-center text-sm text-muted-foreground">
         Loading…
-      </div>
-    );
-  }
-
-  // Staged rollout. A closer who finds the URL before their team is switched
-  // on gets a plain sentence, not a half-finished app.
-  if (!enabled) {
-    return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
-        <h1 className="text-lg font-semibold">Not available yet</h1>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          The web app isn&apos;t switched on for your team yet. Keep using the
-          desktop app — we&apos;ll let your manager know when it&apos;s ready.
-        </p>
       </div>
     );
   }

@@ -103,8 +103,6 @@ export const generateMagicLinkCode = internalMutation({
     isReturning?: boolean;
     reason?: "cooldown" | "unknown_email" | "invalid_format";
     retryAfterSeconds?: number;
-    /** Whether any of this closer's teams has the web app switched on. */
-    webAppEnabled?: boolean;
   }> => {
     const email = args.email.trim().toLowerCase();
     if (!EMAIL_REGEX.test(email)) {
@@ -170,24 +168,10 @@ export const generateMagicLinkCode = internalMutation({
     // has lastLoginAt yet) get the full welcome with download step.
     const isReturning = eligible.some((c) => c.lastLoginAt != null);
 
-    // Does the web app even work for them yet? The email leads with a browser
-    // link, and sending someone to a "Not available yet" page is a worse first
-    // impression than not mentioning it at all. Any of their teams counts — a
-    // closer on several picks which one after signing in.
-    let webAppEnabled = false;
-    for (const c of eligible) {
-      const team = await ctx.db.get(c.teamId);
-      if ((team?.betaFeatures ?? []).includes("closerWebApp")) {
-        webAppEnabled = true;
-        break;
-      }
-    }
-
     return {
       code,
       closerName: greetingCloser.name,
       isReturning,
-      webAppEnabled,
     };
   },
 });
@@ -288,12 +272,11 @@ export const requestCloserMagicLink = action({
 
     const codeFormatted = `${result.code.slice(0, 3)}-${result.code.slice(3)}`;
     const greetingName = result.closerName?.trim() || "there";
-    // Unless the web app isn't switched on for their team yet — mentioning it
-    // then would send them to a "Not available yet" page, which is a worse
-    // first impression than not offering it. Those teams get the desktop-only
-    // email, and start getting the web one the moment they're switched on.
     const isReturning = !!result.isReturning;
-    const webReady = result.webAppEnabled === true;
+    // Every team has the web app now — the staged-rollout gate came off once
+    // it was verified end to end, so there is no longer a case where offering
+    // the browser link would land someone on a "not available" page.
+    const webReady = true;
 
     // Two ways in now, so the email has to present both without making
     // either look like the consolation prize. The browser link leads because

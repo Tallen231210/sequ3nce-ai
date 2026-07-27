@@ -291,10 +291,10 @@ export const me = mutation({
         status: closer.status,
         teamName: team?.name,
       },
-      // Staged rollout, same mechanism the Setter Data tab uses. Until a team
-      // is added, they see a plain "not available yet" rather than a half-built
-      // app — and a closer who guesses the URL gets nothing.
-      webAppEnabled: (team?.betaFeatures ?? []).includes("closerWebApp"),
+      // Kept for the client's benefit but no longer gates anything: the
+      // staged rollout ended once the app was verified end to end. Reported
+      // as true so an older cached client can't lock itself out.
+      webAppEnabled: true,
     };
   },
 });
