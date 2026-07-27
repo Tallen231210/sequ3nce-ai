@@ -12574,18 +12574,51 @@ async function verifyFathomSignature(
   return ok;
 }
 
+/**
+ * The same handler, with the team in the PATH instead of a query string.
+ *
+ * A webhook registered as `/webhooks/fathom?team=<id>` produced no delivery
+ * attempts at all against a real Fathom account — not a failure, not a
+ * rejection, nothing reaching us — while Fathom's own settings page showed the
+ * webhook stored correctly. Query strings on destination URLs are a known
+ * rough edge in webhook systems, so this removes the variable entirely rather
+ * than leaving it as the last untested difference.
+ *
+ * Both routes stay live: existing customers keep working, and nothing has to
+ * be migrated if this turns out not to be the cause.
+ */
 http.route({
-  path: "/webhooks/fathom",
+  pathPrefix: "/webhooks/fathom/",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const teamId = url.pathname.split("/webhooks/fathom/")[1]?.split("/")[0];
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "missing team" }), { status: 400 });
+    }
+    // Rebuild as the query-string form and hand to the one implementation, so
+    // the two routes can never drift apart on signature checking.
+    return await handleFathomWebhook(ctx, request, teamId);
+  }),
+});
+
+/**
+ * One implementation, two routes.
+ *
+ * The team arrives either as a query parameter or as a path segment; nothing
+ * below cares which. Keeping signature verification in a single place matters
+ * more than the routing — two copies would eventually disagree about what
+ * counts as a valid request, and the lenient one would be the security hole.
+ */
+async function handleFathomWebhook(
+  ctx: ActionCtx,
+  request: Request,
+  teamId: string,
+): Promise<Response> {
     // Read the body ONCE and verify against exactly those bytes. Re-serialising
     // parsed JSON would change whitespace and every signature would fail.
     const rawBody = await request.text();
 
-    const teamId = new URL(request.url).searchParams.get("team");
-    if (!teamId) {
-      return new Response(JSON.stringify({ error: "missing team" }), { status: 400 });
-    }
 
     // A malformed id throws inside the query rather than returning null, which
     // surfaced as a 500 and would fill Sentry with noise from anyone probing
@@ -12638,6 +12671,17 @@ http.route({
       // A genuine failure DOES deserve a retry.
       return new Response(JSON.stringify({ error: "ingest failed" }), { status: 500 });
     }
+}
+
+http.route({
+  path: "/webhooks/fathom",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const teamId = new URL(request.url).searchParams.get("team");
+    if (!teamId) {
+      return new Response(JSON.stringify({ error: "missing team" }), { status: 400 });
+    }
+    return await handleFathomWebhook(ctx, request, teamId);
   }),
 });
 
