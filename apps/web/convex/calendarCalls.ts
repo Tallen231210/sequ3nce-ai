@@ -32,11 +32,25 @@ import {
  */
 const OVERLAP_MS = 15 * 60 * 1000;
 
+/** Per team, per run. Generous for a three-day window; logged if ever hit. */
+const EVENT_CAP = 2000;
+
 /** Teams whose calls can only come from their calendar. */
 export const listOverviewTeams = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const teams = await ctx.db.query("teams").take(500);
+    // Loudly, if we ever outgrow this. A silent truncation here means some
+    // customers' calls simply stop appearing, with nothing to notice — the
+    // same class of failure that made this job return zero on a 900-event team
+    // and create 264 duplicates on another.
+    const CAP = 500;
+    const teams = await ctx.db.query("teams").take(CAP);
+    if (teams.length === CAP) {
+      console.error(
+        `[calendar-calls] hit the ${CAP}-team cap — some Overview teams are ` +
+          `being skipped. This needs an index on productTier.`,
+      );
+    }
     return teams
       .filter((t) => (t.productTierOverride ?? t.productTier) === "overview")
       .map((t) => ({ teamId: t._id, name: t.name }));
@@ -78,7 +92,17 @@ export const ingestTeamBookings = internalMutation({
       .withIndex("by_team_and_time", (q) =>
         q.eq("teamId", args.teamId).gte("startTime", since).lte("startTime", now),
       )
-      .take(2000)) as Doc<"calendarEvents">[];
+      .take(EVENT_CAP)) as Doc<"calendarEvents">[];
+
+    if (events.length === EVENT_CAP) {
+      // A three-day window holding 2,000 events means a very large team. Say
+      // so rather than quietly dropping the tail, which would look like calls
+      // going missing for whoever sorts last.
+      console.error(
+        `[calendar-calls] team ${args.teamId} hit the ${EVENT_CAP}-event cap; ` +
+          `some bookings in this window were not considered.`,
+      );
+    }
 
     const finished = events.filter(
       (e) =>

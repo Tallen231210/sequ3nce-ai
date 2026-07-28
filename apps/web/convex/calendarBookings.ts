@@ -62,8 +62,17 @@ export function groupBookingCopies<T extends BookingCandidate>(
 ): Map<string, T[]> {
   const byUid = new Map<string, T[]>();
   for (const ev of events) {
-    const key =
-      ev.uid || `${ev.startTime}|${(ev.title ?? "").trim().toLowerCase()}`;
+    // Start time is part of the key, not just the id.
+    //
+    // Two copies of one meeting share both; two occurrences of a recurring
+    // series share only the id. Keying on the id alone merged them — measured
+    // against production, 6 series out of 2,748 events reuse a single id
+    // across up to 4 occurrences, so a weekly call with the same prospect was
+    // being counted once. Small, but it undercounts Booked on the board and
+    // would have created one call instead of four on the Overview tier.
+    const key = ev.uid
+      ? `${ev.uid}|${ev.startTime}`
+      : `${ev.startTime}|${(ev.title ?? "").trim().toLowerCase()}`;
     const list = byUid.get(key) ?? [];
     list.push(ev);
     byUid.set(key, list);

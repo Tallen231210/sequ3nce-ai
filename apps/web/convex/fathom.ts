@@ -346,6 +346,37 @@ export const ingestMeeting = internalMutation({
       )
       .first();
 
+    // Is a calendar placeholder already standing in for this meeting?
+    //
+    // A team that upgrades from Overview to Oversight has both: calendar
+    // bookings turned into calls under the old plan, and now Fathom recordings
+    // of the same meetings. Inserting alongside would double every call in the
+    // changeover window — the calendar call knows only that a meeting was
+    // booked, the Fathom one has the transcript, and they are the same call.
+    //
+    // So take the placeholder over rather than skipping or duplicating. Any
+    // outcome the closer already filled in survives, because we patch the row
+    // they answered instead of abandoning it for a fresh one.
+    let placeholder = null;
+    if (!existing) {
+      const nearby = await ctx.db
+        .query("calls")
+        .withIndex("by_team_and_date", (q) =>
+          q
+            .eq("teamId", args.teamId)
+            .gte("createdAt", startedAt - 15 * 60 * 1000)
+            .lte("createdAt", startedAt + 15 * 60 * 1000),
+        )
+        .take(50);
+      placeholder =
+        nearby.find(
+          (c) =>
+            c.source === "calendar" &&
+            String(c.closerId) === String(closer._id) &&
+            !c.externalRecordingId,
+        ) ?? null;
+    }
+
     const fields = {
       prospectName,
       startedAt,
@@ -376,27 +407,33 @@ export const ingestMeeting = internalMutation({
     let callId: Id<"calls">;
     let status: "created" | "updated";
 
-    if (existing) {
+    const target = existing ?? placeholder;
+    if (target) {
       // Never undo a closer's decision. If they told us this was a sales call,
       // a re-sync must not silently flip it back.
-      const keepTheirCall = existing.classifiedBy === "closer";
-      await ctx.db.patch(existing._id, {
+      const keepTheirCall = target.classifiedBy === "closer";
+      await ctx.db.patch(target._id, {
         ...fields,
+        // Absorbing a calendar placeholder: it becomes the Fathom call, and
+        // stops being something the booking job would recreate.
+        ...(placeholder
+          ? { source: "fathom", externalRecordingId: recordingId }
+          : {}),
         ...(keepTheirCall
           ? {
-              classifiedAs: existing.classifiedAs,
-              classifiedBy: existing.classifiedBy,
-              countsTowardStats: existing.countsTowardStats,
+              classifiedAs: target.classifiedAs,
+              classifiedBy: target.classifiedBy,
+              countsTowardStats: target.countsTowardStats,
               // Derived from their decision, never copied from the stored
               // status. Copying it let the two drift: a call the closer had
               // marked internal kept an old "completed" status and went on
               // being counted, and every later sync preserved the mistake.
               // Deriving it here means any such row self-heals on next sync.
-              status: existing.countsTowardStats ? "completed" : "unclassified",
+              status: target.countsTowardStats ? "completed" : "unclassified",
             }
           : {}),
       });
-      callId = existing._id;
+      callId = target._id;
       status = "updated";
     } else {
       // No `as never` here on purpose. The cast that used to be here hid a

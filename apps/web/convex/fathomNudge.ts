@@ -39,9 +39,15 @@ export const findClosersToNudge = internalQuery({
 
     // Only closers who opted in — that list is short, and starting from it
     // avoids walking every team on every run.
-    const optedIn = (await ctx.db.query("closers").take(1000)).filter(
-      (c) => c.outcomeRemindersEnabled === true,
-    );
+    const CAP = 1000;
+    const scanned = await ctx.db.query("closers").take(CAP);
+    if (scanned.length === CAP) {
+      console.error(
+        `[fathom] hit the ${CAP}-closer cap while finding reminder ` +
+          `recipients — some opted-in closers are being skipped.`,
+      );
+    }
+    const optedIn = scanned.filter((c) => c.outcomeRemindersEnabled === true);
     if (optedIn.length === 0) return [];
 
     {
