@@ -257,6 +257,21 @@ export const TIER_INFO: Record<
   },
 };
 
+/**
+ * List prices, in whole dollars.
+ *
+ * Public marketing figures, kept here so the pricing page, the signup page and
+ * anywhere else quoting a number can't drift apart — they were three separate
+ * hardcodings and two of them still said $499. What a customer is ACTUALLY
+ * charged always comes from the payment processor, never from this: people are
+ * grandfathered onto old rates, and only the processor knows.
+ */
+export const TIER_PRICING: Record<Tier, { platform: number; seat: number }> = {
+  overview: { platform: 300, seat: 30 },
+  oversight: { platform: 500, seat: 50 },
+  overwatch: { platform: 500, seat: 150 },
+};
+
 /** Ordered cheapest to most expensive, for deciding upgrade vs downgrade. */
 export const TIER_ORDER: Tier[] = ["overview", "oversight", "overwatch"];
 

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, Suspense, useEffect } from "react";
+import { PlanChooser } from "./PlanChooser";
+import type { Tier } from "@/lib/tiers";
 import { useUser, SignUpButton, UserButton } from "@clerk/nextjs";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
@@ -64,7 +66,7 @@ function SubscribeContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wasSuccess]);
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (tier: Tier) => {
     setIsLoading(true);
     try {
       const response = await fetch("/api/stripe/create-checkout", {
@@ -72,6 +74,10 @@ function SubscribeContent() {
         headers: {
           "Content-Type": "application/json",
         },
+        // Without this every signup silently bought the top plan — the two
+        // cheaper ones existed everywhere except the one page where someone
+        // could actually buy them.
+        body: JSON.stringify({ tier }),
       });
 
       const data = await response.json();
@@ -147,91 +153,20 @@ function SubscribeContent() {
               </p>
             </div>
 
-            {/* Pricing Card */}
-            <div className="bg-white border-2 border-zinc-900 rounded-2xl p-8 max-w-md mx-auto">
-              <div className="text-center mb-6">
-                <div className="text-sm font-medium text-zinc-500 uppercase tracking-wide mb-2">
-                  Platform Access
-                </div>
-                <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-5xl font-bold text-zinc-900">$499</span>
-                  <span className="text-zinc-500">/month</span>
-                </div>
-                <p className="text-sm text-zinc-500 mt-2">
-                  + $149/month per closer seat
-                </p>
-              </div>
+            <PlanChooser
+              isLoading={isLoading}
+              onChoose={(tier) => void handleSubscribe(tier)}
+            />
 
-              <div className="border-t border-zinc-200 pt-6 mb-8">
-                <ul className="space-y-4">
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span className="text-zinc-700">Real-time call transcription & analysis</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span className="text-zinc-700">AI-powered ammo extraction</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span className="text-zinc-700">Live call monitoring dashboard</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span className="text-zinc-700">Call recordings & playback</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span className="text-zinc-700">Team management & analytics</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span className="text-zinc-700">Playbook highlights for training</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                    <span className="text-zinc-700">Calendar integrations (Calendly)</span>
-                  </li>
-                </ul>
-              </div>
-
-              {isLoggedOut ? (
-                <SignUpButton mode="modal">
-                  <button className="w-full bg-zinc-900 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-zinc-800 transition-colors flex items-center justify-center gap-2">
-                    Create Account to Subscribe
-                  </button>
-                </SignUpButton>
-              ) : (
-                <button
-                  onClick={handleSubscribe}
-                  disabled={isLoading || !isTeamReady}
-                  className="w-full bg-zinc-900 text-white py-4 px-6 rounded-xl font-semibold text-lg hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {!isTeamReady ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      Setting up account...
-                    </>
-                  ) : isLoading ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      Redirecting to checkout...
-                    </>
-                  ) : (
-                    "Subscribe Now"
-                  )}
-                </button>
-              )}
-
-              <p className="text-center text-sm text-zinc-500 mt-4">
-                Cancel anytime. No long-term contracts.
-              </p>
-            </div>
+            <p className="text-center text-sm text-zinc-500 mt-6">
+              Cancel anytime. No long-term contracts. Change plan whenever you
+              like — nothing you&apos;ve already recorded is ever deleted.
+            </p>
 
             {/* Trust indicators */}
             <div className="mt-12 text-center">
               <p className="text-sm text-zinc-500">
-                Secure payment powered by Stripe
+                Secure payment, handled by our payment provider
               </p>
             </div>
           </>

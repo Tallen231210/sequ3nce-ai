@@ -20,11 +20,12 @@
 
 import { Check, ArrowRight } from "lucide-react";
 import { BookDemoButton } from "@/components/ui/calendly-modal";
+import { TIER_PRICING } from "@/lib/tiers";
 
 interface Plan {
+  /** Keyed to the tier so prices come from one place, not a second hardcoding. */
+  tier: "overview" | "oversight" | "overwatch";
   name: string;
-  platform: number;
-  seat: number;
   /** The one-line reason to buy this rather than the one below it. */
   promise: string;
   /** Who it's for, in their words. */
@@ -37,9 +38,8 @@ interface Plan {
 
 const PLANS: Plan[] = [
   {
+    tier: "overview",
     name: "Overview",
-    platform: 300,
-    seat: 30,
     promise: "Every number in one place, without chasing anyone.",
     forWho:
       "For teams running on a spreadsheet somebody rebuilds every Monday.",
@@ -52,9 +52,8 @@ const PLANS: Plan[] = [
     requires: "Works with Google Calendar",
   },
   {
+    tier: "oversight",
     name: "Oversight",
-    platform: 500,
-    seat: 50,
     promise: "Find what's working on your calls, and spread it.",
     forWho:
       "For teams who already record — and want to know what the good calls have in common.",
@@ -68,9 +67,8 @@ const PLANS: Plan[] = [
     requires: "Works with Fathom",
   },
   {
+    tier: "overwatch",
     name: "Overwatch",
-    platform: 500,
-    seat: 150,
     promise: "Turn your best calls into how everyone else sells.",
     forWho:
       "For teams who coach hard and want new closers ramping in weeks, not quarters.",
@@ -115,7 +113,7 @@ export function PricingTiers() {
           <div className="mt-7 border-t border-zinc-100 pt-6">
             <div className="flex items-baseline gap-1">
               <span className="text-5xl font-semibold tracking-[-0.04em] text-zinc-950">
-                ${plan.platform}
+                ${TIER_PRICING[plan.tier].platform}
               </span>
               <span className="text-lg font-medium tracking-tight text-zinc-400">
                 /mo
@@ -123,7 +121,10 @@ export function PricingTiers() {
             </div>
             <p className="mt-2 text-[13px] text-zinc-500">
               plus{" "}
-              <span className="font-medium text-zinc-950">${plan.seat}</span> per
+              <span className="font-medium text-zinc-950">
+                ${TIER_PRICING[plan.tier].seat}
+              </span>{" "}
+              per
               closer, per month
             </p>
           </div>
