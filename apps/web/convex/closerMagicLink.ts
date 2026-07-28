@@ -101,6 +101,8 @@ export const generateMagicLinkCode = internalMutation({
     code: string | null;
     closerName?: string;
     isReturning?: boolean;
+    /** Decides whether the desktop app is worth offering at all. */
+    productTier?: string;
     reason?: "cooldown" | "unknown_email" | "invalid_format";
     retryAfterSeconds?: number;
   }> => {
@@ -168,10 +170,20 @@ export const generateMagicLinkCode = internalMutation({
     // has lastLoginAt yet) get the full welcome with download step.
     const isReturning = eligible.some((c) => c.lastLoginAt != null);
 
+    // The desktop app is the meeting-bot product's app. Offering it to a
+    // closer on a plan without the bot hands them software full of features
+    // that will never work for them.
+    const greetingTeam = await ctx.db.get(greetingCloser.teamId);
+    const productTier =
+      greetingTeam?.productTierOverride ??
+      greetingTeam?.productTier ??
+      "overwatch";
+
     return {
       code,
       closerName: greetingCloser.name,
       isReturning,
+      productTier,
     };
   },
 });
@@ -318,7 +330,11 @@ export const requestCloserMagicLink = action({
           </p>
         </div>`;
 
-    const desktopNote = `
+    // Overwatch only. On the other plans there is no bot, so the desktop app
+    // would be an install with nothing behind it.
+    const offerDesktopApp = (result.productTier ?? "overwatch") === "overwatch";
+
+    const desktopNote = !offerDesktopApp ? "" : `
         <div style="border-top: 1px solid #eee; padding-top: 20px; margin-bottom: 24px;">
           <p style="color: #666; font-size: 13px; line-height: 1.6; margin: 0;">
             ${webReady

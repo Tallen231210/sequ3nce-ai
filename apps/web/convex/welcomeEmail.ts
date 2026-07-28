@@ -68,6 +68,46 @@ export const sendB2BWelcomeEmail = internalAction({
 
     const greetingName = args.managerName?.trim() || "there";
 
+    // What a closer has to do differs by plan, and getting it wrong is a
+    // support ticket on day one. The old copy told everyone to forward a
+    // desktop app download — obsolete on every plan since closers moved to the
+    // browser, and doubly wrong on the plans with no bot to install anything
+    // for. One email with a step that varies beats three templates to keep in
+    // sync, since everything around this block is identical.
+    const closerSteps: Record<string, { title: string; detail: string }> = {
+      overview: {
+        title: "Tell your closers to connect their Google Calendar",
+        detail:
+          "They sign in at " +
+          dashboardUrl +
+          "/app — nothing to install. Connecting Google Calendar is the whole setup: it's how we find their sales calls and work out booking and show rates.",
+      },
+      oversight: {
+        title: "Tell your closers to connect Fathom and their calendar",
+        detail:
+          "They sign in at " +
+          dashboardUrl +
+          "/app — nothing to install. Their calls arrive on their own within a few minutes of finishing; the calendar adds booking and show rates.",
+      },
+      overwatch: {
+        title: "Tell your closers to connect their Google Calendar",
+        detail:
+          "They sign in at " +
+          dashboardUrl +
+          "/app — nothing to install. Once the calendar is connected our bot joins their calls automatically; nobody has to remember to start anything.",
+      },
+    };
+    const step = closerSteps[team.productTier] ?? closerSteps.overwatch;
+    const closerStepBlock = `
+          <li style="padding: 12px 0; border-bottom: 1px solid #eee;">
+            <a href="${dashboardUrl}/app" style="color: #111; font-weight: 600; text-decoration: none;">
+              ${step.title} &rarr;
+            </a>
+            <div style="color: #777; font-size: 13px; margin-top: 4px;">
+              ${step.detail}
+            </div>
+          </li>`;
+
     const bookingBlock = bookingUrl
       ? `
         <div style="background: #1e293b; border-radius: 10px; padding: 24px; margin: 24px 0; text-align: center;">
@@ -106,17 +146,10 @@ export const sendB2BWelcomeEmail = internalAction({
               Add your closers →
             </a>
             <div style="color: #777; font-size: 13px; margin-top: 4px;">
-              Settings → Team. We'll send each of them install instructions.
+              Settings → Team. We'll email each of them a sign-in link.
             </div>
           </li>
-          <li style="padding: 12px 0; border-bottom: 1px solid #eee;">
-            <a href="${dashboardUrl}/download" style="color: #111; font-weight: 600; text-decoration: none;">
-              Forward the desktop app download to each closer →
-            </a>
-            <div style="color: #777; font-size: 13px; margin-top: 4px;">
-              ${dashboardUrl}/download — Mac + Windows, auto-detects platform.
-            </div>
-          </li>
+          ${closerStepBlock}
           <li style="padding: 12px 0;">
             <a href="${dashboardUrl}/dashboard/onboarding" style="color: #111; font-weight: 600; text-decoration: none;">
               See the full setup checklist →

@@ -14,12 +14,17 @@ export const getTeamForWelcome = internalQuery({
     args,
   ): Promise<{
     welcomeEmailSentAt: number | undefined;
+    productTier: string;
     name: string;
   } | null> => {
     const team = (await ctx.db.get(args.teamId)) as Doc<"teams"> | null;
     if (!team) return null;
     return {
       welcomeEmailSentAt: team.welcomeEmailSentAt,
+      // Which plan they just bought — the setup steps differ per tier, and a
+      // customer told to install a desktop app they don't have is a support
+      // ticket on day one.
+      productTier: team.productTierOverride ?? team.productTier ?? "overwatch",
       name: team.name,
     };
   },
