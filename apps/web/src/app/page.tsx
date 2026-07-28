@@ -8,6 +8,7 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { BookDemoButton } from "@/components/ui/calendly-modal";
+import { PricingTiers } from "./_landing/PricingTiers";
 import { Logo } from "@/components/ui/logo";
 import {
   ArrowRight,
@@ -188,10 +189,12 @@ export default function Home() {
   ];
 
   const faqs = [
-    { question: "What types of calls does Sequ3nce work with?", answer: "Zoom, Google Meet, Microsoft Teams — any video call platform. Our bot automatically joins scheduled calls through your Google Calendar, so it works with whatever platform your team uses." },
-    { question: "How does the meeting bot work?", answer: "Closers connect their Google Calendar once. Our bot automatically detects upcoming calls and joins them to record, transcribe, and provide live coaching — completely hands-free." },
+    { question: "What types of calls does Sequ3nce work with?", answer: "Zoom, Google Meet, Microsoft Teams — any video call platform. On Overwatch our bot joins scheduled calls through your Google Calendar automatically. On Oversight we pull in whatever your team already records with. Either way it works with the platform you use today." },
+    { question: "How does the meeting bot work?", answer: "It's part of Overwatch. Closers connect their Google Calendar once, and the bot detects upcoming calls and joins them to record and transcribe — completely hands-free. On Oversight you skip the bot entirely and we use the recordings your team already makes." },
+    { question: "Which plan should we start on?", answer: "Most teams start on Oversight — you already record your calls, so you get transcripts and analysis on day one without changing how anyone works. Start on Overview if you just want the numbers in one place, and move up to Overwatch when you want every call captured automatically and a playbook built from your best ones." },
+    { question: "Can we change plans later?", answer: "Any time, in one click from your billing page. Your invoice is adjusted for the part of the month you've already paid for. Moving down never deletes anything — every call, recording and transcript you already have stays exactly where it is." },
     { question: "Is my call data secure?", answer: "Yes, all calls are encrypted in transit and at rest. You own your data, and we never share it with third parties." },
-    { question: "What if my closers aren't tech-savvy?", answer: "The setup is dead simple. Download the app, log in, connect your Google Calendar. After that, everything is automatic — no buttons to press, no recording to start." },
+    { question: "What if my closers aren't tech-savvy?", answer: "Setup is one step: log in and connect your Google Calendar. It all runs in the browser, so there is nothing to install. After that the only thing a closer ever does is say how a call went — about fifteen seconds, once per call." },
     { question: "Do you integrate with my CRM?", answer: "Yes — we integrate with GoHighLevel (GHL) and Hyros. Call outcomes, lead quality scores, objections, and AI summaries sync automatically to your GHL contacts after every call. For Hyros, we push call intelligence data so your ad platforms can optimize for leads that actually close, not just leads that book calls." },
   ];
 
@@ -1001,111 +1004,32 @@ export default function Home() {
       {/* ═══════════════════════════════════════════ */}
       <section id="pricing" className="py-32 relative z-10">
         <div className="mx-auto max-w-7xl px-6">
-          <div className="grid lg:grid-cols-2 gap-16 lg:gap-24 items-center">
-            <AnimatedSection>
-              <div>
-                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
-                  Pricing
-                </div>
-                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
-                  Simple,
-                  <br />
-                  <span className="font-serif italic font-normal">transparent</span>
-                  <br />
-                  pricing<span className="text-zinc-300">.</span>
-                </h2>
-                <p className="mt-8 text-zinc-500 text-lg max-w-md leading-relaxed">
-                  No hidden fees. No per-minute charges. Just one plan that
-                  scales with your team.
-                </p>
-                <div className="mt-10">
-                  <SignedOut>
-                    <BookDemoButton size="lg">
-                      Book a Demo
-                      <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                    </BookDemoButton>
-                  </SignedOut>
-                  <SignedIn>
-                    <Link href="/dashboard">
-                      <Button size="lg">
-                        Go to Dashboard
-                        <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                      </Button>
-                    </Link>
-                  </SignedIn>
-                </div>
+          <AnimatedSection>
+            <div className="max-w-2xl">
+              <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
+                Pricing
               </div>
-            </AnimatedSection>
+              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
+                Three ways to
+                <br />
+                <span className="font-serif italic font-normal">see your</span>
+                <br />
+                sales floor<span className="text-zinc-300">.</span>
+              </h2>
+              <p className="mt-8 text-zinc-500 text-lg leading-relaxed">
+                Start with the numbers. Add the calls when you want to know what
+                the good ones have in common. Move up when you&apos;re ready to
+                coach from them. No hidden fees, no per-minute charges, and you
+                can change plan whenever.
+              </p>
+            </div>
+          </AnimatedSection>
 
-            <AnimatedSection delay={150}>
-              <div className="relative">
-                <div className="absolute -inset-4 bg-gradient-to-br from-zinc-100 via-zinc-50 to-white rounded-[2rem] blur-xl" />
-                <div className="relative bg-white rounded-3xl border border-zinc-200 p-10 shadow-[0_32px_80px_-20px_rgba(0,0,0,0.12)]">
-                  <div className="text-center mb-10">
-                    <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 mb-6 font-medium">
-                      Everything included
-                    </div>
-                    <div className="text-6xl sm:text-7xl font-semibold tracking-[-0.04em] text-zinc-950 leading-none">
-                      $499
-                      <span className="text-2xl font-medium text-zinc-400 tracking-tight">
-                        /mo
-                      </span>
-                    </div>
-                    <p className="text-sm text-zinc-500 mt-3">
-                      Platform fee — includes everything below
-                    </p>
-                  </div>
-
-                  <div className="border-t border-zinc-100 pt-6 mb-10 flex items-baseline justify-between">
-                    <span className="text-sm text-zinc-500">
-                      + Per closer seat
-                    </span>
-                    <span className="text-2xl font-semibold text-zinc-950">
-                      $149
-                      <span className="text-sm font-normal text-zinc-400">
-                        /mo
-                      </span>
-                    </span>
-                  </div>
-
-                  <div className="space-y-4 mb-10">
-                    {[
-                      "Unlimited calls",
-                      "Real-time transcription",
-                      "AI-powered ammo extraction",
-                      "Playbook builder",
-                      "Closer stats & analytics",
-                      "Call recordings & playback",
-                      "Automatic meeting bot",
-                      "Hyros & GHL integrations",
-                    ].map((f, i) => (
-                      <div key={i} className="flex items-center gap-3">
-                        <div className="w-5 h-5 rounded-full bg-zinc-950 flex items-center justify-center shrink-0">
-                          <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
-                        </div>
-                        <span className="text-sm">{f}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <SignedOut>
-                    <BookDemoButton size="lg" className="w-full justify-center">
-                      Get Started
-                      <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                    </BookDemoButton>
-                  </SignedOut>
-                  <SignedIn>
-                    <Link href="/dashboard" className="block">
-                      <Button size="lg" className="w-full">
-                        Go to Dashboard
-                        <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
-                      </Button>
-                    </Link>
-                  </SignedIn>
-                </div>
-              </div>
-            </AnimatedSection>
-          </div>
+          <AnimatedSection delay={150}>
+            <div className="mt-16">
+              <PricingTiers />
+            </div>
+          </AnimatedSection>
         </div>
       </section>
 
