@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { tierHas } from '@/lib/tiers';
 import type {
   CloserInfo,
   CloserStats,
@@ -29,6 +30,9 @@ const PERIOD_OPTIONS = [
 ] as const;
 
 export function StatsView({ closerInfo }: StatsViewProps) {
+  // Talk ratio comes from diarising the call audio. Without a recording it is
+  // structurally unmeasurable, not merely zero.
+  const canMeasureTalkRatio = tierHas(closerInfo.productTier, "callIntelligence");
   const [period, setPeriod] = useState('week');
   const [customStart, setCustomStart] = useState<number | null>(null);
   const [customEnd, setCustomEnd] = useState<number | null>(null);
@@ -133,7 +137,12 @@ export function StatsView({ closerInfo }: StatsViewProps) {
         <StatCard icon={<DollarIcon />} title="Cash Collected" value={formatCurrency(stats?.cashCollected ?? 0)} />
         <StatCard icon={<DocIcon />} title="Contract Value" value={formatCurrency(stats?.totalContractValue ?? 0)} />
         <StatCard icon={<ClockIcon />} title="Avg Call Duration" value={formatDuration(stats?.avgCallDuration ?? 0)} />
-        <StatCard icon={<WaveformIcon />} title="Talk Ratio" value={`${Math.round(stats?.avgTalkRatio ?? 0)}%`} />
+        {/* Talk ratio is measured from the recording's audio. With no
+            recording it is permanently 0%, which reads as "you never speak"
+            rather than "we can't measure this". */}
+        {canMeasureTalkRatio && (
+          <StatCard icon={<WaveformIcon />} title="Talk Ratio" value={`${Math.round(stats?.avgTalkRatio ?? 0)}%`} />
+        )}
         <StatCard
           icon={<DollarIcon />}
           title="Revenue / Call"
@@ -151,7 +160,7 @@ export function StatsView({ closerInfo }: StatsViewProps) {
       </div>
 
       {/* Team Comparison */}
-      <TeamComparisonSection stats={stats} />
+      <TeamComparisonSection stats={stats} canMeasureTalkRatio={canMeasureTalkRatio} />
 
       {/* Money Overview */}
       <MoneyOverviewSection analytics={analytics} />
@@ -172,7 +181,14 @@ export function StatsView({ closerInfo }: StatsViewProps) {
 
 // --- Team Comparison Section ---
 
-function TeamComparisonSection({ stats }: { stats: CloserStats | null }) {
+function TeamComparisonSection({
+  stats,
+  canMeasureTalkRatio,
+}: {
+  stats: CloserStats | null;
+  /** False without a recording — talk ratio is diarised from audio. */
+  canMeasureTalkRatio: boolean;
+}) {
   if (!stats) return null;
 
   const rows = [
@@ -204,13 +220,17 @@ function TeamComparisonSection({ stats }: { stats: CloserStats | null }) {
       yourVal: stats.avgCallDuration,
       teamVal: stats.teamAvgDuration,
     },
-    {
-      label: 'Talk Ratio',
-      yours: `${Math.round(stats.avgTalkRatio)}%`,
-      team: `${Math.round(stats.teamAvgTalkRatio)}%`,
-      yourVal: stats.avgTalkRatio,
-      teamVal: stats.teamAvgTalkRatio,
-    },
+    ...(canMeasureTalkRatio
+      ? [
+          {
+            label: 'Talk Ratio',
+            yours: `${Math.round(stats.avgTalkRatio)}%`,
+            team: `${Math.round(stats.teamAvgTalkRatio)}%`,
+            yourVal: stats.avgTalkRatio,
+            teamVal: stats.teamAvgTalkRatio,
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { tierHas } from "@/lib/tiers";
 import { usePoll } from "@/lib/closer/usePoll";
 import { getActiveCallForCloserBot, type CloserInfo } from "@/lib/closer/client";
 
@@ -84,6 +85,10 @@ export function useActiveCall(closerInfo: CloserInfo | null) {
     "botActiveCall",
     async () => {
       if (!closerInfo?.closerId) return;
+      // Nothing to watch for on a plan without our meeting bot. There is no
+      // live call to find, ever — so this is a request every ten seconds, per
+      // closer, forever, that can only ever return nothing.
+      if (!tierHas(closerInfo.productTier, "meetingBot")) return;
 
       // First poll after a mount: pick up whatever we were watching before the
       // page reloaded, so a refresh mid-call doesn't lose the outcome prompt.

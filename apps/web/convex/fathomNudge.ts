@@ -1,11 +1,10 @@
 // ============================================================================
 // The daily nudge.
 //
-// The queue on the dashboard only works on a closer who opens the app. On this
-// product line they have no reason to — the recording happens in Fathom, the
-// transcript writes itself, and nothing pulls them back in. So calls would sit
-// unanswered and the scoreboard would stay empty while everyone assumed it was
-// working.
+// The queue on the dashboard only works on a closer who opens the app, and on
+// the tiers without our bot they have little reason to — the recording happens
+// elsewhere, or there is no recording at all. Calls would sit unanswered and
+// the scoreboard would stay empty while everyone assumed it was working.
 //
 // One email a day, only to people who actually have something outstanding.
 // ============================================================================
@@ -18,20 +17,19 @@ import { internal } from "./_generated/api";
 const MIN_CALLS_TO_NUDGE = 1;
 
 /**
- * Who has calls waiting, across every team using Fathom.
+ * Who has calls waiting.
  *
- * Scoped to teams with a live connection, so a customer who has never touched
- * Fathom can never receive one of these.
+ * Scoped by "has calls needing an outcome", not by "has Fathom connected".
+ *
+ * The Fathom version was a real bug: Overview teams have no Fathom connection
+ * by definition, so the tier that depends MOST on closers reporting outcomes —
+ * it has no recording at all, the queue is the only way numbers ever arrive —
+ * was the one tier that never got reminded. Opt-in is still what protects
+ * people's inboxes; the connection was never the right gate.
  */
 export const findClosersToNudge = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const connections = await ctx.db.query("fathomConnections").collect();
-    const teamIds = new Set(
-      connections.filter((c) => c.status === "active").map((c) => String(c.teamId)),
-    );
-    if (teamIds.size === 0) return [];
-
     const out: Array<{
       closerId: string;
       email: string;
@@ -39,11 +37,15 @@ export const findClosersToNudge = internalQuery({
       waiting: number;
     }> = [];
 
-    for (const teamIdStr of teamIds) {
-      const closers = await ctx.db
-        .query("closers")
-        .withIndex("by_team", (q) => q.eq("teamId", teamIdStr as never))
-        .collect();
+    // Only closers who opted in — that list is short, and starting from it
+    // avoids walking every team on every run.
+    const optedIn = (await ctx.db.query("closers").take(1000)).filter(
+      (c) => c.outcomeRemindersEnabled === true,
+    );
+    if (optedIn.length === 0) return [];
+
+    {
+      const closers = optedIn;
 
       for (const closer of closers) {
         // Only people actually working here. A deactivated closer must not
@@ -101,9 +103,9 @@ export const sendNudge = internalAction({
       <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;color:#111;line-height:1.55;max-width:520px">
         <p>Hi ${escapeHtml(firstName)},</p>
         <p>
-          You have <strong>${n} ${n === 1 ? "call" : "calls"}</strong> from Fathom
-          waiting on an outcome. They don't count toward your numbers until you
-          say how they went.
+          You have <strong>${n} ${n === 1 ? "call" : "calls"}</strong> waiting
+          on an outcome. They don't count toward your numbers until you say how
+          they went.
         </p>
         <p style="margin:22px 0">
           <a href="https://sequ3nce.ai/app/dashboard"

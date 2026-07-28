@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { tierHas } from "@/lib/tiers";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
@@ -173,11 +174,17 @@ export default function AnalyticsPage() {
         {/* Section 5: Call Quality — Step 4. First AI-data section.
             Gated behind verified-attribution skip-list (in the query) and a
             data-confidence indicator (in the component). Factual signals only. */}
+        {/* Talk ratio and discovery signals are read off the transcript. With
+            no recording there is no transcript, so this section can only ever
+            report "based on 0 calls" — an empty panel that looks like a defect
+            rather than a feature the plan doesn't include. */}
+        {tierHas(team?.productTier, "callIntelligence") && (
         <CallQualityCheck
           data={callQualityData}
           isLoading={callQualityData === undefined}
           recommendation={recBundle?.bySection.callQuality}
         />
+        )}
 
         {/* Section 6: Objection Analysis - Real form data */}
         <ObjectionAnalysis data={objectionAnalysis} isLoading={objectionAnalysis === undefined} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { RequiresFeature } from "@/components/dashboard/requires-feature";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Header } from "@/components/dashboard/header";
@@ -279,7 +280,7 @@ function SectionHeader({
   );
 }
 
-export default function CallReviewsPage() {
+function CallReviewsPageInner() {
   const { team, isLoading: isTeamLoading } = useTeam();
   const router = useRouter();
 
@@ -550,5 +551,18 @@ export default function CallReviewsPage() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Reviewing a call means watching it back. On a plan with no recording there is
+ * nothing to watch, and the list this page renders is permanently empty — so
+ * the URL shouldn't work either.
+ */
+export default function CallReviewsPage() {
+  return (
+    <RequiresFeature feature="callIntelligence">
+      <CallReviewsPageInner />
+    </RequiresFeature>
   );
 }

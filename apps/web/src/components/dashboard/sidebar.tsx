@@ -36,6 +36,15 @@ const BOT_ONLY_ROUTES = new Set([
   "/dashboard/recordings",
 ]);
 
+/**
+ * Pages that need a recording of some kind — ours or the customer's own.
+ *
+ * Call Reviews exists to watch a call back and comment on moments in it. On a
+ * plan with no recording the list is permanently empty, because the query that
+ * feeds it requires either a video file or a Fathom link.
+ */
+const RECORDING_ONLY_ROUTES = new Set(["/dashboard/call-reviews"]);
+
 const baseNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Live Calls", href: "/dashboard/live", icon: Radio },
@@ -113,9 +122,12 @@ export function Sidebar() {
   // in the call. On the tiers where it isn't, these pages can only ever be
   // empty — showing them advertises something the customer didn't buy and
   // makes the product look broken rather than smaller.
-  const filteredBase = tierHas(team?.productTier, "meetingBot")
+  const withoutBotPages = tierHas(team?.productTier, "meetingBot")
     ? setterFiltered
     : setterFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
+  const filteredBase = tierHas(team?.productTier, "callIntelligence")
+    ? withoutBotPages
+    : withoutBotPages.filter((item) => !RECORDING_ONLY_ROUTES.has(item.href));
   // Integration sync pages slot in just above Billing. Located by href rather
   // than a fixed index — a hardcoded slice silently misplaces them whenever a
   // nav item is added, or whenever the Setter Data kill switch removes one.
