@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/ui/logo";
+import { tierHas } from '@/lib/tiers';
 import React, { useState, useEffect } from 'react';
 import type { CloserInfo } from '@/lib/closer/client';
 import {
@@ -128,8 +129,13 @@ export function BotOnboardingView({ closerInfo, onComplete }: BotOnboardingViewP
               <h2 className="text-xl font-semibold text-black mb-2 text-center">
                 Connect Your Google Calendar
               </h2>
+              {/* What the calendar is FOR depends on the plan. On Overwatch
+                  it tells the bot which meetings to join; on the other tiers
+                  there is no bot, and it's how we find your calls at all. */}
               <p className="text-[14px] text-gray-500 text-center mb-6 px-4">
-                Connect your Google Calendar so we can automatically detect your upcoming calls and send bots to record them.
+                {tierHas(closerInfo.productTier, 'meetingBot')
+                  ? 'Connect your Google Calendar so we can automatically detect your upcoming calls and send bots to record them.'
+                  : 'Connect your Google Calendar so we can find your sales calls automatically. Nothing joins your meetings — we only read what\'s scheduled.'}
               </p>
 
               {isWaitingForOAuth ? (
@@ -166,13 +172,18 @@ export function BotOnboardingView({ closerInfo, onComplete }: BotOnboardingViewP
                     <p className="text-[12px] text-red-600 mt-2 w-full">{error}</p>
                   )}
 
-                  {/* Secondary: ICS fallback */}
-                  <button
-                    onClick={() => setShowIcsFallback(!showIcsFallback)}
-                    className="mt-4 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    {showIcsFallback ? 'Hide' : 'Use ICS feed instead'}
-                  </button>
+                  {/* No ICS on Overview — that plan finds calls by spotting
+                      sales meetings on the calendar, which needs to know who is
+                      on them, and an ICS feed doesn't carry attendees. It would
+                      connect successfully and then show nothing forever. */}
+                  {closerInfo.productTier !== 'overview' && (
+                    <button
+                      onClick={() => setShowIcsFallback(!showIcsFallback)}
+                      className="mt-4 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showIcsFallback ? 'Hide' : 'Use ICS feed instead'}
+                    </button>
+                  )}
 
                   {showIcsFallback && (
                     <div className="w-full mt-3 space-y-3">
