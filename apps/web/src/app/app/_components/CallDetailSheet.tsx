@@ -179,11 +179,26 @@ export function CallDetailSheet({
     }
   }
 
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'analysis', label: 'Analysis' },
-    { id: 'transcript', label: 'Transcript' },
-  ];
+  // A call that came from a calendar booking was never recorded by anything,
+  // so there is no transcript to show and nothing for the AI to have analysed.
+  // Offering the tabs anyway gives a closer two dead ends to click on the
+  // cheapest tier — the same reason the bot-only pages are hidden there.
+  const canHaveContent = call.source !== 'calendar';
+
+  const tabs: { id: TabId; label: string }[] = canHaveContent
+    ? [
+        { id: 'overview', label: 'Overview' },
+        { id: 'analysis', label: 'Analysis' },
+        { id: 'transcript', label: 'Transcript' },
+      ]
+    : [{ id: 'overview', label: 'Overview' }];
+
+  // A tab can vanish underneath someone — open a call's Transcript, close it,
+  // open a calendar call — and an activeTab pointing at a tab that no longer
+  // exists renders an empty sheet.
+  const currentTab: TabId = tabs.some((t) => t.id === activeTab)
+    ? activeTab
+    : 'overview';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -308,7 +323,7 @@ export function CallDetailSheet({
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2.5 text-[12px] font-medium transition-colors border-b-2 ${
-                activeTab === tab.id
+                currentTab === tab.id
                   ? 'text-black border-black'
                   : 'text-gray-500 border-transparent hover:text-gray-700'
               }`}
@@ -319,7 +334,7 @@ export function CallDetailSheet({
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'transcript' ? (
+        {currentTab === 'transcript' ? (
           // Transcript tab needs flex container so its inner scroll works
           <div className="flex-1 flex flex-col overflow-hidden">
             <CallDetailTranscriptTab
@@ -332,14 +347,14 @@ export function CallDetailSheet({
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-5">
-            {activeTab === 'overview' && (
+            {currentTab === 'overview' && (
               <CallDetailOverviewTab
                 call={call}
                 ammoItems={ammoItems}
                 isLoadingAmmo={isLoadingAmmo}
               />
             )}
-            {activeTab === 'analysis' && (
+            {currentTab === 'analysis' && (
               <CallDetailAnalysisTab
                 callAnalysis={polledAnalysis}
                 isRecent={isRecentCall(call.endedAt || call.startedAt)}

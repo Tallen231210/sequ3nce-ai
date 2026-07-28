@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from 'react';
+import { tierHas } from '@/lib/tiers';
 import type { CloserInfo, CalendarStatus, CalendarSubscription } from '@/lib/closer/client';
 import {
   getCalendarStatus,
@@ -335,10 +336,14 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
         </SettingsSection>
 
         {/* Fathom. Sits above the calendar because a closer who records with
-            Fathom needs this first — the calendar only schedules the bot. */}
-        <SettingsSection title="Fathom">
-          <FathomCard />
-        </SettingsSection>
+            Fathom needs this first — the calendar only schedules the bot.
+            Hidden on Overview, where connecting an outside recorder isn't part
+            of the plan. */}
+        {tierHas(closerInfo.productTier, 'externalRecording') && (
+          <SettingsSection title="Fathom">
+            <FathomCard />
+          </SettingsSection>
+        )}
 
         {/* Calendar Section */}
         <SettingsSection title="Calendar Connection">
@@ -494,6 +499,22 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
                 </svg>
                 Connect with Google Calendar
               </button>
+              {/* No ICS on Overview.
+                  
+                  This tier's entire call list comes from spotting sales calls
+                  on the calendar, and that needs to know who's on the meeting.
+                  ICS feeds carry times but not attendees, so they can tell us a
+                  meeting existed and never whether it was a sales call or a
+                  dentist appointment. Offering the option would produce an
+                  account that connects successfully and then shows nothing. */}
+              {closerInfo.productTier === 'overview' ? (
+                <p className="border-t border-gray-100 pt-3 text-[11.5px] text-gray-500 leading-relaxed">
+                  Google Calendar is required on your plan. Your calls are found
+                  by spotting sales meetings on your calendar, and an ICS feed
+                  doesn&apos;t say who&apos;s on a meeting — so we&apos;d see
+                  that something was booked but never that it was a call.
+                </p>
+              ) : (
               <div className="border-t border-gray-100 pt-3">
                 <p className="text-[11px] text-gray-400 mb-2">Or connect manually with an ICS feed URL:</p>
                 <div className="flex gap-2">
@@ -513,6 +534,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
                   </button>
                 </div>
               </div>
+              )}
             </div>
           )}
         </SettingsSection>
