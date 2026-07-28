@@ -12467,7 +12467,7 @@ http.route({
         });
       }
       const result = await ctx.runQuery(
-        internal.fathomOutcomes.getCallsNeedingOutcome,
+        internal.callOutcomes.getCallsNeedingOutcome,
         { closerId: caller.closerId },
       );
       return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { isSalesBooking, groupBookingCopies } from "./calendarBookings";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -233,18 +234,10 @@ async function recountDayImpl(
   // rather than as a defect in the numbers.
   const unknownRepCounts = new Map<string, number>();
 
-  // Collapse duplicate copies of the same meeting FIRST. Shared/subscribed
-  // calendars mean one appointment can land on several closers' calendars —
-  // counting each copy inflated a real team's bookings ~2x (854 rows for 390
-  // real meetings). `uid` is the provider's stable event id, so it dedupes
-  // reliably across subscriptions.
-  const copiesByUid = new Map<string, CalendarEvent[]>();
-  for (const ev of events) {
-    const key = ev.uid || `${ev.startTime}|${(ev.title ?? "").trim().toLowerCase()}`;
-    const list = copiesByUid.get(key) ?? [];
-    list.push(ev);
-    copiesByUid.set(key, list);
-  }
+  // Collapse duplicate copies of the same meeting FIRST. See
+  // groupBookingCopies for why — one appointment can land on several closers'
+  // calendars and counting each copy doubled a real team's bookings.
+  const copiesByUid = groupBookingCopies(events);
 
   const closerNames = activeClosers.map((c) => ({
     id: String(c._id),
@@ -257,13 +250,12 @@ async function recountDayImpl(
       copies
         .map((c) => closerIdByEventId.get(String(c._id)))
         .find((x): x is string => !!x) ?? null;
-    // A sales call if ANY copy proves it: it produced a recorded call, or it
-    // carries a prospect attendee (the Google sync already strips the closer
-    // and same-domain teammates, so an attendee here means an outsider).
-    const hasExternalAttendee = copies.some((c) =>
-      (c.attendees ?? []).some((a) => a.isOrganizer !== true && !!a.email),
-    );
-    const isCall = !!linkedCloser || hasExternalAttendee;
+    // Shared with the job that turns bookings into calls on the Overview tier.
+    // Two copies of this rule would eventually disagree, and a board showing
+    // more booked calls than the queue asks about reads as broken numbers.
+    const isCall = isSalesBooking(copies, {
+      producedARecordedCall: !!linkedCloser,
+    });
 
     // An all-day event (OOO, a holiday) covers the entire day.
     const evStart = ev.isAllDay ? dayStartMs : ev.startTime;

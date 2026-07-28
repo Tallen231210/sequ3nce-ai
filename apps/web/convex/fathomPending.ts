@@ -42,7 +42,7 @@ export const getPendingOutcomes = query({
     // something a closer has already told us was an internal meeting.
     const pending = calls.filter(
       (c) =>
-        c.source === "fathom" &&
+        (c.source === "fathom" || c.source === "calendar") &&
         c.status === "unclassified" &&
         c.classifiedAs !== "internal",
     );

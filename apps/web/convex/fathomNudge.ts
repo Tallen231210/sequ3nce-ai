@@ -58,7 +58,7 @@ export const findClosersToNudge = internalQuery({
           .take(200);
         const waiting = calls.filter(
           (c) =>
-            c.source === "fathom" &&
+            (c.source === "fathom" || c.source === "calendar") &&
             !c.outcome &&
             c.classifiedAs !== "internal" &&
             c.duration !== undefined,

@@ -270,4 +270,15 @@ crons.cron(
   {},
 );
 
+// The Overview tier's only source of call data. Every fifteen minutes, so a
+// closer finishing a call sees it waiting for an outcome before they've moved
+// on to the next one. Scoped to Overview teams inside the job — running it for
+// a team that also has a bot would turn one meeting into two calls.
+crons.cron(
+  "calendar-bookings-to-calls",
+  "*/15 * * * *",
+  internal.calendarCalls.pollBookings,
+  {},
+);
+
 export default crons;

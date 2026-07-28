@@ -39,8 +39,7 @@ export function PendingOutcomesNotice({ teamId }: { teamId?: string }) {
         they aren&apos;t counted below yet
       </p>
       <p className="mt-1 text-[13px] text-amber-800 dark:text-amber-300/80">
-        These were recorded in Fathom. A call only reaches this board once the
-        closer says how it went
+        A call only reaches this board once the closer says how it went
         {waitingSince ? `, and the oldest has been waiting since ${waitingSince}` : ""}.
       </p>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-amber-900 dark:text-amber-200">

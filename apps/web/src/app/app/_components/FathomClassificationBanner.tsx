@@ -99,7 +99,7 @@ export function FathomClassificationBanner({
     return (
       <div className="flex items-center gap-2 px-5 py-2.5 bg-gray-50 border-b border-gray-200 text-[12px] text-gray-600 flex-wrap">
         <span>
-          From before you connected Fathom. Add what happened on this call and
+          From before you connected. Add what happened on this call and
           it&apos;ll count toward your numbers.
         </span>
         <button

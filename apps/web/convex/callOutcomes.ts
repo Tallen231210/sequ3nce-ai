@@ -3,8 +3,9 @@
 //
 // The bot knew when a call ended, because it was in the call — so it could put
 // the form in front of the closer at the one moment they were guaranteed to be
-// at their desk. Fathom records without us, and the call turns up later. Nobody
-// is prompted, and nothing asks.
+// at their desk. Nothing else does. Fathom records without us and the call
+// turns up later; a calendar booking is only ever evidence a meeting was
+// scheduled. In both cases nobody is prompted and nothing asks.
 //
 // That gap is not cosmetic. Outcome and cash collected are the only source of
 // close rate and revenue on the board, so without this the whole tier produces
@@ -41,9 +42,11 @@ export const getCallsNeedingOutcome = internalQuery({
       .order("desc")
       .take(200);
 
+    // Both sources that need a human to say what happened. A bot call doesn't
+    // belong here — the form already appears the moment it ends.
     const waiting = calls.filter(
       (c) =>
-        c.source === "fathom" &&
+        (c.source === "fathom" || c.source === "calendar") &&
         !c.outcome &&
         c.classifiedAs !== "internal" &&
         // No duration means we could neither trust Fathom's end time nor find

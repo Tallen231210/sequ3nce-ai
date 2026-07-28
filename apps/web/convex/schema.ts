@@ -724,6 +724,7 @@ export default defineSchema({
 
     createdAt: v.number(),
   })
+    .index("by_calendar_event", ["calendarEventId"])
     .index("by_team", ["teamId"])
     .index("by_closer", ["closerId"])
     .index("by_team_and_status", ["teamId", "status"])
