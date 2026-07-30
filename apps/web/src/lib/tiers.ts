@@ -267,8 +267,8 @@ export const TIER_INFO: Record<
  * grandfathered onto old rates, and only the processor knows.
  */
 export const TIER_PRICING: Record<Tier, { platform: number; seat: number }> = {
-  overview: { platform: 300, seat: 30 },
-  oversight: { platform: 500, seat: 50 },
+  overview: { platform: 200, seat: 25 },
+  oversight: { platform: 350, seat: 50 },
   overwatch: { platform: 500, seat: 150 },
 };
 
