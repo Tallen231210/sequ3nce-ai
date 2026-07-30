@@ -18,6 +18,7 @@
 
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 /** The shape of a Polar subscription, narrowed to what we read. */
 export interface PolarSubscription {
@@ -111,6 +112,17 @@ export const getTeamByPolarCustomer = internalQuery({
 export const applySubscription = internalMutation({
   args: {
     polarCustomerId: v.string(),
+    /**
+     * Our own team id, handed to Polar as `external_customer_id` at checkout
+     * and echoed back on every subscription event.
+     *
+     * This is what makes the link reliable. Matching on Polar's customer id
+     * requires us to have stored it first, and if that write is missed — a
+     * failed checkout callback, a customer created in Polar's dashboard — the
+     * webhook arrives for someone we've never heard of and there is nothing to
+     * attach it to. Our id travels with the subscription instead.
+     */
+    externalCustomerId: v.union(v.string(), v.null()),
     polarSubscriptionId: v.string(),
     status: v.string(),
     tier: v.union(v.string(), v.null()),
@@ -121,7 +133,19 @@ export const applySubscription = internalMutation({
     ctx,
     args,
   ): Promise<{ applied: boolean; reason?: string }> => {
-    const team = await ctx.db
+    // Our own id first, Polar's as the fallback. A subscription created before
+    // we started sending external_customer_id still resolves.
+    let team = null;
+    if (args.externalCustomerId) {
+      try {
+        team = await ctx.db.get(args.externalCustomerId as Id<"teams">);
+      } catch {
+        // Not one of our ids — someone else's value in that field, or a
+        // customer created by hand in Polar's dashboard. Fall through.
+        team = null;
+      }
+    }
+    team ??= await ctx.db
       .query("teams")
       .withIndex("by_polar_customer", (q) =>
         q.eq("polarCustomerId", args.polarCustomerId),
@@ -137,6 +161,7 @@ export const applySubscription = internalMutation({
 
     const updates: Record<string, unknown> = {
       polarSubscriptionId: args.polarSubscriptionId,
+      polarCustomerId: args.polarCustomerId,
       subscriptionStatus: args.status,
     };
     if (args.seats !== null) updates.seatCount = args.seats;

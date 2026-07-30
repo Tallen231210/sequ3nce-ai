@@ -12323,6 +12323,10 @@ http.route({
         current_period_end?: string | null;
         metadata?: Record<string, unknown> | null;
         product?: { metadata?: Record<string, unknown> | null } | null;
+        // Our own team id, sent as external_customer_id at checkout and echoed
+        // back here. More reliable than Polar's customer id, which we'd have to
+        // have stored first.
+        customer?: { external_id?: string | null } | null;
       };
 
       if (!sub.customer_id || !sub.id) {
@@ -12355,6 +12359,7 @@ http.route({
 
       const result = await ctx.runMutation(internal.polar.applySubscription, {
         polarCustomerId: sub.customer_id,
+        externalCustomerId: sub.customer?.external_id ?? null,
         polarSubscriptionId: sub.id,
         status: mapPolarStatusForWebhook(sub.status),
         tier,
