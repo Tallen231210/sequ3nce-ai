@@ -12708,11 +12708,23 @@ async function verifyStandardWebhook(
     return false;
   }
 
+  // The signing key is the base64-DECODED secret, per the Standard Webhooks
+  // spec — and it arrives without padding.
+  //
+  // Polar's secret is 43 characters after the prefix: 32 bytes of base64 with
+  // the trailing "=" omitted. atob() rejects that, so the original code fell
+  // through to treating the secret as raw text and HMAC'd with 43 bytes instead
+  // of the intended 32. Every signature failed. Fathom's secret happens to be
+  // padded, which is why the same code worked there and would have silently
+  // refused every Polar delivery — until the endpoint hit ten failures and
+  // Polar switched it off.
   const key = secret.startsWith("whsec_") ? secret.slice(6) : secret;
+  const padded = key + "=".repeat((4 - (key.length % 4)) % 4);
   let keyBytes: Uint8Array;
   try {
-    keyBytes = Uint8Array.from(atob(key), (c) => c.charCodeAt(0));
+    keyBytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
   } catch {
+    // Not base64 at all — some providers use a plain string secret.
     keyBytes = new TextEncoder().encode(key);
   }
 
