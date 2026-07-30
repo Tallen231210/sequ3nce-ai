@@ -107,88 +107,20 @@ export const getCloserByEmail = query({
   },
 });
 
-// Get the current closer's info by their Clerk ID (used by desktop app)
-export const getMyCloserInfo = query({
-  args: { clerkId: v.string() },
-  handler: async (ctx, args) => {
-    // Find closer by clerkId
-    const closer = await ctx.db
-      .query("closers")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
-
-    if (!closer) {
-      return null;
-    }
-
-    // Get their team
-    const team = await ctx.db.get(closer.teamId);
-
-    return {
-      closerId: closer._id,
-      teamId: closer.teamId,
-      name: closer.name,
-      email: closer.email,
-      status: closer.status,
-      teamName: team?.name,
-    };
-  },
-});
-
-// Link a Clerk ID to an existing closer (called when closer signs up)
-export const linkClerkToCloser = mutation({
-  args: {
-    clerkId: v.string(),
-    email: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // Check if this clerkId is already linked to a closer
-    const existingByClerk = await ctx.db
-      .query("closers")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
-
-    if (existingByClerk) {
-      // Already linked, return their info
-      const team = await ctx.db.get(existingByClerk.teamId);
-      return {
-        closerId: existingByClerk._id,
-        teamId: existingByClerk.teamId,
-        name: existingByClerk.name,
-        teamName: team?.name,
-        alreadyLinked: true,
-      };
-    }
-
-    // Find closer by email (they were invited by admin)
-    const closer = await ctx.db
-      .query("closers")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first();
-
-    if (!closer) {
-      // No invitation found for this email
-      return { error: "no_invitation", message: "No invitation found for this email. Please contact your team admin." };
-    }
-
-    // Link the clerkId to this closer and activate them
-    await ctx.db.patch(closer._id, {
-      clerkId: args.clerkId,
-      status: "active",
-      activatedAt: Date.now(),
-    });
-
-    const team = await ctx.db.get(closer.teamId);
-
-    return {
-      closerId: closer._id,
-      teamId: closer.teamId,
-      name: closer.name,
-      teamName: team?.name,
-      alreadyLinked: false,
-    };
-  },
-});
+// Closer sign-in through Clerk is gone.
+//
+// getMyCloserInfo and linkClerkToCloser used to let a closer authenticate with
+// a Clerk account and link it to their closer record. Closers now sign in with
+// a magic link and one of our own session tokens (convex/closerSession.ts), and
+// neither function had a caller anywhere in the monorepo — including the two
+// desktop apps.
+//
+// Removed while moving Clerk to a production instance. Leaving them would imply
+// closers still depend on Clerk, which would have made that migration look far
+// riskier than it was: the real blast radius is managers only.
+//
+// `closers.clerkId` and its index stay in the schema. Schema changes here are
+// additive-only, and some old rows still carry a value.
 
 // Get all closers for a team
 export const getClosers = query({
