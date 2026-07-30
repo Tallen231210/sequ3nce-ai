@@ -141,6 +141,65 @@ export const compTeamInPlace = internalMutation({
 });
 
 /**
+ * Point a manager's row at a new Clerk id — for moving between Clerk
+ * instances.
+ *
+ * `teams.ensureUserTeam` would heal this on its own at next sign-in, by
+ * matching the verified email. This does it up front instead, because the
+ * self-healing path has one bad failure mode: if Clerk reports the email
+ * unverified, bootstrap refuses to reattach and creates a fresh empty team
+ * — leaving TWO rows for one email, which is the ambiguity `findSoleManager`
+ * exists to catch. Setting the id in advance means sign-in takes the plain
+ * "known Clerk id" branch and never reaches that decision.
+ */
+export const relinkManagerClerkId = internalMutation({
+  args: {
+    email: v.string(),
+    newClerkId: v.string(),
+    /** The team they must already be on. Guards against relinking the wrong person. */
+    expectedTeamId: v.id("teams"),
+  },
+  handler: async (ctx, args) => {
+    const newClerkId = args.newClerkId.trim();
+    if (!newClerkId) throw new Error("newClerkId is required");
+
+    const user = await findSoleManager(ctx, args.email);
+    if (user.teamId !== args.expectedTeamId) {
+      throw new Error(
+        `${args.email} is on team ${user.teamId}, not the expected ` +
+          `${args.expectedTeamId}. Refusing.`,
+      );
+    }
+
+    // A clerkId already in use by someone else would give two rows the same
+    // identity, and `by_clerk_id` returns whichever comes first.
+    const clash = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", newClerkId))
+      .first();
+    if (clash && clash._id !== user._id) {
+      throw new Error(
+        `Clerk id ${newClerkId} is already on user ${clash._id} (${clash.email}).`,
+      );
+    }
+
+    const previousClerkId = user.clerkId;
+    if (previousClerkId === newClerkId) {
+      return { ok: true as const, changed: false, clerkId: newClerkId };
+    }
+    await ctx.db.patch(user._id, { clerkId: newClerkId });
+    return {
+      ok: true as const,
+      changed: true,
+      email: user.email,
+      teamId: user.teamId,
+      previousClerkId,
+      clerkId: newClerkId,
+    };
+  },
+});
+
+/**
  * Give a manager a brand-new empty team and retire their old one.
  *
  * The manager's `users` row is REPOINTED rather than duplicated. That matters:
