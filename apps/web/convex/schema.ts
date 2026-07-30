@@ -34,6 +34,16 @@ export default defineSchema({
     productTierOverride: v.optional(v.string()),
     name: v.string(),
     stripeCustomerId: v.optional(v.string()),
+    /**
+     * The same two ids at Polar, while both processors coexist.
+     *
+     * Separate fields rather than reusing the Stripe ones: during the
+     * changeover a team may legitimately have a live Stripe subscription and a
+     * new Polar one, and overwriting would lose the ability to tell which is
+     * actually billing them.
+     */
+    polarCustomerId: v.optional(v.string()),
+    polarSubscriptionId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
     plan: v.string(), // "active", "cancelled", "trialing", etc.
     subscriptionStatus: v.optional(v.string()), // "active", "past_due", "canceled", "unpaid", "trialing"
@@ -354,6 +364,7 @@ export default defineSchema({
     onboardingBannerDismissedAt: v.optional(v.number()),
     onboardingCompletedAt: v.optional(v.number()),
   })
+    .index("by_polar_customer", ["polarCustomerId"])
     .index("by_stripe_customer", ["stripeCustomerId"]),
 
   // Users (admins/managers who access the web dashboard)

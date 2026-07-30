@@ -12244,6 +12244,166 @@ http.route({
 closerPreflight("/closer/me");
 
 // ============================================================================
+// Polar — subscription changes.
+//
+// Sits alongside the Stripe webhook while both processors coexist. Stripe is
+// still live; this endpoint is inert until someone subscribes through Polar,
+// which can't happen until checkout is deliberately pointed there.
+//
+// Two things shape this handler, both learned from their docs:
+//
+//   Polar DISABLES an endpoint after 10 consecutive non-2xx responses. So a bug
+//   that throws would not just drop one message — it would silently switch off
+//   billing updates for every customer. Everything below acknowledges.
+//
+//   They want a reply within 2 seconds. So we verify, write, and return; no
+//   fetching, no AI, nothing that waits on a third party.
+// ============================================================================
+
+http.route({
+  path: "/webhooks/polar",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    // Read the body ONCE and verify against exactly those bytes. Re-serialising
+    // parsed JSON changes whitespace and every signature fails.
+    const rawBody = await request.text();
+
+    const secret = process.env.POLAR_WEBHOOK_SECRET;
+    if (!secret) {
+      // The endpoint has to exist before the webhook can be created in Polar,
+      // and Polar hands over the signing secret only at that moment. So until
+      // it's configured we acknowledge and process NOTHING — an unverified
+      // payload is not something to act on, but refusing outright would burn
+      // failures against the auto-disable counter for a state we caused.
+      console.error(
+        "[polar] webhook received but POLAR_WEBHOOK_SECRET is not set — " +
+          "acknowledged without processing. Set it with: " +
+          "npx convex env set POLAR_WEBHOOK_SECRET whsec_... --prod",
+      );
+      return new Response(null, { status: 202 });
+    }
+
+    const valid = await verifyStandardWebhook(
+      rawBody,
+      secret,
+      request.headers.get("webhook-id"),
+      request.headers.get("webhook-timestamp"),
+      request.headers.get("webhook-signature"),
+    );
+    if (!valid) {
+      // Refused, and deliberately NOT acknowledged. Either someone is forging
+      // requests, or our secret is wrong — and in the second case letting
+      // Polar disable the endpoint is the right outcome, because it forces us
+      // to notice rather than quietly ignoring real billing events.
+      console.error("[polar] rejected an unverified webhook");
+      return new Response(JSON.stringify({ error: "invalid signature" }), {
+        status: 401,
+      });
+    }
+
+    try {
+      const event = JSON.parse(rawBody) as {
+        type?: string;
+        data?: Record<string, unknown>;
+      };
+      const type = event.type ?? "";
+
+      // Only subscription events change what a team is entitled to. Everything
+      // else Polar might send is acknowledged and ignored rather than treated
+      // as an error.
+      if (!type.startsWith("subscription.")) {
+        return new Response(null, { status: 202 });
+      }
+
+      const sub = (event.data ?? {}) as {
+        id?: string;
+        status?: string;
+        customer_id?: string;
+        seats?: number | null;
+        current_period_end?: string | null;
+        metadata?: Record<string, unknown> | null;
+        product?: { metadata?: Record<string, unknown> | null } | null;
+      };
+
+      if (!sub.customer_id || !sub.id) {
+        console.error(`[polar] ${type} arrived without a customer or id`);
+        return new Response(null, { status: 202 });
+      }
+
+      const tierTag = sub.product?.metadata?.tier ?? sub.metadata?.tier;
+      const tier =
+        typeof tierTag === "string" &&
+        ["overview", "oversight", "overwatch"].includes(
+          tierTag.trim().toLowerCase(),
+        )
+          ? tierTag.trim().toLowerCase()
+          : null;
+
+      if (!tier) {
+        // A product we don't recognise — the manually-negotiated annual plan,
+        // for instance. Recorded loudly, and the team's tier is left exactly
+        // as it was rather than guessed at.
+        console.warn(
+          `[polar] ${type} for subscription ${sub.id} has no recognised tier ` +
+            `tag; leaving the team's plan unchanged`,
+        );
+      }
+
+      const periodEnd = sub.current_period_end
+        ? Date.parse(sub.current_period_end)
+        : null;
+
+      const result = await ctx.runMutation(internal.polar.applySubscription, {
+        polarCustomerId: sub.customer_id,
+        polarSubscriptionId: sub.id,
+        status: mapPolarStatusForWebhook(sub.status),
+        tier,
+        seats: typeof sub.seats === "number" ? sub.seats : null,
+        currentPeriodEnd:
+          periodEnd !== null && Number.isFinite(periodEnd) ? periodEnd : null,
+      });
+
+      if (!result.applied) {
+        console.error(
+          `[polar] ${type} not applied: ${result.reason} ` +
+            `(customer ${sub.customer_id})`,
+        );
+      }
+    } catch (error) {
+      // Acknowledged on purpose. Ten of these in a row would have Polar switch
+      // the endpoint off, and a parsing bug on one message must not cost us
+      // every future billing update.
+      console.error("[polar] failed to process a verified webhook:", error);
+    }
+
+    return new Response(null, { status: 202 });
+  }),
+});
+
+/** Polar's statuses in the vocabulary the rest of the app already uses. */
+function mapPolarStatusForWebhook(status: string | undefined): string {
+  switch (status) {
+    case "active":
+      return "active";
+    case "trialing":
+      return "trialing";
+    case "past_due":
+      return "past_due";
+    case "unpaid":
+      return "unpaid";
+    case "canceled":
+      return "canceled";
+    case "paused":
+      return "paused";
+    case "incomplete":
+    case "incomplete_expired":
+      return "incomplete";
+    default:
+      return status ?? "unknown";
+  }
+}
+
+// ============================================================================
 // Fathom: the closer-facing side — connect, disconnect, and say which Fathom
 // account is yours.
 //
@@ -12525,7 +12685,14 @@ closerPreflight("/closer/fathom/sync");
  * This is not optional. Without it, anyone who learns the URL can post
  * fabricated calls into a customer's account.
  */
-async function verifyFathomSignature(
+/**
+ * Standard Webhooks signature check, shared by Fathom and Polar.
+ *
+ * Both providers implement the same specification, so this is one function
+ * rather than two copies of the same crypto. Two copies of a signature check
+ * is how you end up with a lenient one, and the lenient one is the hole.
+ */
+async function verifyStandardWebhook(
   rawBody: string,
   secret: string,
   webhookId: string | null,
@@ -12638,7 +12805,7 @@ async function handleFathomWebhook(
       return new Response(JSON.stringify({ error: "unknown" }), { status: 404 });
     }
 
-    const valid = await verifyFathomSignature(
+    const valid = await verifyStandardWebhook(
       rawBody,
       connection.webhookSecret,
       request.headers.get("webhook-id"),
