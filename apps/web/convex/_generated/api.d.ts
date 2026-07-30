@@ -96,6 +96,7 @@ import type * as fathomConnections from "../fathomConnections.js";
 import type * as fathomNudge from "../fathomNudge.js";
 import type * as fathomPending from "../fathomPending.js";
 import type * as founderAdmin from "../founderAdmin.js";
+import type * as founderProvisioning from "../founderProvisioning.js";
 import type * as ghl from "../ghl.js";
 import type * as ghlActions from "../ghlActions.js";
 import type * as googleCalendar from "../googleCalendar.js";
@@ -256,6 +257,7 @@ declare const fullApi: ApiFromModules<{
   fathomNudge: typeof fathomNudge;
   fathomPending: typeof fathomPending;
   founderAdmin: typeof founderAdmin;
+  founderProvisioning: typeof founderProvisioning;
   ghl: typeof ghl;
   ghlActions: typeof ghlActions;
   googleCalendar: typeof googleCalendar;

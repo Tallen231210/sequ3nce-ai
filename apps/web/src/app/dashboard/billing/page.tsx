@@ -287,7 +287,19 @@ function BillingPageContent() {
               </div>
             )}
 
-            {hasActiveSubscription && (
+            {/* A team with no Stripe customer has nothing to manage — comped
+                accounts, and anyone mid-migration between processors. The
+                portal route 400s for them, and because the click handler only
+                follows a returned URL, the button would sit there doing
+                literally nothing. Say why instead. */}
+            {hasActiveSubscription && !billing?.stripeCustomerId && (
+              <p className="pt-2 text-sm text-muted-foreground">
+                No payment method on file — your account is active and there is
+                nothing to pay right now.
+              </p>
+            )}
+
+            {hasActiveSubscription && billing?.stripeCustomerId && (
               <div className="pt-2">
                 <Button
                   variant="outline"
