@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { CheckCircle2, Info, Loader2, Send } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
+import {
+  SlackChannelPicker,
+  type SlackChannelOption,
+} from "@/components/slack/SlackChannelPicker";
+import { useSaveWithSlackJoin } from "@/components/slack/useSaveWithSlackJoin";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -26,11 +31,57 @@ export function ScorecardSettings() {
  );
   const update = useMutation(api.closerScorecardSettings.updateScorecardSettings);
   const sendTest = useAction(api.closerScorecardSettings.sendTestScorecard);
+  const getSlackChannels = useAction(api.slack.getSlackChannels);
+  const { joinAndAuthorizeSave } = useSaveWithSlackJoin();
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
+
+  // The channel list.
+  //
+  // This screen used to only DISPLAY whichever channel the team had, falling
+  // back to `team.slackChannelId` — a value set at install time from the
+  // channel Slack asks you to choose during OAuth. That flow stopped supplying
+  // one, so the fallback is now empty for every team that has connected
+  // recently. With nothing to fall back on and no way to choose, the scoreboard
+  // could be enabled, report a successful save, and post nowhere.
+  const [channels, setChannels] = useState<SlackChannelOption[]>([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  const clerkId = user?.id;
+
+  const fetchChannels = useCallback(async () => {
+    if (!clerkId) return;
+    setLoadingChannels(true);
+    setFetchError(null);
+    try {
+      const result = await getSlackChannels({ clerkId });
+      if ("channels" in result) {
+        setChannels(result.channels);
+      } else {
+        // "Slack not connected" is the benign empty case — the team is
+        // presumably on Discord. Anything else is a real failure and must be
+        // shown, so a saved channel isn't mislabelled as deleted.
+        setChannels([]);
+        if (result.error && result.error !== "Slack not connected") {
+          setFetchError(result.error);
+        }
+      }
+    } catch (err) {
+      setChannels([]);
+      setFetchError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingChannels(false);
+    }
+  }, [clerkId, getSlackChannels]);
+
+  useEffect(() => {
+    void fetchChannels();
+  }, [fetchChannels]);
 
   if (data === undefined) {
     return (
@@ -52,6 +103,34 @@ export function ScorecardSettings() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save");
  } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Save a Slack channel, joining it first.
+   *
+   * The bot has to be a member of a channel to post to it. Joining before
+   * saving means a dead or inaccessible channel is caught here, rather than by
+   * a cron that fails quietly every morning with nobody watching.
+   */
+  async function saveChannel(channelId: string, channelName: string) {
+    setBusy(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      const { okToSave, slackArgs } = await joinAndAuthorizeSave({
+        clerkId: user!.id,
+        channel: "slack",
+        slackChannelId: channelId,
+        slackChannelName: channelName,
+        onJoinError: setJoinError,
+      });
+      if (!okToSave) return;
+      await update({ clerkId: user!.id, ...slackArgs });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save");
+    } finally {
       setBusy(false);
     }
   }
@@ -150,16 +229,36 @@ export function ScorecardSettings() {
               </p>
             )}
             {data.channel === "slack" && data.slackConnected && (
- <p className="mt-2 text-xs text-muted-foreground">
- Posting to{" "}
- <span className="font-medium text-foreground">
- {data.slackChannelName ??
-                    data.slackChannelId ??
-                    data.defaultSlackChannelId ??
-                    "your default channel"}
- </span>
-                .
-              </p>
+              <div className="mt-3">
+                <label className="text-xs font-medium" htmlFor="cs-channel">
+                  Channel
+                </label>
+                <SlackChannelPicker
+                  id="cs-channel"
+                  className="mt-1.5 max-w-sm"
+                  value={data.slackChannelId ?? data.defaultSlackChannelId ?? ""}
+                  selectedChannelName={data.slackChannelName ?? undefined}
+                  channels={channels}
+                  loadingChannels={loadingChannels}
+                  fetchError={fetchError}
+                  onRetryFetch={() => void fetchChannels()}
+                  joinError={joinError}
+                  disabled={disabled}
+                  // Nothing chosen and no legacy default to inherit means this
+                  // config can never post. Say so before it's switched on.
+                  highlightMissing={
+                    !data.slackChannelId && !data.defaultSlackChannelId
+                  }
+                  onChange={(channelId, channelName) =>
+                    void saveChannel(channelId, channelName)
+                  }
+                />
+                {!data.slackChannelId && !data.defaultSlackChannelId && (
+                  <p className="mt-2 text-xs text-amber-700">
+                    Pick a channel — without one there&apos;s nowhere to post.
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
