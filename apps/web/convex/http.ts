@@ -3,6 +3,7 @@ import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { COLLECTIONS_UPDATE_ACTION } from "./collectionsNotifications";
 
 const http = httpRouter();
 
@@ -12647,6 +12648,264 @@ http.route({
   }),
 });
 closerPreflight("/closer/fathom/needsOutcome");
+
+// ---- Outstanding balances ----------------------------------------------
+// Money the closer agreed on a call but didn't collect on it. Their own only:
+// the closer is who remembers what was arranged, and a closer clearing someone
+// else's balance would quietly erase money owed to the business.
+
+http.route({
+  path: "/closer/collections/outstanding",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runQuery(
+        internal.collections.getMyOutstandingBalances,
+        { closerId: caller.closerId },
+      );
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] collections/outstanding:", error);
+      // An empty list rather than an error. This drives a panel on the
+      // dashboard, and a broken panel is worse than an absent one.
+      return new Response(
+        JSON.stringify({ balances: [], total: 0, count: 0, truncated: false }),
+        { status: 200, headers: CLOSER_JSON },
+      );
+    }
+  }),
+});
+closerPreflight("/closer/collections/outstanding");
+
+http.route({
+  path: "/closer/collections/resolve",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const resolution =
+        body.resolution === "written_off" ? "written_off" : "settled";
+      const result = await ctx.runMutation(internal.collections.resolveBalance, {
+        callId: body.callId as Id<"calls">,
+        resolution,
+        actorId: String(caller.closerId),
+        closerId: caller.closerId,
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] collections/resolve:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: "Couldn't save that" }),
+        { status: 200, headers: CLOSER_JSON },
+      );
+    }
+  }),
+});
+closerPreflight("/closer/collections/resolve");
+
+// ---- Slack interactivity: clearing balances from the channel -------------
+//
+// The dashboard can't be the only place a balance gets cleared — only managers
+// can sign in, and the people chasing the money usually can't. So the digest
+// carries a button, and this is where the click lands.
+//
+// Slack signs with its own scheme rather than Standard Webhooks: hex, a "v0="
+// prefix, and a basestring of `v0:{timestamp}:{rawBody}`. Close enough to the
+// Polar/Fathom verifier to look reusable, different enough that reusing it
+// would silently reject everything.
+
+/**
+ * Is this genuinely from Slack?
+ *
+ * Without this, the endpoint is an unauthenticated way for anyone on the
+ * internet to write off a company's outstanding debts.
+ */
+async function verifySlackSignature(
+  rawBody: string,
+  signingSecret: string,
+  timestamp: string | null,
+  signature: string | null,
+): Promise<boolean> {
+  if (!timestamp || !signature) return false;
+
+  // Slack's own guidance: reject anything older than five minutes so a captured
+  // request can't be replayed.
+  const sent = Number(timestamp) * 1000;
+  if (!Number.isFinite(sent) || Math.abs(Date.now() - sent) > 5 * 60 * 1000) {
+    return false;
+  }
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(signingSecret) as unknown as ArrayBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`v0:${timestamp}:${rawBody}`) as unknown as ArrayBuffer,
+  );
+  const expected =
+    "v0=" +
+    Array.from(new Uint8Array(mac))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+  if (expected.length !== signature.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+http.route({
+  path: "/webhooks/slack/interactive",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const signingSecret = process.env.SLACK_SIGNING_SECRET;
+    if (!signingSecret) {
+      console.error("[slack] SLACK_SIGNING_SECRET is not set");
+      return new Response("not configured", { status: 500 });
+    }
+
+    const rawBody = await request.text();
+    const valid = await verifySlackSignature(
+      rawBody,
+      signingSecret,
+      request.headers.get("x-slack-request-timestamp"),
+      request.headers.get("x-slack-signature"),
+    );
+    if (!valid) return new Response("bad signature", { status: 401 });
+
+    // Slack posts form-encoded with the interaction JSON in `payload`.
+    let payload: any;
+    try {
+      const encoded = new URLSearchParams(rawBody).get("payload");
+      if (!encoded) return new Response("", { status: 200 });
+      payload = JSON.parse(encoded);
+    } catch (err) {
+      console.error("[slack] couldn't parse interaction payload:", err);
+      return new Response("", { status: 200 });
+    }
+
+    try {
+      // --- the button on the digest ---
+      if (payload.type === "block_actions") {
+        const action = (payload.actions ?? [])[0];
+
+        // --- undo, from the receipt in the thread ---
+        if (action?.action_id === "collections_undo") {
+          let meta: any = {};
+          try {
+            meta = JSON.parse(action.value || "{}");
+          } catch {
+            return new Response("", { status: 200 });
+          }
+          await ctx.runAction(internal.collectionsSlackActions.undoResolutions, {
+            teamId: meta.t as Id<"teams">,
+            callIds: Array.isArray(meta.c) ? meta.c.map(String) : [],
+            ...(meta.ch ? { channelId: String(meta.ch) } : {}),
+            ...(meta.m ? { messageTs: String(meta.m) } : {}),
+            ...(payload.response_url
+              ? { responseUrl: String(payload.response_url) }
+              : {}),
+          });
+          return new Response("", { status: 200 });
+        }
+
+        if (action?.action_id !== COLLECTIONS_UPDATE_ACTION) {
+          // Some other app's button, or one we no longer serve.
+          return new Response("", { status: 200 });
+        }
+        // Slack expires trigger_id after three seconds, so this has to be the
+        // whole of the work — open the dialog and answer.
+        await ctx.runAction(internal.collectionsSlackActions.openResolveDialog, {
+          teamId: action.value as Id<"teams">,
+          slackTeamId: String(payload.team?.id ?? ""),
+          triggerId: String(payload.trigger_id ?? ""),
+          channelId: String(payload.container?.channel_id ?? payload.channel?.id ?? ""),
+          messageTs: String(payload.container?.message_ts ?? payload.message?.ts ?? ""),
+        });
+        return new Response("", { status: 200 });
+      }
+
+      // --- the dialog being submitted ---
+      if (
+        payload.type === "view_submission" &&
+        payload.view?.callback_id === "collections_resolve"
+      ) {
+        const meta = JSON.parse(payload.view.private_metadata || "{}");
+        const state = payload.view.state?.values ?? {};
+
+        const resolution =
+          state.resolution?.resolution?.selected_option?.value === "written_off"
+            ? "written_off"
+            : "settled";
+
+        // Ticks are spread across several checkbox groups, because Slack caps
+        // one group at ten options.
+        const callIds: string[] = [];
+        for (const [blockId, block] of Object.entries<any>(state)) {
+          if (!blockId.startsWith("balances_")) continue;
+          for (const opt of block?.picked?.selected_options ?? []) {
+            if (opt?.value) callIds.push(String(opt.value));
+          }
+        }
+
+        if (callIds.length === 0) {
+          // Keep the dialog open and say why, rather than silently doing nothing.
+          return new Response(
+            JSON.stringify({
+              response_action: "errors",
+              errors: { balances_0: "Pick at least one deal." },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        await ctx.runAction(
+          internal.collectionsSlackActions.applyDialogSubmission,
+          {
+            teamId: meta.teamId as Id<"teams">,
+            callIds,
+            resolution,
+            // Slack's user id — who cleared it, for the audit trail.
+            actorId: `slack:${payload.user?.id ?? "unknown"}`,
+            ...(meta.channelId ? { channelId: String(meta.channelId) } : {}),
+            ...(meta.messageTs ? { messageTs: String(meta.messageTs) } : {}),
+          },
+        );
+
+        return new Response(JSON.stringify({ response_action: "clear" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    } catch (err) {
+      // A 500 makes Slack show the user a generic failure and retry. Log loudly
+      // and acknowledge: a stuck dialog is worse than a missed click.
+      console.error("[slack] interaction handling failed:", err);
+    }
+
+    return new Response("", { status: 200 });
+  }),
+});
 
 http.route({
   path: "/closer/fathom/sync",

@@ -245,6 +245,30 @@ export default defineSchema({
     /** Last manual "send test" — throttles repeat posts into a live channel. */
     closerDailyScorecardTestSentAt: v.optional(v.number()),
 
+    // Outstanding balances digest. Same six-field shape as the two scorecards
+    // above, for the same reason: a manager who has configured one already
+    // knows how to configure this.
+    //
+    // Its own channel on purpose. Collections is chased by whoever runs
+    // customer success, not by the closers watching calls happen in the call
+    // channel — two audiences, two jobs.
+    collectionsDigestEnabled: v.optional(v.boolean()),
+    collectionsDigestChannel: v.optional(v.string()), // "slack" | "discord"
+    collectionsDigestSlackChannelId: v.optional(v.string()),
+    collectionsDigestSlackChannelName: v.optional(v.string()),
+    collectionsDigestDiscordWebhookUrl: v.optional(v.string()),
+    collectionsDigestHourLocal: v.optional(v.number()), // 0-23 in team.timezone
+    /**
+     * "daily" (default) or "weekly" (Mondays only).
+     *
+     * Daily is tolerable only because the digest is silent when nothing is
+     * owed, so it appears solely on days there is money to chase. Weekly exists
+     * for teams that still find that too much.
+     */
+    collectionsDigestCadence: v.optional(v.string()),
+    /** Last manual "send test" — throttles repeat posts into a live channel. */
+    collectionsDigestTestSentAt: v.optional(v.number()),
+
     // Untouched-lead alert config (Phase 2). Off by default — some teams
     // love real-time alerts, some hate the noise. When enabled, the
     // sweep cron pings the configured channel any time a lead has been
@@ -618,6 +642,24 @@ export default defineSchema({
     dealValue: v.optional(v.number()), // Legacy field - kept for backward compatibility
     cashCollected: v.optional(v.number()), // Amount paid on the call (upfront payment)
     contractValue: v.optional(v.number()), // Total contract commitment
+    /**
+     * Collections tracking for the gap between cashCollected and contractValue.
+     *
+     * We cannot see payments — customers take money through processors we have
+     * no connection to, often under names that never appear on the call board.
+     * So an outstanding balance is closed out by hand, and these two fields are
+     * the only thing that stops the daily digest mentioning it forever.
+     *
+     * Deliberately two outcomes rather than one flag. Without a way to say "this
+     * is never getting paid", an uncollectable debt nags every morning until
+     * people learn to ignore the channel, which costs us the collectable ones
+     * too. They stay distinguishable in the data because "we got the money" and
+     * "we gave up" are different facts about the business.
+     */
+    balanceSettledAt: v.optional(v.number()),
+    balanceSettledBy: v.optional(v.string()),
+    balanceWrittenOffAt: v.optional(v.number()),
+    balanceWrittenOffBy: v.optional(v.string()),
     startedAt: v.optional(v.number()),
     endedAt: v.optional(v.number()),
     duration: v.optional(v.number()), // In seconds

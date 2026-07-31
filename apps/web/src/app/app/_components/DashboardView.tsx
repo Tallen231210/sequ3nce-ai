@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { OutcomeQueue } from './OutcomeQueue';
+import { CollectionsQueue } from './CollectionsQueue';
 import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem } from '@/lib/closer/client';
 import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting } from '@/lib/closer/client';
 import { extractProspectName } from './schedule/scheduleUtils';
@@ -93,6 +94,13 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
           close rate that's wrong in a way the fix is sitting right below. */}
       <div className="mb-6">
         <OutcomeQueue closerInfo={closerInfo} />
+      </div>
+
+      {/* Below the outcome queue, because a missing outcome is the older debt:
+          those calls aren't in the numbers at all yet. Both panels hide
+          themselves when there's nothing to do, so most days neither appears. */}
+      <div className="mb-6">
+        <CollectionsQueue />
       </div>
 
       {/* Quick Stats Row */}

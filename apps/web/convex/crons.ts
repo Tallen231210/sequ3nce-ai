@@ -281,4 +281,21 @@ crons.cron(
   {},
 );
 
+// Outstanding balances digest. Hourly, gated per team on their local delivery
+// hour — same pattern as the two scorecards above, including the crons.cron
+// (never crons.interval) rule that outage taught us.
+//
+// Minute 35 because 0, 5 and 20 are already taken and an hourly job that starts
+// by scanning six months of call stats for every opted-in team shouldn't land
+// on the same tick as the others.
+//
+// Sends nothing to a team with nothing outstanding, so on most days for most
+// teams this job runs and posts nowhere. That silence is the design.
+crons.cron(
+  "collections-digest",
+  "35 * * * *",
+  internal.collectionsNotifications.runCollectionsDigest,
+  {},
+);
+
 export default crons;

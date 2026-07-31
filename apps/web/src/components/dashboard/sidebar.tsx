@@ -24,6 +24,7 @@ import {
   UserCheck,
   Sparkles,
   Trophy,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
@@ -57,6 +58,10 @@ const baseNavigation = [
   // the per-rep drilldown.
   { name: "Team Performance", href: "/dashboard/team-performance", icon: Trophy },
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
+  // Deals that closed but weren't paid in full. Next to the performance views
+  // because it reads the same post-call numbers — cash collected against
+  // contract value — just looking at the gap rather than the total.
+  { name: "Collections", href: "/dashboard/collections", icon: Wallet },
   // Setter Data tab — always visible to B2B admins. ConnectionGate inside
   // handles the not-yet-installed state. Hidden only when an admin
   // explicitly sets team.setterDataEnabled = false (kill switch).
