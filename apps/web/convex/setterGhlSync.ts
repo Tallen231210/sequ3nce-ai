@@ -5,6 +5,11 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { ghlFetch } from "./setterGhlClient";
 import { captureAndPersist } from "./lib/sentry";
+import {
+  normalizeGhlMessageKind,
+  isCustomProviderMessage,
+} from "./lib/ghlMessageType";
+import { probeAudioDuration } from "./lib/audioDuration";
 
 // ============================================================================
 // Setter Data — REST sync actions.
@@ -845,6 +850,30 @@ interface GhlConversationMessage {
   userId?: string;
   callDuration?: number;
   body?: string;
+  /**
+   * Custom providers hang the call recording here. It's the only place a
+   * duration can be recovered from — see the enrichment in syncMessagesRange.
+   */
+  attachments?: string[];
+}
+
+/**
+ * Pick the recording out of a message's attachments.
+ *
+ * Extension-matched rather than "take the first one" because an attachments
+ * array can also hold images from an MMS; probing a JPEG for an MP3 frame
+ * header would just waste a request per message.
+ */
+function firstAudioAttachment(attachments?: string[]): string | null {
+  if (!attachments?.length) return null;
+  for (const url of attachments) {
+    if (typeof url !== "string") continue;
+    const path = url.split("?")[0].toLowerCase();
+    if (path.endsWith(".mp3") || path.endsWith(".mpeg") || path.endsWith(".mpga")) {
+      return url;
+    }
+  }
+  return null;
 }
 
 interface GhlMessagesResponse {
@@ -962,6 +991,8 @@ async function syncMessagesRange(
   let skippedOutOfWindow = 0;
   let skippedWrongType = 0;
   let skippedNoId = 0;
+  let durationsProbed = 0;
+  let durationsFailed = 0;
 
   for (const conv of conversations) {
     if (!conv.id) continue;
@@ -987,23 +1018,11 @@ async function syncMessagesRange(
     }
 
     for (const m of messages) {
-      // Normalize messageType to the webhook shape ("CALL" / "SMS").
-      // The REST API returns "TYPE_CALL" / "TYPE_SMS"; numeric `type`
-      // fields are also possible (25 = call, 1/2 = SMS) so check both.
-      let normalizedType: "CALL" | "SMS" | null = null;
-      if (
-        m.messageType === "TYPE_CALL" ||
-        m.messageType === "CALL" ||
-        (typeof m.type === "number" && m.type === 25)
-      ) {
-        normalizedType = "CALL";
-      } else if (
-        m.messageType === "TYPE_SMS" ||
-        m.messageType === "SMS" ||
-        (typeof m.type === "number" && (m.type === 1 || m.type === 2))
-      ) {
-        normalizedType = "SMS";
-      }
+      // Normalize to the webhook shape ("CALL" / "SMS"). Handles GHL's own
+      // TYPE_CALL/TYPE_SMS and the TYPE_CUSTOM_CALL/TYPE_CUSTOM_SMS that
+      // marketplace dialers (Sendblue, Aircall, …) produce — see
+      // lib/ghlMessageType.ts for why the two used to be treated differently.
+      const normalizedType = normalizeGhlMessageKind(m);
       if (!normalizedType) {
         skippedWrongType++;
         continue;
@@ -1039,6 +1058,28 @@ async function syncMessagesRange(
       const isInbound = m.direction === "inbound";
       const eventType = isInbound ? "InboundMessage" : "OutboundMessage";
 
+      // Custom-provider calls carry no duration — the field simply isn't
+      // there. Derive it from the recording so connect rate and talk time
+      // work, and so a call can ever cross the "connected" threshold.
+      // Only the header of the MP3 is read; see lib/mp3Duration.ts.
+      let callDuration = m.callDuration;
+      if (
+        normalizedType === "CALL" &&
+        callDuration === undefined &&
+        isCustomProviderMessage(m)
+      ) {
+        const recordingUrl = firstAudioAttachment(m.attachments);
+        if (recordingUrl) {
+          const probe = await probeAudioDuration(recordingUrl);
+          if (probe) {
+            callDuration = probe.durationSec;
+            durationsProbed++;
+          } else {
+            durationsFailed++;
+          }
+        }
+      }
+
       const auditId = await ctx.runMutation(
         internal.setterGhlWebhooks.recordIncomingWebhook,
         {
@@ -1054,7 +1095,7 @@ async function syncMessagesRange(
             messageId: m.id,
             messageType: normalizedType,
             userId: m.userId,
-            callDuration: m.callDuration,
+            callDuration,
             conversationId: m.conversationId ?? conv.id,
             dateAdded: m.dateAdded,
             direction: m.direction,
@@ -1070,9 +1111,78 @@ async function syncMessagesRange(
   }
 
   console.log(
-    `[syncMessagesRange] team=${args.teamId} dispatched=${dispatched} skippedOutOfWindow=${skippedOutOfWindow} skippedWrongType=${skippedWrongType} skippedNoId=${skippedNoId}`,
+    `[syncMessagesRange] team=${args.teamId} dispatched=${dispatched} skippedOutOfWindow=${skippedOutOfWindow} skippedWrongType=${skippedWrongType} skippedNoId=${skippedNoId} durationsProbed=${durationsProbed} durationsFailed=${durationsFailed}`,
   );
 }
+
+/**
+ * Go and find out how long a live call was.
+ *
+ * Scheduled by the webhook handler for custom-provider calls, which arrive
+ * with no duration. The recording usually isn't attached to the message at the
+ * instant the webhook fires, hence the delay before this runs and the single
+ * retry after it.
+ *
+ * Failure here is deliberately quiet: the dial is already recorded and counted.
+ * All that's lost is the call's promotion to a connect, and the next reconcile
+ * sweep over the same window will try again anyway.
+ */
+/**
+ * If the recording isn't attached yet, wait this long and look again. A few
+ * widely-spaced attempts beat a tight loop — the delay is the provider
+ * finishing an upload, not a flaky request.
+ */
+const CALL_DURATION_RETRY_DELAY_MS = 10 * 60_000;
+const CALL_DURATION_MAX_ATTEMPTS = 3;
+
+export const backfillCallDuration = internalAction({
+  args: {
+    teamId: v.id("teams"),
+    ghlMessageId: v.string(),
+    attempt: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const attempt = args.attempt ?? 1;
+
+    const installation = await ctx.runQuery(
+      internal.setterGhlOauth.getActiveInstallationForTeam,
+      { teamId: args.teamId },
+    );
+    if (!installation) return;
+
+    let recordingUrl: string | null = null;
+    try {
+      const resp = await ghlFetch<{ message?: GhlConversationMessage }>(
+        ctx,
+        installation._id,
+        `/conversations/messages/${args.ghlMessageId}`,
+      );
+      recordingUrl = firstAudioAttachment(resp.message?.attachments);
+    } catch {
+      // Message genuinely gone, or a transient GHL error. Retry once.
+    }
+
+    if (!recordingUrl) {
+      if (attempt < CALL_DURATION_MAX_ATTEMPTS) {
+        await ctx.scheduler.runAfter(
+          CALL_DURATION_RETRY_DELAY_MS,
+          internal.setterGhlSync.backfillCallDuration,
+          { ...args, attempt: attempt + 1 },
+        );
+      }
+      return;
+    }
+
+    const probe = await probeAudioDuration(recordingUrl);
+    if (!probe) return;
+
+    await ctx.runMutation(internal.setterGhlWebhooks.applyCallDuration, {
+      teamId: args.teamId,
+      ghlMessageId: args.ghlMessageId,
+      durationSec: probe.durationSec,
+    });
+  },
+});
 
 // ----------------------------------------------------------------------------
 // Phase: opportunities + pipelines (Phase 3)

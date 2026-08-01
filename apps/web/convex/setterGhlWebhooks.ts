@@ -3,6 +3,17 @@ import { internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { bumpDailyStat } from "./setterRollups";
+import {
+  normalizeGhlMessageKind,
+  isCustomProviderMessage,
+} from "./lib/ghlMessageType";
+
+/**
+ * How long to wait before going after a live call's recording. The message
+ * arrives over the webhook before the provider has finished attaching the
+ * audio, so asking immediately reliably finds nothing.
+ */
+const CALL_DURATION_BACKFILL_DELAY_MS = 90_000;
 
 // Convex's `v.optional(v.string())` validator means "field absent" — it
 // rejects explicit `null`. GHL freely sends null for unset fields like
@@ -318,8 +329,9 @@ async function handleOutboundMessage(
   }
 
   const occurredAt = parseTimestamp(msg.dateAdded) ?? Date.now();
+  const kind = normalizeGhlMessageKind(msg);
 
-  if (msg.messageType === "CALL") {
+  if (kind === "CALL") {
     await recordCallEvent(ctx, args, {
       ghlContactId,
       direction: "outbound",
@@ -329,7 +341,8 @@ async function handleOutboundMessage(
       ghlEventKey: msg.messageId ? `msg:${msg.messageId}` : undefined,
       conversationId: msg.conversationId,
     });
-  } else if (msg.messageType === "SMS") {
+    await maybeScheduleDurationBackfill(ctx, args, msg);
+  } else if (kind === "SMS") {
     await recordSmsEvent(ctx, args, {
       ghlContactId,
       direction: "outbound",
@@ -341,6 +354,34 @@ async function handleOutboundMessage(
   }
   // Other outbound message types (Email, Voicemail, etc.) — ignored in v1
   // beyond the audit log.
+}
+
+/**
+ * A live custom-provider call arrives with no duration, so it lands as a dial
+ * worth zero seconds and can never be a connect.
+ *
+ * The recording isn't in the webhook payload either — it's attached to the
+ * message a moment later — so the fix can't happen here: this is a mutation
+ * and the duration lives behind two HTTP calls. Schedule an action to go and
+ * fetch it, which patches the event in place once it knows.
+ *
+ * Deliberately fire-and-forget. Whether a recording exists is the provider's
+ * business, and a call with no recording is still a dial.
+ */
+async function maybeScheduleDurationBackfill(
+  ctx: MutationCtx,
+  args: HandlerCtx,
+  msg: GhlMessagePayload,
+): Promise<void> {
+  if (msg.callDuration !== undefined) return;
+  if (!msg.messageId) return;
+  if (!isCustomProviderMessage(msg)) return;
+
+  await ctx.scheduler.runAfter(
+    CALL_DURATION_BACKFILL_DELAY_MS,
+    internal.setterGhlSync.backfillCallDuration,
+    { teamId: args.teamId, ghlMessageId: msg.messageId },
+  );
 }
 
 async function handleInboundMessage(
@@ -355,8 +396,9 @@ async function handleInboundMessage(
   }
 
   const occurredAt = parseTimestamp(msg.dateAdded) ?? Date.now();
+  const kind = normalizeGhlMessageKind(msg);
 
-  if (msg.messageType === "CALL") {
+  if (kind === "CALL") {
     await recordCallEvent(ctx, args, {
       ghlContactId,
       direction: "inbound",
@@ -366,7 +408,8 @@ async function handleInboundMessage(
       ghlEventKey: msg.messageId ? `msg:${msg.messageId}` : undefined,
       conversationId: msg.conversationId,
     });
-  } else if (msg.messageType === "SMS") {
+    await maybeScheduleDurationBackfill(ctx, args, msg);
+  } else if (kind === "SMS") {
     await recordSmsEvent(ctx, args, {
       ghlContactId,
       direction: "inbound",
@@ -975,6 +1018,117 @@ export async function recordCallEvent(
 
 }
 
+/**
+ * Attach a duration to a call we already recorded without one.
+ *
+ * Custom-provider calls (Sendblue and friends) reach the live webhook with no
+ * duration, so they land as zero-second dials. Once an action has read the
+ * length off the recording, this puts it on the event and — if the call is
+ * long enough — promotes it to a connect, doing exactly what recordCallEvent
+ * would have done had the number been there at the time.
+ *
+ * Idempotent on two counts: it returns early once a duration is present, and
+ * the milestone insert is guarded by the same `:connected` dedup key
+ * recordCallEvent uses, so a retry can't double-count a connect.
+ */
+export const applyCallDuration = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    ghlMessageId: v.string(),
+    durationSec: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const eventKey = `msg:${args.ghlMessageId}`;
+    const event = await ctx.db
+      .query("setterLeadEvents")
+      .withIndex("by_ghl_event_key", (q) => q.eq("ghlEventKey", eventKey))
+      .first();
+    if (!event) return { applied: false, reason: "event_not_found" };
+    if (event.teamId !== args.teamId) {
+      return { applied: false, reason: "team_mismatch" };
+    }
+    if (
+      event.eventType !== "dial_outbound" &&
+      event.eventType !== "call_inbound"
+    ) {
+      return { applied: false, reason: "not_a_call" };
+    }
+
+    const existing = (event.details as { callDurationSec?: number } | undefined)
+      ?.callDurationSec;
+    if (existing !== undefined && existing > 0) {
+      return { applied: false, reason: "already_had_duration" };
+    }
+
+    await ctx.db.patch(event._id, {
+      details: {
+        ...((event.details as Record<string, unknown>) ?? {}),
+        callDurationSec: args.durationSec,
+      },
+    });
+
+    // The transcript sidecar carries its own copy for the review UI.
+    const transcriptRow = await ctx.db
+      .query("setterCallTranscripts")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_message", (q: any) =>
+        q.eq("teamId", args.teamId).eq("ghlMessageId", args.ghlMessageId),
+      )
+      .first();
+    if (transcriptRow && transcriptRow.durationSec === undefined) {
+      await ctx.db.patch(transcriptRow._id, { durationSec: args.durationSec });
+    }
+
+    // Only an outbound call of sufficient length is a connect — same rule as
+    // recordCallEvent, read from the same per-team setting.
+    if (event.eventType !== "dial_outbound") {
+      return { applied: true, becameConnected: false };
+    }
+    const team = await ctx.db.get(args.teamId);
+    const thresholdSec = team?.setterConnectionThresholdSec ?? 60;
+    if (args.durationSec < thresholdSec) {
+      return { applied: true, becameConnected: false };
+    }
+
+    const lead = event.setterLeadId
+      ? await ctx.db.get(event.setterLeadId)
+      : null;
+    if (!lead || lead.isConnected) {
+      return { applied: true, becameConnected: false };
+    }
+
+    const milestoneKey = `${eventKey}:connected`;
+    if (await isDuplicateEvent(ctx, milestoneKey)) {
+      return { applied: true, becameConnected: false };
+    }
+
+    await ctx.db.patch(lead._id, {
+      isConnected: true,
+      connectedAt: event.occurredAt,
+      connectedCallDurationSec: args.durationSec,
+    });
+    await ctx.db.insert("setterLeadEvents", {
+      teamId: args.teamId,
+      ghlContactId: event.ghlContactId,
+      setterLeadId: lead._id,
+      eventType: "connected",
+      occurredAt: event.occurredAt,
+      ghlUserId: event.ghlUserId,
+      details: { callDurationSec: args.durationSec },
+      ghlEventKey: milestoneKey,
+    });
+    await bumpDailyStat(
+      ctx,
+      args.teamId,
+      event.occurredAt,
+      event.ghlUserId,
+      "connects",
+    );
+
+    return { applied: true, becameConnected: true };
+  },
+});
+
 export interface SmsEventArgs {
   ghlContactId: string;
   direction: "inbound" | "outbound";
@@ -1139,6 +1293,12 @@ interface GhlWebhookBody {
   conversationId?: string;
   messageId?: string;
   messageType?: string;
+  // Custom conversation providers set messageType to the literal "Custom" and
+  // put the real type here — "TYPE_CUSTOM_CALL" / "TYPE_CUSTOM_SMS" — with the
+  // numeric equivalent in messageTypeId. Reading only messageType is what made
+  // every Sendblue call invisible.
+  messageTypeString?: string;
+  messageTypeId?: number;
   userId?: string;
   callDuration?: number;
   callStatus?: string;
