@@ -8,6 +8,10 @@
  * @module
  */
 
+import type * as _audit from "../_audit.js";
+import type * as _audit2 from "../_audit2.js";
+import type * as _audit3 from "../_audit3.js";
+import type * as _cancel from "../_cancel.js";
 import type * as _debugTestSetterScorecard from "../_debugTestSetterScorecard.js";
 import type * as _demoSeed from "../_demoSeed.js";
 import type * as _probeTeamStripe from "../_probeTeamStripe.js";
@@ -175,6 +179,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  _audit: typeof _audit;
+  _audit2: typeof _audit2;
+  _audit3: typeof _audit3;
+  _cancel: typeof _cancel;
   _debugTestSetterScorecard: typeof _debugTestSetterScorecard;
   _demoSeed: typeof _demoSeed;
   _probeTeamStripe: typeof _probeTeamStripe;

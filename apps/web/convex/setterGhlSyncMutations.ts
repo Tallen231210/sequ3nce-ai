@@ -339,3 +339,22 @@ export const clearTranscriptionDisabled = internalMutation({
     });
   },
 });
+
+/**
+ * Audit rows whose dispatch never ran, oldest first.
+ *
+ * Companion to setterGhlSync.drainUnprocessedWebhooks — see that function for
+ * why a row can end up stranded. Oldest-first so a backlog drains in the order
+ * it accumulated rather than starving the earliest events.
+ */
+export const listUnprocessedWebhookIds = internalQuery({
+  args: { limit: v.number() },
+  handler: async (ctx, { limit }) => {
+    const rows = await ctx.db
+      .query("setterWebhookEvents")
+      .withIndex("by_processed", (q) => q.eq("processed", false))
+      .order("asc")
+      .take(Math.min(limit, 1000));
+    return rows.map((r) => r._id);
+  },
+});

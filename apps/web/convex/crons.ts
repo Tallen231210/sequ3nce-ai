@@ -68,6 +68,22 @@ crons.interval(
   internal.setterGhlSync.deepBackfillStep,
 );
 
+// Drain: pick up webhook audit rows whose dispatch never ran. Scheduled work
+// can be dropped, and when it is, the row sits processed=false forever with
+// no error on it — the data is stored and simply never counted. Found 1,881
+// such rows, the oldest from June. dispatch is idempotent, so replaying costs
+// nothing when there's no backlog.
+//
+// crons.cron, not crons.interval: an interval cron restarts its countdown on
+// every deploy, which is how the setter scorecard quietly stopped running for
+// weeks. Minute 47 is unused by the jobs above.
+crons.cron(
+  "setter-drain-unprocessed-webhooks",
+  "47 * * * *",
+  internal.setterGhlSync.drainUnprocessedWebhooks,
+  {},
+);
+
 // Reconcile: hourly safety net. Pulls contacts modified in the last 90
 // minutes from each active installation and routes them through the same
 // dispatch pipeline as live webhooks. Catches any events GHL retries

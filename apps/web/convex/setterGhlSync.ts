@@ -3,6 +3,7 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { ghlFetch } from "./setterGhlClient";
 import { captureAndPersist } from "./lib/sentry";
 import {
@@ -112,6 +113,10 @@ export const fastBackfill = internalAction({
       ),
     ),
     contactsPage: v.optional(v.number()),
+    // Resume state for the messages phase — see that branch below.
+    messagesCursorDate: v.optional(v.number()),
+    messagesCursorId: v.optional(v.string()),
+    messagesWindowEndMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const startedAt = Date.now();
@@ -189,6 +194,9 @@ export const fastBackfill = internalAction({
       }
 
       if (phase === "messages") {
+        // Resumable: a location with a thousand-plus active conversations
+        // can't be walked inside one action, so the phase yields with a
+        // cursor and reschedules itself until the window is exhausted.
         // Pull call + SMS messages from GHL's conversations/messages
         // REST API. Webhooks alone are not a complete source of truth —
         // observed in a per-contact audit against AICom's install,
@@ -198,13 +206,31 @@ export const fastBackfill = internalAction({
         // shape so dispatch routes through handleOutboundMessage /
         // handleInboundMessage → recordCallEvent / recordSmsEvent,
         // which already dedupe on ghlEventKey: msg:<messageId>.
-        await syncMessagesRange(ctx, {
+        // The window is anchored to when the backfill STARTED, not to each
+        // invocation's clock. Recomputing "90 days ago" on every resume would
+        // slide the floor forward mid-walk and silently skip conversations.
+        const windowEndMs = args.messagesWindowEndMs ?? Date.now();
+        const result = await syncMessagesRange(ctx, {
           installationId: args.installationId,
           locationId: installation.locationId,
           teamId: installation.teamId,
-          rangeStartMs: Date.now() - FAST_BACKFILL_DAYS * 24 * 60 * 60 * 1000,
-          rangeEndMs: Date.now(),
+          rangeStartMs: windowEndMs - FAST_BACKFILL_DAYS * 24 * 60 * 60 * 1000,
+          rangeEndMs: windowEndMs,
+          cursorDate: args.messagesCursorDate,
+          cursorId: args.messagesCursorId,
         });
+
+        if (!result.done) {
+          await ctx.scheduler.runAfter(1000, internal.setterGhlSync.fastBackfill, {
+            installationId: args.installationId,
+            phase: "messages",
+            messagesCursorDate: result.cursorDate,
+            messagesCursorId: result.cursorId,
+            messagesWindowEndMs: windowEndMs,
+          });
+          return;
+        }
+
         await ctx.scheduler.runAfter(0, internal.setterGhlSync.fastBackfill, {
           installationId: args.installationId,
           phase: "appointments",
@@ -683,13 +709,29 @@ async function syncMonthOfContacts(ctx: ActionCtx, args: SyncMonthArgs): Promise
   // And the call/SMS messages for this month's window. Catches anything
   // the OutboundMessage / InboundMessage webhooks missed during the
   // historical month. Dedupes against existing rows by msg:<messageId>.
-  await syncMessagesRange(ctx, {
+  //
+  // This walk is inherently expensive: conversations come back newest-first,
+  // so reaching a window from several months ago means paging past every
+  // conversation more recent than it. The budget is deliberately smaller than
+  // the fast backfill's — this runs on a cron alongside other installations,
+  // and overrunning would throw, which marks the whole month errored.
+  const messages = await syncMessagesRange(ctx, {
     installationId: args.installationId,
     locationId: args.locationId,
     teamId: args.teamId,
     rangeStartMs: windowStart,
     rangeEndMs: windowEnd,
+    budgetMs: DEEP_BACKFILL_MESSAGES_BUDGET_MS,
   });
+
+  // Said out loud rather than swallowed. The month is about to be marked
+  // done, so a partial walk is a real gap in history and the log is the only
+  // place it can show up.
+  if (!messages.done) {
+    console.warn(
+      `[syncMonthOfContacts] team=${args.teamId} month=${args.monthIndex} ran out of budget after ${messages.conversationsProcessed} conversations — message history for this month is INCOMPLETE`,
+    );
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -886,16 +928,49 @@ interface SyncMessagesRangeArgs {
   teamId: string;
   rangeStartMs: number;
   rangeEndMs: number;
+  /** Resume point from a previous invocation that ran out of time. */
+  cursorDate?: number;
+  cursorId?: string;
+  /** How long this invocation may spend before yielding. */
+  budgetMs?: number;
+  /** Conversations to handle before yielding. */
+  maxConversations?: number;
 }
 
-// Cap how much work a single sync invocation does. These bounds avoid
-// the case where a customer with thousands of stale conversations
-// blows past Convex's 10-min action timeout. Anything that doesn't
-// fit gets caught by the next reconcile tick — the dedup key means
-// re-running is safe.
-const MESSAGES_MAX_CONVERSATIONS = 500;
+interface SyncMessagesRangeResult {
+  done: boolean;
+  cursorDate?: number;
+  cursorId?: string;
+  conversationsProcessed: number;
+}
+
+// Upper bound on conversations touched in a single invocation. Distinct from
+// the time budget: this one stops us walking an enormous account forever,
+// the budget stops us exceeding Convex's 10-minute action limit.
+const MESSAGES_MAX_CONVERSATIONS = 5_000;
 const MESSAGES_PER_CONVERSATION_LIMIT = 100;
 const MESSAGES_CONVERSATIONS_PAGE_SIZE = 100;
+
+/**
+ * Conversations handled per invocation, and the real constraint here.
+ *
+ * Every message becomes an audit row plus a scheduled dispatch, so a busy
+ * location is thousands of scheduled mutations. Walking 1,129 conversations
+ * in one action got "Your request couldn't be completed" out of Convex after
+ * five minutes — it isn't the wall clock that breaks, it's the volume of
+ * scheduled work queued from a single action. Keep each pass small and let
+ * the resume chain do the distance.
+ */
+const MESSAGES_CONVERSATIONS_PER_INVOCATION = 50;
+
+// Secondary guard for the opposite shape of account: few conversations, each
+// enormous, where 50 of them could still outlast the action.
+const MESSAGES_DEFAULT_BUDGET_MS = 90 * 1000;
+// Tighter budgets where the caller shares an invocation with other work:
+// the deep-backfill cron processes several installations per tick, and the
+// reconcile pass still has opportunities and appointments to get through.
+const DEEP_BACKFILL_MESSAGES_BUDGET_MS = 3 * 60 * 1000;
+const RECONCILE_MESSAGES_BUDGET_MS = 3 * 60 * 1000;
 
 /**
  * Pull TYPE_CALL + TYPE_SMS messages from GHL's conversations/messages
@@ -916,18 +991,52 @@ const MESSAGES_CONVERSATIONS_PAGE_SIZE = 100;
  * "TYPE_CALL" / "TYPE_SMS", while live webhooks send "CALL" / "SMS".
  * We normalize to the webhook shape before recording so the dispatch
  * handler sees the same payload regardless of source.
+ *
+ * Paging: the cursor is `startAfterDate` + `startAfterId`, the last item's
+ * lastMessageDate and id. It is NOT `startAfter` — GHL accepts that parameter,
+ * returns 200, and ignores it completely, so every page is page one. That is
+ * not a hypothetical: on a location holding 1,182 conversations this fetched
+ * the same newest 100 twice and stopped, and the account had been running for
+ * weeks on the belief that 1,083 of its leads had never been contacted.
+ *
+ * Conversations are fetched and processed a page at a time rather than
+ * collected up front, so that running out of time yields a resume point
+ * instead of losing the walk.
  */
 async function syncMessagesRange(
   ctx: ActionCtx,
   args: SyncMessagesRangeArgs,
-): Promise<void> {
-  // 1. Page through conversations sorted by last_message_date desc.
-  //    Stop when last_message_date crosses below the window floor.
-  const conversations: GhlConversationSummary[] = [];
-  let startAfter: string | undefined = undefined;
-  let conversationPagesFetched = 0;
+): Promise<SyncMessagesRangeResult> {
+  const startedAt = Date.now();
+  const budgetMs = args.budgetMs ?? MESSAGES_DEFAULT_BUDGET_MS;
 
-  outer: while (conversations.length < MESSAGES_MAX_CONVERSATIONS) {
+  let startAfterDate: number | undefined = args.cursorDate;
+  let startAfterId: string | undefined = args.cursorId;
+  let conversationPagesFetched = 0;
+  let conversationsProcessed = 0;
+
+  let dispatched = 0;
+  let skippedOutOfWindow = 0;
+  let skippedWrongType = 0;
+  let skippedNoId = 0;
+  let durationsProbed = 0;
+  let durationsFailed = 0;
+
+  let done = true;
+  let reachedFloor = false;
+  const perInvocationCap = Math.min(
+    args.maxConversations ?? MESSAGES_CONVERSATIONS_PER_INVOCATION,
+    MESSAGES_MAX_CONVERSATIONS,
+  );
+
+  outer: while (conversationsProcessed < perInvocationCap) {
+    if (Date.now() - startedAt > budgetMs) {
+      // Out of time. The cursor points at the last conversation we finished,
+      // so the next invocation picks up exactly where this one stopped.
+      done = false;
+      break;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query: Record<string, any> = {
       locationId: args.locationId,
@@ -935,7 +1044,8 @@ async function syncMessagesRange(
       sort: "desc",
       limit: MESSAGES_CONVERSATIONS_PAGE_SIZE,
     };
-    if (startAfter) query.startAfter = startAfter;
+    if (startAfterDate !== undefined) query.startAfterDate = startAfterDate;
+    if (startAfterId !== undefined) query.startAfterId = startAfterId;
 
     let resp: GhlConversationSearchResponse;
     try {
@@ -957,45 +1067,105 @@ async function syncMessagesRange(
 
     const page = resp.conversations ?? [];
     if (page.length === 0) break;
+    conversationPagesFetched++;
 
-    let crossedFloor = false;
-    for (const c of page) {
-      conversations.push(c);
+    const lastOfPage = page[page.length - 1];
+    const nextDate = lastOfPage?.lastMessageDate;
+    const nextId = lastOfPage?.id;
+    // If GHL hands back a page we can't advance past, stop rather than
+    // re-walk it forever. (This is the shape of the original bug: the old
+    // `startAfter` param was ignored, so every page was page one.)
+    const cursorStuck =
+      nextDate === undefined ||
+      nextId === undefined ||
+      (nextDate === startAfterDate && nextId === startAfterId);
+
+    for (const conv of page) {
+      if (!conv.id) continue;
+
+      // Sorted newest-first, so once a conversation's most recent message
+      // predates the window, neither it nor anything after it can contain
+      // messages we want.
       if (
-        c.lastMessageDate !== undefined &&
-        c.lastMessageDate < args.rangeStartMs
+        conv.lastMessageDate !== undefined &&
+        conv.lastMessageDate < args.rangeStartMs
       ) {
-        crossedFloor = true;
+        reachedFloor = true;
+        break outer;
       }
-      if (conversations.length >= MESSAGES_MAX_CONVERSATIONS) break outer;
+
+      if (conversationsProcessed >= perInvocationCap) {
+        done = false;
+        break outer;
+      }
+
+      await processConversationMessages(ctx, args, conv, {
+        onDispatched: () => dispatched++,
+        onOutOfWindow: () => skippedOutOfWindow++,
+        onWrongType: () => skippedWrongType++,
+        onNoId: () => skippedNoId++,
+        onDurationProbed: () => durationsProbed++,
+        onDurationFailed: () => durationsFailed++,
+      });
+      conversationsProcessed++;
+
+      // Resume AFTER the conversation we just finished, not after the page.
+      // Advancing only at page boundaries meant that stopping mid-page — which
+      // the per-invocation cap does by design — returned the cursor we
+      // arrived with, so the next pass re-walked the identical 50
+      // conversations. That is an infinite loop, not a slow one.
+      if (conv.lastMessageDate !== undefined && conv.id !== undefined) {
+        startAfterDate = conv.lastMessageDate;
+        startAfterId = conv.id;
+      }
     }
 
-    if (crossedFloor) break;
+    // Whole page consumed. If the cursor couldn't move off it, stop.
+    if (cursorStuck) break;
+    startAfterDate = nextDate;
+    startAfterId = nextId;
+  }
 
-    conversationPagesFetched++;
-    const lastId = page[page.length - 1]?.id;
-    if (!lastId || lastId === startAfter) break;
-    startAfter = lastId;
+  if (conversationsProcessed >= perInvocationCap && !reachedFloor) {
+    done = false;
   }
 
   console.log(
-    `[syncMessagesRange] team=${args.teamId} conversations=${conversations.length} (${conversationPagesFetched} pages) window=${new Date(args.rangeStartMs).toISOString()}..${new Date(args.rangeEndMs).toISOString()}`,
+    `[syncMessagesRange] team=${args.teamId} conversations=${conversationsProcessed} (${conversationPagesFetched} pages) window=${new Date(args.rangeStartMs).toISOString()}..${new Date(args.rangeEndMs).toISOString()} dispatched=${dispatched} skippedOutOfWindow=${skippedOutOfWindow} skippedWrongType=${skippedWrongType} skippedNoId=${skippedNoId} durationsProbed=${durationsProbed} durationsFailed=${durationsFailed} done=${done}${done ? "" : " — will resume"}`,
   );
 
-  // 2. For each conversation, pull messages and dispatch the ones in
-  //    range. We bound messages-per-conversation to keep worst-case
-  //    work predictable; if a contact has more than this in the window
-  //    we'll catch the older ones on the next reconcile (the message
-  //    dedup index makes that safe).
-  let dispatched = 0;
-  let skippedOutOfWindow = 0;
-  let skippedWrongType = 0;
-  let skippedNoId = 0;
-  let durationsProbed = 0;
-  let durationsFailed = 0;
+  return {
+    done,
+    cursorDate: startAfterDate,
+    cursorId: startAfterId,
+    conversationsProcessed,
+  };
+}
 
-  for (const conv of conversations) {
-    if (!conv.id) continue;
+interface MessageCounters {
+  onDispatched: () => void;
+  onOutOfWindow: () => void;
+  onWrongType: () => void;
+  onNoId: () => void;
+  onDurationProbed: () => void;
+  onDurationFailed: () => void;
+}
+
+/**
+ * Pull one conversation's messages and dispatch the ones inside the window.
+ *
+ * Messages-per-conversation is bounded so worst-case work stays predictable;
+ * anything older is picked up by the deep backfill's month windows, and the
+ * dedup key makes the overlap free.
+ */
+async function processConversationMessages(
+  ctx: ActionCtx,
+  args: SyncMessagesRangeArgs,
+  conv: GhlConversationSummary,
+  count: MessageCounters,
+): Promise<void> {
+  {
+    if (!conv.id) return;
 
     let messages: GhlConversationMessage[] = [];
     try {
@@ -1014,7 +1184,7 @@ async function syncMessagesRange(
         `[syncMessagesRange] messages fetch failed for conversation=${conv.id}:`,
         err,
       );
-      continue;
+      return;
     }
 
     for (const m of messages) {
@@ -1024,12 +1194,12 @@ async function syncMessagesRange(
       // lib/ghlMessageType.ts for why the two used to be treated differently.
       const normalizedType = normalizeGhlMessageKind(m);
       if (!normalizedType) {
-        skippedWrongType++;
+        count.onWrongType();
         continue;
       }
 
       if (!m.id) {
-        skippedNoId++;
+        count.onNoId();
         continue;
       }
 
@@ -1043,7 +1213,7 @@ async function syncMessagesRange(
         dateMs < args.rangeStartMs ||
         dateMs > args.rangeEndMs
       ) {
-        skippedOutOfWindow++;
+        count.onOutOfWindow();
         continue;
       }
 
@@ -1051,7 +1221,7 @@ async function syncMessagesRange(
       if (!contactId) {
         // Without a contactId the dispatch handler throws — skip rather
         // than create a useless audit row.
-        skippedNoId++;
+        count.onNoId();
         continue;
       }
 
@@ -1061,7 +1231,7 @@ async function syncMessagesRange(
       // Custom-provider calls carry no duration — the field simply isn't
       // there. Derive it from the recording so connect rate and talk time
       // work, and so a call can ever cross the "connected" threshold.
-      // Only the header of the MP3 is read; see lib/mp3Duration.ts.
+      // Only the header of the recording is read; see lib/audioDuration.ts.
       let callDuration = m.callDuration;
       if (
         normalizedType === "CALL" &&
@@ -1073,9 +1243,9 @@ async function syncMessagesRange(
           const probe = await probeAudioDuration(recordingUrl);
           if (probe) {
             callDuration = probe.durationSec;
-            durationsProbed++;
+            count.onDurationProbed();
           } else {
-            durationsFailed++;
+            count.onDurationFailed();
           }
         }
       }
@@ -1103,17 +1273,72 @@ async function syncMessagesRange(
           teamId: args.teamId as never,
         },
       );
-      await ctx.scheduler.runAfter(0, internal.setterGhlWebhooks.dispatch, {
-        auditId,
-      });
-      dispatched++;
+      // Processed inline, not scheduled.
+      //
+      // Scheduling one dispatch per message is fine for a trickle of live
+      // webhooks and falls over on a backfill: a single pass over a busy
+      // location queues thousands of mutations, and Convex starts refusing
+      // the action outright ("Your request couldn't be completed"). Worse,
+      // the work that WAS queued didn't all run — 1,881 audit rows sat
+      // unprocessed with no error recorded anywhere, which looks exactly
+      // like a location that simply had no messages.
+      //
+      // Awaiting each dispatch gives us backpressure for free: the walk goes
+      // exactly as fast as the writes can retire, and the time budget turns
+      // that into a resume point instead of a silent loss.
+      await ctx.runMutation(internal.setterGhlWebhooks.dispatch, { auditId });
+      count.onDispatched();
     }
   }
-
-  console.log(
-    `[syncMessagesRange] team=${args.teamId} dispatched=${dispatched} skippedOutOfWindow=${skippedOutOfWindow} skippedWrongType=${skippedWrongType} skippedNoId=${skippedNoId} durationsProbed=${durationsProbed} durationsFailed=${durationsFailed}`,
-  );
 }
+
+/**
+ * Process audit rows whose dispatch never ran.
+ *
+ * Every inbound webhook and every backfilled message writes an audit row and
+ * then schedules `dispatch` to turn it into events. If that scheduled work is
+ * dropped — which it demonstrably can be, we found rows stranded since June —
+ * the row stays `processed: false` forever with no error on it and no alert
+ * anywhere. The data is on disk and simply never counted.
+ *
+ * Cheap to make safe: dispatch is already idempotent (it returns early on
+ * `processed`, and every handler dedupes on its business key), so replaying is
+ * free. Bounded per tick so a large backlog drains over several runs rather
+ * than blowing one transaction.
+ */
+export const drainUnprocessedWebhooks = internalAction({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<{ drained: number; failed: number }> => {
+    const limit = Math.min(args.limit ?? DRAIN_BATCH_SIZE, 1000);
+    const auditIds: Array<Id<"setterWebhookEvents">> = await ctx.runQuery(
+      internal.setterGhlSyncMutations.listUnprocessedWebhookIds,
+      { limit },
+    );
+
+    let drained = 0;
+    let failed = 0;
+    for (const auditId of auditIds) {
+      try {
+        await ctx.runMutation(internal.setterGhlWebhooks.dispatch, { auditId });
+        drained++;
+      } catch (err) {
+        // dispatch records its own error on the row; don't let one bad
+        // payload stop the rest of the backlog.
+        failed++;
+        console.error(`[drainUnprocessedWebhooks] ${auditId}:`, err);
+      }
+    }
+
+    if (drained > 0 || failed > 0) {
+      console.log(
+        `[drainUnprocessedWebhooks] drained=${drained} failed=${failed} of ${auditIds.length} candidates`,
+      );
+    }
+    return { drained, failed };
+  },
+});
+
+const DRAIN_BATCH_SIZE = 200;
 
 /**
  * Go and find out how long a live call was.
@@ -1639,13 +1864,21 @@ async function reconcileInstallation(
   // any OutboundMessage / InboundMessage webhook deliveries that
   // failed since the last reconcile tick. recordCallEvent /
   // recordSmsEvent dedupe by msg:<messageId> so re-running is safe.
-  await syncMessagesRange(ctx, {
+  const reconciledMessages = await syncMessagesRange(ctx, {
     installationId: installation._id,
     locationId: installation.locationId,
     teamId: installation.teamId,
     rangeStartMs: since,
     rangeEndMs: Date.now(),
+    budgetMs: RECONCILE_MESSAGES_BUDGET_MS,
   });
+  if (!reconciledMessages.done) {
+    // The overlap window is 90 minutes, so this should never happen. If it
+    // does, the account is busier than the hourly tick can keep up with.
+    console.warn(
+      `[reconcile] team=${installation.teamId} messages walk did not finish within budget (${reconciledMessages.conversationsProcessed} conversations)`,
+    );
+  }
 
   // Also walk pipelines + opportunities. Pipeline metadata refresh is
   // cheap; opportunities re-walk catches any stage transitions that
