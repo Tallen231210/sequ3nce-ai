@@ -275,6 +275,15 @@ async function handleContactUpsert(
   const dateAdded = parseTimestamp(contact.dateAdded) ?? existing?.dateAdded ?? now;
 
   if (existing) {
+    // dateAdded is deliberately overwritten, not preserved. The lead may have
+    // been conjured by ensureLead from a call or text — activity can reach us
+    // before the contact sync covers that contact — and its date is a
+    // placeholder derived from that activity. GHL's value is the real
+    // creation date and the only correct basis for speed-to-lead.
+    //
+    // Skipping this patch is what left leads dated at the moment of the
+    // backfill with dials months earlier, i.e. a negative speed-to-lead.
+    const authoritativeDateAdded = parseTimestamp(contact.dateAdded);
     await ctx.db.patch(existing._id, {
       name: contact.name ?? buildName(contact) ?? existing.name,
       email: contact.email ?? existing.email,
@@ -283,6 +292,9 @@ async function handleContactUpsert(
       sourceDetail: contact.sourceDetail ?? existing.sourceDetail,
       tags: contact.tags ?? existing.tags,
       assignedToGhlUserId: nnStr(contact.assignedTo) ?? existing.assignedToGhlUserId,
+      ...(authoritativeDateAdded !== undefined
+        ? { dateAdded: authoritativeDateAdded }
+        : {}),
       lastSyncedAt: now,
     });
     return;
@@ -570,7 +582,7 @@ export async function upsertAppointment(
   // Emit a lead event for the timeline. New appointments → "appointment_booked";
   // status changes → "appointment_status_change". The lead-events table
   // is the source of truth for the drilldown timeline.
-  const lead = await ensureLead(ctx, args.teamId, apt.contactId);
+  const lead = await ensureLead(ctx, args.teamId, apt.contactId, apt.bookedAt);
 
   // Backpatch missing lead contact info from the booking. Never overwrite
   // existing values — the CRM contact sync stays authoritative.
@@ -791,7 +803,7 @@ async function handleOpportunityUpsert(
 
   // Emit a lead-event for the timeline so opportunity moves show up
   // alongside dials/SMS/appointments in the lead drilldown.
-  const lead = await ensureLead(ctx, args.teamId, ghlContactId);
+  const lead = await ensureLead(ctx, args.teamId, ghlContactId, dateAdded);
   await ctx.db.insert("setterLeadEvents", {
     teamId: args.teamId,
     ghlContactId,
@@ -911,7 +923,7 @@ export async function recordCallEvent(
     return;
   }
 
-  const lead = await ensureLead(ctx, args.teamId, ev.ghlContactId);
+  const lead = await ensureLead(ctx, args.teamId, ev.ghlContactId, ev.occurredAt);
   const team = await ctx.db.get(args.teamId);
   const connectionThresholdSec = team?.setterConnectionThresholdSec ?? 60;
   const durationSec = ev.durationSec ?? 0;
@@ -1147,7 +1159,7 @@ export async function recordSmsEvent(
     return;
   }
 
-  const lead = await ensureLead(ctx, args.teamId, ev.ghlContactId);
+  const lead = await ensureLead(ctx, args.teamId, ev.ghlContactId, ev.occurredAt);
 
   await ctx.db.insert("setterLeadEvents", {
     teamId: args.teamId,
@@ -1210,10 +1222,27 @@ async function findLead(
  * Webhook ordering across event types isn't guaranteed by GHL; an
  * OutboundMessage can arrive before the matching ContactCreate.
  */
+/**
+ * Find the lead for a contact, inventing a placeholder if we've never synced
+ * it. Happens whenever activity refers to a contact outside the window the
+ * contact sync covered — a lead created in January that got a call in July
+ * isn't in a 90-day contacts pull, but its conversation is.
+ *
+ * `knownActivityAt` is the timestamp of whatever activity prompted this. Use
+ * it as the placeholder creation date rather than the clock, because a lead
+ * cannot have been created after it was contacted. Guessing "now" produced
+ * leads apparently created at the exact second of the backfill and dialled
+ * three months earlier — which read as a NEGATIVE speed-to-lead on the
+ * dashboard, averaging -983,330 seconds on one account.
+ *
+ * The real date still arrives if the contact sync reaches this contact later;
+ * handleContactCreate overwrites it with GHL's authoritative value.
+ */
 export async function ensureLead(
   ctx: MutationCtx,
   teamId: Id<"teams">,
   ghlContactId: string,
+  knownActivityAt?: number,
 ): Promise<Doc<"setterLeads">> {
   const existing = await findLead(ctx, teamId, ghlContactId);
   if (existing) return existing;
@@ -1225,7 +1254,7 @@ export async function ensureLead(
     name: undefined,
     email: undefined,
     phone: undefined,
-    dateAdded: now,
+    dateAdded: Math.min(knownActivityAt ?? now, now),
     source: undefined,
     sourceDetail: undefined,
     tags: undefined,

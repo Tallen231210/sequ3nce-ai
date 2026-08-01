@@ -461,8 +461,16 @@ export async function computeScorecard(
       (l): l is Doc<"setterLeads"> & { firstDialAt: number } =>
         typeof l.firstDialAt === "number",
     );
+    // Negatives are dropped, not clamped. A first dial recorded before the
+    // lead's creation date is not a fast response — it's a lead whose CRM
+    // record was created after the conversation had already started, which
+    // genuinely happens when the dialer is a third-party app that opens the
+    // conversation first. Averaging those in produced a headline figure of
+    // MINUS 983,330 seconds on a live account. Excluding them reports
+    // speed-to-lead over the leads where the question is meaningful.
     const speedsMs = dialedLeads
       .map((l) => l.firstDialAt - l.dateAdded)
+      .filter((ms) => ms >= 0)
       .sort((a, b) => a - b);
 
     const avgSpeedMs =
@@ -577,7 +585,10 @@ export async function computeScorecard(
         typeof lead.firstDialAt === "number" &&
         lead.firstDialAt < args.rangeEnd
       ) {
-        ensureRow(by)._speeds.push(lead.firstDialAt - lead.dateAdded);
+        // Same exclusion as the team-level figure above: a dial predating the
+        // lead's creation date isn't a response time.
+        const speed = lead.firstDialAt - lead.dateAdded;
+        if (speed >= 0) ensureRow(by)._speeds.push(speed);
       }
     }
 
