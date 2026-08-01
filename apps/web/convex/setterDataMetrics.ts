@@ -461,16 +461,9 @@ export async function computeScorecard(
       (l): l is Doc<"setterLeads"> & { firstDialAt: number } =>
         typeof l.firstDialAt === "number",
     );
-    // Negatives are dropped, not clamped. A first dial recorded before the
-    // lead's creation date is not a fast response — it's a lead whose CRM
-    // record was created after the conversation had already started, which
-    // genuinely happens when the dialer is a third-party app that opens the
-    // conversation first. Averaging those in produced a headline figure of
-    // MINUS 983,330 seconds on a live account. Excluding them reports
-    // speed-to-lead over the leads where the question is meaningful.
     const speedsMs = dialedLeads
-      .map((l) => l.firstDialAt - l.dateAdded)
-      .filter((ms) => ms >= 0)
+      .map((l) => normalizeSpeedToLeadMs(l.firstDialAt, l.dateAdded))
+      .filter((ms): ms is number => ms !== null)
       .sort((a, b) => a - b);
 
     const avgSpeedMs =
@@ -585,10 +578,9 @@ export async function computeScorecard(
         typeof lead.firstDialAt === "number" &&
         lead.firstDialAt < args.rangeEnd
       ) {
-        // Same exclusion as the team-level figure above: a dial predating the
-        // lead's creation date isn't a response time.
-        const speed = lead.firstDialAt - lead.dateAdded;
-        if (speed >= 0) ensureRow(by)._speeds.push(speed);
+        // Same treatment as the team-level figure above.
+        const speed = normalizeSpeedToLeadMs(lead.firstDialAt, lead.dateAdded);
+        if (speed !== null) ensureRow(by)._speeds.push(speed);
       }
     }
 
@@ -1384,6 +1376,41 @@ export async function computeShowRateEvidence(
  * Internal-query wrapper around computeScorecard. Used by the scorecard
  * cron (an action), which can only access query data via ctx.runQuery.
  */
+/**
+ * How long the team took to first dial a lead, or null when that can't be
+ * answered honestly.
+ *
+ * A first dial can legitimately land BEFORE the CRM says the lead was created.
+ * Two systems are stamping two clocks, and when a setter dials the instant a
+ * lead arrives, the dialer's message can beat the CRM's contact record by a
+ * few seconds. Measured on a live account: 199 leads negative by under five
+ * minutes, 164 of them by under a minute. Those are the FASTEST responses the
+ * team has.
+ *
+ * An earlier version of this simply dropped every negative. That quietly threw
+ * away 238 of the last week's 255 dialed leads — all the good ones — and
+ * averaged the stragglers, reporting 17 hours for a team that often dials in
+ * seconds. Discarding data is not neutral when the data isn't randomly
+ * distributed.
+ *
+ * So: clamp small negatives to zero, which is what they mean. Beyond the
+ * tolerance the creation date itself is wrong (the other 237 on that account
+ * were off by a median of six days, later repaired from the CRM), and a wrong
+ * date can't produce a right answer — those are excluded rather than guessed
+ * at.
+ */
+const SPEED_TO_LEAD_SKEW_TOLERANCE_MS = 5 * 60_000;
+
+export function normalizeSpeedToLeadMs(
+  firstDialAt: number,
+  dateAdded: number,
+): number | null {
+  const delta = firstDialAt - dateAdded;
+  if (delta >= 0) return delta;
+  if (-delta <= SPEED_TO_LEAD_SKEW_TOLERANCE_MS) return 0;
+  return null;
+}
+
 export const getScorecardData = internalQuery({
   args: {
     teamId: v.id("teams"),
