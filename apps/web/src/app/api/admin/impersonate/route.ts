@@ -111,10 +111,44 @@ export async function POST(request: NextRequest) {
     }),
   });
   if (!res.ok) {
-    // Log status only — never the response body (could echo token material).
-    console.error("[impersonate] Clerk actor_tokens failed:", res.status);
+    // Clerk's message, not ours.
+    //
+    // This used to report a flat "Failed to create impersonation session" and
+    // log nothing but the status, on the reasoning that a response body might
+    // echo token material. Error bodies don't — Clerk only returns a token on
+    // success — and that caution turned a self-explanatory failure into a
+    // half-hour hunt through Vercel logs and the Clerk API. The real message
+    // was "Your application has reached the impersonation limit for your plan
+    // (5/5)", which nobody could have guessed and everybody could have acted
+    // on.
+    //
+    // Read defensively and take only the message fields, so a future Clerk
+    // response shape can't smuggle anything else onto the screen.
+    let clerkMessage: string | null = null;
+    let clerkCode: string | null = null;
+    try {
+      const body = (await res.json()) as {
+        errors?: Array<{ message?: string; long_message?: string; code?: string }>;
+      };
+      const first = body.errors?.[0];
+      clerkMessage = first?.long_message ?? first?.message ?? null;
+      clerkCode = first?.code ?? null;
+    } catch {
+      // Non-JSON error body — the status alone will have to do.
+    }
+
+    console.error(
+      `[impersonate] Clerk actor_tokens failed: ${res.status}${
+        clerkCode ? ` ${clerkCode}` : ""
+      }${clerkMessage ? ` — ${clerkMessage}` : ""}`,
+    );
+
     return NextResponse.json(
-      { error: "Failed to create impersonation session" },
+      {
+        error: clerkMessage
+          ? `Clerk refused: ${clerkMessage}`
+          : `Failed to create impersonation session (Clerk returned ${res.status})`,
+      },
       { status: 502 },
     );
   }
