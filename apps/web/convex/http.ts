@@ -12620,6 +12620,44 @@ http.route({
 });
 closerPreflight("/closer/fathom/reminders");
 
+// "That address isn't one of our closers." Suppresses the notice only — if the
+// address later belongs to a real closer their calls still come in, because
+// matching runs off the roster and never consults this list.
+http.route({
+  path: "/closer/fathom/ignoreRecorder",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const caller = await fathomCaller(ctx, body);
+      if (!caller) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const email = String(body.email ?? "").trim().toLowerCase();
+      if (!email || email.length > 200) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 200, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runMutation(
+        body.undo === true
+          ? internal.fathomConnections.unignoreRecorder
+          : internal.fathomConnections.ignoreRecorder,
+        { teamId: caller.teamId, email },
+      );
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] fathom/ignoreRecorder:", error);
+      return new Response(JSON.stringify({ success: false }), {
+        status: 200, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/closer/fathom/ignoreRecorder");
+
 http.route({
   path: "/closer/fathom/needsOutcome",
   method: "POST",

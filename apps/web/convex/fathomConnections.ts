@@ -84,6 +84,12 @@ export const getStatusForCloser = internalQuery({
       // Recordings arriving from an address nobody here owns. Shown so it can
       // be fixed, because the symptom otherwise is just missing calls.
       unmatchedRecorders: conn?.unmatchedRecorders ?? [],
+      // Shown so an ignore is reversible. An invisible suppression rule is how
+      // someone spends an afternoon wondering why a teammate's calls are
+      // missing, when the answer is that a colleague dismissed them months ago.
+      ignoredRecorders: Array.from(
+        new Set(live.flatMap((c) => c.ignoredRecorders ?? [])),
+      ),
       outcomeRemindersEnabled: closer?.outcomeRemindersEnabled === true,
     };
   },
@@ -192,6 +198,15 @@ export const noteUnmatchedRecorder = internalMutation({
       .query("fathomConnections")
       .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
       .collect();
+
+    // Told once that this address isn't a closer, don't raise it again.
+    //
+    // Checked across every connection on the team, not just the one we're
+    // about to write to: when each closer has their own key they can all see
+    // the same shared recordings, and one person marking support staff as
+    // "not a closer" shouldn't leave their teammates still being nagged.
+    if (all.some((c) => (c.ignoredRecorders ?? []).includes(email))) return;
+
     const conn = all.find((c) => c.status === "active" && !c.closerId) ?? all.find((c) => c.status === "active");
     if (!conn) return;
 
@@ -224,6 +239,75 @@ export const clearUnmatchedRecorder = internalMutation({
         await ctx.db.patch(c._id, { unmatchedRecorders: kept });
       }
     }
+  },
+});
+
+/**
+ * "This address isn't one of our closers — stop telling me."
+ *
+ * Written to every connection on the team so the answer holds no matter which
+ * one a future recording is noticed through, and so it survives a closer
+ * disconnecting and reconnecting.
+ *
+ * Clears the outstanding notice at the same time, because a button that says
+ * "ignore" and leaves the thing on screen reads as broken.
+ */
+export const ignoreRecorder = internalMutation({
+  args: { teamId: v.id("teams"), email: v.string() },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const email = args.email.trim().toLowerCase();
+    if (!email) return { success: false };
+
+    const all = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    for (const c of all) {
+      const ignored = c.ignoredRecorders ?? [];
+      const patch: Record<string, unknown> = {};
+
+      if (!ignored.includes(email)) {
+        // A ceiling, so a misconfigured workspace can't grow this without
+        // bound. Twenty distinct non-closers is already a sign something else
+        // is wrong.
+        if (ignored.length >= 20) continue;
+        patch.ignoredRecorders = [...ignored, email];
+      }
+
+      const kept = (c.unmatchedRecorders ?? []).filter((u) => u.email !== email);
+      if (kept.length !== (c.unmatchedRecorders ?? []).length) {
+        patch.unmatchedRecorders = kept;
+      }
+
+      if (Object.keys(patch).length > 0) await ctx.db.patch(c._id, patch);
+    }
+
+    return { success: true };
+  },
+});
+
+/** Undo the above. The address starts being reported again if it recurs. */
+export const unignoreRecorder = internalMutation({
+  args: { teamId: v.id("teams"), email: v.string() },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const email = args.email.trim().toLowerCase();
+    if (!email) return { success: false };
+
+    const all = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    for (const c of all) {
+      const ignored = c.ignoredRecorders ?? [];
+      if (!ignored.includes(email)) continue;
+      await ctx.db.patch(c._id, {
+        ignoredRecorders: ignored.filter((e) => e !== email),
+      });
+    }
+
+    return { success: true };
   },
 });
 

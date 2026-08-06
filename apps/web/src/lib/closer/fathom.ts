@@ -24,6 +24,8 @@ export interface FathomStatus {
   email: string | null;
   /** Fathom accounts sending us recordings that match nobody on the team. */
   unmatchedRecorders: Array<{ email: string; count: number; lastSeenAt: number }>;
+  /** Addresses someone has marked as "not a closer". Shown so it's reversible. */
+  ignoredRecorders: string[];
   /** Opt-in for the daily "calls need an outcome" email. */
   outcomeRemindersEnabled: boolean;
 }
@@ -119,6 +121,20 @@ export function getCallsNeedingOutcome(): Promise<{
   calls: OutcomeQueueItem[];
 } | null> {
   return post("/closer/fathom/needsOutcome");
+}
+
+/**
+ * "This Fathom account isn't one of our closers — stop flagging it."
+ *
+ * Common at companies running support and sales in one Fathom workspace: the
+ * key legitimately sees recordings that are nobody's sales calls. Suppresses
+ * the notice only; it never blocks a real closer's calls from arriving.
+ */
+export function ignoreRecorder(
+  email: string,
+  undo = false,
+): Promise<{ success: boolean } | null> {
+  return post("/closer/fathom/ignoreRecorder", { email, undo });
 }
 
 export function setOutcomeReminders(

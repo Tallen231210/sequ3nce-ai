@@ -525,6 +525,21 @@ export default defineSchema({
         }),
       ),
     ),
+    /**
+     * Fathom addresses we've been told are not closers, so stop reporting them.
+     *
+     * A key can see everything shared with its owner, which at a company
+     * running support and sales in one Fathom workspace means a steady stream
+     * of recordings that are nobody's sales calls. Without this the warning
+     * above reappears every time that person records, and a permanent warning
+     * is one people learn to ignore — including on the day it says something
+     * that matters.
+     *
+     * Suppresses the NOTICE only. It never blocks ingestion: if one of these
+     * addresses later belongs to a real closer, their calls match on the roster
+     * and come in as normal. Ignoring is "stop telling me", not "block".
+     */
+    ignoredRecorders: v.optional(v.array(v.string())),
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])

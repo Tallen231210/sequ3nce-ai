@@ -17,6 +17,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   getFathomStatus,
+  ignoreRecorder,
   connectFathom,
   disconnectFathom,
   setFathomEmail,
@@ -30,7 +31,7 @@ export function FathomCard() {
   const [loading, setLoading] = useState(true);
   const [apiKey, setApiKey] = useState("");
   const [teamWide, setTeamWide] = useState(false);
-  const [busy, setBusy] = useState<null | "connect" | "disconnect" | "sync" | "email">(null);
+  const [busy, setBusy] = useState<null | "connect" | "disconnect" | "sync" | "email" | "ignore">(null);
   // Mirrored locally so the switch responds instantly; the server is the
   // authority and a failure snaps it back.
   const [reminders, setReminders] = useState(false);
@@ -89,6 +90,25 @@ export function FathomCard() {
     await disconnectFathom();
     if (!mounted.current) return;
     setBusy(null);
+    await refresh();
+  };
+
+  const handleIgnore = async (email: string, undo = false) => {
+    setBusy("ignore");
+    setError(null);
+    setNotice(null);
+    const result = await ignoreRecorder(email, undo);
+    if (!mounted.current) return;
+    setBusy(null);
+    if (!result?.success) {
+      setError("Couldn't save that.");
+      return;
+    }
+    setNotice(
+      undo
+        ? `${email} will be reported again if it turns up.`
+        : `We won't mention ${email} again. Their calls were never counted.`,
+    );
     await refresh();
   };
 
@@ -171,20 +191,60 @@ export function FathomCard() {
                   : `${status.unmatchedRecorders.length} accounts`}{' '}
                 we don&apos;t recognise:
               </p>
-              <ul className="list-disc pl-4">
+              <ul className="space-y-1">
                 {status.unmatchedRecorders.map((u) => (
-                  <li key={u.email}>
-                    {u.email}{' '}
-                    <span className="text-amber-700">
-                      ({u.count} {u.count === 1 ? 'call' : 'calls'})
+                  <li key={u.email} className="flex items-center gap-2 flex-wrap">
+                    <span>
+                      {u.email}{' '}
+                      <span className="text-amber-700">
+                        ({u.count} {u.count === 1 ? 'call' : 'calls'})
+                      </span>
                     </span>
+                    {/* The third case, and at most companies the commonest: it's
+                        support or ops, whose Fathom the closer's key can see and
+                        whose calls are nobody's sales calls. Without this the
+                        warning returns every time they record, and a warning
+                        that never goes away is one people stop reading. */}
+                    <button
+                      onClick={() => void handleIgnore(u.email)}
+                      disabled={busy !== null}
+                      className="text-[11.5px] font-medium text-amber-900 underline hover:no-underline disabled:opacity-50"
+                    >
+                      Not a closer
+                    </button>
                   </li>
                 ))}
               </ul>
               <p className="text-amber-800">
                 If one of those is yours, set it as your Fathom email below. If it
-                belongs to a teammate, they need adding to the team first.
+                belongs to a teammate, they need adding to the team first. If it&apos;s
+                someone outside sales — support, ops — mark it{' '}
+                <span className="font-medium">Not a closer</span> and we&apos;ll stop
+                mentioning it.
               </p>
+            </div>
+          )}
+
+          {/* Never hide a suppression rule. Someone else marking an address as
+              "not a closer" is otherwise indistinguishable from that person's
+              calls quietly failing to arrive, and the two want opposite fixes. */}
+          {status.ignoredRecorders?.length > 0 && (
+            <div className="text-[11.5px] text-gray-500 max-w-md space-y-1">
+              <p>Not counted as closers:</p>
+              <ul className="space-y-0.5">
+                {status.ignoredRecorders.map((email) => (
+                  <li key={email} className="flex items-center gap-2 flex-wrap">
+                    <span>{email}</span>
+                    <button
+                      onClick={() => void handleIgnore(email, true)}
+                      disabled={busy !== null}
+                      className="font-medium text-gray-600 underline hover:no-underline disabled:opacity-50"
+                    >
+                      Undo
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
