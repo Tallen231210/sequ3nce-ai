@@ -417,6 +417,101 @@ export const syncRecent = internalAction({
  * the webhook minutes ago, not history pulled in at connect time — treating
  * them as history would quietly keep genuine sales calls out of the numbers.
  */
+/**
+ * Finish the work that never completed.
+ *
+ * The ingest queues a summary and analysis whenever they're missing, which is
+ * meant to make a failure self-healing "on the next sync". For a call we
+ * already have there is no next sync: the poller skips every recording id it
+ * knows, and the daily reconcile only re-ingests the last three days. So an
+ * analysis that failed once is blank forever, and the only symptom is an empty
+ * tab on a tier that is largely sold on that tab.
+ *
+ * Two different repairs, deliberately separated by cost. A missing transcript
+ * needs a rate-limited Fathom request. A missing summary or analysis does not —
+ * we already hold the transcript, so it's just work to re-queue.
+ *
+ * Bounded per run; whatever's left is picked up on the next pass.
+ */
+export const repairMissingTranscripts = internalAction({
+  args: { teamId: v.id("teams"), limit: v.optional(v.number()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    checked: number;
+    transcriptsFetched: number;
+    aiRequeued: number;
+    unavailable: number;
+  }> => {
+    const conn = await ctx.runQuery(
+      internal.fathomConnections.getConnectionForTeam,
+      { teamId: args.teamId },
+    );
+    if (!conn?.apiKey) {
+      return { checked: 0, transcriptsFetched: 0, aiRequeued: 0, unavailable: 0 };
+    }
+
+    const pending = await ctx.runQuery(internal.fathom.listCallsNeedingAiWork, {
+      teamId: args.teamId,
+      limit: args.limit ?? 10,
+    });
+
+    let transcriptsFetched = 0;
+    let aiRequeued = 0;
+    let unavailable = 0;
+
+    for (const item of pending) {
+      // Already have the words — nothing to buy from Fathom, just re-queue.
+      if (!item.needsTranscript) {
+        const out = await ctx.runMutation(internal.fathom.queueMissingAiWork, {
+          callId: item.callId,
+          teamId: args.teamId,
+        });
+        if (out.queuedSummary || out.queuedAnalysis) aiRequeued++;
+        continue;
+      }
+
+      const res = await fathom(
+        conn.apiKey,
+        `/recordings/${item.recordingId}/transcript`,
+      );
+      if (!res.ok) {
+        // A rate limit here is expected and not worth failing the run over —
+        // the next pass picks it up.
+        console.warn(
+          `[fathom] transcript ${item.recordingId} returned ${res.status}`,
+        );
+        unavailable++;
+        continue;
+      }
+
+      const transcript = (res.body as { transcript?: unknown[] })?.transcript;
+      if (!transcript || transcript.length === 0) {
+        // Fathom has the recording but no transcript for it. Nothing to fix.
+        unavailable++;
+        continue;
+      }
+
+      // Storing it queues the summary and analysis on the way through.
+      const out = await ctx.runMutation(internal.fathom.storeTranscriptForCall, {
+        callId: item.callId,
+        teamId: args.teamId,
+        transcript,
+      });
+      if (out.stored) transcriptsFetched++;
+      else unavailable++;
+    }
+
+    return {
+      checked: pending.length,
+      transcriptsFetched,
+      aiRequeued,
+      unavailable,
+    };
+  },
+});
+
 export const reconcile = internalAction({
   args: {},
   handler: async (ctx): Promise<{ teams: number; recovered: number }> => {
@@ -444,6 +539,21 @@ export const reconcile = internalAction({
           console.warn(
             `[fathom] reconcile recovered ${result.imported} missed call(s) ` +
               `for team ${conn.teamId} — webhook may not be delivering`,
+          );
+        }
+        // A recovered call is no use with empty tabs. Same sweep, because a
+        // missing transcript has exactly the same shape as a missed call:
+        // nothing errors, nothing retries, and the only symptom is a customer
+        // eventually noticing the tier they pay for isn't producing anything.
+        const fixed = await ctx.runAction(
+          internal.fathomConnect.repairMissingTranscripts,
+          { teamId: conn.teamId, limit: 10 },
+        );
+        if (fixed.transcriptsFetched > 0 || fixed.aiRequeued > 0) {
+          console.warn(
+            `[fathom] reconcile completed unfinished work for team ` +
+              `${conn.teamId}: ${fixed.transcriptsFetched} transcript(s), ` +
+              `${fixed.aiRequeued} summary/analysis re-queued`,
           );
         }
       } catch (error) {

@@ -541,6 +541,206 @@ export const ingestMeeting = internalMutation({
 });
 
 /**
+ * Fathom calls whose transcript, summary or analysis never arrived.
+ *
+ * The ingest already claims to be self-healing: it queues whichever of these is
+ * missing on every sync, "so a call whose analysis failed picks it up on the
+ * next sync instead of staying permanently blank." For an existing call there
+ * is no next sync. The poller skips any recording id it already knows, and the
+ * daily reconcile only re-ingests the last three days — so anything that fails
+ * and then ages out is blank forever, with no error anywhere.
+ *
+ * Found on CreateFreedom: a call with a transcript and a summary but no
+ * analysis, five days old and past the reconcile window.
+ */
+export const listCallsNeedingAiWork = internalQuery({
+  args: { teamId: v.id("teams"), limit: v.optional(v.number()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<
+    Array<{
+      callId: Id<"calls">;
+      recordingId: string;
+      needsTranscript: boolean;
+      needsSummary: boolean;
+      needsAnalysis: boolean;
+    }>
+  > => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .order("desc")
+      .take(500);
+
+    const out = [];
+    for (const call of calls) {
+      if (call.source !== "fathom") continue;
+      if (!call.externalRecordingId) continue;
+      // A team meeting is not worth a rate-limited request or an AI bill.
+      if (call.classifiedAs === "internal") continue;
+
+      const content = await ctx.db
+        .query("callContent")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .first();
+
+      const needsTranscript = !content?.transcriptText;
+      const needsSummary = !content?.summary;
+      const needsAnalysis = !content?.callAnalysis;
+      if (!needsTranscript && !needsSummary && !needsAnalysis) continue;
+
+      out.push({
+        callId: call._id,
+        recordingId: call.externalRecordingId,
+        needsTranscript,
+        needsSummary,
+        needsAnalysis,
+      });
+      if (out.length >= (args.limit ?? 25)) break;
+    }
+    return out;
+  },
+});
+
+/**
+ * Queue the AI work for a call that already has its transcript.
+ *
+ * Separate from the transcript repair because it costs nothing at Fathom —
+ * there is no reason to spend a rate-limited request re-fetching a transcript
+ * we already hold just because an analysis failed.
+ */
+export const queueMissingAiWork = internalMutation({
+  args: { callId: v.id("calls"), teamId: v.id("teams") },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ queuedSummary: boolean; queuedAnalysis: boolean }> => {
+    const call = await ctx.db.get(args.callId);
+    if (!call || String(call.teamId) !== String(args.teamId)) {
+      return { queuedSummary: false, queuedAnalysis: false };
+    }
+    if (call.classifiedAs === "internal") {
+      return { queuedSummary: false, queuedAnalysis: false };
+    }
+
+    const content = await ctx.db
+      .query("callContent")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .first();
+    const text = content?.transcriptText;
+    if (!text) return { queuedSummary: false, queuedAnalysis: false };
+
+    const queuedSummary = !content?.summary;
+    const queuedAnalysis = !content?.callAnalysis;
+
+    if (queuedSummary) {
+      await ctx.scheduler.runAfter(0, internal.ai.generateCallSummary, {
+        callId: args.callId,
+        transcript: text,
+        ...(call.prospectName ? { prospectName: call.prospectName } : {}),
+      });
+    }
+    if (queuedAnalysis) {
+      await ctx.scheduler.runAfter(0, internal.ai.generateCallAnalysis, {
+        callId: args.callId,
+        transcript: text,
+        ...(call.prospectName ? { prospectName: call.prospectName } : {}),
+        ...(call.duration !== undefined ? { duration: call.duration } : {}),
+      });
+    }
+
+    return { queuedSummary, queuedAnalysis };
+  },
+});
+
+/**
+ * Fill in a transcript for a call that already exists.
+ *
+ * Deliberately narrow. It writes the transcript, its segments, and queues the
+ * summary and analysis — and touches nothing else. Re-running the normal
+ * ingest would also recompute classification and counts, which on a call a
+ * closer has already answered means quietly moving numbers to fix a blank tab.
+ */
+export const storeTranscriptForCall = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    teamId: v.id("teams"),
+    transcript: v.any(),
+    recorderName: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ stored: boolean; turns: number }> => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return { stored: false, turns: 0 };
+    if (String(call.teamId) !== String(args.teamId)) {
+      return { stored: false, turns: 0 };
+    }
+
+    const turns = toTurns(args.transcript as FathomMeeting["transcript"]);
+    const text = turnsToText(turns);
+    if (!text) return { stored: false, turns: 0 };
+
+    await upsertCallContentTx(ctx, {
+      callId: args.callId,
+      teamId: args.teamId,
+      transcriptText: text,
+    });
+
+    // Replace rather than append, so a repeated repair can't double a
+    // transcript that partially landed.
+    const existingSegments = await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+    for (const seg of existingSegments) await ctx.db.delete(seg._id);
+
+    const recorder = (args.recorderName ?? "").trim().toLowerCase();
+    for (const turn of turns.slice(0, 3000)) {
+      await ctx.db.insert("transcriptSegments", {
+        callId: args.callId,
+        teamId: args.teamId,
+        speaker:
+          recorder && turn.speaker.trim().toLowerCase() === recorder
+            ? "closer"
+            : "prospect",
+        text: turn.text,
+        timestamp: turn.timestamp,
+        createdAt: Date.now(),
+      });
+    }
+
+    // Same gate the ingest uses: worth analysing unless it's a team meeting,
+    // and only if the work is actually missing.
+    const content = await ctx.db
+      .query("callContent")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .first();
+    const worthAnalysing = call.classifiedAs !== "internal";
+
+    if (worthAnalysing && !content?.summary) {
+      await ctx.scheduler.runAfter(0, internal.ai.generateCallSummary, {
+        callId: args.callId,
+        transcript: text,
+        ...(call.prospectName ? { prospectName: call.prospectName } : {}),
+      });
+    }
+    if (worthAnalysing && !content?.callAnalysis) {
+      await ctx.scheduler.runAfter(0, internal.ai.generateCallAnalysis, {
+        callId: args.callId,
+        transcript: text,
+        ...(call.prospectName ? { prospectName: call.prospectName } : {}),
+        ...(call.duration !== undefined ? { duration: call.duration } : {}),
+      });
+    }
+
+    return { stored: true, turns: turns.length };
+  },
+});
+
+/**
  * Which of these have we already got?
  *
  * Lets the poller ask one cheap question before deciding whether to spend a
