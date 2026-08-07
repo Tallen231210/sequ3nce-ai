@@ -25,6 +25,7 @@ import {
 import { Video, ChevronDown, Filter, X } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { resolvePlayback } from "@/lib/callPlayback";
 
 // Filter types
 type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days";
@@ -197,10 +198,14 @@ function VideoRecordingCard({
     duration?: number;
     outcome?: string;
     recordingUrl?: string;
+    /** Set when someone else hosts the recording — Fathom keeps its own. */
+    externalShareUrl?: string;
+    source?: string;
   };
   onClick: () => void;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const playback = resolvePlayback(call);
 
   return (
     <Card
@@ -210,11 +215,11 @@ function VideoRecordingCard({
       <CardContent className="p-0">
         {/* Video Thumbnail / Player */}
         <div className="relative bg-zinc-900 aspect-video">
-          {isPlaying && call.recordingUrl ? (
+          {isPlaying && playback.kind === "video" ? (
             <video
               controls
               autoPlay
-              src={call.recordingUrl}
+              src={playback.url}
               className="w-full h-full object-contain"
               onClick={(e) => e.stopPropagation()}
             />
@@ -223,6 +228,12 @@ function VideoRecordingCard({
               className="w-full h-full flex items-center justify-center"
               onClick={(e) => {
                 e.stopPropagation();
+                // Nothing to play inline when the media lives on Fathom — the
+                // play button has to become a door rather than doing nothing.
+                if (playback.kind === "external") {
+                  window.open(playback.url, "_blank", "noopener,noreferrer");
+                  return;
+                }
                 setIsPlaying(true);
               }}
             >
@@ -238,6 +249,12 @@ function VideoRecordingCard({
                   }}
                 />
               </div>
+              {/* Say where it opens, so the new tab isn't a surprise. */}
+              {playback.kind === "external" && (
+                <span className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">
+                  Opens in {playback.provider}
+                </span>
+              )}
               {/* Duration overlay */}
               {call.duration && call.duration > 0 && (
                 <span className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">

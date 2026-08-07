@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { FathomClassificationBanner } from './FathomClassificationBanner';
+import { resolvePlayback } from '@/lib/callPlayback';
 import type {
   CloserInfo,
   CallHistoryItem,
@@ -38,6 +39,10 @@ export function CallDetailSheet({
   onClose,
   onCallUpdated,
 }: CallDetailSheetProps) {
+  // Shared with the manager dashboard, so a closer and their manager never see
+  // different answers about whether a call has a recording.
+  const playback = resolvePlayback(call);
+
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [ammoItems, setAmmoItems] = useState<AmmoItem[]>([]);
   const [isLoadingTranscript, setIsLoadingTranscript] = useState(true);
@@ -247,14 +252,14 @@ export function CallDetailSheet({
           {/* Fathom keeps the recording on their side and only ever gives us a
               link, so there is nothing to play here. Send them there rather
               than showing an empty player. */}
-          {call.source === 'fathom' && call.externalShareUrl && (
+          {playback.kind === 'external' && (
             <a
-              href={call.externalShareUrl}
+              href={playback.url}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 px-3 py-1.5 text-[12px] font-medium rounded-md border bg-white text-gray-600 border-gray-300 hover:bg-gray-50 transition-colors"
             >
-              Watch on Fathom
+              Watch on {playback.provider}
             </a>
           )}
 

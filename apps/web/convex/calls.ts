@@ -622,13 +622,22 @@ export const getVideoRecordings = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // A recording is either a file we host OR a link to one we don't.
+    //
+    // This asked for recordingUrl alone, which is only ever set when our own
+    // bot did the recording. On the Fathom tier that made the Recordings tab
+    // permanently empty — the calls existed, had video, and were excluded here
+    // before they ever reached the page.
     let callsQuery = ctx.db
       .query("calls")
       .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
       .filter((q) =>
         q.and(
           q.eq(q.field("recordingType"), "video"),
-          q.neq(q.field("recordingUrl"), undefined)
+          q.or(
+            q.neq(q.field("recordingUrl"), undefined),
+            q.neq(q.field("externalShareUrl"), undefined),
+          ),
         )
       );
 

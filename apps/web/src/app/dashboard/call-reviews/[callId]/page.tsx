@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { ArrowLeft, CheckCircle2, MessageCircle, Share2 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
+import { resolvePlayback } from "@/lib/callPlayback";
 
 import { VideoReviewPlayer } from "@/components/call-reviews/VideoReviewPlayer";
 import { TranscriptPanel } from "@/components/call-reviews/TranscriptPanel";
@@ -36,6 +37,10 @@ export default function CallReviewPage({
     api.callReviews.getCallForReview,
     callId ? { callId: callId as Id<"calls"> } : "skip"
   );
+  // Same resolver the Completed Calls page and the closer app use, so all
+  // three agree on whether a call has a recording and where it plays.
+  const reviewPlayback = resolvePlayback(call ?? {});
+
   const comments = useQuery(
     api.callReviews.getCommentsForCall,
     callId ? { callId: callId as Id<"calls"> } : "skip"
@@ -214,14 +219,14 @@ export default function CallReviewPage({
           {/* Fathom keeps the recording on their side, so there is no player
               on this page and nothing for the share dialog to share. Send the
               manager to the one place the video actually exists. */}
-          {call.source === 'fathom' && call.externalShareUrl && (
+          {reviewPlayback.kind === 'external' && (
             <Button size="sm" variant="outline" asChild>
               <a
-                href={call.externalShareUrl}
+                href={reviewPlayback.url}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Watch on Fathom
+                Watch on {reviewPlayback.provider}
               </a>
             </Button>
           )}

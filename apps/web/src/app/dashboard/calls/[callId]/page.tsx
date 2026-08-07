@@ -47,7 +47,9 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
+  Video,
 } from "lucide-react";
+import { resolvePlayback } from "@/lib/callPlayback";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTeam } from "@/hooks/useTeam";
@@ -92,6 +94,9 @@ interface CallDetails {
   speakerCount: number;
   recordingUrl?: string;
   recordingType?: string;
+  /** Where the recording lives when it isn't ours — Fathom hosts its own. */
+  externalShareUrl?: string;
+  source?: string;
   transcriptText?: string;
   closerTalkTime?: number;
   prospectTalkTime?: number;
@@ -1532,6 +1537,11 @@ export default function CallDetailPage() {
     callId ? { callId: callId as Id<"calls"> } : "skip"
   ) as CallDetails | null | undefined;
 
+  // Our own file, a link to whoever holds it, or genuinely nothing. Resolved
+  // in one place so this page can't disagree with Call Reviews or the closer
+  // app about whether a call has a recording.
+  const playback = useMemo(() => resolvePlayback(call ?? {}), [call]);
+
   const createHighlight = useMutation(api.highlights.createHighlight);
   const updateCallData = useMutation(api.calls.updateCallData);
 
@@ -1791,32 +1801,55 @@ export default function CallDetailPage() {
           isLoading={call.status === "completed" && !call.summary && call.transcriptText && call.endedAt && (Date.now() - call.endedAt) < 5 * 60 * 1000 ? true : false}
         />
 
-        {/* Recording Player - Video or Audio */}
-        {call.recordingUrl ? (
-          call.recordingType === "video" ? (
-            <Card className="mb-6 overflow-hidden">
-              <CardContent className="p-0">
-                <video
-                  controls
-                  src={freshRecordingUrl || call.recordingUrl}
-                  className="w-full rounded-lg"
-                  style={{ maxHeight: "480px" }}
-                />
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="sticky top-0 z-10 mb-6">
-              <AudioPlayer
-                src={call.recordingUrl}
-                onTimeUpdate={handleTimeUpdate}
-                seekTo={audioSeekTime}
-                speakerSegments={call.transcriptSegments?.map(seg => ({
-                  speaker: seg.speaker,
-                  timestamp: seg.timestamp,
-                }))}
+        {/* Recording — our own file, or a link to whoever holds it.
+            This used to check recordingUrl alone and told customers on the
+            Fathom tier "no recording available" for every call they had. */}
+        {playback.kind === "video" ? (
+          <Card className="mb-6 overflow-hidden">
+            <CardContent className="p-0">
+              <video
+                controls
+                src={freshRecordingUrl || playback.url}
+                className="w-full rounded-lg"
+                style={{ maxHeight: "480px" }}
               />
-            </div>
-          )
+            </CardContent>
+          </Card>
+        ) : playback.kind === "audio" ? (
+          <div className="sticky top-0 z-10 mb-6">
+            <AudioPlayer
+              src={playback.url}
+              onTimeUpdate={handleTimeUpdate}
+              seekTo={audioSeekTime}
+              speakerSegments={call.transcriptSegments?.map(seg => ({
+                speaker: seg.speaker,
+                timestamp: seg.timestamp,
+              }))}
+            />
+          </div>
+        ) : playback.kind === "external" ? (
+          <Card className="mb-6">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3 text-zinc-600">
+                  <Video className="h-5 w-5 shrink-0" />
+                  <span className="text-sm">
+                    {playback.provider} keeps the recording on their side, so it
+                    plays there rather than here.
+                  </span>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={playback.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Watch on {playback.provider}
+                  </a>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <Card className="mb-6">
             <CardContent className="p-6">
