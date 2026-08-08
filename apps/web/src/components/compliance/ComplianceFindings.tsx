@@ -82,8 +82,8 @@ export function ComplianceFindings({
             >
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 {f.speaker && <span>{f.speaker}</span>}
-                {typeof f.timestamp === "number" &&
-                  (onSeek ? (
+                {typeof f.timestamp === "number" ? (
+                  onSeek ? (
                     <button
                       type="button"
                       onClick={() => onSeek(f.timestamp as number)}
@@ -93,7 +93,20 @@ export function ComplianceFindings({
                     </button>
                   ) : (
                     <span className="tabular-nums">{mmss(f.timestamp)}</span>
-                  ))}
+                  )
+                ) : (
+                  /* The timestamp comes from finding these exact words in the
+                     recording. No timestamp means we couldn't — almost always
+                     because the wording was tidied up slightly. Saying so beats
+                     presenting a paraphrase in quotation marks as if it were
+                     word for word. */
+                  <span
+                    className="normal-case tracking-normal"
+                    title="We couldn't match these exact words in the recording, so the wording may be approximate."
+                  >
+                    wording approximate
+                  </span>
+                )}
               </div>
 
               <blockquote className="mt-1.5 border-l-2 border-border pl-3 text-sm italic leading-relaxed">

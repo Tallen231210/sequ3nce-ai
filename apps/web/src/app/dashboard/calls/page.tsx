@@ -294,19 +294,31 @@ function DeleteCallButton({
 /**
  * The compliance cell.
  *
- * Three states that must stay distinguishable: never reviewed (dash), reviewed
- * and clean (a quiet score), and reviewed with findings (a score plus how many).
- * Collapsing the first two would make a call nobody looked at read exactly like
- * a call that came back clean.
+ * Four states that must stay distinguishable: never reviewed (dash), reviewed
+ * and clean (a quiet score), reviewed with findings (a score plus how many),
+ * and couldn't be reviewed. Collapsing any of them into "—" would make a call
+ * nobody managed to check read exactly like one that came back clean.
  */
 function ComplianceCell({
   score,
   findingCount,
+  failed,
 }: {
   score?: number;
   findingCount?: number;
+  failed?: string;
 }) {
   if (typeof score !== "number") {
+    if (failed) {
+      return (
+        <span
+          title={failed}
+          className="text-sm font-medium text-amber-700 dark:text-amber-500"
+        >
+          Not checked
+        </span>
+      );
+    }
     return <span className="text-sm text-muted-foreground">—</span>;
   }
   const n = findingCount ?? 0;
@@ -798,6 +810,7 @@ export default function CompletedCallsPage() {
                           <ComplianceCell
                             score={call.complianceScore}
                             findingCount={call.complianceFindingCount}
+                            failed={call.complianceReviewFailed}
                           />
                         </TableCell>
                       )}

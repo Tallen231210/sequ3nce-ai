@@ -251,7 +251,17 @@ export const getCallCompliance = query({
       .first();
 
     const review = content?.complianceReview ?? null;
-    if (!review) return { review: null, rulesChanged: false };
+    const failure = call.complianceReviewFailed ?? null;
+
+    // Nothing happened here at all — no review, no failure. Most calls on a
+    // team that only just switched compliance on are in this state, and the
+    // panel shouldn't appear for them.
+    if (!review && !failure) return null;
+
+    // A failure is shown INSTEAD of nothing. The whole hazard with this feature
+    // is that an absent review reads as a clean call, so the one case that must
+    // never be silent is the one where we couldn't produce an answer.
+    if (!review) return { review: null, failure, rulesChanged: false };
 
     // The rules in force when this was scored are stored with it. If they've
     // been edited since, the score is still a true record of a past judgement —
@@ -259,6 +269,7 @@ export const getCallCompliance = query({
     // difference between an explicable number and a confusing one.
     return {
       review,
+      failure,
       rulesChanged: (review.rulesUsed ?? "") !== (team?.complianceRules ?? ""),
     };
   },

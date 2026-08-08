@@ -817,6 +817,28 @@ export default defineSchema({
      */
     complianceScore: v.optional(v.number()),
     complianceFindingCount: v.optional(v.number()),
+    /**
+     * Claimed before the review runs, so two triggers for the same call can't
+     * both do the work.
+     *
+     * They genuinely can: `generateCallAnalysis` is scheduled from the bot path
+     * AND again from speaker re-verification. Without a claim that means two AI
+     * calls, two writes, and — the visible part — two alerts in the compliance
+     * channel for one call.
+     *
+     * A timestamp rather than a flag so a run that dies mid-flight expires and
+     * can be retried, instead of blocking that call forever.
+     */
+    complianceReviewStartedAt: v.optional(v.number()),
+    /**
+     * Why the last review attempt failed, cleared when one succeeds.
+     *
+     * Exists because the alternative is silence, and silence here is dangerous:
+     * a call with no review is indistinguishable from a call that came back
+     * clean, and the calls most likely to fail are the ones with the most to
+     * say.
+     */
+    complianceReviewFailed: v.optional(v.string()),
     /** Absent means counted, so nothing about existing calls changes. */
     countsTowardStats: v.optional(v.boolean()), // Link to Google Calendar event (for prospect email)
     /**

@@ -91,6 +91,7 @@ import type * as collectionsSettings from "../collectionsSettings.js";
 import type * as collectionsSlackActions from "../collectionsSlackActions.js";
 import type * as compliance from "../compliance.js";
 import type * as complianceNotifications from "../complianceNotifications.js";
+import type * as complianceReview from "../complianceReview.js";
 import type * as complianceSettings from "../complianceSettings.js";
 import type * as crons from "../crons.js";
 import type * as dataMigrations from "../dataMigrations.js";
@@ -262,6 +263,7 @@ declare const fullApi: ApiFromModules<{
   collectionsSlackActions: typeof collectionsSlackActions;
   compliance: typeof compliance;
   complianceNotifications: typeof complianceNotifications;
+  complianceReview: typeof complianceReview;
   complianceSettings: typeof complianceSettings;
   crons: typeof crons;
   dataMigrations: typeof dataMigrations;

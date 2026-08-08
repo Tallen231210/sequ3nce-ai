@@ -39,7 +39,7 @@ export function CallCompliancePanel({
   if (!data) return null;
 
   const review = data.review as ComplianceReview | null;
-  if (!review) return null;
+  const failure = data.failure as string | null;
 
   async function runAgain() {
     setBusy(true);
@@ -84,7 +84,7 @@ export function CallCompliancePanel({
             stood. Editing the rules doesn't rewrite history — it just means
             this number answers a question you're no longer asking, and saying
             so is the difference between explicable and confusing. */}
-        {data.rulesChanged && (
+        {review && data.rulesChanged && (
           <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Your rules have changed since this call was reviewed. Review again to
             score it against the current ones.
@@ -97,14 +97,31 @@ export function CallCompliancePanel({
           </p>
         )}
 
-        <ComplianceFindings review={review} onSeek={onSeek} />
+        {/* Shown rather than hidden, and worded so it can't be mistaken for a
+            clean result. A call we failed to review is the one state where
+            saying nothing would be actively misleading. */}
+        {!review && failure && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-medium text-amber-900">
+              This call couldn&apos;t be reviewed
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-800">
+              {failure} Nothing was checked against your rules — this is not a
+              clean result. Try again, and tell us if it keeps happening.
+            </p>
+          </div>
+        )}
 
-        <p className="mt-4 border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">
-          These are things worth a look against the rules you wrote, not a
-          finding that any rule was broken. Speaker labels come from the
-          recording and are occasionally wrong — read the quote before acting on
-          it.
-        </p>
+        {review && <ComplianceFindings review={review} onSeek={onSeek} />}
+
+        {review && (
+          <p className="mt-4 border-t border-border pt-3 text-[11px] leading-relaxed text-muted-foreground">
+            These are things worth a look against the rules you wrote, not a
+            finding that any rule was broken. Speaker labels come from the
+            recording and are occasionally wrong — read the quote before acting
+            on it.
+          </p>
+        )}
       </CardContent>
     </Card>
   );
