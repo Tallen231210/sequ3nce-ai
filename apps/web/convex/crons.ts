@@ -47,12 +47,29 @@ crons.interval(
   internal.b2cCoachingCalls.transitionStaleCoachingCalls,
 );
 
-// Auto-schedule meeting bots — DISABLED: bots are now created on-demand when closer clicks "Join & Record"
-// crons.interval(
-//   "auto-schedule-meeting-bots",
-//   { minutes: 15 },
-//   api.meetingBot.autoScheduleBotsForAllClosers
-// );
+// Auto-schedule meeting bots.
+//
+// Disabled since February, a day after it was built and two weeks before
+// Google Calendar OAuth existed. Re-enabled 2026-08-08 once the four things
+// that made it unsafe were fixed: it took every team rather than Overwatch
+// only, it booked one bot per closer rather than per meeting (43 bots for 13
+// meetings on the one customer we could measure), it never told Recall WHEN to
+// join so bots would have arrived a day early to empty rooms, and bot calls
+// were never classified so internal meetings would have counted.
+//
+// Safe to run because auto-join is opt-in per closer: with nobody enabled this
+// finds nothing. Rollout is one person at a time.
+//
+// Wall-clock cron, never crons.interval — interval crons reset their next fire
+// on every deploy, which is how the setter scorecard silently stopped running
+// for weeks. Offset by 7 minutes so it doesn't land on the same tick as the
+// calendar sync it depends on.
+crons.cron(
+  "auto-schedule-meeting-bots",
+  "7,22,37,52 * * * *",
+  internal.meetingBot.autoScheduleBotsForAllClosers,
+  {},
+);
 
 // ============================================================================
 // Setter Data — GoHighLevel Marketplace App sync jobs

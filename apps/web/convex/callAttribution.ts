@@ -114,9 +114,21 @@ export function attributeFromTranscript(
  */
 export function isConfident(result: AttributionResult): boolean {
   if (!result.closerId) return false;
-  // Enough was said to be a real contribution rather than a hello.
+  if (result.chars === 0) return false;
+
+  // Exactly one colleague was on the call. There is no second candidate, so
+  // there is nothing to be uncertain BETWEEN — the volume test exists to tell
+  // two closers apart, and with one it only gets in the way.
+  //
+  // Found on the first live call: a prospect no-showed, Nick said 67
+  // characters to a voicemail greeting, and the call stayed on the wrong
+  // closer because 67 is under the threshold. Nobody else was there. The
+  // answer was never in doubt.
+  if (result.spoke.length === 1) return true;
+
+  // More than one, so volume decides. Enough said to be a real contribution
+  // rather than a hello, and clearly more than anyone else.
   if (result.chars < 400) return false;
-  // And clearly more than anyone else on the team.
   return result.chars >= result.runnerUpChars * 2;
 }
 
@@ -171,6 +183,21 @@ export const applyAttribution = internalMutation({
       .first();
     if (stat) await ctx.db.patch(stat._id, { closerId: String(args.closerId) });
 
+    // And the bot — because the post-call form is queued off meetingBots
+    // .closerId, not the call's. Moving the call without the bot puts the
+    // question "how did this go?" in front of someone who wasn't on it, while
+    // the person who was never sees it. Every place that names an owner has to
+    // move together or they disagree.
+    if (call.meetingBotId) {
+      await ctx.db.patch(call.meetingBotId, {
+        closerId: args.closerId,
+        // Speaker identification reads this to find the closer in the
+        // transcript; leaving the old name behind would re-break the labels
+        // this very job just got right.
+        ...(target.name ? { closerName: target.name } : {}),
+      });
+    }
+
     return { moved: true };
   },
 });
@@ -178,9 +205,10 @@ export const applyAttribution = internalMutation({
 /**
  * Put the call on the right closer, after the fact.
  *
- * Refuses when a human has already engaged with the call — an outcome logged,
- * or a classification they set. At that point they have told us it's theirs,
- * and a background job must not disagree with a person.
+ * Moves the call, the stats sidecar and the bot together, because the
+ * post-call form is queued off the bot rather than the call — move one without
+ * the other and the wrong person is asked how it went while the right person
+ * never sees it.
  */
 export const reattributeCall = internalAction({
   args: { callId: v.id("calls"), dryRun: v.optional(v.boolean()) },
@@ -194,9 +222,17 @@ export const reattributeCall = internalAction({
     if (ctxData.roster.length < 2) {
       return { ok: false, reason: "single-closer team, nothing to decide" };
     }
-    if (ctxData.outcome || ctxData.classifiedBy === "closer") {
-      return { ok: false, reason: "a human has already answered for this call" };
-    }
+    // Deliberately NOT blocked by an outcome already being logged.
+    //
+    // That guard was wrong, and it mattered: the form is offered to whoever
+    // holds the call when it ends, so on a shared calendar the wrong closer is
+    // asked how it went. If they answer before the transcript lands, blocking
+    // here would lock the call to them for good.
+    //
+    // The two questions are different. An outcome describes the CALL — closed,
+    // how much, what objection — and stays true whoever ran it. Attribution is
+    // about WHO. Answering the first says nothing about the second, so the
+    // answer travels with the call to its real owner.
 
     const transcript = await fetchRecallTranscript(ctxData.recallBotId);
     if (!transcript.ok) {

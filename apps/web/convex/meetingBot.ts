@@ -572,13 +572,23 @@ export const createBot = action({
       // no-one-joined timeout, leave, and be long gone by the time the meeting
       // actually started. Billed, and worse than useless.
       //
-      // Recall wants at least ten minutes' notice to guarantee a scheduled bot
-      // arrives on time. Anything sooner is an ad-hoc join, so we omit join_at
-      // and let it dispatch now — preserving click-to-record exactly as it is.
-      const JOIN_AT_MIN_LEAD_MS = 10 * 60 * 1000;
+      // Recall asks for ten minutes' notice to GUARANTEE punctuality, but a
+      // shorter lead still schedules — it just isn't promised to the second.
+      // So the threshold is "is this meeting still in the future", not "is it
+      // ten minutes away".
+      //
+      // Using ten minutes as the cutoff was actively harmful: a sweep running
+      // eight minutes before a meeting would fall through to an immediate
+      // join, and the bot would sit in the empty room, time out, and leave
+      // BEFORE the meeting started. Missing the call it was booked for, and
+      // leaving a "nobody joined" record behind.
+      //
+      // Only a meeting that has already started, or starts within a minute,
+      // dispatches now — which is click-to-record, unchanged.
+      const JOIN_NOW_WINDOW_MS = 60 * 1000;
       const joinAt =
         typeof args.scheduledAt === "number" &&
-        args.scheduledAt - Date.now() >= JOIN_AT_MIN_LEAD_MS
+        args.scheduledAt - Date.now() > JOIN_NOW_WINDOW_MS
           ? new Date(args.scheduledAt).toISOString()
           : undefined;
 
