@@ -5370,7 +5370,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId: claimedCloserId, teamId, meetingUrl, meetingTitle, prospectName } = body;
+      const { closerId: claimedCloserId, teamId, meetingUrl, meetingTitle, prospectName, calendarEventId } = body;
       // Identity comes from the session; the body is only a fallback for
       // installed desktop clients. See convex/closerSession.ts.
       const closerId = await closerFromBody(ctx, { ...body, closerId: claimedCloserId });
@@ -5394,6 +5394,9 @@ http.route({
         teamId: teamId as Id<"teams">,
         meetingTitle: meetingTitle || undefined,
         prospectName: prospectName || undefined,
+        // Lets the server recognise a meeting auto-join has already booked, so
+        // the click reuses that bot rather than sending a second one.
+        calendarEventId: calendarEventId || undefined,
       });
 
       return new Response(JSON.stringify({ success: true, botId: result.botId, recallBotId: result.recallBotId }), {

@@ -73,7 +73,16 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
   async function handleJoinConfirm(event: CalendarEvent) {
     if (!event.meetingUrl) return;
     const prospectName = extractProspectName(event, closerInfo.email);
-    await createBotForMeeting(closerInfo.closerId, closerInfo.teamId, event.meetingUrl, event.title, prospectName);
+    // Pass the calendar event so this can't double up with a bot auto-join
+    // already booked for the same meeting.
+    await createBotForMeeting(
+      closerInfo.closerId,
+      closerInfo.teamId,
+      event.meetingUrl,
+      event.title,
+      prospectName,
+      event.uid,
+    );
     window.open(event.meetingUrl, '_blank');
     setSelectedEvent(null);
   }

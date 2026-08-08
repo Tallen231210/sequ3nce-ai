@@ -759,13 +759,30 @@ export async function createBotForMeeting(
   teamId: string,
   meetingUrl: string,
   meetingTitle?: string,
-  prospectName?: string
+  prospectName?: string,
+  /**
+   * Which calendar meeting this is.
+   *
+   * Sent so a closer clicking "Join & Record" on a meeting auto-join has
+   * already booked reuses that bot instead of sending a second one into the
+   * same call. Without it the server can only match on the meeting link, and
+   * links get reused — one team runs fourteen meetings through a single
+   * personal Zoom room.
+   */
+  calendarEventId?: string
 ): Promise<boolean> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/createBotForMeeting`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ closerId, teamId, meetingUrl, meetingTitle, prospectName }),
+      body: JSON.stringify({
+        closerId,
+        teamId,
+        meetingUrl,
+        meetingTitle,
+        prospectName,
+        calendarEventId,
+      }),
     });
     if (!response.ok) return false;
     const result = await response.json();

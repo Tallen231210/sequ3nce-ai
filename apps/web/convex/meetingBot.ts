@@ -239,36 +239,88 @@ export const getTeamById = internalQuery({
 // Insert a new meeting bot record (internal, called from createBot action)
 // Check if an active bot already exists for a given meeting URL + closer
 // Used by createBot to prevent duplicate bots when user clicks "Join" multiple times
+/**
+ * Is a bot already covering this meeting?
+ *
+ * The unit is the MEETING, not the link and not the closer. Getting that wrong
+ * broke this in both directions at once:
+ *
+ * TOO LOOSE — it matched on closerId, so a bot booked under one closer was
+ * invisible to another. Since auto-join's attribution is provisional, the
+ * closer who books it often isn't the closer who clicks "Join & Record", and
+ * two bots walked into the same call.
+ *
+ * TOO TIGHT — it matched on meetingUrl, and people reuse links. One team has
+ * FOURTEEN meetings sharing a single personal Zoom room and three more sharing
+ * a recurring Meet link. Keyed on the URL, the first meeting of the day books a
+ * bot and the other thirteen look like duplicates of it. Not "two bots in a
+ * call" but "no bot at all", which is worse for being invisible.
+ *
+ * So: when we know which calendar event this is, that IS the identity. Fall
+ * back to the link only when there is no event — QuickBot, someone pasting a
+ * URL — and then only against bots happening around now, because the same
+ * personal room hosts a different meeting every hour.
+ */
 export const findActiveBotForMeeting = internalQuery({
   args: {
     closerId: v.id("closers"),
     meetingUrl: v.string(),
+    teamId: v.optional(v.id("teams")),
+    calendarEventId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Check "scheduled" bots
-    const scheduledBots = await ctx.db
-      .query("meetingBots")
-      .withIndex("by_closer_and_status", (q) =>
-        q.eq("closerId", args.closerId).eq("status", "scheduled")
-      )
-      .collect();
+    // "scheduled" is booked but waiting; "joining" and "active" are on their
+    // way in or already there. Note "active" — the previous code looked for
+    // "in_call", which nothing has ever set, so a bot sitting in a live call
+    // was invisible to this check and clicking the button twice sent a second.
+    const LIVE = ["scheduled", "joining", "active"];
 
-    const match = scheduledBots.find((b) => b.meetingUrl === args.meetingUrl);
-    if (match) return match;
-
-    // Also check "joining" and "in_call" bots
-    for (const status of ["joining", "in_call"] as const) {
-      const bots = await ctx.db
+    // A calendar event names one meeting, unambiguously. Team-wide, because
+    // whose bot it is doesn't change whether the meeting is covered.
+    if (args.calendarEventId) {
+      const forEvent = await ctx.db
         .query("meetingBots")
-        .withIndex("by_closer_and_status", (q) =>
-          q.eq("closerId", args.closerId).eq("status", status)
+        .withIndex("by_calendar_event", (q) =>
+          q.eq("calendarEventId", args.calendarEventId),
         )
         .collect();
-      const active = bots.find((b) => b.meetingUrl === args.meetingUrl);
-      if (active) return active;
+      const live = forEvent.find(
+        (b) =>
+          LIVE.includes(b.status) &&
+          (!args.teamId || String(b.teamId) === String(args.teamId)),
+      );
+      return live ?? null;
     }
 
-    return null;
+    // No event to key on. Match the link, but only against meetings happening
+    // near this one — otherwise a personal room's 9am booking suppresses its
+    // 10am one.
+    const NEARBY_MS = 2 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    const candidates = args.teamId
+      ? await ctx.db
+          .query("meetingBots")
+          .withIndex("by_team", (q) => q.eq("teamId", args.teamId!))
+          .order("desc")
+          .take(200)
+      : await ctx.db
+          .query("meetingBots")
+          .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+          .order("desc")
+          .take(200);
+
+    const match = candidates.find((b) => {
+      if (b.meetingUrl !== args.meetingUrl) return false;
+      if (!LIVE.includes(b.status)) return false;
+      // Already in the room — definitely the same meeting.
+      if (b.status === "joining" || b.status === "active") return true;
+      // Scheduled: only if it's for roughly now.
+      if (typeof b.scheduledAt !== "number") return true;
+      return Math.abs(b.scheduledAt - now) <= NEARBY_MS;
+    });
+
+    return match ?? null;
   },
 });
 
@@ -443,10 +495,17 @@ export const createBot = action({
     scheduledAt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
-    // 0. Dedup — if an active bot already exists for this meeting URL + closer, return it
+    // 0. Dedup — is this meeting already covered?
+    //
+    // Keyed on the calendar event when we have one, so a closer clicking
+    // "Join & Record" on a meeting auto-join already booked reuses that bot
+    // instead of sending a second — even though the two were attributed to
+    // different closers.
     const existingBot = await ctx.runQuery(internal.meetingBot.findActiveBotForMeeting, {
       closerId: args.closerId,
       meetingUrl: args.meetingUrl,
+      teamId: args.teamId,
+      ...(args.calendarEventId ? { calendarEventId: args.calendarEventId } : {}),
     });
     if (existingBot) {
       console.log(`[createBot] Reusing existing bot ${existingBot._id} (recallBotId: ${existingBot.recallBotId}) for ${args.meetingUrl}`);
@@ -2088,9 +2147,34 @@ export const findOrphanedScheduledBots = internalQuery({
       .filter((q) => q.eq(q.field("status"), "scheduled"))
       .take(1000);
 
+    // A team's tier can change between a bot being booked and the meeting
+    // happening. Bots booked yesterday must not turn up for a team that is no
+    // longer paying for them — and would be recording alongside Fathom if they
+    // moved to Oversight.
+    const tierCache = new Map<string, boolean>();
+    const stillEntitled = async (teamId: Id<"teams">): Promise<boolean> => {
+      const key = String(teamId);
+      const cached = tierCache.get(key);
+      if (cached !== undefined) return cached;
+      const team = await ctx.db.get(teamId);
+      const ok =
+        (team?.productTierOverride ?? team?.productTier) === "overwatch";
+      tierCache.set(key, ok);
+      return ok;
+    };
+
     for (const bot of scheduled) {
       if (bot.source !== "calendar") continue;
       if (!bot.calendarEventId) continue;
+
+      if (!(await stillEntitled(bot.teamId))) {
+        orphans.push({
+          botId: bot._id,
+          reason: "team no longer on a plan that includes the bot",
+          ...(bot.meetingTitle ? { title: bot.meetingTitle } : {}),
+        });
+        continue;
+      }
 
       const event = await ctx.db
         .query("calendarEvents")
@@ -2265,7 +2349,22 @@ export const autoScheduleBotsForAllClosers = internalAction({
         });
 
         const eligibleEvents = events.filter(
-          (event: { uid: string }) => !excludedEventIds.includes(event.uid),
+          (event: { uid: string; title?: string; isAllDay?: boolean }) => {
+            if (excludedEventIds.includes(event.uid)) return false;
+
+            // Google leaves cancelled meetings on the calendar with a
+            // "Canceled:" prefix rather than removing them. Seen in the dry
+            // run: a bot would have been sent to "Canceled: Mario Aguirre and
+            // Nick Rowe". The orphan sweep catches these afterwards, which is
+            // no use — by then we've already booked it.
+            if (/^cancell?ed:/i.test(event.title ?? "")) return false;
+
+            // An all-day entry with a link is a placeholder, not a meeting at
+            // a time. Sending a bot to one means a bot at midnight.
+            if (event.isAllDay === true) return false;
+
+            return true;
+          },
         );
         if (eligibleEvents.length === 0) continue;
 
