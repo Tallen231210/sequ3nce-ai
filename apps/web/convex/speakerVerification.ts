@@ -117,6 +117,116 @@ export const setCloserParticipantId = internalMutation({
 // one mutation so the UI never sees a partial state. Recall transcripts
 // for a 40-min call run ~300-700 segments, well under Convex's per-mutation
 // document write budget.
+/**
+ * Rebuild `transcriptText` from the segments, which are the source of truth.
+ *
+ * Three different formats of this field exist in production for the same team —
+ * `[Closer]: text` from the audio processor, `Closer: text` from our own
+ * rebuilds, and at least one call whose labels simply disagree with its
+ * segments. That is what happens when two copies of one thing are written by
+ * different code paths and only one of them is ever checked.
+ *
+ * Rebuilding is safe: measured across 13 real calls, the segments hold between
+ * 100.0% and 100.9% of the spoken characters in the flat copy, so nothing is
+ * lost. `Closer:` rather than `[Closer]:` because that is the form the
+ * dashboard's own transcript parser accepts — the bracketed one fails its
+ * regex and silently falls through.
+ */
+export const resyncTranscriptText = internalMutation({
+  args: { callId: v.id("calls") },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    changed: boolean;
+    labelsChanged: boolean;
+    transcript: string;
+  }> => {
+    const segments = await ctx.db
+      .query("transcriptSegments")
+      .withIndex("by_call_and_time", (q) => q.eq("callId", args.callId))
+      .collect();
+    const nothing = { changed: false, labelsChanged: false, transcript: "" };
+    if (segments.length === 0) return nothing;
+
+    const canonical = segments
+      .map((s) => `${s.speaker === "closer" ? "Closer" : "Prospect"}: ${s.text}`)
+      .join("\n");
+
+    const content = await ctx.db
+      .query("callContent")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .first();
+    const current = content?.transcriptText ?? "";
+    if (current === canonical) return nothing;
+
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const previousLabels = new Map<string, string>();
+    const distinctLabels = new Set<string>();
+    for (const line of current.split("\n")) {
+      // Accepts both stored shapes: "[Closer]: ..." and "Closer: ...".
+      const m = line.match(/^\s*\[?([A-Za-z0-9 _-]{1,20}?)\]?\s*:\s*(.+)$/);
+      if (!m) continue;
+      const label = m[1].trim().toLowerCase();
+      distinctLabels.add(label);
+      const key = norm(m[2]).slice(0, 60);
+      if (key.length >= 12 && !previousLabels.has(key)) {
+        previousLabels.set(key, label);
+      }
+    }
+
+    // Leave transcripts that name real people alone.
+    //
+    // Found by running this on a call labelled "Corbin Sylk:" — it happily
+    // replaced a person's name with "Prospect", which is a downgrade, and then
+    // reported the labels as changed because a name doesn't equal a role,
+    // which would have triggered a pointless AI regeneration.
+    //
+    // Only Recall bot calls reach this function today, and those are always
+    // role-labelled, so this is a guard rather than a live fix — but the cost
+    // of being wrong here is overwriting good data, so it checks.
+    const ROLE_LABELS = new Set(["closer", "prospect", "unknown", "speaker"]);
+    const named = [...distinctLabels].filter(
+      (l) => !ROLE_LABELS.has(l) && !/^speaker\s*\d*$/.test(l),
+    );
+    if (named.length > 0) {
+      return nothing;
+    }
+
+    // Did the SPEAKERS change, or only the formatting? Only the former means
+    // anything generated from the old text was attributed to the wrong person.
+    let compared = 0;
+    let disagreed = 0;
+    for (const s of segments) {
+      const key = norm(s.text).slice(0, 60);
+      if (key.length < 12) continue;
+      const before = previousLabels.get(key);
+      if (!before) continue;
+      compared++;
+      if (!before.startsWith(s.speaker)) disagreed++;
+    }
+
+    // Nothing comparable means the old copy carried no usable labels at all, so
+    // whatever read it was working without them. Treat that as changed rather
+    // than assume it was fine.
+    const labelsChanged = compared === 0 ? true : disagreed > 0;
+
+    if (content) {
+      await ctx.db.patch(content._id, { transcriptText: canonical });
+    } else {
+      const call = await ctx.db.get(args.callId);
+      if (!call) return nothing;
+      await ctx.db.insert("callContent", {
+        callId: args.callId,
+        teamId: call.teamId,
+        transcriptText: canonical,
+      });
+    }
+
+    return { changed: true, labelsChanged, transcript: canonical };
+  },
+});
+
 export const rewriteCallSegments = internalMutation({
   args: {
     callId: v.id("calls"),
@@ -337,6 +447,77 @@ export const verifyClosersByRecallApi = internalAction({
     const sharesClose = Math.abs(newCloserShare - liveCloserShare) < 0.03;
 
     if (pinMatches && sharesClose && closerIds.size === 1) {
+      // The SEGMENTS are correct — which is all this function used to check.
+      //
+      // `transcriptText` is a second, independent copy of the same transcript,
+      // written by the audio processor with its own labelling. Nothing above
+      // looks at it, and this branch used to return here, so a call whose
+      // segments were right and whose flat copy was wrong passed verification
+      // untouched and stayed wrong forever. Measured on real data: 2 of 13
+      // RemoteStack calls, both stamped as verified.
+      //
+      // That is why fixing the labelling logic never fixed the symptom. The
+      // labelling was fine; the copy was stale.
+      const linked = await ctx.runQuery(
+        internal.speakerVerification.getAllCallsLinkedToBot,
+        { botId: args.botId },
+      );
+      const targets =
+        linked.length > 0 ? linked : [{ _id: bot.callId, teamId: bot.teamId }];
+
+      for (const target of targets) {
+        const resync = await ctx.runMutation(
+          internal.speakerVerification.resyncTranscriptText,
+          { callId: target._id },
+        );
+        if (!resync.changed) continue;
+
+        console.log(
+          `[verifyClosersByRecallApi] Resynced transcriptText for call ${target._id}` +
+            (resync.labelsChanged ? " — labels differed" : " — formatting only"),
+        );
+
+        // Only when the SPEAKERS were wrong. The summary and analysis were
+        // generated from that text and would have attributed the prospect's
+        // words to the closer. A formatting-only difference changes nothing
+        // they concluded, and regenerating on every call would double our AI
+        // spend to fix nothing.
+        if (resync.labelsChanged && args.regenerateAi !== false) {
+          const call = await ctx.runQuery(
+            internal.meetingBot.getCallByIdInternal,
+            { callId: target._id },
+          );
+          if (!call) continue;
+          try {
+            await ctx.runAction(internal.ai.generateCallSummary, {
+              callId: target._id,
+              transcript: resync.transcript,
+              outcome: (call as any).outcome || "unknown",
+              prospectName: (call as any).prospectName || "Prospect",
+            });
+          } catch (err) {
+            console.error(
+              `[verifyClosersByRecallApi] Summary regen failed for call ${target._id}:`,
+              err,
+            );
+          }
+          try {
+            await ctx.runAction(internal.ai.generateCallAnalysis, {
+              callId: target._id,
+              transcript: resync.transcript,
+              outcome: (call as any).outcome || "unknown",
+              prospectName: (call as any).prospectName || "Prospect",
+              duration: (call as any).duration,
+            });
+          } catch (err) {
+            console.error(
+              `[verifyClosersByRecallApi] Analysis regen failed for call ${target._id}:`,
+              err,
+            );
+          }
+        }
+      }
+
       await ctx.runMutation(internal.speakerVerification.stampSpeakerVerified, {
         botId: args.botId,
         when: Date.now(),
