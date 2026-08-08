@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
 import { getContentForCallTx } from "./callContent";
+import { classifyMeeting } from "./fathomClassify";
 import { extractProspectFromTitle } from "./lib/extractProspectFromTitle";
 
 // Schedule a delayed fetch of the recording URL from Recall.ai API
@@ -948,6 +949,118 @@ export const updateBotStatus = mutation({
 });
 
 // Create a call record when meeting bot joins a call
+/**
+ * Sales call, or a meeting the bot walked into?
+ *
+ * Answered from the calendar event the bot was scheduled against: if anyone on
+ * it works outside this company, it's a sales call.
+ *
+ * Returns null when we genuinely can't tell — no linked event, or an event with
+ * no attendees, which is common on Calendly-style booking calendars. Null means
+ * "leave it alone", i.e. behave exactly as before this existed. Guessing
+ * "internal" on thin evidence would silently delete real calls from a
+ * customer's numbers, which is far worse than counting one standup.
+ */
+async function classifyBotCall(
+  ctx: { db: any },
+  args: {
+    teamId: Id<"teams">;
+    closerId: Id<"closers">;
+    meetingBotId: Id<"meetingBots">;
+  },
+): Promise<{ classification: string; countsTowardStats: boolean } | null> {
+  const bot = await ctx.db.get(args.meetingBotId);
+  if (!bot?.calendarEventId) return null;
+
+  const event = await ctx.db
+    .query("calendarEvents")
+    .withIndex("by_closer_and_uid", (q: any) =>
+      q.eq("closerId", args.closerId).eq("uid", bot.calendarEventId),
+    )
+    .first();
+
+  const attendees: Array<{ email?: string }> = event?.attendees ?? [];
+  const inviteeEmails = attendees
+    .map((a) => (a.email ?? "").trim())
+    .filter(Boolean);
+
+  // No attendees on the event tells us nothing either way — their booking
+  // calendars routinely carry none.
+  if (inviteeEmails.length === 0) return null;
+
+  const closer = await ctx.db.get(args.closerId);
+
+  // Everyone we know works here. Closers and managers both: a call between a
+  // closer and their own manager is not a sale.
+  const teamEmails = new Set<string>();
+  const closers = await ctx.db
+    .query("closers")
+    .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+    .collect();
+  for (const c of closers) {
+    if (c.email) teamEmails.add(c.email.trim().toLowerCase());
+    if (c.fathomEmail) teamEmails.add(c.fathomEmail.trim().toLowerCase());
+  }
+  const users = await ctx.db
+    .query("users")
+    .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+    .collect();
+  for (const u of users) {
+    if (u.email) teamEmails.add(u.email.trim().toLowerCase());
+  }
+
+  const verdict = classifyMeeting({
+    inviteeEmails,
+    ...(closer?.email ? { recorderEmail: closer.email } : {}),
+    ...(closer?.name ? { recorderName: closer.name } : {}),
+    teamEmails,
+  });
+
+  // "unsure" carries countsTowardStats: false, which is right — we surface it
+  // for a human rather than quietly counting or quietly hiding it.
+  return {
+    classification: verdict.classification,
+    countsTowardStats: verdict.countsTowardStats,
+  };
+}
+
+/**
+ * This one didn't turn out to be a call.
+ *
+ * The bot was removed from the room, or nobody ever arrived. Under auto-join
+ * both are ordinary: removing the bot IS how a closer declines a meeting, so
+ * this fires whenever someone doesn't want a standup recorded.
+ *
+ * Never deletes. The recording is evidence the meeting happened and wasn't for
+ * us — a manager wondering why a call vanished is a worse problem than a row
+ * they can see and ignore. It simply stops counting: `countsTowardStats: false`
+ * plus `unclassified`, the same resting state a Fathom call gets when we can't
+ * stand behind it. A human can put it back from the call itself.
+ */
+export const markCallNotCounted = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    reason: v.union(v.literal("bot_removed"), v.literal("nobody_joined")),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return { updated: false };
+
+    // A closer who has already told us what this call was outranks us. If they
+    // filled in an outcome, they meant it, and a late webhook must not undo it.
+    if (call.outcome) return { updated: false };
+    if (call.classifiedBy === "closer") return { updated: false };
+
+    await ctx.db.patch(args.callId, {
+      status: "unclassified",
+      countsTowardStats: false,
+      classifiedAs: args.reason === "bot_removed" ? "internal" : "unsure",
+      classifiedBy: "auto",
+    });
+    return { updated: true };
+  },
+});
+
 export const createCallFromBot = mutation({
   args: {
     closerId: v.id("closers"),
@@ -995,6 +1108,23 @@ export const createCallFromBot = mutation({
       }
     }
 
+    // Is this a sales call, or a team meeting the bot walked into?
+    //
+    // Nothing asked this before, because a bot only ever joined a call someone
+    // deliberately pointed it at. Auto-join changes that: it sends a bot to
+    // everything on the calendar, so standups and one-to-ones now arrive here
+    // too. Left unclassified they count, and a daily standup lands in the
+    // close-rate denominator for ever.
+    //
+    // Same rule and same code as Fathom uses — outsiders on the call mean
+    // sales, nobody outside means internal. `fathomClassify` is named for
+    // where it was first needed, not for what it knows.
+    const verdict = await classifyBotCall(ctx, {
+      teamId: args.teamId,
+      closerId: args.closerId,
+      meetingBotId: args.meetingBotId,
+    });
+
     const callId = await ctx.db.insert("calls", {
       closerId: args.closerId,
       teamId: args.teamId,
@@ -1005,6 +1135,13 @@ export const createCallFromBot = mutation({
       startedAt: Date.now(),
       speakerCount: 2,
       createdAt: Date.now(),
+      ...(verdict
+        ? {
+            classifiedAs: verdict.classification,
+            classifiedBy: "auto",
+            countsTowardStats: verdict.countsTowardStats,
+          }
+        : {}),
     });
 
     console.log(`[createCallFromBot] Call created: ${callId} for bot: ${args.meetingBotId}`);
@@ -1753,44 +1890,77 @@ export const isMeetingBotEnabled = query({
 // AUTO-SCHEDULE BOTS (Cron Job Support)
 // ============================================
 
-// Internal query: Get all closers with connected calendars on bot-enabled teams
-// Uses the existing ICS feed-based calendar system (no OAuth required)
+/**
+ * Closers whose calendars we may send a bot to.
+ *
+ * Two things were wrong here, and together they are why auto-join has done
+ * nothing since February.
+ *
+ * TIER: this took EVERY team, under a comment saying "meeting bot is enabled
+ * for everyone". That was true before the three tiers existed and has been
+ * false since July — the bot is Overwatch only. Left alone, switching the cron
+ * back on would put our bot into Fathom customers' calls, recording alongside
+ * a recorder they already pay for.
+ *
+ * CALENDAR: it required `icsUrl`, the legacy feed field. Google Calendar OAuth
+ * landed two weeks after this was disabled and is now how closers connect —
+ * 17 of them, none of whom this could see. Any connected calendar counts.
+ */
 export const getClosersWithCalendars = internalQuery({
   args: {},
   handler: async (ctx) => {
-    // Get all teams (meeting bot is enabled for everyone)
-    const allTeams = await ctx.db.query("teams").collect();
-    const botEnabledTeams = allTeams;
+    // Loudly, if we ever outgrow this — the same cap and the same reasoning as
+    // listOverviewTeams. A silent truncation means a customer's calls quietly
+    // stop being recorded with nothing to notice.
+    const CAP = 500;
+    const allTeams = await ctx.db.query("teams").take(CAP);
+    if (allTeams.length === CAP) {
+      console.error(
+        `[autoSchedule] hit the ${CAP}-team cap — some teams are being ` +
+          `skipped. This needs an index on productTier.`,
+      );
+    }
 
-    if (botEnabledTeams.length === 0) return [];
+    // A pinned tier wins over the billed one, exactly as it does everywhere
+    // else: comped and internal accounts rely on the override.
+    const botTeams = allTeams.filter(
+      (t) => (t.productTierOverride ?? t.productTier) === "overwatch",
+    );
+
+    if (botTeams.length === 0) return [];
 
     const results: Array<{
       closerId: Id<"closers">;
       teamId: Id<"teams">;
       meetingPlatform?: string;
+      email: string;
     }> = [];
 
-    for (const team of botEnabledTeams) {
-      // Find active closers who have an ICS feed URL connected
+    for (const team of botTeams) {
       const closers = await ctx.db
         .query("closers")
         .withIndex("by_team", (q) => q.eq("teamId", team._id))
-        .filter((q) =>
-          q.and(
-            q.eq(q.field("status"), "active"),
-            q.neq(q.field("icsUrl"), undefined)
-          )
-        )
+        .filter((q) => q.eq(q.field("status"), "active"))
         .collect();
 
       for (const closer of closers) {
-        if (closer.icsUrl) {
-          results.push({
-            closerId: closer._id,
-            teamId: team._id,
-            meetingPlatform: closer.meetingPlatform,
-          });
-        }
+        // Any calendar, however it was connected. Checking one mechanism is
+        // what broke this.
+        const hasCalendar =
+          !!closer.icsUrl ||
+          !!closer.googleCalendarRefreshToken ||
+          !!closer.microsoftCalendarRefreshToken;
+
+        if (!hasCalendar) continue;
+
+        results.push({
+          closerId: closer._id,
+          teamId: team._id,
+          meetingPlatform: closer.meetingPlatform,
+          // Needed to work out who owns a meeting that several closers can
+          // see. Their calendars are labelled by address.
+          email: closer.email,
+        });
       }
     }
 
@@ -1865,77 +2035,319 @@ export const getExcludedEventIds = internalQuery({
  * It checks calendar events in the next 24 hours and creates bots
  * for meetings that have video conference URLs.
  */
-export const autoScheduleBotsForAllClosers = action({
+/**
+ * Bots booked for meetings that no longer exist, or have moved.
+ *
+ * Only a problem once bots are scheduled automatically. Someone clicking
+ * "Join & Record" is present at the meeting by definition; a bot booked from a
+ * calendar a day ahead can outlive the meeting that justified it — and then it
+ * turns up in an empty room, records nothing, and bills for the privilege.
+ *
+ * Deliberately narrow: only bots this sweep created (`source: "calendar"`) and
+ * only ones still waiting to join. A bot already in a call is somebody's live
+ * meeting and none of our business.
+ */
+export const findOrphanedScheduledBots = internalQuery({
   args: {},
-  handler: async (ctx) => {
+  handler: async (
+    ctx,
+  ): Promise<Array<{ botId: Id<"meetingBots">; reason: string; title?: string }>> => {
+    const now = Date.now();
+    const orphans: Array<{ botId: Id<"meetingBots">; reason: string; title?: string }> = [];
+
+    const scheduled = await ctx.db
+      .query("meetingBots")
+      .filter((q) => q.eq(q.field("status"), "scheduled"))
+      .take(1000);
+
+    for (const bot of scheduled) {
+      if (bot.source !== "calendar") continue;
+      if (!bot.calendarEventId) continue;
+
+      const event = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_closer_and_uid", (q) =>
+          q.eq("closerId", bot.closerId).eq("uid", bot.calendarEventId!),
+        )
+        .first();
+
+      if (!event) {
+        orphans.push({
+          botId: bot._id,
+          reason: "meeting no longer on the calendar",
+          ...(bot.meetingTitle ? { title: bot.meetingTitle } : {}),
+        });
+        continue;
+      }
+
+      // Google keeps cancelled events visible with a "Canceled:" prefix rather
+      // than removing them, so the row still being there proves nothing.
+      if (/^cancell?ed:/i.test(event.title ?? "")) {
+        orphans.push({
+          botId: bot._id,
+          reason: "meeting cancelled",
+          ...(bot.meetingTitle ? { title: bot.meetingTitle } : {}),
+        });
+        continue;
+      }
+
+      // Moved. The bot is booked against a time that is no longer the meeting;
+      // cancelling frees the sweep to schedule a fresh one for the new slot.
+      if (
+        typeof bot.scheduledAt === "number" &&
+        Math.abs(event.startTime - bot.scheduledAt) > 5 * 60 * 1000
+      ) {
+        orphans.push({
+          botId: bot._id,
+          reason: "meeting moved",
+          ...(bot.meetingTitle ? { title: bot.meetingTitle } : {}),
+        });
+        continue;
+      }
+
+      // Long past its start and still never joined — Recall isn't coming.
+      if (typeof bot.scheduledAt === "number" && now - bot.scheduledAt > 6 * 60 * 60 * 1000) {
+        orphans.push({
+          botId: bot._id,
+          reason: "never joined, well past start",
+          ...(bot.meetingTitle ? { title: bot.meetingTitle } : {}),
+        });
+      }
+    }
+
+    return orphans;
+  },
+});
+
+/**
+ * Whose meeting is this, when several closers can see it?
+ *
+ * Only matters for attribution — exactly one bot goes either way, and that is
+ * the part that had to be fixed.
+ *
+ * ATTRIBUTION HERE IS PROVISIONAL, ON PURPOSE. I tried to derive the owner
+ * from the calendar and the calendar cannot answer it. Two rules were tested
+ * against real data and both were wrong more often than right:
+ *
+ *  - "whoever has it on their own Primary calendar" — being INVITED to a
+ *    meeting also puts it in your diary, so Primary means "this is in my
+ *    diary", never "this is mine".
+ *  - "the subscription label names the owner" — it names a CALENDAR. That team
+ *    books every closer's calls onto shared calendars named after one person
+ *    (`nick@`, `nick2@`), so the label says Nick for calls that are Gianni's.
+ *    One meeting titled for Gianni sat on Nick's Primary and carried Nick's
+ *    label. Both signals point at the wrong human.
+ *
+ * Matching the closer's name in the meeting title WOULD work for that
+ * customer — their titles are "Prospect and Closer" — and would silently stop
+ * working for anyone whose booking tool words things differently. Not worth
+ * building on.
+ *
+ * So: pick deterministically, and let the truth arrive later. Who actually
+ * took the call is knowable after it happens, from Recall's participant list —
+ * the same source `speakerVerification` already uses to pin the closer. Until
+ * that runs, a human can correct it on the call itself.
+ *
+ * Preferring someone who holds the meeting in their own diary is a weak signal
+ * but not a harmful one: they were at least invited.
+ */
+function pickMeetingOwner<
+  T extends { closerEmail: string; calendarLabel?: string },
+>(candidates: T[]): T {
+  const primary = candidates.find(
+    (c) => (c.calendarLabel ?? "").trim().toLowerCase() === "primary",
+  );
+  return primary ?? candidates[0];
+}
+
+/**
+ * Send a bot to every upcoming meeting on an Overwatch closer's calendar.
+ *
+ * internalAction, not action. This spends money — every bot it schedules is
+ * billed — and it was previously callable by anyone holding the deployment URL.
+ *
+ * `dryRun` reports what it WOULD schedule without scheduling anything. The
+ * failure mode of this job is a bot appearing uninvited in a paying customer's
+ * sales call, so the scoping gets proven against real data before the cron is
+ * ever switched on.
+ */
+export const autoScheduleBotsForAllClosers = internalAction({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    scheduled: number;
+    cancelled: number;
+    dryRun: boolean;
+    wouldSchedule: Array<{ team: string; closer: string; title: string; startsAt: string }>;
+  }> => {
     // 1. Get all closers with connected calendars on bot-enabled teams
     const closers = await ctx.runQuery(internal.meetingBot.getClosersWithCalendars);
 
+    const dryRun = args.dryRun === true;
+    const wouldSchedule: Array<{
+      team: string;
+      closer: string;
+      title: string;
+      startsAt: string;
+    }> = [];
+
     if (closers.length === 0) {
       console.log("[autoSchedule] No closers with calendars on bot-enabled teams");
-      return { scheduled: 0 };
+      return { scheduled: 0, cancelled: 0, dryRun, wouldSchedule };
     }
 
     let totalScheduled = 0;
 
+    // ------------------------------------------------------------------
+    // Pass 1 — collect every candidate, keyed by the meeting itself.
+    //
+    // The duplicate guard used to be per closer, which is wrong: a team where
+    // everyone subscribes to everyone's calendar sees the SAME meeting on
+    // several calendars, and each would get its own bot. Measured on the one
+    // Overwatch customer: 43 bots for 13 real meetings — two or three
+    // notetakers walking into the same Zoom call, billed three times.
+    //
+    // The meeting is the unit, not the closer.
+    // ------------------------------------------------------------------
+    type Candidate = {
+      closerId: Id<"closers">;
+      teamId: Id<"teams">;
+      closerEmail: string;
+      title: string;
+      startTime: number;
+      meetingUrl: string;
+      uid: string;
+      calendarLabel?: string;
+      alreadyHasBot: boolean;
+    };
+
+    const byMeeting = new Map<string, Candidate[]>();
+
     for (const closer of closers) {
       try {
-        // 2. Get upcoming calendar events with meeting URLs
         const events = await ctx.runQuery(internal.meetingBot.getUpcomingCalendarEvents, {
           closerId: closer.closerId,
         });
-
         if (events.length === 0) continue;
 
-        // 3. Get excluded events
         const excludedEventIds = await ctx.runQuery(internal.meetingBot.getExcludedEventIds, {
           closerId: closer.closerId,
         });
 
-        // 4. Filter out excluded events
         const eligibleEvents = events.filter(
-          (event: { uid: string; meetingUrl?: string; title: string; startTime: number }) => !excludedEventIds.includes(event.uid)
+          (event: { uid: string }) => !excludedEventIds.includes(event.uid),
         );
-
         if (eligibleEvents.length === 0) continue;
 
-        // 5. Get existing bots to avoid duplicates
-        const eventIds = eligibleEvents.map((e: { uid: string }) => e.uid);
         const existingBotEventIds = await ctx.runQuery(internal.meetingBot.getExistingBotsForEvents, {
           closerId: closer.closerId,
-          eventIds,
+          eventIds: eligibleEvents.map((e: { uid: string }) => e.uid),
         });
 
-        // 6. Schedule bots for new events
-        // NOTE: This cron is disabled — bots are now created on-demand via "Join & Record"
         for (const event of eligibleEvents) {
-          if (existingBotEventIds.includes(event.uid)) continue;
           if (!event.meetingUrl) continue;
-
-          try {
-            await ctx.runAction(api.meetingBot.createBot, {
-              meetingUrl: event.meetingUrl,
-              closerId: closer.closerId,
-              teamId: closer.teamId,
-              meetingTitle: event.title,
-              prospectName: event.title,
-              calendarEventId: event.uid,
-              scheduledAt: event.startTime,
-            });
-
-            totalScheduled++;
-            console.log(`[autoSchedule] Scheduled bot for ${closer.closerId}: "${event.title}" at ${new Date(event.startTime).toISOString()}`);
-          } catch (error) {
-            console.error(`[autoSchedule] Failed to schedule bot for event ${event.uid}:`, error);
-          }
+          // Keyed by team as well as uid: two teams could in principle carry
+          // the same calendar id, and one team's bot must never satisfy
+          // another team's meeting.
+          const key = `${closer.teamId}|${event.uid}`;
+          const list = byMeeting.get(key) ?? [];
+          list.push({
+            closerId: closer.closerId,
+            teamId: closer.teamId,
+            closerEmail: closer.email,
+            title: event.title,
+            startTime: event.startTime,
+            meetingUrl: event.meetingUrl,
+            uid: event.uid,
+            calendarLabel: event.calendarLabel,
+            alreadyHasBot: existingBotEventIds.includes(event.uid),
+          });
+          byMeeting.set(key, list);
         }
       } catch (error) {
         console.error(`[autoSchedule] Error processing closer ${closer.closerId}:`, error);
       }
     }
 
-    console.log(`[autoSchedule] Total bots scheduled: ${totalScheduled}`);
-    return { scheduled: totalScheduled };
+    // ------------------------------------------------------------------
+    // Pass 2 — one bot each, for whoever the meeting actually belongs to.
+    // ------------------------------------------------------------------
+    for (const [key, candidates] of byMeeting) {
+      // Somebody's bot already covers this meeting.
+      if (candidates.some((c) => c.alreadyHasBot)) continue;
+
+      const owner = pickMeetingOwner(candidates);
+
+      if (dryRun) {
+        wouldSchedule.push({
+          team: String(owner.teamId),
+          closer: String(owner.closerId),
+          title: owner.title,
+          startsAt: new Date(owner.startTime).toISOString(),
+        });
+        continue;
+      }
+
+      try {
+        await ctx.runAction(api.meetingBot.createBot, {
+          meetingUrl: owner.meetingUrl,
+          closerId: owner.closerId,
+          teamId: owner.teamId,
+          meetingTitle: owner.title,
+          prospectName: owner.title,
+          calendarEventId: owner.uid,
+          scheduledAt: owner.startTime,
+        });
+
+        totalScheduled++;
+        console.log(
+          `[autoSchedule] Scheduled bot for ${owner.closerId}: "${owner.title}" ` +
+            `at ${new Date(owner.startTime).toISOString()}` +
+            (candidates.length > 1
+              ? ` (visible to ${candidates.length} closers, one bot sent)`
+              : ""),
+        );
+      } catch (error) {
+        console.error(`[autoSchedule] Failed to schedule bot for meeting ${key}:`, error);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Pass 3 — call off bots whose meeting has gone.
+    //
+    // Same sweep because it's the same failure: a bot nobody is expecting.
+    // Scheduling one for a meeting that no longer exists costs money and puts
+    // a notetaker in an empty room.
+    // ------------------------------------------------------------------
+    const orphans = await ctx.runQuery(internal.meetingBot.findOrphanedScheduledBots, {});
+    let cancelled = 0;
+    for (const orphan of orphans) {
+      if (dryRun) {
+        console.log(
+          `[autoSchedule] DRY RUN — would cancel "${orphan.title ?? orphan.botId}" (${orphan.reason})`,
+        );
+        continue;
+      }
+      try {
+        await ctx.runAction(api.meetingBot.cancelBot, { botId: orphan.botId });
+        cancelled++;
+        console.log(
+          `[autoSchedule] Cancelled bot for "${orphan.title ?? orphan.botId}" — ${orphan.reason}`,
+        );
+      } catch (error) {
+        console.error(`[autoSchedule] Failed to cancel bot ${orphan.botId}:`, error);
+      }
+    }
+
+    console.log(
+      dryRun
+        ? `[autoSchedule] DRY RUN — would schedule ${wouldSchedule.length} bot(s), ` +
+            `cancel ${orphans.length}`
+        : `[autoSchedule] Scheduled ${totalScheduled}, cancelled ${cancelled}`,
+    );
+    return { scheduled: totalScheduled, cancelled, dryRun, wouldSchedule };
   },
 });
 

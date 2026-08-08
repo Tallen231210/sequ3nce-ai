@@ -4365,6 +4365,21 @@ http.route({
           const subCode = eventData?.data?.sub_code || eventData?.sub_code || "unknown";
           console.log(`[recall-webhook] bot.call_ended for ${recallBotId}, sub_code: ${subCode}`);
 
+          // Why the bot left decides whether this was a call at all.
+          //
+          // Auto-join sends a bot to every meeting on the calendar, and the
+          // way a closer says "not this one" is to remove it from the room.
+          // That makes being kicked routine rather than exceptional — and a
+          // twenty-second recording of a standup must not land in anyone's
+          // close rate.
+          //
+          // Recall tells us plainly; we were logging it and throwing it away.
+          const wasRemoved =
+            subCode === "bot_kicked_from_call" ||
+            subCode === "bot_kicked_from_waiting_room";
+          const nobodyCame = subCode === "timeout_exceeded_noone_joined";
+          const notACall = wasRemoved || nobodyCame;
+
           // Immediately mark bot completed so apps detect the call ended
           // (bot.done fires later after recording processing — could take minutes for long calls)
           // NOTE: Do NOT set questionnaireCompleted here — if the user already submitted the
@@ -4372,7 +4387,9 @@ http.route({
           const callEndedAt = Date.now();
           await ctx.runMutation(api.meetingBot.updateBotStatus, {
             recallBotId,
-            status: "completed",
+            // "kicked" has been in the schema since February and nothing has
+            // ever set it. This is what it was for.
+            status: wasRemoved ? "kicked" : nobodyCame ? "cancelled" : "completed",
             endedAt: callEndedAt,
           });
 
@@ -4387,6 +4404,20 @@ http.route({
               endedAt: callEndedAt,
             });
             console.log(`[recall-webhook] Call completed on call_ended: ${callEndedBot.callId}`);
+
+            // Nothing is deleted. A closer removing the bot is evidence the
+            // meeting happened and wasn't for us — worth keeping, worth
+            // seeing, and not worth counting. Same resting state Fathom uses
+            // for a call it can't stand behind.
+            if (notACall) {
+              await ctx.runMutation(internal.meetingBot.markCallNotCounted, {
+                callId: callEndedBot.callId,
+                reason: wasRemoved ? "bot_removed" : "nobody_joined",
+              });
+              console.log(
+                `[recall-webhook] ${subCode} — call ${callEndedBot.callId} left uncounted`,
+              );
+            }
           } else {
             console.log(`[recall-webhook] Call ended but no linked call for bot: ${recallBotId}`);
           }
