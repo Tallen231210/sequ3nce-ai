@@ -2047,6 +2047,15 @@ export const getClosersWithCalendars = internalQuery({
         .collect();
 
       for (const closer of closers) {
+        // Opt-in, per closer.
+        //
+        // The tier gate says a team is allowed bots; this says a person has
+        // agreed to have their diary recorded. Sending a bot into someone's
+        // calls is not a thing to switch on for a whole floor in one go, so
+        // the rollout is one closer at a time — and afterwards this is how a
+        // closer opts out for good.
+        if (closer.autoJoinEnabled !== true) continue;
+
         // Any calendar, however it was connected. Checking one mechanism is
         // what broke this.
         const hasCalendar =
@@ -2138,6 +2147,40 @@ export const getExcludedEventIds = internalQuery({
  * It checks calendar events in the next 24 hours and creates bots
  * for meetings that have video conference URLs.
  */
+/**
+ * Turn auto-join on or off for one closer.
+ *
+ * The rollout switch. Deliberately per person and deliberately internal — this
+ * decides whether a bot starts appearing in someone's meetings, which is not a
+ * thing to expose before there is a settings screen and a customer who has
+ * been told about it.
+ */
+export const setAutoJoin = internalMutation({
+  args: { closerId: v.id("closers"), enabled: v.boolean() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ ok: boolean; closer?: string; team?: string; reason?: string }> => {
+    const closer = await ctx.db.get(args.closerId);
+    if (!closer) return { ok: false, reason: "closer not found" };
+
+    const team = await ctx.db.get(closer.teamId);
+    const tier = team?.productTierOverride ?? team?.productTier;
+    if (args.enabled && tier !== "overwatch") {
+      // Refusing rather than storing a flag that silently does nothing: the
+      // tier gate would drop them anyway, and a switch that appears to be on
+      // while nothing happens is the worst of both.
+      return {
+        ok: false,
+        reason: `team is on "${tier ?? "no tier"}" — the bot is Overwatch only`,
+      };
+    }
+
+    await ctx.db.patch(args.closerId, { autoJoinEnabled: args.enabled });
+    return { ok: true, closer: closer.name, team: team?.name };
+  },
+});
+
 /**
  * Bots booked for meetings that no longer exist, or have moved.
  *

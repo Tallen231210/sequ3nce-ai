@@ -414,6 +414,18 @@ export default defineSchema({
      * matter.
      */
     outcomeRemindersEnabled: v.optional(v.boolean()),
+    /**
+     * Send a bot to this closer's calendar meetings without being asked.
+     *
+     * Opt-IN, and absent means no. The feature is meant to end up on by
+     * default, but a bot walking into a customer's sales calls is not
+     * something to switch on for a whole floor at once — so the rollout is per
+     * person, starting with someone who knows what the bot is.
+     *
+     * Also the long-term opt-out: a closer who doesn't want their calendar
+     * recorded turns this off rather than removing a bot from every meeting.
+     */
+    autoJoinEnabled: v.optional(v.boolean()),
     email: v.string(),
     name: v.string(),
     teamId: v.id("teams"),
