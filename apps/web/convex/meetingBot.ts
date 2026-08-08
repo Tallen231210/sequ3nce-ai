@@ -1557,6 +1557,22 @@ export const completeCallFromBot = internalMutation({
         internal.speakerVerification.verifyClosersByRecallApi,
         { botId: call.meetingBotId },
       );
+
+      // And put the call on the right closer.
+      //
+      // Auto-join books a bot from a calendar, and a calendar cannot say whose
+      // call it is — shared team booking diaries mean the entry sits under one
+      // name for a call somebody else is running. The transcript can say,
+      // because it records who actually turned up and who did the talking.
+      //
+      // Slightly after the verifier, so the two aren't racing for the same
+      // Recall transcript. Refuses to move anything it isn't sure about, and
+      // never overrules a closer who has already answered for the call.
+      await ctx.scheduler.runAfter(
+        120000,
+        internal.callAttribution.reattributeCall,
+        { callId: args.callId },
+      );
     }
 
     console.log(`[completeCallFromBot] Call completed: ${args.callId}`);

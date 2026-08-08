@@ -61,6 +61,7 @@ import type * as calendarBookings from "../calendarBookings.js";
 import type * as calendarCalls from "../calendarCalls.js";
 import type * as calendarOAuth from "../calendarOAuth.js";
 import type * as calendly from "../calendly.js";
+import type * as callAttribution from "../callAttribution.js";
 import type * as callContent from "../callContent.js";
 import type * as callOutcomes from "../callOutcomes.js";
 import type * as callReviews from "../callReviews.js";
@@ -228,6 +229,7 @@ declare const fullApi: ApiFromModules<{
   calendarCalls: typeof calendarCalls;
   calendarOAuth: typeof calendarOAuth;
   calendly: typeof calendly;
+  callAttribution: typeof callAttribution;
   callContent: typeof callContent;
   callOutcomes: typeof callOutcomes;
   callReviews: typeof callReviews;
