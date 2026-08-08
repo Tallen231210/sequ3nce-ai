@@ -6,6 +6,7 @@ import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/dashboard/header";
+import { ComplianceSettings } from "@/components/compliance/ComplianceSettings";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2216,6 +2217,9 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Compliance — renders nothing for anyone who isn't a manager */}
+        <ComplianceSettings />
 
         {/* Danger Zone */}
         <Card className="border-red-200">

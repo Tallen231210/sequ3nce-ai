@@ -42,7 +42,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Phone, Trash2, Loader2, Search, X, ChevronDown, Filter } from "lucide-react";
+import { Phone, Trash2, Loader2, Search, X, ChevronDown, Filter, ShieldAlert } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { Id } from "../../../../convex/_generated/dataModel";
 
@@ -291,6 +291,49 @@ function DeleteCallButton({
   );
 }
 
+/**
+ * The compliance cell.
+ *
+ * Three states that must stay distinguishable: never reviewed (dash), reviewed
+ * and clean (a quiet score), and reviewed with findings (a score plus how many).
+ * Collapsing the first two would make a call nobody looked at read exactly like
+ * a call that came back clean.
+ */
+function ComplianceCell({
+  score,
+  findingCount,
+}: {
+  score?: number;
+  findingCount?: number;
+}) {
+  if (typeof score !== "number") {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  const n = findingCount ?? 0;
+  if (n === 0) {
+    return (
+      <span className="text-sm tabular-nums text-muted-foreground">
+        {score}/10
+      </span>
+    );
+  }
+  return (
+    <span
+      className={
+        "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-sm font-medium tabular-nums " +
+        (score >= 7
+          ? "border-amber-300 bg-amber-50 text-amber-800"
+          : "border-rose-300 bg-rose-50 text-rose-800")
+      }
+    >
+      {score}/10
+      <span className="text-xs font-normal opacity-80">
+        {n === 1 ? "1 flag" : `${n} flags`}
+      </span>
+    </span>
+  );
+}
+
 // Helper function to check if a date falls within a filter range
 function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
   if (filter === "all") return true;
@@ -333,7 +376,7 @@ function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
 }
 
 export default function CompletedCallsPage() {
-  const { team, isLoading: isTeamLoading } = useTeam();
+  const { team, clerkId, isLoading: isTeamLoading } = useTeam();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -353,6 +396,10 @@ export default function CompletedCallsPage() {
   // Driven by ?uncollected=true URL param from Analytics → Leak Attribution
   // → Uncollected drill-down. No UI control yet; user can clear via Clear Filters.
   const [uncollectedOnly, setUncollectedOnly] = useState(false);
+  // "Has compliance findings only". Hidden entirely unless the team has
+  // compliance switched on and the viewer is a manager — the query below
+  // returns null for anyone else.
+  const [complianceOnly, setComplianceOnly] = useState(false);
 
   // Hydrate filter state from URL params on mount. Lets external links (e.g.,
   // Analytics Leak Attribution buckets) deep-link into a pre-filtered Calls
@@ -407,6 +454,14 @@ export default function CompletedCallsPage() {
     api.calls.getCompletedCallsWithCloser,
     team?._id ? { teamId: team._id } : "skip"
   );
+
+  // Null for a closer or a team without compliance, which is exactly the gate
+  // the column and filter need — neither should exist for either of them.
+  const complianceSettings = useQuery(
+    api.complianceSettings.getComplianceSettings,
+    clerkId ? { clerkId } : "skip"
+  );
+  const complianceOn = complianceSettings?.enabled === true;
 
   // Get unique closers from calls for the filter dropdown
   const uniqueClosers = useMemo(() => {
@@ -464,6 +519,13 @@ export default function CompletedCallsPage() {
         if (!matchesPrimary && !matchesOvercame) return false;
       }
 
+      // Compliance filter — the part of this feature actually worth paying for.
+      // "Show me the calls with something on them" is the question a manager
+      // arrives with; scrolling a column looking for colour is not.
+      if (complianceOnly && (call.complianceFindingCount ?? 0) === 0) {
+        return false;
+      }
+
       // Closer filter (if any closers are selected)
       if (selectedClosers.size > 0 && call.closerId) {
         if (!selectedClosers.has(call.closerId)) return false;
@@ -478,10 +540,10 @@ export default function CompletedCallsPage() {
 
       return true;
     });
-  }, [calls, dateFilter, outcomeFilter, multiOutcomes, uncollectedOnly, objectionFilter, selectedClosers, prospectSearch]);
+  }, [calls, dateFilter, outcomeFilter, multiOutcomes, uncollectedOnly, objectionFilter, complianceOnly, selectedClosers, prospectSearch]);
 
   // Check if any filters are active
-  const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || (multiOutcomes !== null && multiOutcomes.size > 0) || uncollectedOnly || objectionFilter !== "all" || selectedClosers.size > 0 || prospectSearch.trim() !== "";
+  const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || (multiOutcomes !== null && multiOutcomes.size > 0) || uncollectedOnly || objectionFilter !== "all" || complianceOnly || selectedClosers.size > 0 || prospectSearch.trim() !== "";
 
   // Clear all filters
   const clearAllFilters = () => {
@@ -490,6 +552,7 @@ export default function CompletedCallsPage() {
     setMultiOutcomes(null);
     setUncollectedOnly(false);
     setObjectionFilter("all");
+    setComplianceOnly(false);
     setSelectedClosers(new Set());
     setProspectSearch("");
   };
@@ -579,6 +642,20 @@ export default function CompletedCallsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Compliance Filter — the reason the score is stored at all. A
+              manager arrives asking "what needs looking at", not "what did
+              every call score". */}
+          {complianceOn && (
+            <Button
+              variant={complianceOnly ? "default" : "outline"}
+              onClick={() => setComplianceOnly((v) => !v)}
+              className="gap-2"
+            >
+              <ShieldAlert className="h-4 w-4" />
+              Has findings
+            </Button>
+          )}
 
           {/* Closer Filter (Multi-select) */}
           <DropdownMenu>
@@ -676,6 +753,9 @@ export default function CompletedCallsPage() {
                     <TableHead className="w-[100px]">Duration</TableHead>
                     <TableHead className="w-[120px]">Talk Ratio</TableHead>
                     <TableHead className="w-[120px]">Outcome</TableHead>
+                    {complianceOn && (
+                      <TableHead className="w-[110px]">Compliance</TableHead>
+                    )}
                     <TableHead className="w-[140px] text-right">Cash / Contract</TableHead>
                     <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
@@ -713,6 +793,14 @@ export default function CompletedCallsPage() {
                         />
                       </TableCell>
                       <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
+                      {complianceOn && (
+                        <TableCell>
+                          <ComplianceCell
+                            score={call.complianceScore}
+                            findingCount={call.complianceFindingCount}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="text-right font-medium">
                         {call.contractValue ? (
                           <span className="flex flex-col items-end">

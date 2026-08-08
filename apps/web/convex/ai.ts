@@ -290,6 +290,19 @@ export const generateCallAnalysis = internalAction({
       return null;
     }
 
+    // Compliance review is scheduled here rather than at the end, and as its own
+    // action rather than inline. Every path that produces a transcript — bot,
+    // Fathom, desktop, speaker re-verification — funnels through this function,
+    // so it's the one hook that covers all of them. Scheduling it up front means
+    // a malformed analysis response below doesn't quietly take compliance with
+    // it; the two are independent judgements about the same call.
+    //
+    // `reviewCall` decides for itself whether the team has it switched on.
+    await ctx.scheduler.runAfter(0, internal.compliance.reviewCall, {
+      callId,
+      transcript,
+    });
+
     try {
       let userMessage = `Here is the completed sales call transcript:\n\n${transcript}`;
 

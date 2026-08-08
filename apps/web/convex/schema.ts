@@ -84,6 +84,28 @@ export default defineSchema({
      * Unset means AUTO_JOIN_DEFAULT_DAILY_CAP in meetingBot.ts.
      */
     autoJoinDailyCap: v.optional(v.number()),
+
+    // Compliance review. Off by default — it only does anything once the
+    // business has written down what compliant means to them, and a score
+    // judged against nothing would be worse than no score.
+    complianceEnabled: v.optional(v.boolean()),
+    /**
+     * What's fine to say on a call and what isn't, in the customer's own words.
+     *
+     * Deliberately free text. The alternative — encoding actual FTC guidance
+     * per industry — was tried and abandoned: it never finishes, and the
+     * documents change constantly. A business describing its own rules in a
+     * paragraph is both simpler and more accurate about what it actually cares
+     * about.
+     */
+    complianceRules: v.optional(v.string()),
+    /** Its own channel, and usually a private one — see the invite note below. */
+    complianceSlackChannelId: v.optional(v.string()),
+    complianceSlackChannelName: v.optional(v.string()),
+    complianceDiscordWebhookUrl: v.optional(v.string()),
+    complianceChannel: v.optional(v.string()), // "slack" | "discord"
+    /** Stamped only after a test post succeeds, so a failure stays retryable. */
+    complianceTestSentAt: v.optional(v.number()),
     meetingBotName: v.optional(v.string()), // Configurable bot display name (what other participants see)
     // Team type: "company" (B2B default) or "personal" (B2C workspace)
     type: v.optional(v.union(v.literal("company"), v.literal("personal"))),
@@ -781,6 +803,20 @@ export default defineSchema({
     // far worse than seeing one extra row they can dismiss.
     classifiedAs: v.optional(v.string()), // "sales" | "internal" | "unsure"
     classifiedBy: v.optional(v.string()), // "auto" | "closer"
+    /**
+     * Two numbers copied off `callContent.complianceReview`.
+     *
+     * The findings themselves live on callContent with the other heavy blobs,
+     * which is right — but the Completed Calls list reads `calls` and nothing
+     * else, and joining a sibling table per row to answer "which of these has
+     * findings" would be 100 extra reads to render one column. These two make
+     * the score sortable and the filter free.
+     *
+     * Absent means never reviewed, which is NOT the same as reviewed and clean —
+     * a clean call has a score and a count of zero.
+     */
+    complianceScore: v.optional(v.number()),
+    complianceFindingCount: v.optional(v.number()),
     /** Absent means counted, so nothing about existing calls changes. */
     countsTowardStats: v.optional(v.boolean()), // Link to Google Calendar event (for prospect email)
     /**
@@ -895,6 +931,45 @@ export default defineSchema({
         description: v.string(),
       })),
       analyzedAt: v.number(),
+    })),
+    /**
+     * Compliance review, judged against rules the business wrote themselves.
+     *
+     * Its own field rather than a sixth dimension on callAnalysis: this is
+     * rule-driven and closer to pass/fail than a quality rating, and keeping it
+     * separate means editing the rules can re-run only compliance instead of
+     * regenerating chapters and sales scores for every call.
+     *
+     * NOTE ON WORDING — findings say what was SAID and which rule it may
+     * conflict with. They never assert a violation. If we tell a customer a
+     * call is "9/10 compliant" and they later face a complaint, our number
+     * becomes part of their story.
+     */
+    complianceReview: v.optional(v.object({
+      /** 1-10. For sorting a list and spotting a trend, not for certifying. */
+      score: v.number(),
+      findings: v.array(v.object({
+        /** Which of their rules this may touch, in their own words. */
+        rule: v.string(),
+        /** What was actually said — the thing a human checks in ten seconds. */
+        quote: v.string(),
+        /** Seconds from the start, so it can be found in the recording. */
+        timestamp: v.optional(v.number()),
+        /**
+         * Who said it — only when speaker labelling was verified. Transcripts
+         * sometimes swap closer and prospect, and flagging a rep for the
+         * prospect's words would destroy trust in this immediately.
+         */
+        speaker: v.optional(v.string()),
+        /** Why it might matter. Phrased as a question for a human, not a verdict. */
+        concern: v.string(),
+      })),
+      /** One line a manager can read without opening the call. */
+      summary: v.string(),
+      /** The rules this was judged against, so an old score stays explicable
+       *  after the business edits them. */
+      rulesUsed: v.string(),
+      reviewedAt: v.number(),
     })),
     ammoAnalysis: v.optional(v.object({
       engagement: v.object({

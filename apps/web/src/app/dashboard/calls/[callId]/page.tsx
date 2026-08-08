@@ -54,6 +54,7 @@ import Link from "next/link";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTeam } from "@/hooks/useTeam";
 import { AmmoV2Panel, type AmmoV2Analysis } from "@/components/AmmoV2Panel";
+import { CallCompliancePanel } from "@/components/compliance/CallCompliancePanel";
 
 // Types
 interface AmmoItem {
@@ -1860,6 +1861,9 @@ export default function CallDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Compliance — renders nothing unless a manager, switched on, reviewed */}
+        <CallCompliancePanel callId={callId} onSeek={handleSegmentClick} />
 
         {/* Main Content - Transcript + Ammo Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
