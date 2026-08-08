@@ -2158,6 +2158,101 @@ export const getExcludedEventIds = internalQuery({
  * for meetings that have video conference URLs.
  */
 /**
+ * Ceiling on bots one team's calendar can book in a rolling day.
+ *
+ * Generous on purpose — the busiest team we have books around 14 a day, so 50
+ * is a runaway detector rather than a budget. Hitting it means something is
+ * wrong (duplicated calendar events, a sync loop, a customer who connected the
+ * wrong diary), and the right response is to stop and say so rather than keep
+ * spending.
+ */
+const AUTO_JOIN_DEFAULT_DAILY_CAP = 50;
+
+/**
+ * What did auto-join actually do?
+ *
+ * There was no way to answer this, which meant the first sign of it
+ * misbehaving would have been a customer telling us. Booked, joined, kicked,
+ * cancelled and failed, per team, over a window — enough to see a runaway, a
+ * team whose bots are all being removed, or a customer whose calls stopped
+ * being recorded without anyone noticing.
+ */
+export const autoJoinSummary = internalQuery({
+  args: { hours: v.optional(v.number()), teamId: v.optional(v.id("teams")) },
+  handler: async (ctx, args): Promise<any> => {
+    const since = Date.now() - (args.hours ?? 24) * 60 * 60 * 1000;
+    const bots = await ctx.db.query("meetingBots").order("desc").take(1000);
+
+    const byTeam = new Map<string, any>();
+
+    for (const bot of bots) {
+      if (bot.source !== "calendar") continue;
+      if ((bot.createdAt ?? 0) < since) continue;
+      if (args.teamId && String(bot.teamId) !== String(args.teamId)) continue;
+
+      const key = String(bot.teamId);
+      if (!byTeam.has(key)) {
+        const team = await ctx.db.get(bot.teamId);
+        byTeam.set(key, {
+          team: team?.name ?? key,
+          cap: team?.autoJoinDailyCap ?? AUTO_JOIN_DEFAULT_DAILY_CAP,
+          booked: 0,
+          joined: 0,
+          kicked: 0,
+          cancelled: 0,
+          failed: 0,
+          stillScheduled: 0,
+          neverJoined: 0,
+        });
+      }
+      const row = byTeam.get(key);
+      row.booked++;
+      if (bot.joinedAt) row.joined++;
+      if (bot.status === "kicked") row.kicked++;
+      else if (bot.status === "cancelled") row.cancelled++;
+      else if (bot.status === "failed") row.failed++;
+      else if (bot.status === "scheduled") row.stillScheduled++;
+
+      // Booked, its meeting has been and gone, and it never got in. Usually a
+      // waiting room nobody admitted, or a meeting that didn't happen.
+      if (
+        !bot.joinedAt &&
+        typeof bot.scheduledAt === "number" &&
+        bot.scheduledAt < Date.now() - 30 * 60 * 1000
+      ) {
+        row.neverJoined++;
+      }
+    }
+
+    return {
+      windowHours: args.hours ?? 24,
+      teams: Array.from(byTeam.values()),
+    };
+  },
+});
+
+/** How many bots has auto-join booked for this team in the last day? */
+export const countRecentAutoBots = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args): Promise<{ booked: number; cap: number }> => {
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const bots = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .order("desc")
+      .take(500);
+
+    const team = await ctx.db.get(args.teamId);
+    return {
+      booked: bots.filter(
+        (b) => b.source === "calendar" && (b.createdAt ?? 0) >= since,
+      ).length,
+      cap: team?.autoJoinDailyCap ?? AUTO_JOIN_DEFAULT_DAILY_CAP,
+    };
+  },
+});
+
+/**
  * Turn auto-join on or off for one closer.
  *
  * The rollout switch. Deliberately per person and deliberately internal — this
@@ -2470,11 +2565,42 @@ export const autoScheduleBotsForAllClosers = internalAction({
     // ------------------------------------------------------------------
     // Pass 2 — one bot each, for whoever the meeting actually belongs to.
     // ------------------------------------------------------------------
+    // Spend so far today, per team. Read once per team per run rather than
+    // per meeting, then counted forward as we book.
+    const budget = new Map<string, { booked: number; cap: number }>();
+    const cappedTeams = new Set<string>();
+
     for (const [key, candidates] of byMeeting) {
       // Somebody's bot already covers this meeting.
       if (candidates.some((c) => c.alreadyHasBot)) continue;
 
       const owner = pickMeetingOwner(candidates);
+      const teamKey = String(owner.teamId);
+
+      if (!budget.has(teamKey)) {
+        budget.set(
+          teamKey,
+          await ctx.runQuery(internal.meetingBot.countRecentAutoBots, {
+            teamId: owner.teamId,
+          }),
+        );
+      }
+      const spend = budget.get(teamKey)!;
+
+      if (spend.booked >= spend.cap) {
+        // Loudly, once per team per run. A silent stop here means a customer's
+        // calls quietly stop being recorded with nothing to notice — the exact
+        // failure mode this whole feature has already produced twice.
+        if (!cappedTeams.has(teamKey)) {
+          cappedTeams.add(teamKey);
+          console.error(
+            `[autoSchedule] team ${teamKey} hit its daily cap of ${spend.cap} ` +
+              `bots — no more will be booked today. This is a runaway ` +
+              `detector, so reaching it means something is wrong.`,
+          );
+        }
+        continue;
+      }
 
       if (dryRun) {
         wouldSchedule.push({
@@ -2498,6 +2624,10 @@ export const autoScheduleBotsForAllClosers = internalAction({
         });
 
         totalScheduled++;
+        // Count it against the day's budget immediately — the query above is
+        // read once per run, so without this a single sweep could book far
+        // past the cap before the next run noticed.
+        spend.booked++;
         console.log(
           `[autoSchedule] Scheduled bot for ${owner.closerId}: "${owner.title}" ` +
             `at ${new Date(owner.startTime).toISOString()}` +

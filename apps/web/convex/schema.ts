@@ -72,6 +72,18 @@ export default defineSchema({
     ammoV2Enabled: v.optional(v.boolean()), // Enable AI-powered real-time ammo analysis
     // Meeting Bot feature flag
     meetingBotEnabled: v.optional(v.boolean()), // Enable meeting bot auto-join via Meeting BaaS
+    /**
+     * Most bots auto-join may book for this team in a rolling day.
+     *
+     * Recording is billed by the hour, and auto-join's volume is set by the
+     * customer's calendar rather than by us — a busy floor, or a calendar
+     * misconfiguration that duplicates events, could run up a bill nobody sees
+     * until the invoice. This is the backstop, not a budget: it should never be
+     * reached in normal use, and reaching it is worth investigating.
+     *
+     * Unset means AUTO_JOIN_DEFAULT_DAILY_CAP in meetingBot.ts.
+     */
+    autoJoinDailyCap: v.optional(v.number()),
     meetingBotName: v.optional(v.string()), // Configurable bot display name (what other participants see)
     // Team type: "company" (B2B default) or "personal" (B2C workspace)
     type: v.optional(v.union(v.literal("company"), v.literal("personal"))),
