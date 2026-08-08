@@ -503,9 +503,30 @@ export const createBot = action({
       // Build WebSocket URL for audio processor (Recall.ai connects to this)
       const streamingUrl = `wss://amusing-charm-production.up.railway.app/recall?botId=${botId}&closerId=${args.closerId}&teamId=${args.teamId}${closerName ? `&closerName=${encodeURIComponent(closerName)}` : ""}${args.prospectName ? `&prospectName=${encodeURIComponent(args.prospectName)}` : ""}`;
 
+      // When should it turn up?
+      //
+      // We stored `scheduledAt` on our own record and never told Recall about
+      // it, so every bot was dispatched the moment it was created. That is
+      // right for "Join & Record" — the closer clicks as they walk into the
+      // call — and catastrophic for auto-join, which books up to 24 hours
+      // ahead: the bot would walk into an empty room a day early, wait out its
+      // no-one-joined timeout, leave, and be long gone by the time the meeting
+      // actually started. Billed, and worse than useless.
+      //
+      // Recall wants at least ten minutes' notice to guarantee a scheduled bot
+      // arrives on time. Anything sooner is an ad-hoc join, so we omit join_at
+      // and let it dispatch now — preserving click-to-record exactly as it is.
+      const JOIN_AT_MIN_LEAD_MS = 10 * 60 * 1000;
+      const joinAt =
+        typeof args.scheduledAt === "number" &&
+        args.scheduledAt - Date.now() >= JOIN_AT_MIN_LEAD_MS
+          ? new Date(args.scheduledAt).toISOString()
+          : undefined;
+
       const requestBody = {
         meeting_url: args.meetingUrl,
         bot_name: botName,
+        ...(joinAt ? { join_at: joinAt } : {}),
         automatic_video_output: {
           in_call_recording: {
             kind: "jpeg" as const,
@@ -518,7 +539,14 @@ export const createBot = action({
         },
         automatic_leave: {
           everyone_left_timeout: 15,    // 15 seconds — enough for WiFi reconnects, fast exit after real call ends
-          noone_joined_timeout: 300,    // 5 minutes — don't waste bot if nobody joins
+          // How long to wait for a human.
+          //
+          // Five minutes was right when a closer clicked "Join & Record" on
+          // their way in — someone was already there. A scheduled bot arrives
+          // exactly on the hour, and sales calls routinely start a few minutes
+          // late, so five minutes would abandon calls that were about to
+          // happen. Ten costs a few idle minutes and saves the recording.
+          noone_joined_timeout: joinAt ? 600 : 300,
         },
         recording_config: {
           retention: { type: "forever" as const },
