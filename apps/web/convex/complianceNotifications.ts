@@ -33,6 +33,8 @@ const FINDINGS_IN_MESSAGE = 3;
 
 const QUOTE_CHARS = 300;
 const RULE_CHARS = 180;
+const CONCERN_CHARS = 320;
+const SUMMARY_CHARS = 400;
 
 function mmss(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
@@ -73,27 +75,77 @@ function headline(score: number, findingCount: number, isTest = false): string {
  * purpose is that its contents are taken seriously.
  */
 const TEST_REVIEW = {
-  score: 6,
+  score: 5,
   summary:
-    "This is a test. Real alerts look like this, name the call, and only arrive when something on it is worth a look — never for a clean call.",
+    "Example alert — a real one names the call and links straight to the recording. Nothing was reviewed to produce this.",
   findings: [
     {
-      rule: "Example: never promise a specific timeline.",
+      rule: "Example rule: never promise a specific timeline.",
       quote: "you'll definitely have this sorted within about three weeks",
       concern:
-        "An example finding, with the quote and the point in the recording so it can be checked in seconds.",
+        "A specific timeline was given as a commitment rather than a range. Worth checking against how the guarantee is worded.",
       timestamp: 742,
+      speaker: "Closer",
+    },
+    {
+      rule: "Example rule: correct a customer who assumes it's hands-off.",
+      quote: "so you handle everything and i just show up — exactly, yeah",
+      concern:
+        "The customer described the programme as hands-off and it wasn't corrected. Uncorrected assumptions are usually the bigger risk.",
+      timestamp: 1893,
+      speaker: "Prospect",
     },
   ],
 };
 
-function subject(call: {
+/** Stand-in details so the test post has the same shape as a real alert. */
+const TEST_CALL: AlertCall = {
+  prospectName: "Example Prospect",
+  closerName: "Example Closer",
+  duration: 2_040,
+};
+
+export interface AlertCall {
   prospectName?: string | null;
   closerName?: string | null;
-}): string {
-  return [call.prospectName || "Unknown prospect", call.closerName || null]
-    .filter(Boolean)
-    .join(" · ");
+  startedAt?: number | null;
+  duration?: number | null;
+  timezone?: string | null;
+}
+
+/**
+ * Everything a manager needs to place the call without opening it.
+ *
+ * The first version was prospect and closer only, and read as thin in a real
+ * channel — a manager seeing "Compliance — 3 things to look at" wants to know
+ * whose call, which prospect, when, and how long before deciding whether to
+ * spend five minutes on it.
+ */
+function subject(call: AlertCall): string {
+  const parts = [call.prospectName || "Unknown prospect"];
+  if (call.closerName) parts.push(call.closerName);
+
+  if (typeof call.startedAt === "number") {
+    try {
+      parts.push(
+        new Intl.DateTimeFormat("en-GB", {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: call.timezone || "America/New_York",
+        }).format(new Date(call.startedAt)),
+      );
+    } catch {
+      // A bad timezone string must not cost us the whole alert.
+    }
+  }
+
+  if (typeof call.duration === "number" && call.duration > 0) {
+    parts.push(`${Math.round(call.duration / 60)} min`);
+  }
+
+  return parts.join(" · ");
 }
 
 // ----------------------------------------------------------------------------
@@ -123,6 +175,9 @@ export const getAlertContext = internalQuery({
       team: team as Doc<"teams">,
       prospectName: call.prospectName ?? null,
       closerName,
+      startedAt: call.startedAt ?? call.createdAt ?? null,
+      duration: call.duration ?? null,
+      timezone: (team as any).timezone ?? null,
     };
   },
 });
@@ -141,7 +196,7 @@ interface Finding {
 
 function buildSlackBlocks(
   review: { score: number; summary: string; findings: Finding[] },
-  call: { prospectName?: string | null; closerName?: string | null },
+  call: AlertCall,
   /** Null for a test post — there is no real call behind it to link to. */
   callId: string | null,
 ): unknown[] {
@@ -155,12 +210,19 @@ function buildSlackBlocks(
         emoji: true,
       },
     },
+    // Which call, whose, when, how long. Then the one-sentence summary, which
+    // was being generated and stored and never actually sent — a manager
+    // should be able to decide whether to open the call without scrolling
+    // through three quotes to work out what it's about.
     {
       type: "context",
-      elements: [
-        { type: "mrkdwn", text: isTest ? review.summary : subject(call) },
-      ],
+      elements: [{ type: "mrkdwn", text: subject(call) }],
     },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: clip(review.summary, SUMMARY_CHARS) },
+    },
+    { type: "divider" },
   ];
 
   for (const f of review.findings.slice(0, FINDINGS_IN_MESSAGE)) {
@@ -174,6 +236,10 @@ function buildSlackBlocks(
       .filter(Boolean)
       .join(" · ");
 
+    // The concern was missing here, which is what made the message read as
+    // thin: a quote and a rule without the reason they were put together
+    // leaves the manager to work out for themselves why it was flagged. It's
+    // the sentence that decides whether they open the call.
     blocks.push({
       type: "section",
       text: {
@@ -181,7 +247,8 @@ function buildSlackBlocks(
         text:
           (meta ? `${meta}\n` : "") +
           `${blockquote(clip(f.quote, QUOTE_CHARS))}\n` +
-          `May touch: ${clip(f.rule, RULE_CHARS)}`,
+          `*May touch:* ${clip(f.rule, RULE_CHARS)}\n` +
+          `${clip(f.concern, CONCERN_CHARS)}`,
       },
     });
   }
@@ -205,7 +272,7 @@ function buildSlackBlocks(
 
 function buildDiscordEmbed(
   review: { score: number; summary: string; findings: Finding[] },
-  call: { prospectName?: string | null; closerName?: string | null },
+  call: AlertCall,
   callId: string | null,
 ): unknown {
   const isTest = callId === null;
@@ -231,7 +298,7 @@ function buildDiscordEmbed(
 
   return {
     title: headline(review.score, review.findings.length, isTest),
-    description: isTest ? review.summary : subject(call),
+    description: `${subject(call)}\n\n${clip(review.summary, SUMMARY_CHARS)}`,
     color: 0xf59e0b,
     fields,
     url: isTest ? undefined : `https://sequ3nce.ai/dashboard/calls/${callId}`,
@@ -260,7 +327,7 @@ function buildDiscordEmbed(
 async function deliver(
   team: Doc<"teams">,
   review: { score: number; summary: string; findings: Finding[] },
-  call: { prospectName?: string | null; closerName?: string | null },
+  call: AlertCall,
   callId: string | null,
 ): Promise<{ ok: boolean; error?: string; soft?: boolean }> {
   const isTest = callId === null;
@@ -336,7 +403,13 @@ export const sendComplianceAlert = internalAction({
       return { sent: false, reason: "no compliance channel configured" };
     }
 
-    const call = { prospectName: info.prospectName, closerName: info.closerName };
+    const call: AlertCall = {
+      prospectName: info.prospectName,
+      closerName: info.closerName,
+      startedAt: info.startedAt,
+      duration: info.duration,
+      timezone: info.timezone,
+    };
 
     try {
       const result = await deliver(team, review, call, String(args.callId));
@@ -380,12 +453,7 @@ export const sendComplianceTestAlert = internalAction({
     )) as Doc<"teams"> | null;
     if (!team) return { sent: false, reason: "Team not found." };
 
-    const result = await deliver(
-      team,
-      TEST_REVIEW,
-      { prospectName: null, closerName: null },
-      null,
-    );
+    const result = await deliver(team, TEST_REVIEW, TEST_CALL, null);
     return result.ok
       ? { sent: true }
       : { sent: false, reason: result.error ?? "Couldn't send." };
