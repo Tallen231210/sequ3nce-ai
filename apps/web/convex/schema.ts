@@ -127,6 +127,8 @@ export default defineSchema({
     cashDigestSlackChannelName: v.optional(v.string()),
     cashDigestDiscordWebhookUrl: v.optional(v.string()),
     cashDigestTestSentAt: v.optional(v.number()),
+    /** Include the per-closer board in the post. Defaults on. */
+    cashDigestShowLeaderboard: v.optional(v.boolean()),
     /**
      * Gate on the share links compliance alerts hand out. Empty means no gate.
      *

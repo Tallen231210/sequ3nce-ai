@@ -53,6 +53,7 @@ export const getCashDigestSettings = query({
       slackChannelName: team.cashDigestSlackChannelName ?? null,
       defaultSlackChannelId: team.slackChannelId ?? null,
       discordWebhookUrl: team.cashDigestDiscordWebhookUrl ?? null,
+      showLeaderboard: team.cashDigestShowLeaderboard !== false,
       timezone: team.timezone || DEFAULT_TIMEZONE,
       slackConnected: !!team.slackAccessToken,
       canEdit: canEdit(user),
@@ -70,6 +71,7 @@ export const updateCashDigestSettings = mutation({
     slackChannelId: v.optional(v.string()),
     slackChannelName: v.optional(v.string()),
     discordWebhookUrl: v.optional(v.string()),
+    showLeaderboard: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
     const user = await resolveAuthUser(ctx, args.clerkId);
@@ -119,6 +121,9 @@ export const updateCashDigestSettings = mutation({
     }
     if (args.discordWebhookUrl !== undefined) {
       patch.cashDigestDiscordWebhookUrl = args.discordWebhookUrl.trim() || undefined;
+    }
+    if (args.showLeaderboard !== undefined) {
+      patch.cashDigestShowLeaderboard = args.showLeaderboard;
     }
 
     await ctx.db.patch(teamId, patch);

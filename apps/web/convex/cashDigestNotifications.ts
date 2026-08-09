@@ -50,15 +50,33 @@ function dateLabel(local: { year: number; month: number; day: number }): string 
  * saying nothing.
  */
 function paceLine(d: CashDigestData): string | null {
-  if (d.target === null || d.target <= 0 || d.projected === null || d.vsPace === null) {
-    return null;
+  if (d.target === null || d.target <= 0) return null;
+
+  // A prize target is a thing to climb toward, not a monthly quota, so it gets
+  // progress rather than pace. RemoteStack's is a $4,000,000 trip to Ibiza
+  // against a month that does tens of thousands — projecting it as a monthly
+  // goal reported them "$1,005,628 behind pace", which is a true division and
+  // a useless sentence.
+  if (d.targetIsPrize) {
+    const pct = Math.min(100, (d.monthToDate / d.target) * 100);
+    const name = d.prizeName ? `*${d.prizeName}*` : "*Prize*";
+    return (
+      `🏆 ${name} · ${money(d.monthToDate)} of ${money(d.target)} ` +
+      `(${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%)`
+    );
   }
+
+  if (d.projected === null || d.vsPace === null) return null;
   const ahead = d.vsPace >= 0;
   const gap = money(Math.abs(d.vsPace));
   return (
     `*Pace* · ${money(d.projected)} projected against ${money(d.target)}\n` +
     `${ahead ? "🟢" : "🔴"} ${gap} ${ahead ? "ahead of" : "behind"} pace on day ${d.dayOfMonth} of ${d.daysInMonth}`
   );
+}
+
+function ratePct(r: number | null): string {
+  return r === null ? "—" : `${Math.round(r * 100)}%`;
 }
 
 function leaderboardText(d: CashDigestData): string {
@@ -71,7 +89,8 @@ function leaderboardText(d: CashDigestData): string {
     .map((l, i) => {
       const rank = medals[i] ?? `${i + 1}.`;
       const today = l.today > 0 ? `  _(+${money(l.today)} today)_` : "";
-      return `${rank} *${l.name}* — ${money(l.month)}${today}`;
+      const rate = l.closeRate === null ? "" : `  ·  ${ratePct(l.closeRate)} close`;
+      return `${rank} *${l.name}* — ${money(l.month)}${rate}${today}`;
     })
     .join("\n");
 }
@@ -79,6 +98,7 @@ function leaderboardText(d: CashDigestData): string {
 function buildSlackBlocks(
   d: CashDigestData,
   local: { year: number; month: number; day: number },
+  showLeaderboard = true,
 ): unknown[] {
   const blocks: unknown[] = [
     {
@@ -103,6 +123,14 @@ function buildSlackBlocks(
       fields: [
         { type: "mrkdwn", text: `*Month to date*\n${money(d.monthToDate)}` },
         { type: "mrkdwn", text: `*Year to date*\n${money(d.yearToDate)}` },
+        {
+          type: "mrkdwn",
+          text: `*Close rate today*\n${ratePct(d.closeRateToday)}`,
+        },
+        {
+          type: "mrkdwn",
+          text: `*Close rate this month*\n${ratePct(d.closeRateMonth)}`,
+        },
       ],
     },
   ];
@@ -112,13 +140,15 @@ function buildSlackBlocks(
     blocks.push({ type: "section", text: { type: "mrkdwn", text: pace } });
   }
 
-  blocks.push(
-    { type: "divider" },
-    {
-      type: "section",
-      text: { type: "mrkdwn", text: `*This month*\n${leaderboardText(d)}` },
-    },
-  );
+  if (showLeaderboard) {
+    blocks.push(
+      { type: "divider" },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `*This month*\n${leaderboardText(d)}` },
+      },
+    );
+  }
 
   if (d.truncated) {
     blocks.push({
@@ -138,11 +168,14 @@ function buildSlackBlocks(
 function buildDiscordEmbed(
   d: CashDigestData,
   local: { year: number; month: number; day: number },
+  showLeaderboard = true,
 ): unknown {
   const fields: { name: string; value: string; inline?: boolean }[] = [
     { name: "Today", value: money(d.today), inline: true },
     { name: "Month to date", value: money(d.monthToDate), inline: true },
     { name: "Year to date", value: money(d.yearToDate), inline: true },
+    { name: "Close rate today", value: ratePct(d.closeRateToday), inline: true },
+    { name: "Close rate month", value: ratePct(d.closeRateMonth), inline: true },
   ];
 
   const pace = paceLine(d);
@@ -154,11 +187,13 @@ function buildDiscordEmbed(
     });
   }
 
-  fields.push({
-    name: "This month",
-    value: leaderboardText(d).replace(/\*/g, "").slice(0, 1000),
-    inline: false,
-  });
+  if (showLeaderboard) {
+    fields.push({
+      name: "This month",
+      value: leaderboardText(d).replace(/\*/g, "").slice(0, 1000),
+      inline: false,
+    });
+  }
 
   return {
     title: `💰 ${money(d.today)} collected — ${dateLabel(local)}`,
@@ -228,6 +263,9 @@ async function maybeSendForTeam(
     return { sent: false, reason: "no notification channel configured" };
   }
 
+  // Defaults on — a leaderboard is most of why a team wants this post.
+  const showLeaderboard = team.cashDigestShowLeaderboard !== false;
+
   const fallback = `${money(data.today)} collected today · ${money(data.monthToDate)} month to date`;
 
   if (channel === "slack") {
@@ -239,7 +277,7 @@ async function maybeSendForTeam(
       accessToken: team.slackAccessToken,
       channelId,
       text: fallback,
-      blocks: buildSlackBlocks(data, local),
+      blocks: buildSlackBlocks(data, local, showLeaderboard),
     });
     if (!result.ok) throw new Error(`Slack post failed: ${result.error}`);
   } else {
@@ -248,7 +286,7 @@ async function maybeSendForTeam(
     const result = await postDiscordWebhook({
       webhookUrl,
       content: fallback,
-      embed: buildDiscordEmbed(data, local),
+      embed: buildDiscordEmbed(data, local, showLeaderboard),
     });
     if (!result.ok) throw new Error(`Discord post failed: ${result.error}`);
   }

@@ -4,15 +4,18 @@
 // What came in today, this month and this year, whether that's ahead of or
 // behind the team's goal, and who collected it.
 //
-// The numbers come from the calls themselves — the cash a closer entered on
-// the post-call form — NOT from the Team Performance board. That board is
-// manual entry and only shows what closers have submitted to it, so a digest
-// built on it would report zero on any day nobody filled it in and look like
-// the team sold nothing.
+// The numbers come from the TEAM PERFORMANCE BOARD, not the post-call forms.
 //
-// Read from the `callStats` sidecar for the same reason Collections does: the
-// calls table carries transcripts, and scanning a year of them would blow
-// Convex's read limit long before it produced a total.
+// That was the other way round first, on the reasoning that the board is
+// manual entry and would read zero on a day nobody submitted. Tyler corrected
+// it: the board is what these closers actually maintain, and several of them
+// neglect the post-call form entirely. A digest is only useful if it matches
+// the number the team already believes, and the board is that number.
+//
+// So it reads the same three tables the board does, through the same merge —
+// manager override beats closer entry beats what we measured — and counts only
+// days a human has reported. Anything else and the digest and the board would
+// disagree in front of the whole team.
 // ============================================================================
 
 import { v } from "convex/values";
@@ -20,6 +23,7 @@ import { internalQuery } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { DEFAULT_TIMEZONE } from "./closerPerformance";
 import { formatInTimeZone } from "./setterDataNotifications";
+import { mergeDailyRows } from "./closerPerformanceMetrics";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -32,12 +36,18 @@ import { formatInTimeZone } from "./setterDataNotifications";
  */
 const MAX_STATS_SCANNED = 20_000;
 
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
 export interface CashLeader {
   closerId: string;
   name: string;
   today: number;
   month: number;
   deals: number;
+  /** Closes over calls taken, this month. Null when they took none. */
+  closeRate: number | null;
 }
 
 export interface CashDigestData {
@@ -58,12 +68,20 @@ export interface CashDigestData {
   daysInMonth: number;
   leaders: CashLeader[];
   truncated: boolean;
-}
-
-/** Cash on a call only counts once the closer has said the deal closed. */
-function cashOf(row: { outcome?: string; cashCollected?: number }): number {
-  if (row.outcome !== "closed") return 0;
-  return row.cashCollected ?? 0;
+  /**
+   * Team close rate — the AVERAGE of each closer's own rate, not the team's
+   * total closes over total calls.
+   *
+   * Tyler asked for it this way deliberately. It gives every closer equal
+   * weight regardless of how many calls they took, so one rep having a huge
+   * day doesn't drag the team number to their own. Null when nobody took a
+   * call in the period.
+   */
+  closeRateToday: number | null;
+  closeRateMonth: number | null;
+  /** Whether the prize target is standing in for a cash goal. */
+  targetIsPrize: boolean;
+  prizeName: string | null;
 }
 
 export async function collectCashDigest(
@@ -75,67 +93,115 @@ export async function collectCashDigest(
   const tz = team?.timezone || DEFAULT_TIMEZONE;
   const local = formatInTimeZone(new Date(nowMs), tz);
 
-  // Boundaries are computed in the team's own zone. A digest that rolled over
-  // at UTC midnight would move a 7pm deal in California into tomorrow.
-  const startOfYear = Date.UTC(local.year, 0, 1) - tzOffsetMs(nowMs, tz);
-  const startOfMonth = Date.UTC(local.year, local.month - 1, 1) - tzOffsetMs(nowMs, tz);
-  const startOfDay =
-    Date.UTC(local.year, local.month - 1, local.day) - tzOffsetMs(nowMs, tz);
+  // dayKeys are team-local "YYYY-MM-DD" strings, so the boundaries are string
+  // prefixes rather than timestamps — no timezone arithmetic, and the same keys
+  // the board itself groups by.
+  const todayKey = `${local.year}-${pad2(local.month)}-${pad2(local.day)}`;
+  const monthPrefix = `${local.year}-${pad2(local.month)}`;
+  const startKey = `${local.year}-01-01`;
+  const endKey = todayKey;
 
-  const stats = await ctx.db
-    .query("callStats")
-    .withIndex("by_team_and_date", (q: any) =>
-      q.eq("teamId", teamId).gte("createdAt", startOfYear),
-    )
-    .take(MAX_STATS_SCANNED);
+  const [stats, overrides, entries, closers] = await Promise.all([
+    ctx.db
+      .query("closerDailyStats")
+      .withIndex("by_team_and_day", (q: any) =>
+        q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
+      )
+      .collect(),
+    ctx.db
+      .query("closerDailyOverrides")
+      .withIndex("by_team_and_day", (q: any) =>
+        q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
+      )
+      .collect(),
+    ctx.db
+      .query("closerDailyEntries")
+      .withIndex("by_team_and_day", (q: any) =>
+        q.eq("teamId", teamId).gte("dayKey", startKey).lte("dayKey", endKey),
+      )
+      .collect(),
+    ctx.db
+      .query("closers")
+      .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
+      .collect(),
+  ]);
 
-  const truncated = stats.length === MAX_STATS_SCANNED;
-  if (truncated) {
-    console.warn(
-      `[cashDigest] team ${teamId} hit the ${MAX_STATS_SCANNED}-row scan ` +
-        `ceiling — the year-to-date figure is short`,
-    );
-  }
+  const merged = mergeDailyRows(stats, overrides, entries);
+
+  // Only days a human reported. Showing a measured number as though it were
+  // reported is the exact confusion manual entry exists to remove — and it
+  // would put a figure in Slack that the board doesn't show.
+  const reported = merged.filter(
+    (r: any) => r.confirmed || r.overridden.length > 0,
+  );
+
+  const nameById = new Map<string, string>(
+    closers.map((c: any) => [String(c._id), c.name ?? "Unknown"]),
+  );
 
   let today = 0;
   let monthToDate = 0;
   let yearToDate = 0;
   let dealsToday = 0;
 
-  const byCloser = new Map<string, { today: number; month: number; deals: number }>();
+  const byCloser = new Map<
+    string,
+    { today: number; month: number; deals: number; takenM: number; closesM: number }
+  >();
+  // Per-closer today figures, kept separately so the day's team close rate is
+  // an average of the reps who actually worked today.
+  const todayByCloser = new Map<string, { taken: number; closes: number }>();
 
-  for (const row of stats) {
-    const cash = cashOf(row);
-    if (cash <= 0) continue;
-    const at = row.createdAt ?? 0;
+  for (const row of reported) {
+    const t = row.totals ?? {};
+    const cash = t.cash ?? 0;
+    const closes = t.closes ?? 0;
+    const taken = t.taken ?? 0;
+    const inMonth = row.dayKey.startsWith(monthPrefix);
+    const isToday = row.dayKey === todayKey;
 
     yearToDate += cash;
 
-    const closerId = row.closerId ? String(row.closerId) : null;
-    if (at >= startOfMonth) {
+    const e = byCloser.get(row.closerId) ?? {
+      today: 0, month: 0, deals: 0, takenM: 0, closesM: 0,
+    };
+
+    if (inMonth) {
       monthToDate += cash;
-      if (closerId) {
-        const e = byCloser.get(closerId) ?? { today: 0, month: 0, deals: 0 };
-        e.month += cash;
-        byCloser.set(closerId, e);
-      }
+      e.month += cash;
+      e.deals += closes;
+      e.takenM += taken;
+      e.closesM += closes;
     }
-    if (at >= startOfDay) {
+    if (isToday) {
       today += cash;
-      dealsToday++;
-      if (closerId) {
-        const e = byCloser.get(closerId) ?? { today: 0, month: 0, deals: 0 };
-        e.today += cash;
-        e.deals++;
-        byCloser.set(closerId, e);
-      }
+      dealsToday += closes;
+      e.today += cash;
+      const d = todayByCloser.get(row.closerId) ?? { taken: 0, closes: 0 };
+      d.taken += taken;
+      d.closes += closes;
+      todayByCloser.set(row.closerId, d);
     }
+    byCloser.set(row.closerId, e);
   }
 
-  // The goal: an explicit team override, else the sum of the reps' own monthly
-  // goals. Same rule the Team Performance board uses, so the two can't disagree
-  // about what the team is aiming at.
-  const target = await resolveTarget(ctx, teamId, team, local);
+  // Average of individual rates, per Tyler — every closer weighted equally
+  // rather than the team's total closes over its total calls.
+  const meanRate = (
+    rows: Array<{ taken: number; closes: number }>,
+  ): number | null => {
+    const withCalls = rows.filter((r) => r.taken > 0);
+    if (withCalls.length === 0) return null;
+    const sum = withCalls.reduce((s, r) => s + r.closes / r.taken, 0);
+    return sum / withCalls.length;
+  };
+
+  const closeRateToday = meanRate([...todayByCloser.values()]);
+  const closeRateMonth = meanRate(
+    [...byCloser.values()].map((e) => ({ taken: e.takenM, closes: e.closesM })),
+  );
+
+  const { target, isPrize } = await resolveTarget(ctx, teamId, team, local);
 
   const daysInMonth = new Date(Date.UTC(local.year, local.month, 0)).getUTCDate();
   const dayOfMonth = local.day;
@@ -149,14 +215,14 @@ export async function collectCashDigest(
 
   const leaders: CashLeader[] = [];
   for (const [closerId, e] of byCloser) {
-    if (e.month <= 0) continue;
-    const closer = await ctx.db.get(closerId as Id<"closers">);
+    if (e.month <= 0 && e.closesM <= 0 && e.takenM <= 0) continue;
     leaders.push({
       closerId,
-      name: closer?.name ?? "Unknown",
+      name: nameById.get(closerId) ?? "Unknown",
       today: e.today,
       month: e.month,
       deals: e.deals,
+      closeRate: e.takenM > 0 ? e.closesM / e.takenM : null,
     });
   }
   leaders.sort((a, b) => b.month - a.month);
@@ -172,7 +238,11 @@ export async function collectCashDigest(
     dayOfMonth,
     daysInMonth,
     leaders,
-    truncated,
+    truncated: false,
+    closeRateToday,
+    closeRateMonth,
+    targetIsPrize: isPrize,
+    prizeName: team?.closerPrizeName ?? null,
   };
 }
 
@@ -208,19 +278,28 @@ function tzOffsetMs(nowMs: number, tz: string): number {
   return asIfUtc - Math.floor(nowMs / 1000) * 1000;
 }
 
+/**
+ * What the team is aiming at this month.
+ *
+ * Explicit cash goal, else the sum of the reps' own monthly goals, else the
+ * PRIZE target. That last fallback exists because it's what RemoteStack had
+ * actually set — a $4,000,000 "Team trip to Ibiza" and no cash goal at all —
+ * so pace came back blank on a team that plainly had a target. The board
+ * already treats the prize as a thing to pace against; this just stops the
+ * digest disagreeing with it.
+ */
 async function resolveTarget(
   ctx: { db: any },
   teamId: Id<"teams">,
   team: any,
   local: { year: number; month: number },
-): Promise<number | null> {
+): Promise<{ target: number | null; isPrize: boolean }> {
   if (typeof team?.closerTeamCashGoalOverride === "number") {
-    return team.closerTeamCashGoalOverride;
+    return { target: team.closerTeamCashGoalOverride, isPrize: false };
   }
 
   // Per-closer goals live in their own table, keyed by month so history stays
-  // truthful. Same source the Team Performance board reads, so the two can't
-  // disagree about what the team is aiming at.
+  // truthful. Same source the Team Performance board reads.
   const monthKey = `${local.year}-${String(local.month).padStart(2, "0")}`;
   const goals = await ctx.db
     .query("closerGoals")
@@ -229,8 +308,16 @@ async function resolveTarget(
     )
     .collect();
 
-  if (goals.length === 0) return null;
-  return goals.reduce((sum: number, g: any) => sum + (g.cashGoal ?? 0), 0);
+  if (goals.length > 0) {
+    const sum = goals.reduce((s: number, g: any) => s + (g.cashGoal ?? 0), 0);
+    if (sum > 0) return { target: sum, isPrize: false };
+  }
+
+  if (typeof team?.closerPrizeTarget === "number" && team.closerPrizeTarget > 0) {
+    return { target: team.closerPrizeTarget, isPrize: true };
+  }
+
+  return { target: null, isPrize: false };
 }
 
 export const getCashDigest = internalQuery({

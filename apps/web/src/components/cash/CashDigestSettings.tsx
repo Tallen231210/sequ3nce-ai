@@ -154,11 +154,11 @@ export function CashDigestSettings() {
         <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <p className="text-xs leading-relaxed text-muted-foreground">
-            Figures come from the cash closers enter on the post-call form, so a
-            deal counts on the day of the call. Pace needs a monthly goal — set
-            per closer on Team Performance — and is left out of the post
-            entirely if nobody has set one. It posts on quiet days too: a zero
-            is worth seeing.
+            Figures come from the Team Performance board — the same numbers
+            your closers submit there, through the same manager overrides — so
+            this post and that board always agree. Close rate is the average of
+            each closer&apos;s own rate, so everyone counts equally regardless
+            of call volume. It posts on quiet days too: a zero is worth seeing.
           </p>
         </div>
 
@@ -266,6 +266,23 @@ export function CashDigestSettings() {
               </div>
             )}
           </div>
+
+          {/* Leaderboard */}
+          <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-border px-4 py-3">
+            <div>
+              <div className="text-sm font-medium">Include the leaderboard</div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Each closer&apos;s cash this month and their close rate, ranked
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={data.showLeaderboard}
+              disabled={disabled}
+              onChange={(e) => void save({ showLeaderboard: e.target.checked })}
+              className="h-4 w-4 shrink-0 rounded border-border accent-foreground"
+            />
+          </label>
 
           {/* Cadence */}
           <div>
