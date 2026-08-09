@@ -75,8 +75,15 @@ function speakerName(speaker: string | undefined, call: AlertCall): string | und
   return speaker;
 }
 
-function headline(score: number, findingCount: number, isTest = false): string {
-  if (isTest) return "Compliance — test message";
+/**
+ * Identical for a test and a real alert.
+ *
+ * The test used to return a bare "Compliance — test message", which silently
+ * threw away the score — the single most-looked-at thing in the whole message.
+ * The footer already says it was a test; the headline's job is to say what was
+ * found, and a test that hides that isn't showing anyone what they'll get.
+ */
+function headline(score: number, findingCount: number): string {
   const things = findingCount === 1 ? "1 thing" : `${findingCount} things`;
   return `Compliance — ${things} to look at (${score}/10)`;
 }
@@ -224,7 +231,7 @@ function buildSlackBlocks(
       type: "header",
       text: {
         type: "plain_text",
-        text: headline(review.score, review.findings.length, isTest),
+        text: headline(review.score, review.findings.length),
         emoji: true,
       },
     },
@@ -315,7 +322,7 @@ function buildDiscordEmbed(
   const more = review.findings.length - FINDINGS_IN_MESSAGE;
 
   return {
-    title: headline(review.score, review.findings.length, isTest),
+    title: headline(review.score, review.findings.length),
     description: `${subject(call)}\n\n${clip(review.summary, SUMMARY_CHARS)}`,
     color: 0xf59e0b,
     fields,
@@ -352,9 +359,7 @@ async function deliver(
   callId: string | null,
   isTest = false,
 ): Promise<{ ok: boolean; error?: string; soft?: boolean }> {
-  const fallback = isTest
-    ? headline(review.score, review.findings.length, true)
-    : `${headline(review.score, review.findings.length)} — ${subject(call)}`;
+  const fallback = `${headline(review.score, review.findings.length)} — ${subject(call)}`;
 
   if (team.complianceChannel === "slack") {
     // No fallback to the team's general channel. Compliance findings go to the
