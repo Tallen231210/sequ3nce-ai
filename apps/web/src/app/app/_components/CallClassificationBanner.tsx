@@ -3,12 +3,18 @@
 // ============================================================================
 // "Was this a sales call?"
 //
-// Shown on calls that came from Fathom, which records everything a closer sits
-// in — standups, one-to-ones, interviews. We guess, and when we can't tell we
-// show the call anyway but leave it out of their numbers until someone says.
+// Shown on every call. Both things that record without being asked — Fathom,
+// and now bots joining the calendar by themselves — pick up standups,
+// one-to-ones and interviews alongside real sales calls. We guess, and when we
+// can't tell we show the call anyway but leave it out of their numbers until
+// someone says.
 //
 // The bar is deliberately quiet once answered. A closer scrolling their own
 // history should not be nagged about a decision they already made.
+//
+// The manager has their own version of this at
+// components/calls/SalesCallToggle.tsx. Both go through the same rule in
+// convex/callClassification.ts.
 // ============================================================================
 
 import React, { useState } from "react";
@@ -25,7 +31,7 @@ interface Props {
   onChanged?: () => void;
 }
 
-export function FathomClassificationBanner({
+export function CallClassificationBanner({
   callId,
   classifiedAs,
   classifiedBy,

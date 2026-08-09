@@ -55,6 +55,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTeam } from "@/hooks/useTeam";
 import { AmmoV2Panel, type AmmoV2Analysis } from "@/components/AmmoV2Panel";
 import { CallCompliancePanel } from "@/components/compliance/CallCompliancePanel";
+import { SalesCallToggle } from "@/components/calls/SalesCallToggle";
 
 // Types
 interface AmmoItem {
@@ -98,6 +99,9 @@ interface CallDetails {
   /** Where the recording lives when it isn't ours — Fathom hosts its own. */
   externalShareUrl?: string;
   source?: string;
+  classifiedAs?: string;
+  classifiedBy?: string;
+  countsTowardStats?: boolean;
   transcriptText?: string;
   closerTalkTime?: number;
   prospectTalkTime?: number;
@@ -1531,7 +1535,11 @@ function SnippetAudioPlayer({ src, startTime, endTime }: SnippetAudioPlayerProps
 export default function CallDetailPage() {
   const params = useParams();
   const callId = params.callId as string;
-  const { clerkId } = useTeam();
+  const { clerkId, user } = useTeam();
+  // The mutation enforces this server-side too; this only decides whether to
+  // draw a control the viewer can't use.
+  const canEditClassification =
+    user?.role === "admin" || user?.role === "manager";
 
   const call = useQuery(
     api.calls.getCallDetails,
@@ -1861,6 +1869,19 @@ export default function CallDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Was this a sales call? Auto-join records whatever is on the calendar,
+            so a standup can land here counting toward the close rate. Kicking
+            the bot is the other way to say no, and it only helps if someone
+            remembers before the meeting starts. */}
+        <SalesCallToggle
+          callId={callId}
+          clerkId={clerkId ?? undefined}
+          classifiedAs={call.classifiedAs}
+          classifiedBy={call.classifiedBy}
+          countsTowardStats={call.countsTowardStats}
+          canEdit={canEditClassification}
+        />
 
         {/* Compliance — renders nothing unless a manager, switched on, reviewed */}
         <CallCompliancePanel callId={callId} onSeek={handleSegmentClick} />

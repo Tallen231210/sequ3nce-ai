@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { FathomClassificationBanner } from './FathomClassificationBanner';
+import { CallClassificationBanner } from './CallClassificationBanner';
 import { resolvePlayback } from '@/lib/callPlayback';
 import type {
   CloserInfo,
@@ -271,11 +271,16 @@ export function CallDetailSheet({
           </button>
         </div>
 
-        {/* Fathom calls carry a classification the closer can overrule. Sits
+        {/* Every call carries a classification the closer can overrule. Sits
             directly under the header so the question is answered before they
-            start reading the call. */}
-        {call.source === 'fathom' && (
-          <FathomClassificationBanner
+            start reading the call.
+
+            This used to be `call.source === 'fathom'`, from when Fathom was the
+            only thing that recorded meetings nobody asked it to. Auto-join does
+            the same — a bot sits in whatever is on the calendar — so a standup
+            could be recorded and counted with no way to say otherwise. */}
+        {call._id && (
+          <CallClassificationBanner
             callId={call._id}
             classifiedAs={call.classifiedAs}
             classifiedBy={call.classifiedBy}

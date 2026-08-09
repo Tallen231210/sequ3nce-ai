@@ -16,6 +16,7 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { upsertCallContentTx } from "./callContent";
 import { classifyMeeting } from "./fathomClassify";
+import { applyClassification } from "./callClassification";
 
 /** Shape of what Fathom sends us, narrowed to what we actually use. */
 export interface FathomMeeting {
@@ -187,47 +188,10 @@ export const reclassifyCall = internalMutation({
       return { success: false, error: "That isn't your call." };
     }
 
-    // Also checks the status agrees. Without that last clause a row whose
-    // status had drifted from its classification would take this early exit
-    // and never be repaired — the same drift that was letting a call marked
-    // internal go on being counted.
-    const alreadyRight =
-      call.classifiedBy === "closer" &&
-      call.countsTowardStats === args.isSalesCall &&
-      call.status === (args.isSalesCall ? "completed" : "unclassified");
-    if (alreadyRight) return { success: true };
-
-    await ctx.db.patch(args.callId, {
-      classifiedAs: args.isSalesCall ? "sales" : "internal",
-      classifiedBy: "closer",
-      countsTowardStats: args.isSalesCall,
-      // The half that actually moves the numbers.
-      status: args.isSalesCall ? "completed" : "unclassified",
-    });
-
-    // Only on the way up, and only once — a call flipped back and forth must
-    // not queue a fresh summary every time.
-    if (args.isSalesCall && !call.countsTowardStats) {
-      const content = await ctx.db
-        .query("callContent")
-        .withIndex("by_call", (q) => q.eq("callId", args.callId))
-        .first();
-      if (content?.transcriptText) {
-        await ctx.scheduler.runAfter(0, internal.ai.generateCallSummary, {
-          callId: args.callId,
-          transcript: content.transcriptText,
-          ...(call.prospectName ? { prospectName: call.prospectName } : {}),
-        });
-        await ctx.scheduler.runAfter(0, internal.ai.generateCallAnalysis, {
-          callId: args.callId,
-          transcript: content.transcriptText,
-          ...(call.prospectName ? { prospectName: call.prospectName } : {}),
-          ...(call.duration !== undefined ? { duration: call.duration } : {}),
-        });
-      }
-    }
-
-    return { success: true };
+    // The rule itself lives in callClassification.ts, shared with the manager's
+    // route. Two doors onto the same answer — a closer marking a call internal
+    // and a manager doing it must not mean different things to the numbers.
+    return await applyClassification(ctx, call, args.isSalesCall, "closer");
   },
 });
 
