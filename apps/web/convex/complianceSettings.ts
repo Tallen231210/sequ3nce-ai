@@ -147,6 +147,16 @@ export const updateComplianceSettings = mutation({
     }
 
     await ctx.db.patch(teamId, patch);
+
+    // Same transaction as the setting itself, so the links can never disagree
+    // with what the settings page says the password is.
+    if (args.sharePassword !== undefined) {
+      await ctx.runMutation(internal.sharedLinks.regateComplianceLinks, {
+        teamId,
+        password: args.sharePassword,
+      });
+    }
+
     return { success: true };
   },
 });

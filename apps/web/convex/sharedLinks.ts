@@ -196,6 +196,40 @@ export const getOrCreateComplianceShareLink = internalMutation({
 const COMPLIANCE_CREATOR = "compliance-alert";
 
 /**
+ * Re-gate every compliance link on a team after the password changes.
+ *
+ * Without this, changing the password would leave every link already sent
+ * working on the old one until that call happened to be reviewed again — so
+ * rotating a password that had leaked would achieve nothing, which is the only
+ * reason anyone rotates one.
+ *
+ * Clearing the password removes the gate everywhere, for the same reason: a
+ * setting that says "no password" while old links still demand one is a
+ * support ticket waiting to happen.
+ */
+export const regateComplianceLinks = internalMutation({
+  args: { teamId: v.id("teams"), password: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<{ updated: number }> => {
+    const password = (args.password ?? "").trim();
+    const wantedHash = password ? await hashSharePassword(password) : undefined;
+
+    const links = await ctx.db
+      .query("sharedLinks")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    let updated = 0;
+    for (const link of links) {
+      if (link.createdBy !== COMPLIANCE_CREATOR) continue;
+      if (link.passwordHash === wantedHash) continue;
+      await ctx.db.patch(link._id, { passwordHash: wantedHash });
+      updated++;
+    }
+    return { updated };
+  },
+});
+
+/**
  * Toggle a shared link's active status (revoke / reactivate).
  */
 export const toggleSharedLink = mutation({

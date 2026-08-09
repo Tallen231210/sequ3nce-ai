@@ -1575,7 +1575,10 @@ export default defineSchema({
     }))),                                        // AI-redacted version for compliance links
   })
     .index("by_token", ["token"])
-    .index("by_call", ["callId"]),
+    .index("by_call", ["callId"])
+    // Rotating a team's compliance password has to re-gate the links already
+    // out there, or rotating it achieves nothing.
+    .index("by_team", ["teamId"]),
 
   // Excluded Calendar Events (events the closer marked as "not a sales call")
   excludedCalendarEvents: defineTable({
