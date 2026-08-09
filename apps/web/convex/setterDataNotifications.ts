@@ -497,6 +497,16 @@ interface SlackPostArgs {
   channelId: string;
   text: string;
   blocks: unknown[];
+  /**
+   * Suppress Slack's link previews.
+   *
+   * Slack expands every link in a message into its own preview card stacked at
+   * the bottom. A compliance alert carries one link per finding, so three
+   * findings produced three near-identical cards under the message with
+   * nothing indicating which quote each belonged to — it read as the same call
+   * link repeated three times.
+   */
+  unfurl?: boolean;
 }
 
 export async function postSlackMessage(args: SlackPostArgs): Promise<{ ok: boolean; error?: string }> {
@@ -510,6 +520,9 @@ export async function postSlackMessage(args: SlackPostArgs): Promise<{ ok: boole
       channel: args.channelId,
       text: args.text,
       blocks: args.blocks,
+      ...(args.unfurl === false
+        ? { unfurl_links: false, unfurl_media: false }
+        : {}),
     }),
   });
   const data = (await response.json()) as { ok?: boolean; error?: string };

@@ -267,24 +267,26 @@ function buildSlackBlocks(
     // The timestamp is a link into the recording at that second, not a label.
     // A reader who isn't a Sequ3nce user has no other way to reach the moment,
     // and scrubbing a ninety-minute call to find 33:19 is not "ten seconds".
-    const stamp =
-      typeof f.timestamp === "number"
-        ? link
-          ? `<${link}${link.includes("?") ? "&" : "?"}t=${f.timestamp}|${mmss(f.timestamp)}>`
-          : `_${mmss(f.timestamp)}_`
-        : null;
-
-    const meta = [
-      f.speaker ? `*${clip(speakerName(f.speaker, call) ?? '', 40)}*` : null,
-      stamp,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const meta = f.speaker
+      ? `*${clip(speakerName(f.speaker, call) ?? "", 40)}*`
+      : null;
 
     // The concern was missing here, which is what made the message read as
     // thin: a quote and a rule without the reason they were put together
     // leaves the manager to work out for themselves why it was flagged. It's
     // the sentence that decides whether they open the call.
+    //
+    // The jump-to-the-moment link goes LAST, under the text it belongs to.
+    // It used to sit up in the header line beside the speaker's name, which
+    // put three bare links near the top of the message with nothing to tie
+    // each one to the quote it opened.
+    const jump =
+      typeof f.timestamp === "number"
+        ? link
+          ? `\n▶︎ <${link}${link.includes("?") ? "&" : "?"}t=${f.timestamp}|Listen from ${mmss(f.timestamp)}>`
+          : `\n▶︎ _${mmss(f.timestamp)}_`
+        : "";
+
     blocks.push({
       type: "section",
       text: {
@@ -293,7 +295,8 @@ function buildSlackBlocks(
           (meta ? `${meta}\n` : "") +
           `${blockquote(clip(f.quote, QUOTE_CHARS))}\n` +
           `*May touch:* ${clip(f.rule, RULE_CHARS)}\n` +
-          `${clip(f.concern, CONCERN_CHARS)}`,
+          `${clip(f.concern, CONCERN_CHARS)}` +
+          jump,
       },
     });
   }
@@ -319,9 +322,17 @@ function buildSlackBlocks(
     elements: [
       {
         type: "mrkdwn",
-        text: isTest
-          ? "Sent from Settings → Compliance. Nothing was reviewed to produce this."
-          : `${suffix}<https://sequ3nce.ai/dashboard/calls/${callId}|Open the call →>`,
+        // The password belongs next to the link, not somewhere else in the
+        // message — whoever clicks is about to be asked for it. This whole
+        // block was still pointing at the old dashboard URL and printing no
+        // password at all: an earlier edit to it silently didn't apply, and I
+        // reported it as done without opening the file to check.
+        text:
+          (link
+            ? `${suffix}<${link}|Watch the call →>` +
+              (password ? `\nPassword: \`${password}\`` : "")
+            : "No call behind this one — it's a sample.") +
+          (isTest ? `\n_Test, sent from Settings → Compliance._` : ""),
       },
     ],
   });
@@ -456,6 +467,7 @@ async function deliver(
       channelId,
       text: fallback,
       blocks: buildSlackBlocks(review, call, callId, isTest, link, password),
+      unfurl: false,
     });
     return result.ok
       ? { ok: true }
