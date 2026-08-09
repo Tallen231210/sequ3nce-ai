@@ -15,6 +15,7 @@ import {
   createSharedLink,
   getCallAnalysis,
 } from '../convex';
+import { CallClassificationBar } from './CallClassificationBar';
 import { CallDetailChapters } from './CallDetailChapters';
 import { CallDetailOverviewTab } from './CallDetailOverviewTab';
 import { CallDetailAnalysisTab } from './CallDetailAnalysisTab';
@@ -227,6 +228,24 @@ export function CallDetailSheet({
             </svg>
           </button>
         </div>
+
+        {/* Was this a sales call? Sits directly under the header so the
+            question is answered before they start reading the call. */}
+        <CallClassificationBar
+          callId={call._id}
+          closerId={closerInfo.closerId}
+          classifiedAs={call.classifiedAs}
+          classifiedBy={call.classifiedBy}
+          countsTowardStats={call.countsTowardStats}
+          onChanged={(isSalesCall) =>
+            onCallUpdated({
+              ...call,
+              classifiedAs: isSalesCall ? 'sales' : 'internal',
+              classifiedBy: 'closer',
+              countsTowardStats: isSalesCall,
+            })
+          }
+        />
 
         {/* Video Player (pinned) */}
         {hasVideo && (

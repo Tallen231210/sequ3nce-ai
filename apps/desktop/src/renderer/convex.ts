@@ -1414,6 +1414,49 @@ export interface CallHistoryItem {
   contractValue?: number;
   callAnalysis?: CallAnalysis;
   endedAt?: number;
+  /**
+   * Whether we think this was a sales call, and whether it counts.
+   *
+   * The backend has always sent these; nothing here read them. They matter now
+   * because bots join the calendar by themselves, so standups and one-to-ones
+   * get recorded alongside real calls and land in the close rate unless someone
+   * says otherwise.
+   */
+  source?: string;
+  classifiedAs?: string;
+  classifiedBy?: string;
+  countsTowardStats?: boolean;
+  isHistorical?: boolean;
+}
+
+/**
+ * Say whether a call was a sales call.
+ *
+ * The server checks the call belongs to this closer, so this can only ever
+ * change your own calls.
+ */
+export async function reclassifyCall(
+  callId: string,
+  closerId: string,
+  isSalesCall: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/reclassifyCall`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, closerId, isSalesCall }),
+    });
+    if (!response.ok) {
+      return { success: false, error: "Couldn't reach the server." };
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to reclassify call:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "reclassifyCall", integration: "convex" },
+    });
+    return { success: false, error: "Couldn't save that." };
+  }
 }
 
 export async function getCallHistory(closerId: string, limit?: number): Promise<CallHistoryItem[]> {

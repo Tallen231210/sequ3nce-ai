@@ -729,6 +729,76 @@ http.route({
   }),
 });
 
+/**
+ * "That wasn't a sales call" — the desktop app's route.
+ *
+ * The web closer app already has one at /closer/fathom/reclassify, but that
+ * authenticates with a sessionToken and the Electron app doesn't have one — it
+ * signs in with email and password and identifies itself by closerId, the same
+ * as every other route on this side of the API.
+ *
+ * The mutation checks the call belongs to the closer named here, so a closer
+ * can only correct their own calls. Same protection as the rest of the desktop
+ * routes, no more and no less.
+ */
+http.route({
+  path: "/reclassifyCall",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const cors = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    };
+    try {
+      const body = await request.json();
+      const { callId, closerId, isSalesCall } = body;
+
+      if (!callId || !closerId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "callId and closerId are required" }),
+          { status: 400, headers: cors },
+        );
+      }
+
+      const result = await ctx.runMutation(internal.fathom.reclassifyCall, {
+        callId: callId as Id<"calls">,
+        closerId: closerId as Id<"closers">,
+        isSalesCall: isSalesCall === true,
+      });
+
+      // 200 with success:false rather than a 4xx — the renderer shows the
+      // message, and an error status here would be swallowed as a network
+      // failure and reported as "something went wrong".
+      return new Response(JSON.stringify(result), { status: 200, headers: cors });
+    } catch (error) {
+      console.error("[HTTP] reclassifyCall:", error);
+      return new Response(
+        JSON.stringify({ success: false, error: "Couldn't save that" }),
+        { status: 200, headers: cors },
+      );
+    }
+  }),
+});
+
+http.route({
+  path: "/reclassifyCall",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        // Must list every header the renderer actually sends. In dev the
+        // renderer runs on localhost:3030 so full CORS applies; in production
+        // it loads from file:// and skips preflight entirely, which is exactly
+        // how a mismatch here ships unnoticed.
+        "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+      },
+    });
+  }),
+});
+
 // Handle CORS preflight for updateCallNotes
 http.route({
   path: "/updateCallNotes",
