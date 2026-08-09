@@ -225,6 +225,8 @@ function buildSlackBlocks(
   callId: string | null,
   /** Marked as a test in the footer; everything else renders identically. */
   isTest = false,
+  /** Public share link when we could mint one, else the dashboard page. */
+  link: string | null = null,
 ): unknown[] {
   const blocks: unknown[] = [
     {
@@ -300,6 +302,7 @@ function buildDiscordEmbed(
   call: AlertCall,
   callId: string | null,
   isTest = false,
+  link: string | null = null,
 ): unknown {
   const fields = review.findings.slice(0, FINDINGS_IN_MESSAGE).map((f) => ({
     // Discord rejects an empty field name, and both parts are optional.
@@ -326,7 +329,7 @@ function buildDiscordEmbed(
     description: `${subject(call)}\n\n${clip(review.summary, SUMMARY_CHARS)}`,
     color: 0xf59e0b,
     fields,
-    url: callId ? `https://sequ3nce.ai/dashboard/calls/${callId}` : undefined,
+    url: link ?? undefined,
     footer: {
       text: [
         more > 0 ? `${more} more on the call page` : null,
@@ -336,6 +339,32 @@ function buildDiscordEmbed(
         .join(" · ") || undefined,
     },
   };
+}
+
+
+/**
+ * Where the alert should point.
+ *
+ * A public share link when we can mint one, because that opens on a phone with
+ * no sign-in, which is where these get read. The dashboard page when we can't —
+ * an outside recorder's call has no file of ours to share — so an alert always
+ * carries a way through to the call rather than sometimes none.
+ */
+async function resolveLink(
+  ctx: any,
+  callId: string | null,
+): Promise<string | null> {
+  if (!callId) return null;
+  try {
+    const share = await ctx.runMutation(
+      internal.sharedLinks.getOrCreateComplianceShareLink,
+      { callId },
+    );
+    if (share?.url) return share.url;
+  } catch (err) {
+    console.error("[Compliance] Could not mint a share link:", err);
+  }
+  return `https://sequ3nce.ai/dashboard/calls/${callId}`;
 }
 
 // ----------------------------------------------------------------------------
@@ -358,6 +387,7 @@ async function deliver(
   call: AlertCall,
   callId: string | null,
   isTest = false,
+  link: string | null = null,
 ): Promise<{ ok: boolean; error?: string; soft?: boolean }> {
   const fallback = `${headline(review.score, review.findings.length)} — ${subject(call)}`;
 
@@ -373,7 +403,7 @@ async function deliver(
       accessToken: team.slackAccessToken,
       channelId,
       text: fallback,
-      blocks: buildSlackBlocks(review, call, callId, isTest),
+      blocks: buildSlackBlocks(review, call, callId, isTest, link),
     });
     return result.ok
       ? { ok: true }
@@ -388,7 +418,7 @@ async function deliver(
     const result = await postDiscordWebhook({
       webhookUrl,
       content: fallback,
-      embed: buildDiscordEmbed(review, call, callId, isTest),
+      embed: buildDiscordEmbed(review, call, callId, isTest, link),
     });
     return result.ok
       ? { ok: true }
@@ -438,7 +468,8 @@ export const sendComplianceAlert = internalAction({
     };
 
     try {
-      const result = await deliver(team, review, call, String(args.callId));
+      const link = await resolveLink(ctx, String(args.callId));
+      const result = await deliver(team, review, call, String(args.callId), false, link);
       if (!result.ok) {
         if (result.soft) return { sent: false, reason: result.error };
         throw new Error(result.error);
@@ -525,6 +556,7 @@ export const sendComplianceTestAlert = internalAction({
               },
               String(callId),
               true,
+              await resolveLink(ctx, String(callId)),
             );
             return result.ok
               ? { sent: true }

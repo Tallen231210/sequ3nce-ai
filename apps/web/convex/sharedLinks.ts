@@ -125,6 +125,65 @@ export const createSharedLink = mutation({
 });
 
 /**
+ * The share link a compliance alert points at.
+ *
+ * REUSED, never re-minted. Every one of these is a public URL that plays the
+ * whole call to anyone holding it, so a call that gets reviewed twice must not
+ * leave two live links behind — the set of exposed URLs should grow with the
+ * number of flagged calls, not with the number of times we looked at them.
+ *
+ * Tyler chose a public link over an authenticated one knowing the trade: it
+ * opens instantly on a phone with no sign-in, which is where a manager actually
+ * reads Slack. The cost is that forwarding the message forwards the recording,
+ * on exactly the calls that have something on them.
+ *
+ * Returns null when there's nothing shareable — a call with no recording of our
+ * own, e.g. anything that came from an outside recorder. The alert falls back
+ * to the dashboard link rather than going out without one.
+ */
+export const getOrCreateComplianceShareLink = internalMutation({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args): Promise<{ url: string } | null> => {
+    const call = await ctx.db.get(args.callId);
+    if (!call?.recordingUrl) return null;
+
+    const existing = await ctx.db
+      .query("sharedLinks")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+
+    const reusable = existing.find(
+      (l) => l.isActive && l.shareType === "full" && l.createdBy === COMPLIANCE_CREATOR,
+    );
+    if (reusable) return { url: `https://sequ3nce.ai/share/${reusable.token}` };
+
+    const token = generateToken();
+    await ctx.db.insert("sharedLinks", {
+      callId: args.callId,
+      teamId: call.teamId,
+      token,
+      shareType: "full",
+      // Off deliberately. Internal review comments are a conversation between
+      // managers about a rep, and this link can reach anyone.
+      includeComments: false,
+      createdBy: COMPLIANCE_CREATOR,
+      createdByType: "manager",
+      isActive: true,
+      createdAt: Date.now(),
+      // Full rather than the redacted "compliance" type — the whole point is
+      // hearing the moment the finding quotes, and a redacted transcript would
+      // hide the words the alert is about.
+      accessType: "full_access",
+    });
+
+    return { url: `https://sequ3nce.ai/share/${token}` };
+  },
+});
+
+/** Marks links minted by the alert, so they can be found and reused or revoked. */
+const COMPLIANCE_CREATOR = "compliance-alert";
+
+/**
  * Toggle a shared link's active status (revoke / reactivate).
  */
 export const toggleSharedLink = mutation({
