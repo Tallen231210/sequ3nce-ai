@@ -1248,14 +1248,27 @@ export const sendCallGoingLongNotification = internalAction({
 export const sendCallCompletedNotification = internalAction({
   args: {
     callId: v.id("calls"),
+    /**
+     * Re-send a call that has already been notified.
+     *
+     * For showing a customer what a notification looks like on one of their
+     * own real calls. Every call worth demonstrating with has, by definition,
+     * already been notified once, so without this the only way to see the
+     * message is to wait for the next call and hope it has the right shape.
+     *
+     * Internal action, so this isn't reachable from any client.
+     */
+    force: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<SlackNotificationResult> => {
     try {
       // Check if already sent
-      const alreadySent = await ctx.runQuery(api.slack.hasNotificationBeenSent, {
-        callId: args.callId,
-        type: "call_completed",
-      });
+      const alreadySent = args.force
+        ? false
+        : await ctx.runQuery(api.slack.hasNotificationBeenSent, {
+            callId: args.callId,
+            type: "call_completed",
+          });
 
       if (alreadySent) {
         console.log("[Slack] Call completed notification already sent for:", args.callId);
