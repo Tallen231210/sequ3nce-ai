@@ -25,11 +25,17 @@ import { postSlackMessage, postDiscordWebhook } from "./setterDataNotifications"
 /**
  * How many findings go in the message itself.
  *
- * The message is a prompt to open the call, not a replacement for it. Three
- * gives a manager enough to judge whether it's worth their next five minutes;
- * past that it's a wall of text in a channel.
+ * This was three, on the reasoning that the message is a prompt to open the
+ * call rather than a replacement for it. That reasoning assumed the reader can
+ * open the call. For RemoteStack's business owner — who reads these in Slack
+ * and is deliberately not a Sequ3nce user — the message IS the product, and
+ * "2 more" pointed at a page he can't reach.
+ *
+ * Ten matches the ceiling the review itself applies, so in practice this sends
+ * everything. A call with ten findings reading as a wall of text is the correct
+ * signal, not a formatting problem.
  */
-const FINDINGS_IN_MESSAGE = 3;
+const FINDINGS_IN_MESSAGE = 10;
 
 const QUOTE_CHARS = 300;
 const RULE_CHARS = 180;
@@ -256,9 +262,19 @@ function buildSlackBlocks(
     // Both of these are optional — speaker is omitted whenever the transcript
     // doesn't make it unambiguous, which is often. Build the line from what's
     // actually there rather than emitting a blank one.
+    // The timestamp is a link into the recording at that second, not a label.
+    // A reader who isn't a Sequ3nce user has no other way to reach the moment,
+    // and scrubbing a ninety-minute call to find 33:19 is not "ten seconds".
+    const stamp =
+      typeof f.timestamp === "number"
+        ? link
+          ? `<${link}${link.includes("?") ? "&" : "?"}t=${f.timestamp}|${mmss(f.timestamp)}>`
+          : `_${mmss(f.timestamp)}_`
+        : null;
+
     const meta = [
       f.speaker ? `*${clip(speakerName(f.speaker, call) ?? '', 40)}*` : null,
-      typeof f.timestamp === "number" ? `_${mmss(f.timestamp)}_` : null,
+      stamp,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -279,6 +295,20 @@ function buildSlackBlocks(
       },
     });
   }
+
+  // The framing that makes this safe to act on, which until now lived only on
+  // the call page — a page the person most likely to act on a finding never
+  // opens. Someone reading "Nick promised a timeline" as established fact and
+  // taking it to Nick, or into a dispute, is the failure this prevents.
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: "_Things worth a look against your own rules — not a finding that any rule was broken. Speaker labels come from the recording and are occasionally wrong, so read the quote before acting on it._",
+      },
+    ],
+  });
 
   const more = review.findings.length - FINDINGS_IN_MESSAGE;
   const suffix = more > 0 ? `${more} more · ` : "";
@@ -328,7 +358,15 @@ function buildDiscordEmbed(
     title: headline(review.score, review.findings.length),
     description: `${subject(call)}\n\n${clip(review.summary, SUMMARY_CHARS)}`,
     color: 0xf59e0b,
-    fields,
+    fields: [
+      ...fields,
+      {
+        name: "Before acting on this",
+        value:
+          "Things worth a look against your own rules — not a finding that any rule was broken. Speaker labels come from the recording and are occasionally wrong, so read the quote first.",
+        inline: false,
+      },
+    ],
     url: link ?? undefined,
     footer: {
       text: [

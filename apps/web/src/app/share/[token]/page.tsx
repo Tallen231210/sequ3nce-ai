@@ -184,6 +184,30 @@ export default function SharePage() {
     setCurrentTime(time);
   }, []);
 
+  /**
+   * Open at a moment, from `?t=` on the URL.
+   *
+   * Compliance alerts quote a line and give the time it was said. Whoever reads
+   * that alert is often not a Sequ3nce user — the whole reason those links are
+   * public — so landing them at 0:00 of a ninety-minute call and expecting them
+   * to scrub to 33:19 loses the "check it in ten seconds" promise the finding
+   * is built on.
+   *
+   * Applied once, after the video knows its own length, and only within it —
+   * a stale or hand-edited value should start the call at the beginning rather
+   * than somewhere the player can't go.
+   */
+  const seekedFromUrl = useRef(false);
+  useEffect(() => {
+    if (seekedFromUrl.current || duration <= 0 || !videoRef.current) return;
+    const raw = new URLSearchParams(window.location.search).get("t");
+    if (!raw) return;
+    const seconds = Number(raw);
+    if (!Number.isFinite(seconds) || seconds <= 0 || seconds > duration) return;
+    seekedFromUrl.current = true;
+    handleSeek(seconds);
+  }, [duration, handleSeek]);
+
   // Keyboard shortcuts (desktop). No-op on mobile (no physical keys).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
