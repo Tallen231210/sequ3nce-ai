@@ -67,6 +67,7 @@ export const getComplianceSettings = query({
       slackChannelId: team.complianceSlackChannelId ?? null,
       slackChannelName: team.complianceSlackChannelName ?? null,
       discordWebhookUrl: team.complianceDiscordWebhookUrl ?? null,
+      sharePassword: team.compliancePassword ?? "",
       slackConnected: !!team.slackAccessToken,
     };
   },
@@ -81,6 +82,7 @@ export const updateComplianceSettings = mutation({
     slackChannelId: v.optional(v.string()),
     slackChannelName: v.optional(v.string()),
     discordWebhookUrl: v.optional(v.string()),
+    sharePassword: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ success: boolean }> => {
     const user = await resolveAuthUser(ctx, args.clerkId);
@@ -103,6 +105,9 @@ export const updateComplianceSettings = mutation({
     }
     if (args.slackChannelName !== undefined && args.slackChannelName.length > 100) {
       throw new Error("slackChannelName is too long");
+    }
+    if (args.sharePassword !== undefined && args.sharePassword.length > 128) {
+      throw new Error("That password is too long (128 characters max).");
     }
     if (args.discordWebhookUrl !== undefined) {
       const trimmed = args.discordWebhookUrl.trim();
@@ -133,6 +138,12 @@ export const updateComplianceSettings = mutation({
     }
     if (args.discordWebhookUrl !== undefined) {
       patch.complianceDiscordWebhookUrl = args.discordWebhookUrl.trim() || undefined;
+    }
+    // Empty clears the gate. Existing links are re-gated (or un-gated) the next
+    // time an alert touches them, so this isn't a setting that only applies to
+    // calls recorded from here.
+    if (args.sharePassword !== undefined) {
+      patch.compliancePassword = args.sharePassword.trim() || undefined;
     }
 
     await ctx.db.patch(teamId, patch);

@@ -233,6 +233,8 @@ function buildSlackBlocks(
   isTest = false,
   /** Public share link when we could mint one, else the dashboard page. */
   link: string | null = null,
+  /** Printed alongside the link when the team has gated its recordings. */
+  password: string | null = null,
 ): unknown[] {
   const blocks: unknown[] = [
     {
@@ -333,6 +335,7 @@ function buildDiscordEmbed(
   callId: string | null,
   isTest = false,
   link: string | null = null,
+  password: string | null = null,
 ): unknown {
   const fields = review.findings.slice(0, FINDINGS_IN_MESSAGE).map((f) => ({
     // Discord rejects an empty field name, and both parts are optional.
@@ -360,6 +363,15 @@ function buildDiscordEmbed(
     color: 0xf59e0b,
     fields: [
       ...fields,
+      ...(password
+        ? [
+            {
+              name: "Password",
+              value: password,
+              inline: false,
+            },
+          ]
+        : []),
       {
         name: "Before acting on this",
         value:
@@ -391,12 +403,13 @@ function buildDiscordEmbed(
 async function resolveLink(
   ctx: any,
   callId: string | null,
+  password?: string,
 ): Promise<string | null> {
   if (!callId) return null;
   try {
     const share = await ctx.runMutation(
       internal.sharedLinks.getOrCreateComplianceShareLink,
-      { callId },
+      { callId, password },
     );
     if (share?.url) return share.url;
   } catch (err) {
@@ -427,6 +440,7 @@ async function deliver(
   isTest = false,
   link: string | null = null,
 ): Promise<{ ok: boolean; error?: string; soft?: boolean }> {
+  const password = (team.compliancePassword ?? "").trim() || null;
   const fallback = `${headline(review.score, review.findings.length)} — ${subject(call)}`;
 
   if (team.complianceChannel === "slack") {
@@ -441,7 +455,7 @@ async function deliver(
       accessToken: team.slackAccessToken,
       channelId,
       text: fallback,
-      blocks: buildSlackBlocks(review, call, callId, isTest, link),
+      blocks: buildSlackBlocks(review, call, callId, isTest, link, password),
     });
     return result.ok
       ? { ok: true }
@@ -456,7 +470,7 @@ async function deliver(
     const result = await postDiscordWebhook({
       webhookUrl,
       content: fallback,
-      embed: buildDiscordEmbed(review, call, callId, isTest, link),
+      embed: buildDiscordEmbed(review, call, callId, isTest, link, password),
     });
     return result.ok
       ? { ok: true }
@@ -506,7 +520,7 @@ export const sendComplianceAlert = internalAction({
     };
 
     try {
-      const link = await resolveLink(ctx, String(args.callId));
+      const link = await resolveLink(ctx, String(args.callId), team.compliancePassword);
       const result = await deliver(team, review, call, String(args.callId), false, link);
       if (!result.ok) {
         if (result.soft) return { sent: false, reason: result.error };
@@ -594,7 +608,7 @@ export const sendComplianceTestAlert = internalAction({
               },
               String(callId),
               true,
-              await resolveLink(ctx, String(callId)),
+              await resolveLink(ctx, String(callId), team.compliancePassword),
             );
             return result.ok
               ? { sent: true }

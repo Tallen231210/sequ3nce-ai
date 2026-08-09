@@ -142,10 +142,13 @@ export const createSharedLink = mutation({
  * to the dashboard link rather than going out without one.
  */
 export const getOrCreateComplianceShareLink = internalMutation({
-  args: { callId: v.id("calls") },
+  args: { callId: v.id("calls"), password: v.optional(v.string()) },
   handler: async (ctx, args): Promise<{ url: string } | null> => {
     const call = await ctx.db.get(args.callId);
     if (!call?.recordingUrl) return null;
+
+    const password = (args.password ?? "").trim();
+    const wantedHash = password ? await hashSharePassword(password) : undefined;
 
     const existing = await ctx.db
       .query("sharedLinks")
@@ -155,7 +158,15 @@ export const getOrCreateComplianceShareLink = internalMutation({
     const reusable = existing.find(
       (l) => l.isActive && l.shareType === "full" && l.createdBy === COMPLIANCE_CREATOR,
     );
-    if (reusable) return { url: `https://sequ3nce.ai/share/${reusable.token}` };
+    if (reusable) {
+      // A team that turns the password on later must not leave its existing
+      // links ungated — those are the calls already flagged, which is to say
+      // the ones they most wanted protected.
+      if (reusable.passwordHash !== wantedHash) {
+        await ctx.db.patch(reusable._id, { passwordHash: wantedHash });
+      }
+      return { url: `https://sequ3nce.ai/share/${reusable.token}` };
+    }
 
     const token = generateToken();
     await ctx.db.insert("sharedLinks", {
@@ -174,6 +185,7 @@ export const getOrCreateComplianceShareLink = internalMutation({
       // hearing the moment the finding quotes, and a redacted transcript would
       // hide the words the alert is about.
       accessType: "full_access",
+      passwordHash: wantedHash,
     });
 
     return { url: `https://sequ3nce.ai/share/${token}` };

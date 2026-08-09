@@ -106,6 +106,22 @@ export default defineSchema({
     complianceChannel: v.optional(v.string()), // "slack" | "discord"
     /** Stamped only after a test post succeeds, so a failure stays retryable. */
     complianceTestSentAt: v.optional(v.number()),
+    /**
+     * Gate on the share links compliance alerts hand out. Empty means no gate.
+     *
+     * Stored as plaintext, deliberately, because the alert has to be able to
+     * print it — the people reading these are not Sequ3nce users and have
+     * nowhere else to look it up. It is not anyone's credential: it unlocks
+     * recordings for one team and nothing else, and anyone who can read this
+     * document can already read the calls it protects.
+     *
+     * One per team rather than one per call, so a reader learns it once and
+     * their browser remembers it. Per-call passwords would mean typing a new
+     * one every time for no benefit — if the password travels in the same
+     * message as the link, it's the URL escaping alone that this stops, not
+     * the message being forwarded.
+     */
+    compliancePassword: v.optional(v.string()),
     meetingBotName: v.optional(v.string()), // Configurable bot display name (what other participants see)
     // Team type: "company" (B2B default) or "personal" (B2C workspace)
     type: v.optional(v.union(v.literal("company"), v.literal("personal"))),

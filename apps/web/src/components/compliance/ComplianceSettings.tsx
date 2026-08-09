@@ -56,6 +56,7 @@ export function ComplianceSettings() {
   const [error, setError] = useState<string | null>(null);
   const [rulesDraft, setRulesDraft] = useState<string | null>(null);
   const [webhookDraft, setWebhookDraft] = useState<string | null>(null);
+  const [passwordDraft, setPasswordDraft] = useState<string | null>(null);
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<
@@ -357,6 +358,34 @@ export function ComplianceSettings() {
               />
             </div>
           )}
+
+          {/* Gate on the recordings the alert links to. */}
+          <div className="mt-4">
+            <label className="text-xs font-medium" htmlFor="compliance-password">
+              Password for call links
+            </label>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              Alerts link straight to the recording so nobody has to sign in. A
+              password here means the link alone isn&apos;t enough — it&apos;s
+              included in the alert, so anyone reading the channel can still
+              open it in one go. Leave empty for no password.
+            </p>
+            <input
+              id="compliance-password"
+              type="text"
+              disabled={busy}
+              value={passwordDraft ?? data.sharePassword ?? ""}
+              onChange={(e) => setPasswordDraft(e.target.value)}
+              onBlur={(e) => {
+                if (e.target.value !== (data.sharePassword ?? "")) {
+                  void save({ sharePassword: e.target.value });
+                }
+                setPasswordDraft(null);
+              }}
+              placeholder="No password"
+              className="mt-1.5 w-full max-w-sm rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-foreground"
+            />
+          </div>
 
           {/* The most likely way this whole feature fails is a private Slack
               channel our bot was never invited to — and that failure looks
