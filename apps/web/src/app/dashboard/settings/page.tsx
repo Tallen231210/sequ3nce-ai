@@ -2237,6 +2237,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* End-of-day cash. Sits directly under the notification settings
+            because that is where a manager goes looking for it — it was at the
+            bottom of the page and Gianni couldn't find it. Renders nothing for
+            anyone who isn't a manager. */}
+        <CashDigestSettings />
+
         {/* Meeting Bot */}
         <Card>
           <CardHeader>
@@ -2261,9 +2267,6 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* End-of-day cash — renders nothing for anyone who isn't a manager */}
-        <CashDigestSettings />
 
         {/* Compliance — renders nothing for anyone who isn't a manager */}
         <ComplianceSettings />
