@@ -331,4 +331,16 @@ crons.cron(
   {},
 );
 
+// End-of-day cash: today, month to date, year to date, pace and the
+// leaderboard. Hourly, because each team picks its own local hour — the job
+// runs every hour and posts only for the teams whose hour it is.
+//
+// crons.cron, never crons.interval. See the note on the collections digest.
+crons.cron(
+  "cash-digest",
+  "10 * * * *",
+  internal.cashDigestNotifications.runCashDigest,
+  {},
+);
+
 export default crons;

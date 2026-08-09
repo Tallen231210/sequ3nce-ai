@@ -116,6 +116,17 @@ export default defineSchema({
      * this flag is about.
      */
     flagMissingPostCallForm: v.optional(v.boolean()),
+    // ---- End-of-day cash digest -------------------------------------------
+    // Today, month to date, year to date, pace against the team's goal, and
+    // who collected what. Same config shape as the collections digest.
+    cashDigestEnabled: v.optional(v.boolean()),
+    cashDigestCadence: v.optional(v.string()),        // "daily" | "weekly"
+    cashDigestHourLocal: v.optional(v.number()),      // 0-23 in the team's zone
+    cashDigestChannel: v.optional(v.string()),        // "slack" | "discord"
+    cashDigestSlackChannelId: v.optional(v.string()),
+    cashDigestSlackChannelName: v.optional(v.string()),
+    cashDigestDiscordWebhookUrl: v.optional(v.string()),
+    cashDigestTestSentAt: v.optional(v.number()),
     /**
      * Gate on the share links compliance alerts hand out. Empty means no gate.
      *
