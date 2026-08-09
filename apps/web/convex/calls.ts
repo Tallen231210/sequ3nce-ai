@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import { Id, Doc } from "./_generated/dataModel";
 import { buildCallStartedBlocks } from "./slack";
 import { upsertCallContentTx, getContentForCallTx } from "./callContent";
+import { syncCallStats } from "./callStats";
 import { scheduleCloserRecount } from "./closerPerformanceSweep";
 
 // Create a new call record (called by audio processor when call starts)
@@ -893,6 +894,10 @@ export const updateCallOutcome = mutation({
       cashCollected: args.cashCollected,
       contractValue: args.contractValue,
     });
+    // Collections, closer stats and the team board all read the sidecar, not
+    // this row. Without this the money is on the call and invisible everywhere
+    // it's meant to be counted.
+    await syncCallStats(ctx, args.callId);
   },
 });
 
@@ -1051,6 +1056,10 @@ export const completeCallWithOutcome = mutation({
         console.log(`[calls] Early-fired notification for ${args.callId} — closer submitted questionnaire`);
       }
     }
+
+    // The whole point of the post-call form is the numbers on it. They live on
+    // the call; every screen that counts them reads the sidecar.
+    await syncCallStats(ctx, args.callId);
 
     return { success: true };
   },

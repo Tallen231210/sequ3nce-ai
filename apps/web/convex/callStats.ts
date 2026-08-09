@@ -48,25 +48,50 @@ function extractStatFields(call: Doc<"calls">): StatFields {
 }
 
 /**
- * Idempotent upsert. Called from `calls` mutations after insert or patch.
- * Safe to call even when the calls row didn't change — bails out cheaply.
+ * Bring one call's sidecar row in line with the call.
+ *
+ * A PLAIN FUNCTION, so a mutation that just changed a call can call it inside
+ * the same transaction. The row and the call it describes then cannot disagree,
+ * even for a moment.
+ *
+ * This has to be called from every mutation that writes a field in
+ * `extractStatFields`. The reconcile cron was supposed to make that
+ * unnecessary — "drift-free without hooking every individual calls mutation
+ * site", as its comment puts it — but it re-syncs calls by CREATION time, and
+ * the fields that matter most arrive long after a call is created. A closer
+ * fills in the post-call form hours later, or a manager corrects a figure next
+ * week; by then the call is outside the window and its sidecar is frozen
+ * forever.
+ *
+ * Found because a call closed at 2,000 of 6,800 never appeared in Collections:
+ * the call had the money on it, its sidecar had nulls, and Collections reads
+ * the sidecar.
  */
+export async function syncCallStats(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: { db: any },
+  callId: Id<"calls">,
+): Promise<void> {
+  const call = await ctx.db.get(callId);
+  if (!call) return;
+  const fields = extractStatFields(call);
+  const existing = await ctx.db
+    .query("callStats")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_call", (q: any) => q.eq("callId", callId))
+    .first();
+  if (existing) {
+    await ctx.db.patch(existing._id, fields);
+  } else {
+    await ctx.db.insert("callStats", { callId, ...fields });
+  }
+}
+
+/** Idempotent upsert, for callers that need it as a mutation. */
 export const upsertCallStats = internalMutation({
   args: { callId: v.id("calls") },
   handler: async (ctx, args): Promise<void> => {
-    const call = await ctx.db.get(args.callId);
-    if (!call) return;
-    const fields = extractStatFields(call);
-    const existing = await ctx.db
-      .query("callStats")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .withIndex("by_call", (q: any) => q.eq("callId", args.callId))
-      .first();
-    if (existing) {
-      await ctx.db.patch(existing._id, fields);
-    } else {
-      await ctx.db.insert("callStats", { callId: args.callId, ...fields });
-    }
+    await syncCallStats(ctx, args.callId);
   },
 });
 

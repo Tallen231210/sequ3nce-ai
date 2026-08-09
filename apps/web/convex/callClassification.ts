@@ -21,6 +21,7 @@ import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
+import { syncCallStats } from "./callStats";
 
 /**
  * Apply the answer. Assumes the caller has already earned the right to give it.
@@ -51,6 +52,11 @@ export async function applyClassification(
     // The half that actually moves the numbers.
     status: isSalesCall ? "completed" : "unclassified",
   });
+
+  // `status` is one of the fields the stats sidecar mirrors, and marking a call
+  // internal changes it. Without this a call taken out of the numbers here
+  // would go on counting in every screen that reads the sidecar.
+  await syncCallStats(ctx, call._id);
 
   // Only on the way up, and only once — a call flipped back and forth must not
   // queue a fresh summary every time.
