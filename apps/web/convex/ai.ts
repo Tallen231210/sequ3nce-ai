@@ -125,11 +125,15 @@ export const generateCallSummary = internalAction({
             callId,
           });
         } else {
-          // Closer hasn't submitted yet — schedule with 90s grace period.
-          // If closer submits within 90s, calls.ts cancels this and fires immediately.
+          // Closer hasn't submitted yet — hold the summary for five minutes.
+          // If they submit inside that window calls.ts cancels this job and
+          // fires immediately with the full data, so a prompt closer costs
+          // nobody any delay. The wait exists so "no post-call form" means
+          // they moved on rather than hadn't got to it yet — at the old ninety
+          // seconds that flag would have fired on nearly every call.
           await ctx.runMutation(internal.slack.scheduleCallCompletedNotification, {
             callId,
-            delayMs: 90_000,
+            delayMs: 300_000,
           });
         }
       }

@@ -205,6 +205,34 @@ export const updateTeamName = mutation({
   },
 });
 
+/**
+ * Flag calls whose post-call form was never filled in, on the completed-call
+ * notification.
+ *
+ * Managers only. Closers can't turn off a warning that's about them.
+ */
+export const setFlagMissingPostCallForm = mutation({
+  args: {
+    clerkId: v.string(),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) throw new Error("User not found");
+    if (user.role !== "admin" && user.role !== "manager") {
+      throw new Error("Only managers can change this");
+    }
+
+    await ctx.db.patch(user.teamId, {
+      flagMissingPostCallForm: args.enabled,
+    });
+    return { success: true };
+  },
+});
+
 // Update user name
 export const updateUserName = mutation({
   args: {
@@ -606,6 +634,7 @@ export const getSettings = query({
         subscriptionStatus: team.subscriptionStatus,
         seatCount: team.seatCount,
         timezone: team.timezone,
+        flagMissingPostCallForm: team.flagMissingPostCallForm === true,
         customOutcomes: team.customOutcomes,
         customPlaybookCategories: team.customPlaybookCategories,
         googleCalendarConnected: team.googleCalendarConnected,

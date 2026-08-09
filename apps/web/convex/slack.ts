@@ -776,7 +776,16 @@ export function buildCallCompletedBlocks(
   summary: string,
   cashCollected?: number,
   contractValue?: number,
-  callId?: string
+  callId?: string,
+  /**
+   * Call out a missing post-call form. Off unless the team asked for it.
+   *
+   * Only meaningful because the notification waits five minutes before
+   * sending — long enough that "no form" means the closer moved on, not that
+   * they hadn't got to it yet. At the old ninety seconds this would have
+   * fired on nearly every call and meant nothing.
+   */
+  flagMissingForm?: boolean
 ) {
   // Emoji based on outcome (⏳ = pending, closer hasn't submitted questionnaire yet)
   const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" :
@@ -797,6 +806,11 @@ export function buildCallCompletedBlocks(
       ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`
       : `${durationMinutes}m`;
 
+  // Slack has no red text, so the red circle is doing that job. First line of
+  // the message, above everything, because a manager scrolling a busy channel
+  // decides whether to stop on the first line.
+  const missingForm = flagMissingForm === true && !outcome;
+
   const blocks: any[] = [
     {
       type: "header",
@@ -806,6 +820,17 @@ export function buildCallCompletedBlocks(
         emoji: true,
       },
     },
+    ...(missingForm
+      ? [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `🔴 *POST-CALL FORM NOT COMPLETED* — no outcome, cash or contract value recorded for this call.`,
+            },
+          },
+        ]
+      : []),
     {
       type: "section",
       fields: [
@@ -1289,6 +1314,16 @@ export const sendCallCompletedNotification = internalAction({
       }
 
       // Build the Slack message
+      // Read on the way out rather than captured when the job was scheduled —
+      // a team that turns this on mid-flight should see it on the next call,
+      // not the one after.
+      const notifyTeam = await ctx.runQuery(api.teams.getTeamById, {
+        teamId: call.teamId,
+      });
+      const flagMissingForm =
+        (notifyTeam as { flagMissingPostCallForm?: boolean } | null)
+          ?.flagMissingPostCallForm === true;
+
       const { blocks, text } = buildCallCompletedBlocks(
         closer.name,
         call.prospectName,
@@ -1297,7 +1332,8 @@ export const sendCallCompletedNotification = internalAction({
         call.summary,
         call.cashCollected,
         call.contractValue,
-        args.callId
+        args.callId,
+        flagMissingForm
       );
 
       // Send via unified notification system
@@ -1319,7 +1355,8 @@ export const sendCallCompletedNotification = internalAction({
           call.summary,
           call.cashCollected,
           call.contractValue,
-          args.callId
+          args.callId,
+          flagMissingForm
         );
 
         await ctx.runAction(internal.discord.sendDiscordNotification, {

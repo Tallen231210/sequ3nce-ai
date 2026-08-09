@@ -670,6 +670,23 @@ export default function SettingsPage() {
 
   // Mutations
   const updateTeamName = useMutation(api.teams.updateTeamName);
+  const setFlagMissingPostCallForm = useMutation(
+    api.teams.setFlagMissingPostCallForm,
+  );
+  const [savingFlagMissingForm, setSavingFlagMissingForm] = useState(false);
+
+  const handleFlagMissingForm = async (enabled: boolean) => {
+    if (!clerkId) return;
+    setSavingFlagMissingForm(true);
+    try {
+      await setFlagMissingPostCallForm({ clerkId, enabled });
+    } catch (err) {
+      console.error("[settings] flagMissingPostCallForm:", err);
+    } finally {
+      setSavingFlagMissingForm(false);
+    }
+  };
+
   const updateUserName = useMutation(api.teams.updateUserName);
   const updateTimezone = useMutation(api.teams.updateTeamTimezone);
   const updateCustomOutcomes = useMutation(api.teams.updateCustomOutcomes);
@@ -1701,6 +1718,32 @@ export default function SettingsPage() {
                       loadingChannels={loadingSlackChannels}
                       joinError={autoJoinErrors.callCompleted ?? null}
                     />
+
+                    {/* Content option rather than a channel: it changes what
+                        the completed-call notification says, not where it
+                        goes. Sits under that row because it's meaningless
+                        without it. */}
+                    <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-border px-4 py-3 ml-0">
+                      <div>
+                        <div className="text-sm font-medium">
+                          Flag calls with no post-call form
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Adds a red 🔴 POST-CALL FORM NOT COMPLETED line to the
+                          summary when the closer hasn&apos;t filled it in. The
+                          summary is held for five minutes first, and sent the
+                          moment they submit — so this only appears when they
+                          genuinely moved on.
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settings?.team?.flagMissingPostCallForm === true}
+                        disabled={savingFlagMissingForm}
+                        onChange={(e) => void handleFlagMissingForm(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-foreground"
+                      />
+                    </label>
 
                     {!loadingSlackChannels && (
                       <div className={`text-xs p-3 rounded border ${

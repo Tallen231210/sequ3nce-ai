@@ -107,6 +107,16 @@ export default defineSchema({
     /** Stamped only after a test post succeeds, so a failure stays retryable. */
     complianceTestSentAt: v.optional(v.number()),
     /**
+     * Call out calls whose post-call form was never filled in, on the
+     * completed-call notification. Off unless a team asks for it.
+     *
+     * Only honest because that notification now waits five minutes. It fires
+     * early the moment the closer submits, so a team whose closers are prompt
+     * still gets the summary straight away — the wait only costs the calls
+     * this flag is about.
+     */
+    flagMissingPostCallForm: v.optional(v.boolean()),
+    /**
      * Gate on the share links compliance alerts hand out. Empty means no gate.
      *
      * Stored as plaintext, deliberately, because the alert has to be able to

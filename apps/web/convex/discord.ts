@@ -192,14 +192,20 @@ export function buildCallCompletedEmbed(
   summary: string,
   cashCollected?: number,
   contractValue?: number,
-  callId?: string
+  callId?: string,
+  /** See buildCallCompletedBlocks — same flag, same five-minute reasoning. */
+  flagMissingForm?: boolean
 ): { content: string; embeds: DiscordEmbed[] } {
+  const missingForm = flagMissingForm === true && !outcome;
   const dashboardUrl = callId
     ? `https://sequ3nce.ai/dashboard/calls/${callId}`
     : "https://sequ3nce.ai/dashboard";
 
   // Color based on outcome: Green=closed, Yellow=follow-up, Red=lost, Grey=pending
-  const color = outcome === "closed" ? 3066993 :
+  // Discord embeds take a real colour, unlike Slack, so a flagged call is
+  // genuinely red here rather than approximated with an emoji.
+  const color = missingForm ? 14362664 :
+                outcome === "closed" ? 3066993 :
                 outcome === "follow_up" ? 15844367 :
                 outcome ? 15158332 : 9807270;
 
@@ -221,6 +227,15 @@ export function buildCallCompletedEmbed(
       : `${durationMinutes}m`;
 
   const fields: { name: string; value: string; inline?: boolean }[] = [
+    ...(missingForm
+      ? [
+          {
+            name: "🔴 POST-CALL FORM NOT COMPLETED",
+            value: "No outcome, cash or contract value recorded for this call.",
+            inline: false,
+          },
+        ]
+      : []),
     { name: "Closer", value: closerName, inline: true },
     { name: "Prospect", value: prospectName || "Unknown", inline: true },
     { name: "Duration", value: durationText, inline: true },
