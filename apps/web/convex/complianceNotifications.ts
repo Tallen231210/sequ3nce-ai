@@ -58,6 +58,23 @@ function blockquote(text: string): string {
     .join("\n");
 }
 
+/**
+ * Turn "Closer" into the closer's actual name.
+ *
+ * Findings are stored with the generic role because that is what the
+ * transcript's speaker labels carry, and storing a name would freeze it at the
+ * moment of review. But a manager reading an alert wants "Nick", not "Closer" —
+ * they know who Nick is, and a role tells them nothing they didn't already
+ * assume. Resolved at render time so the stored review stays portable.
+ */
+function speakerName(speaker: string | undefined, call: AlertCall): string | undefined {
+  if (!speaker) return undefined;
+  const role = speaker.trim().toLowerCase();
+  if (role === "closer") return call.closerName || "Closer";
+  if (role === "prospect") return call.prospectName || "Prospect";
+  return speaker;
+}
+
 function headline(score: number, findingCount: number, isTest = false): string {
   if (isTest) return "Compliance — test message";
   const things = findingCount === 1 ? "1 thing" : `${findingCount} things`;
@@ -197,10 +214,11 @@ interface Finding {
 function buildSlackBlocks(
   review: { score: number; summary: string; findings: Finding[] },
   call: AlertCall,
-  /** Null for a test post — there is no real call behind it to link to. */
+  /** Null only when there is genuinely no call behind the message. */
   callId: string | null,
+  /** Marked as a test in the footer; everything else renders identically. */
+  isTest = false,
 ): unknown[] {
-  const isTest = callId === null;
   const blocks: unknown[] = [
     {
       type: "header",
@@ -230,7 +248,7 @@ function buildSlackBlocks(
     // doesn't make it unambiguous, which is often. Build the line from what's
     // actually there rather than emitting a blank one.
     const meta = [
-      f.speaker ? `*${clip(f.speaker, 40)}*` : null,
+      f.speaker ? `*${clip(speakerName(f.speaker, call) ?? '', 40)}*` : null,
       typeof f.timestamp === "number" ? `_${mmss(f.timestamp)}_` : null,
     ]
       .filter(Boolean)
@@ -274,13 +292,13 @@ function buildDiscordEmbed(
   review: { score: number; summary: string; findings: Finding[] },
   call: AlertCall,
   callId: string | null,
+  isTest = false,
 ): unknown {
-  const isTest = callId === null;
   const fields = review.findings.slice(0, FINDINGS_IN_MESSAGE).map((f) => ({
     // Discord rejects an empty field name, and both parts are optional.
     name: clip(
       [
-        f.speaker ?? null,
+        speakerName(f.speaker, call) ?? null,
         typeof f.timestamp === "number" ? `(${mmss(f.timestamp)})` : null,
       ]
         .filter(Boolean)
@@ -301,12 +319,15 @@ function buildDiscordEmbed(
     description: `${subject(call)}\n\n${clip(review.summary, SUMMARY_CHARS)}`,
     color: 0xf59e0b,
     fields,
-    url: isTest ? undefined : `https://sequ3nce.ai/dashboard/calls/${callId}`,
-    footer: isTest
-      ? { text: "Sent from Settings → Compliance" }
-      : more > 0
-        ? { text: `${more} more on the call page` }
-        : undefined,
+    url: callId ? `https://sequ3nce.ai/dashboard/calls/${callId}` : undefined,
+    footer: {
+      text: [
+        more > 0 ? `${more} more on the call page` : null,
+        isTest ? "test, sent from Settings → Compliance" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || undefined,
+    },
   };
 }
 
@@ -329,8 +350,8 @@ async function deliver(
   review: { score: number; summary: string; findings: Finding[] },
   call: AlertCall,
   callId: string | null,
+  isTest = false,
 ): Promise<{ ok: boolean; error?: string; soft?: boolean }> {
-  const isTest = callId === null;
   const fallback = isTest
     ? headline(review.score, review.findings.length, true)
     : `${headline(review.score, review.findings.length)} — ${subject(call)}`;
@@ -347,7 +368,7 @@ async function deliver(
       accessToken: team.slackAccessToken,
       channelId,
       text: fallback,
-      blocks: buildSlackBlocks(review, call, callId),
+      blocks: buildSlackBlocks(review, call, callId, isTest),
     });
     return result.ok
       ? { ok: true }
@@ -362,7 +383,7 @@ async function deliver(
     const result = await postDiscordWebhook({
       webhookUrl,
       content: fallback,
-      embed: buildDiscordEmbed(review, call, callId),
+      embed: buildDiscordEmbed(review, call, callId, isTest),
     });
     return result.ok
       ? { ok: true }
@@ -438,11 +459,24 @@ export const sendComplianceAlert = internalAction({
 /**
  * Post the test message.
  *
- * Deliberately does NOT require compliance to be switched on — the whole point
- * is proving the channel works during setup, before anything is enabled. It
- * goes down the same `deliver` path as a real alert, so a bot that hasn't been
- * invited to a private channel fails here rather than silently, weeks later,
- * on the first call that actually had something on it.
+ * It reviews a REAL recent call against the team's own saved rules and posts
+ * the actual result — same names, same quotes, same timestamps, same working
+ * link to the recording. Only the footer says it was a test.
+ *
+ * It started as invented sample content, on the reasoning that a test
+ * shouldn't put a real quote from a real rep into a channel before anyone had
+ * agreed the rules were right. That was wrong in practice: what a customer sees
+ * when they press the test button IS what they believe the feature is, and a
+ * reduced version made a good feature look thin. If the rules aren't right yet,
+ * seeing that on a real call is the useful outcome, not a hazard.
+ *
+ * Falls back to sample content only when there's nothing real to review — a
+ * brand-new team with no calls yet, or no rules written.
+ *
+ * Deliberately does NOT require compliance to be switched on. The whole point
+ * is proving the channel works during setup, before anything is enabled, so a
+ * bot that was never invited to a private channel fails here rather than
+ * silently weeks later on the first call that had something on it.
  */
 export const sendComplianceTestAlert = internalAction({
   args: { teamId: v.id("teams") },
@@ -453,7 +487,49 @@ export const sendComplianceTestAlert = internalAction({
     )) as Doc<"teams"> | null;
     if (!team) return { sent: false, reason: "Team not found." };
 
-    const result = await deliver(team, TEST_REVIEW, TEST_CALL, null);
+    // Try for the real thing first.
+    const rules = (team.complianceRules ?? "").trim();
+    if (rules) {
+      const callId = await ctx.runQuery(
+        internal.compliance.findReviewableCallForTeam,
+        { teamId: args.teamId },
+      );
+      if (callId) {
+        const preview = await ctx.runAction(internal.compliance.previewReview, {
+          callId,
+          rules,
+        });
+        // A clean call has nothing to show, and a test that posts "0 things to
+        // look at" teaches nothing about what a real alert looks like. Fall
+        // through to the sample in that case.
+        if (preview?.ok && preview.review?.findings?.length > 0) {
+          const info = await ctx.runQuery(
+            internal.complianceNotifications.getAlertContext,
+            { callId },
+          );
+          if (info) {
+            const result = await deliver(
+              team,
+              preview.review,
+              {
+                prospectName: info.prospectName,
+                closerName: info.closerName,
+                startedAt: info.startedAt,
+                duration: info.duration,
+                timezone: info.timezone,
+              },
+              String(callId),
+              true,
+            );
+            return result.ok
+              ? { sent: true }
+              : { sent: false, reason: result.error ?? "Couldn't send." };
+          }
+        }
+      }
+    }
+
+    const result = await deliver(team, TEST_REVIEW, TEST_CALL, null, true);
     return result.ok
       ? { sent: true }
       : { sent: false, reason: result.error ?? "Couldn't send." };

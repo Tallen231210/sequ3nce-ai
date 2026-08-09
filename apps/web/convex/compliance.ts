@@ -183,6 +183,41 @@ export const recordReviewFailure = internalMutation({
 });
 
 /**
+ * The best recent call on a team to demonstrate against.
+ *
+ * Longest transcript out of the last dozen, skipping internal meetings. Not
+ * simply the most recent: with bots auto-joining the calendar, the newest thing
+ * is often a no-show or a two-minute rescheduling call, and a demonstration
+ * built on one of those shows a manager nothing.
+ */
+export const findReviewableCallForTeam = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args): Promise<any> => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_status", (q) =>
+        q.eq("teamId", args.teamId).eq("status", "completed"),
+      )
+      .order("desc")
+      .take(12);
+
+    let best: { callId: Id<"calls">; length: number } | null = null;
+    for (const call of calls) {
+      if (call.classifiedAs === "internal") continue;
+      const content = await ctx.db
+        .query("callContent")
+        .withIndex("by_call", (q) => q.eq("callId", call._id))
+        .first();
+      const length = (content?.transcriptText ?? "").length;
+      if (length < 1_000) continue;
+      if (!best || length > best.length) best = { callId: call._id, length };
+    }
+
+    return best ? best.callId : null;
+  },
+});
+
+/**
  * Wipe every trace of compliance from one call.
  *
  * For the case where a review should never have existed on a call — a customer
