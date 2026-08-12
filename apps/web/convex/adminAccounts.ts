@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { query, internalMutation } from "./_generated/server";
 
 // ============================================================================
 // Admin account directory — powers the /admin impersonation picker.
@@ -88,5 +88,47 @@ export const listAccounts = query({
         a.teamName.localeCompare(b.teamName),
     );
     return accounts;
+  },
+});
+
+/**
+ * Point a signed-in account at the team it should have joined.
+ *
+ * The orphaned-account case, which recurs: someone signs in, bootstrap can't
+ * match them to an existing team, and creates them a personal one. The account
+ * works, has a team, and shows an empty dashboard — or bounces to /subscribe,
+ * because a freshly-created team has no subscription status and the gate only
+ * lets through "active" or "trialing".
+ *
+ * Seen on 2026-08-12: gianni@createfreedom.io signed in, landed on a new
+ * "Gianni SM's Team" created that minute, and read as locked out of an account
+ * that was in fact perfectly healthy — the lockout was on a different team from
+ * the one anyone was looking at.
+ *
+ * Deliberately does NOT delete the team left behind. An empty team is harmless;
+ * deleting one that turned out to have data would not be.
+ */
+export const attachUserToTeam = internalMutation({
+  args: { clerkId: v.string(), teamId: v.id("teams") },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ moved: boolean; from?: string; to?: string; reason?: string }> => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) return { moved: false, reason: "no user with that clerk id" };
+
+    const target = await ctx.db.get(args.teamId);
+    if (!target) return { moved: false, reason: "target team not found" };
+
+    const from = String(user.teamId);
+    if (from === String(args.teamId)) {
+      return { moved: false, reason: "already on that team" };
+    }
+
+    await ctx.db.patch(user._id, { teamId: args.teamId });
+    return { moved: true, from, to: String(args.teamId) };
   },
 });
