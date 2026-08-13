@@ -101,8 +101,6 @@ export const generateMagicLinkCode = internalMutation({
     code: string | null;
     closerName?: string;
     isReturning?: boolean;
-    /** Decides whether the desktop app is worth offering at all. */
-    productTier?: string;
     reason?: "cooldown" | "unknown_email" | "invalid_format";
     retryAfterSeconds?: number;
   }> => {
@@ -167,23 +165,13 @@ export const generateMagicLinkCode = internalMutation({
     // If ANY of the closer's records has logged in before, this is a
     // returning user — pick the lighter "sign in" template variant
     // (no "Welcome to Sequ3nce" framing). First-time closers (no record
-    // has lastLoginAt yet) get the full welcome with download step.
+    // has lastLoginAt yet) get the fuller welcome, including the calendar step.
     const isReturning = eligible.some((c) => c.lastLoginAt != null);
-
-    // The desktop app is the meeting-bot product's app. Offering it to a
-    // closer on a plan without the bot hands them software full of features
-    // that will never work for them.
-    const greetingTeam = await ctx.db.get(greetingCloser.teamId);
-    const productTier =
-      greetingTeam?.productTierOverride ??
-      greetingTeam?.productTier ??
-      "overwatch";
 
     return {
       code,
       closerName: greetingCloser.name,
       isReturning,
-      productTier,
     };
   },
 });
@@ -264,20 +252,10 @@ export const requestCloserMagicLink = action({
       return { success: false, error: "Email service not configured" };
     }
 
-    // Route the deep-link through an https intermediary at /launch.
-    // Email clients (Gmail, Outlook) strip anchor hrefs with custom
-    // protocols like sequ3nce:// as a security measure; the /launch
-    // page fires the protocol via browser JS, which is allowed.
-    // Falls back to download instructions if the app isn't installed.
     const appUrl = process.env.APP_URL?.trim() || "https://sequ3nce.ai";
-    // Desktop: /launch fires the sequ3nce:// protocol from a normal https page,
-    // because mail clients strip custom-protocol hrefs outright.
-    const launchUrl = `${appUrl}/launch?email=${encodeURIComponent(
-      normalizedEmail,
-    )}&code=${result.code}`;
-    // Web: signs them in on whatever device opened the email. No install, and
-    // it works from a phone — which the desktop link cannot do, since that one
-    // needs the app on the same machine the link opens.
+    // The only link we send. Signs them in on whatever device opened the
+    // email, including a phone — which the desktop deep-link never could,
+    // since it needs the app on the same machine.
     const webUrl = `${appUrl}/app/login?email=${encodeURIComponent(
       normalizedEmail,
     )}&code=${result.code}`;
@@ -285,16 +263,14 @@ export const requestCloserMagicLink = action({
     const codeFormatted = `${result.code.slice(0, 3)}-${result.code.slice(3)}`;
     const greetingName = result.closerName?.trim() || "there";
     const isReturning = !!result.isReturning;
-    // Every team has the web app now — the staged-rollout gate came off once
-    // it was verified end to end, so there is no longer a case where offering
-    // the browser link would land someone on a "not available" page.
-    const webReady = true;
 
-    // Two ways in now, so the email has to present both without making
-    // either look like the consolation prize. The browser link leads because
-    // it needs no install and works from whatever device opened the email —
-    // including a phone, which the desktop link cannot do at all, since that
-    // one requires the app to be on the same machine the link opens.
+    // Closers go to the web app. That is the direction now, so the email says
+    // one thing and says it plainly — an invitation that offers two ways in
+    // makes the reader choose before they have any basis to, and every closer
+    // who picks the desktop app is one more person to migrate later.
+    //
+    // The desktop app still works and /download is still live; we simply stop
+    // recommending it to new closers.
 
     const WRAP =
       "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 40px 20px;";
@@ -314,39 +290,11 @@ export const requestCloserMagicLink = action({
           </div>
         </div>`;
 
-    const primaryAction = webReady
-      ? `
+    const primaryAction = `
         <div style="text-align: center; margin-bottom: 28px;">
           <a href="${webUrl}" style="${BTN}">Open Sequ3nce →</a>
           <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
             Opens in your browser — works on any device.
-          </p>
-        </div>`
-      : `
-        <div style="text-align: center; margin-bottom: 28px;">
-          <a href="${launchUrl}" style="${BTN}">Sign in to Sequ3nce →</a>
-          <p style="color: #999; font-size: 12px; margin: 10px 0 0 0;">
-            Opens the Sequ3nce app on this computer.
-          </p>
-        </div>`;
-
-    // Overwatch only. On the other plans there is no bot, so the desktop app
-    // would be an install with nothing behind it.
-    const offerDesktopApp = (result.productTier ?? "overwatch") === "overwatch";
-
-    const desktopNote = !offerDesktopApp ? "" : `
-        <div style="border-top: 1px solid #eee; padding-top: 20px; margin-bottom: 24px;">
-          <p style="color: #666; font-size: 13px; line-height: 1.6; margin: 0;">
-            ${webReady
-              ? `<strong style="color: #444;">Prefer a desktop app?</strong>
-                 Sequ3nce also runs as an app for Mac and Windows —
-                 <a href="${appUrl}/download" style="color: #555;">download it here</a>,
-                 then <a href="${launchUrl}" style="color: #555;">use this link</a>
-                 to sign in once it's installed.`
-              : `<strong style="color: #444;">Don't have the app yet?</strong>
-                 Get it for Mac or Windows at
-                 <a href="${appUrl}/download" style="color: #555;">sequ3nce.ai/download</a>,
-                 then come back and click the button above.`}
           </p>
         </div>`;
 
@@ -361,7 +309,6 @@ export const requestCloserMagicLink = action({
         ${primaryAction}
 
         ${codeBlock("Already signed in somewhere else? Open Sequ3nce there, choose <em>Email me a sign-in code</em>, and enter:")}
-        ${desktopNote}
 
         <p style="color: #999; font-size: 12px; line-height: 1.5;">
           This link is valid for 7 days. If you didn't request it, you can
@@ -374,7 +321,7 @@ export const requestCloserMagicLink = action({
         <h2 style="color: #111; margin-bottom: 8px;">Welcome to Sequ3nce 👋</h2>
         <p style="color: #555; font-size: 15px; line-height: 1.6; margin-bottom: 28px;">
           Hi ${greetingName}, your manager added you to the team.
-          ${webReady ? "One click and you're in — there's nothing to install." : "Two quick steps and you're set up."}
+          One click and you're in — there's nothing to install.
         </p>
 
         ${primaryAction}
@@ -388,8 +335,7 @@ export const requestCloserMagicLink = action({
           </p>
         </div>
 
-        ${codeBlock("On a different device to the one you'll use? Open Sequ3nce there, choose <em>Email me a sign-in code</em>, and enter:")}
-        ${desktopNote}
+        ${codeBlock("On a different device to the one you'll use? Go to sequ3nce.ai, choose <em>Email me a sign-in code</em>, and enter:")}
 
         <p style="color: #999; font-size: 12px; line-height: 1.5;">
           This invitation is valid for 7 days. If you didn't expect this email,
