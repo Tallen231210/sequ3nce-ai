@@ -335,7 +335,7 @@ export const requestCloserMagicLink = action({
           </p>
         </div>
 
-        ${codeBlock("On a different device to the one you'll use? Go to sequ3nce.ai, choose <em>Email me a sign-in code</em>, and enter:")}
+        ${codeBlock("On a different device to the one you'll use? Go to sequ3nce.ai/app, choose <em>Email me a sign-in code</em>, and enter:")}
 
         <p style="color: #999; font-size: 12px; line-height: 1.5;">
           This invitation is valid for 7 days. If you didn't expect this email,
