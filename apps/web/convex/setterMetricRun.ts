@@ -19,6 +19,7 @@ import { resolveAuthUser } from "./setterGhlOauth";
 import { activeFunnelFor } from "./setterFunnels";
 import {
   countsChannel,
+  isSetter,
   workingHoursFor,
   type ResolvedFunnel,
 } from "./setterFunnelResolve";
@@ -193,7 +194,13 @@ export function runMetric(
       };
     }
     case "outreach_volume": {
-      const counted = input.events.filter((e) => touches(e.channel));
+      // Only the people this business calls setters. Everyone else's outreach
+      // still happened and still matters — it simply isn't setter performance,
+      // and averaging a manager's 484 touches into a setter leaderboard is how
+      // the leaderboard stops meaning anything.
+      const counted = input.events.filter(
+        (e) => touches(e.channel) && (e.setterId === null || isSetter(funnel, e.setterId)),
+      );
       return { ok: true, shape: "count", result: computeCount(counted) };
     }
     case "contact_rate": {

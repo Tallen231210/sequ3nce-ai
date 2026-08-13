@@ -149,6 +149,27 @@ export function fromRow(
   };
 }
 
+/**
+ * Is this user one of the business's setters?
+ *
+ * Defaults to yes for everyone, which is what the product does today and what
+ * keeps existing numbers unchanged. It is also, on real data, wrong: on one
+ * live team thirteen user ids made outbound touches in thirty days against two
+ * or three actual setters — the manager, a support account and eight departed
+ * or unknown users among them.
+ *
+ * A null user is automation and is never a setter.
+ */
+export function isSetter(f: ResolvedFunnel, userId: string | null): boolean {
+  if (!userId) return false;
+  const roster = (f.bindings as any).setterRoster;
+  if (!roster || roster.kind === "all_crm_users") return true;
+  if (roster.kind === "explicit_list") {
+    return (roster.params?.userIds ?? []).includes(userId);
+  }
+  return true; // crm_role is resolved upstream when the roster is built
+}
+
 /** Does this funnel count a touch on this channel? */
 export function countsChannel(f: ResolvedFunnel, channel: string): boolean {
   const chans = f.bindings.setterTouch?.params?.channels;

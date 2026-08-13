@@ -49,6 +49,29 @@ export const TOUCH_KINDS = ["outbound_attempt", "conversation_started"] as const
  */
 export const CHANNELS = ["call", "sms", "dm", "email", "whatsapp"] as const;
 
+/**
+ * Which CRM users are actually setters.
+ *
+ * The binding this design was missing, and real data found it. RemoteStack has
+ * two or three setters; thirteen different user ids made outbound touches in
+ * thirty days — including Gianni the manager (484 of them), a support account,
+ * and eight ids belonging to people no longer in the CRM. Counting all of that
+ * as "setter activity" makes every per-setter number meaningless.
+ *
+ *   all_crm_users  anyone with a login counts — what the product does today,
+ *                  kept as the default so nothing changes until a business says
+ *                  otherwise
+ *   explicit_list  the business names their setters. Boring, and the only
+ *                  option that is reliably right.
+ *   crm_role       trust the CRM's own role field, where it distinguishes them
+ */
+export const ROSTER_KINDS = [
+  "all_crm_users",
+  "explicit_list",
+  "crm_role",
+] as const;
+export type RosterKind = (typeof ROSTER_KINDS)[number];
+
 /** Who gets the credit when several people touch one lead. */
 export const ATTRIBUTION_KINDS = [
   "assigned_owner",
@@ -87,6 +110,7 @@ export interface Binding<K extends string = string> {
 
 export interface FunnelBindings {
   leadArrived: Binding<LeadArrivedKind>;
+  setterRoster?: Binding<RosterKind> & { params?: { userIds?: string[] } };
   setterTouch: Binding<TouchKind> & {
     params?: { channels?: Channel[]; countAutomated?: boolean };
   };
@@ -111,6 +135,7 @@ const REQUIRED_SLOTS = [
 ] as const;
 
 const KINDS_BY_SLOT: Record<string, readonly string[]> = {
+  setterRoster: ROSTER_KINDS,
   leadArrived: LEAD_ARRIVED_KINDS,
   setterTouch: TOUCH_KINDS,
   setterAttribution: ATTRIBUTION_KINDS,
@@ -168,6 +193,15 @@ export function validateBindings(raw: unknown): ValidationResult {
     if (!["detected", "confirmed", "manual"].includes(binding.source)) {
       errors.push(`${slot}: source must be detected, confirmed or manual`);
     }
+  }
+
+  const roster = b.setterRoster;
+  if (!roster || roster.kind === "all_crm_users") {
+    warnings.push(
+      "Every CRM user counts as a setter, including managers and support accounts. Naming the actual setters makes per-person numbers meaningful.",
+    );
+  } else if (roster.kind === "explicit_list" && !roster.params?.userIds?.length) {
+    errors.push("setterRoster: pick at least one person, or use all_crm_users");
   }
 
   const touch = b.setterTouch;
