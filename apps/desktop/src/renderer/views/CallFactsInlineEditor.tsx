@@ -1,4 +1,3 @@
-
 // ============================================================================
 // A closer fixing the numbers on their own call.
 //
@@ -68,6 +67,14 @@ export function CallFactsInlineEditor({
   }, [initialOutcome, initialCash, initialContract]);
 
   const isAi = outcomeSource === 'ai';
+
+  // Nothing to save until something changed. Without this, opening the panel
+  // and pressing Save stamps "a human confirmed this" on a call carrying no
+  // figures at all — which quietly removes it from any future backfill.
+  const dirty =
+    outcome !== (initialOutcome ?? '') ||
+    cash !== (initialCash != null ? String(initialCash) : '') ||
+    contract !== (initialContract != null ? String(initialContract) : '');
 
   async function save() {
     const cashValue = toNumberOrNull(cash);
@@ -164,7 +171,7 @@ export function CallFactsInlineEditor({
       <div className="flex items-center gap-3">
         <button
           onClick={() => void save()}
-          disabled={busy}
+          disabled={busy || !dirty}
           className="rounded-md bg-gray-900 px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
         >
           {busy ? 'Saving…' : 'Save'}

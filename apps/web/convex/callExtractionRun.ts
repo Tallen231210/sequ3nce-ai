@@ -167,7 +167,18 @@ export const saveExtraction = internalMutation({
       return { written: [] };
     }
 
-    patch.outcomeSource = "ai";
+    // Claim only what nobody has claimed.
+    //
+    // The early return above catches a human who set the OUTCOME. It misses one
+    // who set only the money — a closer typing cash collected during the 60-90
+    // seconds this takes to run. Their figure survives (nothing is clobbered)
+    // but the provenance would flip to "ai", so the number they typed themselves
+    // comes back marked as read off the recording, wearing the AI badge and
+    // counting as unconfirmed on the coverage metric. Never downgrade a person
+    // to a machine.
+    const humanTouched =
+      call.outcomeSource === "closer" || call.outcomeSource === "manager";
+    if (!humanTouched) patch.outcomeSource = "ai";
     patch.extractionFailed = undefined;
     patch.extractionStartedAt = undefined;
     await ctx.db.patch(args.callId, patch);

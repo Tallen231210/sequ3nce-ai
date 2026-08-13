@@ -74,6 +74,32 @@ function buildFactsPatch(
   return { ok: true, patch };
 }
 
+/**
+ * Strip the parts of a patch that wouldn't change anything.
+ *
+ * Needed because "clear this field" is expressed as `undefined`, which is
+ * indistinguishable from "field already absent" once it's in the patch — so an
+ * editor submitted without a single edit still arrives as three instructions,
+ * sails past a `length === 0` check, and stamps provenance on a call carrying no
+ * data at all.
+ *
+ * That is worse than it sounds. Provenance is what tells the backfill a human
+ * has been here, so one idle Save would remove a call from every future backfill
+ * while leaving nothing behind to justify it — and nothing anywhere would say so.
+ */
+function dropNoOps(
+  patch: Record<string, unknown>,
+  call: Record<string, unknown>,
+): Record<string, unknown> {
+  const real: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    const current = call[key] ?? undefined;
+    if (value === current) continue;
+    real[key] = value;
+  }
+  return real;
+}
+
 /** Same ceiling extraction uses — a typo shouldn't become a million-pound deal. */
 const IMPLAUSIBLE_AMOUNT = 5_000_000;
 
@@ -116,7 +142,7 @@ export const updateCallFacts = mutation({
 
     const built = buildFactsPatch(args);
     if (!built.ok) return { success: false, error: built.error };
-    const patch = built.patch;
+    const patch = dropNoOps(built.patch, call as unknown as Record<string, unknown>);
 
     if (Object.keys(patch).length === 0) return { success: true };
 
@@ -168,7 +194,7 @@ export const updateOwnCallFacts = mutation({
 
     const built = buildFactsPatch(args);
     if (!built.ok) return { success: false, error: built.error };
-    const patch = built.patch;
+    const patch = dropNoOps(built.patch, call as unknown as Record<string, unknown>);
     if (Object.keys(patch).length === 0) return { success: true };
 
     patch.outcomeSource = "closer";

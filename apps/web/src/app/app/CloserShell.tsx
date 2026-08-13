@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
 import { tierHas } from "@/lib/tiers";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -26,7 +23,6 @@ import { Logo } from "@/components/ui/logo";
 import { useActiveCall } from "./_components/useActiveCall";
 import { needsCalendarOnboarding } from "@/lib/closer/client";
 import { ActiveCallProvider } from "./_components/ActiveCallContext";
-import { PostCallModal } from "./_components/PostCallModal";
 import { QuickBotModal } from "./_components/QuickBotModal";
 import {
   getCloserInfo,
@@ -83,7 +79,9 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
   // closer is anywhere in the app, and the post-call form has to find them
   // wherever that is. On desktop the main process handled this by opening a
   // window over everything; here the app itself has to.
-  const { activeCall, endedCall, dismissEnded } = useActiveCall(closer);
+  // endedCall/dismissEnded are gone with the post-call modal — nothing is
+  // interrupted when a call ends any more.
+  const { activeCall } = useActiveCall(closer);
   useEffect(() => {
     const info = getCloserInfo();
     if (!info) {
