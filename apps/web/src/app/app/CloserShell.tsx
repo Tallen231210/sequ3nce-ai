@@ -84,11 +84,6 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
   // wherever that is. On desktop the main process handled this by opening a
   // window over everything; here the app itself has to.
   const { activeCall, endedCall, dismissEnded } = useActiveCall(closer);
-  const extractionOn = useQuery(
-    api.callExtractionRun.isExtractionEnabled,
-    closer?.teamId ? { teamId: closer.teamId as Id<"teams"> } : "skip",
-  );
-
   useEffect(() => {
     const info = getCloserInfo();
     if (!info) {
@@ -254,22 +249,12 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
         <ActiveCallProvider value={{ activeCall }}>{children}</ActiveCallProvider>
       </main>
 
-      {/* The bot finished a call. Ask for the outcome while it's fresh —
-          unless we're about to read it off the recording ourselves, in which
-          case interrupting them for it is the whole thing we're removing.
-
-          Gated rather than deleted: the outcome queue deliberately excludes bot
-          calls ("the form already appears the moment it ends"), so on a team
-          without extraction this modal is the ONLY way a bot call ever gets an
-          outcome. It goes for good once every team is reading calls. */}
-      {endedCall && !extractionOn && (
-        <PostCallModal
-          closerInfo={closer}
-          callId={endedCall.callId}
-          prospectName={endedCall.prospectName}
-          onClose={dismissEnded}
-        />
-      )}
+      {/* The post-call form used to appear here the moment a bot call ended.
+          It's gone: every call is read off its recording now, so interrupting
+          someone to ask for what we already have was the whole point of this
+          work. PostCallModal itself is left in the tree unrendered — nothing
+          reaches it, and deleting it is a tidy-up for when the new flow has
+          been through a full month with real teams. */}
       {quickBotOpen && (
         <QuickBotModal closerInfo={closer} onClose={() => setQuickBotOpen(false)} />
       )}

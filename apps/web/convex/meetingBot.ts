@@ -1833,35 +1833,18 @@ export const getBotForCall = query({
 // Get completed bots where questionnaire has not been filled out
 export const getPendingQuestionnaires = query({
   args: { closerId: v.id("closers") },
-  handler: async (ctx, args) => {
-    const completedBots = await ctx.db
-      .query("meetingBots")
-      .withIndex("by_closer_and_status", (q) =>
-        q.eq("closerId", args.closerId).eq("status", "completed")
-      )
-      .collect();
-
-    // A team whose calls we read never gets asked for the form.
+  handler: async (): Promise<never[]> => {
+    // Nobody is ever asked for the post-call form again.
     //
-    // Gated here rather than in the desktop app on purpose: this is what makes
-    // the prompt stop for closers who are running an app build from weeks ago.
-    // Fixing it in the renderer would have needed a release and would only have
-    // reached whoever updated.
+    // Every call is read off its recording now, so a prompt here would be
+    // asking a closer for the one thing we already have. Answered server-side
+    // rather than removed from the apps, and that is the point: it silences the
+    // prompt for anyone running a desktop build from weeks ago, which fixing it
+    // in the renderer could never have done.
     //
-    // Without this the prompt still appears for the 60-90 seconds it takes
-    // extraction to run, asking a closer for the one thing we're in the middle
-    // of doing for them.
-    const closer = await ctx.db.get(args.closerId);
-    if (closer) {
-      const team = await ctx.db.get(closer.teamId);
-      if (team?.aiExtractionEnabled === true) return [];
-    }
-
-    // Filter to bots where questionnaire is not completed AND that have a linked call
-    // Bots without a callId can't have questionnaires filled out
-    return completedBots.filter(
-      (bot) => bot.questionnaireCompleted !== true && bot.callId
-    );
+    // Left as a working query rather than deleted so those older builds keep
+    // getting a sensible answer instead of an error.
+    return [];
   },
 });
 

@@ -4823,17 +4823,18 @@ http.route({
         });
       }
 
-      const pendingBots = await ctx.runQuery(api.meetingBot.getPendingQuestionnaires, {
-        closerId: closerId as Id<"closers">,
-      });
-
-      // Find the first pending bot that has a linked callId (some old bots may not)
-      const firstBotWithCall = pendingBots.find((bot: any) => bot.callId) || null;
-      const firstBot = firstBotWithCall || (pendingBots.length > 0 ? pendingBots[0] : null);
+      // Always nothing pending, because nobody is asked for the form any more —
+      // every call is read off its recording.
+      //
+      // This is what the desktop app polls to decide whether to throw the
+      // post-call window over whatever the closer is doing. Answering zero here
+      // stops that for every build already installed, without a release.
+      // Kept as a live endpoint rather than removed so those builds get a real
+      // answer instead of a network error every few seconds.
       return new Response(JSON.stringify({
-        count: pendingBots.length,
-        firstCallId: firstBot?.callId ?? null,
-        firstProspectName: firstBot?.prospectName ?? firstBot?.meetingTitle ?? null,
+        count: 0,
+        firstCallId: null,
+        firstProspectName: null,
       }), {
         status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },

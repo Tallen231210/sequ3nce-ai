@@ -22,7 +22,7 @@
 
 import { v } from "convex/values";
 import { internalAction, internalQuery } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -164,30 +164,29 @@ export const backfillTeam = internalAction({
     dryRun: v.optional(v.boolean()),
     /** Re-attempt calls whose earlier failure might not repeat. */
     includeRetryable: v.optional(v.boolean()),
+    /** Required to write. Deliberately not defaulted — see the handler. */
+    confirmWrite: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<any> => {
     const limit = args.limit ?? DEFAULT_BATCH;
 
-    // Writing requires the team to have opted in; reading never does.
+    // Writing history has to be asked for explicitly.
     //
-    // Extraction is per-team and off by default for a reason: switching it on
-    // makes Collections report balances that were previously invisible. A
-    // backfill walks straight past that gate unless it checks — previewExtraction
-    // ignores the team switch on purpose, so a team could be assessed, and
-    // nothing downstream re-checks it before saving. A dry run stays open to
-    // everyone, because assessing a team before enabling it is the point.
-    if (!args.dryRun) {
-      const enabled = await ctx.runQuery(
-        api.callExtractionRun.isExtractionEnabled,
-        { teamId: args.teamId },
-      );
-      if (!enabled) {
-        return {
-          ok: false,
-          reason:
-            "extraction is off for this team — turn it on first, or pass dryRun to assess it",
-        };
-      }
+    // This used to check a per-team opt-in, which is gone — reading calls is
+    // simply how the product works now. But the reason the check existed hasn't
+    // gone anywhere: the live path only ever touches calls as they happen,
+    // whereas this rewrites months of a real customer's history in one go, and
+    // the only thing standing between the right team and the wrong one is a
+    // 32-character id pasted into a terminal.
+    //
+    // So a dry run needs nothing, and a write needs someone to have said so in
+    // the same breath.
+    if (!args.dryRun && args.confirmWrite !== true) {
+      return {
+        ok: false,
+        reason:
+          "this rewrites a real team's history — pass confirmWrite: true, or dryRun: true to see what it would do",
+      };
     }
 
     const survey: any = await ctx.runQuery(

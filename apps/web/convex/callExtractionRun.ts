@@ -37,7 +37,6 @@ export const getExtractionContext = internalQuery({
   handler: async (ctx, args): Promise<any> => {
     const call = await ctx.db.get(args.callId);
     if (!call) return null;
-    const team = await ctx.db.get(call.teamId);
 
     const content = await ctx.db
       .query("callContent")
@@ -54,7 +53,6 @@ export const getExtractionContext = internalQuery({
 
     return {
       teamId: String(call.teamId),
-      enabled: team?.aiExtractionEnabled === true,
       classifiedAs: call.classifiedAs ?? null,
       status: call.status,
       // Absent provenance means a human, because every call older than this
@@ -85,36 +83,18 @@ export const getExtractionContext = internalQuery({
 });
 
 /**
- * Turn extraction on or off for one team.
+ * Kept only so a browser tab left open from before this became universal
+ * doesn't call a function that no longer exists.
  *
- * Per team and off by default, because switching it on makes Collections report
- * MORE outstanding balances. That's the point — and also the way this could
- * chase a customer for money they already paid, so it gets proved on one team
- * at a time rather than everywhere at once.
- */
-export const setAiExtraction = internalMutation({
-  args: { teamId: v.id("teams"), enabled: v.boolean() },
-  handler: async (ctx, args): Promise<{ ok: boolean; team?: string }> => {
-    const team = await ctx.db.get(args.teamId);
-    if (!team) return { ok: false };
-    await ctx.db.patch(args.teamId, { aiExtractionEnabled: args.enabled });
-    return { ok: true, team: team.name };
-  },
-});
-
-/**
- * Is this team having its calls read for it?
+ * Reading the call IS how the product works now — there is no per-team switch
+ * and no way to turn it off, so this answers true for everyone. Delete it once
+ * no stale client could plausibly still be asking.
  *
- * Public and takes a teamId the closer app already holds, because it reveals
- * nothing — it's a feature switch, not data. Used to stop the closer app asking
- * for a form we're about to fill in ourselves.
+ * @deprecated
  */
 export const isExtractionEnabled = query({
   args: { teamId: v.id("teams") },
-  handler: async (ctx, args): Promise<boolean> => {
-    const team = await ctx.db.get(args.teamId);
-    return team?.aiExtractionEnabled === true;
-  },
+  handler: async (): Promise<boolean> => true,
 });
 
 /** Take the call, or report that someone else already has. */
@@ -278,7 +258,6 @@ export const extractCall = internalAction({
       { callId: args.callId },
     );
     if (!info) return { ok: false, reason: "call not found" };
-    if (!info.enabled) return { ok: false, reason: "extraction is off for this team" };
     if (info.classifiedAs === "internal") {
       return { ok: false, reason: "internal meeting, not a sales call" };
     }

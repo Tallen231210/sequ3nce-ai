@@ -146,6 +146,10 @@ export default defineSchema({
      * report MORE outstanding balances — the intended improvement, and also the
      * way this could chase a customer for money they already paid.
      */
+    // Vestigial. Reading the call off the recording is simply how the product
+    // works now — there is no switch and no way to opt out. Two teams still
+    // carry `true` from the staged rollout; the field stays because removing it
+    // would fail validation on those documents, and nothing reads it.
     aiExtractionEnabled: v.optional(v.boolean()),
     /**
      * Gate on the share links compliance alerts hand out. Empty means no gate.
