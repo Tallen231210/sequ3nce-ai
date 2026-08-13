@@ -256,6 +256,103 @@ export function speedByChannel(
   return out;
 }
 
+/**
+ * The same question asked from three different starting lines.
+ *
+ * A manager saying "our speed to lead is ten minutes" and a dashboard saying
+ * "ten hours" can both be telling the truth, because they are not measuring the
+ * same interval. Where a funnel runs opt-in → VSL → booking link, setters often
+ * work the people who booked and deliberately leave the rest; measuring from
+ * opt-in then averages the leads they chose to work with the ones they chose to
+ * ignore, and reports the result as their response time.
+ *
+ * So this measures:
+ *   allFromArrival     every lead, clock starts when the contact is created
+ *   bookedFromArrival  only leads that later booked, same clock
+ *   bookedFromBooking  only leads that booked, clock starts at the BOOKING
+ *
+ * The third is what a setter working a booked calendar would recognise as their
+ * own number. Which of the three a business means is exactly the `leadArrived`
+ * binding, and this is the evidence for choosing it.
+ */
+export const _speedAnchors = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+    /** Try a hypothetical working week without storing anything. */
+    businessHours: v.optional(v.any()),
+  },
+  handler: async (ctx, args): Promise<any> => {
+    const base = await activeFunnelFor(ctx, args.teamId);
+    const funnel = args.businessHours
+      ? { ...base, businessHours: args.businessHours }
+      : base;
+    const input = await loadWindow(ctx, args.teamId, args.rangeStart, args.rangeEnd);
+
+    const appts: Doc<"setterAppointments">[] = await ctx.db
+      .query("setterAppointments")
+      .withIndex("by_team_and_booked_at", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .gte("bookedAt", args.rangeStart)
+          .lte("bookedAt", args.rangeEnd),
+      )
+      .take(MAX_LEADS);
+
+    // Earliest booking per contact — a lead rebooked twice was still first
+    // worked after the first one.
+    const firstBooking = new Map<string, number>();
+    for (const a of appts) {
+      if (!a.bookedAt) continue;
+      const seen = firstBooking.get(a.ghlContactId);
+      if (seen === undefined || a.bookedAt < seen) {
+        firstBooking.set(a.ghlContactId, a.bookedAt);
+      }
+    }
+
+    const out: Record<string, any> = {};
+    for (const channel of ["call", "sms"]) {
+      const touches = (c: string) => c === channel;
+      const bookedLeads = input.leads.filter((l) => firstBooking.has(l.leadId));
+
+      // Clock restarted at the booking, and only touches after it count — a
+      // dial from before they booked is not a response to the booking.
+      const rebased = bookedLeads.map((l) => ({
+        ...l,
+        arrivedAt: firstBooking.get(l.leadId)!,
+      }));
+      const afterBooking = input.events.filter(
+        (e) => e.occurredAt >= (firstBooking.get(e.leadId) ?? Infinity),
+      );
+
+      const stat = (r: any) => ({
+        leads: r.count,
+        medianMs: r.medianMs,
+        p90Ms: r.p90Ms,
+      });
+
+      out[channel] = {
+        allFromArrival: stat(
+          computeDistribution(firstTouchPerLead(input.leads, input.events, touches), funnel),
+        ),
+        bookedFromArrival: stat(
+          computeDistribution(firstTouchPerLead(bookedLeads, input.events, touches), funnel),
+        ),
+        bookedFromBooking: stat(
+          computeDistribution(firstTouchPerLead(rebased, afterBooking, touches), funnel),
+        ),
+      };
+    }
+
+    return {
+      leadsInWindow: input.leads.length,
+      bookedLeadsInWindow: firstBooking.size,
+      byChannel: out,
+    };
+  },
+});
+
 /** Same thing without auth, for comparing against the legacy engine from the CLI. */
 export const _compareMetrics = internalQuery({
   args: { teamId: v.id("teams"), rangeStart: v.number(), rangeEnd: v.number() },
