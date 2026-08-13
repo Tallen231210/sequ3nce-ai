@@ -65,6 +65,7 @@ import type * as callAttribution from "../callAttribution.js";
 import type * as callClassification from "../callClassification.js";
 import type * as callContent from "../callContent.js";
 import type * as callExtraction from "../callExtraction.js";
+import type * as callExtractionBackfill from "../callExtractionBackfill.js";
 import type * as callExtractionRun from "../callExtractionRun.js";
 import type * as callFacts from "../callFacts.js";
 import type * as callOutcomes from "../callOutcomes.js";
@@ -244,6 +245,7 @@ declare const fullApi: ApiFromModules<{
   callClassification: typeof callClassification;
   callContent: typeof callContent;
   callExtraction: typeof callExtraction;
+  callExtractionBackfill: typeof callExtractionBackfill;
   callExtractionRun: typeof callExtractionRun;
   callFacts: typeof callFacts;
   callOutcomes: typeof callOutcomes;

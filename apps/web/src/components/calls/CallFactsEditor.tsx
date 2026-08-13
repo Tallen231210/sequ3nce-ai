@@ -35,7 +35,23 @@ export interface CallFacts {
   cashCollected?: number | null;
   contractValue?: number | null;
   outcomeSource?: string | null;
+  primaryObjection?: string | null;
+  /** Every objection raised, in order, when AI read the call. */
+  objections?: string[] | null;
 }
+
+const OBJECTION_LABELS: Record<string, string> = {
+  spouse_partner: "needed to speak to their partner",
+  price_money: "the price",
+  timing: "timing",
+  need_to_think: "wanted to think about it",
+  not_qualified: "not a fit",
+  logistics: "logistics",
+  competitor: "a competitor",
+  other: "something else",
+};
+
+const label = (o: string) => OBJECTION_LABELS[o] ?? o.replace(/_/g, " ");
 
 /** Empty string clears the value; anything unparseable is left alone. */
 function toNumberOrNull(raw: string): number | null | undefined {
@@ -131,6 +147,33 @@ export function CallFactsEditor({
             everywhere, including Collections.
           </span>
         </div>
+      )}
+
+      {/* The objection trail, shown only when there is more than one — because
+          one objection needs no explaining, and several is exactly the case
+          where the single answer looks arbitrary unless you can see how it got
+          there. A prospect who opens on their partner and ends on the price
+          raised a price objection; this is what makes that legible. */}
+      {isAi && (facts.objections?.length ?? 0) > 1 && (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Objections, in the order they came up:{" "}
+          {facts.objections!.map((o, i) => (
+            <span key={o}>
+              {i > 0 && <span className="text-muted-foreground/60"> → </span>}
+              <span
+                className={
+                  o === facts.primaryObjection
+                    ? "font-medium text-foreground"
+                    : undefined
+                }
+              >
+                {label(o)}
+              </span>
+            </span>
+          ))}
+          . Recorded as the one in bold — the last thing standing between them
+          and yes.
+        </p>
       )}
 
       <div className={compact ? "flex flex-wrap items-end gap-2" : "grid gap-3 sm:grid-cols-3"}>

@@ -104,6 +104,9 @@ interface CallDetails {
   classifiedBy?: string;
   countsTowardStats?: boolean;
   outcomeSource?: string;
+  primaryObjection?: string;
+  /** Every objection raised, in order, when AI read the call. */
+  objections?: string[];
   transcriptText?: string;
   closerTalkTime?: number;
   prospectTalkTime?: number;
@@ -1885,6 +1888,8 @@ export default function CallDetailPage() {
                 cashCollected: call.cashCollected,
                 contractValue: call.contractValue,
                 outcomeSource: call.outcomeSource,
+                primaryObjection: call.primaryObjection,
+                objections: call.objections,
               }}
             />
           </div>

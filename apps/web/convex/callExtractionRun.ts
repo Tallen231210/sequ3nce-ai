@@ -140,7 +140,20 @@ export const claimExtraction = internalMutation({
  * outcome.
  */
 export const saveExtraction = internalMutation({
-  args: { callId: v.id("calls"), data: v.any() },
+  args: {
+    callId: v.id("calls"),
+    data: v.any(),
+    /**
+     * Suppress the completed-call notification. Set by the backfill.
+     *
+     * That notification is not just a Slack post: it also fans out to Discord
+     * and writes a contact, a tag and a note into the customer's own GoHighLevel
+     * CRM (slack.ts, at the end of sendCallCompletedNotification). Reading a
+     * three-week-old call is no reason to announce it as if it just happened,
+     * and no reason at all to touch their CRM.
+     */
+    silent: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<{ written: string[] }> => {
     const call = await ctx.db.get(args.callId);
     if (!call) return { written: [] };
@@ -202,7 +215,7 @@ export const saveExtraction = internalMutation({
     // the closer's own submission takes (calls.ts, completeCallWithOutcome):
     // cancel the pending job, fire immediately, and let the dedup record stop a
     // double-send if the timer had already gone off.
-    if (written.includes("outcome")) {
+    if (written.includes("outcome") && !args.silent) {
       const alreadySent = await ctx.db
         .query("slackNotifications")
         .withIndex("by_call_and_type", (q) =>

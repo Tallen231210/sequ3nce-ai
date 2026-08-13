@@ -39,7 +39,7 @@ Generate exactly these bullet points (use • character):
 
 • Topic: [One sentence - what product/service was discussed]
 • Pain Points: [One sentence - prospect's main needs or frustrations]
-• Objections: [One sentence - key objections raised, or "None raised"]
+• Objections: [One sentence - what actually stood between them and yes. A stated objection is often cover for the real one, and a good salesperson probes past it — if it moved, say where it ended up rather than where it started: "opened on needing to speak to his wife, which came down to the price". Or "None raised"]
 • Outcome: [One sentence - result and any next steps]
 • Sentiment: [One word + brief explanation - e.g. "Interested - asked follow-up questions about pricing"]
 
