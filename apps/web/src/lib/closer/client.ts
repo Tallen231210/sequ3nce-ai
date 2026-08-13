@@ -1460,6 +1460,8 @@ export interface CallHistoryItem {
   commentCount?: number;
   cashCollected?: number;
   contractValue?: number;
+  /** "ai" | "closer" | "manager" — absent on anything predating extraction. */
+  outcomeSource?: string;
   callAnalysis?: CallAnalysis;
   endedAt?: number;
   /** "bot" or "fathom" — absent on everything recorded before Fathom existed. */
@@ -2509,5 +2511,36 @@ export async function getCloserYearPerformance(
       tags: { feature: "getCloserYearPerformance", integration: "convex" },
     });
     return null;
+  }
+}
+
+/**
+ * Correct the outcome or money on one of your own calls.
+ *
+ * `null` clears a value and `undefined` leaves it untouched — the difference
+ * matters, because a figure the AI got wrong should be blankable without having
+ * to invent a replacement.
+ */
+export async function updateOwnCallFacts(
+  callId: string,
+  closerId: string,
+  facts: {
+    outcome?: string | null;
+    cashCollected?: number | null;
+    contractValue?: number | null;
+  },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/updateOwnCallFacts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, closerId, ...facts }),
+    });
+    if (!response.ok) return { success: false, error: "Couldn't save that." };
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to update call facts:", error);
+    Sentry.captureException(error, { tags: { feature: "updateOwnCallFacts" } });
+    return { success: false, error: "Couldn't save that." };
   }
 }

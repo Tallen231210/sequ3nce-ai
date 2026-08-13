@@ -2,14 +2,16 @@
 
 import React from 'react';
 import type { CallHistoryItem, AmmoItem } from '@/lib/closer/client';
+import { CallFactsInlineEditor } from './CallFactsInlineEditor';
 
 interface CallDetailOverviewTabProps {
   call: CallHistoryItem;
   ammoItems: AmmoItem[];
   isLoadingAmmo: boolean;
+  closerId: string;
 }
 
-export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo }: CallDetailOverviewTabProps) {
+export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId }: CallDetailOverviewTabProps) {
   const talkPercent = (() => {
     const closer = call.closerTalkTime || 0;
     const prospect = call.prospectTalkTime || 0;
@@ -65,6 +67,18 @@ export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo }: CallDe
           )}
           <DataRow label="Recording Type" value={call.recordingType === 'video' ? 'Video' : 'Audio'} />
         </div>
+        {/* Nobody fills in a form after every call, so these come off the
+            recording. The closer is the only person who knows for certain what
+            was charged on the day, and this is the one screen they're already
+            looking at. */}
+        <CallFactsInlineEditor
+          callId={call._id}
+          closerId={closerId}
+          outcome={call.outcome}
+          cashCollected={call.cashCollected}
+          contractValue={call.contractValue}
+          outcomeSource={call.outcomeSource}
+        />
       </DetailSection>
     </div>
   );

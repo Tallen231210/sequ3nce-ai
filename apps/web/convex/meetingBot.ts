@@ -2845,6 +2845,10 @@ export const getCallHistoryForCloser = query({
       outcome: call.outcome,
       cashCollected: call.cashCollected,
       contractValue: call.contractValue,
+      // Drives the "these were read off the recording" wording in the closer's
+      // call sheet. Explicit field list here, so omitting it would leave the
+      // editor permanently claiming a human entered these.
+      outcomeSource: call.outcomeSource,
       meetingBotId: call.meetingBotId,
       closerTalkTime: call.closerTalkTime,
       prospectTalkTime: call.prospectTalkTime,

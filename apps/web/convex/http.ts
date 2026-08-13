@@ -13297,6 +13297,69 @@ http.route({
 closerPreflight("/closer/session/revoke");
 
 
+// A closer correcting the numbers on their own call.
+//
+// Sits alongside the manager path in callFacts.ts rather than reusing it: the
+// dashboard mutation authenticates a `users` row, and closers aren't in that
+// table at all.
+http.route({
+  path: "/updateOwnCallFacts",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, closerId, outcome, cashCollected, contractValue } = body;
+
+      if (!callId || !closerId) {
+        return new Response(
+          JSON.stringify({ error: "callId and closerId are required" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          },
+        );
+      }
+
+      // Passed through as-is: `null` clears a figure and `undefined` leaves it
+      // alone, and collapsing the two would make it impossible to blank a
+      // number the AI invented.
+      const result = await ctx.runMutation(api.callFacts.updateOwnCallFacts, {
+        callId: callId as Id<"calls">,
+        closerId: closerId as Id<"closers">,
+        outcome,
+        cashCollected,
+        contractValue,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in updateOwnCallFacts:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/updateOwnCallFacts",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+      },
+    });
+  }),
+});
+
 export default http;
 
 // ============================================

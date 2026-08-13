@@ -9,9 +9,12 @@
 // Which makes this the only place a mis-read payment plan can actually be put
 // right.
 //
-// Manager-only, deliberately. The people fixing these are managers looking at a
-// board that seems wrong, and a closer editing their own recorded numbers after
-// the fact is a different feature with different consequences.
+// Two ways in, because there are two kinds of person with two kinds of
+// knowledge. A manager sees a board that looks wrong and fixes it from the
+// dashboard; a closer looks at their own call and knows what was actually
+// agreed, which is knowledge nobody else has. They authenticate completely
+// differently — `users` versus `closers` — so they get separate mutations with
+// shared validation, rather than one mutation with a role branch.
 // ============================================================================
 
 import { v } from "convex/values";
@@ -23,6 +26,53 @@ import { syncCallStats } from "./callStats";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const OUTCOMES = ["closed", "lost", "no_show", "follow_up", "rescheduled"];
+
+/** Shared shape so the manager and closer paths cannot validate differently. */
+interface FactsInput {
+  outcome?: string | null;
+  cashCollected?: number | null;
+  contractValue?: number | null;
+}
+
+/**
+ * Turn a request into a patch, or explain why not.
+ *
+ * `null` clears a value, so someone can blank a figure the AI invented rather
+ * than being forced to replace it with a different guess.
+ */
+function buildFactsPatch(
+  args: FactsInput,
+): { ok: true; patch: Record<string, unknown> } | { ok: false; error: string } {
+  const patch: Record<string, unknown> = {};
+
+  if (args.outcome !== undefined) {
+    if (args.outcome === null) {
+      patch.outcome = undefined;
+    } else if (!OUTCOMES.includes(args.outcome)) {
+      return { ok: false, error: "That isn't a valid outcome." };
+    } else {
+      patch.outcome = args.outcome;
+    }
+  }
+
+  for (const field of ["cashCollected", "contractValue"] as const) {
+    const value = args[field];
+    if (value === undefined) continue;
+    if (value === null) {
+      patch[field] = undefined;
+      continue;
+    }
+    if (!Number.isFinite(value) || value < 0) {
+      return { ok: false, error: "Amounts can't be negative." };
+    }
+    if (value > IMPLAUSIBLE_AMOUNT) {
+      return { ok: false, error: "That amount looks like a typo." };
+    }
+    patch[field] = Math.round(value);
+  }
+
+  return { ok: true, patch };
+}
 
 /** Same ceiling extraction uses — a typo shouldn't become a million-pound deal. */
 const IMPLAUSIBLE_AMOUNT = 5_000_000;
@@ -64,33 +114,9 @@ export const updateCallFacts = mutation({
       return { success: false, error: "That call isn't on your team." };
     }
 
-    const patch: Record<string, unknown> = {};
-
-    if (args.outcome !== undefined) {
-      if (args.outcome === null) {
-        patch.outcome = undefined;
-      } else if (!OUTCOMES.includes(args.outcome)) {
-        return { success: false, error: "That isn't a valid outcome." };
-      } else {
-        patch.outcome = args.outcome;
-      }
-    }
-
-    for (const field of ["cashCollected", "contractValue"] as const) {
-      const value = args[field];
-      if (value === undefined) continue;
-      if (value === null) {
-        patch[field] = undefined;
-        continue;
-      }
-      if (!Number.isFinite(value) || value < 0) {
-        return { success: false, error: "Amounts can't be negative." };
-      }
-      if (value > IMPLAUSIBLE_AMOUNT) {
-        return { success: false, error: "That amount looks like a typo." };
-      }
-      patch[field] = Math.round(value);
-    }
+    const built = buildFactsPatch(args);
+    if (!built.ok) return { success: false, error: built.error };
+    const patch = built.patch;
 
     if (Object.keys(patch).length === 0) return { success: true };
 
@@ -103,6 +129,53 @@ export const updateCallFacts = mutation({
     await ctx.db.patch(args.callId, patch);
 
     // Collections, closer stats and the board read the sidecar, not this row.
+    await syncCallStats(ctx, args.callId);
+
+    return { success: true };
+  },
+});
+
+/**
+ * A closer correcting one of their own calls.
+ *
+ * Separate from the manager path rather than a role check inside it, because
+ * closers are a different table entirely — `closers`, not `users` — and folding
+ * two identity models into one mutation is how a scoping bug gets written.
+ * Validation is shared so the two can't drift.
+ *
+ * Scoped to the caller's own calls. Every other closer mutation in this file's
+ * neighbourhood takes a callId and trusts it; this one checks that the call is
+ * actually theirs, which costs one read and closes the obvious hole.
+ *
+ * Marks the call closer-confirmed. Same effect as filling in the form used to
+ * have: extraction stops touching it, the AI marking disappears, and it counts
+ * as human-confirmed toward outcome coverage.
+ */
+export const updateOwnCallFacts = mutation({
+  args: {
+    closerId: v.id("closers"),
+    callId: v.id("calls"),
+    outcome: v.optional(v.union(v.string(), v.null())),
+    cashCollected: v.optional(v.union(v.number(), v.null())),
+    contractValue: v.optional(v.union(v.number(), v.null())),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return { success: false, error: "That call no longer exists." };
+    if (String(call.closerId) !== String(args.closerId)) {
+      return { success: false, error: "That isn't your call." };
+    }
+
+    const built = buildFactsPatch(args);
+    if (!built.ok) return { success: false, error: built.error };
+    const patch = built.patch;
+    if (Object.keys(patch).length === 0) return { success: true };
+
+    patch.outcomeSource = "closer";
+    await ctx.db.patch(args.callId, patch);
+
+    // Collections, closer stats and the team board read the sidecar, not this
+    // row. Without this the correction is invisible everywhere it matters.
     await syncCallStats(ctx, args.callId);
 
     return { success: true };

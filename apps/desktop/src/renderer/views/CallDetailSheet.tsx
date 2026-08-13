@@ -320,6 +320,7 @@ export function CallDetailSheet({
                 call={call}
                 ammoItems={ammoItems}
                 isLoadingAmmo={isLoadingAmmo}
+                closerId={closerInfo.closerId}
               />
             )}
             {activeTab === 'analysis' && (
