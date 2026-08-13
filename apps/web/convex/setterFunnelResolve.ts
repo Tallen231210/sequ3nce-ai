@@ -75,8 +75,25 @@ export function legacyFunnel(team: Doc<"teams"> | null): ResolvedFunnel {
         source: "manual",
         evidenceCount: 1,
       },
+      meetingBooked: {
+        // The current product computes bookings for every team, from GHL
+        // appointments or from connected calendars (setterDataMetrics.ts has a
+        // path for each). Leaving this slot out was my mistake, and it blocked
+        // set rate, show rate and time-to-book on teams that have had booking
+        // data all along.
+        kind: "crm_or_calendar",
+        source: "manual",
+        evidenceCount: 1,
+      },
       meetingHeld: {
         kind: "crm_status",
+        source: "manual",
+        evidenceCount: 1,
+      },
+      conversationStarted: {
+        // A call past the team's connection threshold — already how the product
+        // decides a dial actually reached someone.
+        kind: "call_over_threshold",
         source: "manual",
         evidenceCount: 1,
       },

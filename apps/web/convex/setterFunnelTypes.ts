@@ -116,6 +116,7 @@ export interface FunnelBindings {
   };
   setterAttribution: Binding<AttributionKind>;
   meetingBooked?: Binding<string>;
+  conversationStarted?: Binding<string>;
   meetingHeld?: Binding<HeldKind>;
 }
 
@@ -134,7 +135,12 @@ const REQUIRED_SLOTS = [
   "setterAttribution",
 ] as const;
 
+const BOOKED_KINDS = ["crm_or_calendar", "crm_appointment", "calendar_event"] as const;
+const CONVERSATION_KINDS = ["call_over_threshold", "reply_received"] as const;
+
 const KINDS_BY_SLOT: Record<string, readonly string[]> = {
+  meetingBooked: BOOKED_KINDS,
+  conversationStarted: CONVERSATION_KINDS,
   setterRoster: ROSTER_KINDS,
   leadArrived: LEAD_ARRIVED_KINDS,
   setterTouch: TOUCH_KINDS,

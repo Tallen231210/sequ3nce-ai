@@ -136,62 +136,52 @@ export const METRICS: MetricDefinition[] = [
 /**
  * What each binding means, said the way a sales manager would say it.
  *
- * The blocked list is read by someone running a sales floor, not by whoever
- * wrote the binding. "We haven't been told what meetingBooked means" is
- * technically accurate and completely useless to them; it has to say what we
- * need and what they can do about it.
+ * Two hard rules, both learned by getting it wrong.
+ *
+ * NEVER SUGGEST A REMEDY WE HAVEN'T VERIFIED. The first version of this told a
+ * customer to "connect the calendar your bookings land on" — their closers had
+ * connected their calendars, the real cause was a binding I had forgotten to
+ * declare, and the message left a manager staring at advice that made no sense
+ * for his setup. Inventing a plausible cause is exactly the failure this whole
+ * rebuild exists to prevent, and it is no better in an explanation than in a
+ * number.
+ *
+ * So each slot says only what we need to KNOW, phrased as the question we'd ask
+ * in setup. A remedy appears only where we have actually checked — which today
+ * means the channels we genuinely cannot read.
  */
-export const SLOT_IN_PLAIN_ENGLISH: Record<
-  string,
-  { needs: string; fix: string }
-> = {
-  leadArrived: {
-    needs: "when a lead counts as having arrived",
-    fix: "Tell us where your leads come in — a form, a booking, or a DM.",
-  },
-  setterTouch: {
-    needs: "what counts as your setters reaching out",
-    fix: "Tell us whether you measure calls, texts, or both.",
-  },
-  setterAttribution: {
-    needs: "who a lead belongs to",
-    fix: "Tell us whether leads are owned by whoever they're assigned to, or whoever works them first.",
-  },
-  setterRoster: {
-    needs: "which of your people are setters",
-    fix: "Mark your setters in the list above.",
-  },
-  meetingBooked: {
-    needs: "how we know a meeting got booked",
-    fix: "Connect the calendar your bookings land on, so we can see them.",
-  },
-  meetingHeld: {
-    needs: "how we know someone actually turned up",
-    fix: "Connect the calendar your meetings land on, or let our bot join the calls.",
-  },
-  conversationStarted: {
-    needs: "what counts as actually reaching someone",
-    fix: "Tell us how long a call has to last to count as a real conversation.",
-  },
+export const SLOT_IN_PLAIN_ENGLISH: Record<string, string> = {
+  leadArrived: "where your leads come in — a form, a booking, or a DM",
+  setterTouch: "whether a call, a text, or both counts as reaching out",
+  setterAttribution: "who a lead belongs to when several people touch it",
+  setterRoster: "which of your people are setters",
+  meetingBooked: "how a booked meeting shows up in your systems",
+  meetingHeld: "how you know someone actually turned up",
+  conversationStarted: "what counts as actually reaching someone, rather than just trying",
 };
 
-/** One plain sentence explaining why a metric can't be shown. */
+/**
+ * One plain sentence explaining why a metric isn't shown.
+ *
+ * Deliberately does not end with an instruction unless we know one that is
+ * true. "We need to know X about your business" is honest and leads somewhere;
+ * a confident wrong instruction wastes a manager's afternoon and costs their
+ * trust in everything next to it.
+ */
 export function explainBlocked(gate: Gate, suppressed: boolean): string {
   if (suppressed) {
-    return "This doesn't mean anything on your funnel, because prospects book their own meetings — so a setter can't be credited for it.";
+    return "This doesn't mean anything on your funnel, because prospects book their own meetings — a setter can't be credited for a booking they didn't make.";
   }
+  // The one case where we know the cause for certain, because it is our gap
+  // rather than a question about their business.
   if (gate.unreadable.length > 0) return gate.unreadable[0];
-  const parts = gate.missing.map(
-    (slot) => SLOT_IN_PLAIN_ENGLISH[slot]?.needs ?? slot,
-  );
-  const fixes = gate.missing
-    .map((slot) => SLOT_IN_PLAIN_ENGLISH[slot]?.fix)
-    .filter(Boolean);
-  const need =
-    parts.length === 1
-      ? parts[0]
-      : parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
-  return `We can't work this out until we know ${need}. ${fixes[0] ?? ""}`.trim();
+
+  const needs = gate.missing.map((slot) => SLOT_IN_PLAIN_ENGLISH[slot] ?? slot);
+  const list =
+    needs.length === 1
+      ? needs[0]
+      : needs.slice(0, -1).join(", ") + " and " + needs[needs.length - 1];
+  return `This one needs a decision from you first: ${list}. It's one of the questions we'll ask when setting up your funnel.`;
 }
 
 export interface Gate {
@@ -236,8 +226,14 @@ export function gate(metric: MetricDefinition, funnel: ResolvedFunnel): Gate {
     if (slot === "setterTouch") {
       const chans: string[] = binding.params?.channels ?? ["call", "sms"];
       if (chans.length > 0 && !chans.some((c) => READABLE_CHANNELS.has(c))) {
+        const pretty = chans
+          .map((c) => (c === "dm" ? "DMs" : c === "sms" ? "texts" : c === "call" ? "calls" : c))
+          .join(" and ");
+        // Ours to fix, not theirs, and said that way — a manager who thinks
+        // this is their misconfiguration will go hunting for a setting that
+        // doesn't exist.
         unreadable.push(
-          `${slot}: this business's setters work on ${chans.join("/")}, which we can't read from the CRM yet`,
+          `Your setters work in ${pretty}, and we can't read those out of your CRM yet. That's a gap on our side, not something to fix in your setup.`,
         );
       }
     }
