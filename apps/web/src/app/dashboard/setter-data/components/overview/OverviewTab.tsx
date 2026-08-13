@@ -6,6 +6,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { KpiStrip } from "./KpiStrip";
 import { MetricCoveragePanel } from "./MetricCoveragePanel";
+import { SpeedToLeadCards } from "./SpeedToLeadCards";
 import { ActionQueue } from "./ActionQueue";
 import { BookingFunnelPanel } from "./BookingFunnelPanel";
 import { HyrosAdSourcesPanel } from "./HyrosAdSourcesPanel";
@@ -104,6 +105,7 @@ export function OverviewTab({
             flowType={data.bookings.flowType}
             flowOverride={data.bookings.flowOverride}
           />
+          <SpeedToLeadCards rangeStart={rangeStart} rangeEnd={rangeEnd} />
           <KpiStrip
             data={{ ...data, showRateEvidence: evidence ?? undefined }}
             onUntouchedClick={() => onDrillToLeads("untouched")}
