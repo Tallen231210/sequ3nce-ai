@@ -170,13 +170,21 @@ export const drillMetric = query({
       let nobody = 0;
       let unknown = 0;
       const unknownIds = new Set<string>();
+      // Distinct PEOPLE, as opposed to how many touches they made. Both matter
+      // and they answer different questions: "how many touches came from
+      // someone we can't name" is a data-quality number, "how many such people
+      // are there" is the one a manager can actually go and fix.
+      const namedPeople = new Set<string>();
       const nameFor = (id: string | null): string | null => {
         if (!id) {
           nobody += 1;
           return null;
         }
         const known = repName.get(id);
-        if (known) return known;
+        if (known) {
+          namedPeople.add(id);
+          return known;
+        }
         unknown += 1;
         unknownIds.add(id);
         return `Unrecognised user (${id.slice(0, 8)}…)`;
@@ -237,10 +245,16 @@ export const drillMetric = query({
         // Who did the work, at a glance. `nobody` is automation and is expected;
         // `unknown` means real people are doing setter work under ids we have no
         // record for, which quietly breaks every per-setter number until fixed.
+        // Counts are of TOUCHES; the *People fields are distinct humans. The
+        // first version reported only touches and was immediately misread as a
+        // headcount, which is a fair reading of a bare number labelled
+        // "setters".
         attribution: {
-          named: pairs.length - nobody - unknown,
-          automated: nobody,
-          unrecognised: unknown,
+          namedTouches: pairs.length - nobody - unknown,
+          automatedTouches: nobody,
+          unrecognisedTouches: unknown,
+          namedPeople: namedPeople.size,
+          unrecognisedPeople: unknownIds.size,
           unrecognisedIds: [...unknownIds].slice(0, 10),
         },
         truncated: input.truncated,

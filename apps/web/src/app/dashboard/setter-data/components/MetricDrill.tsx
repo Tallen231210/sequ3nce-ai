@@ -102,14 +102,26 @@ export function MetricDrill({
                 breaks every per-setter number until someone fixes it. */}
             {data.attribution && (
               <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                <Pill label="Named setters" value={data.attribution.named} tone="ok" />
-                <Pill label="Automated" value={data.attribution.automated} tone="muted" />
-                {data.attribution.unrecognised > 0 && (
+                {/* Deliberately worded as touches, not people. A bare number
+                    beside the word "setters" reads as a headcount — it was
+                    misread that way the first time this shipped. */}
+                <Pill
+                  label={`touches by ${data.attribution.namedPeople} known ${data.attribution.namedPeople === 1 ? "setter" : "setters"}`}
+                  value={data.attribution.namedTouches}
+                  tone="ok"
+                />
+                <Pill
+                  label="touches by automation"
+                  value={data.attribution.automatedTouches}
+                  tone="muted"
+                  title="No user attached to these — a workflow or power dialer, not a person."
+                />
+                {data.attribution.unrecognisedTouches > 0 && (
                   <Pill
-                    label="Users we can't name"
-                    value={data.attribution.unrecognised}
+                    label={`touches by ${data.attribution.unrecognisedPeople} ${data.attribution.unrecognisedPeople === 1 ? "person" : "people"} we can't name`}
+                    value={data.attribution.unrecognisedTouches}
                     tone="warn"
-                    title="These touches came from real CRM users we have no record for, so they're missing from per-setter breakdowns."
+                    title="Real CRM users with no record on our side, so they're missing from every per-setter breakdown. Usually people added to the CRM since the last sync."
                   />
                 )}
               </div>
