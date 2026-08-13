@@ -15,7 +15,7 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
 import { Mail } from "lucide-react";
 
@@ -34,7 +34,7 @@ function JoinInner() {
       </h1>
 
       <p className="mt-3 text-sm leading-relaxed text-zinc-600">
-        Sign in with{" "}
+        Create your account with{" "}
         {email ? (
           <span className="font-medium text-zinc-900">{email}</span>
         ) : (
@@ -48,14 +48,21 @@ function JoinInner() {
           company, which is exactly how this went wrong before invites
           existed. */}
       <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
-        Use that exact address. Signing in with a different one — including a
+        Use that exact address. Signing up with a different one — including a
         personal Google account — creates a separate company rather than
         joining this team.
       </p>
 
       <div className="mt-8">
         <SignedOut>
-          {/* SIGN UP, not sign in.
+          {/* SIGN UP only, and deliberately no sign-in fallback.
+              Signing in with some OTHER existing account does not accept the
+              invite — bootstrap matches on that account's email, so they land
+              on their own team and the invite stays pending forever, which
+              looks like success. And having a login on the INVITED email can't
+              happen, because createManagerInvite refuses an email that already
+              belongs to a user. So the fallback invited the wrong action far
+              more often than the right one.
               This page is reached by someone who by definition has no account
               yet, and Clerk's sign-in modal offers no way to create one — no
               "don't have an account?" link at all. Sending an invited person
@@ -67,13 +74,6 @@ function JoinInner() {
               Create your account
             </button>
           </SignUpButton>
-          <div className="mt-4">
-            <SignInButton mode="modal">
-              <button className="text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-800">
-                Already have a Sequ3nce login? Sign in instead
-              </button>
-            </SignInButton>
-          </div>
         </SignedOut>
         <SignedIn>
           <Link
