@@ -20,6 +20,7 @@ import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { CollectionsSettings } from "./components/CollectionsSettings";
 import { ClearedBalances } from "./components/ClearedBalances";
+import { CallFactsEditor } from "@/components/calls/CallFactsEditor";
 
 const HEADER = {
   title: "Collections",
@@ -103,6 +104,7 @@ function BalancesList({
   const resolve = useMutation(api.collectionsSettings.resolveBalance);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const act = async (
@@ -234,6 +236,15 @@ function BalancesList({
                           Collected
                         </button>
                         <button
+                          onClick={() =>
+                            setEditing(editing === b.callId ? null : b.callId)
+                          }
+                          disabled={busy === b.callId}
+                          className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        >
+                          {editing === b.callId ? "Close" : "Fix figures"}
+                        </button>
+                        <button
                           onClick={() => setConfirming(b.callId)}
                           disabled={busy === b.callId}
                           className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
@@ -246,13 +257,45 @@ function BalancesList({
                 )}
               </tr>
             ))}
+            {/* Correcting the numbers where the wrong number is noticed.
+                "Collected" settles a balance that was genuinely paid in full;
+                this is for the commoner case since AI started reading calls —
+                a payment plan whose deposit we recorded, where the customer has
+                since paid more and is perfectly current. Editing the figure is
+                the truthful fix; writing it off would say they never paid. */}
+            {canEdit &&
+              data.balances
+                .filter((b) => b.callId === editing)
+                .map((b) => (
+                  <tr key={`${b.callId}-edit`} className="border-b bg-muted/30">
+                    <td colSpan={7} className="px-4 py-3">
+                      <div className="mb-2 text-xs text-muted-foreground">
+                        Correcting <span className="font-medium">{b.prospectName}</span> —
+                        set cash collected to everything paid so far. It clears
+                        from this list once it matches the contract.
+                      </div>
+                      <CallFactsEditor
+                        compact
+                        callId={b.callId}
+                        facts={{
+                          outcome: "closed",
+                          cashCollected: b.cashCollected,
+                          contractValue: b.contractValue,
+                          outcomeSource: b.outcomeSource,
+                        }}
+                        onSaved={() => setEditing(null)}
+                      />
+                    </td>
+                  </tr>
+                ))}
           </tbody>
         </table>
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Amounts come from what the closer logged after each call. Mark anything
-        already paid as collected so it stops appearing here and in the digest.
+        Amounts come from the post-call form, or from the recording where nobody
+        filled one in. Mark anything already paid as collected, or fix the figure
+        directly if a payment plan has moved on since the call.
       </p>
     </div>
   );

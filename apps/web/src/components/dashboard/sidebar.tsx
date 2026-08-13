@@ -112,10 +112,12 @@ export function Sidebar() {
   // GHL Sync is intentionally hidden — its UI was non-functional and is being absorbed
   // into the new Setter Data tab. The underlying disposition-sync code remains in place
   // and will be rebuilt on top of OAuth tokens in Phase 3.
+  //
+  // Hyros Sync is hidden for the same reason: outbound sync is not something we
+  // ask a customer to operate from here, and a nav item for a page nobody should
+  // be driving is worse than no nav item. The route and its code are untouched,
+  // so anyone with the link still reaches it.
   const integrationItems: typeof baseNavigation = [];
-  if (team?.hyrosEnabled) {
-    integrationItems.push({ name: "Hyros Sync", href: "/dashboard/hyros-sync", icon: Zap });
-  }
   // Filter out Setter Data tab if explicitly disabled (admin kill switch).
   const setterFiltered = team?.setterDataEnabled === false
     ? baseNavigation.filter((item) => item.href !== "/dashboard/setter-data")
