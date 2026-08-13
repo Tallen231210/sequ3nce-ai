@@ -11,7 +11,7 @@
 // everywhere at once.
 // ============================================================================
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { updateOwnCallFacts } from '../convex';
 
 const OUTCOMES = [
@@ -50,6 +50,7 @@ export function CallFactsInlineEditor({
   onSaved,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const [outcome, setOutcome] = useState(initialOutcome ?? '');
   const [cash, setCash] = useState(initialCash != null ? String(initialCash) : '');
   const [contract, setContract] = useState(
@@ -67,6 +68,13 @@ export function CallFactsInlineEditor({
   }, [initialOutcome, initialCash, initialContract]);
 
   const isAi = outcomeSource === 'ai';
+
+  // The panel opens at the bottom of a scrollable sheet, usually below the fold
+  // — so without this a closer clicks "Edit figures" and, as far as they can
+  // tell, nothing happens.
+  useEffect(() => {
+    if (open) panelRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [open]);
 
   // Nothing to save until something changed. Without this, opening the panel
   // and pressing Save stamps "a human confirmed this" on a call carrying no
@@ -119,7 +127,10 @@ export function CallFactsInlineEditor({
     'w-full rounded-md border border-gray-300 px-2 py-1.5 text-[13px] outline-none focus:border-gray-900';
 
   return (
-    <div className="mt-2 space-y-2.5 rounded-lg border border-gray-200 bg-white p-3">
+    <div
+      ref={panelRef}
+      className="mt-2 space-y-2.5 rounded-lg border border-gray-200 bg-white p-3"
+    >
       {isAi && (
         <p className="text-[12px] leading-relaxed text-gray-500">
           These were read off the recording. If this was a payment plan, cash
