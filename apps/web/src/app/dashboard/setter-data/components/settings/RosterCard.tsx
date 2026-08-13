@@ -16,8 +16,8 @@
 // are the ones you make first.
 // ============================================================================
 
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useEffect, useRef, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Loader2 } from "lucide-react";
 import { api } from "../../../../../../convex/_generated/api";
@@ -46,6 +46,29 @@ export function RosterCard() {
     user ? { clerkId: user.id } : "skip",
   ) as any;
   const setRole = useMutation(api.setterRoster.setRole);
+  const resolveNames = useAction(api.setterRosterResolve.resolveMissingNamesForMyTeam);
+  const triedResolving = useRef(false);
+
+  // Go and fetch the names of anyone we can only show as an id.
+  //
+  // The CRM user sync fetches /users/ once with no paging, so agency-level
+  // people and anyone past the first page never arrive — on one live team that
+  // left 8 of 16 people nameless, including two doing over 800 touches each.
+  // Nobody can decide whether "Unnamed user nLKs6QoN…" is a setter, so the card
+  // resolves them on sight rather than asking the manager to guess.
+  //
+  // Once per mount: a second pass would only re-ask about ids GHL has already
+  // told us it doesn't recognise.
+  useEffect(() => {
+    if (!user || !data || triedResolving.current) return;
+    const nameless = data.people.filter((p: any) => !p.name && p.total > 0);
+    if (nameless.length === 0) return;
+    triedResolving.current = true;
+    void resolveNames({ clerkId: user.id }).catch(() => {
+      // Never block the roster on this. Worst case the manager sees the ids,
+      // which is exactly where they were before.
+    });
+  }, [user, data, resolveNames]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
