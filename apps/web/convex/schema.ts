@@ -3021,6 +3021,80 @@ export default defineSchema({
     .index("by_team_and_to_stage", ["teamId", "toStageId"])
     .index("by_team_and_transitioned_at", ["teamId", "transitionedAt"]),
 
+  // ==========================================================================
+  // What a setter actually does here.
+  //
+  // Setter Data was built on one assumed funnel: lead arrives, setter dials it,
+  // maybe texts it, meeting gets booked. Every business that works differently
+  // gets quietly wrong numbers — a business whose setters live in Instagram DMs
+  // currently records zero activity, because ghlMessageType.ts understands two
+  // things and neither of them is a DM.
+  //
+  // A funnel binds our abstract slots (a lead arrived; someone reached out; a
+  // meeting happened) to what those mean at ONE business. Metrics then read the
+  // binding instead of assuming.
+  //
+  // Plural per team on purpose. A business running paid ads to a booking link
+  // AND organic DMs has two funnels with different setter behaviour and
+  // different definitions of good; modelling one funnel per business is exactly
+  // how we hit this wall the first time.
+  // ==========================================================================
+  setterFunnels: defineTable({
+    teamId: v.id("teams"),
+    name: v.string(),
+    /** Off by default so a half-configured funnel never reaches a dashboard. */
+    active: v.boolean(),
+
+    /**
+     * The bindings. Each is `{ kind, params?, source, evidenceCount }`:
+     *
+     *   kind          which rule, from a deliberately small vocabulary
+     *   params        rule-specific detail (which tag, which custom field)
+     *   source        "detected" | "confirmed" | "manual" — confirmed means a
+     *                 human looked at real rows and agreed
+     *   evidenceCount how many real records back it, so nothing is ever
+     *                 proposed on zero data (the funnel probe once concluded
+     *                 "no power dialer" from a 100-record sample of an org
+     *                 running 1,700 automated dials a day)
+     *
+     * `v.any()` here is deliberate and is NOT an absence of validation: the
+     * shape is enforced in code by setterFunnels.ts on every write, the same
+     * way extraction sanitises the model's output before storing it. A rigid
+     * union in the schema is what made the old model unable to describe a
+     * funnel it hadn't anticipated.
+     */
+    bindings: v.any(),
+
+    /**
+     * Which leads belong to this funnel. Absent = all of them, which is correct
+     * for the single-funnel businesses that are the common case.
+     */
+    leadScope: v.optional(v.any()),
+
+    /**
+     * Outside these hours the clock stops for speed-style metrics. Without it a
+     * lead arriving 11pm Friday and answered 9am Monday reads as a 58-hour
+     * failure, which is the kind of number that makes a customer stop believing
+     * the whole tab.
+     */
+    businessHours: v.optional(v.any()),
+
+    /**
+     * Bumped on every material change. Historical numbers stay attributable to
+     * the definition that produced them — otherwise a funnel change silently
+     * rewrites history and a chart lies with no way to tell why.
+     */
+    version: v.number(),
+    /** English, shown to the manager for approval. The definition they agreed. */
+    summary: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    approvedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_active", ["teamId", "active"]),
+
   // Founder/admin action audit trail. Impersonating a customer account is
   // the most powerful action in the app; every one is recorded here so
   // there's accountability (the whole reason this beats sharing logins).
