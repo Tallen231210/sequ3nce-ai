@@ -6,6 +6,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ManagersCard } from "@/components/team/ManagersCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -510,6 +511,9 @@ export default function TeamPage() {
             </form>
           </CardContent>
         </Card>
+
+        {/* Managers — renders nothing for anyone who isn't one */}
+        <ManagersCard />
 
         {/* Closers List */}
         <Card>

@@ -21,7 +21,16 @@ function SubscribeContent() {
   const wasSuccess = searchParams.get("success") === "true";
 
   // This hook ensures the user and team exist in Convex
-  const { isReady: isTeamReady } = useTeam();
+  const { team, isReady: isTeamReady } = useTeam();
+
+  // We made this team for whoever signed in, because we didn't recognise them
+  // — nobody chose to start a company here. Someone in that state is usually a
+  // colleague of an existing customer who signed in with the wrong address,
+  // and showing them pricing alone reads as "your company's account has
+  // lapsed". That misread cost an hour of live debugging on 2026-08-12.
+  const looksLikeAWrongTurn =
+    (team as { selfServeCreated?: boolean } | null | undefined)
+      ?.selfServeCreated === true;
 
   // Check if user is logged out
   const isLoggedOut = isUserLoaded && !user;
@@ -144,6 +153,24 @@ function SubscribeContent() {
 
         {!wasSuccess && (
           <>
+            {looksLikeAWrongTurn && (
+              <div className="mx-auto mb-10 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-left">
+                <p className="text-sm font-semibold text-amber-900">
+                  Meant to join a colleague&apos;s team?
+                </p>
+                <p className="mt-1.5 text-sm leading-relaxed text-amber-900">
+                  You&apos;re not part of a team yet. If someone invited you,
+                  sign out and sign back in with the exact email address the
+                  invite was sent to — including whether it was a Google
+                  account. Otherwise ask them to invite you from their Team
+                  page.
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-amber-800">
+                  Subscribing below sets up a brand-new, separate company.
+                </p>
+              </div>
+            )}
+
             <div className="text-center mb-12">
               <h1 className="text-4xl font-bold text-zinc-900 mb-4">
                 Start Your Subscription

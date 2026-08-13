@@ -130,6 +130,16 @@ export default defineSchema({
     /** Include the per-closer board in the post. Defaults on. */
     cashDigestShowLeaderboard: v.optional(v.boolean()),
     /**
+     * This team was created for whoever signed in, because we didn't recognise
+     * them — not because anyone chose to start a company.
+     *
+     * Lets the subscribe page tell the two apart. A lapsed customer needs
+     * pricing; someone who was meant to join a colleague's team needs to be
+     * told that, and until now got pricing and concluded their company had been
+     * cut off.
+     */
+    selfServeCreated: v.optional(v.boolean()),
+    /**
      * Gate on the share links compliance alerts hand out. Empty means no gate.
      *
      * Stored as plaintext, deliberately, because the alert has to be able to
@@ -474,6 +484,36 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_clerk_id", ["clerkId"])
+    .index("by_team", ["teamId"]),
+
+  /**
+   * An invitation for someone to join a team's web dashboard.
+   *
+   * Exists because there was no way to add a second manager at all. A `users`
+   * row is only created by first sign-in — which mints a NEW team — or by our
+   * own admin tooling, so 19 of 20 teams had exactly one dashboard user and a
+   * co-founder signing up landed on an empty team and the subscribe page,
+   * looking exactly like a billing lockout.
+   *
+   * A separate table rather than a `users` row with no `clerkId`: that field is
+   * required and read as a string all over, and widening it would ripple. This
+   * also keeps `users` meaning "someone who has actually signed in".
+   *
+   * The invite is only a RECORD TO MATCH AGAINST. The matching itself is the
+   * verified-email path in `ensureUserTeam` that already existed for
+   * reattaching recreated logins.
+   */
+  managerInvites: defineTable({
+    teamId: v.id("teams"),
+    /** Always lowercased — matching is case-insensitive. */
+    email: v.string(),
+    role: v.string(), // "admin" | "manager" — synonyms today, recorded for later
+    invitedByUserId: v.id("users"),
+    createdAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    acceptedUserId: v.optional(v.id("users")),
+  })
+    .index("by_email", ["email"])
     .index("by_team", ["teamId"]),
 
   // Closers (sales reps who use the desktop app)

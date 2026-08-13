@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 
 // Get the current user's team
 export const getMyTeam = query({
@@ -110,12 +112,57 @@ export const ensureUserTeam = mutation({
       };
     }
 
-    // 3. Genuinely new — create team + admin user (same shape as
+    // 3. Nobody by that email, but they were INVITED to a team. Join it.
+    //
+    //    Rides the same guarantee as step 2: `args.email` is read from Clerk's
+    //    backend by the bootstrap route, never from the request body, so an
+    //    unverified address can't claim an invite.
+    //
+    //    Without this a second manager at an existing customer gets their own
+    //    empty team and the subscribe page, which reads as the company's
+    //    account having lapsed. That cost an hour of live debugging on
+    //    2026-08-12 and would have happened to every customer's second hire.
+    const invite = await ctx.db
+      .query("managerInvites")
+      .withIndex("by_email", (q) => q.eq("email", target))
+      .filter((q) => q.eq(q.field("acceptedAt"), undefined))
+      .first();
+    if (invite) {
+      const invitedUserId = await ctx.db.insert("users", {
+        clerkId: args.clerkId,
+        email: args.email,
+        name: args.name,
+        teamId: invite.teamId,
+        role: invite.role,
+        createdAt: Date.now(),
+      });
+      await ctx.db.patch(invite._id, {
+        acceptedAt: Date.now(),
+        acceptedUserId: invitedUserId,
+      });
+      const team = await ctx.db.get(invite.teamId);
+      console.log(
+        `[ensureUserTeam] ${target} accepted an invite to team ${invite.teamId}`,
+      );
+      return {
+        teamId: invite.teamId,
+        userId: invitedUserId,
+        team,
+        reattached: false,
+        created: false,
+        joinedByInvite: true,
+      };
+    }
+
+    // 4. Genuinely new — create team + admin user (same shape as
     //    createTeamAndUser).
     const teamId = await ctx.db.insert("teams", {
       name: `${args.name || "My"}'s Team`,
       plan: "active",
       createdAt: Date.now(),
+      // Nobody chose to start a company here; we made one because we didn't
+      // recognise them. The subscribe page needs to know the difference.
+      selfServeCreated: true,
     });
     const userId = await ctx.db.insert("users", {
       clerkId: args.clerkId,
@@ -201,6 +248,153 @@ export const updateTeamName = mutation({
     // Update the team name
     await ctx.db.patch(user.teamId, { name: args.name });
 
+    return { success: true };
+  },
+});
+
+// ============================================================================
+// Manager invites
+//
+// The invite is only a record to match against. All the matching lives in
+// `ensureUserTeam` above, on the verified-email path that already existed for
+// reattaching a recreated login — so this adds no new way into an account.
+// ============================================================================
+
+function canManage(user: Doc<"users">): boolean {
+  return user.role === "admin" || user.role === "manager";
+}
+
+async function requireManager(ctx: QueryCtx | MutationCtx, clerkId: string) {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+    .first();
+  if (!user) return null;
+  return canManage(user) ? user : null;
+}
+
+/**
+ * Invite someone to this team's dashboard.
+ *
+ * Refuses an email that already belongs to a user on ANY team. Accepting such
+ * an invite would silently move that person off their current team and strand
+ * whatever they were the only manager of — an error they can read is better
+ * than a surprise nobody notices.
+ */
+export const createManagerInvite = mutation({
+  args: {
+    clerkId: v.string(),
+    email: v.string(),
+    role: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ success: boolean; error?: string; inviteId?: Id<"managerInvites"> }> => {
+    const me = await requireManager(ctx, args.clerkId);
+    if (!me) return { success: false, error: "Only managers can invite people." };
+
+    const email = args.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { success: false, error: "That doesn't look like an email address." };
+    }
+    if (email.length > 200) {
+      return { success: false, error: "That email is too long." };
+    }
+
+    const role = args.role === "manager" ? "manager" : "admin";
+
+    // Same scan the reattach path uses — this table stays tiny (one row per
+    // manager), and a case-insensitive compare is correct where an exact index
+    // wouldn't be.
+    const allUsers = await ctx.db.query("users").take(5000);
+    const existing = allUsers.find(
+      (u) => (u.email || "").trim().toLowerCase() === email,
+    );
+    if (existing) {
+      return {
+        success: false,
+        error:
+          String(existing.teamId) === String(me.teamId)
+            ? "They're already on this team."
+            : "That email already belongs to another team. Ask support to move it.",
+      };
+    }
+
+    const pending = await ctx.db
+      .query("managerInvites")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .filter((q) => q.eq(q.field("acceptedAt"), undefined))
+      .first();
+    if (pending) {
+      return { success: false, error: "There's already a pending invite for that email." };
+    }
+
+    const inviteId = await ctx.db.insert("managerInvites", {
+      teamId: me.teamId,
+      email,
+      role,
+      invitedByUserId: me._id,
+      createdAt: Date.now(),
+    });
+    return { success: true, inviteId };
+  },
+});
+
+/** Current managers and outstanding invites, for the Team page. */
+export const listTeamManagers = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const me = await requireManager(ctx, args.clerkId);
+    if (!me) return null;
+
+    const members = await ctx.db
+      .query("users")
+      .withIndex("by_team", (q) => q.eq("teamId", me.teamId))
+      .collect();
+
+    const invites = await ctx.db
+      .query("managerInvites")
+      .withIndex("by_team", (q) => q.eq("teamId", me.teamId))
+      .collect();
+
+    return {
+      members: members.map((u) => ({
+        _id: u._id,
+        email: u.email,
+        name: u.name ?? null,
+        role: u.role,
+        isYou: String(u._id) === String(me._id),
+      })),
+      pending: invites
+        .filter((i) => !i.acceptedAt)
+        .map((i) => ({
+          _id: i._id,
+          email: i.email,
+          role: i.role,
+          createdAt: i.createdAt,
+        })),
+    };
+  },
+});
+
+export const revokeManagerInvite = mutation({
+  args: { clerkId: v.string(), inviteId: v.id("managerInvites") },
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+    const me = await requireManager(ctx, args.clerkId);
+    if (!me) return { success: false, error: "Only managers can do that." };
+
+    const invite = await ctx.db.get(args.inviteId);
+    if (!invite) return { success: true };
+    // Scoped from the caller's own identity — the client never supplies a team.
+    if (String(invite.teamId) !== String(me.teamId)) {
+      return { success: false, error: "That invite isn't for your team." };
+    }
+    if (invite.acceptedAt) {
+      return { success: false, error: "That invite has already been accepted." };
+    }
+
+    await ctx.db.delete(args.inviteId);
     return { success: true };
   },
 });
