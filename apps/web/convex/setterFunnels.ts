@@ -21,6 +21,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { validateBindings, validateBusinessHours } from "./setterFunnelTypes";
 import { fromRow, legacyFunnel, type ResolvedFunnel } from "./setterFunnelResolve";
+import { setterIdsFor } from "./setterRoster";
 import { availableMetrics } from "./setterMetricLibrary";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -49,7 +50,32 @@ export async function activeFunnelFor(
       q.eq("teamId", teamId).eq("active", true),
     )
     .first();
-  return fromRow(row as Doc<"setterFunnels"> | null, team);
+  const funnel = fromRow(row as Doc<"setterFunnels"> | null, team);
+
+  // The roster is answered by the people table, not by the funnel document.
+  //
+  // Deliberate: who your setters are is a fact about your staff, not about a
+  // funnel definition, and it stays true when the funnel is rewritten. It also
+  // means a manager can name their setters without first having to build and
+  // approve a whole funnel.
+  //
+  // Null means nobody has said, which keeps today's behaviour of counting
+  // everyone. An empty list would mean "this team has no setters" and would
+  // zero every metric — collapsing those two is how a dashboard silently
+  // empties itself.
+  const setterIds = await setterIdsFor(ctx, teamId);
+  if (setterIds !== null) {
+    funnel.bindings = {
+      ...funnel.bindings,
+      setterRoster: {
+        kind: "explicit_list",
+        source: "confirmed",
+        evidenceCount: setterIds.length,
+        params: { userIds: setterIds },
+      },
+    } as any;
+  }
+  return funnel;
 }
 
 export const getActiveFunnel = internalQuery({
