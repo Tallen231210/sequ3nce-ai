@@ -203,6 +203,47 @@ export function countsChannel(f: ResolvedFunnel, channel: string): boolean {
  * metric already reports — so behaviour is unchanged until someone says
  * otherwise.
  */
+/**
+ * Formatters are expensive; make one per timezone, not one per hour.
+ *
+ * The first version built an Intl.DateTimeFormat inside the hour loop. With
+ * business hours configured on a real team that is roughly a hundred thousand
+ * constructions per request, and it blew Convex's one-second query limit the
+ * moment a funnel went live. The metric was correct and unusable.
+ */
+const TZ_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+function formatterFor(timezone: string): Intl.DateTimeFormat {
+  let f = TZ_FORMATTERS.get(timezone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+      hour: "numeric",
+      hour12: false,
+    });
+    TZ_FORMATTERS.set(timezone, f);
+  }
+  return f;
+}
+
+const DAY_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+/**
+ * Minutes of working time between two instants.
+ *
+ * Without this a lead arriving 11pm Friday and answered 9am Monday reads as a
+ * 58-hour failure and makes a competent team look negligent. With no business
+ * hours configured this is plain elapsed time, which is what every current
+ * metric already reports — so behaviour is unchanged until someone says
+ * otherwise.
+ *
+ * Walks hour by hour rather than doing interval arithmetic: coarser, but easy
+ * to verify by hand, and a speed metric nobody can check is one nobody believes.
+ * Long gaps are capped — a lead untouched for three months contributes its
+ * working hours up to the cap rather than spending the request counting them.
+ */
 export function elapsedWorkingMs(
   startMs: number,
   endMs: number,
@@ -211,30 +252,28 @@ export function elapsedWorkingMs(
   if (endMs <= startMs) return 0;
   if (!hours) return endMs - startMs;
 
-  let total = 0;
-  // Walk hour by hour. Coarser than exact interval arithmetic and far easier to
-  // verify by hand, which matters more here — a speed metric nobody can check
-  // is a speed metric nobody believes.
   const HOUR = 3_600_000;
-  for (let t = startMs; t < endMs; t += HOUR) {
+  // 60 days of hours. Beyond this the answer is "they never got to it", and the
+  // precise figure changes no decision.
+  const MAX_STEPS = 24 * 60;
+
+  const fmt = formatterFor(hours.timezone);
+  const days = new Set(hours.days);
+  let total = 0;
+  let steps = 0;
+
+  for (let t = startMs; t < endMs && steps < MAX_STEPS; t += HOUR, steps++) {
     const slice = Math.min(HOUR, endMs - t);
-    if (isWorking(t, hours)) total += slice;
+    const parts = fmt.formatToParts(new Date(t));
+    let weekday = "";
+    let hour = 0;
+    for (const p of parts) {
+      if (p.type === "weekday") weekday = p.value;
+      else if (p.type === "hour") hour = Number(p.value);
+    }
+    const day = DAY_INDEX[weekday];
+    if (day === undefined || !days.has(day)) continue;
+    if (hour >= hours.startHour && hour < hours.endHour) total += slice;
   }
   return total;
-}
-
-function isWorking(ms: number, hours: BusinessHours): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: hours.timezone,
-    weekday: "short",
-    hour: "numeric",
-    hour12: false,
-  }).formatToParts(new Date(ms));
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const dayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
-    weekday,
-  );
-  if (dayIndex < 0 || !hours.days.includes(dayIndex)) return false;
-  return hour >= hours.startHour && hour < hours.endHour;
 }
