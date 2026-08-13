@@ -1841,6 +1841,22 @@ export const getPendingQuestionnaires = query({
       )
       .collect();
 
+    // A team whose calls we read never gets asked for the form.
+    //
+    // Gated here rather than in the desktop app on purpose: this is what makes
+    // the prompt stop for closers who are running an app build from weeks ago.
+    // Fixing it in the renderer would have needed a release and would only have
+    // reached whoever updated.
+    //
+    // Without this the prompt still appears for the 60-90 seconds it takes
+    // extraction to run, asking a closer for the one thing we're in the middle
+    // of doing for them.
+    const closer = await ctx.db.get(args.closerId);
+    if (closer) {
+      const team = await ctx.db.get(closer.teamId);
+      if (team?.aiExtractionEnabled === true) return [];
+    }
+
     // Filter to bots where questionnaire is not completed AND that have a linked call
     // Bots without a callId can't have questionnaires filled out
     return completedBots.filter(

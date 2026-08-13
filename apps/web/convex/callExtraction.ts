@@ -85,11 +85,23 @@ cashCollected can never exceed contractValue. If you find yourself about to repo
 Take the price they AGREED, not a higher figure floated earlier and then discounted. If several prices were discussed and none was agreed, report the one they were working from at the end.
 Report numbers only when a figure was actually said. Never infer a price from the type of product.
 
-OBJECTIONS — classify into exactly one of these, or omit:
+OBJECTIONS — classify into exactly one of these:
 ${OBJECTIONS.join(", ")}
 - primaryObjection: for calls that did NOT close — the main thing that stopped them.
 - objectionsOvercome: for calls that DID close — the main hesitation they raised and the salesperson worked through. Use "none" if they bought without real resistance.
-Pick the closest category rather than inventing one. Use "other" only when nothing fits.
+
+Unlike the numbers above, this is NOT optional on a real conversation. A call that ended without a sale ended that way for a reason, and the reason was almost always said out loud. If the outcome is lost, follow_up or rescheduled, report a primaryObjection. Use "other" when a reason was given and none of the categories fit. If the call genuinely ended without any reason being given at all, use "other" as well — do NOT reach for need_to_think as a catch-all. need_to_think means they actually said they wanted to think about it.
+
+The common ones, so you recognise them:
+- "I need to speak to my wife/husband/partner" → spouse_partner
+- "It's too expensive", "I can't afford it", "I don't have it right now" → price_money
+- "Not the right time", "let's revisit next quarter", "I'm too busy" → timing
+- "I need to think about it", "let me sit on it" — said explicitly → need_to_think
+- Doesn't meet the requirements, wrong fit, can't do what's needed → not_qualified
+- Visa, location, equipment, hours, scheduling, technical blockers → logistics
+- Considering someone else, already working with another provider → competitor
+
+The only calls with no objection are ones where nobody turned up: on a no_show, report nothing.
 
 Report your findings by calling the report_call tool. Omit any field you are not confident about.`;
 
