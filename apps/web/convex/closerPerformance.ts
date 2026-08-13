@@ -137,7 +137,19 @@ async function recountDayImpl(
     row.taken += 1;
     if (call.outcome == null) {
       row.missingOutcomes += 1;
-      continue; // no form → no offer/close/cash signal to read
+      continue; // nothing recorded → no offer/close/cash signal to read
+    }
+    // An AI-read call still counts as unconfirmed.
+    //
+    // `missingOutcomes` feeds the coverage warning, which exists so the board
+    // can't present "0 closes" as fact when it means "nobody logged anything".
+    // Once extraction fills every outcome, counting those as logged would take
+    // coverage to 100% while the numbers became LESS human-confirmed, not more
+    // — quietly disabling the one safeguard against the board overstating what
+    // it knows. So coverage now measures what a HUMAN confirmed. The figures
+    // themselves are still read below; only the confidence signal changes.
+    if (call.outcomeSource === "ai") {
+      row.missingOutcomes += 1;
     }
     // A pitched amount means a price was actually presented on the call.
     if ((call.contractValue ?? 0) > 0) row.offers += 1;

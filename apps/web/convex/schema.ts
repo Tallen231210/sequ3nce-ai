@@ -140,6 +140,14 @@ export default defineSchema({
      */
     selfServeCreated: v.optional(v.boolean()),
     /**
+     * Read the post-call numbers off the transcript instead of asking a closer.
+     *
+     * Per team and default OFF, because switching it on makes Collections
+     * report MORE outstanding balances — the intended improvement, and also the
+     * way this could chase a customer for money they already paid.
+     */
+    aiExtractionEnabled: v.optional(v.boolean()),
+    /**
      * Gate on the share links compliance alerts hand out. Empty means no gate.
      *
      * Stored as plaintext, deliberately, because the alert has to be able to
@@ -918,6 +926,25 @@ export default defineSchema({
      * say.
      */
     complianceReviewFailed: v.optional(v.string()),
+    /**
+     * Who put the numbers on this call: "ai" | "closer" | "manager".
+     *
+     * Absent means the old post-call form, i.e. a human — every historical call
+     * predates extraction, so treating absent as human is correct and needs no
+     * migration.
+     *
+     * Two jobs. It marks AI-derived figures in the UI and in the Collections
+     * digest, so nobody mistakes a guess for a confirmation. And it keeps the
+     * outcome-coverage warning honest: that metric exists so the board can't
+     * present "0 closes" as fact when it means "nobody logged anything", and
+     * filling every outcome with AI would silently take it to 100% while the
+     * numbers became LESS human-confirmed, not more.
+     */
+    outcomeSource: v.optional(v.string()),
+    /** Claimed before extraction runs, so two triggers can't both do the work. */
+    extractionStartedAt: v.optional(v.number()),
+    /** Why the last extraction attempt failed, cleared when one succeeds. */
+    extractionFailed: v.optional(v.string()),
     /** Absent means counted, so nothing about existing calls changes. */
     countsTowardStats: v.optional(v.boolean()), // Link to Google Calendar event (for prospect email)
     /**

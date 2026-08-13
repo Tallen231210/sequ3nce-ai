@@ -25,9 +25,27 @@ const ROI_WINDOW_DAYS = 90;
  */
 export function RoiTab() {
   const { clerkId } = useTeam();
-  const now = Date.now();
-  const rangeStart = now - ROI_WINDOW_DAYS * 24 * 60 * 60_000;
-  const rangeEnd = now;
+
+  /**
+   * Pinned once, on mount.
+   *
+   * This tab spun on a loading spinner forever for every customer. `Date.now()`
+   * was called in the render body and fed straight into the query arguments, so
+   * every render produced a different range, Convex saw new arguments and
+   * resubscribed, `data` went back to undefined, the component re-rendered, and
+   * round it went.
+   *
+   * A 90-day window does not need to be accurate to the millisecond, and the
+   * same initialiser pattern is already used correctly in
+   * `src/app/dashboard/setter-data/page.tsx`.
+   */
+  const [{ rangeStart, rangeEnd }] = useState(() => {
+    const now = Date.now();
+    return {
+      rangeStart: now - ROI_WINDOW_DAYS * 24 * 60 * 60_000,
+      rangeEnd: now,
+    };
+  });
 
   const data = useQuery(
     api.closers.getCloserRoi,

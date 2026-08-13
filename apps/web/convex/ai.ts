@@ -307,6 +307,18 @@ export const generateCallAnalysis = internalAction({
       transcript,
     });
 
+    // Read the post-call numbers off the transcript, for teams that have asked
+    // for it. Same hook, same reasoning: every transcript source funnels
+    // through this function, and scheduling it as its own action means a
+    // malformed analysis below can't take it down.
+    //
+    // `extractCall` decides for itself whether the team is switched on, whether
+    // a human already answered, and whether the call is worth reading.
+    await ctx.scheduler.runAfter(0, internal.callExtractionRun.extractCall, {
+      callId,
+      transcript,
+    });
+
     try {
       let userMessage = `Here is the completed sales call transcript:\n\n${transcript}`;
 
