@@ -167,8 +167,21 @@ export function CollectionsQueue({ onCountChange }: Props) {
             className="flex items-center gap-3 bg-gray-50 rounded-md border border-gray-200 px-3 py-2"
           >
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-gray-900 truncate">
-                {item.prospectName}
+              <div className="flex items-center gap-1.5 text-[13px] font-medium text-gray-900">
+                <span className="truncate">{item.prospectName}</span>
+                {/* Nobody fills in the post-call form any more, so most of
+                    these figures were read off the recording. The closer is the
+                    one person who knows whether this is a real debt or a payment
+                    plan running exactly to plan — but only if we tell them the
+                    number was inferred rather than recorded. */}
+                {item.outcomeSource === 'ai' && (
+                  <span
+                    title="Read from the recording. If this is a payment plan running to schedule, mark it collected."
+                    className="shrink-0 rounded border border-violet-200 bg-violet-50 px-1 py-0.5 text-[9.5px] font-medium text-violet-700"
+                  >
+                    AI
+                  </span>
+                )}
               </div>
               <div className="text-[11.5px] text-gray-500">
                 Paid {money(item.cashCollected)} of {money(item.contractValue)} ·{" "}

@@ -12,7 +12,7 @@
 // the worst few, the list carries everything.
 // ============================================================================
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Loader2, Sparkles, Wallet } from "lucide-react";
@@ -172,7 +172,8 @@ function BalancesList({
           </thead>
           <tbody>
             {data.balances.map((b) => (
-              <tr key={b.callId} className="border-b last:border-0">
+              <Fragment key={b.callId}>
+              <tr className="border-b last:border-0">
                 <td className="px-4 py-2.5 font-medium">
                   <span className="inline-flex items-center gap-1.5">
                     {b.prospectName}
@@ -182,7 +183,7 @@ function BalancesList({
                         decides who gets chased for money. */}
                     {b.outcomeSource === "ai" && (
                       <span
-                        title="Read from the recording, not entered by anyone. Open the call to check or correct it."
+                        title="Read from the recording, not entered by anyone. Use 'Fix figures' if a payment plan has moved on since the call."
                         className="inline-flex items-center gap-1 rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700"
                       >
                         <Sparkles className="h-2.5 w-2.5" />
@@ -256,38 +257,41 @@ function BalancesList({
                   </td>
                 )}
               </tr>
+
+              {/* Directly beneath the row being corrected, not at the foot of
+                  the table — with twenty-odd balances on screen, an editor that
+                  opens somewhere else is an editor you use on the wrong deal.
+
+                  "Collected" settles a balance that was genuinely paid in full;
+                  this is for the commoner case since AI started reading calls —
+                  a payment plan whose deposit we recorded, where the customer
+                  has since paid more and is perfectly current. Editing the
+                  figure is the truthful fix; writing it off would say they
+                  never paid. */}
+              {canEdit && editing === b.callId && (
+                <tr className="border-b bg-muted/30">
+                  <td colSpan={7} className="px-4 py-3">
+                    <div className="mb-2 text-xs text-muted-foreground">
+                      Correcting <span className="font-medium">{b.prospectName}</span> —
+                      set cash collected to everything paid so far. It clears
+                      from this list once it matches the contract.
+                    </div>
+                    <CallFactsEditor
+                      compact
+                      callId={b.callId}
+                      facts={{
+                        outcome: "closed",
+                        cashCollected: b.cashCollected,
+                        contractValue: b.contractValue,
+                        outcomeSource: b.outcomeSource,
+                      }}
+                      onSaved={() => setEditing(null)}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
-            {/* Correcting the numbers where the wrong number is noticed.
-                "Collected" settles a balance that was genuinely paid in full;
-                this is for the commoner case since AI started reading calls —
-                a payment plan whose deposit we recorded, where the customer has
-                since paid more and is perfectly current. Editing the figure is
-                the truthful fix; writing it off would say they never paid. */}
-            {canEdit &&
-              data.balances
-                .filter((b) => b.callId === editing)
-                .map((b) => (
-                  <tr key={`${b.callId}-edit`} className="border-b bg-muted/30">
-                    <td colSpan={7} className="px-4 py-3">
-                      <div className="mb-2 text-xs text-muted-foreground">
-                        Correcting <span className="font-medium">{b.prospectName}</span> —
-                        set cash collected to everything paid so far. It clears
-                        from this list once it matches the contract.
-                      </div>
-                      <CallFactsEditor
-                        compact
-                        callId={b.callId}
-                        facts={{
-                          outcome: "closed",
-                          cashCollected: b.cashCollected,
-                          contractValue: b.contractValue,
-                          outcomeSource: b.outcomeSource,
-                        }}
-                        onSaved={() => setEditing(null)}
-                      />
-                    </td>
-                  </tr>
-                ))}
           </tbody>
         </table>
       </div>

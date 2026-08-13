@@ -105,6 +105,7 @@ interface CallDetails {
   countsTowardStats?: boolean;
   outcomeSource?: string;
   primaryObjection?: string;
+  objectionsOvercome?: string;
   /** Every objection raised, in order, when AI read the call. */
   objections?: string[];
   transcriptText?: string;
@@ -1889,6 +1890,7 @@ export default function CallDetailPage() {
                 contractValue: call.contractValue,
                 outcomeSource: call.outcomeSource,
                 primaryObjection: call.primaryObjection,
+                objectionsOvercome: call.objectionsOvercome,
                 objections: call.objections,
               }}
             />

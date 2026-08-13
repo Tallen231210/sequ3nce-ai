@@ -17,6 +17,12 @@ export interface OutstandingBalanceItem {
   cashCollected: number;
   contractValue: number;
   balance: number;
+  /**
+   * "ai" when these figures were read off the recording rather than typed by
+   * anyone. The backend has always sent it; the manager dashboard marks it and
+   * this list did not.
+   */
+  outcomeSource?: string | null;
   closedAt: number;
   ageDays: number;
 }

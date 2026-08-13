@@ -22,7 +22,7 @@
 
 import { v } from "convex/values";
 import { internalAction, internalQuery } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -32,8 +32,46 @@ const DEFAULT_BATCH = 8;
 /** Between model calls, so a long run doesn't trip Anthropic's rate limit. */
 const PAUSE_MS = 900;
 
+/**
+ * How many of a team's calls one survey looks at.
+ *
+ * Well under Convex's 32k-document transaction ceiling, and far above any real
+ * team today — the largest has a few hundred. Exists so that when a team does
+ * outgrow it, the run reports a truncated window rather than throwing.
+ */
+const MAX_SCAN = 8000;
+
 function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Failures that will still be failures tomorrow.
+ *
+ * A call with no transcript has nothing to read and never will unless one
+ * arrives; a model call that gave up after three attempts may simply have hit a
+ * rate limit while 180 other calls were queued behind it. Marking both the same
+ * way means one bad minute quietly excludes a batch of perfectly readable calls
+ * from every future run — and because the survey then reports zero remaining,
+ * it looks exactly like success.
+ *
+ * Matched on substrings rather than an enum because these strings come from
+ * several layers; a reason we don't recognise is treated as retryable, which
+ * fails towards doing the work again rather than towards silently dropping it.
+ */
+const PERMANENT_FAILURES = [
+  "too short",
+  "call not found",
+  "internal meeting",
+  "already answered",
+  "already extracted",
+  "extraction is off",
+];
+
+function isPermanent(reason: string | undefined): boolean {
+  if (!reason) return false;
+  const r = reason.toLowerCase();
+  return PERMANENT_FAILURES.some((p) => r.includes(p));
 }
 
 /**
@@ -45,12 +83,28 @@ function pause(ms: number): Promise<void> {
  * the feature itself would never have created.
  */
 export const listBackfillCandidates = internalQuery({
-  args: { teamId: v.id("teams"), limit: v.number() },
+  args: {
+    teamId: v.id("teams"),
+    limit: v.number(),
+    /**
+     * Also pick up calls that failed for a reason which might not hold next
+     * time. See PERMANENT_FAILURES.
+     */
+    includeRetryable: v.optional(v.boolean()),
+  },
   handler: async (ctx, args): Promise<any> => {
+    // Bounded, not .collect(). A transaction dies at 32k documents, and this
+    // reads every call a team has ever had — the one query here guaranteed to
+    // grow forever. Hitting that ceiling would throw mid-run rather than
+    // degrade, so take a fixed window instead.
+    //
+    // The index is (teamId, _creationTime), so this is the OLDEST calls, which
+    // is the order a backfill wants anyway. Each pass fills in outcomes and the
+    // window moves on, so repeated runs still converge.
     const calls = await ctx.db
       .query("calls")
       .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
-      .collect();
+      .take(MAX_SCAN);
 
     const candidates = calls.filter(
       (c) =>
@@ -58,17 +112,40 @@ export const listBackfillCandidates = internalQuery({
         c.outcomeSource == null &&
         c.classifiedAs !== "internal" &&
         c.status !== "active" &&
-        c.extractionFailed == null,
+        (c.extractionFailed == null ||
+          (args.includeRetryable === true && !isPermanent(c.extractionFailed))),
     );
 
     // Oldest first, so a partial run leaves a clean waterline rather than holes.
     candidates.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+
+    // Grouped so a run can be judged rather than just counted — "43 skipped"
+    // hides the difference between 43 calls with no transcript and 43 calls
+    // that hit a rate limit.
+    // An array, not a keyed object: these strings carry punctuation Convex
+    // won't accept as a field name, and a report that throws is worse than
+    // one that's slightly more awkward to read.
+    const byReason = new Map<string, { retryable: boolean; count: number }>();
+    for (const c of calls) {
+      if (!c.extractionFailed) continue;
+      const key = c.extractionFailed.slice(0, 80);
+      const seen = byReason.get(key);
+      if (seen) seen.count += 1;
+      else byReason.set(key, { retryable: !isPermanent(c.extractionFailed), count: 1 });
+    }
+    const failureReasons = [...byReason.entries()]
+      .map(([reason, v]) => ({ reason, ...v }))
+      .sort((a, b) => b.count - a.count);
 
     return {
       total: calls.length,
       remaining: candidates.length,
       alreadyAnswered: calls.filter((c) => c.outcome != null).length,
       previouslyFailed: calls.filter((c) => c.extractionFailed != null).length,
+      // Loud on purpose. A survey that silently examined only part of a team
+      // would report "0 remaining" and read exactly like finishing.
+      scanTruncated: calls.length === MAX_SCAN,
+      failureReasons,
       batch: candidates.slice(0, args.limit).map((c) => String(c._id)),
     };
   },
@@ -85,12 +162,37 @@ export const backfillTeam = internalAction({
     teamId: v.id("teams"),
     limit: v.optional(v.number()),
     dryRun: v.optional(v.boolean()),
+    /** Re-attempt calls whose earlier failure might not repeat. */
+    includeRetryable: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<any> => {
     const limit = args.limit ?? DEFAULT_BATCH;
+
+    // Writing requires the team to have opted in; reading never does.
+    //
+    // Extraction is per-team and off by default for a reason: switching it on
+    // makes Collections report balances that were previously invisible. A
+    // backfill walks straight past that gate unless it checks — previewExtraction
+    // ignores the team switch on purpose, so a team could be assessed, and
+    // nothing downstream re-checks it before saving. A dry run stays open to
+    // everyone, because assessing a team before enabling it is the point.
+    if (!args.dryRun) {
+      const enabled = await ctx.runQuery(
+        api.callExtractionRun.isExtractionEnabled,
+        { teamId: args.teamId },
+      );
+      if (!enabled) {
+        return {
+          ok: false,
+          reason:
+            "extraction is off for this team — turn it on first, or pass dryRun to assess it",
+        };
+      }
+    }
+
     const survey: any = await ctx.runQuery(
       internal.callExtractionBackfill.listBackfillCandidates,
-      { teamId: args.teamId, limit },
+      { teamId: args.teamId, limit, includeRetryable: args.includeRetryable },
     );
 
     const results: any[] = [];

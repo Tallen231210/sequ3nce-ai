@@ -36,6 +36,8 @@ export interface CallFacts {
   contractValue?: number | null;
   outcomeSource?: string | null;
   primaryObjection?: string | null;
+  /** The closed-call equivalent — what they raised and the closer worked past. */
+  objectionsOvercome?: string | null;
   /** Every objection raised, in order, when AI read the call. */
   objections?: string[] | null;
 }
@@ -154,27 +156,38 @@ export function CallFactsEditor({
           where the single answer looks arbitrary unless you can see how it got
           there. A prospect who opens on their partner and ends on the price
           raised a price objection; this is what makes that legible. */}
-      {isAi && (facts.objections?.length ?? 0) > 1 && (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Objections, in the order they came up:{" "}
-          {facts.objections!.map((o, i) => (
-            <span key={o}>
-              {i > 0 && <span className="text-muted-foreground/60"> → </span>}
-              <span
-                className={
-                  o === facts.primaryObjection
-                    ? "font-medium text-foreground"
-                    : undefined
-                }
-              >
-                {label(o)}
+      {isAi && (facts.objections?.length ?? 0) > 1 && (() => {
+        // On a closed call the recorded answer lives in objectionsOvercome —
+        // primaryObjection is deliberately cleared, since a deal that closed has
+        // no blocker. Reading only the one field left the sentence pointing at a
+        // bold word that wasn't there.
+        const closed = facts.outcome === "closed";
+        const recorded = closed
+          ? facts.objectionsOvercome
+          : facts.primaryObjection;
+        return (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Objections, in the order they came up:{" "}
+            {facts.objections!.map((o, i) => (
+              <span key={o}>
+                {i > 0 && <span className="text-muted-foreground/60"> → </span>}
+                <span
+                  className={
+                    o === recorded ? "font-medium text-foreground" : undefined
+                  }
+                >
+                  {label(o)}
+                </span>
               </span>
-            </span>
-          ))}
-          . Recorded as the one in bold — the last thing standing between them
-          and yes.
-        </p>
-      )}
+            ))}
+            {recorded
+              ? closed
+                ? ". Recorded as the one in bold — what they worked past to buy."
+                : ". Recorded as the one in bold — the last thing standing between them and yes."
+              : "."}
+          </p>
+        );
+      })()}
 
       <div className={compact ? "flex flex-wrap items-end gap-2" : "grid gap-3 sm:grid-cols-3"}>
         <div className={compact ? "w-36" : ""}>

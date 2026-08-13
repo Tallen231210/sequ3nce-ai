@@ -6,26 +6,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
-import {
-  LayoutDashboard,
-  Radio,
-  Calendar,
-  Phone,
-  Users,
-  CreditCard,
-  Settings,
-  BarChart3,
-  BookMarked,
-  TrendingUp,
-  FileText,
-  MessageSquareText,
-  Zap,
-  Briefcase,
-  UserCheck,
-  Sparkles,
-  Trophy,
-  Wallet,
-} from "lucide-react";
+import { LayoutDashboard, Radio, Calendar, Phone, Users, CreditCard, Settings, BarChart3, BookMarked, TrendingUp, FileText, MessageSquareText, Briefcase, UserCheck, Sparkles, Trophy, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
 import { Logo } from "@/components/ui/logo";
