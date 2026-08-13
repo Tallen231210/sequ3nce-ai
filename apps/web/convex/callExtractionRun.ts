@@ -178,6 +178,43 @@ export const saveExtraction = internalMutation({
       }
     }
 
+    // Send the summary now rather than letting it sit out the wait.
+    //
+    // That notification is held five minutes so a closer has time to submit the
+    // form before it goes out half-empty. Once we've read the outcome ourselves
+    // there is nothing left to wait for, so this takes the same early-fire path
+    // the closer's own submission takes (calls.ts, completeCallWithOutcome):
+    // cancel the pending job, fire immediately, and let the dedup record stop a
+    // double-send if the timer had already gone off.
+    if (written.includes("outcome")) {
+      const alreadySent = await ctx.db
+        .query("slackNotifications")
+        .withIndex("by_call_and_type", (q) =>
+          q.eq("callId", args.callId).eq("type", "call_completed"),
+        )
+        .first();
+
+      if (!alreadySent) {
+        if (call.pendingNotificationJobId) {
+          try {
+            await ctx.scheduler.cancel(
+              call.pendingNotificationJobId as Id<"_scheduled_functions">,
+            );
+          } catch {
+            // Already fired — the dedup record above will stop a duplicate.
+          }
+        }
+        await ctx.scheduler.runAfter(
+          0,
+          internal.slack.sendCallCompletedNotification,
+          { callId: args.callId },
+        );
+        console.log(
+          `[CallExtraction] Early-fired the summary for ${args.callId} — we read the outcome`,
+        );
+      }
+    }
+
     return { written };
   },
 });

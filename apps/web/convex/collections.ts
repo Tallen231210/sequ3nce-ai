@@ -65,6 +65,16 @@ export interface OutstandingBalance {
   cashCollected: number;
   contractValue: number;
   balance: number;
+  /**
+   * Where these figures came from: "ai" | "closer" | "manager", or null for
+   * anything recorded before provenance existed (which was always a human).
+   *
+   * Carried through so a manager can tell a balance we READ from the recording
+   * from one a person confirmed. On a payment plan those are very different
+   * levels of confidence, and this list is the one that decides whether a
+   * customer gets chased for money.
+   */
+  outcomeSource: string | null;
   /** When the deal was closed — what the ageing is measured from. */
   closedAt: number;
   ageDays: number;
@@ -177,6 +187,7 @@ async function resolveBalances(
       prospectName: call.prospectName?.trim() || "Unnamed prospect",
       closerName: closerNames.get(closerKey) ?? "Unknown closer",
       closerId: closerKey,
+      outcomeSource: call.outcomeSource ?? null,
       cashCollected: cash,
       contractValue: contract,
       balance: contract - cash,

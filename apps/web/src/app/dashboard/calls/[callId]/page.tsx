@@ -56,6 +56,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { AmmoV2Panel, type AmmoV2Analysis } from "@/components/AmmoV2Panel";
 import { CallCompliancePanel } from "@/components/compliance/CallCompliancePanel";
 import { SalesCallToggle } from "@/components/calls/SalesCallToggle";
+import { CallFactsEditor } from "@/components/calls/CallFactsEditor";
 
 // Types
 interface AmmoItem {
@@ -102,6 +103,7 @@ interface CallDetails {
   classifiedAs?: string;
   classifiedBy?: string;
   countsTowardStats?: boolean;
+  outcomeSource?: string;
   transcriptText?: string;
   closerTalkTime?: number;
   prospectTalkTime?: number;
@@ -1868,6 +1870,24 @@ export default function CallDetailPage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* The numbers on this call, and where they came from.
+            Sits above the transcript because a manager arriving from
+            Collections is here to check a figure, not to read the call. */}
+        {canEditClassification && (
+          <div className="mb-6 rounded-lg border border-border p-4">
+            <div className="mb-3 text-sm font-semibold">Outcome and money</div>
+            <CallFactsEditor
+              callId={callId}
+              facts={{
+                outcome: call.outcome,
+                cashCollected: call.cashCollected,
+                contractValue: call.contractValue,
+                outcomeSource: call.outcomeSource,
+              }}
+            />
+          </div>
         )}
 
         {/* Was this a sales call? Auto-join records whatever is on the calendar,

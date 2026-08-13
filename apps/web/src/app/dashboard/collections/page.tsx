@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useUser } from "@clerk/nextjs";
-import { Loader2, Wallet } from "lucide-react";
+import { Loader2, Sparkles, Wallet } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { CollectionsSettings } from "./components/CollectionsSettings";
@@ -87,6 +87,7 @@ interface Balance {
   cashCollected: number;
   contractValue: number;
   balance: number;
+  outcomeSource?: string | null;
   closedAt: number;
   ageDays: number;
 }
@@ -170,7 +171,24 @@ function BalancesList({
           <tbody>
             {data.balances.map((b) => (
               <tr key={b.callId} className="border-b last:border-0">
-                <td className="px-4 py-2.5 font-medium">{b.prospectName}</td>
+                <td className="px-4 py-2.5 font-medium">
+                  <span className="inline-flex items-center gap-1.5">
+                    {b.prospectName}
+                    {/* A figure we READ off the recording and one a person
+                        confirmed must not look identical, because on a payment
+                        plan they carry very different confidence and this list
+                        decides who gets chased for money. */}
+                    {b.outcomeSource === "ai" && (
+                      <span
+                        title="Read from the recording, not entered by anyone. Open the call to check or correct it."
+                        className="inline-flex items-center gap-1 rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700"
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />
+                        AI
+                      </span>
+                    )}
+                  </span>
+                </td>
                 <td className="px-4 py-2.5 text-muted-foreground">
                   {b.closerName}
                 </td>
