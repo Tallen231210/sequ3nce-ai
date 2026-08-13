@@ -15,7 +15,7 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
 import { Mail } from "lucide-react";
 
@@ -55,11 +55,25 @@ function JoinInner() {
 
       <div className="mt-8">
         <SignedOut>
-          <SignInButton mode="modal">
+          {/* SIGN UP, not sign in.
+              This page is reached by someone who by definition has no account
+              yet, and Clerk's sign-in modal offers no way to create one — no
+              "don't have an account?" link at all. Sending an invited person
+              there means they type their email, get told nothing, and never
+              receive a verification code, because they never started a sign-up.
+              That is exactly what happened the first time this was tested. */}
+          <SignUpButton mode="modal">
             <button className="rounded-lg bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90">
-              Sign in to accept
+              Create your account
             </button>
-          </SignInButton>
+          </SignUpButton>
+          <div className="mt-4">
+            <SignInButton mode="modal">
+              <button className="text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-800">
+                Already have a Sequ3nce login? Sign in instead
+              </button>
+            </SignInButton>
+          </div>
         </SignedOut>
         <SignedIn>
           <Link
