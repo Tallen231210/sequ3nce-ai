@@ -251,3 +251,178 @@ export const compareLeadPopulations = internalQuery({
     };
   },
 });
+
+/** Distinct meeting titles and URLs, to see whether booking links differ. */
+export const bookingLinkShapes = internalQuery({
+  args: { teamId: v.id("teams"), rangeStart: v.number(), rangeEnd: v.number() },
+  handler: async (ctx, args): Promise<any> => {
+    const rows = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_team_and_time", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .gte("startTime", args.rangeStart)
+          .lt("startTime", args.rangeEnd),
+      )
+      .take(4000);
+
+    const titles: Record<string, number> = {};
+    const hosts: Record<string, number> = {};
+    for (const e of rows as any[]) {
+      // Strip the prospect's name so booking types collapse together —
+      // "Strategy Call - Jane" and "Strategy Call - Bob" are one link.
+      const t = String(e.title ?? "(none)")
+        .replace(/\s*[-–|]\s*.*$/, "")
+        .trim()
+        .slice(0, 60);
+      titles[t] = (titles[t] ?? 0) + 1;
+      const url = String(e.meetingUrl ?? "");
+      const host = url ? (url.split("/")[2] ?? "(none)") : "(no url)";
+      hosts[host] = (hosts[host] ?? 0) + 1;
+    }
+    const top = (r: Record<string, number>) =>
+      Object.entries(r).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    return { events: rows.length, titles: top(titles), hosts: top(hosts) };
+  },
+});
+
+/** Do the event descriptions carry booking-form metadata we could key on? */
+export const bookingDescriptionSample = internalQuery({
+  args: { teamId: v.id("teams"), rangeStart: v.number(), rangeEnd: v.number() },
+  handler: async (ctx, args): Promise<any> => {
+    const rows = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_team_and_time", (q: any) =>
+        q.eq("teamId", args.teamId).gte("startTime", args.rangeStart).lt("startTime", args.rangeEnd),
+      )
+      .take(2000);
+    const withDesc = (rows as any[]).filter(
+      (e) => e.description && String(e.description).length > 40,
+    );
+    return {
+      total: rows.length,
+      withDescription: withDesc.length,
+      samples: withDesc.slice(0, 4).map((e) => ({
+        title: e.title,
+        description: String(e.description).slice(0, 400),
+      })),
+    };
+  },
+});
+
+/**
+ * The booking types a team actually uses, read out of the event description.
+ *
+ * RemoteStack routes leads to DIFFERENT booking links depending on how they
+ * answer the qualifying questions on their form — good answers get one link,
+ * poor answers another. That routing is the "bad lead" flag their setters work
+ * around, and it is invisible in tags, source and lead fields.
+ *
+ * It is not invisible in the calendar. Whatever creates the event writes
+ * "Event Name" into the description, and the different links carry different
+ * names. So the distinction we could not find anywhere else has been sitting in
+ * a field we sync and never read.
+ */
+export const bookingTypes = internalQuery({
+  args: { teamId: v.id("teams"), rangeStart: v.number(), rangeEnd: v.number() },
+  handler: async (ctx, args): Promise<any> => {
+    const rows = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_team_and_time", (q: any) =>
+        q.eq("teamId", args.teamId).gte("startTime", args.rangeStart).lt("startTime", args.rangeEnd),
+      )
+      .take(4000);
+
+    const byType: Record<string, { count: number; hosts: Record<string, number> }> = {};
+    let noEventName = 0;
+    for (const e of rows as any[]) {
+      const desc = String(e.description ?? "");
+      // "Event Name" then the type on the following line.
+      const m = desc.match(/Event Name\s*[\r\n]+\s*(.+)/);
+      if (!m) {
+        noEventName += 1;
+        continue;
+      }
+      const type = m[1].trim().slice(0, 70);
+      const row = (byType[type] ??= { count: 0, hosts: {} });
+      row.count += 1;
+      // Who the meeting is with, which is how we can tell whether a booking
+      // type belongs to the closers or the setters.
+      const withWhom = String(e.title ?? "").split(/ and /i).pop()?.trim() ?? "?";
+      row.hosts[withWhom] = (row.hosts[withWhom] ?? 0) + 1;
+    }
+
+    return {
+      events: rows.length,
+      withoutEventName: noEventName,
+      types: Object.entries(byType)
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 12)
+        .map(([type, v]) => ({
+          type,
+          count: v.count,
+          topHosts: Object.entries(v.hosts).sort((a, b) => b[1] - a[1]).slice(0, 3),
+        })),
+    };
+  },
+});
+
+/**
+ * Search every booking type across a window, newest first, without truncating.
+ *
+ * The first pass at this took 4,000 events off a start-time index, which
+ * returns the OLDEST 4,000 — so a booking type introduced recently was invisible.
+ * Gianni named a "T4" calendar that simply wasn't in the results, which is the
+ * tell. Same mistake as the events read earlier today: a bounded take on an
+ * ordered index is a sample, and which end of the range it samples matters.
+ */
+export const findBookingType = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+    contains: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<any> => {
+    const byType: Record<string, number> = {};
+    let scanned = 0;
+    let matched = 0;
+    const examples: any[] = [];
+
+    // Page backwards from the end of the window so recent bookings are seen
+    // first, and keep going rather than stopping at an arbitrary cap.
+    let cursor = args.rangeEnd;
+    for (let page = 0; page < 12; page++) {
+      const rows = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_team_and_time", (q: any) =>
+          q.eq("teamId", args.teamId).gte("startTime", args.rangeStart).lt("startTime", cursor),
+        )
+        .order("desc")
+        .take(1000);
+      if (rows.length === 0) break;
+      scanned += rows.length;
+      for (const e of rows as any[]) {
+        const m = String(e.description ?? "").match(/Event Name\s*[\r\n]+\s*(.+)/);
+        if (!m) continue;
+        const type = m[1].trim().slice(0, 70);
+        byType[type] = (byType[type] ?? 0) + 1;
+        if (args.contains && type.toLowerCase().includes(args.contains.toLowerCase())) {
+          matched += 1;
+          if (examples.length < 5) {
+            examples.push({ type, title: e.title, startTime: e.startTime });
+          }
+        }
+      }
+      cursor = (rows as any[])[rows.length - 1].startTime;
+      if (rows.length < 1000) break;
+    }
+
+    return {
+      scanned,
+      matched,
+      examples,
+      types: Object.entries(byType).sort((a, b) => b[1] - a[1]).slice(0, 20),
+    };
+  },
+});
