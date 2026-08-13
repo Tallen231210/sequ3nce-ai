@@ -88,6 +88,16 @@ export async function loadWindow(
     )
     .take(MAX_LEADS);
 
+  // Who owns a lead, in order of how much we trust it.
+  //
+  // The CRM's own assignment is the weakest link in the chain: on RemoteStack
+  // only 33% of leads carry one, and on CreateFreedom none do. Whoever actually
+  // dialled is recorded on ~100% of events and is a better answer to "whose
+  // lead is this" anyway — the person doing the work has a stronger claim than
+  // a field nobody fills in.
+  //
+  // Assignment still comes first where it exists, because a business that DOES
+  // assign leads means something by it.
   const leads: MetricLead[] = leadRows.map((l) => ({
     leadId: l.ghlContactId,
     arrivedAt: l.dateAdded,
@@ -389,9 +399,27 @@ export const _speedAnchors = internalQuery({
 
 /** Same thing without auth, for comparing against the legacy engine from the CLI. */
 export const _compareMetrics = internalQuery({
-  args: { teamId: v.id("teams"), rangeStart: v.number(), rangeEnd: v.number() },
+  args: {
+    teamId: v.id("teams"),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+    /** Try a funnel that counts only these channels, without storing it. */
+    channels: v.optional(v.array(v.string())),
+  },
   handler: async (ctx, args): Promise<any> => {
-    const funnel = await activeFunnelFor(ctx, args.teamId);
+    const base = await activeFunnelFor(ctx, args.teamId);
+    const funnel = args.channels
+      ? ({
+          ...base,
+          bindings: {
+            ...base.bindings,
+            setterTouch: {
+              ...base.bindings.setterTouch,
+              params: { ...base.bindings.setterTouch.params, channels: args.channels },
+            },
+          },
+        } as typeof base)
+      : base;
     const input = await loadWindow(ctx, args.teamId, args.rangeStart, args.rangeEnd);
     return {
       funnelConfigured: funnel.configured,
