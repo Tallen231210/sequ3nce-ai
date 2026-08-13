@@ -693,6 +693,19 @@ export default defineSchema({
     endTime: v.number(), // Unix timestamp
     location: v.optional(v.string()),
     isAllDay: v.optional(v.boolean()),
+    /**
+     * When the booking was made, from Google's `created` on the event.
+     *
+     * Distinct from startTime (when the meeting happens) and fetchedAt (when we
+     * looked), and absent from both until now — which is why "how fast did a
+     * setter respond after someone booked" was unanswerable for every
+     * calendar-based team. Google returns this on every event already; we were
+     * discarding it.
+     *
+     * Optional because historical rows predate it and only refill as the
+     * rolling sync window passes over them.
+     */
+    bookedAt: v.optional(v.number()),
     meetingUrl: v.optional(v.string()), // Extracted Zoom/Meet/Teams URL for one-click join
     fetchedAt: v.number(), // When this event was last synced
     // Attendee data (populated by Google Calendar API, not available from ICS feeds)

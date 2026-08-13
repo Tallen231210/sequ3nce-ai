@@ -17,7 +17,11 @@ import { internalQuery, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { activeFunnelFor } from "./setterFunnels";
-import { countsChannel, type ResolvedFunnel } from "./setterFunnelResolve";
+import {
+  countsChannel,
+  workingHoursFor,
+  type ResolvedFunnel,
+} from "./setterFunnelResolve";
 import {
   computeCount,
   computeDistribution,
@@ -142,6 +146,7 @@ export function runMetric(
   metricId: string,
   funnel: ResolvedFunnel,
   input: MetricRunInput,
+  team: Doc<"teams"> | null = null,
 ): any {
   const metric = METRICS.find((m) => m.id === metricId);
   if (!metric) return { ok: false, reason: `Unknown metric: ${metricId}` };
@@ -162,9 +167,30 @@ export function runMetric(
   const touches = (c: string) => countsChannel(funnel, c);
 
   switch (metric.id) {
-    case "speed_to_lead": {
+    // The same pairs measured on two different clocks. Computing both from one
+    // set of pairs guarantees they can never disagree about WHICH touches
+    // counted — only about how the waiting time is counted.
+    case "speed_to_lead_working": {
       const pairs = firstTouchPerLead(input.leads, input.events, touches);
-      return { ok: true, shape: "distribution", result: computeDistribution(pairs, funnel) };
+      const hours = workingHoursFor(funnel, team);
+      const result = computeDistribution(pairs, { ...funnel, businessHours: hours });
+      return {
+        ok: true,
+        shape: "distribution",
+        // Stated outright so a manager can see the assumption and correct it.
+        basis: `${hours.startHour}:00-${hours.endHour}:00, ${hours.days.length} days a week, ${hours.timezone}`,
+        assumedHours: !funnel.businessHours,
+        result,
+      };
+    }
+    case "speed_to_lead_elapsed": {
+      const pairs = firstTouchPerLead(input.leads, input.events, touches);
+      return {
+        ok: true,
+        shape: "distribution",
+        basis: "around the clock, including nights and weekends",
+        result: computeDistribution(pairs, { ...funnel, businessHours: null }),
+      };
     }
     case "outreach_volume": {
       const counted = input.events.filter((e) => touches(e.channel));
@@ -203,11 +229,12 @@ export const getFunnelMetrics = query({
     const teamId = user.teamId as Id<"teams">;
 
     const funnel = await activeFunnelFor(ctx, teamId);
+    const team = (await ctx.db.get(teamId)) as Doc<"teams"> | null;
     const input = await loadWindow(ctx, teamId, args.rangeStart, args.rangeEnd);
     const ids = args.metricIds ?? METRICS.map((m) => m.id);
 
     const results: Record<string, any> = {};
-    for (const id of ids) results[id] = runMetric(id, funnel, input);
+    for (const id of ids) results[id] = runMetric(id, funnel, input, team);
 
     return {
       funnel: { name: funnel.name, configured: funnel.configured, version: funnel.version },
@@ -365,7 +392,9 @@ export const _compareMetrics = internalQuery({
       eventsRead: input.events.length,
       truncated: input.truncated,
       unknownEventTypes: input.unknownEventTypes,
-      speedToLead: runMetric("speed_to_lead", funnel, input),
+      speedWorking: runMetric("speed_to_lead_working", funnel, input,
+        (await ctx.db.get(args.teamId)) as Doc<"teams"> | null),
+      speedElapsed: runMetric("speed_to_lead_elapsed", funnel, input),
       outreachVolume: runMetric("outreach_volume", funnel, input),
       contactRate: runMetric("contact_rate", funnel, input),
       byChannel: speedByChannel(funnel, input),

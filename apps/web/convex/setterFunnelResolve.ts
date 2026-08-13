@@ -85,6 +85,35 @@ export function legacyFunnel(team: Doc<"teams"> | null): ResolvedFunnel {
 }
 
 /**
+ * The working week we assume until a business tells us theirs.
+ *
+ * 9–5, Monday to Friday, in the team's own timezone. A guess, but a far better
+ * one than "the clock never stops" — and the working-hours metric says which
+ * hours it used, so a manager can correct it the moment it looks wrong rather
+ * than quietly distrusting the number.
+ */
+export function defaultBusinessHours(team: Doc<"teams"> | null): BusinessHours {
+  return {
+    timezone: (team as any)?.timezone || "America/New_York",
+    days: [1, 2, 3, 4, 5],
+    startHour: 9,
+    endHour: 17,
+  };
+}
+
+/**
+ * The hours to use for working-time metrics: the configured week if there is
+ * one, otherwise the assumed one. Never null — a metric called "working hours"
+ * that silently measured around the clock would be worse than not having it.
+ */
+export function workingHoursFor(
+  funnel: ResolvedFunnel,
+  team: Doc<"teams"> | null,
+): BusinessHours {
+  return funnel.businessHours ?? defaultBusinessHours(team);
+}
+
+/**
  * Override beats detection beats unknown.
  *
  * Lifted from `resolveFlowType` in setterDataMetrics.ts so the two cannot drift

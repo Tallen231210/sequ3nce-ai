@@ -51,14 +51,31 @@ export interface MetricDefinition {
 }
 
 export const METRICS: MetricDefinition[] = [
+  // Two speed-to-lead metrics, deliberately, because the two answers are both
+  // true and measure different things.
+  //
+  // On RemoteStack's last 10 days the same dials read 7.0 hours around the
+  // clock and 32 minutes counting only the working week. Neither is wrong: the
+  // first is how long a prospect actually waited, the second is how fast the
+  // team responded while they were at their desks. Showing only one is how a
+  // manager ends up arguing with their own dashboard.
   {
-    id: "speed_to_lead",
-    label: "Speed to lead",
+    id: "speed_to_lead_working",
+    label: "Speed to lead (working hours)",
     shape: "distribution",
     requires: ["leadArrived", "setterTouch"],
     unit: "duration",
     description:
-      "How long a lead waits between arriving and the setter first reaching out. Reported as a median, because one very slow lead should not be able to hide behind an average.",
+      "How quickly setters respond during working hours, with nights and weekends taken off the clock. This is the number that reflects how the team is actually performing.",
+  },
+  {
+    id: "speed_to_lead_elapsed",
+    label: "Speed to lead (around the clock)",
+    shape: "distribution",
+    requires: ["leadArrived", "setterTouch"],
+    unit: "duration",
+    description:
+      "How long a lead genuinely waited, including overnight and weekends. This is what the prospect experienced, and it is the one to look at when deciding whether you need cover outside office hours.",
   },
   {
     id: "outreach_volume",

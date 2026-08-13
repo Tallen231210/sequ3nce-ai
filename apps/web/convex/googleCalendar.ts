@@ -290,6 +290,15 @@ export const fetchGoogleCalendarEvents = internalAction({
           endTime: parseGoogleDateTime(item.end),
           location: item.location || undefined,
           isAllDay: !!item.start.date && !item.start.dateTime,
+          // When the booking was made. Google sends this on every event and we
+          // used to throw it away, which made "how fast did the setter respond
+          // after they booked" unanswerable for calendar-based teams.
+          //
+          // Caveat worth knowing: with singleEvents=true a recurring series is
+          // expanded into instances that all carry the SERIES creation time.
+          // Sales bookings are one-off so this is rarely wrong, but a recurring
+          // internal meeting will report the day the series was set up.
+          bookedAt: item.created ? Date.parse(item.created) || undefined : undefined,
           meetingUrl:
             extractMeetingUrl(item.location) ||
             extractMeetingUrl(item.description) ||
@@ -352,6 +361,7 @@ export const upsertSubscriptionEvents = internalMutation({
         title: v.string(),
         description: v.optional(v.string()),
         startTime: v.number(),
+        bookedAt: v.optional(v.number()),
         endTime: v.number(),
         location: v.optional(v.string()),
         isAllDay: v.optional(v.boolean()),
@@ -400,10 +410,14 @@ export const upsertSubscriptionEvents = internalMutation({
           location: event.location,
           isAllDay: event.isAllDay,
           meetingUrl: event.meetingUrl,
+          bookedAt: event.bookedAt,
           attendees: event.attendees,
           calendarColor: event.calendarColor,
           calendarLabel: args.subscriptionLabel,
           fetchedAt: now,
+          // Only ever set, never cleared — losing a booking time we already
+          // captured would silently break speed-from-booking.
+          ...(event.bookedAt !== undefined ? { bookedAt: event.bookedAt } : {}),
         });
       } else {
         await ctx.db.insert("calendarEvents", {
@@ -417,6 +431,7 @@ export const upsertSubscriptionEvents = internalMutation({
           location: event.location,
           isAllDay: event.isAllDay,
           meetingUrl: event.meetingUrl,
+          bookedAt: event.bookedAt,
           attendees: event.attendees,
           subscriptionId: args.subscriptionId,
           calendarColor: event.calendarColor,
@@ -507,6 +522,8 @@ export const syncB2cCalendarsForCloser = action({
 interface GoogleCalendarEvent {
   id: string;
   status: string;
+  /** RFC3339 creation time — when the booking was made. */
+  created?: string;
   summary?: string;
   description?: string;
   location?: string;
@@ -747,6 +764,7 @@ export const upsertB2cCalendarEvents = internalMutation({
       title: v.string(),
       description: v.optional(v.string()),
       startTime: v.number(),
+      bookedAt: v.optional(v.number()),
       endTime: v.number(),
       location: v.optional(v.string()),
       isAllDay: v.optional(v.boolean()),
@@ -783,11 +801,13 @@ export const upsertB2cCalendarEvents = internalMutation({
           location: event.location,
           isAllDay: event.isAllDay,
           meetingUrl: event.meetingUrl,
+          bookedAt: event.bookedAt,
           fetchedAt: now,
           attendees: event.attendees,
           calendarId: args.calendarId,
           calendarColor: event.calendarColor,
           calendarLabel: event.calendarLabel,
+          ...(event.bookedAt !== undefined ? { bookedAt: event.bookedAt } : {}),
         });
       } else {
         await ctx.db.insert("calendarEvents", {
@@ -801,6 +821,7 @@ export const upsertB2cCalendarEvents = internalMutation({
           location: event.location,
           isAllDay: event.isAllDay,
           meetingUrl: event.meetingUrl,
+          bookedAt: event.bookedAt,
           fetchedAt: now,
           attendees: event.attendees,
           calendarId: args.calendarId,
