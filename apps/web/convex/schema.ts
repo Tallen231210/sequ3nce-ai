@@ -837,6 +837,13 @@ export default defineSchema({
     primaryObjectionOther: v.optional(v.string()), // Free text if "Other" was selected
     objectionsOvercome: v.optional(v.string()), // For closed deals: "none", objection type, or "other"
     objectionsOvercomeOther: v.optional(v.string()), // Free text if "Other" was selected
+    // Every objection raised, in the order it came up, when AI read the call.
+    // A real call often has several — "I need to talk to my wife", pushed back
+    // on, becomes "I need to think about the price". primaryObjection keeps its
+    // old meaning (the single root, so every existing chart and filter is
+    // untouched); this is the trail behind that answer, and the only way to see
+    // whether the AI read the conversation the way a closer would have.
+    objections: v.optional(v.array(v.string())),
     leadQualityScore: v.optional(v.number()), // 1-10 rating
     prospectWasDecisionMaker: v.optional(v.string()), // "yes" | "no" | "unclear"
 

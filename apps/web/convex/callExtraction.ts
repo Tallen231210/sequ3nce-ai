@@ -64,6 +64,27 @@ const OBJECTIONS = [
   "other",
 ];
 
+/** A handful is a real call; a dozen is the model narrating. */
+const MAX_OBJECTIONS = 6;
+
+/**
+ * Anything that outranks "I need to think about it", most actionable first.
+ *
+ * "Need to think" is the objection people give when they won't name the real
+ * one, so whenever a concrete reason is also on the table it is the better
+ * answer — "I need to think about the price" is a price objection. "other" is
+ * absent deliberately: it is not more specific than thinking, it's just vaguer
+ * in a different way.
+ */
+const MORE_SPECIFIC_THAN_THINKING = [
+  "price_money",
+  "spouse_partner",
+  "not_qualified",
+  "competitor",
+  "logistics",
+  "timing",
+];
+
 const SYSTEM_PROMPT = `You read a sales call transcript and report what factually happened on it. You are replacing a form the salesperson used to fill in themselves.
 
 Report ONLY what the conversation actually supports. Leaving a field out is always better than guessing it — a missing number is obvious and harmless, a wrong one is believed and acted on.
@@ -85,23 +106,36 @@ cashCollected can never exceed contractValue. If you find yourself about to repo
 Take the price they AGREED, not a higher figure floated earlier and then discounted. If several prices were discussed and none was agreed, report the one they were working from at the end.
 Report numbers only when a figure was actually said. Never infer a price from the type of product.
 
-OBJECTIONS — classify into exactly one of these:
+OBJECTIONS — the categories are:
 ${OBJECTIONS.join(", ")}
-- primaryObjection: for calls that did NOT close — the main thing that stopped them.
-- objectionsOvercome: for calls that DID close — the main hesitation they raised and the salesperson worked through. Use "none" if they bought without real resistance.
 
-Unlike the numbers above, this is NOT optional on a real conversation. A call that ended without a sale ended that way for a reason, and the reason was almost always said out loud. If the outcome is lost, follow_up or rescheduled, report a primaryObjection. Use "other" when a reason was given and none of the categories fit. If the call genuinely ended without any reason being given at all, use "other" as well — do NOT reach for need_to_think as a catch-all. need_to_think means they actually said they wanted to think about it.
+This is NOT optional on a real conversation. A call that ended without a sale ended that way for a reason, and the reason was nearly always said out loud. If the outcome is lost, follow_up or rescheduled, report an objection.
 
-The common ones, so you recognise them:
-- "I need to speak to my wife/husband/partner" → spouse_partner
-- "It's too expensive", "I can't afford it", "I don't have it right now" → price_money
-- "Not the right time", "let's revisit next quarter", "I'm too busy" → timing
-- "I need to think about it", "let me sit on it" — said explicitly → need_to_think
-- Doesn't meet the requirements, wrong fit, can't do what's needed → not_qualified
-- Visa, location, equipment, hours, scheduling, technical blockers → logistics
-- Considering someone else, already working with another provider → competitor
+Judge what is BLOCKING them, not which words they used. The same words mean different things:
+- spouse_partner — they need another person's agreement. A spouse, a business partner, a parent.
+- price_money — the money is the problem. Too expensive, can't afford it, hasn't got it yet, needs to free it up, waiting on a payment, needs to sell something first.
+- timing — something in their LIFE makes now impossible, independent of your offer. A family illness, a house move, a busy season, a trip. Test it: if that circumstance vanished, would they buy today? Only if yes is it timing.
+- need_to_think — they want time to DECIDE. Nothing external is stopping them but their own mind. "I need to think about it", "let me sit on it", "give me a couple of days", "I just need some time", "can I get back to you". Time to think is NOT timing, however they phrase it.
+- not_qualified — wrong fit. Doesn't meet the requirements, or the programme can't do what they need.
+- logistics — a practical blocker. Visa, location, equipment, working hours, technical.
+- competitor — considering or already using someone else.
+- other — a reason was given and none of these fit.
 
-The only calls with no objection are ones where nobody turned up: on a no_show, report nothing.
+MOST CALLS RAISE MORE THAN ONE. List every distinct objection in "objections", in the order raised. Then pick ONE for primaryObjection using these rules, in order:
+
+1. Take the DEEPEST one, not the first. A stated objection is often cover for the real one, and a good salesperson probes past it. "I need to speak to my wife" → salesperson asks what specifically → "honestly it's the price" — the real objection is price_money. The wife was the surface. Report what was actually standing between them and yes at the END.
+
+2. need_to_think is the WEAKEST label. It is what people say when they will not name the real reason. If any more specific objection is also present, report that one instead. "I need to think about the price" is price_money, not need_to_think. Only use need_to_think when thinking is genuinely all there is.
+
+3. If money is any part of it, it is price_money. "Give me a couple of weeks to get the money together" is money, not timing — the money is the blocker and the weeks are just how long it takes.
+
+4. Otherwise take whichever is most concrete and specific.
+
+- primaryObjection: the single root, by those rules — for calls that did NOT close.
+- objections: every one raised, in order. Include the surface ones the salesperson worked past — that trail is the point.
+- objectionsOvercome: for calls that DID close — the main hesitation raised and worked through. "none" if they bought without real resistance.
+
+If a call ended with no reason given at all, use "other" — never reach for need_to_think as a catch-all. The only calls with no objection are ones where nobody turned up: on a no_show, report nothing.
 
 Report your findings by calling the report_call tool. Omit any field you are not confident about.`;
 
@@ -128,7 +162,14 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
       primaryObjection: {
         type: "string",
         enum: OBJECTIONS,
-        description: "Main blocker on a call that did not close.",
+        description:
+          "The single ROOT blocker on a call that did not close — the deepest one, not the first one said.",
+      },
+      objections: {
+        type: "array",
+        items: { type: "string", enum: OBJECTIONS },
+        description:
+          "Every distinct objection raised, in the order it came up, including surface ones the salesperson worked past.",
       },
       objectionsOvercome: {
         type: "string",
@@ -150,6 +191,7 @@ export interface ExtractedCall {
   contractValue?: number;
   cashCollected?: number;
   primaryObjection?: string;
+  objections?: string[];
   objectionsOvercome?: string;
   reasoning?: string;
   /** Guards that fired, so a dry run can show what was thrown away and why. */
@@ -224,6 +266,56 @@ export function sanitiseExtraction(raw: any): ExtractedCall | null {
       discarded.push(`primaryObjection: "${raw.primaryObjection}" → other`);
     }
   }
+  if (Array.isArray(raw.objections)) {
+    const seen = new Set<string>();
+    for (const o of raw.objections) {
+      if (typeof o === "string" && OBJECTIONS.includes(o)) seen.add(o);
+    }
+    if (out.primaryObjection) seen.add(out.primaryObjection);
+    if (seen.size > 0) out.objections = [...seen].slice(0, MAX_OBJECTIONS);
+  } else if (out.primaryObjection) {
+    out.objections = [out.primaryObjection];
+  }
+
+  // Derive the single answer when only the list came back.
+  //
+  // Given both fields the model will sometimes fill the list, consider the
+  // question answered, and leave primaryObjection empty — which would be a
+  // silent regression, because every chart, filter and deep link reads the
+  // single field and none of them read the list. So the list is allowed to
+  // answer for it.
+  //
+  // Same ranking as the prompt asks for: ignore the vague labels while a
+  // concrete one is present, then take the LAST of what remains, because
+  // objections surface in order and the one they end on is the real one.
+  if (!out.primaryObjection && out.objections?.length) {
+    const concrete = out.objections.filter((o) =>
+      MORE_SPECIFIC_THAN_THINKING.includes(o),
+    );
+    const pool = concrete.length > 0 ? concrete : out.objections;
+    out.primaryObjection = pool[pool.length - 1];
+  }
+
+  // Two deterministic backstops for the ranking rules, because the ordering is
+  // the part a prompt is least reliable at and the part that decides what a
+  // manager does next.
+  //
+  // Both come from how these calls actually go: "need to think" is what people
+  // say instead of naming the real reason, and "a couple of weeks to get the
+  // money together" is a money problem wearing timing's clothes. In both cases
+  // the more specific objection is the one worth acting on.
+  if (out.objections && out.objections.length > 1 && out.primaryObjection) {
+    const promote = (from: string, candidates: string[]) => {
+      if (out.primaryObjection !== from) return;
+      const better = candidates.find((c) => out.objections!.includes(c));
+      if (!better) return;
+      discarded.push(`primaryObjection: ${from} → ${better} (more specific)`);
+      out.primaryObjection = better;
+    };
+    promote("need_to_think", MORE_SPECIFIC_THAN_THINKING);
+    promote("timing", ["price_money"]);
+  }
+
   if (typeof raw.objectionsOvercome === "string") {
     if (
       OBJECTIONS.includes(raw.objectionsOvercome) ||
@@ -260,6 +352,7 @@ export function sanitiseExtraction(raw: any): ExtractedCall | null {
     delete out.cashCollected;
     delete out.contractValue;
     delete out.primaryObjection;
+    delete out.objections;
     delete out.objectionsOvercome;
   }
 

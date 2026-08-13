@@ -159,6 +159,7 @@ export const saveExtraction = internalMutation({
       "cashCollected",
       "contractValue",
       "primaryObjection",
+      "objections",
       "objectionsOvercome",
     ] as const) {
       const value = d[field];
@@ -312,6 +313,26 @@ export const extractCall = internalAction({
     );
 
     return { ok: true, written: saved.written, data: result.data };
+  },
+});
+
+/**
+ * Read a transcript passed in directly, storing nothing and touching no call.
+ *
+ * Objection classification is the part that needs testing against situations
+ * rather than against whichever calls happen to exist — a spouse objection that
+ * the salesperson probes until it turns out to be price is common in the room
+ * and rare in any given sample of twelve. This makes those cases testable
+ * without waiting for one to occur.
+ *
+ * Internal, so it is a bench tool and not an endpoint anything can call.
+ */
+export const previewExtractionText = internalAction({
+  args: { transcript: v.string() },
+  handler: async (_ctx, args): Promise<any> => {
+    const result = await runCallExtraction({ transcript: args.transcript });
+    if (!result.ok) return { ok: false, reason: result.reason };
+    return { ok: true, attempts: result.attempts, extracted: result.data };
   },
 });
 
