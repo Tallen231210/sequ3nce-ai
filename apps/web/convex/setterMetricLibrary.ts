@@ -133,6 +133,67 @@ export const METRICS: MetricDefinition[] = [
   },
 ];
 
+/**
+ * What each binding means, said the way a sales manager would say it.
+ *
+ * The blocked list is read by someone running a sales floor, not by whoever
+ * wrote the binding. "We haven't been told what meetingBooked means" is
+ * technically accurate and completely useless to them; it has to say what we
+ * need and what they can do about it.
+ */
+export const SLOT_IN_PLAIN_ENGLISH: Record<
+  string,
+  { needs: string; fix: string }
+> = {
+  leadArrived: {
+    needs: "when a lead counts as having arrived",
+    fix: "Tell us where your leads come in — a form, a booking, or a DM.",
+  },
+  setterTouch: {
+    needs: "what counts as your setters reaching out",
+    fix: "Tell us whether you measure calls, texts, or both.",
+  },
+  setterAttribution: {
+    needs: "who a lead belongs to",
+    fix: "Tell us whether leads are owned by whoever they're assigned to, or whoever works them first.",
+  },
+  setterRoster: {
+    needs: "which of your people are setters",
+    fix: "Mark your setters in the list above.",
+  },
+  meetingBooked: {
+    needs: "how we know a meeting got booked",
+    fix: "Connect the calendar your bookings land on, so we can see them.",
+  },
+  meetingHeld: {
+    needs: "how we know someone actually turned up",
+    fix: "Connect the calendar your meetings land on, or let our bot join the calls.",
+  },
+  conversationStarted: {
+    needs: "what counts as actually reaching someone",
+    fix: "Tell us how long a call has to last to count as a real conversation.",
+  },
+};
+
+/** One plain sentence explaining why a metric can't be shown. */
+export function explainBlocked(gate: Gate, suppressed: boolean): string {
+  if (suppressed) {
+    return "This doesn't mean anything on your funnel, because prospects book their own meetings — so a setter can't be credited for it.";
+  }
+  if (gate.unreadable.length > 0) return gate.unreadable[0];
+  const parts = gate.missing.map(
+    (slot) => SLOT_IN_PLAIN_ENGLISH[slot]?.needs ?? slot,
+  );
+  const fixes = gate.missing
+    .map((slot) => SLOT_IN_PLAIN_ENGLISH[slot]?.fix)
+    .filter(Boolean);
+  const need =
+    parts.length === 1
+      ? parts[0]
+      : parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
+  return `We can't work this out until we know ${need}. ${fixes[0] ?? ""}`.trim();
+}
+
 export interface Gate {
   ok: boolean;
   /** Binding slots this funnel doesn't supply. */

@@ -5,6 +5,7 @@ import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { KpiStrip } from "./KpiStrip";
+import { MetricCoveragePanel } from "./MetricCoveragePanel";
 import { ActionQueue } from "./ActionQueue";
 import { BookingFunnelPanel } from "./BookingFunnelPanel";
 import { HyrosAdSourcesPanel } from "./HyrosAdSourcesPanel";
@@ -109,6 +110,7 @@ export function OverviewTab({
           />
           <FunnelChart data={data} insight={data.funnelInsight} />
           <BookingsPanel bookings={data.bookings} insight={data.bookingsInsight} />
+          <MetricCoveragePanel />
           <LeadAgeDecayCurve rangeStart={rangeStart} rangeEnd={rangeEnd} />
           <BestTimeToCallHeatmap rangeStart={rangeStart} rangeEnd={rangeEnd} />
           {cadence && cadence.perSetter.length > 0 && (

@@ -22,7 +22,7 @@ import { resolveAuthUser } from "./setterGhlOauth";
 import { validateBindings, validateBusinessHours } from "./setterFunnelTypes";
 import { fromRow, legacyFunnel, type ResolvedFunnel } from "./setterFunnelResolve";
 import { setterIdsFor } from "./setterRoster";
-import { availableMetrics } from "./setterMetricLibrary";
+import { availableMetrics, explainBlocked } from "./setterMetricLibrary";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -117,11 +117,7 @@ export const getFunnelStatus = query({
         label: b.metric.label,
         // Plain language, because this is read by a sales manager rather than
         // whoever wrote the binding.
-        reason: b.suppressed
-          ? "Not meaningful on this funnel — prospects book themselves here."
-          : b.gate.unreadable.length > 0
-            ? b.gate.unreadable[0]
-            : `We haven't been told what ${b.gate.missing.join(" or ")} means for your business yet.`,
+        reason: explainBlocked(b.gate, b.suppressed),
       })),
     };
   },
