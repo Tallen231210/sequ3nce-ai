@@ -12,7 +12,6 @@ import { MoneyLedger } from "@/components/analytics/MoneyLedger";
 import { MonthlyComparison } from "@/components/analytics/MonthlyComparison";
 import { WhereYouLosing } from "@/components/analytics/WhereYouLosing";
 import { WhoIsLosing } from "@/components/analytics/WhoIsLosing";
-import { LeadQualityCheck } from "@/components/analytics/LeadQualityCheck";
 import { CallQualityCheck } from "@/components/analytics/CallQualityCheck";
 import { ObjectionAnalysis } from "@/components/analytics/ObjectionAnalysis";
 import { Recommendations } from "@/components/analytics/Recommendations";
@@ -59,7 +58,6 @@ export default function AnalyticsPage() {
   const summaryData = useQuery(api.analytics.getAnalyticsSummary, filterArgs);
   const lostDealsData = useQuery(api.analytics.getLostDealsByObjection, filterArgs);
   const closerBreakdown = useQuery(api.analytics.getCloserPerformanceBreakdown, teamOnlyArgs);
-  const leadQualityData = useQuery(api.analytics.getLeadQualityAnalysis, filterArgs);
   const objectionAnalysis = useQuery(api.analytics.getObjectionAnalysis, filterArgs);
   // Step 2: inline-recommendation bundle. Replaces the old `getRecommendations`
   // query (now deleted). Returns per-section recs + a top-3 digest.
@@ -72,7 +70,6 @@ export default function AnalyticsPage() {
     summaryData === undefined ||
     lostDealsData === undefined ||
     closerBreakdown === undefined ||
-    leadQualityData === undefined ||
     objectionAnalysis === undefined ||
     recBundle === undefined ||
     callQualityData === undefined;
@@ -164,12 +161,17 @@ export default function AnalyticsPage() {
           recommendation={recBundle?.bySection.whoIsLosing}
         />
 
-        {/* Section 4: Lead Quality Check */}
-        <LeadQualityCheck
-          data={leadQualityData}
-          isLoading={leadQualityData === undefined}
-          recommendation={recBundle?.bySection.leadQuality}
-        />
+        {/* Lead Quality Check removed.
+            Both figures it showed — the 1-10 lead quality score and the
+            non-decision-maker percentage — came from the post-call form, which
+            closers don't fill in (RemoteStack 17 of 100, CreateFreedom 0 of
+            21). Reading them off the transcript instead was considered and
+            rejected: an AI-scored "lead quality" would be a different metric
+            wearing the same name, and a confidently wrong score is worse than
+            no score.
+
+            The component and its query are left in place, dormant, in case a
+            customer asks for it back on a different basis. */}
 
         {/* Section 5: Call Quality — Step 4. First AI-data section.
             Gated behind verified-attribution skip-list (in the query) and a

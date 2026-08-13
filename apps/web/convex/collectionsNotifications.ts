@@ -104,8 +104,13 @@ function shortAge(days: number): string {
 }
 
 function tableRow(b: OutstandingBalance): string {
+  // An asterisk rather than a column: the sheet is fixed-width and a whole
+  // column spent on provenance would cost more than it tells, but a balance we
+  // READ off a recording still must not look identical to one a person
+  // confirmed — this list is what decides who gets chased for money.
+  const name = b.outcomeSource === "ai" ? `${b.prospectName}*` : b.prospectName;
   return [
-    fit(b.prospectName, COL.prospect),
+    fit(name, COL.prospect),
     fit(shortName(b.closerName), COL.closer),
     money(b.cashCollected).padStart(COL.paid),
     money(b.balance).padStart(COL.owed),
@@ -134,6 +139,10 @@ function tableHeader(): string {
 function table(rows: OutstandingBalance[], moreCount = 0): string {
   const lines = [tableHeader(), ...rows.map(tableRow)];
   if (moreCount > 0) lines.push(`… and ${moreCount} more`);
+  if (rows.some((r) => r.outcomeSource === "ai")) {
+    lines.push("");
+    lines.push("* read from the call recording — worth checking before chasing");
+  }
   return "```\n" + lines.join("\n") + "\n```";
 }
 
