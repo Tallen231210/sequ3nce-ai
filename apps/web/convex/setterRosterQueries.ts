@@ -166,3 +166,88 @@ export const touchesByUser = internalQuery({
     };
   },
 });
+
+/**
+ * What distinguishes the leads one person works from another's.
+ *
+ * Gianni's account of RemoteStack: some leads are filtered as bad, setters skip
+ * them entirely, and a closer works them instead. If that is true then those
+ * leads are sitting in the denominator of every setter metric — a contact rate
+ * of 49% is meaningless when half the leads were never meant to be contacted by
+ * a setter.
+ *
+ * This looks for the attribute that actually separates the two populations, so
+ * the split can be expressed as a rule rather than as an anecdote.
+ */
+export const compareLeadPopulations = internalQuery({
+  args: {
+    teamId: v.id("teams"),
+    userA: v.string(),
+    userB: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args): Promise<any> => {
+    const leadsOf = new Map<string, Set<string>>([
+      [args.userA, new Set()],
+      [args.userB, new Set()],
+    ]);
+
+    for (const eventType of ["dial_outbound", "sms_outbound"]) {
+      const rows = await ctx.db
+        .query("setterLeadEvents")
+        .withIndex("by_team_and_type_and_time", (q: any) =>
+          q
+            .eq("teamId", args.teamId)
+            .eq("eventType", eventType)
+            .gte("occurredAt", args.rangeStart)
+            .lte("occurredAt", args.rangeEnd),
+        )
+        .take(12_000);
+      for (const e of rows as any[]) {
+        const set = leadsOf.get(e.ghlUserId);
+        if (set) set.add(e.ghlContactId);
+      }
+    }
+
+    // Read the leads once and bucket them, rather than a lookup per contact —
+    // the per-lead version of this timed out on operation count earlier today.
+    const allLeads = await ctx.db
+      .query("setterLeads")
+      .withIndex("by_team_and_date_added", (q: any) =>
+        q
+          .eq("teamId", args.teamId)
+          .gte("dateAdded", args.rangeStart - 90 * 86_400_000)
+          .lte("dateAdded", args.rangeEnd),
+      )
+      .take(12_000);
+
+    const profile = (userId: string) => {
+      const ids = leadsOf.get(userId)!;
+      const tags: Record<string, number> = {};
+      const sources: Record<string, number> = {};
+      let n = 0;
+      for (const l of allLeads as any[]) {
+        if (!ids.has(l.ghlContactId)) continue;
+        n += 1;
+        for (const t of l.tags ?? []) tags[t] = (tags[t] ?? 0) + 1;
+        const s = l.source || "(none)";
+        sources[s] = (sources[s] ?? 0) + 1;
+      }
+      const top = (r: Record<string, number>) =>
+        Object.entries(r)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 8)
+          .map(([k, v]) => ({ value: k, count: v, pct: n ? Math.round((100 * v) / n) : 0 }));
+      return { leads: n, topTags: top(tags), topSources: top(sources) };
+    };
+
+    return {
+      a: profile(args.userA),
+      b: profile(args.userB),
+      overlap: [...leadsOf.get(args.userA)!].filter((id) =>
+        leadsOf.get(args.userB)!.has(id),
+      ).length,
+    };
+  },
+});
