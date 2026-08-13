@@ -171,6 +171,7 @@ import type * as setterGhlSync from "../setterGhlSync.js";
 import type * as setterGhlSyncMutations from "../setterGhlSyncMutations.js";
 import type * as setterGhlWebhooks from "../setterGhlWebhooks.js";
 import type * as setterMetricCompute from "../setterMetricCompute.js";
+import type * as setterMetricDrill from "../setterMetricDrill.js";
 import type * as setterMetricLibrary from "../setterMetricLibrary.js";
 import type * as setterMetricRun from "../setterMetricRun.js";
 import type * as setterRollups from "../setterRollups.js";
@@ -357,6 +358,7 @@ declare const fullApi: ApiFromModules<{
   setterGhlSyncMutations: typeof setterGhlSyncMutations;
   setterGhlWebhooks: typeof setterGhlWebhooks;
   setterMetricCompute: typeof setterMetricCompute;
+  setterMetricDrill: typeof setterMetricDrill;
   setterMetricLibrary: typeof setterMetricLibrary;
   setterMetricRun: typeof setterMetricRun;
   setterRollups: typeof setterRollups;
