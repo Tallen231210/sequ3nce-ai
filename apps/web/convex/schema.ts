@@ -3035,6 +3035,39 @@ export default defineSchema({
     .index("by_team_and_transitioned_at", ["teamId", "transitionedAt"]),
 
   // ==========================================================================
+  // Who each CRM user is to us.
+  //
+  // Separate from `setterReps` deliberately. That table is synced from the CRM
+  // and holds whoever the CRM currently returns — on one live team that is
+  // eight people including the manager and a support account, while EIGHT other
+  // user ids were making outbound touches without appearing in it at all
+  // (people who have since left, most likely). A sync-owned table cannot hold a
+  // human judgement, because the next sync would drop it.
+  //
+  // Three roles rather than a setter/not-setter flag, because closers dial too:
+  // confirming a Zoom, chasing a no-show. That activity is real and worth
+  // keeping — it just isn't setter performance, and averaging it into a setter
+  // leaderboard is how the leaderboard stops meaning anything.
+  // ==========================================================================
+  setterRoleAssignments: defineTable({
+    teamId: v.id("teams"),
+    /** The CRM's user id, whichever CRM it came from. */
+    crmUserId: v.string(),
+    role: v.union(
+      v.literal("setter"),
+      v.literal("closer"),
+      /** Managers, support accounts, integrations — real, and not sales floor. */
+      v.literal("other"),
+    ),
+    /** Kept so a departed user still reads as a person, not an id. */
+    displayName: v.optional(v.string()),
+    assignedBy: v.optional(v.string()),
+    assignedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_and_user", ["teamId", "crmUserId"]),
+
+  // ==========================================================================
   // What a setter actually does here.
   //
   // Setter Data was built on one assumed funnel: lead arrives, setter dials it,

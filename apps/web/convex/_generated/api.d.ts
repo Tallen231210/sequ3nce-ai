@@ -175,6 +175,7 @@ import type * as setterMetricDrill from "../setterMetricDrill.js";
 import type * as setterMetricLibrary from "../setterMetricLibrary.js";
 import type * as setterMetricRun from "../setterMetricRun.js";
 import type * as setterRollups from "../setterRollups.js";
+import type * as setterRoster from "../setterRoster.js";
 import type * as setterScorecardBackfill from "../setterScorecardBackfill.js";
 import type * as setterScorecardConfig from "../setterScorecardConfig.js";
 import type * as sharedLinks from "../sharedLinks.js";
@@ -362,6 +363,7 @@ declare const fullApi: ApiFromModules<{
   setterMetricLibrary: typeof setterMetricLibrary;
   setterMetricRun: typeof setterMetricRun;
   setterRollups: typeof setterRollups;
+  setterRoster: typeof setterRoster;
   setterScorecardBackfill: typeof setterScorecardBackfill;
   setterScorecardConfig: typeof setterScorecardConfig;
   sharedLinks: typeof sharedLinks;

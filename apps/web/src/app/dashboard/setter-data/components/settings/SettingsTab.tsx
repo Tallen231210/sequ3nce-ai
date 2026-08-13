@@ -6,6 +6,7 @@ import { api } from "../../../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { GhlConnectionCard } from "./GhlConnectionCard";
 import { CloseConnectionCard } from "./CloseConnectionCard";
+import { RosterCard } from "./RosterCard";
 import { BookingFlowConfig } from "./BookingFlowConfig";
 import { ScorecardConfig } from "./ScorecardConfig";
 import { UntouchedAlertConfig } from "./UntouchedAlertConfig";
@@ -168,6 +169,7 @@ export function SettingsTab() {
       ) : (
         <GhlConnectionCard installation={installation} />
       )}
+      <RosterCard />
       <BookingFlowConfig bookingFlow={settings.bookingFlow} />
       <DispositionSyncConfig
         enabled={settings.dispositionSync.enabled}
