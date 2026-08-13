@@ -893,6 +893,12 @@ export const updateCallOutcome = mutation({
       dealValue: args.dealValue,
       cashCollected: args.cashCollected,
       contractValue: args.contractValue,
+      // A person has now said what happened, so the call stops being
+      // AI-derived. Without this, a manager correcting a call extraction had
+      // already read would leave it tagged as a guess in Collections and still
+      // counted as unconfirmed on the board — labelled uncertain by the very
+      // act of someone confirming it.
+      outcomeSource: "manager",
     });
     // Collections, closer stats and the team board all read the sidecar, not
     // this row. Without this the money is on the call and invisible everywhere
@@ -943,6 +949,9 @@ export const completeCallWithOutcome = mutation({
       dealValue: args.dealValue,
       cashCollected: args.cashCollected,
       contractValue: args.contractValue,
+      // The closer filled the form in. Their answer outranks anything we read,
+      // permanently — and it must stop being marked as ours.
+      outcomeSource: "closer",
       notes: args.notes,
       // Enhanced questionnaire fields
       primaryObjection: args.primaryObjection,
