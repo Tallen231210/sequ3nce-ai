@@ -75,6 +75,8 @@ export const touchesByUser = internalQuery({
   handler: async (ctx, args): Promise<any> => {
     const out: any[] = [];
     const perDay = new Map<string, number>();
+    /** Everyone's outbound touches in the window, needed to see who was first. */
+    const allInWindow: Array<{ contactId: string; at: number; by: string | null }> = [];
 
     for (const eventType of ["dial_outbound", "sms_outbound"]) {
       const rows = await ctx.db
@@ -88,6 +90,11 @@ export const touchesByUser = internalQuery({
         )
         .take(12_000);
       for (const e of rows as any[]) {
+        allInWindow.push({
+          contactId: e.ghlContactId,
+          at: e.occurredAt,
+          by: e.ghlUserId ?? null,
+        });
         if (e.ghlUserId !== args.crmUserId) continue;
         const day = new Date(e.occurredAt).toISOString().slice(0, 10);
         perDay.set(day, (perDay.get(day) ?? 0) + 1);
@@ -100,6 +107,35 @@ export const touchesByUser = internalQuery({
     }
 
     out.sort((a, b) => b.at - a.at);
+
+    // Was this person the FIRST to contact the lead, or following someone in?
+    //
+    // The decisive setter-versus-closer signal, and far more reliable than
+    // volume. A setter opens conversations; a closer joins ones already in
+    // progress to confirm a meeting or chase a no-show. Someone doing 600
+    // touches who is almost never first is not setting, whatever the total says.
+    //
+    // Computed from the events already in hand rather than one query per lead —
+    // the first version did the latter and timed out on operation count, which
+    // is precisely the scale failure this rebuild exists to stop repeating.
+    //
+    // Only conversations that STARTED inside the window are counted, since a
+    // lead first touched before it began would look falsely like this person
+    // opened it.
+    const firstByLead = new Map<string, { at: number; by: string | null }>();
+    for (const e of allInWindow) {
+      const seen = firstByLead.get(e.contactId);
+      if (!seen || e.at < seen.at) firstByLead.set(e.contactId, { at: e.at, by: e.by });
+    }
+    let wasFirst = 0;
+    let joinedLater = 0;
+    for (const contactId of new Set(out.map((t) => t.contactId))) {
+      const first = firstByLead.get(contactId);
+      if (!first) continue;
+      if (first.by === args.crmUserId) wasFirst += 1;
+      else joinedLater += 1;
+    }
+
     const sample = [];
     for (const t of out.slice(0, 12)) {
       const lead = await ctx.db
@@ -123,6 +159,9 @@ export const touchesByUser = internalQuery({
       // by double-counting tends to look implausibly flat or implausibly high.
       busiestDay: days.sort((a, b) => b[1] - a[1])[0] ?? null,
       perDayAverage: days.length ? Math.round(out.length / days.length) : 0,
+      leadsTouched: new Set(out.map((t: any) => t.contactId)).size,
+      openedTheConversation: wasFirst,
+      joinedExisting: joinedLater,
       sample,
     };
   },
