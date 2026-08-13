@@ -426,3 +426,91 @@ export const findBookingType = internalQuery({
     };
   },
 });
+
+/**
+ * Does any lead attribute predict which booking link they were routed to?
+ *
+ * Gianni thinks there's no tag marking a bad lead but isn't certain, and
+ * "probably not" is not an answer worth building on. This checks every tag and
+ * source against the qualification implied by the booking type, so the answer
+ * is measured rather than remembered.
+ *
+ * A tag that appears on 90% of Minus leads and 5% of Plus leads is the flag. A
+ * tag that appears equally on both is noise. The point is to be able to say
+ * which, with a number.
+ */
+export const qualificationSignals = internalQuery({
+  args: { teamId: v.id("teams"), rangeStart: v.number(), rangeEnd: v.number() },
+  handler: async (ctx, args): Promise<any> => {
+    // Booking type per contact, paged backwards so recent bookings are included
+    // — a forward take returns the oldest and hides anything new.
+    const tierByContact = new Map<string, "plus" | "minus">();
+    let cursor = args.rangeEnd;
+    for (let page = 0; page < 12; page++) {
+      const rows = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_team_and_time", (q: any) =>
+          q.eq("teamId", args.teamId).gte("startTime", args.rangeStart).lt("startTime", cursor),
+        )
+        .order("desc")
+        .take(1000);
+      if (rows.length === 0) break;
+      for (const e of rows as any[]) {
+        const m = String(e.description ?? "").match(/Event Name\s*[\r\n]+\s*(.+)/);
+        if (!m) continue;
+        const type = m[1].trim();
+        const tier = /minus/i.test(type) ? "minus" : /\+/.test(type) ? "plus" : null;
+        if (!tier) continue;
+        // Match the booking to a lead by the prospect name on the event.
+        const who = String(e.title ?? "").split(/ and /i)[0].trim().toLowerCase();
+        if (who) tierByContact.set(who, tier);
+      }
+      cursor = (rows as any[])[rows.length - 1].startTime;
+      if (rows.length < 1000) break;
+    }
+
+    const leads = await ctx.db
+      .query("setterLeads")
+      .withIndex("by_team_and_date_added", (q: any) =>
+        q.eq("teamId", args.teamId).gte("dateAdded", args.rangeStart).lte("dateAdded", args.rangeEnd),
+      )
+      .take(12_000);
+
+    const counts: Record<string, { plus: number; minus: number }> = {};
+    let plusTotal = 0;
+    let minusTotal = 0;
+    for (const l of leads as any[]) {
+      const tier = tierByContact.get(String(l.name ?? "").toLowerCase());
+      if (!tier) continue;
+      if (tier === "plus") plusTotal += 1;
+      else minusTotal += 1;
+      const attrs = [
+        ...(l.tags ?? []).map((t: string) => `tag:${t}`),
+        `source:${l.source || "(none)"}`,
+      ];
+      for (const a of attrs) {
+        const row = (counts[a] ??= { plus: 0, minus: 0 });
+        row[tier] += 1;
+      }
+    }
+
+    // Rank by how lopsided each attribute is. A real flag is near-exclusive to
+    // one side; anything close to the base rate is telling us nothing.
+    const signals = Object.entries(counts)
+      .filter(([, v]) => v.plus + v.minus >= 5)
+      .map(([attr, v]) => {
+        const pPlus = plusTotal ? v.plus / plusTotal : 0;
+        const pMinus = minusTotal ? v.minus / minusTotal : 0;
+        return {
+          attr,
+          plus: v.plus,
+          minus: v.minus,
+          skew: Math.abs(pPlus - pMinus),
+        };
+      })
+      .sort((a, b) => b.skew - a.skew)
+      .slice(0, 15);
+
+    return { matchedLeads: plusTotal + minusTotal, plusTotal, minusTotal, signals };
+  },
+});
