@@ -16,7 +16,7 @@
 // ============================================================================
 
 import { v } from "convex/values";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { renderTranscript } from "./complianceReview";
@@ -99,6 +99,21 @@ export const setAiExtraction = internalMutation({
     if (!team) return { ok: false };
     await ctx.db.patch(args.teamId, { aiExtractionEnabled: args.enabled });
     return { ok: true, team: team.name };
+  },
+});
+
+/**
+ * Is this team having its calls read for it?
+ *
+ * Public and takes a teamId the closer app already holds, because it reveals
+ * nothing — it's a feature switch, not data. Used to stop the closer app asking
+ * for a form we're about to fill in ourselves.
+ */
+export const isExtractionEnabled = query({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args): Promise<boolean> => {
+    const team = await ctx.db.get(args.teamId);
+    return team?.aiExtractionEnabled === true;
   },
 });
 
