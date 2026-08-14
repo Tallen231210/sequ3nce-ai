@@ -24,16 +24,31 @@ export async function POST(req: Request) {
       clerkId: userId,
     });
 
-    if (!billing?.polarSubscriptionId) {
+    // No Convex user for this clerkId, or a user whose team record is
+    // missing — the orphaned-Clerk-account state this codebase has hit in
+    // production before. Unlike "comped, no subscription" below, there is
+    // nothing to write here at all: an authenticated request with no team is
+    // a REAL error, not a normal state, matching the sibling Stripe route's
+    // treatment (see stripe/update-seats around lines 91-98). Reporting
+    // success here would tell a manager their closer was added while the
+    // seat count silently stayed wrong.
+    if (!billing) {
+      console.error(`update-seats: no team found for clerkId=${userId}`);
+      return NextResponse.json(
+        { error: "Team not found for billing account" },
+        { status: 500 },
+      );
+    }
+
+    if (!billing.polarSubscriptionId) {
       // A comped team adding a closer lands here, and it is not an error —
       // there is no subscription to resize. Record the seat count locally so
-      // the team page stays truthful and move on.
-      if (billing) {
-        await convex.mutation(api.billing.setSeatCount, {
-          clerkId: userId,
-          seatCount,
-        });
-      }
+      // the team page stays truthful and move on. This is the common,
+      // healthy path today: every live customer is comped.
+      await convex.mutation(api.billing.setSeatCount, {
+        clerkId: userId,
+        seatCount,
+      });
       return NextResponse.json({ success: true, seatCount, billed: false });
     }
 
