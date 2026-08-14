@@ -284,16 +284,20 @@ export const TIER_INFO: Record<
 /**
  * List prices, in whole dollars.
  *
- * Public marketing figures, kept here so the pricing page, the signup page and
- * anywhere else quoting a number can't drift apart — they were three separate
- * hardcodings and two of them still said $499. What a customer is ACTUALLY
- * charged always comes from the payment processor, never from this: people are
- * grandfathered onto old rates, and only the processor knows.
+ * `monthly` includes the first closer; `extraSeat` is each closer after that.
+ * Polar cannot sell a subscription with zero seats — the floor of 1 is baked
+ * into the price tier — so the plan absorbs one and the customer sees a single
+ * number instead of a base plus a compulsory extra.
+ *
+ * Public marketing figures, kept here so the pricing page and the signup page
+ * can't drift apart; they were three separate hardcodings and two of them
+ * still said $499. What a customer is ACTUALLY charged always comes from the
+ * payment processor, never from this.
  */
-export const TIER_PRICING: Record<Tier, { platform: number; seat: number }> = {
-  overview: { platform: 200, seat: 25 },
-  oversight: { platform: 350, seat: 50 },
-  overwatch: { platform: 500, seat: 150 },
+export const TIER_PRICING: Record<Tier, { monthly: number; extraSeat: number }> = {
+  overview: { monthly: 225, extraSeat: 25 },
+  oversight: { monthly: 400, extraSeat: 50 },
+  overwatch: { monthly: 650, extraSeat: 150 },
 };
 
 /** Ordered cheapest to most expensive, for deciding upgrade vs downgrade. */

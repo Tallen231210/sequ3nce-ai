@@ -149,7 +149,7 @@ export default function TeamPage() {
     if (!hasActiveSubscription) return;
 
     try {
-      const response = await fetch("/api/stripe/update-seats", {
+      const response = await fetch("/api/polar/update-seats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seatCount: newSeatCount }),

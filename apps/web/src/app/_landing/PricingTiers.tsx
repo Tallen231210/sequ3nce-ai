@@ -113,19 +113,18 @@ export function PricingTiers() {
           <div className="mt-7 border-t border-zinc-100 pt-6">
             <div className="flex items-baseline gap-1">
               <span className="text-5xl font-semibold tracking-[-0.04em] text-zinc-950">
-                ${TIER_PRICING[plan.tier].platform}
+                ${TIER_PRICING[plan.tier].monthly}
               </span>
               <span className="text-lg font-medium tracking-tight text-zinc-400">
                 /mo
               </span>
             </div>
             <p className="mt-2 text-[13px] text-zinc-500">
-              plus{" "}
+              Includes your first closer, then{" "}
               <span className="font-medium text-zinc-950">
-                ${TIER_PRICING[plan.tier].seat}
+                ${TIER_PRICING[plan.tier].extraSeat}
               </span>{" "}
-              per
-              closer, per month
+              per month for each additional closer
             </p>
           </div>
 

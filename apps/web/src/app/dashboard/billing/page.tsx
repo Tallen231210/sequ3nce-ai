@@ -6,7 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { PlanSelector } from "./plan-selector";
-import type { Tier } from "@/lib/tiers";
+import { TIER_INFO, normaliseTier, type Tier } from "@/lib/tiers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,25 +24,17 @@ import {
 // The old constants ($199 / $99) are gone deliberately. They were testing-account
 // prices shown to every customer regardless of what they actually paid, so a
 // team on $500 plus three seats at $150 saw $496 against a real $950 invoice.
-// Prices now come from Stripe, which is the only place that knows — and has to,
+// Prices now come from Polar, which is the only place that knows — and has to,
 // because customers are grandfathered onto whatever rate they signed at.
-interface SubscriptionLine {
-  kind: string;
-  label: string;
-  unitAmountCents: number;
-  quantity: number;
-  subtotalCents: number;
-  interval: string;
-}
-
 interface SubscriptionSummary {
   tier: string;
   hasSubscription: boolean;
   status?: string;
   currency: string;
-  lines: SubscriptionLine[];
+  seats: number;
   monthlyTotalCents: number | null;
-  isLegacyPricing?: boolean;
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEnd?: string | null;
   availableTiers?: string[];
 }
 
@@ -114,7 +106,7 @@ function BillingPageContent() {
   const [summary, setSummary] = useState<SubscriptionSummary | null>(null);
   const loadSummary = useCallback(async () => {
     try {
-      const res = await fetch("/api/stripe/subscription-summary");
+      const res = await fetch("/api/polar/subscription-summary");
       if (!res.ok) return;
       setSummary((await res.json()) as SubscriptionSummary);
     } catch {
@@ -148,7 +140,7 @@ function BillingPageContent() {
   const handleSubscribe = async () => {
     setIsCheckoutLoading(true);
     try {
-      const response = await fetch("/api/stripe/create-checkout", {
+      const response = await fetch("/api/polar/create-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -168,7 +160,7 @@ function BillingPageContent() {
   const handleManageSubscription = async () => {
     setIsPortalLoading(true);
     try {
-      const response = await fetch("/api/stripe/create-portal", {
+      const response = await fetch("/api/polar/create-portal", {
         method: "POST",
       });
 
@@ -287,39 +279,42 @@ function BillingPageContent() {
               </div>
             )}
 
-            {/* A team with no Stripe customer has nothing to manage — comped
-                accounts, and anyone mid-migration between processors. The
-                portal route 400s for them, and because the click handler only
-                follows a returned URL, the button would sit there doing
-                literally nothing. Say why instead. */}
-            {hasActiveSubscription && !billing?.stripeCustomerId && (
-              <p className="pt-2 text-sm text-muted-foreground">
-                No payment method on file — your account is active and there is
-                nothing to pay right now.
-              </p>
-            )}
+            {/* A team with no customer at either processor has nothing to
+                manage — comped accounts, and anyone mid-migration between
+                processors. The portal route 400s for them, and because the
+                click handler only follows a returned URL, the button would
+                sit there doing literally nothing. Say why instead. */}
+            {hasActiveSubscription &&
+              !billing?.stripeCustomerId &&
+              !billing?.polarCustomerId && (
+                <p className="pt-2 text-sm text-muted-foreground">
+                  No payment method on file — your account is active and there
+                  is nothing to pay right now.
+                </p>
+              )}
 
-            {hasActiveSubscription && billing?.stripeCustomerId && (
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  onClick={handleManageSubscription}
-                  disabled={isPortalLoading}
-                >
-                  {isPortalLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      Manage Subscription
-                      <ExternalLink className="h-4 w-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
+            {hasActiveSubscription &&
+              (billing?.stripeCustomerId || billing?.polarCustomerId) && (
+                <div className="pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleManageSubscription}
+                    disabled={isPortalLoading}
+                  >
+                    {isPortalLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        Manage Subscription
+                        <ExternalLink className="h-4 w-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
           </CardContent>
         </Card>
 
@@ -331,33 +326,35 @@ function BillingPageContent() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {summary?.hasSubscription && summary.lines.length > 0 ? (
-              <>
-                {summary.lines.map((line, i) => (
-                  <div
-                    key={`${line.label}-${i}`}
-                    className="flex items-center justify-between border-b py-2"
-                  >
-                    <div>
-                      <p className="font-medium">{line.label}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {line.kind === "seat"
-                          ? `${line.quantity} paid ${line.quantity === 1 ? "seat" : "seats"} (${billing?.activeCloserCount ?? 0} closers) at ${money(line.unitAmountCents, currency)} each`
-                          : `Access to Sequ3nce dashboard`}
-                      </p>
-                    </div>
-                    <span className="font-medium">
-                      {money(line.subtotalCents, currency)}/{line.interval}
-                    </span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between pt-2">
+            {summary?.hasSubscription ? (
+              <div className="space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {TIER_INFO[normaliseTier(summary.tier)].name}, including
+                    your first closer
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {/* Polar's seat count, when present, is what the team is
+                        actually billed for. But a paying team should never be
+                        told "0 closers" on the strength of a field Polar
+                        happened to omit — that reads as a billing error, not
+                        a quirk of the API response. Fall back to the closer
+                        count we already track ourselves rather than assert a
+                        number that might be false. */}
+                    {summary.seats > 0
+                      ? `${summary.seats} paid ${summary.seats === 1 ? "seat" : "seats"}`
+                      : `${billing?.activeCloserCount ?? 0} active ${(billing?.activeCloserCount ?? 0) === 1 ? "closer" : "closers"}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t pt-2">
                   <span className="font-semibold">Monthly Total</span>
                   <span className="text-lg font-semibold">
                     {money(summary.monthlyTotalCents ?? 0, currency)}/mo
                   </span>
                 </div>
-              </>
+              </div>
             ) : summary && !summary.hasSubscription ? (
               <p className="py-2 text-sm text-muted-foreground">
                 No active subscription. Pick a plan below to get started.
@@ -378,9 +375,8 @@ function BillingPageContent() {
             <PlanSelector
               currentTier={summary?.tier ?? billing?.productTier}
               availableTiers={(summary?.availableTiers ?? []) as Tier[]}
-              isLegacyPricing={summary?.isLegacyPricing}
               onChanged={() => {
-                // Stripe's webhook writes the new tier, and it lands a moment
+                // Polar's webhook writes the new tier, and it lands a moment
                 // after the API returns. Re-reading immediately would show the
                 // old plan and look like the change failed.
                 setTimeout(() => void loadSummary(), 1500);

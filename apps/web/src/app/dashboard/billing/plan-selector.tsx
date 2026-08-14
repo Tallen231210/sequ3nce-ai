@@ -25,15 +25,12 @@ import {
 
 export function PlanSelector({
   currentTier,
-  isLegacyPricing,
   availableTiers,
   onChanged,
 }: {
   currentTier: string | undefined;
   /** Tiers with prices configured. Anything else can't be bought yet. */
   availableTiers: Tier[];
-  /** On a price that predates tiers — changing plan gives that rate up. */
-  isLegacyPricing?: boolean;
   onChanged: () => void;
 }) {
   const current = normaliseTier(currentTier);
@@ -52,7 +49,7 @@ export function PlanSelector({
     setConfirming(null);
     setError(null);
     try {
-      const res = await fetch("/api/stripe/change-tier", {
+      const res = await fetch("/api/polar/change-tier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tier }),
@@ -81,14 +78,6 @@ export function PlanSelector({
 
   return (
     <div className="space-y-4">
-      {isLegacyPricing && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
-          You&apos;re on original pricing from before we had plans. Changing
-          plan moves you onto current rates and that can&apos;t be undone —
-          worth talking to us first if you&apos;re not sure.
-        </p>
-      )}
-
       <div className="grid gap-4 md:grid-cols-3">
         {sellable.map((tier) => {
           const info = TIER_INFO[tier];
