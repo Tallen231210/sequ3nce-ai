@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { pricesForTier, normaliseTier, type Tier } from "@/lib/tiers";
+import { pricesForTier, parseTier } from "@/lib/tiers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { ConvexHttpClient } from "convex/browser";
@@ -19,14 +19,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Which product they're buying. Defaults to the top tier so an older client that
-    // posts nothing behaves exactly as it did before tiers existed.
-    let tier: Tier = "overwatch";
+    // Which product they're buying. No default, and no coercion: this route
+    // is unreachable from any current B2B UI, but it is still a live,
+    // authenticated POST endpoint, and it used to default a missing/unknown
+    // tier to "overwatch" — selling the most expensive plan to anyone who
+    // posted nothing or a typo. `parseTier` is the strict counterpart to
+    // `normaliseTier`: exact match on a real tier, or null. See its comment
+    // in lib/tiers.ts, and the matching guard in the Polar create-checkout
+    // route this one mirrors.
+    let rawTier: unknown;
     try {
-      const body = await req.json();
-      if (body?.tier) tier = normaliseTier(String(body.tier));
+      const body = (await req.json()) as { tier?: unknown };
+      rawTier = body?.tier;
     } catch {
-      // No body at all — the pre-tier signup flow. Keep the old behaviour.
+      return NextResponse.json(
+        { error: "Which plan? A tier is required." },
+        { status: 400 },
+      );
+    }
+
+    const tier = parseTier(rawTier);
+    if (!tier) {
+      const detail =
+        typeof rawTier === "string" && rawTier.length > 0
+          ? `Unrecognised plan: "${rawTier}".`
+          : "Which plan? A tier is required.";
+      return NextResponse.json({ error: detail }, { status: 400 });
     }
 
     // Get team billing info

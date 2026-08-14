@@ -104,14 +104,21 @@ function BillingPageContent() {
   // The real numbers, from Stripe. Fetched rather than derived so a
   // grandfathered price is shown as what it is instead of as today's rate.
   const [summary, setSummary] = useState<SubscriptionSummary | null>(null);
+  // Distinct from "still loading" (summary === null, summaryError === false):
+  // a failed fetch used to leave the page reading "Loading your current
+  // pricing…" forever, with no way to tell a hung request from a broken one.
+  const [summaryError, setSummaryError] = useState(false);
   const loadSummary = useCallback(async () => {
     try {
       const res = await fetch("/api/polar/subscription-summary");
-      if (!res.ok) return;
+      if (!res.ok) {
+        setSummaryError(true);
+        return;
+      }
       setSummary((await res.json()) as SubscriptionSummary);
+      setSummaryError(false);
     } catch {
-      // Leave it null — the card falls back to saying it can't show a price
-      // rather than showing a wrong one.
+      setSummaryError(true);
     }
   }, []);
   useEffect(() => {
@@ -334,6 +341,18 @@ function BillingPageContent() {
             ) : summary && !summary.hasSubscription ? (
               <p className="py-2 text-sm text-muted-foreground">
                 No active subscription. Pick a plan below to get started.
+              </p>
+            ) : summaryError ? (
+              <p className="py-2 text-sm text-red-600">
+                Couldn&apos;t load your current pricing.{" "}
+                <button
+                  type="button"
+                  onClick={() => void loadSummary()}
+                  className="underline underline-offset-2"
+                >
+                  Try again
+                </button>
+                .
               </p>
             ) : (
               <p className="py-2 text-sm text-muted-foreground">

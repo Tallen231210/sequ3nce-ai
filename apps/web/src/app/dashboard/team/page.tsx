@@ -85,6 +85,14 @@ export default function TeamPage() {
     name: string;
   } | null>(null);
 
+  // A failed seat sync with Polar, surfaced separately from the Add Closer
+  // form's own error/success text: this can be triggered by remove and
+  // status-change too, which happen in the Closers table below the form, so
+  // it needs to be visible regardless of which action caused it. Left
+  // unaddressed, the roster and the bill silently disagree — a removed
+  // closer keeps being paid for, or an added one is never billed.
+  const [billingWarning, setBillingWarning] = useState<string | null>(null);
+
   // Download link dialog state
   const [downloadDialogCloser, setDownloadDialogCloser] = useState<{
     name: string;
@@ -143,10 +151,12 @@ export default function TeamPage() {
     billing?.subscriptionStatus === "active" ||
     billing?.subscriptionStatus === "trialing";
 
-  // Helper to update Stripe seats
-  const updateStripeSeats = async (newSeatCount: number) => {
+  // Helper to update Stripe seats. Returns whether the call reached billing,
+  // so the three callers below can tell the manager when it didn't instead
+  // of only logging it.
+  const updateStripeSeats = async (newSeatCount: number): Promise<boolean> => {
     // Only update if user has an active subscription
-    if (!hasActiveSubscription) return;
+    if (!hasActiveSubscription) return true;
 
     try {
       const response = await fetch("/api/polar/update-seats", {
@@ -156,9 +166,12 @@ export default function TeamPage() {
       });
       if (!response.ok) {
         console.error("Failed to update seats:", await response.text());
+        return false;
       }
+      return true;
     } catch (err) {
       console.error("Failed to update Stripe seats:", err);
+      return false;
     }
   };
 
@@ -266,7 +279,9 @@ export default function TeamPage() {
       // Update Stripe seats (current active/pending count + 1 for the new closer)
       const currentActiveCount = closerCounts?.active || 0;
       const currentPendingCount = closerCounts?.pending || 0;
-      await updateStripeSeats(currentActiveCount + currentPendingCount + 1);
+      const seatUpdateOk = await updateStripeSeats(
+        currentActiveCount + currentPendingCount + 1,
+      );
 
       setName("");
       setEmail("");
@@ -274,6 +289,13 @@ export default function TeamPage() {
         `${name} added — we sent them a sign-in link at ${email.trim().toLowerCase()}`,
       );
       setTimeout(() => setSuccess(null), 5000);
+
+      if (!seatUpdateOk) {
+        setBillingWarning(
+          `${name} was added, but the seat change didn't reach billing. Try again, or contact support if it keeps happening.`,
+        );
+        setTimeout(() => setBillingWarning(null), 8000);
+      }
     } catch (err: unknown) {
       // Show user-friendly error messages, log technical details for debugging
       console.error("Error adding closer:", err);
@@ -324,7 +346,13 @@ export default function TeamPage() {
         const currentActiveCount = closerCounts?.active || 0;
         const currentPendingCount = closerCounts?.pending || 0;
         const newCount = currentActiveCount + currentPendingCount - 1;
-        await updateStripeSeats(Math.max(0, newCount));
+        const seatUpdateOk = await updateStripeSeats(Math.max(0, newCount));
+        if (!seatUpdateOk) {
+          setBillingWarning(
+            `${closerToDelete.name} was removed, but the seat change didn't reach billing. Try again, or contact support if it keeps happening.`,
+          );
+          setTimeout(() => setBillingWarning(null), 8000);
+        }
       }
 
       setCloserToDelete(null);
@@ -402,7 +430,13 @@ export default function TeamPage() {
           newCount = newCount + 1;
         }
 
-        await updateStripeSeats(newCount);
+        const seatUpdateOk = await updateStripeSeats(newCount);
+        if (!seatUpdateOk) {
+          setBillingWarning(
+            `${closer?.name ?? "That closer"}'s status changed, but the seat change didn't reach billing. Try again, or contact support if it keeps happening.`,
+          );
+          setTimeout(() => setBillingWarning(null), 8000);
+        }
       }
     } catch (err) {
       console.error("Failed to update status:", err);
@@ -428,6 +462,16 @@ export default function TeamPage() {
         {/* pb-24 keeps the bottom-right ChatContainer from overlapping
             the closer-row dropdown trigger when the closers list is the
             last thing in the viewport. */}
+
+        {/* A failed seat sync can come from Add, Remove, or a status change
+            below — this sits above all three so it's visible no matter
+            which one triggered it. */}
+        {billingWarning && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {billingWarning}
+          </div>
+        )}
+
         {/* Team Overview */}
         <Card>
           <CardHeader className="pb-3">

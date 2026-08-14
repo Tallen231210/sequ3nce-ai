@@ -12,6 +12,25 @@ interface PolarCheckout {
   url: string;
 }
 
+/**
+ * Statuses where a Polar subscription is still live — actively billing, or in
+ * dunning and still capable of resolving on its own — so buying again would
+ * create a SECOND subscription rather than resuming the first. When that
+ * happens the webhook overwrites `polarSubscriptionId` with the newer one,
+ * and the first subscription keeps billing monthly with nothing in the
+ * product showing it still exists.
+ *
+ * `canceled` and `incomplete`/`incomplete_expired` describe a subscription
+ * that is fully wound down or never completed, so those are the only
+ * statuses allowed to check out again.
+ */
+const LIVE_SUBSCRIPTION_STATUSES = new Set([
+  "active",
+  "trialing",
+  "past_due",
+  "unpaid",
+]);
+
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
@@ -53,6 +72,38 @@ export async function POST(req: Request) {
     if (!billing) {
       return NextResponse.json(
         { error: "We couldn't find your team. Try signing out and back in." },
+        { status: 400 },
+      );
+    }
+
+    // Comped teams are billed outside the software, by hand — their tier is
+    // pinned in Convex, not derived from a subscription. Nothing about
+    // `subscriptionStatus` can be trusted to keep one of these away from
+    // checkout (a stale `past_due` left behind by old Stripe dunning has
+    // actually happened to two customers), so this checks the pin itself.
+    // The webhook already refuses to move a pinned tier, so letting one of
+    // these teams pay here would just take their card for nothing.
+    if (billing.productTierPinned) {
+      return NextResponse.json(
+        {
+          error:
+            "Your account is already set up on a custom plan. Get in touch with us if you need to change it.",
+        },
+        { status: 400 },
+      );
+    }
+
+    // A team with a still-live subscription posting here again — a stale
+    // tab, the back button — must not be allowed to create a second one.
+    if (
+      billing.polarSubscriptionId &&
+      LIVE_SUBSCRIPTION_STATUSES.has(billing.subscriptionStatus ?? "")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Your team already has a subscription. Manage it from the billing page instead of starting a new one.",
+        },
         { status: 400 },
       );
     }
