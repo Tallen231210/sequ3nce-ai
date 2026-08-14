@@ -47,6 +47,30 @@ export function normaliseTier(value: string | null | undefined): Tier {
   return DEFAULT_TIER;
 }
 
+/**
+ * The strict counterpart to `normaliseTier` — validation, not migration.
+ *
+ * `normaliseTier` reads values WE already stored (the database, a webhook,
+ * an old URL param) and defaults generously, because a missing or stale
+ * field there must never downgrade someone who already paid for everything.
+ * That same generosity is the wrong instinct for input we did not write
+ * ourselves: a typo, a stale client, or a tampered request body reaching
+ * `normaliseTier` resolves to `overwatch` and quietly sells the $650 plan to
+ * someone who asked for something else — the exact Stripe-era bug (a
+ * body-less request defaulting to the top tier) recurring through a
+ * different input shape.
+ *
+ * `parseTier` accepts only an exact, current tier name and returns `null`
+ * for everything else — no legacy keys, no default, no coercion. Anywhere a
+ * human or client is telling us what to charge them, reach for this one.
+ */
+export function parseTier(value: unknown): Tier | null {
+  if (value === "overview" || value === "oversight" || value === "overwatch") {
+    return value;
+  }
+  return null;
+}
+
 interface TierPrices {
   platform?: string;
   seat?: string;

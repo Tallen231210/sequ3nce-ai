@@ -2,7 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../../convex/_generated/api";
-import { normaliseTier, type Tier } from "@/lib/tiers";
+import { parseTier } from "@/lib/tiers";
 import { polarFetch, productIdForTier, PolarError } from "@/lib/polar";
 
 const getConvex = () => new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -19,20 +19,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Which plan. No default: the Stripe version defaulted to the top tier for
-    // a body-less request, which is a habit worth not repeating now that the
-    // page always sends one — a silent default here sells the $650 plan to
-    // someone who clicked $225.
-    let tier: Tier;
+    // Which plan. No default, and no coercion: `normaliseTier` is right for
+    // reading OUR OWN stored values (a missing field there must never
+    // downgrade someone already entitled), but it defaults an unrecognised
+    // string to the top tier — exactly wrong for a client-supplied body,
+    // where that default sells the $650 plan to someone who asked for
+    // something else, or nothing. `parseTier` is the strict counterpart:
+    // exact match on a real tier, or null. See its comment in lib/tiers.ts.
+    let rawTier: unknown;
     try {
       const body = (await req.json()) as { tier?: unknown };
-      if (typeof body?.tier !== "string") throw new Error("no tier");
-      tier = normaliseTier(body.tier);
+      rawTier = body?.tier;
     } catch {
       return NextResponse.json(
         { error: "Which plan? A tier is required." },
         { status: 400 },
       );
+    }
+
+    const tier = parseTier(rawTier);
+    if (!tier) {
+      const detail =
+        typeof rawTier === "string" && rawTier.length > 0
+          ? `Unrecognised plan: "${rawTier}".`
+          : "Which plan? A tier is required.";
+      return NextResponse.json({ error: detail }, { status: 400 });
     }
 
     const convex = getConvex();
