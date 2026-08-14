@@ -93,6 +93,29 @@ export const getTeamBilling = query({
   },
 });
 
+/**
+ * Record how many seats a team is paying for.
+ *
+ * Keyed on the signed-in user rather than a processor's customer id, so it
+ * works for a Polar team, a comped team with no processor at all, and anyone
+ * mid-migration between the two.
+ */
+export const setSeatCount = mutation({
+  args: { clerkId: v.string(), seatCount: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.seatCount) || args.seatCount < 0) {
+      throw new Error(`Invalid seat count: ${args.seatCount}`);
+    }
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) throw new Error("User not found");
+    await ctx.db.patch(user.teamId, { seatCount: args.seatCount });
+    return { success: true as const, teamId: user.teamId };
+  },
+});
+
 // Update team billing info (called from webhook)
 export const updateTeamBilling = mutation({
   args: {
