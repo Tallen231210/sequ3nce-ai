@@ -11,7 +11,31 @@
 
 import { TIER_ORDER, type Tier } from "./tiers";
 
-const POLAR_API = "https://api.polar.sh";
+const POLAR_API_PRODUCTION = "https://api.polar.sh";
+const POLAR_API_SANDBOX = "https://sandbox-api.polar.sh";
+
+/**
+ * Which Polar environment this request talks to.
+ *
+ * Defaults to production when POLAR_API_BASE is unset. A payment endpoint's
+ * failure mode has to be "obviously broken", never "silently misrouted" —
+ * defaulting to sandbox would mean a forgotten env var quietly stops taking
+ * real payments, which is far easier to miss than a sandbox test that fails
+ * loudly against a production-only token. Only the two hosts Polar actually
+ * runs are accepted; anything else is a typo, and a typo in a URL a payment
+ * request is about to be sent to must fail before the request goes out, not
+ * turn into a request to nowhere.
+ */
+function polarApiBase(): string {
+  const raw = process.env.POLAR_API_BASE;
+  if (!raw || raw === POLAR_API_PRODUCTION) return POLAR_API_PRODUCTION;
+  if (raw === POLAR_API_SANDBOX) return POLAR_API_SANDBOX;
+  throw new Error(
+    `POLAR_API_BASE is set to "${raw}", which is not a Polar host. Use ` +
+      `"${POLAR_API_PRODUCTION}" for production, "${POLAR_API_SANDBOX}" for ` +
+      `sandbox, or unset it to default to production.`,
+  );
+}
 
 /** How long a resolved tier→product map is trusted, per serverless instance. */
 const PRODUCT_CACHE_MS = 60_000;
@@ -105,7 +129,7 @@ export async function polarFetch<T>(
     );
   }
 
-  const res = await fetch(`${POLAR_API}${path}`, {
+  const res = await fetch(`${polarApiBase()}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -175,10 +199,18 @@ export function buildTierMap(products: PolarProduct[]): {
   return { byTier, ambiguous };
 }
 
-let productCache: { at: number; byTier: Map<Tier, string> } | null = null;
+// Keyed on the base URL, not just time: without that, a cached sandbox
+// product map could be handed to a production request (or the reverse) in
+// the window right after an env var flip, since nothing else invalidates it.
+let productCache: { at: number; base: string; byTier: Map<Tier, string> } | null = null;
 
 async function tierProducts(): Promise<Map<Tier, string>> {
-  if (productCache && Date.now() - productCache.at < PRODUCT_CACHE_MS) {
+  const base = polarApiBase();
+  if (
+    productCache &&
+    productCache.base === base &&
+    Date.now() - productCache.at < PRODUCT_CACHE_MS
+  ) {
     return productCache.byTier;
   }
 
@@ -194,7 +226,7 @@ async function tierProducts(): Promise<Map<Tier, string>> {
     );
   }
 
-  productCache = { at: Date.now(), byTier };
+  productCache = { at: Date.now(), base, byTier };
   return byTier;
 }
 
