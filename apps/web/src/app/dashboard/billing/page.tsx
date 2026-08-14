@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -91,7 +92,6 @@ function BillingPageContent() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCanceled, setShowCanceled] = useState(false);
@@ -136,26 +136,6 @@ function BillingPageContent() {
       router.replace("/dashboard/billing", { scroll: false });
     }
   }, [searchParams, router]);
-
-  const handleSubscribe = async () => {
-    setIsCheckoutLoading(true);
-    try {
-      const response = await fetch("/api/polar/create-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-
-      const data = await response.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch (error) {
-      console.error("Error creating checkout:", error);
-    } finally {
-      setIsCheckoutLoading(false);
-    }
-  };
 
   const handleManageSubscription = async () => {
     setIsPortalLoading(true);
@@ -260,21 +240,17 @@ function BillingPageContent() {
               </div>
             )}
 
+            {/* /api/polar/create-checkout requires an explicit tier — an
+                empty body 400s rather than defaulting to a plan, which is
+                deliberate (an empty body silently buying the most expensive
+                plan was the exact Stripe-era bug). There's no tier chosen at
+                this point in the page, so this sends them to the page built
+                for choosing one instead of guessing, and that page already
+                carries its own checkout-error handling. */}
             {!hasActiveSubscription && (
               <div className="pt-2">
-                <Button
-                  onClick={handleSubscribe}
-                  disabled={isCheckoutLoading}
-                  className="w-full sm:w-auto"
-                >
-                  {isCheckoutLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    "Subscribe Now"
-                  )}
+                <Button asChild className="w-full sm:w-auto">
+                  <Link href="/subscribe">Choose a Plan</Link>
                 </Button>
               </div>
             )}

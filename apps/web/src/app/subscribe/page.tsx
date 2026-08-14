@@ -129,14 +129,33 @@ function SubscribeContent() {
   // top tier — exactly the bug that once made a bare checkout body silently
   // buy the most expensive plan, recurring through a different input shape.
   // A junk ?tier= value should do nothing, not pick a plan nobody chose.
+  //
+  // Waits for `billing` to resolve (not just be truthy-checked) rather than
+  // reacting to `undefined`, because that's the same async query the
+  // redirect-to-dashboard effect above reads. Firing before it resolves
+  // would race that effect: a stale `/subscribe?tier=X` reached by the back
+  // button or a reused link, on a team that's already subscribed, could open
+  // a pointless second checkout before the redirect had a chance to land.
   useEffect(() => {
-    if (!pendingTier || !isTeamReady || !user || isLoading) return;
+    if (!pendingTier || !isTeamReady || !user || !billing || isLoading) return;
+    const isActive =
+      billing.subscriptionStatus === "active" ||
+      billing.subscriptionStatus === "trialing";
+    if (isActive) return; // The redirect effect above handles this case.
+
     const tier = parseTier(pendingTier);
     if (!tier) return;
     void handleSubscribe(tier);
+
+    // Drop ?tier= now that it's been acted on, so the back button or a
+    // reloaded/bookmarked URL can't replay this checkout.
+    const remaining = new URLSearchParams(searchParams.toString());
+    remaining.delete("tier");
+    const query = remaining.toString();
+    router.replace(query ? `/subscribe?${query}` : "/subscribe", { scroll: false });
     // Runs once, when the team is ready after a sign-up round trip.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingTier, isTeamReady, user]);
+  }, [pendingTier, isTeamReady, user, billing]);
 
   return (
     <div className="min-h-screen bg-white">
