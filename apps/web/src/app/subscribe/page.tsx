@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from "react";
 import { PlanChooser } from "./PlanChooser";
 import type { Tier } from "@/lib/tiers";
-import { useUser, SignUpButton, UserButton } from "@clerk/nextjs";
+import { useUser, UserButton } from "@clerk/nextjs";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -33,7 +33,22 @@ function SubscribeContent() {
       ?.selfServeCreated === true;
 
   // Check if user is logged out
-  const isLoggedOut = isUserLoaded && !user;
+  // No signed-out sign-up path here, deliberately.
+  //
+  // Self-serve purchase is off until the move to Polar — every tier fails the
+  // availability check because the per-tier price ids don't exist, so PlanChooser
+  // shows "get in touch and we'll set your team up directly", which is the truth.
+  // New teams are provisioned by hand in the meantime.
+  //
+  // There WAS a signed-out branch here with a Clerk sign-up button. It stays
+  // removed rather than hidden, because a button that creates an account which
+  // then can't buy anything strands someone on a page with nothing to do.
+  //
+  // When Polar lands, restoring it means more than putting the button back:
+  // /api/stripe/available-tiers requires auth and returns 401 to a signed-out
+  // visitor, and PlanChooser reads that 401 as "no plans exist". A prospect
+  // would be told plans aren't available while they are. Make that endpoint
+  // public — pricing isn't a secret — or handle 401 separately from an empty list.
 
   // Query billing status to check if subscription is active
   const billing = useQuery(
