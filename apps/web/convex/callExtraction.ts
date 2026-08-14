@@ -149,7 +149,14 @@ A recording bot joins whatever is on the calendar, so plenty of these are not sa
 
 Two traps, both of which have already caught this out on real calls:
 
-A call about JOBS is not automatically recruitment. Plenty of businesses SELL a service that helps people find work, land roles or build a career. If someone is being asked to PAY for help with their career, that is a sales call no matter how much of it is about employment. Ask which direction the money goes: they pay us, it's sales; we pay them, it's recruitment.
+TELLING A JOB-HELP SALE FROM AN INTERVIEW. Some businesses SELL employment help — landing roles, writing applications, career coaching. Their sales calls are wall to wall employment talk, and so are their hiring interviews. The subject matter is identical and useless for telling them apart.
+
+The question that separates them is WHO ENDS UP EMPLOYING THIS PERSON, and which way the money flows:
+
+- They are buying help getting hired SOMEWHERE ELSE, and they pay us → "sales". Signs: a price, a programme, "our service", résumé or application support, "we'll help you land a role".
+- They would be working FOR US → "recruitment". Signs: commission splits, "we pay out bi-weekly", lead volume they'd be given, a contractor agreement, an onboarding form, "the role here", talk of quota or ramp.
+
+Money direction is the tiebreak and it is nearly always audible. If they are being asked to hand over a card, it is a sale. If we are describing what we will pay THEM, it is an interview — however much of the call is about their career.
 
 A prospect who never turned up is still a SALES call. Voicemail, an empty room, a receptionist saying they're unavailable, one side talking — that is a sales call with outcome "no_show", not "other". A booked sales call that nobody attended is a fact worth counting, and calling it something else deletes it from the no-show rate.
 
