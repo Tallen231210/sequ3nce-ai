@@ -47,6 +47,55 @@ const IMPLAUSIBLE_AMOUNT = 5_000_000;
 const OUTCOMES = ["closed", "lost", "no_show", "follow_up", "rescheduled"];
 
 /**
+ * What kind of conversation this actually was.
+ *
+ * Bots join whatever is on the calendar. On one live team, three of four calls
+ * recorded as CLOSED DEALS in a single day were a recruitment interview, a new
+ * closer being onboarded, and an internal planning session — and one of those
+ * came with an invented £1,000 contract value attached.
+ *
+ * The model already knew. Its own reasoning said "this was a recruitment/hiring
+ * call" and then it reported a closed sale anyway, because the only fields it
+ * had were sales fields. Given somewhere to say so, it will.
+ */
+const CALL_TYPES = [
+  "sales",
+  "internal",
+  "recruitment",
+  "support",
+  "other",
+] as const;
+
+/**
+ * How the money actually moves, which is not the same as what the client pays.
+ *
+ * The distinction that makes cashCollected right or wrong:
+ *
+ *   third_party_financing  Klarna, Affirm and the like. The FINANCE COMPANY
+ *                          pays the business up front, so an approved
+ *                          application is a paid-in-full sale even though the
+ *                          client pays monthly for a year.
+ *   internal_plan          The business bills the client directly each month.
+ *                          They receive one instalment now and carry the rest
+ *                          as owed.
+ *
+ * Both sound identical in a transcript — "$566 a month for 12 months" — and
+ * they are opposite in the books. One live team sells both in the same call,
+ * with a £300 premium on the in-house option precisely because they wait for
+ * the money.
+ */
+const PAYMENT_STRUCTURES = [
+  "paid_in_full",
+  "third_party_financing",
+  "internal_plan",
+  "nothing_taken",
+  "unclear",
+] as const;
+
+/** Whether a third-party application actually went through. */
+const FINANCING_RESULTS = ["approved", "declined", "not_attempted", "unclear"] as const;
+
+/**
  * The objection list the dropdown already offered, unchanged.
  *
  * Classifying free-form objections into a fixed set is the part that has to be
@@ -85,9 +134,26 @@ const MORE_SPECIFIC_THAN_THINKING = [
   "timing",
 ];
 
-const SYSTEM_PROMPT = `You read a sales call transcript and report what factually happened on it. You are replacing a form the salesperson used to fill in themselves.
+const SYSTEM_PROMPT = `You read a call transcript and report what factually happened on it. You are replacing a form the salesperson used to fill in themselves.
 
 Report ONLY what the conversation actually supports. Leaving a field out is always better than guessing it — a missing number is obvious and harmless, a wrong one is believed and acted on.
+
+FIRST, WHAT KIND OF CALL IS THIS? Set callType before anything else.
+
+A recording bot joins whatever is on the calendar, so plenty of these are not sales calls at all:
+- "sales": someone is being sold to. A prospect, a price, a decision.
+- "internal": the company talking to itself. Planning, standups, strategy, coaching their own staff.
+- "recruitment": interviewing or onboarding someone to work AT THIS COMPANY. Commission structures, "we pay out bi-weekly", "sign your contractor agreement". The money flows FROM the company TO them — the opposite direction to a sale.
+- "support": an existing customer being helped.
+- "other": anything else.
+
+Two traps, both of which have already caught this out on real calls:
+
+A call about JOBS is not automatically recruitment. Plenty of businesses SELL a service that helps people find work, land roles or build a career. If someone is being asked to PAY for help with their career, that is a sales call no matter how much of it is about employment. Ask which direction the money goes: they pay us, it's sales; we pay them, it's recruitment.
+
+A prospect who never turned up is still a SALES call. Voicemail, an empty room, a receptionist saying they're unavailable, one side talking — that is a sales call with outcome "no_show", not "other". A booked sales call that nobody attended is a fact worth counting, and calling it something else deletes it from the no-show rate.
+
+If callType is not "sales", report callType and STOP. No outcome, no money, no objections. Those fields describe a sale, and there wasn't one. Do not translate an internal agreement into a "closed deal" — that invents revenue that never existed.
 
 OUTCOME — what happened by the end of the call:
 - "closed": they agreed to buy and payment was taken or arranged.
@@ -97,14 +163,27 @@ OUTCOME — what happened by the end of the call:
 - "rescheduled": they showed up only to move the meeting.
 If the call is too short or too fragmentary to tell, omit outcome entirely.
 
-MONEY — these two are different and confusing them is the worst error you can make:
-- contractValue = the TOTAL the prospect committed to. The full price of the programme.
-- cashCollected = the money actually taken TODAY, on this call.
+MONEY — report what you SAW, and let us work out the cash.
 
-Payment plans are normal here. "It's $5,000, we'll do $500 down and $500 a month" means contractValue 5000 and cashCollected 500 — NOT 5000. "Paid in full today" means the two are equal. If they discussed a price but paid nothing today, report contractValue and omit cashCollected.
-cashCollected can never exceed contractValue. If you find yourself about to report that, you have misread a payment plan — report contractValue only.
-Take the price they AGREED, not a higher figure floated earlier and then discounted. If several prices were discussed and none was agreed, report the one they were working from at the end.
-Report numbers only when a figure was actually said. Never infer a price from the type of product.
+- totalAgreed = the full price they committed to.
+- amountTakenToday = money actually charged on this call, if a figure was stated.
+- paymentStructure = HOW the money moves. This is the important one.
+
+Who ends up holding the money matters more than what the client pays each month, and the two are easy to confuse because they sound the same:
+
+- "third_party_financing": a finance company — Klarna, Affirm, Afterpay, "let's get you approved", "they'll ask for your income", a credit application. The finance company pays the business UP FRONT. The client's monthly payments go to them, not to the business.
+- "internal_plan": the business bills the client directly. "In-house", "paying us directly", "we'll charge your card each month", "no loan", "no interest, it's just a monthly card payment". The business receives one instalment now and waits for the rest.
+- "paid_in_full": the whole amount charged today.
+- "nothing_taken": agreed in principle, no money moved and no application submitted.
+- "unclear": a plan was discussed but you cannot tell which of the above it was. Say unclear rather than picking one — these have opposite consequences and a guess is worse than an admission.
+
+Both structures produce sentences like "$566 a month for twelve months". Listen for WHO IS PAID, not the instalment.
+
+financingResult — only when a third party was involved: was the application approved, declined, or never attempted? An approved application means the business has been paid; a declined one usually sends them to an in-house plan instead, so keep reading after a decline.
+
+Take the price they AGREED, not a higher figure floated earlier and then discounted. Businesses often price the same programme two ways — cheaper for cash, dearer on an in-house plan. Report the one matching the structure they actually chose.
+
+Report numbers only when a figure was actually said. NEVER infer a price from the type of product or from context. If no price was spoken, omit the number and say so in your reasoning — a call where you find yourself reasoning "no explicit price was stated, but given the context..." must report no number at all.
 
 OBJECTIONS — the categories are:
 ${OBJECTIONS.join(", ")}
@@ -145,10 +224,35 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
   input_schema: {
     type: "object",
     properties: {
+      callType: {
+        type: "string",
+        enum: [...CALL_TYPES],
+        description:
+          "What kind of call this is. If not 'sales', report ONLY this and stop.",
+      },
       outcome: {
         type: "string",
         enum: OUTCOMES,
         description: "What happened by the end. Omit if unclear.",
+      },
+      paymentStructure: {
+        type: "string",
+        enum: [...PAYMENT_STRUCTURES],
+        description:
+          "How the money moves. third_party_financing means a finance company paid the business up front; internal_plan means the business bills the client directly and is still owed the rest.",
+      },
+      financingResult: {
+        type: "string",
+        enum: [...FINANCING_RESULTS],
+        description: "Only when a third party was involved: did the application go through?",
+      },
+      totalAgreed: {
+        type: "number",
+        description: "The full price committed to. Omit if no figure was spoken.",
+      },
+      amountTakenToday: {
+        type: "number",
+        description: "Money actually charged on this call, if a figure was stated.",
       },
       contractValue: {
         type: "number",
@@ -187,6 +291,12 @@ const EXTRACTION_TOOL: Anthropic.Tool = {
 };
 
 export interface ExtractedCall {
+  /** Not a sale at all — nothing else on this object should be trusted. */
+  callType?: string;
+  paymentStructure?: string;
+  financingResult?: string;
+  totalAgreed?: number;
+  amountTakenToday?: number;
   outcome?: string;
   contractValue?: number;
   cashCollected?: number;
@@ -330,6 +440,90 @@ export function sanitiseExtraction(raw: any): ExtractedCall | null {
 
   if (typeof raw.reasoning === "string") {
     out.reasoning = raw.reasoning.slice(0, 400);
+  }
+
+  // A call that isn't a sale carries no sales facts.
+  //
+  // Enforced here rather than trusted to the prompt, because the failure this
+  // prevents already happened: a recruitment interview, an onboarding session
+  // and an internal planning call were all written down as CLOSED DEALS in one
+  // day, one of them with a £1,000 contract value the model admitted in its own
+  // reasoning was never stated.
+  if (typeof raw.callType === "string") {
+    out.callType = (CALL_TYPES as readonly string[]).includes(raw.callType)
+      ? raw.callType
+      : "other";
+    if (out.callType !== "sales") {
+      if (out.outcome || out.contractValue || out.cashCollected) {
+        discarded.push(`sales fields dropped on a ${out.callType} call`);
+      }
+      delete out.outcome;
+      delete out.contractValue;
+      delete out.cashCollected;
+      delete out.primaryObjection;
+      delete out.objections;
+      delete out.objectionsOvercome;
+      return out;
+    }
+  }
+
+  if (typeof raw.paymentStructure === "string" &&
+      (PAYMENT_STRUCTURES as readonly string[]).includes(raw.paymentStructure)) {
+    out.paymentStructure = raw.paymentStructure;
+  }
+  if (typeof raw.financingResult === "string" &&
+      (FINANCING_RESULTS as readonly string[]).includes(raw.financingResult)) {
+    out.financingResult = raw.financingResult;
+  }
+  const total = cleanAmount(raw.totalAgreed, "totalAgreed", discarded);
+  const takenToday = cleanAmount(raw.amountTakenToday, "amountTakenToday", discarded);
+  if (total !== undefined) out.totalAgreed = total;
+  if (takenToday !== undefined) out.amountTakenToday = takenToday;
+
+  // Turn the structure into the two numbers the product stores.
+  //
+  // This is the rule Tyler set, and it is deterministic on purpose: an approved
+  // third-party application means the finance company has already paid the
+  // business in full, even though the client will pay monthly for a year. An
+  // in-house plan means the business holds one instalment and is owed the rest.
+  // The same sentence — "$566 a month for twelve months" — describes both.
+  //
+  // Only fills what the model didn't state directly; an explicit figure always
+  // wins over an inference.
+  if (total !== undefined) {
+    switch (out.paymentStructure) {
+      case "paid_in_full":
+      case "third_party_financing": {
+        // A declined application is NOT a paid-in-full sale; they usually end
+        // up on an in-house plan instead, so leave the cash for the model.
+        const settled =
+          out.paymentStructure === "paid_in_full" ||
+          out.financingResult === "approved";
+        if (settled) {
+          if (out.contractValue === undefined) out.contractValue = total;
+          if (out.cashCollected === undefined) out.cashCollected = total;
+        }
+        break;
+      }
+      case "internal_plan": {
+        if (out.contractValue === undefined) out.contractValue = total;
+        if (out.cashCollected === undefined && takenToday !== undefined) {
+          out.cashCollected = takenToday;
+        }
+        break;
+      }
+      case "nothing_taken": {
+        if (out.contractValue === undefined) out.contractValue = total;
+        // Deliberately no cash. Nothing moved.
+        break;
+      }
+      default:
+        // "unclear" and absent both mean the same thing: we don't know how the
+        // money moved, so we don't say. Reporting a plausible number here is
+        // exactly what makes Collections chase someone who already paid.
+        if (out.contractValue === undefined) out.contractValue = total;
+        break;
+    }
   }
 
   // Objections only make sense on the matching kind of call. Keeping a
