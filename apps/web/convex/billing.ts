@@ -33,6 +33,8 @@ export const getTeamBilling = query({
       return {
         stripeCustomerId: team.stripeCustomerId,
         stripeSubscriptionId: team.stripeSubscriptionId,
+        polarCustomerId: team.polarCustomerId,
+        polarSubscriptionId: team.polarSubscriptionId,
         subscriptionStatus: "active", // Always active for founders
         currentPeriodEnd: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year from now
         seatCount: 999, // Unlimited seats for founders
@@ -54,6 +56,11 @@ export const getTeamBilling = query({
     return {
       stripeCustomerId: team.stripeCustomerId,
       stripeSubscriptionId: team.stripeSubscriptionId,
+      // The same two ids at Polar. Both processors are readable from one
+      // query because a team has at most one of them and the caller knows
+      // which it wants — B2C reads the Stripe pair, B2B reads these.
+      polarCustomerId: team.polarCustomerId,
+      polarSubscriptionId: team.polarSubscriptionId,
       subscriptionStatus: team.subscriptionStatus,
       currentPeriodEnd: team.currentPeriodEnd,
       seatCount: team.seatCount || 0,
