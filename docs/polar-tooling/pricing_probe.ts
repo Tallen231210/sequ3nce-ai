@@ -90,15 +90,27 @@ async function main() {
     }
   } finally {
     // Archive even if a case threw. A live probe product in a real catalogue is
-    // something a customer could buy.
+    // something a customer could buy. A failed archive is a failed run — it must
+    // not be swallowed by an unhandled rejection, and it must not let the run
+    // report ALL PASS while the product is still live.
     if (productId) {
-      await call("PATCH", `/v1/products/${productId}`, { is_archived: true });
-      const after = await call("GET", `/v1/products/${productId}`);
-      console.log(
-        after.is_archived
-          ? `probe product ${productId} archived`
-          : `WARNING: probe product ${productId} is STILL LIVE — archive it by hand`,
-      );
+      try {
+        await call("PATCH", `/v1/products/${productId}`, { is_archived: true });
+        const after = await call("GET", `/v1/products/${productId}`);
+        if (after.is_archived) {
+          console.log(`probe product ${productId} archived`);
+        } else {
+          failures++;
+          console.log(
+            `WARNING: probe product ${productId} is STILL LIVE — archive it by hand`,
+          );
+        }
+      } catch (err) {
+        failures++;
+        console.log(
+          `WARNING: probe product ${productId} archive check FAILED (${(err as Error).message}) — it may be STILL LIVE, archive it by hand`,
+        );
+      }
     }
   }
 
