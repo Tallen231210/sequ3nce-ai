@@ -8,6 +8,24 @@ function isFounderTeam(teamId: string): boolean {
   return founderTeamIds.includes(teamId);
 }
 
+/**
+ * The team id for a signed-in user.
+ *
+ * Needed by Polar checkout, which sends our own id as `external_customer_id`
+ * so a subscription can always be traced back to a team — see the comment on
+ * `polar.applySubscription`.
+ */
+export const getTeamIdForClerkUser = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    return user?.teamId ?? null;
+  },
+});
+
 // Get billing info for the current team
 export const getTeamBilling = query({
   args: { clerkId: v.string() },
