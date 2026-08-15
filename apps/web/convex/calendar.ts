@@ -256,9 +256,12 @@ export const connectCalendar = mutation({
     }
 
     // Update closer with ICS URL
+    const existing = await ctx.db.get(args.closerId);
     await ctx.db.patch(args.closerId, {
       icsUrl: url,
       calendarConnectedAt: Date.now(),
+      // Same default as the OAuth paths — see calendarOAuth.ts.
+      autoJoinEnabled: (existing as any)?.autoJoinEnabled ?? true,
     });
 
     return { success: true };
@@ -290,6 +293,7 @@ export const connectCalendarByEmail = mutation({
     await ctx.db.patch(closer._id, {
       icsUrl: url,
       calendarConnectedAt: Date.now(),
+      autoJoinEnabled: (closer as any).autoJoinEnabled ?? true,
     });
 
     return { success: true, closerId: closer._id };

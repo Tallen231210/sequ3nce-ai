@@ -13361,6 +13361,74 @@ http.route({
   }),
 });
 
+// A closer reading or changing whether we record their meetings.
+//
+// Behind the session like every other closer route, because this one decides
+// whether a bot sits in their calls. resolveCloser gives us WHO is asking; the
+// body's closerId is never trusted for this.
+http.route({
+  path: "/closer/autoJoin",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      // A REAL session, with no legacy closerId fallback.
+      //
+      // resolveCloser deliberately accepts a bare closerId so that desktop apps
+      // installed months ago keep working. Every other closer route inherits
+      // that, and for reading your own call history it is an acceptable trade.
+      //
+      // Not here. Proved it by curl: passing only a closerId and no token
+      // switched a real closer's recording OFF in production. Whether a bot
+      // sits in someone's meetings is not something a guessed id gets to
+      // decide, so this route asks for the token and nothing else.
+      const me =
+        typeof body.sessionToken === "string" && body.sessionToken.length > 0
+          ? await ctx.runQuery(internal.closerSession.resolveCloser, {
+              sessionToken: body.sessionToken,
+            })
+          : null;
+      if (!me) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      // Read when no change is asked for; write when one is.
+      if (typeof body.enabled === "boolean") {
+        const result = await ctx.runMutation(
+          internal.calendarOAuth.setAutoJoinForCloser,
+          { closerId: me.closerId, enabled: body.enabled },
+        );
+        if (!result.ok) {
+          return new Response(JSON.stringify(result), {
+            status: 200,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+      }
+
+      const state = await ctx.runQuery(
+        internal.calendarOAuth.readAutoJoinForCloser,
+        { closerId: me.closerId },
+      );
+      return new Response(JSON.stringify({ ok: true, ...state }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in /closer/autoJoin:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+closerPreflight("/closer/autoJoin");
+
 export default http;
 
 // ============================================
