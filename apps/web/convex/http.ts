@@ -12395,6 +12395,7 @@ http.route({
       request.headers.get("webhook-id"),
       request.headers.get("webhook-timestamp"),
       request.headers.get("webhook-signature"),
+      "rawSecret",
     );
     if (!valid) {
       // Refused, and deliberately NOT acknowledged. Either someone is forging
@@ -13095,16 +13096,36 @@ closerPreflight("/closer/fathom/sync");
 /**
  * Standard Webhooks signature check, shared by Fathom and Polar.
  *
- * Both providers implement the same specification, so this is one function
- * rather than two copies of the same crypto. Two copies of a signature check
- * is how you end up with a lenient one, and the lenient one is the hole.
+ * Both providers implement the same specification for the signed content and
+ * header format, so this is one function rather than two copies of the same
+ * crypto. Two copies of a signature check is how you end up with a lenient
+ * one, and the lenient one is the hole — which is why this takes an explicit
+ * `derivation` rather than guessing or trying both and accepting either.
+ *
+ * The one thing the providers do NOT agree on is how the signing key is
+ * derived from the secret:
+ *
+ *   - The Standard Webhooks spec says: strip the `whsec_` prefix, then
+ *     base64-DECODE the remainder to get the raw key bytes. Fathom follows
+ *     the spec — pass `"spec"`.
+ *   - Polar does not follow the spec here: it signs with the raw UTF-8 bytes
+ *     of the entire secret string, `whsec_` prefix included, no decoding —
+ *     pass `"rawSecret"`.
+ *
+ * This was not guessed — it was established by instrumenting the live
+ * endpoint and replaying a real Polar delivery against candidate key
+ * derivations; only `rawSecret` matched. Do not "clean this up" by making
+ * both providers use the same derivation.
  */
+type WebhookKeyDerivation = "spec" | "rawSecret";
+
 async function verifyStandardWebhook(
   rawBody: string,
   secret: string,
   webhookId: string | null,
   timestamp: string | null,
   signatureHeader: string | null,
+  keyDerivation: WebhookKeyDerivation,
 ): Promise<boolean> {
   if (!webhookId || !timestamp || !signatureHeader) return false;
 
@@ -13115,24 +13136,21 @@ async function verifyStandardWebhook(
     return false;
   }
 
-  // The signing key is the base64-DECODED secret, per the Standard Webhooks
-  // spec — and it arrives without padding.
-  //
-  // Polar's secret is 43 characters after the prefix: 32 bytes of base64 with
-  // the trailing "=" omitted. atob() rejects that, so the original code fell
-  // through to treating the secret as raw text and HMAC'd with 43 bytes instead
-  // of the intended 32. Every signature failed. Fathom's secret happens to be
-  // padded, which is why the same code worked there and would have silently
-  // refused every Polar delivery — until the endpoint hit ten failures and
-  // Polar switched it off.
-  const key = secret.startsWith("whsec_") ? secret.slice(6) : secret;
-  const padded = key + "=".repeat((4 - (key.length % 4)) % 4);
   let keyBytes: Uint8Array;
-  try {
-    keyBytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
-  } catch {
-    // Not base64 at all — some providers use a plain string secret.
-    keyBytes = new TextEncoder().encode(key);
+  if (keyDerivation === "rawSecret") {
+    // Polar: raw UTF-8 bytes of the entire secret string, prefix included.
+    keyBytes = new TextEncoder().encode(secret);
+  } else {
+    // Fathom, per the Standard Webhooks spec: strip the `whsec_` prefix and
+    // base64-decode the remainder. It arrives without padding.
+    const key = secret.startsWith("whsec_") ? secret.slice(6) : secret;
+    const padded = key + "=".repeat((4 - (key.length % 4)) % 4);
+    try {
+      keyBytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+    } catch {
+      // Not base64 at all — some providers use a plain string secret.
+      keyBytes = new TextEncoder().encode(key);
+    }
   }
 
   const cryptoKey = await crypto.subtle.importKey(
@@ -13230,6 +13248,7 @@ async function handleFathomWebhook(
       request.headers.get("webhook-id"),
       request.headers.get("webhook-timestamp"),
       request.headers.get("webhook-signature"),
+      "spec",
     );
     if (!valid) {
       console.warn(`[fathom] rejected an unverified webhook for team ${teamId}`);
