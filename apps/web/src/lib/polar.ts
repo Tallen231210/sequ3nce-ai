@@ -55,11 +55,25 @@ export interface PolarSubscriptionResponse {
   currency?: string;
   current_period_end?: string | null;
   cancel_at_period_end?: boolean;
+  ends_at?: string | null;
   product_id?: string;
   product?: {
     id?: string;
     name?: string;
     metadata?: Record<string, unknown> | null;
+  } | null;
+  /**
+   * A plan or seat change that Polar has accepted but not yet applied.
+   *
+   * Present under `proration_behavior: "next_period"` — the setting this
+   * product runs under, where nothing changes mid-cycle. Null when nothing is
+   * scheduled. Either `product_id` or `seats` may be null when only the other
+   * is changing.
+   */
+  pending_update?: {
+    product_id?: string | null;
+    seats?: number | null;
+    applies_at?: string | null;
   } | null;
 }
 
@@ -246,6 +260,22 @@ export async function productIdForTier(tier: Tier): Promise<string> {
     );
   }
   return id;
+}
+
+/**
+ * The reverse of `productIdForTier` — which tier does this product id belong to?
+ *
+ * For Polar fields that hand back a bare product id with no metadata attached,
+ * such as `pending_update.product_id` on a subscription. Returns null rather
+ * than guessing when the id isn't a live, tagged product — the same rule
+ * `tierOfProduct` follows for a product whose metadata doesn't resolve.
+ */
+export async function tierOfProductId(productId: string): Promise<Tier | null> {
+  const byTier = await tierProducts();
+  for (const [tier, id] of byTier) {
+    if (id === productId) return tier;
+  }
+  return null;
 }
 
 /**

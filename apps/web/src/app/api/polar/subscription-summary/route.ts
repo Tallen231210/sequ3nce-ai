@@ -7,6 +7,7 @@ import {
   polarFetch,
   availableTiers,
   tierOfProduct,
+  tierOfProductId,
   type PolarSubscriptionResponse,
 } from "@/lib/polar";
 
@@ -74,6 +75,22 @@ export async function GET() {
       `/v1/subscriptions/${billing.polarSubscriptionId}`,
     );
 
+    // A plan or seat change queued under `proration_behavior: "next_period"`.
+    // Resolved to a TIER here — never a raw Polar product id — so the page
+    // never has to know what a product id means. `tierOfProductId` returns
+    // null for an id it can't place, same as everywhere else a Polar id
+    // fails to resolve; the page treats that as "don't name the plan" rather
+    // than guessing at one.
+    const pendingUpdate = sub.pending_update
+      ? {
+          tier: sub.pending_update.product_id
+            ? await tierOfProductId(sub.pending_update.product_id)
+            : null,
+          seats: sub.pending_update.seats ?? null,
+          appliesAt: sub.pending_update.applies_at ?? null,
+        }
+      : null;
+
     return NextResponse.json({
       tier: tierOfProduct({ id: sub.product?.id ?? "", metadata: sub.product?.metadata }) ?? tier,
       hasSubscription: true,
@@ -90,6 +107,7 @@ export async function GET() {
       monthlyTotalCents: sub.amount ?? null,
       cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
       currentPeriodEnd: sub.current_period_end ?? null,
+      pendingUpdate,
       availableTiers: await safeAvailableTiers(),
     });
   } catch (err) {

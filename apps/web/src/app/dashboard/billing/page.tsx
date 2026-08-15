@@ -27,6 +27,13 @@ import {
 // team on $500 plus three seats at $150 saw $496 against a real $950 invoice.
 // Prices now come from Polar, which is the only place that knows — and has to,
 // because customers are grandfathered onto whatever rate they signed at.
+/** A plan or seat change accepted by Polar but not yet in effect. */
+interface PendingUpdate {
+  tier: Tier | null;
+  seats: number | null;
+  appliesAt: string | null;
+}
+
 interface SubscriptionSummary {
   tier: string;
   hasSubscription: boolean;
@@ -36,6 +43,7 @@ interface SubscriptionSummary {
   monthlyTotalCents: number | null;
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;
+  pendingUpdate?: PendingUpdate | null;
   availableTiers?: string[];
 }
 
@@ -47,7 +55,10 @@ function money(cents: number, currency = "usd"): string {
   }).format(cents / 100);
 }
 
-function formatDate(timestamp: number): string {
+// Accepts either a Convex timestamp (ms) or a Polar ISO string — `Date`
+// parses both — so the one formatter serves numbers from our own database
+// and dates read straight off a Polar response.
+function formatDate(timestamp: number | string): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
@@ -55,7 +66,14 @@ function formatDate(timestamp: number): string {
   });
 }
 
-function getStatusBadge(status: string | undefined) {
+// A subscription set to cancel is still reported "active" by both Convex and
+// Polar right up until the period ends — that's correct, access hasn't
+// stopped yet — but showing the plain "Active" badge next to a cancellation
+// in progress reads as "everything is fine" when it isn't.
+function getStatusBadge(status: string | undefined, cancelAtPeriodEnd?: boolean) {
+  if (cancelAtPeriodEnd) {
+    return <Badge variant="secondary">Canceling</Badge>;
+  }
   switch (status) {
     case "active":
       return <Badge variant="default">Active</Badge>;
@@ -232,19 +250,31 @@ function BillingPageContent() {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Status</span>
-              {getStatusBadge(billing?.subscriptionStatus)}
+              {getStatusBadge(billing?.subscriptionStatus, summary?.cancelAtPeriodEnd)}
             </div>
 
             {hasActiveSubscription && billing?.currentPeriodEnd && (
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
-                  Next billing date
+                  {summary?.cancelAtPeriodEnd ? "Access ends" : "Next billing date"}
                 </span>
                 <span className="font-medium">
                   {formatDate(billing.currentPeriodEnd)}
                 </span>
               </div>
+            )}
+
+            {/* Cancelled but not yet ended: they're still a paying, active
+                customer today, and "Next billing date" would tell them
+                they're about to be charged again when the opposite is true —
+                that date is when access stops. */}
+            {hasActiveSubscription && summary?.cancelAtPeriodEnd && billing?.currentPeriodEnd && (
+              <p className="text-sm text-muted-foreground">
+                Your subscription is set to cancel. You&apos;ll keep full
+                access until {formatDate(billing.currentPeriodEnd)}, and
+                won&apos;t be charged again after that.
+              </p>
             )}
 
             {/* /api/polar/create-checkout requires an explicit tier — an
@@ -337,6 +367,53 @@ function BillingPageContent() {
                     {money(summary.monthlyTotalCents ?? 0, currency)}/mo
                   </span>
                 </div>
+
+                {/* A plan switch or seat change under this billing model never
+                    takes effect right away — it's scheduled for the renewal
+                    date instead. Without this, the page looks completely
+                    unchanged after the change is confirmed, and the natural
+                    read is "it didn't work." */}
+                {summary.pendingUpdate && (
+                  <div className="space-y-1.5 rounded-lg border border-dashed p-3 text-[13px]">
+                    <p className="font-medium">Change scheduled</p>
+                    {summary.pendingUpdate.tier &&
+                      summary.pendingUpdate.tier !== normaliseTier(summary.tier) && (
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Plan</span>
+                          <span>
+                            {TIER_INFO[normaliseTier(summary.tier)].name} →{" "}
+                            {TIER_INFO[summary.pendingUpdate.tier].name}
+                          </span>
+                        </div>
+                      )}
+                    {summary.pendingUpdate.seats !== null &&
+                      summary.pendingUpdate.seats !== summary.seats && (
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Seats</span>
+                          <span>
+                            {summary.seats} → {summary.pendingUpdate.seats}
+                          </span>
+                        </div>
+                      )}
+                    {summary.pendingUpdate.appliesAt && (
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>Effective</span>
+                        <span>{formatDate(summary.pendingUpdate.appliesAt)}</span>
+                      </div>
+                    )}
+                    {/* Polar accepted a change but we couldn't place any of
+                        its details (an unresolved product id, no seat delta,
+                        no date) — still say so rather than showing nothing,
+                        which is the exact bug this block exists to fix. */}
+                    {!summary.pendingUpdate.tier &&
+                      summary.pendingUpdate.seats === null &&
+                      !summary.pendingUpdate.appliesAt && (
+                        <p className="text-muted-foreground">
+                          A change to your plan is scheduled.
+                        </p>
+                      )}
+                  </div>
+                )}
               </div>
             ) : summary && !summary.hasSubscription ? (
               <p className="py-2 text-sm text-muted-foreground">
@@ -370,6 +447,8 @@ function BillingPageContent() {
             <PlanSelector
               currentTier={summary?.tier ?? billing?.productTier}
               availableTiers={(summary?.availableTiers ?? []) as Tier[]}
+              currentPeriodEnd={summary?.currentPeriodEnd ?? null}
+              pendingTier={summary?.pendingUpdate?.tier ?? null}
               onChanged={() => {
                 // Polar's webhook writes the new tier, and it lands a moment
                 // after the API returns. Re-reading immediately would show the
