@@ -12,12 +12,19 @@ interface PolarCustomerSession {
 
 interface PolarCustomerSeat {
   member_id: string;
-  email: string;
   status: string;
+  // The email lives on the nested member, not on the seat itself — confirmed
+  // against a live sandbox response. `member` is typed optional/nullable
+  // because we treat a missing one defensively rather than assume its shape.
+  member?: { email?: string | null } | null;
 }
 
 interface PolarCustomerSeatList {
-  items: PolarCustomerSeat[];
+  // Polar's list endpoints mostly use `items`, but this one does not —
+  // confirmed against a live sandbox response.
+  seats: PolarCustomerSeat[];
+  available_seats: number;
+  total_seats: number;
 }
 
 export async function POST(req: Request) {
@@ -84,12 +91,29 @@ export async function POST(req: Request) {
       const seats = await polarFetch<PolarCustomerSeatList>(
         `/v1/customer-seats?subscription_id=${encodeURIComponent(subscriptionId)}`,
       );
-      const existing = seats.items?.find(
-        (seat) => seat.email?.toLowerCase() === email.toLowerCase(),
+      const existing = seats.seats?.find(
+        (seat) => seat.member?.email?.toLowerCase() === email.toLowerCase(),
       );
 
       if (existing) {
         memberId = existing.member_id;
+      } else if ((seats.available_seats ?? 0) <= 0) {
+        // We can see this coming — don't attempt a claim just to watch Polar
+        // reject it. Distinct from "no subscription yet": there IS a
+        // subscription, it's just fully seated by other people. Do NOT raise
+        // the seat count to make room — that's billing, and inflating it to
+        // open a portal would charge for a seat nobody uses.
+        console.error(
+          `[polar] create-portal: no available seats for subscription=${subscriptionId} ` +
+            `total_seats=${seats.total_seats} available_seats=${seats.available_seats}`,
+        );
+        return NextResponse.json(
+          {
+            error:
+              "This plan's seats are all assigned to other people, so the billing portal can't be opened for this account. Ask whoever manages billing to free up a seat.",
+          },
+          { status: 409 },
+        );
       } else {
         // No seat for this manager yet on this subscription — claim one.
         // Do NOT send external_member_id: a value that already exists
