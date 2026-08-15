@@ -7,6 +7,7 @@ import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem } from '@/
 import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting } from '@/lib/closer/client';
 import { extractProspectName } from './schedule/scheduleUtils';
 import { ScheduleMeetingModal } from './schedule/ScheduleMeetingModal';
+import { AutoJoinToggle } from './AutoJoinToggle';
 
 interface DashboardViewProps {
   closerInfo: CloserInfo;
@@ -92,10 +93,15 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
 
   return (
     <div className="mx-auto w-full max-w-[1200px] p-6 lg:p-8">
-      {/* Welcome Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-black">{greeting}</h1>
-        <p className="text-sm text-gray-500 mt-1">{dateStr}</p>
+      {/* Welcome Header. The recording switch sits opposite the greeting —
+          first screen, top right, where someone can see at a glance whether
+          their calls are being captured and stop it in one click. */}
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-black">{greeting}</h1>
+          <p className="text-sm text-gray-500 mt-1">{dateStr}</p>
+        </div>
+        <AutoJoinToggle />
       </div>
 
       {/* Above the stats on purpose. These calls are missing FROM those very

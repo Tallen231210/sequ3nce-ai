@@ -2544,3 +2544,36 @@ export async function updateOwnCallFacts(
     return { success: false, error: "Couldn't save that." };
   }
 }
+
+export interface AutoJoinState {
+  ok: boolean;
+  enabled: boolean;
+  available: boolean;
+  hasCalendar: boolean;
+  reason?: string;
+}
+
+/**
+ * Read or change whether Sequ3nce joins this closer's meetings.
+ *
+ * Omit `enabled` to read. The route identifies the caller from their session —
+ * it never takes a closerId as an instruction, because this switch decides
+ * whether a bot sits in someone's calls.
+ */
+export async function getOrSetAutoJoin(
+  enabled?: boolean,
+): Promise<AutoJoinState | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/closer/autoJoin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(enabled === undefined ? {} : { enabled }),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to read/set auto-join:", error);
+    Sentry.captureException(error, { tags: { feature: "autoJoinToggle" } });
+    return null;
+  }
+}
