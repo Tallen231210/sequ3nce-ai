@@ -18,3 +18,9 @@ blob-report/
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Backups of env files hold live secrets. `.env*.local` does NOT match a
+# name ending in something else, which is how a production key once reached
+# a commit. Match the prefix instead.
+.env.local.*
+*.prod-backup
