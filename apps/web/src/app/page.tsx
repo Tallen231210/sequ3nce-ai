@@ -434,6 +434,73 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
+      {/* QUALIFIER (dark)                            */}
+      {/*                                             */}
+      {/* This used to be the closing section. It sits here instead because  */}
+      {/* it does the qualifying, and qualifying is worth nothing at the     */}
+      {/* bottom of the page — someone under the bar should find out before  */}
+      {/* they read the whole thing, and someone over it should know we're   */}
+      {/* talking to them before they decide whether to keep scrolling.      */}
+      {/* ═══════════════════════════════════════════ */}
+      <section className="py-28 lg:py-36 relative z-10 overflow-hidden bg-zinc-950 text-white">
+        {/* Subtle dot grid in dark, mirrors the global pattern */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-0 opacity-40"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgb(63 63 70) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            maskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 50%, black 40%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 50%, black 40%, transparent 80%)",
+          }}
+        />
+        <div className="relative mx-auto max-w-7xl px-6">
+          <AnimatedSection>
+            <div className="text-center">
+              <h2 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[8rem] font-semibold tracking-[-0.03em] leading-[0.9]">
+                Doing $100k
+                <span className="text-zinc-600">?</span>
+                <br />
+                Let&apos;s{" "}
+                <span className="font-serif italic font-normal">talk</span>
+                <span className="text-zinc-600">.</span>
+              </h2>
+              <p className="mt-10 text-lg lg:text-xl text-zinc-400 max-w-xl mx-auto leading-relaxed">
+                One conversation decides whether this is a fit. If it is,
+                you&apos;re in the room — and we get to work on your sales
+                floor.
+              </p>
+              <div className="mt-14">
+                <SignedOut>
+                  <BookDemoButton
+                    size="lg"
+                    className="bg-white text-zinc-900 hover:bg-zinc-100"
+                  >
+                    See if you qualify
+                    <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                  </BookDemoButton>
+                </SignedOut>
+                <SignedIn>
+                  <Link href="/dashboard">
+                    <Button
+                      size="lg"
+                      className="bg-white text-zinc-900 hover:bg-zinc-100"
+                    >
+                      Go to Dashboard
+                      <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
+                    </Button>
+                  </Link>
+                </SignedIn>
+              </div>
+            </div>
+          </AnimatedSection>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════ */}
       {/* SCREENSHOTS                                 */}
       {/* ═══════════════════════════════════════════ */}
       <section className="py-32 relative z-10">
@@ -989,6 +1056,110 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
+      {/* CUSTOM BUILDS                               */}
+      {/*                                             */}
+      {/* Sits immediately before the ask on purpose. Every section above    */}
+      {/* describes something we already built, which any competitor can     */}
+      {/* claim to match. This is the one thing a company buying a product   */}
+      {/* off a shelf cannot get, so it's the last thing read before the     */}
+      {/* membership card.                                                   */}
+      {/* ═══════════════════════════════════════════ */}
+      <section className="py-32 relative z-10">
+        <div className="mx-auto max-w-7xl px-6">
+          <AnimatedSection>
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-8 mb-16">
+              <div>
+                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
+                  Built For You
+                </div>
+                <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05] text-zinc-950">
+                  Need something
+                  <br />
+                  it doesn&apos;t{" "}
+                  <span className="font-serif italic font-normal">do</span>
+                  <span className="text-zinc-300">?</span>
+                </h2>
+              </div>
+              <p className="text-zinc-500 max-w-md text-lg leading-relaxed">
+                Ask us. Members request features and we build them — for their
+                account, to their business, on their timeline.
+              </p>
+            </div>
+          </AnimatedSection>
+
+          <div className="grid lg:grid-cols-12 gap-4">
+            <AnimatedSection delay={100} className="lg:col-span-7">
+              <div className="relative h-full rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm p-10 lg:p-14">
+                <h3 className="text-2xl lg:text-3xl font-semibold tracking-tight text-zinc-950 leading-snug">
+                  No two sales floors are the same, so no two accounts should
+                  be either.
+                </h3>
+                <div className="mt-8 space-y-5 text-zinc-500 leading-relaxed">
+                  <p>
+                    Generic software makes every business bend to fit it. You
+                    end up with a tool that measures the wrong thing
+                    confidently, and a team quietly working around it.
+                  </p>
+                  <p>
+                    We&apos;ve learned this the hard way, from our own members.
+                    One books through a form that qualifies before the calendar
+                    does. One runs setters entirely through DMs. One sells the
+                    same programme at two prices depending on how you pay. Every
+                    one of those broke something generic, and every one of them
+                    got it fixed — because they asked.
+                  </p>
+                  <p className="text-zinc-950 font-medium">
+                    That&apos;s the difference between buying software and being
+                    a member. You get a say in what it becomes.
+                  </p>
+                </div>
+              </div>
+            </AnimatedSection>
+
+            <AnimatedSection delay={200} className="lg:col-span-5">
+              <div className="h-full rounded-2xl border border-zinc-200 bg-white/60 backdrop-blur-sm p-10 lg:p-12">
+                {/* Not "How it works" — the nav already uses that phrase for
+                    the setup section further up the page. */}
+                <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-6">
+                  How requests work
+                </div>
+                <ul className="space-y-6">
+                  {[
+                    {
+                      t: "You tell us what's missing",
+                      d: "A metric your business runs on, a report nobody else needs, a workflow that fits how you actually sell.",
+                    },
+                    {
+                      t: "We build it into your account",
+                      d: "Not a request that joins a queue behind a thousand other customers. Yours, built for your business.",
+                    },
+                    {
+                      t: "It stays yours",
+                      d: "Features built for a member live in their account. They don't ship to everyone by default — including your competitors.",
+                    },
+                  ].map((s) => (
+                    <li key={s.t} className="flex gap-3.5">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-950">
+                        <Check className="h-3 w-3 text-white" strokeWidth={2.5} />
+                      </span>
+                      <div>
+                        <p className="text-[15px] font-medium leading-snug text-zinc-950">
+                          {s.t}
+                        </p>
+                        <p className="mt-1 text-[13px] leading-relaxed text-zinc-500">
+                          {s.d}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </AnimatedSection>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════ */}
       {/* MEMBERSHIP — Split layout                   */}
       {/* ═══════════════════════════════════════════ */}
       <section id="pricing" className="py-32 relative z-10">
@@ -1060,6 +1231,11 @@ export default function Home() {
 
       {/* ═══════════════════════════════════════════ */}
       {/* FINAL CTA (dark — visual rhythm break + premium close) */}
+      {/*                                             */}
+      {/* Deliberately not the same words as the qualifier near the top.     */}
+      {/* That one asks whether they're big enough; by the time someone      */}
+      {/* reaches the bottom they've answered it, so this one closes on the  */}
+      {/* trade they'd actually be making.                                   */}
       {/* ═══════════════════════════════════════════ */}
       <section className="py-32 lg:py-44 relative z-10 overflow-hidden bg-zinc-950 text-white">
         {/* Subtle dot grid in dark, mirrors the global pattern */}
@@ -1080,17 +1256,15 @@ export default function Home() {
           <AnimatedSection>
             <div className="text-center">
               <h2 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[8rem] font-semibold tracking-[-0.03em] leading-[0.9]">
-                Doing $100k
-                <span className="text-zinc-600">?</span>
+                Stop running it
                 <br />
-                Let&apos;s{" "}
-                <span className="font-serif italic font-normal">talk</span>
+                <span className="font-serif italic font-normal">alone</span>
                 <span className="text-zinc-600">.</span>
               </h2>
               <p className="mt-10 text-lg lg:text-xl text-zinc-400 max-w-xl mx-auto leading-relaxed">
-                One conversation decides whether this is a fit. If it is,
-                you&apos;re in the room — and we get to work on your sales
-                floor.
+                Members hand us the part of the business everything else
+                depends on. If that&apos;s a trade worth making, one
+                conversation settles it.
               </p>
               <div className="mt-14">
                 <SignedOut>
