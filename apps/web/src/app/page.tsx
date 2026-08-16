@@ -8,7 +8,7 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { BookDemoButton } from "@/components/ui/calendly-modal";
-import { PricingTiers } from "./_landing/PricingTiers";
+import { MembershipCard } from "./_landing/MembershipCard";
 import { Logo } from "@/components/ui/logo";
 import {
   ArrowRight,
@@ -184,17 +184,17 @@ export default function Home() {
 
   const steps = [
     { icon: UserPlus, num: "01", title: "Create your team", description: "Set up your account and add your closers in minutes." },
-    { icon: Monitor, num: "02", title: "Closers install the app", description: "One download, one login. The bot auto-joins their calls. That's it." },
+    { icon: Monitor, num: "02", title: "Closers connect a calendar", description: "Nothing to install — it runs in the browser. The bot joins their calls on its own from there." },
     { icon: Eye, num: "03", title: "You see everything", description: "Watch calls live, review transcripts, track performance. Full visibility from day one." },
   ];
 
   const faqs = [
-    { question: "What types of calls does Sequ3nce work with?", answer: "Zoom, Google Meet, Microsoft Teams — any video call platform. On Overwatch our bot joins scheduled calls through your Google Calendar automatically. On Oversight we pull in whatever your team already records with. Either way it works with the platform you use today." },
-    { question: "How does the meeting bot work?", answer: "It's part of Overwatch. Closers connect their Google Calendar once, and the bot detects upcoming calls and joins them to record and transcribe — completely hands-free. On Oversight you skip the bot entirely and we use the recordings your team already makes." },
-    { question: "Which plan should we start on?", answer: "Most teams start on Oversight — you already record your calls, so you get transcripts and analysis on day one without changing how anyone works. Start on Overview if you just want the numbers in one place, and move up to Overwatch when you want every call captured automatically and a playbook built from your best ones." },
-    { question: "Can we change plans later?", answer: "Any time, in one click from your billing page. Your invoice is adjusted for the part of the month you've already paid for. Moving down never deletes anything — every call, recording and transcript you already have stays exactly where it is." },
+    { question: "How do I get access to Sequ3nce?", answer: "You don't buy it. Sequ3nce belongs to a private community of 7-figure entrepreneurs using it to scale, and membership starts with a conversation. If you're doing $100k a month or more, book a call and we'll work out whether this is a fit — both ways." },
+    { question: "What does it cost?", answer: "It depends how much of your sales operation you want us running. Some members take the software and the room; others hand us the floor entirely — recruiting, coaching and day-to-day management. We'll talk numbers on the call, once we both know what you actually need." },
+    { question: "What types of calls does Sequ3nce work with?", answer: "Zoom, Google Meet, Microsoft Teams — any video call platform. Our bot can join scheduled calls through your Google Calendar automatically, or we can work from whatever your team already records with. Either way it fits the way you sell today." },
+    { question: "How does the meeting bot work?", answer: "Closers connect their Google Calendar once, and the bot joins their calls to record and transcribe — hands-free, nobody has to remember to hit record. If your team already records everything, you can skip the bot entirely and we'll use what you have." },
     { question: "Is my call data secure?", answer: "Yes, all calls are encrypted in transit and at rest. You own your data, and we never share it with third parties." },
-    { question: "What if my closers aren't tech-savvy?", answer: "Setup is one step: log in and connect your Google Calendar. It all runs in the browser, so there is nothing to install. After that the only thing a closer ever does is say how a call went — about fifteen seconds, once per call." },
+    { question: "What if my closers aren't tech-savvy?", answer: "There is nothing for them to learn. Setup is one step — log in and connect a calendar — and it runs in the browser, so nothing gets installed. After that the AI reads each call and fills in the outcome, the money and the objections on its own. Your closers don't fill in forms." },
     { question: "Do you integrate with my CRM?", answer: "Yes — we integrate with GoHighLevel (GHL) and Hyros. Call outcomes, lead quality scores, objections, and AI summaries sync automatically to your GHL contacts after every call. For Hyros, we push call intelligence data so your ad platforms can optimize for leads that actually close, not just leads that book calls." },
   ];
 
@@ -266,7 +266,9 @@ export default function Home() {
                       ? "Setter Data"
                       : id === "integrations"
                         ? "Integrations"
-                        : id.charAt(0).toUpperCase() + id.slice(1)}
+                        : id === "pricing"
+                          ? "Membership"
+                          : id.charAt(0).toUpperCase() + id.slice(1)}
                 </button>
               ))}
               <Link
@@ -287,7 +289,7 @@ export default function Home() {
                     Log in
                   </Button>
                 </SignInButton>
-                <BookDemoButton>Book a Demo</BookDemoButton>
+                <BookDemoButton>See if you qualify</BookDemoButton>
               </SignedOut>
               <SignedIn>
                 <Link href="/dashboard">
@@ -315,24 +317,24 @@ export default function Home() {
           <AnimatedSection>
             <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full text-xs font-medium tracking-widest uppercase text-zinc-500 mb-10 border border-zinc-200 bg-white/60 backdrop-blur-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Now with automatic meeting bot
+              Private community · By application
             </div>
           </AnimatedSection>
 
           {/* Massive headline */}
           <AnimatedSection delay={100}>
             <h1 className="text-[3.5rem] sm:text-[5rem] md:text-[6.5rem] lg:text-[8rem] xl:text-[9rem] font-semibold tracking-[-0.04em] leading-[0.9] text-zinc-950 max-w-6xl">
-              Finally see why
+              Sequ3nce isn&apos;t
               <br />
-              deals{" "}
-              <span className="font-serif italic font-normal">close</span>
+              for{" "}
+              <span className="font-serif italic font-normal">sale</span>
               <span className="text-zinc-300">.</span>
             </h1>
           </AnimatedSection>
 
           <AnimatedSection delay={200}>
             <p className="text-xl sm:text-2xl text-zinc-400 mt-6 tracking-wide font-light">
-              And why they don&apos;t.
+              It&apos;s what our members use.
             </p>
           </AnimatedSection>
 
@@ -340,14 +342,15 @@ export default function Home() {
           <AnimatedSection delay={300}>
             <div className="mt-12 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-10 max-w-6xl">
               <p className="text-lg text-zinc-500 max-w-lg leading-relaxed">
-                Stop managing your sales team blind. See every call as it
-                happens, know exactly what&apos;s being said, and make decisions
-                based on data — not what your closers tell you after the fact.
+                A private community of 7-figure entrepreneurs using Sequ3nce to
+                scale. Members get the software, our AI agents, and a team that
+                runs their sales floor — closers recruited, trained and managed.
+                Minimum $100k per month to be considered.
               </p>
               <div className="flex flex-wrap items-center gap-4 shrink-0">
                 <SignedOut>
                   <BookDemoButton size="lg">
-                    Book a Demo
+                    See if you qualify
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
@@ -1000,34 +1003,33 @@ export default function Home() {
       </section>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* PRICING — Split layout                      */}
+      {/* MEMBERSHIP — Split layout                   */}
       {/* ═══════════════════════════════════════════ */}
       <section id="pricing" className="py-32 relative z-10">
         <div className="mx-auto max-w-7xl px-6">
           <AnimatedSection>
             <div className="max-w-2xl">
               <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
-                Pricing
+                Membership
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
-                Three ways to
+                There&apos;s one
                 <br />
-                <span className="font-serif italic font-normal">see your</span>
-                <br />
-                sales floor<span className="text-zinc-300">.</span>
+                <span className="font-serif italic font-normal">way</span> in
+                <span className="text-zinc-300">.</span>
               </h2>
               <p className="mt-8 text-zinc-500 text-lg leading-relaxed">
-                Start with the numbers. Add the calls when you want to know what
-                the good ones have in common. Move up when you&apos;re ready to
-                coach from them. No hidden fees, no per-minute charges, and you
-                can change plan whenever.
+                No plans, no checkout, no free trial. Sequ3nce belongs to a
+                private community of 7-figure entrepreneurs using it to scale,
+                and the only way in is a conversation. If you&apos;re doing
+                $100k a month or more, that conversation is worth having.
               </p>
             </div>
           </AnimatedSection>
 
           <AnimatedSection delay={150}>
             <div className="mt-16">
-              <PricingTiers />
+              <MembershipCard />
             </div>
           </AnimatedSection>
         </div>
@@ -1092,16 +1094,17 @@ export default function Home() {
           <AnimatedSection>
             <div className="text-center">
               <h2 className="text-5xl sm:text-6xl lg:text-7xl xl:text-[8rem] font-semibold tracking-[-0.03em] leading-[0.9]">
-                Stop wondering
-                <span className="text-zinc-600">.</span>
+                Doing $100k
+                <span className="text-zinc-600">?</span>
                 <br />
-                Start{" "}
-                <span className="font-serif italic font-normal">knowing</span>
+                Let&apos;s{" "}
+                <span className="font-serif italic font-normal">talk</span>
                 <span className="text-zinc-600">.</span>
               </h2>
               <p className="mt-10 text-lg lg:text-xl text-zinc-400 max-w-xl mx-auto leading-relaxed">
-                See exactly why deals close and why they don&apos;t — starting
-                today.
+                One conversation decides whether this is a fit. If it is,
+                you&apos;re in the room — and we get to work on your sales
+                floor.
               </p>
               <div className="mt-14">
                 <SignedOut>
@@ -1109,7 +1112,7 @@ export default function Home() {
                     size="lg"
                     className="bg-white text-zinc-900 hover:bg-zinc-100"
                   >
-                    Book a Demo
+                    See if you qualify
                     <ArrowRight className="h-4 w-4 ml-2" strokeWidth={1.5} />
                   </BookDemoButton>
                 </SignedOut>
@@ -1159,7 +1162,9 @@ export default function Home() {
                         ? "How It Works"
                         : id.toUpperCase() === "FAQ"
                           ? "FAQ"
-                          : id.charAt(0).toUpperCase() + id.slice(1)}
+                          : id === "pricing"
+                            ? "Membership"
+                            : id.charAt(0).toUpperCase() + id.slice(1)}
                     </button>
                   </li>
                 ))}
