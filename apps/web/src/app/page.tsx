@@ -394,27 +394,12 @@ export default function Home() {
             </div>
           </AnimatedSection>
 
-          {/* Hero video — lazy-loaded so it doesn't tank mobile PageSpeed.
-              preload="none" prevents the MP4 from being fetched on page load.
-              First screenshot acts as the poster; native controls reveal the
-              play button. Click-to-play on all devices. */}
-          <AnimatedSection delay={500} className="mt-20">
-            <div className="relative">
-              {/* Glow behind video */}
-              <div className="absolute -inset-6 bg-gradient-to-b from-zinc-200/50 via-zinc-100/20 to-transparent rounded-3xl blur-2xl" />
-              <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-[0_50px_100px_-30px_rgba(0,0,0,0.15)]">
-                <video
-                  preload="none"
-                  poster="/screenshots/Live-calls.gif"
-                  controls
-                  playsInline
-                  className="w-full h-auto bg-zinc-100"
-                >
-                  <source src="/videos/hero.mp4" type="video/mp4" />
-                </video>
-              </div>
-            </div>
-          </AnimatedSection>
+          {/* The hero video used to sit here. Its poster was Live-calls.gif —
+              the same screenshot that opens the tabs section immediately
+              below, so the page showed the identical product shot twice
+              before saying anything. Removed rather than re-postered: we're
+              selling the outcome now, and leading with a software demo argues
+              the opposite. */}
 
           {/* Platform logos */}
           <AnimatedSection delay={600}>
@@ -459,14 +444,15 @@ export default function Home() {
                 Platform
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
-                Your sales floor,
+                You stop finding
                 <br />
-                in one{" "}
-                <span className="font-serif italic font-normal">dashboard</span>
+                out too{" "}
+                <span className="font-serif italic font-normal">late</span>
                 <span className="text-zinc-300">.</span>
               </h2>
               <p className="mt-6 text-zinc-500 text-lg leading-relaxed">
-                Real-time visibility into every call, every closer, every deal.
+                Every call, every closer, every deal — while there&apos;s still
+                time to do something about it.
               </p>
             </div>
           </AnimatedSection>
@@ -572,8 +558,8 @@ export default function Home() {
                 </h2>
               </div>
               <p className="text-zinc-500 max-w-md text-lg leading-relaxed">
-                Everything you need to manage a high-performing sales team —
-                without sitting on every call.
+                You get a sales floor that runs at your standard whether
+                you&apos;re watching it or not.
               </p>
             </div>
           </AnimatedSection>
@@ -668,17 +654,17 @@ export default function Home() {
                   Setter Data
                 </div>
                 <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
-                  Most tools stop at the closer.
+                  Your money leaks
                   <br />
-                  We see the{" "}
-                  <span className="font-serif italic font-normal">whole funnel</span>
+                  before the{" "}
+                  <span className="font-serif italic font-normal">call</span>
                   <span className="text-zinc-300">.</span>
                 </h2>
               </div>
               <p className="text-zinc-500 max-w-md text-lg leading-relaxed">
-                Every lead has a setter behind it. Sequ3nce is the only platform
-                that joins setter activity to closer outcomes — so you know
-                exactly where your pipeline is leaking.
+                Every lead has a setter behind it. We join what they did to what
+                actually closed — so you find the leak instead of arguing about
+                whose fault it is.
               </p>
             </div>
           </AnimatedSection>
@@ -797,16 +783,16 @@ export default function Home() {
                 Integrations
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
-                Close the loop between
+                Stop paying for leads
                 <br />
-                sales and{" "}
-                <span className="font-serif italic font-normal">marketing</span>
+                that never{" "}
+                <span className="font-serif italic font-normal">close</span>
                 <span className="text-zinc-300">.</span>
               </h2>
               <p className="mt-6 text-zinc-500 text-lg leading-relaxed">
-                Sequ3nce doesn&apos;t just record calls — it feeds real
-                conversation intelligence back into the tools your team already
-                uses.
+                What gets said on your calls flows back into your ad platform
+                and your CRM — so your spend follows the leads that turn into
+                money, not the ones that just book.
               </p>
             </div>
           </AnimatedSection>
@@ -965,8 +951,8 @@ export default function Home() {
                 Setup
               </div>
               <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight">
-                Three steps<span className="text-zinc-300">.</span>{" "}
-                <span className="font-serif italic font-normal">That&apos;s it</span>
+                Running in days<span className="text-zinc-300">.</span>{" "}
+                <span className="font-serif italic font-normal">Not quarters</span>
                 <span className="text-zinc-300">.</span>
               </h2>
             </div>
