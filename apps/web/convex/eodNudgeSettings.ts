@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import {
   action,
   internalMutation,
@@ -72,55 +72,56 @@ export const updateEodNudgeSettings = mutation({
   },
   handler: async (ctx, args) => {
     const user = await resolveAuthUser(ctx, args.clerkId);
-    if (!user) throw new Error("Not authorised");
+    if (!user) throw new ConvexError("Not authorised");
     if (!canEdit(user)) {
-      throw new Error("Only managers can change notification settings");
+      throw new ConvexError("Only managers can change notification settings");
     }
     const teamId = user.teamId as Id<"teams">;
 
     if (args.channel !== undefined && !["slack", "discord"].includes(args.channel)) {
-      throw new Error("channel must be 'slack' or 'discord'");
+      throw new ConvexError("channel must be 'slack' or 'discord'");
     }
     if (
       args.hourLocal !== undefined &&
       (!Number.isInteger(args.hourLocal) || args.hourLocal < 0 || args.hourLocal > 23)
     ) {
-      throw new Error("hourLocal must be an integer between 0 and 23");
+      throw new ConvexError("hourLocal must be an integer between 0 and 23");
     }
     if (args.reportDays !== undefined) {
       const days = args.reportDays;
       if (days.length === 0) {
-        throw new Error("Pick at least one day, or switch the nudge off");
+        throw new ConvexError("Pick at least one day, or switch the nudge off");
       }
       if (days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
-        throw new Error("Days must be 0 (Sunday) through 6 (Saturday)");
+        throw new ConvexError("Days must be 0 (Sunday) through 6 (Saturday)");
       }
       if (new Set(days).size !== days.length) {
-        throw new Error("Duplicate days");
+        throw new ConvexError("Duplicate days");
       }
     }
     if (args.slackChannelId !== undefined && args.slackChannelId.length > 100) {
-      throw new Error("slackChannelId is too long");
+      throw new ConvexError("slackChannelId is too long");
     }
     if (args.slackChannelName !== undefined && args.slackChannelName.length > 100) {
-      throw new Error("slackChannelName is too long");
+      throw new ConvexError("slackChannelName is too long");
     }
     if (args.discordWebhookUrl !== undefined) {
       const trimmed = args.discordWebhookUrl.trim();
       if (trimmed !== "" && !DISCORD_PREFIXES.some((p) => trimmed.startsWith(p))) {
-        throw new Error("That doesn't look like a Discord webhook URL");
+        throw new ConvexError("That doesn't look like a Discord webhook URL");
       }
     }
 
-    // Switching on without a delivery hour would mean a nudge that silently
-    // never fires, which reads as a broken feature rather than a missing setting.
-    if (args.enabled === true) {
-      const team = await ctx.db.get(teamId);
-      const hour = args.hourLocal ?? team?.eodNudgeHourLocal;
-      if (typeof hour !== "number") {
-        throw new Error("Pick a delivery time before switching the nudge on");
-      }
-    }
+    // Enabling without a delivery hour is ALLOWED, deliberately.
+    //
+    // This used to refuse, which read well and deadlocked the screen: the hour
+    // picker lives inside the section that's disabled while the nudge is off,
+    // so a manager couldn't set a time until they enabled it and couldn't
+    // enable it until they'd set a time. The only way through was the CLI.
+    //
+    // Nothing unsafe about the looser rule — maybeSendEodNudgeForTeam already
+    // refuses to send with no target hour ("no target hour configured"), so an
+    // enabled-but-unscheduled nudge sits inert. The UI says so loudly instead.
 
     // Sparse patch — only what was actually sent, so two settings changed in
     // quick succession can't clobber each other.
@@ -162,13 +163,13 @@ export const sendTestEodNudge = action({
     const target = await ctx.runQuery(internal.eodNudgeSettings.resolveTestTarget, {
       clerkId: args.clerkId,
     });
-    if (!target) throw new Error("Not authorised");
-    if (!target.canEdit) throw new Error("Only managers can send a test");
+    if (!target) throw new ConvexError("Not authorised");
+    if (!target.canEdit) throw new ConvexError("Only managers can send a test");
 
     const since = target.lastTestAt ? Date.now() - target.lastTestAt : Infinity;
     if (since < TEST_SEND_COOLDOWN_MS) {
       const wait = Math.ceil((TEST_SEND_COOLDOWN_MS - since) / 1000);
-      throw new Error(`Just sent one — try again in ${wait}s.`);
+      throw new ConvexError(`Just sent one — try again in ${wait}s.`);
     }
 
     const result = await ctx.runAction(
