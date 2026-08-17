@@ -134,9 +134,15 @@ export const applyManagerBotEvent = internalAction({
       args,
     );
 
-    // Recall only has the transcript once it says done. Asking earlier
-    // returns an empty one, which we would then store as though it were real.
+    // Recall only has the recording and transcript once it says done. Asking
+    // earlier returns a bot with no recordings and an empty transcript, which
+    // we would then store as though they were real.
     if (args.event === "bot.done" && result?.meetingId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.managerMeetingTranscript.fetchManagerRecording,
+        { meetingId: result.meetingId },
+      );
       await ctx.scheduler.runAfter(
         0,
         internal.managerMeetingTranscript.fetchManagerTranscript,
