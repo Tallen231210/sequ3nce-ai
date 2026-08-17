@@ -29,8 +29,13 @@ import { DEFAULT_TIMEZONE } from "./closerPerformance";
 type ActionCtx = any;
 type TeamDoc = Doc<"teams">;
 
-/** 0=Sun..6=Sat, matching JS getDay() and the schema field. */
-const WEEKDAY_INDEX: Record<string, number> = {
+/**
+ * 0=Sun..6=Sat, matching JS getDay() and the schema field.
+ *
+ * Exported so the end-of-day nudge gates on weekdays the same way rather than
+ * keeping its own copy that can drift.
+ */
+export const WEEKDAY_INDEX: Record<string, number> = {
   Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
 };
 
@@ -56,8 +61,60 @@ export const getEnabledCloserScorecardTeams = internalQuery({
   },
 });
 
+/**
+ * Slack renders at most 50 blocks and truncates the rest silently. Two blocks
+ * per closer plus the header and footers keeps a 20-rep team inside that, and
+ * anything beyond is reported rather than dropped.
+ */
+const MAX_CLOSERS_SHOWN = 20;
+const shown = (rows: any[]) => rows.slice(0, MAX_CLOSERS_SHOWN);
+
+/**
+ * " (+3)" / " (-$400)" — or nothing at all.
+ *
+ * Absent when there's no previous day and when the number didn't move, because
+ * a column of "(0)" is noise that hides the deltas that matter. Cash gets the
+ * money formatter; counts print bare.
+ */
+function delta(
+  now: number,
+  before: number | undefined,
+  fmt: (n: number) => string = (n) => String(n),
+): string {
+  if (before === undefined || before === null) return "";
+  const diff = now - before;
+  if (diff === 0) return "";
+  return `  _(${diff > 0 ? "+" : "−"}${fmt(Math.abs(diff))})_`;
+}
+
+/** Same as `delta`, without Slack's italics — Discord renders `_..._` literally here. */
+function dDelta(
+  now: number,
+  before: number | undefined,
+  fmt: (n: number) => string = (n) => String(n),
+): string {
+  if (before === undefined || before === null) return "";
+  const diff = now - before;
+  if (diff === 0) return "";
+  return ` (${diff > 0 ? "+" : "−"}${fmt(Math.abs(diff))})`;
+}
+
+/** "Fri 14 Aug" from a YYYY-MM-DD key, for labelling what we compared against. */
+function humanReadableDayKey(dayKey: string): string {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
 function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
   const t = data.dayTotals;
+  // Null on a team's very first reported day, and after a fortnight of silence.
+  const p = data.prevDayTotals as any | null;
   const blocks: any[] = [
     {
       type: "header",
@@ -70,36 +127,91 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
     {
       type: "section",
       fields: [
-        { type: "mrkdwn", text: `*Cash*\n${money(t.cash)}` },
-        { type: "mrkdwn", text: `*Closes*\n${t.closes}` },
-        { type: "mrkdwn", text: `*Booked*\n${t.booked}` },
-        { type: "mrkdwn", text: `*Taken*\n${t.taken}` },
+        { type: "mrkdwn", text: `*Cash*\n${money(t.cash)}${delta(t.cash, p?.cash, money)}` },
+        { type: "mrkdwn", text: `*Closes*\n${t.closes}${delta(t.closes, p?.closes)}` },
+        { type: "mrkdwn", text: `*Booked*\n${t.booked}${delta(t.booked, p?.booked)}` },
+        { type: "mrkdwn", text: `*Taken*\n${t.taken}${delta(t.taken, p?.taken)}` },
+        { type: "mrkdwn", text: `*Offers*\n${t.offers}${delta(t.offers, p?.offers)}` },
+        {
+          type: "mrkdwn",
+          text: `*Contract*\n${money(t.contractValue)}${delta(t.contractValue, p?.contractValue, money)}`,
+        },
       ],
     },
     {
       type: "section",
       fields: [
         { type: "mrkdwn", text: `*Show rate*\n${pct(data.dayRates.showPct)}` },
+        { type: "mrkdwn", text: `*Offer → Close*\n${pct(data.dayRates.offerClosePct)}` },
         { type: "mrkdwn", text: `*Close rate*\n${pct(data.dayRates.closePct)}` },
+        { type: "mrkdwn", text: `*Booked %*\n${pct(data.dayRates.bookedPct)}` },
       ],
     },
   ];
 
   if (data.rows.length > 0) {
-    const medals = ["🥇", "🥈", "🥉"];
-    const lines = data.rows
-      .map((r: any, i: number) => {
-        const badge = medals[i] ?? `${i + 1}.`;
-        const parts = [plural(r.taken, "call", "calls")];
-        if (r.closes > 0) parts.push(`${plural(r.closes, "close", "closes")}`);
-        return `${badge} *${r.name}* — ${money(r.cash)}  _(${parts.join(", ")})_`;
-      })
-      .join("\n");
     blocks.push({ type: "divider" });
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: `*By closer*\n${lines}` },
+      text: {
+        type: "mrkdwn",
+        text: data.prevDayKey
+          ? `*By closer*  _(vs ${humanReadableDayKey(data.prevDayKey)})_`
+          : "*By closer*",
+      },
     });
+
+    const medals = ["🥇", "🥈", "🥉"];
+    // A block per closer rather than one line each. The ask was every field
+    // they fill in at end of day, per person — that doesn't fit on a line, and
+    // squeezing it onto one produces something nobody reads.
+    for (const [i, r] of shown(data.rows).entries()) {
+      const badge = medals[i] ?? `${i + 1}.`;
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `${badge} *${r.name}* — ${money(r.cash)}${delta(r.cash, r.prev?.cash, money)}`,
+        },
+        fields: [
+          { type: "mrkdwn", text: `*Slots*\n${r.slots}${delta(r.slots, r.prev?.slots)}` },
+          { type: "mrkdwn", text: `*Booked*\n${r.booked}${delta(r.booked, r.prev?.booked)}` },
+          { type: "mrkdwn", text: `*Taken*\n${r.taken}${delta(r.taken, r.prev?.taken)}` },
+          { type: "mrkdwn", text: `*Offers*\n${r.offers}${delta(r.offers, r.prev?.offers)}` },
+          { type: "mrkdwn", text: `*Closes*\n${r.closes}${delta(r.closes, r.prev?.closes)}` },
+          {
+            type: "mrkdwn",
+            text: `*Contract*\n${money(r.contractValue)}${delta(r.contractValue, r.prev?.contractValue, money)}`,
+          },
+        ],
+      });
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text:
+              `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)}` +
+              (r.prev ? "" : "  ·  _first day with numbers, nothing to compare_"),
+          },
+        ],
+      });
+    }
+
+    // Never truncate quietly — a manager reading eight names must not assume
+    // that's everyone who worked.
+    const hidden = data.rows.length - shown(data.rows).length;
+    if (hidden > 0) {
+      blocks.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `_+${hidden} more ${hidden === 1 ? "closer" : "closers"} — see the Team Performance tab for the full list._`,
+          },
+        ],
+      });
+    }
   }
 
   // Month to date gives a single day its meaning — a slow Tuesday inside a
@@ -134,25 +246,51 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
 
 function buildDiscordEmbed(data: any, zd: ZonedDate): any {
   const t = data.dayTotals;
+  const p = data.prevDayTotals as any | null;
   const fields: any[] = [
-    { name: "Cash", value: money(t.cash), inline: true },
-    { name: "Closes", value: String(t.closes), inline: true },
-    { name: "Booked", value: String(t.booked), inline: true },
-    { name: "Taken", value: String(t.taken), inline: true },
+    { name: "Cash", value: `${money(t.cash)}${dDelta(t.cash, p?.cash, money)}`, inline: true },
+    { name: "Closes", value: `${t.closes}${dDelta(t.closes, p?.closes)}`, inline: true },
+    { name: "Booked", value: `${t.booked}${dDelta(t.booked, p?.booked)}`, inline: true },
+    { name: "Taken", value: `${t.taken}${dDelta(t.taken, p?.taken)}`, inline: true },
+    { name: "Offers", value: `${t.offers}${dDelta(t.offers, p?.offers)}`, inline: true },
+    {
+      name: "Contract",
+      value: `${money(t.contractValue)}${dDelta(t.contractValue, p?.contractValue, money)}`,
+      inline: true,
+    },
     { name: "Show rate", value: pct(data.dayRates.showPct), inline: true },
+    { name: "Offer → Close", value: pct(data.dayRates.offerClosePct), inline: true },
     { name: "Close rate", value: pct(data.dayRates.closePct), inline: true },
   ];
 
   if (data.rows.length > 0) {
+    // Discord caps a field value at 1024 characters and drops the overflow, so
+    // the per-closer detail is built line by line and stopped deliberately
+    // rather than sliced mid-name.
+    const lines: string[] = [];
+    let used = 0;
+    let rendered = 0;
+    for (const r of shown(data.rows)) {
+      const line =
+        `**${r.name}** — ${money(r.cash)}${dDelta(r.cash, r.prev?.cash, money)}\n` +
+        `Slots ${r.slots}${dDelta(r.slots, r.prev?.slots)} · ` +
+        `Booked ${r.booked}${dDelta(r.booked, r.prev?.booked)} · ` +
+        `Taken ${r.taken}${dDelta(r.taken, r.prev?.taken)} · ` +
+        `Offers ${r.offers}${dDelta(r.offers, r.prev?.offers)} · ` +
+        `Closes ${r.closes}${dDelta(r.closes, r.prev?.closes)}\n` +
+        `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)}`;
+      if (used + line.length + 1 > 1000) break;
+      lines.push(line);
+      used += line.length + 1;
+      rendered++;
+    }
+    const omitted = data.rows.length - rendered;
+    if (omitted > 0) lines.push(`_+${omitted} more — see the Team Performance tab._`);
     fields.push({
-      name: "By closer",
-      value: data.rows
-        .map(
-          (r: any, i: number) =>
-            `${i + 1}. **${r.name}** — ${money(r.cash)} (${plural(r.taken, "call", "calls")}${r.closes > 0 ? `, ${plural(r.closes, "close", "closes")}` : ""})`,
-        )
-        .join("\n")
-        .slice(0, 1024),
+      name: data.prevDayKey
+        ? `By closer (vs ${humanReadableDayKey(data.prevDayKey)})`
+        : "By closer",
+      value: lines.join("\n\n").slice(0, 1024),
       inline: false,
     });
   }

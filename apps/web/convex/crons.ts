@@ -263,6 +263,17 @@ crons.cron(
   {},
 );
 
+// Chase yesterday's missing end-of-day forms. Runs at :15 rather than :05 so
+// that when a team points both at the same hour, the scoreboard lands first —
+// the nudge explains a gap the scoreboard just showed, and arriving before it
+// reads as a non-sequitur.
+crons.cron(
+  "eod-nudge",
+  "15 * * * *",
+  internal.eodNudgeNotifications.runEodNudges,
+  {},
+);
+
 // How Fathom calls actually arrive.
 //
 // This was meant to be a backstop behind the webhook. The webhook never

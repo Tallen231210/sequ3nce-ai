@@ -340,6 +340,24 @@ export default defineSchema({
     /** Last manual "send test" — throttles repeat posts into a live channel. */
     closerDailyScorecardTestSentAt: v.optional(v.number()),
 
+    /**
+     * "Who hasn't filed their end-of-day" nudge. Same shape again.
+     *
+     * Separate from the scoreboard on purpose. The scoreboard only counts days
+     * a closer submitted, so anyone who skips the form disappears from it
+     * rather than showing a bad number — on a real Friday that meant one of
+     * three closers appeared and nothing said the others were missing. This
+     * names them, and stays silent when everyone has filed.
+     */
+    eodNudgeEnabled: v.optional(v.boolean()),
+    eodNudgeChannel: v.optional(v.string()), // "slack" | "discord"
+    eodNudgeSlackChannelId: v.optional(v.string()),
+    eodNudgeSlackChannelName: v.optional(v.string()),
+    eodNudgeDiscordWebhookUrl: v.optional(v.string()),
+    eodNudgeHourLocal: v.optional(v.number()), // 0-23 in team.timezone
+    eodNudgeDays: v.optional(v.array(v.number())), // 0=Sun..6=Sat; undefined = Mon-Fri
+    eodNudgeTestSentAt: v.optional(v.number()),
+
     // Outstanding balances digest. Same six-field shape as the two scorecards
     // above, for the same reason: a manager who has configured one already
     // knows how to configure this.
