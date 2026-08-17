@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CapacitySettings } from "./CapacitySettings";
+import { EodNudgeSettings } from "./EodNudgeSettings";
 import { ScorecardSettings } from "./ScorecardSettings";
 import { TargetsSettings } from "./TargetsSettings";
 
@@ -9,6 +10,7 @@ const SECTIONS = [
  ["targets", "Goals & prize"],
  ["availability", "Availability"],
  ["post", "Daily post"],
+ ["nudge", "Missing EODs"],
 ] as const;
 
 type Section = (typeof SECTIONS)[number][0];
@@ -46,6 +48,7 @@ export function SettingsTab() {
       {section === "targets" && <TargetsSettings />}
  {section === "availability" && <CapacitySettings />}
  {section === "post" && <ScorecardSettings />}
+ {section === "nudge" && <EodNudgeSettings />}
     </div>
   );
 }
