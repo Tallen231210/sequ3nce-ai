@@ -23,17 +23,30 @@ import {
   type Tier,
 } from "@/lib/tiers";
 
+// Same convention as the billing page's own `formatDate`: Polar hands back an
+// ISO string, Convex a millisecond timestamp, and `Date` parses either.
+function formatDate(timestamp: number | string): string {
+  return new Date(timestamp).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function PlanSelector({
   currentTier,
-  isLegacyPricing,
   availableTiers,
+  currentPeriodEnd,
+  pendingTier,
   onChanged,
 }: {
   currentTier: string | undefined;
   /** Tiers with prices configured. Anything else can't be bought yet. */
   availableTiers: Tier[];
-  /** On a price that predates tiers — changing plan gives that rate up. */
-  isLegacyPricing?: boolean;
+  /** When the current plan renews — the date a switch actually takes effect. */
+  currentPeriodEnd?: string | number | null;
+  /** A plan switch already scheduled for the next renewal, if any. */
+  pendingTier?: Tier | null;
   onChanged: () => void;
 }) {
   const current = normaliseTier(currentTier);
@@ -52,7 +65,7 @@ export function PlanSelector({
     setConfirming(null);
     setError(null);
     try {
-      const res = await fetch("/api/stripe/change-tier", {
+      const res = await fetch("/api/polar/change-tier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tier }),
@@ -81,18 +94,11 @@ export function PlanSelector({
 
   return (
     <div className="space-y-4">
-      {isLegacyPricing && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
-          You&apos;re on original pricing from before we had plans. Changing
-          plan moves you onto current rates and that can&apos;t be undone —
-          worth talking to us first if you&apos;re not sure.
-        </p>
-      )}
-
       <div className="grid gap-4 md:grid-cols-3">
         {sellable.map((tier) => {
           const info = TIER_INFO[tier];
           const isCurrent = tier === current;
+          const isScheduled = !isCurrent && tier === pendingTier;
           const down = isDowngrade(current, tier);
           return (
             <div
@@ -107,6 +113,15 @@ export function PlanSelector({
                 {isCurrent && (
                   <span className="rounded-full bg-foreground px-2 py-0.5 text-[11px] font-medium text-background">
                     Current
+                  </span>
+                )}
+                {/* A second click here doesn't do anything harmful — it just
+                    re-schedules the same change — but with nothing on screen
+                    to say a switch is already queued, it reads as the first
+                    click having failed. */}
+                {isScheduled && (
+                  <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    Scheduled{currentPeriodEnd ? ` for ${formatDate(currentPeriodEnd)}` : ""}
                   </span>
                 )}
               </div>
@@ -168,9 +183,28 @@ export function PlanSelector({
               where they are. You keep everything you&apos;ve already recorded —
               you just won&apos;t make new ones this way.
             </p>
+            {/* Nothing is prorated on this billing model — a switch takes
+                effect at the next renewal, not mid-cycle, so there's no
+                partial-month credit or charge to describe. Saying otherwise
+                is how a customer ends up disputing a charge that was always
+                going to happen exactly as billed. */}
             <p className="mt-3 text-[12.5px] text-muted-foreground">
-              Your next invoice will be adjusted for the unused part of this
-              month.
+              {currentPeriodEnd ? (
+                <>
+                  Nothing changes today. You&apos;ll stay on{" "}
+                  {TIER_INFO[current].name} until{" "}
+                  {formatDate(currentPeriodEnd)}, then move to{" "}
+                  {TIER_INFO[confirming].name} and be billed its price from
+                  that date. Nothing is refunded or charged now.
+                </>
+              ) : (
+                <>
+                  Nothing changes today. You&apos;ll stay on{" "}
+                  {TIER_INFO[current].name} until your next renewal, then
+                  move to {TIER_INFO[confirming].name} and be billed its
+                  price from that date. Nothing is refunded or charged now.
+                </>
+              )}
             </p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setConfirming(null)}>

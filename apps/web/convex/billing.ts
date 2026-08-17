@@ -8,6 +8,24 @@ function isFounderTeam(teamId: string): boolean {
   return founderTeamIds.includes(teamId);
 }
 
+/**
+ * The team id for a signed-in user.
+ *
+ * Needed by Polar checkout, which sends our own id as `external_customer_id`
+ * so a subscription can always be traced back to a team — see the comment on
+ * `polar.applySubscription`.
+ */
+export const getTeamIdForClerkUser = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    return user?.teamId ?? null;
+  },
+});
+
 // Get billing info for the current team
 export const getTeamBilling = query({
   args: { clerkId: v.string() },
@@ -33,6 +51,8 @@ export const getTeamBilling = query({
       return {
         stripeCustomerId: team.stripeCustomerId,
         stripeSubscriptionId: team.stripeSubscriptionId,
+        polarCustomerId: team.polarCustomerId,
+        polarSubscriptionId: team.polarSubscriptionId,
         subscriptionStatus: "active", // Always active for founders
         currentPeriodEnd: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year from now
         seatCount: 999, // Unlimited seats for founders
@@ -54,6 +74,11 @@ export const getTeamBilling = query({
     return {
       stripeCustomerId: team.stripeCustomerId,
       stripeSubscriptionId: team.stripeSubscriptionId,
+      // The same two ids at Polar. Both processors are readable from one
+      // query because a team has at most one of them and the caller knows
+      // which it wants — B2C reads the Stripe pair, B2B reads these.
+      polarCustomerId: team.polarCustomerId,
+      polarSubscriptionId: team.polarSubscriptionId,
       subscriptionStatus: team.subscriptionStatus,
       currentPeriodEnd: team.currentPeriodEnd,
       seatCount: team.seatCount || 0,
@@ -65,6 +90,29 @@ export const getTeamBilling = query({
       /** True when the tier was pinned by hand rather than derived from Stripe. */
       productTierPinned: !!team.productTierOverride,
     };
+  },
+});
+
+/**
+ * Record how many seats a team is paying for.
+ *
+ * Keyed on the signed-in user rather than a processor's customer id, so it
+ * works for a Polar team, a comped team with no processor at all, and anyone
+ * mid-migration between the two.
+ */
+export const setSeatCount = mutation({
+  args: { clerkId: v.string(), seatCount: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.seatCount) || args.seatCount < 0) {
+      throw new Error(`Invalid seat count: ${args.seatCount}`);
+    }
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) throw new Error("User not found");
+    await ctx.db.patch(user.teamId, { seatCount: args.seatCount });
+    return { success: true as const, teamId: user.teamId };
   },
 });
 

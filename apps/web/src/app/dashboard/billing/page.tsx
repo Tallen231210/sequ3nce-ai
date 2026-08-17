@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { PlanSelector } from "./plan-selector";
-import type { Tier } from "@/lib/tiers";
+import { TIER_INFO, normaliseTier, type Tier } from "@/lib/tiers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,15 +25,13 @@ import {
 // The old constants ($199 / $99) are gone deliberately. They were testing-account
 // prices shown to every customer regardless of what they actually paid, so a
 // team on $500 plus three seats at $150 saw $496 against a real $950 invoice.
-// Prices now come from Stripe, which is the only place that knows — and has to,
+// Prices now come from Polar, which is the only place that knows — and has to,
 // because customers are grandfathered onto whatever rate they signed at.
-interface SubscriptionLine {
-  kind: string;
-  label: string;
-  unitAmountCents: number;
-  quantity: number;
-  subtotalCents: number;
-  interval: string;
+/** A plan or seat change accepted by Polar but not yet in effect. */
+interface PendingUpdate {
+  tier: Tier | null;
+  seats: number | null;
+  appliesAt: string | null;
 }
 
 interface SubscriptionSummary {
@@ -40,9 +39,11 @@ interface SubscriptionSummary {
   hasSubscription: boolean;
   status?: string;
   currency: string;
-  lines: SubscriptionLine[];
+  seats: number;
   monthlyTotalCents: number | null;
-  isLegacyPricing?: boolean;
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEnd?: string | null;
+  pendingUpdate?: PendingUpdate | null;
   availableTiers?: string[];
 }
 
@@ -54,7 +55,10 @@ function money(cents: number, currency = "usd"): string {
   }).format(cents / 100);
 }
 
-function formatDate(timestamp: number): string {
+// Accepts either a Convex timestamp (ms) or a Polar ISO string — `Date`
+// parses both — so the one formatter serves numbers from our own database
+// and dates read straight off a Polar response.
+function formatDate(timestamp: number | string): string {
   return new Date(timestamp).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
@@ -62,7 +66,14 @@ function formatDate(timestamp: number): string {
   });
 }
 
-function getStatusBadge(status: string | undefined) {
+// A subscription set to cancel is still reported "active" by both Convex and
+// Polar right up until the period ends — that's correct, access hasn't
+// stopped yet — but showing the plain "Active" badge next to a cancellation
+// in progress reads as "everything is fine" when it isn't.
+function getStatusBadge(status: string | undefined, cancelAtPeriodEnd?: boolean) {
+  if (cancelAtPeriodEnd) {
+    return <Badge variant="secondary">Canceling</Badge>;
+  }
   switch (status) {
     case "active":
       return <Badge variant="default">Active</Badge>;
@@ -99,7 +110,6 @@ function BillingPageContent() {
   const { clerkId, isLoading: isTeamLoading } = useTeam();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCanceled, setShowCanceled] = useState(false);
@@ -112,14 +122,21 @@ function BillingPageContent() {
   // The real numbers, from Stripe. Fetched rather than derived so a
   // grandfathered price is shown as what it is instead of as today's rate.
   const [summary, setSummary] = useState<SubscriptionSummary | null>(null);
+  // Distinct from "still loading" (summary === null, summaryError === false):
+  // a failed fetch used to leave the page reading "Loading your current
+  // pricing…" forever, with no way to tell a hung request from a broken one.
+  const [summaryError, setSummaryError] = useState(false);
   const loadSummary = useCallback(async () => {
     try {
-      const res = await fetch("/api/stripe/subscription-summary");
-      if (!res.ok) return;
+      const res = await fetch("/api/polar/subscription-summary");
+      if (!res.ok) {
+        setSummaryError(true);
+        return;
+      }
       setSummary((await res.json()) as SubscriptionSummary);
+      setSummaryError(false);
     } catch {
-      // Leave it null — the card falls back to saying it can't show a price
-      // rather than showing a wrong one.
+      setSummaryError(true);
     }
   }, []);
   useEffect(() => {
@@ -145,30 +162,10 @@ function BillingPageContent() {
     }
   }, [searchParams, router]);
 
-  const handleSubscribe = async () => {
-    setIsCheckoutLoading(true);
-    try {
-      const response = await fetch("/api/stripe/create-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-
-      const data = await response.json();
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch (error) {
-      console.error("Error creating checkout:", error);
-    } finally {
-      setIsCheckoutLoading(false);
-    }
-  };
-
   const handleManageSubscription = async () => {
     setIsPortalLoading(true);
     try {
-      const response = await fetch("/api/stripe/create-portal", {
+      const response = await fetch("/api/polar/create-portal", {
         method: "POST",
       });
 
@@ -253,14 +250,14 @@ function BillingPageContent() {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Status</span>
-              {getStatusBadge(billing?.subscriptionStatus)}
+              {getStatusBadge(billing?.subscriptionStatus, summary?.cancelAtPeriodEnd)}
             </div>
 
             {hasActiveSubscription && billing?.currentPeriodEnd && (
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
-                  Next billing date
+                  {summary?.cancelAtPeriodEnd ? "Access ends" : "Next billing date"}
                 </span>
                 <span className="font-medium">
                   {formatDate(billing.currentPeriodEnd)}
@@ -268,58 +265,69 @@ function BillingPageContent() {
               </div>
             )}
 
-            {!hasActiveSubscription && (
-              <div className="pt-2">
-                <Button
-                  onClick={handleSubscribe}
-                  disabled={isCheckoutLoading}
-                  className="w-full sm:w-auto"
-                >
-                  {isCheckoutLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    "Subscribe Now"
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {/* A team with no Stripe customer has nothing to manage — comped
-                accounts, and anyone mid-migration between processors. The
-                portal route 400s for them, and because the click handler only
-                follows a returned URL, the button would sit there doing
-                literally nothing. Say why instead. */}
-            {hasActiveSubscription && !billing?.stripeCustomerId && (
-              <p className="pt-2 text-sm text-muted-foreground">
-                No payment method on file — your account is active and there is
-                nothing to pay right now.
+            {/* Cancelled but not yet ended: they're still a paying, active
+                customer today, and "Next billing date" would tell them
+                they're about to be charged again when the opposite is true —
+                that date is when access stops. */}
+            {hasActiveSubscription && summary?.cancelAtPeriodEnd && billing?.currentPeriodEnd && (
+              <p className="text-sm text-muted-foreground">
+                Your subscription is set to cancel. You&apos;ll keep full
+                access until {formatDate(billing.currentPeriodEnd)}, and
+                won&apos;t be charged again after that.
               </p>
             )}
 
-            {hasActiveSubscription && billing?.stripeCustomerId && (
+            {/* /api/polar/create-checkout requires an explicit tier — an
+                empty body 400s rather than defaulting to a plan, which is
+                deliberate (an empty body silently buying the most expensive
+                plan was the exact Stripe-era bug). There's no tier chosen at
+                this point in the page, so this sends them to the page built
+                for choosing one instead of guessing, and that page already
+                carries its own checkout-error handling. */}
+            {!hasActiveSubscription && (
               <div className="pt-2">
-                <Button
-                  variant="outline"
-                  onClick={handleManageSubscription}
-                  disabled={isPortalLoading}
-                >
-                  {isPortalLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      Manage Subscription
-                      <ExternalLink className="h-4 w-4 ml-2" />
-                    </>
-                  )}
+                <Button asChild className="w-full sm:w-auto">
+                  <Link href="/subscribe">Choose a Plan</Link>
                 </Button>
               </div>
             )}
+
+            {/* A team with no customer at either processor has nothing to
+                manage — comped accounts, and anyone mid-migration between
+                processors. The portal route 400s for them, and because the
+                click handler only follows a returned URL, the button would
+                sit there doing literally nothing. Say why instead. */}
+            {hasActiveSubscription &&
+              !billing?.stripeCustomerId &&
+              !billing?.polarCustomerId && (
+                <p className="pt-2 text-sm text-muted-foreground">
+                  No payment method on file — your account is active and there
+                  is nothing to pay right now.
+                </p>
+              )}
+
+            {hasActiveSubscription &&
+              (billing?.stripeCustomerId || billing?.polarCustomerId) && (
+                <div className="pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleManageSubscription}
+                    disabled={isPortalLoading}
+                  >
+                    {isPortalLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        Manage Subscription
+                        <ExternalLink className="h-4 w-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
           </CardContent>
         </Card>
 
@@ -331,36 +339,97 @@ function BillingPageContent() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {summary?.hasSubscription && summary.lines.length > 0 ? (
-              <>
-                {summary.lines.map((line, i) => (
-                  <div
-                    key={`${line.label}-${i}`}
-                    className="flex items-center justify-between border-b py-2"
-                  >
-                    <div>
-                      <p className="font-medium">{line.label}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {line.kind === "seat"
-                          ? `${line.quantity} paid ${line.quantity === 1 ? "seat" : "seats"} (${billing?.activeCloserCount ?? 0} closers) at ${money(line.unitAmountCents, currency)} each`
-                          : `Access to Sequ3nce dashboard`}
-                      </p>
-                    </div>
-                    <span className="font-medium">
-                      {money(line.subtotalCents, currency)}/{line.interval}
-                    </span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between pt-2">
+            {summary?.hasSubscription ? (
+              <div className="space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {TIER_INFO[normaliseTier(summary.tier)].name}, including
+                    your first closer
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {/* Polar's seat count, when present, is what the team is
+                        actually billed for. But a paying team should never be
+                        told "0 closers" on the strength of a field Polar
+                        happened to omit — that reads as a billing error, not
+                        a quirk of the API response. Fall back to the closer
+                        count we already track ourselves rather than assert a
+                        number that might be false. */}
+                    {summary.seats > 0
+                      ? `${summary.seats} paid ${summary.seats === 1 ? "seat" : "seats"}`
+                      : `${billing?.activeCloserCount ?? 0} active ${(billing?.activeCloserCount ?? 0) === 1 ? "closer" : "closers"}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t pt-2">
                   <span className="font-semibold">Monthly Total</span>
                   <span className="text-lg font-semibold">
                     {money(summary.monthlyTotalCents ?? 0, currency)}/mo
                   </span>
                 </div>
-              </>
+
+                {/* A plan switch or seat change under this billing model never
+                    takes effect right away — it's scheduled for the renewal
+                    date instead. Without this, the page looks completely
+                    unchanged after the change is confirmed, and the natural
+                    read is "it didn't work." */}
+                {summary.pendingUpdate && (
+                  <div className="space-y-1.5 rounded-lg border border-dashed p-3 text-[13px]">
+                    <p className="font-medium">Change scheduled</p>
+                    {summary.pendingUpdate.tier &&
+                      summary.pendingUpdate.tier !== normaliseTier(summary.tier) && (
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Plan</span>
+                          <span>
+                            {TIER_INFO[normaliseTier(summary.tier)].name} →{" "}
+                            {TIER_INFO[summary.pendingUpdate.tier].name}
+                          </span>
+                        </div>
+                      )}
+                    {summary.pendingUpdate.seats !== null &&
+                      summary.pendingUpdate.seats !== summary.seats && (
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Seats</span>
+                          <span>
+                            {summary.seats} → {summary.pendingUpdate.seats}
+                          </span>
+                        </div>
+                      )}
+                    {summary.pendingUpdate.appliesAt && (
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>Effective</span>
+                        <span>{formatDate(summary.pendingUpdate.appliesAt)}</span>
+                      </div>
+                    )}
+                    {/* Polar accepted a change but we couldn't place any of
+                        its details (an unresolved product id, no seat delta,
+                        no date) — still say so rather than showing nothing,
+                        which is the exact bug this block exists to fix. */}
+                    {!summary.pendingUpdate.tier &&
+                      summary.pendingUpdate.seats === null &&
+                      !summary.pendingUpdate.appliesAt && (
+                        <p className="text-muted-foreground">
+                          A change to your plan is scheduled.
+                        </p>
+                      )}
+                  </div>
+                )}
+              </div>
             ) : summary && !summary.hasSubscription ? (
               <p className="py-2 text-sm text-muted-foreground">
                 No active subscription. Pick a plan below to get started.
+              </p>
+            ) : summaryError ? (
+              <p className="py-2 text-sm text-red-600">
+                Couldn&apos;t load your current pricing.{" "}
+                <button
+                  type="button"
+                  onClick={() => void loadSummary()}
+                  className="underline underline-offset-2"
+                >
+                  Try again
+                </button>
+                .
               </p>
             ) : (
               <p className="py-2 text-sm text-muted-foreground">
@@ -378,9 +447,10 @@ function BillingPageContent() {
             <PlanSelector
               currentTier={summary?.tier ?? billing?.productTier}
               availableTiers={(summary?.availableTiers ?? []) as Tier[]}
-              isLegacyPricing={summary?.isLegacyPricing}
+              currentPeriodEnd={summary?.currentPeriodEnd ?? null}
+              pendingTier={summary?.pendingUpdate?.tier ?? null}
               onChanged={() => {
-                // Stripe's webhook writes the new tier, and it lands a moment
+                // Polar's webhook writes the new tier, and it lands a moment
                 // after the API returns. Re-reading immediately would show the
                 // old plan and look like the change failed.
                 setTimeout(() => void loadSummary(), 1500);

@@ -47,6 +47,30 @@ export function normaliseTier(value: string | null | undefined): Tier {
   return DEFAULT_TIER;
 }
 
+/**
+ * The strict counterpart to `normaliseTier` — validation, not migration.
+ *
+ * `normaliseTier` reads values WE already stored (the database, a webhook,
+ * an old URL param) and defaults generously, because a missing or stale
+ * field there must never downgrade someone who already paid for everything.
+ * That same generosity is the wrong instinct for input we did not write
+ * ourselves: a typo, a stale client, or a tampered request body reaching
+ * `normaliseTier` resolves to `overwatch` and quietly sells the $650 plan to
+ * someone who asked for something else — the exact Stripe-era bug (a
+ * body-less request defaulting to the top tier) recurring through a
+ * different input shape.
+ *
+ * `parseTier` accepts only an exact, current tier name and returns `null`
+ * for everything else — no legacy keys, no default, no coercion. Anywhere a
+ * human or client is telling us what to charge them, reach for this one.
+ */
+export function parseTier(value: unknown): Tier | null {
+  if (value === "overview" || value === "oversight" || value === "overwatch") {
+    return value;
+  }
+  return null;
+}
+
 interface TierPrices {
   platform?: string;
   seat?: string;
@@ -260,16 +284,20 @@ export const TIER_INFO: Record<
 /**
  * List prices, in whole dollars.
  *
- * Public marketing figures, kept here so the pricing page, the signup page and
- * anywhere else quoting a number can't drift apart — they were three separate
- * hardcodings and two of them still said $499. What a customer is ACTUALLY
- * charged always comes from the payment processor, never from this: people are
- * grandfathered onto old rates, and only the processor knows.
+ * `monthly` includes the first closer; `extraSeat` is each closer after that.
+ * Polar cannot sell a subscription with zero seats — the floor of 1 is baked
+ * into the price tier — so the plan absorbs one and the customer sees a single
+ * number instead of a base plus a compulsory extra.
+ *
+ * Public marketing figures, kept here so the pricing page and the signup page
+ * can't drift apart; they were three separate hardcodings and two of them
+ * still said $499. What a customer is ACTUALLY charged always comes from the
+ * payment processor, never from this.
  */
-export const TIER_PRICING: Record<Tier, { platform: number; seat: number }> = {
-  overview: { platform: 200, seat: 25 },
-  oversight: { platform: 350, seat: 50 },
-  overwatch: { platform: 500, seat: 150 },
+export const TIER_PRICING: Record<Tier, { monthly: number; extraSeat: number }> = {
+  overview: { monthly: 225, extraSeat: 25 },
+  oversight: { monthly: 400, extraSeat: 50 },
+  overwatch: { monthly: 650, extraSeat: 150 },
 };
 
 /** Ordered cheapest to most expensive, for deciding upgrade vs downgrade. */

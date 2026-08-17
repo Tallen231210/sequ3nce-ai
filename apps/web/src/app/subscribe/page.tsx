@@ -2,8 +2,8 @@
 
 import { useState, Suspense, useEffect } from "react";
 import { PlanChooser } from "./PlanChooser";
-import type { Tier } from "@/lib/tiers";
-import { useUser, UserButton } from "@clerk/nextjs";
+import { parseTier, type Tier } from "@/lib/tiers";
+import { useUser, UserButton, useClerk } from "@clerk/nextjs";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -14,11 +14,16 @@ import { trackMetaEvent } from "@/lib/meta-pixel";
 
 function SubscribeContent() {
   const { user, isLoaded: isUserLoaded } = useUser();
+  const { openSignUp } = useClerk();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const wasCanceled = searchParams.get("canceled") === "true";
   const wasSuccess = searchParams.get("success") === "true";
+  // A tier chosen before signing up, carried across the modal so they land
+  // back here and go straight to checkout instead of picking twice.
+  const pendingTier = searchParams.get("tier");
 
   // This hook ensures the user and team exist in Convex
   const { team, isReady: isTeamReady } = useTeam();
@@ -32,23 +37,10 @@ function SubscribeContent() {
     (team as { selfServeCreated?: boolean } | null | undefined)
       ?.selfServeCreated === true;
 
-  // Check if user is logged out
-  // No signed-out sign-up path here, deliberately.
-  //
-  // Self-serve purchase is off until the move to Polar — every tier fails the
-  // availability check because the per-tier price ids don't exist, so PlanChooser
-  // shows "get in touch and we'll set your team up directly", which is the truth.
-  // New teams are provisioned by hand in the meantime.
-  //
-  // There WAS a signed-out branch here with a Clerk sign-up button. It stays
-  // removed rather than hidden, because a button that creates an account which
-  // then can't buy anything strands someone on a page with nothing to do.
-  //
-  // When Polar lands, restoring it means more than putting the button back:
-  // /api/stripe/available-tiers requires auth and returns 401 to a signed-out
-  // visitor, and PlanChooser reads that 401 as "no plans exist". A prospect
-  // would be told plans aren't available while they are. Make that endpoint
-  // public — pricing isn't a secret — or handle 401 separately from an empty list.
+  // Pricing is public. /api/polar/available-tiers is readable signed out, and
+  // choosing a plan opens Clerk's sign-up modal and returns here with ?tier=
+  // so the choice survives. The old signed-out branch was removed when nothing
+  // could be bought; it exists again because now something can.
 
   // Query billing status to check if subscription is active
   const billing = useQuery(
@@ -56,17 +48,17 @@ function SubscribeContent() {
     user?.id ? { clerkId: user.id } : "skip"
   );
 
-  // Auto-redirect to dashboard once subscription becomes active after successful checkout
+  // Anyone whose subscription is live belongs in the dashboard, however they
+  // got here. This used to require ?success=true, which meant a comped team —
+  // active, but with no checkout behind them — was stranded on the pricing
+  // page reading "plans aren't available", with no way forward.
   useEffect(() => {
-    if (wasSuccess && billing) {
-      const isActive =
-        billing.subscriptionStatus === "active" ||
-        billing.subscriptionStatus === "trialing";
-      if (isActive) {
-        router.push("/dashboard");
-      }
-    }
-  }, [wasSuccess, billing, router]);
+    if (!billing) return;
+    const isActive =
+      billing.subscriptionStatus === "active" ||
+      billing.subscriptionStatus === "trialing";
+    if (isActive) router.push("/dashboard");
+  }, [billing, router]);
 
   // Fire Meta Purchase event once when the Stripe success redirect lands
   // here. B2B is the call-funnel side — Purchase fires after a paid
@@ -91,13 +83,22 @@ function SubscribeContent() {
   }, [wasSuccess]);
 
   const handleSubscribe = async (tier: Tier) => {
+    // Not signed in yet: they picked a plan before they had an account, which
+    // is the normal order for a stranger arriving from the pricing page. Send
+    // them back here with their choice so it survives the sign-up.
+    if (isUserLoaded && !user) {
+      openSignUp({
+        redirectUrl: `/subscribe?tier=${tier}`,
+        signInFallbackRedirectUrl: `/subscribe?tier=${tier}`,
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const response = await fetch("/api/stripe/create-checkout", {
+      const response = await fetch("/api/polar/create-checkout", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         // Without this every signup silently bought the top plan — the two
         // cheaper ones existed everywhere except the one page where someone
         // could actually buy them.
@@ -109,14 +110,52 @@ function SubscribeContent() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        console.error("No checkout URL returned");
+        console.error("No checkout URL returned:", data.error);
+        setCheckoutError(data.error ?? "Couldn't start checkout. Please try again.");
         setIsLoading(false);
       }
     } catch (error) {
       console.error("Error creating checkout session:", error);
+      setCheckoutError("Couldn't start checkout. Please try again.");
       setIsLoading(false);
     }
   };
+
+  // They picked a plan, signed up, and came back. Continue where they left
+  // off rather than making them choose the same thing twice.
+  //
+  // Uses parseTier, not normaliseTier: this reads a client-supplied URL
+  // parameter, and normaliseTier defaults anything unrecognised to the $650
+  // top tier — exactly the bug that once made a bare checkout body silently
+  // buy the most expensive plan, recurring through a different input shape.
+  // A junk ?tier= value should do nothing, not pick a plan nobody chose.
+  //
+  // Waits for `billing` to resolve (not just be truthy-checked) rather than
+  // reacting to `undefined`, because that's the same async query the
+  // redirect-to-dashboard effect above reads. Firing before it resolves
+  // would race that effect: a stale `/subscribe?tier=X` reached by the back
+  // button or a reused link, on a team that's already subscribed, could open
+  // a pointless second checkout before the redirect had a chance to land.
+  useEffect(() => {
+    if (!pendingTier || !isTeamReady || !user || !billing || isLoading) return;
+    const isActive =
+      billing.subscriptionStatus === "active" ||
+      billing.subscriptionStatus === "trialing";
+    if (isActive) return; // The redirect effect above handles this case.
+
+    const tier = parseTier(pendingTier);
+    if (!tier) return;
+    void handleSubscribe(tier);
+
+    // Drop ?tier= now that it's been acted on, so the back button or a
+    // reloaded/bookmarked URL can't replay this checkout.
+    const remaining = new URLSearchParams(searchParams.toString());
+    remaining.delete("tier");
+    const query = remaining.toString();
+    router.replace(query ? `/subscribe?${query}` : "/subscribe", { scroll: false });
+    // Runs once, when the team is ready after a sign-up round trip.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTier, isTeamReady, user, billing]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -194,6 +233,12 @@ function SubscribeContent() {
                 Get full access to Sequ3nce and start improving your sales team's performance today.
               </p>
             </div>
+
+            {checkoutError && (
+              <div className="mx-auto mb-6 max-w-xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {checkoutError}
+              </div>
+            )}
 
             <PlanChooser
               isLoading={isLoading}

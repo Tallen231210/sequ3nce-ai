@@ -9,13 +9,19 @@
 // feature gates and in Stripe — everywhere except the one screen where someone
 // could actually buy them.
 //
-// Only plans whose prices exist are offered. A card that takes the click and
-// then fails at checkout is worse than a card that isn't there.
+// Only plans that have a live product in Polar are offered. A card that
+// takes the click and then fails at checkout is worse than a card that
+// isn't there.
 // ============================================================================
 
 import { useEffect, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { TIER_INFO, TIER_ORDER, TIER_PRICING, type Tier } from "@/lib/tiers";
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; tiers: Tier[] };
 
 export function PlanChooser({
   isLoading,
@@ -24,28 +30,34 @@ export function PlanChooser({
   isLoading: boolean;
   onChoose: (tier: Tier) => void;
 }) {
-  const [available, setAvailable] = useState<Tier[] | null>(null);
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
   const [chosen, setChosen] = useState<Tier | null>(null);
 
   useEffect(() => {
     let active = true;
-    fetch("/api/stripe/available-tiers")
-      .then((r) => (r.ok ? r.json() : { tiers: [] }))
-      .then((d) => {
-        if (active) setAvailable((d?.tiers ?? []) as Tier[]);
+    setState({ status: "loading" });
+    fetch("/api/polar/available-tiers")
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`available-tiers ${r.status}`);
+        return (await r.json()) as { tiers?: Tier[] };
       })
-      .catch(() => {
-        // A failed lookup must not leave someone unable to buy anything.
-        // Falling back to every plan means the worst case is a clear error at
-        // checkout rather than a page with no way forward.
-        if (active) setAvailable(TIER_ORDER);
+      .then((d) => {
+        if (active) setState({ status: "ready", tiers: d?.tiers ?? [] });
+      })
+      .catch((err) => {
+        // An outage is NOT an empty catalogue, and must not be reported as
+        // one. "No plans exist" is a permanent-sounding answer to a temporary
+        // problem, and the visitor leaves.
+        console.error("[plans] couldn't load available tiers:", err);
+        if (active) setState({ status: "error" });
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [attempt]);
 
-  if (available === null) {
+  if (state.status === "loading") {
     return (
       <div className="flex justify-center py-16">
         <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
@@ -53,7 +65,23 @@ export function PlanChooser({
     );
   }
 
-  const plans = TIER_ORDER.filter((t) => available.includes(t));
+  if (state.status === "error") {
+    return (
+      <div className="mx-auto max-w-md rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-center">
+        <p className="text-sm text-zinc-700">
+          We couldn&apos;t load the plans just now.
+        </p>
+        <button
+          onClick={() => setAttempt((n) => n + 1)}
+          className="mt-3 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-white"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const plans = TIER_ORDER.filter((t) => state.tiers.includes(t));
 
   if (plans.length === 0) {
     return (
@@ -86,12 +114,13 @@ export function PlanChooser({
             <div className="mt-5 border-t border-zinc-100 pt-5">
               <div className="flex items-baseline gap-1">
                 <span className="text-4xl font-bold text-zinc-900">
-                  ${price.platform}
+                  ${price.monthly}
                 </span>
                 <span className="text-zinc-500">/month</span>
               </div>
               <p className="mt-1 text-sm text-zinc-500">
-                + ${price.seat}/month per closer seat
+                Includes your first closer, then ${price.extraSeat}/month for
+                each additional closer
               </p>
             </div>
 

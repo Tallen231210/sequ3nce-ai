@@ -15,6 +15,9 @@ const isPublicApiRoute = createRouteMatcher([
   "/api/webhooks(.*)",
   "/api/stripe/b2c-(.*)",
   "/api/updates/(.*)",
+  // Pricing has to be readable before someone has an account, or the signup
+  // page can't tell a visitor what the plans are.
+  "/api/polar/available-tiers",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
