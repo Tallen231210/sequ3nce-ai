@@ -64,6 +64,18 @@ crons.interval(
 // on every deploy, which is how the setter scorecard silently stopped running
 // for weeks. Offset by 7 minutes so it doesn't land on the same tick as the
 // calendar sync it depends on.
+// Manager Mode's own pass. Deliberately a separate cron rather than a branch
+// inside auto-schedule-meeting-bots below: that function is the most bug-prone
+// code in the product, and the cheapest guarantee that Manager Mode can't
+// regress it is never to open the file. Offset by two minutes so the two
+// never contend for the same Recall rate limit.
+crons.cron(
+  "auto-schedule-manager-bots",
+  "9,24,39,54 * * * *",
+  internal.managerMeetingBotSchedule.autoScheduleManagerBots,
+  {},
+);
+
 crons.cron(
   "auto-schedule-meeting-bots",
   "7,22,37,52 * * * *",
