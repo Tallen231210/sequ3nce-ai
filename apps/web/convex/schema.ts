@@ -168,6 +168,14 @@ export default defineSchema({
      */
     compliancePassword: v.optional(v.string()),
     meetingBotName: v.optional(v.string()), // Configurable bot display name (what other participants see)
+    /**
+     * Display name for the MANAGER bot, separate from the closer bot's above.
+     *
+     * Both can legitimately be in the same meeting — a manager sitting in on a
+     * closer's sales call — and two identically-named participants is the
+     * moment someone kicks the wrong one out.
+     */
+    managerMeetingBotName: v.optional(v.string()),
     // Team type: "company" (B2B default) or "personal" (B2C workspace)
     type: v.optional(v.union(v.literal("company"), v.literal("personal"))),
     // Beta features array - for staged rollout of new features
@@ -512,6 +520,23 @@ export default defineSchema({
     teamId: v.id("teams"),
     role: v.string(), // "admin", "manager"
     createdAt: v.number(),
+
+    // ---- Manager Mode: a manager's own calendar ----
+    //
+    // Managers had no calendar concept at all before this — every calendar and
+    // bot field in the product hung off `closers`. All optional, so every
+    // existing row still validates and nothing about managers changes until
+    // one of them deliberately connects.
+    googleCalendarRefreshToken: v.optional(v.string()),
+    calendarProvider: v.optional(v.string()), // "google"
+    calendarConnectedAt: v.optional(v.number()),
+    calendarOnboardingCompleted: v.optional(v.boolean()),
+    /**
+     * Written `?? true` at connect time, never a bare true — a manager who
+     * deliberately switched recording off and later reconnects must not be
+     * silently switched back on. Same rule the closer toggle learned.
+     */
+    managerAutoJoinEnabled: v.optional(v.boolean()),
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_team", ["teamId"]),
@@ -3343,4 +3368,125 @@ export default defineSchema({
   })
     .index("by_team_and_month", ["teamId", "monthKey"])
     .index("by_team_month_closer", ["teamId", "monthKey", "closerId"]),
+
+  // ==========================================================================
+  // Manager Mode
+  //
+  // A sales manager's own meetings: one-to-ones, team meetings, leadership
+  // calls and interviews. None of them is a sales call, and none of them may
+  // ever reach a close rate.
+  //
+  // These are separate tables rather than a manager flag on `closers` and
+  // `calls`, and the reason is arithmetic. 83 places in this codebase
+  // enumerate closers, 57 of them scoped by team — leaderboards, seat counts
+  // for billing, the end-of-day nudge, the daily scoreboard, the team page. A
+  // manager hidden among closers needs an exclusion at every single one, and a
+  // missed one shows up as a manager on a leaderboard or an extra seat on an
+  // invoice. Worse, it stays a trap for anyone writing a new query next year.
+  //
+  // Nothing here can leak, because no closer-scoped query can reach a table
+  // that has no closerId in it.
+  // ==========================================================================
+
+  /** Which of a manager's Google calendars we watch. */
+  managerCalendarSubscriptions: defineTable({
+    userId: v.id("users"),
+    teamId: v.id("teams"),
+    /**
+     * Google's own identifier for the calendar. We send this straight to
+     * their API, so it is never rewritten by us — if a Workspace is renamed,
+     * Google reissues these and the connection has to be remade.
+     */
+    googleCalendarId: v.string(),
+    label: v.string(),
+    enabled: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_team", ["teamId"]),
+
+  /** Upcoming meetings read from those calendars. */
+  managerCalendarEvents: defineTable({
+    userId: v.id("users"),
+    teamId: v.id("teams"),
+    /** Google's event id — the dedup key across repeated syncs. */
+    uid: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    meetingUrl: v.optional(v.string()),
+    startTime: v.number(),
+    endTime: v.number(),
+    isAllDay: v.optional(v.boolean()),
+    /** Raw JSON. Only ~16% of real events carry any attendees at all. */
+    attendees: v.optional(v.string()),
+    /** Manager pressed "don't record this one". Survives every later sync. */
+    excluded: v.optional(v.boolean()),
+    fetchedAt: v.number(),
+  })
+    .index("by_user_and_start", ["userId", "startTime"])
+    .index("by_uid", ["uid"]),
+
+  /** A meeting that was actually recorded. */
+  managerMeetings: defineTable({
+    userId: v.id("users"),
+    teamId: v.id("teams"),
+    calendarEventId: v.optional(v.id("managerCalendarEvents")),
+    title: v.string(),
+    meetingUrl: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    duration: v.optional(v.number()), // seconds
+    recordingUrl: v.optional(v.string()),
+    status: v.string(), // "recording" | "completed" | "failed"
+    /**
+     * Why a recording produced nothing, when it produced nothing. A bot that
+     * sat in a waiting room for twenty minutes and left must say so rather
+     * than leave a silent gap someone later reads as "no meeting happened".
+     */
+    failureReason: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_user_and_created", ["userId", "createdAt"])
+    .index("by_team", ["teamId"]),
+
+  /**
+   * Transcripts, in their own table rather than reusing `transcriptSegments`.
+   *
+   * That table keys on `callId: v.id("calls")`, and a Convex id is typed to
+   * its table, so it physically cannot hold a manager meeting. Widening that
+   * pointer is deliberate later work; phase 1 must not depend on it.
+   */
+  managerMeetingTranscripts: defineTable({
+    meetingId: v.id("managerMeetings"),
+    userId: v.id("users"),
+    speaker: v.string(),
+    text: v.string(),
+    startSeconds: v.number(),
+    endSeconds: v.optional(v.number()),
+  }).index("by_meeting", ["meetingId"]),
+
+  /** Bot lifecycle. Far simpler than the closer bot's — no attribution. */
+  managerMeetingBots: defineTable({
+    userId: v.id("users"),
+    teamId: v.id("teams"),
+    calendarEventId: v.id("managerCalendarEvents"),
+    meetingId: v.optional(v.id("managerMeetings")),
+    recallBotId: v.string(),
+    meetingUrl: v.string(),
+    meetingTitle: v.string(),
+    scheduledStartTime: v.number(),
+    status: v.string(), // "scheduled" | "joining" | "active" | "completed" | "failed" | "cancelled"
+    joinedAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    failureReason: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_recall_bot_id", ["recallBotId"])
+    .index("by_user", ["userId"])
+    /**
+     * Dedup is on the calendar EVENT, never the meeting URL. One personal
+     * meeting room hosts many different meetings — keying on the URL once
+     * made the closer bot skip 13 of 14 real meetings as duplicates.
+     */
+    .index("by_calendar_event", ["calendarEventId"]),
 });
