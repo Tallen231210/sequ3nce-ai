@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { CheckCircle2, Info, Loader2, Send } from "lucide-react";
+import { ConvexError } from "convex/values";
 import { api } from "../../../../../convex/_generated/api";
 import {
   SlackChannelPicker,
@@ -12,6 +13,19 @@ import {
 import { useSaveWithSlackJoin } from "@/components/slack/useSaveWithSlackJoin";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * The human-readable half of a Convex failure.
+ *
+ * A plain Error thrown in a Convex function is stripped to "Server Error" by
+ * the time it reaches the browser; only ConvexError carries its message
+ * across. This reads that message when there is one and falls back otherwise,
+ * so a validation rule can actually tell someone what they did wrong.
+ */
+function readableError(e: unknown, fallback: string): string {
+  if (e instanceof ConvexError && typeof e.data === "string") return e.data;
+  return e instanceof Error ? e.message : fallback;
+}
 
 function hourLabel(h: number): string {
   if (h === 0) return "12am";
@@ -24,9 +38,13 @@ function hourLabel(h: number): string {
  *
  * Same layout as the scoreboard card directly above it — a manager who set
  * that one up already knows this one. Two deliberate differences: the hour
- * starts unset (switching on without a time is refused rather than producing
- * a notification that silently never fires), and the test button can honestly
- * report that there was nobody to chase.
+ * starts unset, and the test button can honestly report there was nobody to
+ * chase.
+ *
+ * The hour used to be REQUIRED before enabling, which deadlocked the screen —
+ * the picker lives inside the section disabled while the nudge is off, so
+ * there was no way to satisfy the rule from this page. It's now allowed, and
+ * the unscheduled state is called out in amber instead.
  */
 export function EodNudgeSettings() {
   const { user } = useUser();
@@ -96,7 +114,7 @@ export function EodNudgeSettings() {
     try {
       await update({ clerkId: user!.id, ...patch });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save");
+      setError(readableError(e, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -118,7 +136,7 @@ export function EodNudgeSettings() {
       if (!okToSave) return;
       await update({ clerkId: user!.id, ...slackArgs });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save");
+      setError(readableError(e, "Could not save"));
     } finally {
       setBusy(false);
     }
@@ -138,7 +156,7 @@ export function EodNudgeSettings() {
             : `Not sent: ${res.reason ?? "unknown reason"}`,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Test failed");
+      setError(readableError(e, "Test failed"));
     } finally {
       setBusy(false);
     }
@@ -166,6 +184,17 @@ export function EodNudgeSettings() {
         <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
           {testResult}
+        </div>
+      )}
+
+      {/* Enabled but unscheduled is a real, reachable state — the backend
+          refuses to send without an hour, so it would otherwise look switched
+          on and simply never arrive. Say it here rather than let someone
+          discover it a week later. */}
+      {data.enabled && noHour && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          This is switched on but has no send time, so nothing will go out. Pick
+          a time below.
         </div>
       )}
 
