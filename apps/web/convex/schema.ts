@@ -3388,6 +3388,28 @@ export default defineSchema({
   // that has no closerId in it.
   // ==========================================================================
 
+  /**
+   * One-time tokens for starting a manager's Google OAuth flow.
+   *
+   * The OAuth callback runs on our Next.js server and reaches Convex through
+   * ConvexHttpClient, which can only call PUBLIC functions. So the mutation
+   * that stores a refresh token is necessarily public — and a public mutation
+   * taking `(userId, refreshToken)` would let anyone point any manager's
+   * calendar at a Google account they control, or wipe a real connection.
+   *
+   * The closer equivalent has precisely that hole. Rather than copy it: the
+   * signed-in manager mints a nonce, it travels through Google as the OAuth
+   * `state`, and the callback spends it. Single use, short lived, and it
+   * carries the identity so the callback never has to be told who to trust.
+   */
+  managerOAuthNonces: defineTable({
+    nonce: v.string(),
+    userId: v.id("users"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+  }).index("by_nonce", ["nonce"]),
+
   /** Which of a manager's Google calendars we watch. */
   managerCalendarSubscriptions: defineTable({
     userId: v.id("users"),

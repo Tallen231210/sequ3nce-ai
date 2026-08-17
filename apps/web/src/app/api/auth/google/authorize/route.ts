@@ -16,8 +16,17 @@ export async function GET(req: NextRequest) {
   const app = url.searchParams.get("app");
   const calendarLabel = url.searchParams.get("label"); // B2C multi-calendar: offer/company name
 
-  if (!closerId) {
-    return NextResponse.json({ error: "Missing closerId" }, { status: 400 });
+  // Manager Mode passes a one-time nonce instead of an id. The nonce was
+  // minted by the signed-in manager, so it carries the identity — the callback
+  // never has to be told whose calendar this is, and a forged state names
+  // nobody.
+  const managerNonce = url.searchParams.get("managerNonce");
+
+  if (!closerId && !managerNonce) {
+    return NextResponse.json(
+      { error: "Missing closerId or managerNonce" },
+      { status: 400 },
+    );
   }
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -32,10 +41,21 @@ export async function GET(req: NextRequest) {
 
   // Encode app identifier and calendar label into state for the callback
   // Format: "closerId::app::label" (label is URL-encoded for safety)
-  let state = closerId;
-  if (app) state += `::${app}`;
-  else state += `::`;
-  if (calendarLabel) state += `::${encodeURIComponent(calendarLabel)}`;
+  //
+  // Manager state is a distinct prefixed form rather than a fourth positional
+  // field, so the callback can tell the two apart by looking rather than by
+  // guessing from the shape of an id. The closer format below is byte-for-byte
+  // unchanged — desktop apps installed months ago build these URLs, and those
+  // builds have to keep working.
+  let state: string;
+  if (managerNonce) {
+    state = `mgr::${managerNonce}`;
+  } else {
+    state = closerId!;
+    if (app) state += `::${app}`;
+    else state += `::`;
+    if (calendarLabel) state += `::${encodeURIComponent(calendarLabel)}`;
+  }
 
   const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authUrl.searchParams.set("client_id", clientId);

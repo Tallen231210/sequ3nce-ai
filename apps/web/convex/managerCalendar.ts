@@ -37,31 +37,81 @@ export const getManagerCalendarState = query({
   },
 });
 
+/** A nonce is worthless after ten minutes — long enough to click through
+ *  Google's consent screen, short enough that a leaked URL is inert. */
+const NONCE_TTL_MS = 10 * 60 * 1000;
+
 /**
- * Store the refresh token after Google hands it back.
+ * Mint a one-time token to start the Google flow.
  *
- * internalMutation on purpose — it takes a userId with no proof of identity,
- * so it must not be reachable from a browser. The OAuth callback is trusted to
- * call it because the userId came from the `state` parameter we ourselves set
- * when starting the flow.
+ * Called by the signed-in manager from their own browser, so the identity is
+ * established here — once — and then travels through Google as the OAuth
+ * `state`. The callback never has to be told whose calendar it is holding.
  */
-export const saveManagerGoogleConnection = internalMutation({
-  args: { userId: v.id("users"), refreshToken: v.string() },
+export const startManagerCalendarConnect = mutation({
+  args: { clerkId: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db.get(args.userId);
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new ConvexError("Not authorised");
+    const team = await ctx.db.get(user.teamId as Id<"teams">);
+    if (!isOverwatch(team?.productTier)) {
+      throw new ConvexError("Manager Mode needs Overwatch");
+    }
+
+    const nonce = crypto.randomUUID().replace(/-/g, "");
+    const now = Date.now();
+    await ctx.db.insert("managerOAuthNonces", {
+      nonce,
+      userId: user._id,
+      createdAt: now,
+      expiresAt: now + NONCE_TTL_MS,
+    });
+    return { nonce };
+  },
+});
+
+/**
+ * Spend the nonce and store the refresh token.
+ *
+ * Public because the OAuth callback runs on our Next.js server and reaches
+ * Convex through ConvexHttpClient, which cannot call internal functions. It is
+ * safe to be public precisely because it takes no user id: the only way to
+ * name a manager is to hold an unspent nonce that manager minted minutes ago.
+ */
+export const completeManagerCalendarConnect = mutation({
+  args: { nonce: v.string(), refreshToken: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("managerOAuthNonces")
+      .withIndex("by_nonce", (q) => q.eq("nonce", args.nonce))
+      .first();
+
+    // All three failures answer the same way. Distinguishing "expired" from
+    // "already used" from "never existed" only helps someone guessing.
+    if (!row) throw new ConvexError("That connection link is no longer valid");
+    if (row.usedAt) throw new ConvexError("That connection link is no longer valid");
+    if (row.expiresAt < Date.now()) {
+      throw new ConvexError("That connection link is no longer valid");
+    }
+
+    const user = await ctx.db.get(row.userId);
     if (!user) throw new ConvexError("No such manager");
 
-    await ctx.db.patch(args.userId, {
+    // Spend it first. If the patch below fails, the nonce is still burnt —
+    // better a manager reconnects than a token stays replayable.
+    await ctx.db.patch(row._id, { usedAt: Date.now() });
+
+    await ctx.db.patch(row.userId, {
       googleCalendarRefreshToken: args.refreshToken,
       calendarProvider: "google",
       calendarConnectedAt: Date.now(),
       // `?? true`, never a bare true. A manager who deliberately switched
-      // recording off and later reconnects their calendar must not be
-      // silently switched back on — the closer toggle learned this the hard
-      // way, and reconnecting is exactly when it would happen.
+      // recording off and later reconnects must not be silently switched back
+      // on — the closer toggle learned this, and reconnecting is exactly when
+      // it would happen.
       managerAutoJoinEnabled: user.managerAutoJoinEnabled ?? true,
     });
-    return { success: true };
+    return { success: true, userId: row.userId };
   },
 });
 
