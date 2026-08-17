@@ -107,6 +107,32 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // ---- Manager Mode ----
+    //
+    // Handled here, after the token exchange and before any closer handling,
+    // and it returns rather than falling through. Everything below this block
+    // is the untouched closer path.
+    if (state.startsWith("mgr::")) {
+      const nonce = state.slice(5);
+      try {
+        await convex.mutation(api.managerCalendar.completeManagerCalendarConnect, {
+          nonce,
+          refreshToken,
+        });
+      } catch (mgrErr) {
+        // A spent, expired or invented nonce lands here. Say so plainly
+        // rather than redirect to a success page that connected nothing.
+        console.error("[Google OAuth] Manager connect rejected:", mgrErr);
+        return NextResponse.redirect(
+          new URL("/dashboard/manager-mode?connected=0&error=link_expired", req.url),
+        );
+      }
+      console.log("[Google OAuth] Manager calendar connected");
+      return NextResponse.redirect(
+        new URL("/dashboard/manager-mode?connected=1", req.url),
+      );
+    }
+
     // Optionally get the user's email from the ID token or userinfo endpoint
     let email = "";
     try {

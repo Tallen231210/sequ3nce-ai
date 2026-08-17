@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
-import { LayoutDashboard, Radio, Calendar, Phone, Users, CreditCard, Settings, BarChart3, BookMarked, TrendingUp, FileText, MessageSquareText, Briefcase, UserCheck, Sparkles, Trophy, Wallet } from "lucide-react";
+import { LayoutDashboard, Radio, Calendar, Phone, Users, CreditCard, Settings, BarChart3, BookMarked, TrendingUp, FileText, MessageSquareText, Briefcase, UserCheck, UserCog, Sparkles, Trophy, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
 import { Logo } from "@/components/ui/logo";
@@ -39,6 +39,10 @@ const baseNavigation = [
   // the per-rep drilldown.
   { name: "Team Performance", href: "/dashboard/team-performance", icon: Trophy },
   { name: "Closer Stats", href: "/dashboard/closer-stats", icon: BarChart3 },
+  // Manager Mode — the manager's OWN meetings, not their team's calls. Sits
+  // here rather than with the call views because nothing in it is a sales
+  // call, and nothing in it is visible to anyone but the manager who owns it.
+  { name: "Manager Mode", href: "/dashboard/manager-mode", icon: UserCog },
   // Deals that closed but weren't paid in full. Next to the performance views
   // because it reads the same post-call numbers — cash collected against
   // contract value — just looking at the gap rather than the total.

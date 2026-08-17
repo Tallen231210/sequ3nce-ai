@@ -1,0 +1,115 @@
+import { v } from "convex/values";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// ============================================================================
+// Fetch a manager meeting's transcript from Recall.
+//
+// Stored in managerMeetingTranscripts rather than transcriptSegments, which
+// keys on `callId: v.id("calls")` and physically cannot hold a manager
+// meeting. Widening that pointer is deliberate later work.
+// ============================================================================
+
+const RECALL_BASE = "https://us-west-2.recall.ai/api/v1";
+
+export const getMeetingWithBot = internalQuery({
+  args: { meetingId: v.id("managerMeetings") },
+  handler: async (ctx, args) => {
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return null;
+
+    const bots = await ctx.db
+      .query("managerMeetingBots")
+      .withIndex("by_user", (q) => q.eq("userId", meeting.userId))
+      .collect();
+    const bot = bots.find((b) => b.meetingId === args.meetingId);
+
+    return {
+      userId: meeting.userId,
+      recallBotId: bot?.recallBotId ?? null,
+    };
+  },
+});
+
+export const saveSegments = internalMutation({
+  args: {
+    meetingId: v.id("managerMeetings"),
+    userId: v.id("users"),
+    segments: v.array(
+      v.object({
+        speaker: v.string(),
+        text: v.string(),
+        startSeconds: v.number(),
+        endSeconds: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    // Replace rather than append. Recall can deliver bot.done more than once,
+    // and a doubled transcript is worse than a missing one — it reads as the
+    // manager saying everything twice.
+    const existing = await ctx.db
+      .query("managerMeetingTranscripts")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .collect();
+    for (const row of existing) await ctx.db.delete(row._id);
+
+    for (const s of args.segments) {
+      await ctx.db.insert("managerMeetingTranscripts", {
+        meetingId: args.meetingId,
+        userId: args.userId,
+        ...s,
+      });
+    }
+    return { saved: args.segments.length, replaced: existing.length };
+  },
+});
+
+export const fetchManagerTranscript = internalAction({
+  args: { meetingId: v.id("managerMeetings") },
+  handler: async (ctx, args): Promise<{ segments: number }> => {
+    const meeting = await ctx.runQuery(
+      internal.managerMeetingTranscript.getMeetingWithBot,
+      { meetingId: args.meetingId },
+    );
+    if (!meeting?.recallBotId) return { segments: 0 };
+
+    const res = await fetch(
+      `${RECALL_BASE}/bot/${meeting.recallBotId}/transcript/`,
+      { headers: { Authorization: `Token ${process.env.RECALL_API_KEY}` } },
+    );
+    if (!res.ok) {
+      throw new Error(
+        `Recall transcript fetch failed: ${res.status} ${await res.text()}`,
+      );
+    }
+    const raw = await res.json();
+
+    // Recall returns one entry per speaker turn, each carrying word-level
+    // timings. Collapsing to turns is what makes a transcript readable, and
+    // the first and last word give the range a clip would need.
+    const segments = (Array.isArray(raw) ? raw : []).flatMap((turn: any) => {
+      const words = turn.words ?? [];
+      if (words.length === 0) return [];
+      return [
+        {
+          speaker: turn.speaker ?? "Unknown",
+          text: words.map((w: any) => w.text).join(" "),
+          startSeconds: words[0]?.start_timestamp?.relative ?? 0,
+          endSeconds: words[words.length - 1]?.end_timestamp?.relative ?? undefined,
+        },
+      ];
+    });
+
+    if (segments.length === 0) return { segments: 0 };
+
+    await ctx.runMutation(internal.managerMeetingTranscript.saveSegments, {
+      meetingId: args.meetingId,
+      userId: meeting.userId,
+      segments,
+    });
+    return { segments: segments.length };
+  },
+});
