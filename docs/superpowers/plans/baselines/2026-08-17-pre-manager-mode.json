@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-08-17",
+  "day": "2026-08-14",
+  "eodNudge": {
+    "dayKey": "2026-08-14",
+    "expected": 3,
+    "filed": 1,
+    "missing": [
+      {
+        "booked": 4,
+        "closerId": "jd7fgr7qw2b74rw8jc9ehh1pq18989n8",
+        "name": "Gianni Scott",
+        "taken": 7
+      },
+      {
+        "booked": 1,
+        "closerId": "jd79etexxb2qcb11ng5es0hfps89878c",
+        "name": "Anthony",
+        "taken": 1
+      }
+    ]
+  },
+  "note": "Behavioural snapshot only. Row counts via `convex data` proved unreliable \u2014 fields containing newlines and pipes make the CLI's table output impossible to count rows from, and calendarEvents read as 34, 53 and 1983 depending on method. A baseline that reports spurious differences is worse than none.",
+  "team": "js728xjb1vdxcfcsxcwme62eh589977x (ManyJobs)",
+  "teamPerformance": {
+    "capacityReliable": true,
+    "dayCoverage": {
+      "lowCoverage": false,
+      "missingOutcomes": 0,
+      "outcomeCoverage": 1,
+      "taken": 4
+    },
+    "dayKey": "2026-08-14",
+    "dayRates": {
+      "bookedPct": 200,
+      "closePct": 0,
+      "offerClosePct": 0,
+      "showPct": 50
+    },
+    "dayTotals": {
+      "booked": 8,
+      "cash": 0,
+      "closes": 0,
+      "contractValue": 0,
+      "missingOutcomes": 0,
+      "offers": 2,
+      "slots": 4,
+      "taken": 4
+    },
+    "isEmpty": false,
+    "monthCapacityReliable": true,
+    "monthKey": "2026-08",
+    "monthTotals": {
+      "booked": 169,
+      "cash": 68730,
+      "closes": 12,
+      "contractValue": 80950,
+      "missingOutcomes": 45,
+      "offers": 31,
+      "slots": 296,
+      "taken": 58
+    },
+    "prevDayKey": "2026-08-13",
+    "prevDayTotals": {
+      "booked": 1,
+      "cash": 6000,
+      "closes": 1,
+      "contractValue": 6000,
+      "missingOutcomes": 1,
+      "offers": 1,
+      "slots": 7,
+      "taken": 1
+    },
+    "rows": [
+      {
+        "booked": 8,
+        "cash": 0,
+        "closePct": 0,
+        "closes": 0,
+        "contractValue": 0,
+        "name": "Nick",
+        "offerClosePct": 0,
+        "offers": 2,
+        "prev": {
+          "booked": 1,
+          "cash": 6000,
+          "closes": 1,
+          "contractValue": 6000,
+          "offers": 1,
+          "slots": 7,
+          "taken": 1
+        },
+        "showPct": 50,
+        "slots": 4,
+        "taken": 4
+      }
+    ]
+  }
+}

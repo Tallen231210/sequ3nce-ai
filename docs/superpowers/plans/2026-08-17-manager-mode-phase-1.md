@@ -85,17 +85,18 @@ mkdir -p ../../docs/superpowers/plans/baselines
 } > ../../docs/superpowers/plans/baselines/2026-08-17-pre-manager-mode.json
 ```
 
-- [ ] **Step 2: Record the row counts that must not move**
+- [ ] **Step 2: Do NOT try to count rows**
 
-```bash
-cd apps/web
-for T in closers calls meetingBots calendarEvents closerCalendarSubscriptions; do
-  printf "%s " "$T"
-  npx convex data $T --prod --limit 2000 2>/dev/null | grep -c '|'
-done
-```
+An earlier draft of this plan counted rows in `closers`, `calls` and
+`calendarEvents` as a second signal. Don't. The `convex data` CLI prints a
+pipe-delimited table, and fields containing newlines or pipe characters — event
+descriptions, transcripts, JSON blobs — make the output impossible to count rows
+from. `calendarEvents` read as 34, 53 or 1,983 depending on the counting method.
 
-Paste the output into the baseline file under a `"rowCounts"` key. These are the tables a mistake would most likely corrupt.
+A baseline that reports differences which aren't real is worse than no baseline,
+because the first false alarm teaches everyone to ignore it. The behavioural
+snapshot in Step 1 is the real check: it exercises the merge, the rates, the
+coverage calculation and the nudge against live data, and it is exact.
 
 - [ ] **Step 3: Commit**
 
@@ -1164,7 +1165,17 @@ for T in closers calls meetingBots calendarEvents closerCalendarSubscriptions; d
 done
 ```
 
-Expected: `closers`, `calendarEvents` and `closerCalendarSubscriptions` unchanged from Task 1. `calls` and `meetingBots` may have grown from ordinary customer activity — check any growth corresponds to real sales calls, not manager meetings.
+Instead of counting rows, confirm no manager meeting leaked into the closer
+world — which is the actual fear, and is exactly checkable:
+
+```bash
+cd apps/web
+# Every manager meeting must be in managerMeetings and nowhere else.
+npx convex data managerMeetings --prod --limit 50 --order desc
+# No call may reference a manager. If Manager Mode is correct this returns
+# nothing, because `calls` has no manager field at all.
+grep -c "userId" <(npx convex data calls --prod --limit 50 --order desc) || echo "0 — correct"
+```
 
 - [ ] **Step 4: Run the whole existing E2E suite**
 
