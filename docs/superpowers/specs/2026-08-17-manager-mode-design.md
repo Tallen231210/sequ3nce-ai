@@ -16,13 +16,19 @@ selling. Manager Mode records the manager's own internal meetings and exists to
 help them manage. Nothing about close rates, objections, cash or payment
 structure applies here.
 
-A sales manager's week is three kinds of meeting:
+A sales manager's week is four kinds of meeting:
 
 1. **One-to-ones** with someone on the sales team
 2. **Team meetings** with all the reps
 3. **Leadership meetings** with the owner or above
+4. **Interviews** — a large share of the total, and the only one where the other
+   person isn't in the company
 
-All three are internal. None is a sales call.
+None is a sales call.
+
+Interviews are only ever for two roles, closer or setter, which is what keeps
+them a meeting type here rather than a hiring product. "Role" is a dropdown with
+two values, not a job-posting system.
 
 ## 2. Why it is worth building
 
@@ -55,8 +61,15 @@ That loop — agreement, then evidence — is the feature. Everything else suppo
   Nick agreed to use the new objection handling. We cannot tell you whether he
   did, and we will not pretend to. Only commitments with a number we already
   track get evidence attached.
+- **Any assessment, score or opinion on a job candidate.** v1 gives summaries
+  and talking points and stops there. Scoring applicants is regulated in some
+  places, and a manager who disagrees with one score stops trusting every other
+  number on the page. Comparison and scorecards are a later conversation.
 - Manager meetings appearing anywhere in sales reporting
 - Anything beyond the bot. Further manager tools come later.
+
+Note the existing Recruiting tab is dead and there are no Sequ3nce Personal
+users, so neither is a foundation to build on. Interviews start from nothing.
 
 ## 4. Access and visibility
 
@@ -163,7 +176,8 @@ waiting is not a bug and needs no handling beyond what exists.
 
 ## 8. Analysis output
 
-One format for all three meeting types — they differ in content, not in shape:
+One format for the three internal types — they differ in content, not in shape.
+Interviews use the same four fields with a different prompt, described below:
 
 - **Summary** — what the meeting was about
 - **Topics** — what was covered
@@ -177,6 +191,24 @@ manager ticks items off themselves.
 Commitments we can evidence today: end-of-day filing, outstanding balances
 clearing, whether a named prospect had a follow-up call, and any setter-side
 activity metric.
+
+### Interviews
+
+Same four fields, different prompt. A summary of the conversation and the big
+talking points — what they claimed about their numbers, what they said about why
+they left, what they asked about. **No assessment, no score, no recommendation.**
+
+Two fields are stored on the meeting: **role** (closer or setter) and the
+**candidate's name**. That is the whole of it — no candidate profile, no status,
+no pipeline. It costs almost nothing and buys three things: a manager can find
+the six people they interviewed for closer rather than scrolling a mixed list;
+candidates can never surface where reps belong; and if comparison is built
+later, the recordings are already grouped rather than needing to be sorted by
+hand.
+
+Which meetings are interviews is decided by the existing call classifier, which
+already separates recruitment from internal — it was built after a hiring
+interview was once recorded as a closed deal.
 
 ## 9. The brief
 
@@ -275,16 +307,33 @@ on its own, and each is verified before the next begins.
 1. **Connect and record.** Manager calendar connection, the new tables, the bot,
    MGMT branding, recordings and transcripts appearing in a bare tab. At the end
    of this a manager's meetings are being captured. Nothing else exists yet.
-2. **Read the meeting.** Summary, topics, action items, agreements. The debrief
-   card.
+2. **Read the meeting.** Summary, topics, action items, agreements. The
+   interview variant with its role and candidate tags. The debrief card.
+   **Interviews are fully usable at the end of this phase** — they need nothing
+   from phases 3 or 5, which is why they come first.
 3. **The brief.** Meeting-to-rep identification, the suggestion sources, the
    overview screen with rep cards.
 4. **Clip and share.** Widening the shared pointers, the training studio, link
    expiry and view counts.
 5. **The rep page.** History of one-to-ones, agreements held or not.
 
+Interviews land before the coaching side deliberately. They're a large share of
+the volume, they're useful from the very first one, and phase 3's value depends
+on a manager having had several one-to-ones with the same person before the
+history is worth reading.
+
 Phase 4 is the one that touches existing code, and is deliberately late — by
 then everything else is proven, so a regression there is unambiguous.
+
+### Assets ready
+
+The MGMT bot avatar is done: the supplied logo converted to 1280×720 JPEG on
+black, matching the closer bot's format, at 32 KB. It reads SEQU3NCE.AI / MGMT /
+[● REC]. The recording indicator is visible to everyone in the meeting for its
+whole duration, which is how a candidate knows they're being recorded.
+
+The bot's displayed name is stored per team in `meetingBotName`, not per bot
+type, so the manager bot needs its own field rather than reusing that one.
 
 ## 16. Known risks
 
