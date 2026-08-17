@@ -4392,6 +4392,39 @@ http.route({
 
     console.log(`[recall-webhook] Event: ${eventType} for bot: ${recallBotId}`);
 
+    // ---- Manager Mode ----
+    //
+    // Checked first and returned from, so a manager's meeting never reaches
+    // any of the closer handling below. That handling creates calls, fires
+    // customer-facing notifications and writes into GoHighLevel — none of
+    // which should ever happen for someone's one-to-one.
+    //
+    // A closer bot's id will not match this lookup, so the branch is inert for
+    // every existing bot.
+    try {
+      const managerBot = await ctx.runQuery(
+        internal.managerMeetingBot.getBotByRecallId,
+        { recallBotId },
+      );
+      if (managerBot) {
+        await ctx.runAction(internal.managerMeetingWebhook.applyManagerBotEvent, {
+          recallBotId,
+          event: eventType,
+          subCode:
+            eventData?.data?.sub_code ?? eventData?.sub_code ?? undefined,
+        });
+        return new Response(JSON.stringify({ ok: true, manager: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    } catch (mgrErr) {
+      // A failure here must not swallow a closer's webhook. Log it and fall
+      // through to the existing handling, which will simply find no manager
+      // bot and behave exactly as it always has.
+      console.error("[recall-webhook] Manager branch failed:", mgrErr);
+    }
+
     try {
       switch (eventType) {
         case "bot.joining_call": {
