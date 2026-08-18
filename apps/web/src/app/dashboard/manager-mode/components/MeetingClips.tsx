@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Check, Copy, Link2, Trash2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
-import { mmss } from "./ClipFromTranscript";
+import { mmss } from "./clipUtils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

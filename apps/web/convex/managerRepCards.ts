@@ -32,6 +32,11 @@ import {
  *  enough that last month's slump doesn't hide this week's. */
 const WINDOW_DAYS = 14;
 
+/** How far back the sparkline reaches. Six weekly bars — enough to see a slide
+ *  starting, few enough to read at a glance on a card. */
+const TREND_WEEKS = 6;
+const TREND_DAYS = TREND_WEEKS * 7;
+
 function shiftDay(dayKey: string, days: number): string {
   const [y, m, d] = dayKey.split("-").map(Number);
   const t = Date.UTC(y, m - 1, d) + days * 86_400_000;
@@ -53,24 +58,27 @@ export const listRepCards = query({
     const today = dayKeyInTz(Date.now(), tz);
     const recentFrom = shiftDay(today, -WINDOW_DAYS);
     const priorFrom = shiftDay(today, -WINDOW_DAYS * 2);
+    // The sparkline reaches further back than the comparison windows, so the
+    // fetch is bounded by the trend rather than by `priorFrom`.
+    const trendFrom = shiftDay(today, -TREND_DAYS);
 
     const [stats, overrides, entries, closers, calls] = await Promise.all([
       ctx.db
         .query("closerDailyStats")
         .withIndex("by_team_and_day", (q: any) =>
-          q.eq("teamId", teamId).gte("dayKey", priorFrom).lte("dayKey", today),
+          q.eq("teamId", teamId).gte("dayKey", trendFrom).lte("dayKey", today),
         )
         .collect(),
       ctx.db
         .query("closerDailyOverrides")
         .withIndex("by_team_and_day", (q: any) =>
-          q.eq("teamId", teamId).gte("dayKey", priorFrom).lte("dayKey", today),
+          q.eq("teamId", teamId).gte("dayKey", trendFrom).lte("dayKey", today),
         )
         .collect(),
       ctx.db
         .query("closerDailyEntries")
         .withIndex("by_team_and_day", (q: any) =>
-          q.eq("teamId", teamId).gte("dayKey", priorFrom).lte("dayKey", today),
+          q.eq("teamId", teamId).gte("dayKey", trendFrom).lte("dayKey", today),
         )
         .collect(),
       ctx.db
@@ -94,9 +102,37 @@ export const listRepCards = query({
     const prior = new Map<string, FunnelTotals>();
     const missedEod = new Map<string, number>();
 
+    // Weekly buckets for the sparkline: index 0 is the oldest week.
+    const weekly = new Map<string, number[]>();
+    const weekIndex = (dayKey: string) => {
+      const [y, m, d] = dayKey.split("-").map(Number);
+      const [ty, tm, td] = today.split("-").map(Number);
+      const days = Math.floor(
+        (Date.UTC(ty, tm - 1, td) - Date.UTC(y, m - 1, d)) / 86_400_000,
+      );
+      // Most recent week last. Anything outside the window is ignored rather
+      // than clamped into the end bar, which would invent a spike.
+      const idx = TREND_WEEKS - 1 - Math.floor(days / 7);
+      return idx >= 0 && idx < TREND_WEEKS ? idx : null;
+    };
+
     for (const row of mergeDailyRows(stats, overrides, entries)) {
       const id = String(row.closerId);
       if (!nameById.has(id)) continue;
+
+      const wi = weekIndex(row.dayKey);
+      if (wi !== null) {
+        const w = weekly.get(id) ?? new Array(TREND_WEEKS).fill(0);
+        w[wi] += row.totals.taken;
+        weekly.set(id, w);
+      }
+
+      // The comparison windows are still 14 days against the 14 before them.
+      // The fetch reaches 42 days back for the sparkline, so anything older
+      // than `priorFrom` must be excluded here — otherwise widening the fetch
+      // would silently turn every "prior" figure into a four-week average and
+      // skew every delta on every card.
+      if (row.dayKey < priorFrom) continue;
 
       const bucket = row.dayKey >= recentFrom ? recent : prior;
       bucket.set(id, addTotals(bucket.get(id) ?? emptyTotals(), row.totals));
@@ -124,6 +160,40 @@ export const listRepCards = query({
       b.count += 1;
       b.total += owed;
       balances.set(id, b);
+    }
+
+    // ---- when this manager last sat down with each rep, and what was agreed ----
+    //
+    // Scoped to this manager's own meetings, so one manager's coaching history
+    // never leaks onto another's cards.
+    const meetings = await ctx.db
+      .query("managerMeetings")
+      .withIndex("by_user_and_created", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(60);
+
+    const lastMet = new Map<string, { at: number; agreements: string[] }>();
+    for (const m of meetings) {
+      if (!m.calendarEventId) continue;
+      const ev = await ctx.db.get(m.calendarEventId);
+      const rep = (ev as any)?.taggedCloserId ?? (ev as any)?.matchedCloserId;
+      if (!rep) continue;
+      const id = String(rep);
+      // Meetings arrive newest first, so the first one seen for a rep is the
+      // most recent. Later ones are older and must not overwrite it.
+      if (lastMet.has(id)) continue;
+
+      const analysis = await ctx.db
+        .query("managerMeetingAnalysis")
+        .withIndex("by_meeting", (q: any) => q.eq("meetingId", m._id))
+        .first();
+
+      lastMet.set(id, {
+        at: m.startedAt ?? m.createdAt,
+        agreements: ((analysis as any)?.agreements ?? [])
+          .slice(0, 2)
+          .map((a: any) => a.what),
+      });
     }
 
     const cards = active.map((c) => {
@@ -165,6 +235,11 @@ export const listRepCards = query({
         priorOfferClosePct: p.taken >= 5 ? pRates.offerClosePct : null,
         priorClosePct: p.taken >= 5 ? pRates.closePct : null,
         suggestions: rankSuggestions(suggestions),
+        /** Six weekly call counts, oldest first. Empty until they take calls. */
+        trend: weekly.get(id) ?? new Array(TREND_WEEKS).fill(0),
+        /** Null when this manager has never recorded a one-to-one with them. */
+        lastMetAt: lastMet.get(id)?.at ?? null,
+        lastAgreements: lastMet.get(id)?.agreements ?? [],
       };
     });
 

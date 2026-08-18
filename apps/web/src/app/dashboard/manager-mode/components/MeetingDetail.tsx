@@ -5,7 +5,7 @@ import { useAction, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
-import { ClipFromTranscript } from "./ClipFromTranscript";
+import { ClipStudio } from "./ClipStudio";
 import { MeetingClips } from "./MeetingClips";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -235,9 +235,21 @@ export function MeetingDetail({
 
       <MeetingClips meetingId={meetingId} />
 
-      {/* The transcript doubles as the clipping surface — a manager marks the
-          moment in the words rather than by scrubbing for it. */}
-      <ClipFromTranscript meetingId={meetingId} transcript={d.transcript} />
+      {/* Video, the meeting as a strip, and the transcript beside it. A manager
+          marks the moment in whichever they remember it by. */}
+      <ClipStudio
+        meetingId={meetingId}
+        segments={d.transcript}
+        duration={
+          d.duration ||
+          // No duration recorded: fall back to the last thing said, plus a
+          // little, so the strip still spans the conversation.
+          (d.transcript.length
+            ? d.transcript[d.transcript.length - 1].startSeconds + 30
+            : 0)
+        }
+        hasRecording={!!d.recordingUrl}
+      />
     </div>
   );
 }

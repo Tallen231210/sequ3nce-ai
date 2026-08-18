@@ -108,6 +108,57 @@ export const listClipsForMeeting = query({
   },
 });
 
+/**
+ * Every clip this manager has cut, newest first, with its links.
+ *
+ * The Clips tab answers "what have I actually made, and who did I send it to" —
+ * which needs the share links alongside, not a separate lookup per clip.
+ */
+export const listAllClips = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return [];
+
+    const clips = await ctx.db
+      .query("managerMeetingClips")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .take(200);
+
+    const out = [];
+    for (const c of clips) {
+      const meeting = await ctx.db.get(c.meetingId);
+      const shares = await ctx.db
+        .query("managerMeetingShares")
+        .withIndex("by_meeting", (q) => q.eq("meetingId", c.meetingId))
+        .collect();
+
+      out.push({
+        _id: c._id,
+        meetingId: c.meetingId,
+        title: c.title,
+        notes: c.notes ?? null,
+        startSeconds: c.startSeconds,
+        endSeconds: c.endSeconds,
+        transcriptText: c.transcriptText ?? null,
+        createdAt: c.createdAt,
+        meetingTitle: meeting?.title ?? "Meeting",
+        links: shares
+          .filter((s) => !s.revokedAt && String(s.clipId) === String(c._id))
+          .map((s) => ({
+            _id: s._id,
+            token: s.token,
+            hasPassword: !!s.passwordHash,
+            expiresAt: s.expiresAt ?? null,
+            viewCount: s.viewCount,
+          })),
+      });
+    }
+    return out;
+  },
+});
+
 export const deleteClip = mutation({
   args: { clerkId: v.string(), clipId: v.id("managerMeetingClips") },
   handler: async (ctx, args) => {
