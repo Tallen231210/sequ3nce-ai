@@ -37,6 +37,67 @@ export const listManagerMeetings = query({
 });
 
 /**
+ * One meeting, with whatever we've read off it.
+ *
+ * Analysis is deliberately nullable rather than defaulted. A meeting that
+ * hasn't been read yet and one that produced nothing are different facts, and
+ * the screen says which — an empty summary presented as a summary is how a
+ * manager concludes the feature is broken.
+ */
+export const getManagerMeetingDetail = query({
+  args: { clerkId: v.string(), meetingId: v.id("managerMeetings") },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return null;
+    // Scoped to the owner. A manager cannot open another manager's meeting by
+    // guessing an id.
+    if (meeting.userId !== user._id) return null;
+
+    const analysis = await ctx.db
+      .query("managerMeetingAnalysis")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .first();
+
+    const transcript = await ctx.db
+      .query("managerMeetingTranscripts")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .collect();
+    transcript.sort((a, b) => a.startSeconds - b.startSeconds);
+
+    return {
+      _id: meeting._id,
+      title: meeting.title,
+      startedAt: meeting.startedAt ?? null,
+      duration: meeting.duration ?? null,
+      status: meeting.status,
+      recordingUrl: meeting.recordingUrl ?? null,
+      failureReason: meeting.failureReason ?? null,
+      hasTranscript: transcript.length > 0,
+      transcript: transcript.slice(0, 400).map((t) => ({
+        speaker: t.speaker,
+        text: t.text,
+        startSeconds: t.startSeconds,
+      })),
+      analysis: analysis
+        ? {
+            kind: analysis.kind,
+            summary: analysis.summary,
+            topics: analysis.topics,
+            actionItems: analysis.actionItems,
+            agreements: analysis.agreements,
+            candidateName: analysis.candidateName ?? null,
+            role: analysis.role ?? null,
+            talkingPoints: analysis.talkingPoints,
+          }
+        : null,
+    };
+  },
+});
+
+/**
  * What's coming up, so a manager can see what the bot will join before it
  * does — and keep it out of anything they'd rather it missed.
  */
