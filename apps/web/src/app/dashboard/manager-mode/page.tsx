@@ -21,7 +21,7 @@ import { TabBar, type ManagerTab } from "./components/TabBar";
 /**
  * Manager Mode.
  *
- * Five tabs. Overview is where a manager lands and should answer "what am I
+ * Four tabs. Overview is where a manager lands and should answer "what am I
  * walking into and who needs me" without a click; the rest are the places you
  * go on purpose.
  *
@@ -186,8 +186,6 @@ export default function ManagerModePage() {
               </div>
             ) : tab === "meetings" ? (
               <MeetingsTab onOpenMeeting={openMeetingFrom} />
-            ) : tab === "reps" ? (
-              <RepCards onOpenRep={setOpenRep} />
             ) : tab === "clips" ? (
               <ClipsTab onOpenMeeting={openMeetingFrom} />
             ) : (

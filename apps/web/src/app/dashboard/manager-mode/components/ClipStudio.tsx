@@ -156,10 +156,45 @@ export function ClipStudio({
             onSetStart={(t) => {
               setSaved(false);
               setStart(t);
-              if (end === null) setEnd(Math.min(duration, t + 60));
             }}
             onSetEnd={setEnd}
+            onClear={clear}
           />
+
+          {/* The reliable way in. Dragging a range on a two-minute meeting is
+              fiddly, and clicking transcript lines needs at least two of them —
+              a meeting with one line had no way to clip at all. Play to the
+              moment, press the button. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setSaved(false);
+                setStart(playhead);
+                if (end !== null && end <= playhead) setEnd(null);
+              }}
+              className="rounded-lg border border-border px-2.5 py-1 text-[12px] hover:bg-muted"
+            >
+              Start at {mmss(playhead)}
+            </button>
+            <button
+              onClick={() => {
+                setSaved(false);
+                if (start === null) setStart(0);
+                setEnd(Math.max(playhead, (start ?? 0) + 1));
+              }}
+              className="rounded-lg border border-border px-2.5 py-1 text-[12px] hover:bg-muted"
+            >
+              End at {mmss(playhead)}
+            </button>
+            {(start !== null || end !== null) && (
+              <button
+                onClick={clear}
+                className="text-[12px] text-muted-foreground underline"
+              >
+                clear
+              </button>
+            )}
+          </div>
 
           {/* Speakers, so the strip's colours mean something. */}
           <div className="flex flex-wrap gap-x-3 gap-y-1">

@@ -25,6 +25,7 @@ export function ClipTimeline({
   onScrub,
   onSetStart,
   onSetEnd,
+  onClear,
 }: {
   segments: Segment[];
   duration: number;
@@ -34,9 +35,13 @@ export function ClipTimeline({
   onScrub: (t: number) => void;
   onSetStart: (t: number) => void;
   onSetEnd: (t: number) => void;
+  onClear: () => void;
 }) {
   const barRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef<"start" | "end" | null>(null);
+  const dragging = useRef<"start" | "end" | "new" | null>(null);
+  // Distinguishes a click (scrub to here) from a drag (select a range). Without
+  // it, every attempt to drag a new selection would also jump the playhead.
+  const dragMoved = useRef(false);
 
   const pctOf = (t: number) => Math.min(100, Math.max(0, (t / duration) * 100));
 
@@ -51,23 +56,49 @@ export function ClipTimeline({
   // clamped against the other rather than allowed to cross.
   const onMove = (e: React.PointerEvent) => {
     if (!dragging.current) return;
+    dragMoved.current = true;
     const t = timeAt(e.clientX);
     if (dragging.current === "start") onSetStart(Math.min(t, (end ?? duration) - 1));
-    else onSetEnd(Math.max(t, (start ?? 0) + 1));
+    else if (dragging.current === "end") onSetEnd(Math.max(t, (start ?? 0) + 1));
+    // Dragging out a brand-new range. Sweeping right to left is just as
+    // natural as left to right, so the two ends are ordered rather than
+    // refused.
+    else if (dragging.current === "new") {
+      const anchor = start ?? t;
+      onSetStart(Math.min(anchor, t));
+      onSetEnd(Math.max(anchor, t));
+    }
   };
 
   return (
     <div className="select-none">
       <div
         ref={barRef}
-        className="relative h-12 w-full cursor-pointer rounded-lg bg-muted/60"
-        onPointerMove={onMove}
-        onPointerUp={() => (dragging.current = null)}
-        onPointerLeave={() => (dragging.current = null)}
-        onClick={(e) => {
+        className="relative h-12 w-full cursor-crosshair rounded-lg bg-muted/60"
+        onPointerDown={(e) => {
+          // Starts a new selection anywhere on the strip. Previously the only
+          // way to select was clicking two transcript lines, which left a
+          // meeting with a single line — or none — with no way to clip at all.
           if (dragging.current) return;
-          onScrub(timeAt(e.clientX));
+          dragMoved.current = false;
+          dragging.current = "new";
+          const t = timeAt(e.clientX);
+          onSetStart(t);
+          onSetEnd(t);
         }}
+        onPointerMove={onMove}
+        onPointerUp={(e) => {
+          const wasDrag = dragMoved.current;
+          const mode = dragging.current;
+          dragging.current = null;
+          // A tap rather than a sweep means "play from here", so the aborted
+          // zero-length selection is thrown away.
+          if (mode === "new" && !wasDrag) {
+            onClear();
+            onScrub(timeAt(e.clientX));
+          }
+        }}
+        onPointerLeave={() => (dragging.current = null)}
       >
         {/* Who was speaking, when. */}
         {segments.map((s, i) => {

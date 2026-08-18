@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import { ClipStudio } from "./ClipStudio";
 import { MeetingClips } from "./MeetingClips";
+import { MeetingShareList, ShareControls } from "./ShareControls";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -108,22 +109,32 @@ export function MeetingDetail({
         All meetings
       </button>
 
-      <div>
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-xl font-semibold tracking-tight">{d.title}</h2>
-          {a && (
-            <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {KIND_LABEL[a.kind] ?? "Meeting"}
-            </span>
-          )}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-xl font-semibold tracking-tight">{d.title}</h2>
+            {a && (
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {KIND_LABEL[a.kind] ?? "Meeting"}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {d.startedAt ? new Date(d.startedAt).toLocaleString() : "—"}
+            {d.duration ? ` · ${fmtDuration(d.duration)}` : ""}
+            {isInterview && a?.candidateName ? ` · ${a.candidateName}` : ""}
+            {isInterview && a?.role ? ` · ${a.role}` : ""}
+          </div>
         </div>
-        <div className="mt-1 text-xs text-muted-foreground">
-          {d.startedAt ? new Date(d.startedAt).toLocaleString() : "—"}
-          {d.duration ? ` · ${fmtDuration(d.duration)}` : ""}
-          {isInterview && a?.candidateName ? ` · ${a.candidateName}` : ""}
-          {isInterview && a?.role ? ` · ${a.role}` : ""}
+        {/* Shares the WHOLE meeting — summary, transcript, recording. Clip
+            links are cut down in what they reveal; this one is not, which is
+            why it's a deliberate button rather than a default. */}
+        <div className="shrink-0">
+          <ShareControls meetingId={meetingId} label="Share meeting" />
         </div>
       </div>
+
+      <MeetingShareList meetingId={meetingId} />
 
       {/* Why nothing was recorded, when nothing was. */}
       {d.failureReason && (

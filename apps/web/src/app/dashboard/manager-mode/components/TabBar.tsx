@@ -1,9 +1,10 @@
 "use client";
 
+// No Reps tab: it rendered the same cards as Overview minus the hero. A tab
+// that duplicates another exists only to be clicked once and distrusted.
 export const MANAGER_TABS = [
   { key: "overview", label: "Overview" },
   { key: "meetings", label: "Meetings" },
-  { key: "reps", label: "Reps" },
   { key: "clips", label: "Clips" },
   { key: "settings", label: "Settings" },
 ] as const;
