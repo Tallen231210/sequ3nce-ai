@@ -7,6 +7,26 @@ import { getContentForCallTx } from "./callContent";
 import { classifyMeeting } from "./fathomClassify";
 import { extractProspectFromTitle } from "./lib/extractProspectFromTitle";
 
+/**
+ * "Nick's Sequ3nce.ai Bot" — the Fathom convention. Participants who see a
+ * bot join want to know WHOSE it is, not just what product sent it.
+ *
+ * A name the team typed in Settings always wins (none of the 46 live teams
+ * has, but the field and its UI exist). The word "Sequ3nce" must survive any
+ * format change here: speaker verification (recallApi.isLikelyBotName) and
+ * the audio processor both identify the bot participant by that substring,
+ * and both check it BEFORE closer-name matching — which is why a bot named
+ * after Nick can never be mistaken for Nick.
+ */
+function personalizedBotName(
+  closerName: string | null | undefined,
+  customName: string | null | undefined,
+): string {
+  if (customName) return customName;
+  const first = (closerName ?? "").trim().split(/\s+/)[0];
+  return first ? `${first}'s Sequ3nce.ai Bot` : "Sequ3nce.ai";
+}
+
 // Schedule a delayed fetch of the recording URL from Recall.ai API
 export const scheduleRecordingFetch = internalMutation({
   args: {
@@ -434,7 +454,11 @@ export const getBotConfigForAudioProcessor = query({
     return {
       closerIsHost: bot.closerIsHost ?? true, // Default to true preserves legacy scheduled-call behavior on bots created before this field existed
       closerName: bot.closerName ?? null,
-      botName: team?.meetingBotName ?? "Sequ3nce.ai",
+      // The same derivation used at creation, so the processor is told the
+      // name the bot actually joined with. (Its matching would survive a
+      // mismatch anyway — it also checks the "sequ3nce" substring — but
+      // reporting a name the bot doesn't wear invites future confusion.)
+      botName: personalizedBotName(bot.closerName, team?.meetingBotName),
       closerParticipantId: bot.closerParticipantId ?? null,
     };
   },
@@ -532,13 +556,13 @@ export const createBot = action({
       teamId: args.teamId,
     });
 
-    const botName = team?.meetingBotName || "Sequ3nce.ai";
-
     // Look up closer's name for speaker identification in transcripts
     const closer = await ctx.runQuery(internal.meetingBot.getCloserById, {
       closerId: args.closerId,
     });
     const closerName = closer?.name;
+
+    const botName = personalizedBotName(closerName, team?.meetingBotName);
 
     // Store closerName on bot record for webhook transcript speaker identification
     if (closerName) {
@@ -846,13 +870,13 @@ export const createQuickBot = action({
       teamId: args.teamId,
     });
 
-    const botName = team?.meetingBotName || "Sequ3nce.ai";
-
     // Look up closer's name for speaker identification in transcripts
     const closer = await ctx.runQuery(internal.meetingBot.getCloserById, {
       closerId: args.closerId,
     });
     const closerName = closer?.name;
+
+    const botName = personalizedBotName(closerName, team?.meetingBotName);
 
     // Store closerName on bot record for webhook transcript speaker identification
     if (closerName) {

@@ -43,10 +43,20 @@ export const getBotByRecallId = internalQuery({
 });
 
 export const getTeamBotName = internalQuery({
-  args: { teamId: v.id("teams") },
+  args: { teamId: v.id("teams"), userId: v.optional(v.id("users")) },
   handler: async (ctx, args) => {
     const team = await ctx.db.get(args.teamId);
-    return team?.managerMeetingBotName ?? "Sequ3nce MGMT";
+    // A name the team typed themselves always wins over our formatting.
+    if (team?.managerMeetingBotName) return team.managerMeetingBotName;
+
+    // "Tyler's Sequ3nce MGMT" — the Fathom convention. Participants who see
+    // a bot join want to know WHOSE it is, not just what product sent it.
+    // The word "Sequ3nce" must survive any format change here: speaker
+    // verification and the audio processor both identify the bot by that
+    // substring.
+    const user = args.userId ? await ctx.db.get(args.userId) : null;
+    const first = (user?.name ?? "").trim().split(/\s+/)[0];
+    return first ? `${first}'s Sequ3nce MGMT` : "Sequ3nce MGMT";
   },
 });
 
@@ -131,6 +141,7 @@ export const createManagerBot = internalAction({
 
     const botName = await ctx.runQuery(internal.managerMeetingBot.getTeamBotName, {
       teamId: ev.teamId as Id<"teams">,
+      userId: ev.userId as Id<"users">,
     });
 
     const res = await fetch(`${RECALL_BASE}/bot/`, {

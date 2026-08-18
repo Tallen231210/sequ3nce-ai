@@ -32,7 +32,13 @@ export const getManagerCalendarState = query({
       canConnect: isOverwatch(team?.productTier),
       /** Shown so a manager on the wrong plan is told why, not just refused. */
       tier: team?.productTier ?? null,
-      botName: team?.managerMeetingBotName ?? "Sequ3nce MGMT",
+      // Mirrors getTeamBotName exactly — this is the name the UI promises
+      // ("X joins every meeting"), so it must match what the bot joins as.
+      botName:
+        team?.managerMeetingBotName ??
+        (user.name?.trim()
+          ? `${user.name.trim().split(/\s+/)[0]}'s Sequ3nce MGMT`
+          : "Sequ3nce MGMT"),
     };
   },
 });
