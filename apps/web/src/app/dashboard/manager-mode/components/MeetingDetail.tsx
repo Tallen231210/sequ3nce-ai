@@ -1,6 +1,7 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useState } from "react";
+import { useAction, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
@@ -16,6 +17,48 @@ const KIND_LABEL: Record<string, string> = {
   interview: "Interview",
   other: "Meeting",
 };
+
+/**
+ * Opens the recording, having just asked Recall for a URL that still works.
+ *
+ * Recall presigns the download and it expires roughly six hours after the
+ * meeting, so the stored one is only good on the day. Fetching on click keeps
+ * yesterday's meeting watchable.
+ */
+function WatchRecording({ meetingId }: { meetingId: string }) {
+  const { user } = useUser();
+  const getUrl = useAction(api.managerShareRecording.getFreshRecordingUrl);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <div>
+      <button
+        disabled={busy}
+        onClick={async () => {
+          if (!user) return;
+          setBusy(true);
+          setFailed(false);
+          const r: any = await getUrl({
+            clerkId: user.id,
+            meetingId: meetingId as any,
+          });
+          setBusy(false);
+          if (r?.recordingUrl) window.open(r.recordingUrl, "_blank", "noreferrer");
+          else setFailed(true);
+        }}
+        className="text-sm text-muted-foreground underline disabled:opacity-50"
+      >
+        {busy ? "Opening…" : "Watch the recording"}
+      </button>
+      {failed && (
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          The recording couldn&apos;t be loaded. It may no longer be stored.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function fmtDuration(seconds: number | null): string {
   if (!seconds) return "";
@@ -185,16 +228,10 @@ export function MeetingDetail({
         </>
       )}
 
-      {d.recordingUrl && (
-        <a
-          href={d.recordingUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-block text-sm text-muted-foreground underline"
-        >
-          Watch the recording
-        </a>
-      )}
+      {/* Not a plain link to the stored URL — Recall presigns it and it dies
+          about six hours after the meeting, so anything older than today
+          would 403. Fetches a fresh one on click. */}
+      {d.recordingUrl && <WatchRecording meetingId={meetingId} />}
 
       <MeetingClips meetingId={meetingId} />
 

@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Loader2, Lock } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 
@@ -38,10 +38,13 @@ export default function ManagerSharePage() {
   const unlock = useMutation(api.managerShareView.resolveShareWithPassword);
   const countView = useMutation(api.managerShareView.recordShareView);
 
+  const freshUrl = useAction(api.managerShareRecording.getFreshRecordingUrlByToken);
+
   const [unlocked, setUnlocked] = useState<any>(null);
   const [password, setPassword] = useState("");
   const [wrong, setWrong] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [recordingUrl, setRecordingUrl] = useState<string | null | undefined>(undefined);
 
   // Count the view once. A ref rather than state because React re-runs effects
   // in development and a doubled count would make "opened twice" meaningless.
@@ -53,6 +56,19 @@ export default function ManagerSharePage() {
     }
   }, [initial, token, countView]);
 
+  // The stored URL is a presigned S3 link that expires about six hours after
+  // the meeting. Always ask for a fresh one rather than serving a URL that
+  // silently 403s the day after the link was sent.
+  const passedGate = unlocked ?? (initial?.ok ? initial : null);
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!passedGate || asked.current || !token) return;
+    asked.current = true;
+    void freshUrl({ token, password: password || undefined })
+      .then((r: any) => setRecordingUrl(r?.recordingUrl ?? null))
+      .catch(() => setRecordingUrl(null));
+  }, [passedGate, token, password, freshUrl]);
+
   if (initial === undefined) {
     return (
       <Shell>
@@ -61,7 +77,7 @@ export default function ManagerSharePage() {
     );
   }
 
-  const data = unlocked ?? (initial.ok ? initial : null);
+  const data = passedGate;
 
   if (!data) {
     const reason = (initial as any).reason as string;
@@ -125,10 +141,16 @@ export default function ManagerSharePage() {
     );
   }
 
-  return <ShareBody data={data} />;
+  return <ShareBody data={data} recordingUrl={recordingUrl} />;
 }
 
-function ShareBody({ data }: { data: any }) {
+function ShareBody({
+  data,
+  recordingUrl,
+}: {
+  data: any;
+  recordingUrl: string | null | undefined;
+}) {
   const isClip = data.kind === "clip";
 
   return (
@@ -153,13 +175,19 @@ function ShareBody({ data }: { data: any }) {
           </p>
         )}
 
-        {data.recordingUrl ? (
+        {recordingUrl === undefined ? (
+          <div className="mt-6 flex h-40 items-center justify-center rounded-xl border border-border bg-card">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : recordingUrl ? (
           <ClipPlayer
-            url={data.recordingUrl}
+            url={recordingUrl}
             startSeconds={data.startSeconds}
             endSeconds={data.endSeconds}
           />
         ) : (
+          // The words are still worth reading without the video, so this says
+          // what's missing rather than rendering a broken player.
           <div className="mt-6 rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
             The recording for this meeting isn&apos;t available.
           </div>

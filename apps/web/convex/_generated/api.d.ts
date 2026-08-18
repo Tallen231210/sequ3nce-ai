@@ -156,6 +156,7 @@ import type * as managerMeetingTranscript from "../managerMeetingTranscript.js";
 import type * as managerMeetingWebhook from "../managerMeetingWebhook.js";
 import type * as managerRepCards from "../managerRepCards.js";
 import type * as managerRepHistory from "../managerRepHistory.js";
+import type * as managerShareRecording from "../managerShareRecording.js";
 import type * as managerShareView from "../managerShareView.js";
 import type * as managerSuggestions from "../managerSuggestions.js";
 import type * as meetingBot from "../meetingBot.js";
@@ -371,6 +372,7 @@ declare const fullApi: ApiFromModules<{
   managerMeetingWebhook: typeof managerMeetingWebhook;
   managerRepCards: typeof managerRepCards;
   managerRepHistory: typeof managerRepHistory;
+  managerShareRecording: typeof managerShareRecording;
   managerShareView: typeof managerShareView;
   managerSuggestions: typeof managerSuggestions;
   meetingBot: typeof meetingBot;
