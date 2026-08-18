@@ -4,22 +4,29 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
-import { CalendarPlus, Loader2, Lock, Video } from "lucide-react";
+import { CalendarPlus, Loader2, Lock } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { MeetingDetail } from "./components/MeetingDetail";
 import { RepCards } from "./components/RepCards";
 import { NextMeetingBrief } from "./components/NextMeetingBrief";
 import { RepHistory } from "./components/RepHistory";
+import { MeetingsTab } from "./components/MeetingsTab";
+import { ClipsTab } from "./components/ClipsTab";
+import { SettingsTab } from "./components/SettingsTab";
+import { TabBar, type ManagerTab } from "./components/TabBar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * Manager Mode.
  *
- * Connect a calendar, see what the bot will join, see what it recorded, and
- * open any recording to read it back. The brief, rep cards and clipping are
- * later phases.
+ * Four tabs. Overview is where a manager lands and should answer "what am I
+ * walking into and who needs me" without a click; the rest are the places you
+ * go on purpose.
+ *
+ * Opening a meeting or a rep replaces the tab content rather than navigating,
+ * so going back doesn't lose which tab you were on.
  */
 export default function ManagerModePage() {
   const { user } = useUser();
@@ -34,15 +41,14 @@ export default function ManagerModePage() {
     api.managerMeetingQueries.listManagerMeetings,
     clerkId ? { clerkId } : "skip",
   );
-  const upcoming = useQuery(
-    api.managerMeetingQueries.listUpcomingManagerEvents,
+  const clips = useQuery(
+    api.managerMeetingClips.listAllClips,
     clerkId ? { clerkId } : "skip",
   );
 
   const startConnect = useMutation(api.managerCalendar.startManagerCalendarConnect);
-  const disconnect = useMutation(api.managerCalendar.disconnectManagerCalendar);
-  const setAutoJoin = useMutation(api.managerCalendar.setManagerAutoJoin);
 
+  const [tab, setTab] = useState<ManagerTab>("overview");
   const [openMeeting, setOpenMeeting] = useState<string | null>(null);
   const [openRep, setOpenRep] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,6 +72,11 @@ export default function ManagerModePage() {
     }
   }
 
+  function openMeetingFrom(id: string) {
+    setOpenRep(null);
+    setOpenMeeting(id);
+  }
+
   if (state === undefined) {
     return (
       <>
@@ -84,32 +95,20 @@ export default function ManagerModePage() {
         title="Manager Mode"
         description="Your one-to-ones, team meetings, leadership calls and interviews"
       />
+
       <div className="max-w-4xl space-y-5 p-6">
-        {openRep ? (
-          <RepHistory closerId={openRep} onBack={() => setOpenRep(null)} />
-        ) : openMeeting ? (
-          <MeetingDetail
-            meetingId={openMeeting}
-            onBack={() => setOpenMeeting(null)}
-          />
-        ) : (
-        <>
         {justConnected && (
-          <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <Banner tone="good">
             Calendar connected. Meetings on it will be recorded from now on.
-          </div>
+          </Banner>
         )}
         {connectFailed && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <Banner tone="warn">
             That connection link had expired. Start again — they only last ten
             minutes.
-          </div>
+          </Banner>
         )}
-        {error && (
-          <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </div>
-        )}
+        {error && <Banner tone="bad">{error}</Banner>}
 
         {/* Not on the right plan. Say which plan, rather than just refusing. */}
         {!state.canConnect && (
@@ -125,13 +124,12 @@ export default function ManagerModePage() {
           </div>
         )}
 
-        {/* Not connected yet. */}
+        {/* Not connected yet — no tabs, because every one of them would be
+            empty and a row of empty tabs reads as a broken feature. */}
         {state.canConnect && !state.connected && (
           <div className="rounded-xl border border-border bg-card p-8">
             <CalendarPlus className="h-5 w-5 text-muted-foreground" />
-            <h2 className="mt-3 text-base font-semibold">
-              Connect your calendar
-            </h2>
+            <h2 className="mt-3 text-base font-semibold">Connect your calendar</h2>
             <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
               {state.botName} will join <strong>every meeting on your
               calendar</strong> and record it — one-to-ones, team meetings,
@@ -139,8 +137,8 @@ export default function ManagerModePage() {
               closer and no other manager can see them.
             </p>
             <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground">
-              If you don&apos;t want a particular meeting recorded, remove the
-              bot from it — the recording is discarded rather than kept.
+              If you don&apos;t want a particular meeting recorded, remove the bot
+              from it — the recording is discarded rather than kept.
             </p>
             <button
               onClick={() => void connect()}
@@ -157,132 +155,65 @@ export default function ManagerModePage() {
           </div>
         )}
 
-        {/* Connected. */}
         {state.canConnect && state.connected && (
           <>
-            <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4">
-              <div>
-                <div className="text-sm font-semibold">Auto Record</div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {state.autoJoin
-                    ? `${state.botName} joins every meeting on your calendar`
-                    : "Nothing is being recorded"}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={state.autoJoin}
-                  onChange={(e) =>
-                    void setAutoJoin({ clerkId: clerkId!, enabled: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-border accent-foreground"
-                />
-                <button
-                  onClick={() => void disconnect({ clerkId: clerkId! })}
-                  className="text-xs text-muted-foreground underline"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
+            <TabBar
+              active={tab}
+              onChange={(t) => {
+                setTab(t);
+                setOpenMeeting(null);
+                setOpenRep(null);
+              }}
+              counts={{
+                meetings: meetings?.length ?? 0,
+                clips: clips?.length ?? 0,
+              }}
+            />
 
-            <NextMeetingBrief />
-
-            <RepCards onOpenRep={setOpenRep} />
-
-            <section>
-              <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                Coming up
-              </h3>
-              <div className="rounded-xl border border-border bg-card">
-                {upcoming === undefined ? (
-                  <div className="p-5 text-sm text-muted-foreground">Loading…</div>
-                ) : upcoming.length === 0 ? (
-                  <div className="p-5 text-sm text-muted-foreground">
-                    Nothing on your calendar in the next week.
-                  </div>
-                ) : (
-                  upcoming.map((e: any) => (
-                    <div
-                      key={e._id}
-                      className="flex items-center justify-between border-b border-border/50 px-5 py-3 last:border-0"
-                    >
-                      <div>
-                        <div className="text-sm font-medium">{e.title}</div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {new Date(e.startTime).toLocaleString()}
-                        </div>
-                      </div>
-                      {/* A meeting with no video link is on the calendar but
-                          unrecordable. Saying so beats a silent absence from
-                          the recordings list later. */}
-                      {!e.hasMeetingUrl ? (
-                        <span className="text-xs text-muted-foreground">
-                          no video link
-                        </span>
-                      ) : e.excluded ? (
-                        <span className="text-xs text-amber-700">not recording</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          will record
-                        </span>
-                      )}
-                    </div>
-                  ))
-                )}
+            {/* A drill-in takes over the content area. The tab stays selected
+                underneath, so Back returns you where you were. */}
+            {openRep ? (
+              <RepHistory closerId={openRep} onBack={() => setOpenRep(null)} />
+            ) : openMeeting ? (
+              <MeetingDetail
+                meetingId={openMeeting}
+                onBack={() => setOpenMeeting(null)}
+              />
+            ) : tab === "overview" ? (
+              <div className="space-y-5">
+                <NextMeetingBrief />
+                <RepCards onOpenRep={setOpenRep} />
               </div>
-            </section>
-
-            <section>
-              <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                Recorded
-              </h3>
-              <div className="rounded-xl border border-border bg-card">
-                {meetings === undefined ? (
-                  <div className="p-5 text-sm text-muted-foreground">Loading…</div>
-                ) : meetings.length === 0 ? (
-                  <div className="p-5 text-sm text-muted-foreground">
-                    Nothing recorded yet. Your next meeting with a video link
-                    will appear here.
-                  </div>
-                ) : (
-                  meetings.map((m: any) => (
-                    <button
-                      key={m._id}
-                      onClick={() => setOpenMeeting(m._id)}
-                      className="flex w-full items-center gap-3 border-b border-border/50 px-5 py-3 text-left last:border-0 hover:bg-muted/40"
-                    >
-                      <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">{m.title}</div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {m.startedAt
-                            ? new Date(m.startedAt).toLocaleString()
-                            : "—"}
-                          {m.duration
-                            ? ` · ${Math.round(m.duration / 60)} min`
-                            : ""}
-                        </div>
-                      </div>
-                      {/* Why a recording produced nothing, when it produced
-                          nothing — rather than a gap someone reads as "no
-                          meeting happened". */}
-                      {m.failureReason && (
-                        <span className="text-xs text-amber-700">
-                          {m.failureReason}
-                        </span>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            </section>
+            ) : tab === "meetings" ? (
+              <MeetingsTab onOpenMeeting={openMeetingFrom} />
+            ) : tab === "clips" ? (
+              <ClipsTab onOpenMeeting={openMeetingFrom} />
+            ) : (
+              <SettingsTab state={state} />
+            )}
           </>
-        )}
-        </>
         )}
       </div>
     </>
+  );
+}
+
+const TONE: Record<string, string> = {
+  good: "border-emerald-300 bg-emerald-50 text-emerald-800",
+  warn: "border-amber-300 bg-amber-50 text-amber-800",
+  bad: "border-rose-300 bg-rose-50 text-rose-700",
+};
+
+function Banner({
+  tone,
+  children,
+}: {
+  tone: "good" | "warn" | "bad";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-lg border px-4 py-3 text-sm ${TONE[tone]}`}>
+      {children}
+    </div>
   );
 }

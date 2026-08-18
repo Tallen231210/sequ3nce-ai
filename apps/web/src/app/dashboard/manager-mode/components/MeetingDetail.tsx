@@ -1,9 +1,13 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useState } from "react";
+import { useAction, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
+import { ClipStudio } from "./ClipStudio";
+import { MeetingClips } from "./MeetingClips";
+import { MeetingShareList, ShareControls } from "./ShareControls";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -14,6 +18,48 @@ const KIND_LABEL: Record<string, string> = {
   interview: "Interview",
   other: "Meeting",
 };
+
+/**
+ * Opens the recording, having just asked Recall for a URL that still works.
+ *
+ * Recall presigns the download and it expires roughly six hours after the
+ * meeting, so the stored one is only good on the day. Fetching on click keeps
+ * yesterday's meeting watchable.
+ */
+function WatchRecording({ meetingId }: { meetingId: string }) {
+  const { user } = useUser();
+  const getUrl = useAction(api.managerShareRecording.getFreshRecordingUrl);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <div>
+      <button
+        disabled={busy}
+        onClick={async () => {
+          if (!user) return;
+          setBusy(true);
+          setFailed(false);
+          const r: any = await getUrl({
+            clerkId: user.id,
+            meetingId: meetingId as any,
+          });
+          setBusy(false);
+          if (r?.recordingUrl) window.open(r.recordingUrl, "_blank", "noreferrer");
+          else setFailed(true);
+        }}
+        className="text-sm text-muted-foreground underline disabled:opacity-50"
+      >
+        {busy ? "Opening…" : "Watch the recording"}
+      </button>
+      {failed && (
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          The recording couldn&apos;t be loaded. It may no longer be stored.
+        </p>
+      )}
+    </div>
+  );
+}
 
 function fmtDuration(seconds: number | null): string {
   if (!seconds) return "";
@@ -63,22 +109,32 @@ export function MeetingDetail({
         All meetings
       </button>
 
-      <div>
-        <div className="flex items-baseline gap-3">
-          <h2 className="text-xl font-semibold tracking-tight">{d.title}</h2>
-          {a && (
-            <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {KIND_LABEL[a.kind] ?? "Meeting"}
-            </span>
-          )}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-xl font-semibold tracking-tight">{d.title}</h2>
+            {a && (
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {KIND_LABEL[a.kind] ?? "Meeting"}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {d.startedAt ? new Date(d.startedAt).toLocaleString() : "—"}
+            {d.duration ? ` · ${fmtDuration(d.duration)}` : ""}
+            {isInterview && a?.candidateName ? ` · ${a.candidateName}` : ""}
+            {isInterview && a?.role ? ` · ${a.role}` : ""}
+          </div>
         </div>
-        <div className="mt-1 text-xs text-muted-foreground">
-          {d.startedAt ? new Date(d.startedAt).toLocaleString() : "—"}
-          {d.duration ? ` · ${fmtDuration(d.duration)}` : ""}
-          {isInterview && a?.candidateName ? ` · ${a.candidateName}` : ""}
-          {isInterview && a?.role ? ` · ${a.role}` : ""}
+        {/* Shares the WHOLE meeting — summary, transcript, recording. Clip
+            links are cut down in what they reveal; this one is not, which is
+            why it's a deliberate button rather than a default. */}
+        <div className="shrink-0">
+          <ShareControls meetingId={meetingId} label="Share meeting" />
         </div>
       </div>
+
+      <MeetingShareList meetingId={meetingId} />
 
       {/* Why nothing was recorded, when nothing was. */}
       {d.failureReason && (
@@ -183,36 +239,28 @@ export function MeetingDetail({
         </>
       )}
 
-      {d.recordingUrl && (
-        <a
-          href={d.recordingUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-block text-sm text-muted-foreground underline"
-        >
-          Watch the recording
-        </a>
-      )}
+      {/* Not a plain link to the stored URL — Recall presigns it and it dies
+          about six hours after the meeting, so anything older than today
+          would 403. Fetches a fresh one on click. */}
+      {d.recordingUrl && <WatchRecording meetingId={meetingId} />}
 
-      {d.transcript.length > 0 && (
-        <details className="rounded-xl border border-border bg-card">
-          <summary className="cursor-pointer px-5 py-3.5 text-sm font-medium">
-            Transcript
-          </summary>
-          <div className="max-h-96 space-y-2.5 overflow-y-auto border-t border-border px-5 py-4">
-            {d.transcript.map((t: any, i: number) => (
-              <div key={i} className="flex gap-3 text-sm leading-relaxed">
-                <span className="w-14 shrink-0 text-xs text-muted-foreground">
-                  {Math.floor(t.startSeconds / 60)}:
-                  {String(Math.floor(t.startSeconds % 60)).padStart(2, "0")}
-                </span>
-                <span className="w-24 shrink-0 font-medium">{t.speaker}</span>
-                <span className="flex-1">{t.text}</span>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
+      <MeetingClips meetingId={meetingId} />
+
+      {/* Video, the meeting as a strip, and the transcript beside it. A manager
+          marks the moment in whichever they remember it by. */}
+      <ClipStudio
+        meetingId={meetingId}
+        segments={d.transcript}
+        duration={
+          d.duration ||
+          // No duration recorded: fall back to the last thing said, plus a
+          // little, so the strip still spans the conversation.
+          (d.transcript.length
+            ? d.transcript[d.transcript.length - 1].startSeconds + 30
+            : 0)
+        }
+        hasRecording={!!d.recordingUrl}
+      />
     </div>
   );
 }
