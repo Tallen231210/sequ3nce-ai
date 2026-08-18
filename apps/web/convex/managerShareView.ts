@@ -138,6 +138,14 @@ async function buildPayload(ctx: any, share: any) {
     .withIndex("by_meeting", (q: any) => q.eq("meetingId", share.meetingId))
     .collect();
 
+  // A whole-meeting share is the full record on purpose — the summary and
+  // what was agreed travel with it. (Clip shares above deliberately don't:
+  // a clip is two minutes, not the meeting.)
+  const analysis = await ctx.db
+    .query("managerMeetingAnalysis")
+    .withIndex("by_meeting", (q: any) => q.eq("meetingId", share.meetingId))
+    .first();
+
   return {
     ok: true as const,
     kind: "meeting" as const,
@@ -148,6 +156,21 @@ async function buildPayload(ctx: any, share: any) {
     endSeconds: null,
     duration: meeting.duration ?? null,
     metAt: meeting.startedAt ?? meeting.createdAt,
+    analysis: analysis
+      ? {
+          summary: analysis.summary,
+          topics: analysis.topics ?? [],
+          agreements: (analysis.agreements ?? []).map((a: any) => ({
+            who: a.who,
+            what: a.what,
+          })),
+          actionItems: (analysis.actionItems ?? []).map((t: any) => ({
+            who: t.who,
+            what: t.what,
+          })),
+          talkingPoints: analysis.talkingPoints ?? [],
+        }
+      : null,
     transcript: segments
       .sort((a: any, b: any) => a.startSeconds - b.startSeconds)
       .map((s: any) => ({

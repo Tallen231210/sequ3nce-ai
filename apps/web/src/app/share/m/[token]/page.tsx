@@ -157,9 +157,18 @@ function ShareBody({
     ? !!data.transcriptText
     : (data.transcript?.length ?? 0) > 0;
 
+  // The transcript follows the video and clicking a line seeks it, so time
+  // and seeking live here, above both.
+  const [time, setTime] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const seek = (t: number) => {
+    if (videoRef.current) videoRef.current.currentTime = t;
+    setTime(t);
+  };
+
   const player =
     recordingUrl === undefined ? (
-      <div className="flex h-48 items-center justify-center rounded-xl border border-border bg-card">
+      <div className="flex h-64 items-center justify-center rounded-xl border border-border bg-card">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       </div>
     ) : recordingUrl ? (
@@ -167,6 +176,8 @@ function ShareBody({
         url={recordingUrl}
         startSeconds={data.startSeconds}
         endSeconds={data.endSeconds}
+        videoRef={videoRef}
+        onTime={setTime}
       />
     ) : (
       // The words are still worth reading without the video, so this says
@@ -176,19 +187,18 @@ function ShareBody({
       </div>
     );
 
+  const a = !isClip ? data.analysis : null;
+
   const words = isClip ? (
     <pre className="whitespace-pre-wrap rounded-xl border border-border bg-card p-5 font-sans text-[13px] leading-relaxed">
       {data.transcriptText}
     </pre>
   ) : (
-    <div className="max-h-[70vh] space-y-3 overflow-y-auto rounded-xl border border-border bg-card p-5">
-      {data.transcript?.map((s: any, i: number) => (
-        <div key={i} className="text-[13px] leading-relaxed">
-          <span className="font-semibold">{s.speaker}</span>
-          <span className="ml-2 text-muted-foreground">{s.text}</span>
-        </div>
-      ))}
-    </div>
+    <SyncedTranscript
+      segments={data.transcript ?? []}
+      time={time}
+      onSeek={seek}
+    />
   );
 
   return (
@@ -202,7 +212,7 @@ function ShareBody({
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-5 py-8">
+      <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="text-center">
           <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
             {isClip ? "Clip" : "Meeting"}
@@ -226,19 +236,80 @@ function ShareBody({
           </p>
         )}
 
-        {/* Video beside the words on a desktop, stacked on a phone. When there
-            are no words, the video takes the middle alone rather than sitting
-            in a lopsided half-filled grid. */}
+        {/* The video is the main event and sized like it — roughly two thirds
+            of the row, words in the remaining third. Stacked on a phone. When
+            there are no words, the video takes the middle alone rather than
+            sitting in a lopsided half-filled grid. */}
         <div
           className={
             "mt-7 " +
             (hasWords
-              ? "grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-start"
-              : "mx-auto max-w-3xl")
+              ? "grid gap-6 lg:grid-cols-[2fr_1fr] lg:items-start"
+              : "mx-auto max-w-4xl")
           }
         >
-          <div className="lg:sticky lg:top-6">{player}</div>
-          {hasWords && words}
+          <div className="space-y-5">
+            {player}
+
+            {/* What the meeting amounted to, under the video where a viewer
+                who won't watch all of it still gets the substance. */}
+            {a?.summary && (
+              <section className="rounded-xl border border-border bg-card p-5">
+                <SectionLabel>Summary</SectionLabel>
+                <p className="mt-2.5 text-sm leading-relaxed">{a.summary}</p>
+                {a.topics.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {a.topics.map((t: string) => (
+                      <span
+                        key={t}
+                        className="rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {(a?.talkingPoints?.length ?? 0) > 0 && (
+              <section className="rounded-xl border border-border bg-card p-5">
+                <SectionLabel>Biggest takeaways</SectionLabel>
+                <Bullets items={a.talkingPoints} />
+              </section>
+            )}
+
+            {(a?.agreements?.length ?? 0) > 0 && (
+              <section className="rounded-xl border border-border bg-card p-5">
+                <SectionLabel>Agreed</SectionLabel>
+                <ul className="mt-3 space-y-2">
+                  {a.agreements.map((g: any, i: number) => (
+                    <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
+                      <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
+                      <span>
+                        <span className="font-medium">{g.who}</span> — {g.what}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {(a?.actionItems?.length ?? 0) > 0 && (
+              <section className="rounded-xl border border-border bg-card p-5">
+                <SectionLabel>Left hanging</SectionLabel>
+                <ul className="mt-3 space-y-2">
+                  {a.actionItems.map((t: any, i: number) => (
+                    <li key={i} className="text-sm leading-relaxed">
+                      <span className="font-medium">{t.who}</span> — {t.what}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+
+          {hasWords && <div className="lg:sticky lg:top-6">{words}</div>}
         </div>
       </div>
 
@@ -248,6 +319,92 @@ function ShareBody({
           Sequ3nce.ai
         </a>
       </footer>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="mt-3 space-y-2">
+      {items.map((t, i) => (
+        <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
+          <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
+          {t}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * The transcript, following the video.
+ *
+ * The line being spoken is highlighted and kept in view; clicking any line
+ * seeks the video there. Auto-follow pauses for a few seconds after the reader
+ * scrolls by hand — fighting someone who's trying to read back is worse than
+ * briefly losing sync, and playback re-captures it on the next line change.
+ */
+function SyncedTranscript({
+  segments,
+  time,
+  onSeek,
+}: {
+  segments: Array<{ speaker: string; text: string; startSeconds: number }>;
+  time: number;
+  onSeek: (t: number) => void;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const userScrolledAt = useRef(0);
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  // The line being spoken: the last one that started before now.
+  let active = -1;
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i].startSeconds <= time) active = i;
+    else break;
+  }
+
+  useEffect(() => {
+    if (Date.now() - userScrolledAt.current < 4000) return;
+    activeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [active]);
+
+  return (
+    <div
+      ref={boxRef}
+      onWheel={() => (userScrolledAt.current = Date.now())}
+      onTouchMove={() => (userScrolledAt.current = Date.now())}
+      className="max-h-[75vh] space-y-0.5 overflow-y-auto rounded-xl border border-border bg-card p-3"
+    >
+      {segments.map((s, i) => (
+        <button
+          key={i}
+          ref={i === active ? activeRef : undefined}
+          onClick={() => onSeek(s.startSeconds)}
+          className={
+            "block w-full rounded-lg px-2.5 py-2 text-left text-[13px] leading-relaxed transition-colors " +
+            (i === active ? "bg-primary/10" : "hover:bg-muted/60")
+          }
+        >
+          <span className="font-semibold">{s.speaker}</span>
+          <span
+            className={
+              "ml-2 " +
+              (i === active ? "text-foreground" : "text-muted-foreground")
+            }
+          >
+            {s.text}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -263,12 +420,16 @@ function ClipPlayer({
   url,
   startSeconds,
   endSeconds,
+  videoRef,
+  onTime,
 }: {
   url: string;
   startSeconds: number | null;
   endSeconds: number | null;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  onTime: (t: number) => void;
 }) {
-  const ref = useRef<HTMLVideoElement>(null);
+  const ref = videoRef;
 
   useEffect(() => {
     const el = ref.current;
@@ -277,23 +438,24 @@ function ClipPlayer({
     const onLoaded = () => {
       el.currentTime = startSeconds;
     };
-    const onTime = () => {
+    const onTimeCap = () => {
       if (endSeconds !== null && el.currentTime >= endSeconds) el.pause();
     };
     el.addEventListener("loadedmetadata", onLoaded);
-    el.addEventListener("timeupdate", onTime);
+    el.addEventListener("timeupdate", onTimeCap);
     return () => {
       el.removeEventListener("loadedmetadata", onLoaded);
-      el.removeEventListener("timeupdate", onTime);
+      el.removeEventListener("timeupdate", onTimeCap);
     };
-  }, [startSeconds, endSeconds]);
+  }, [startSeconds, endSeconds, ref]);
 
   return (
     <video
       ref={ref}
       src={url}
       controls
-      className="mt-6 w-full rounded-xl border border-border bg-black"
+      onTimeUpdate={(e) => onTime(e.currentTarget.currentTime)}
+      className="w-full rounded-xl border border-border bg-black"
     />
   );
 }
