@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { matchMeetingToRep, type Candidate } from "./managerMeetingMatch";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -16,6 +17,24 @@ import type { Id } from "./_generated/dataModel";
 /** How far ahead to look. Bots are only ever scheduled minutes out; a week is
  *  enough for the tab to show what's coming without dragging in noise. */
 const LOOKAHEAD_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Reps this manager's meetings could be with. */
+export const getMatchCandidates = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args): Promise<Candidate[]> => {
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .take(200);
+    return closers
+      .filter((c) => c.status === "active")
+      .map((c) => ({
+        closerId: String(c._id),
+        name: c.name ?? "",
+        email: c.email ?? "",
+      }));
+  },
+});
 
 export const getManagerForSync = internalQuery({
   args: { userId: v.id("users") },
@@ -54,6 +73,8 @@ export const upsertManagerEvent = internalMutation({
     endTime: v.number(),
     isAllDay: v.optional(v.boolean()),
     attendees: v.optional(v.string()),
+    matchedCloserId: v.optional(v.id("closers")),
+    matchedBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -184,6 +205,13 @@ export const syncManagerCalendar = internalAction({
     const body = await evRes.json();
     const items: any[] = body.items ?? [];
 
+    // Who this manager's meetings could be with. Fetched once rather than per
+    // event — a week of meetings would otherwise be a query each.
+    const candidates = await ctx.runQuery(
+      internal.managerCalendarSync.getMatchCandidates,
+      { teamId: mgr.teamId },
+    );
+
     let upserted = 0;
     const keepUids: string[] = [];
     const skipped: string[] = [];
@@ -201,6 +229,12 @@ export const syncManagerCalendar = internalAction({
       const startTime = new Date(ev.start.dateTime).getTime();
       const endTime = ev.end?.dateTime ? new Date(ev.end.dateTime).getTime() : startTime;
 
+      const attendees = ev.attendees ? JSON.stringify(ev.attendees) : undefined;
+      const match = matchMeetingToRep(
+        { title: ev.summary ?? undefined, attendees },
+        candidates,
+      );
+
       keepUids.push(ev.id);
       await ctx.runMutation(internal.managerCalendarSync.upsertManagerEvent, {
         userId: mgr.userId,
@@ -212,7 +246,9 @@ export const syncManagerCalendar = internalAction({
         startTime,
         endTime,
         isAllDay: false,
-        attendees: ev.attendees ? JSON.stringify(ev.attendees) : undefined,
+        attendees,
+        matchedCloserId: (match?.closerId as any) ?? undefined,
+        matchedBy: match?.by,
       });
       upserted++;
     }
