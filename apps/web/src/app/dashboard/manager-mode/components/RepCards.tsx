@@ -39,7 +39,7 @@ const SEVERITY_STYLE: Record<string, string> = {
   low: "border-border bg-muted/40 text-muted-foreground",
 };
 
-export function RepCards() {
+export function RepCards({ onOpenRep }: { onOpenRep: (id: string) => void }) {
   const { user } = useUser();
   const data = useQuery(
     api.managerRepCards.listRepCards,
@@ -75,7 +75,12 @@ export function RepCards() {
             }
           >
             <div className="flex items-start justify-between gap-4">
-              <div className="text-sm font-semibold">{c.name}</div>
+              <button
+                onClick={() => onOpenRep(String(c.closerId))}
+                className="text-sm font-semibold hover:underline"
+              >
+                {c.name}
+              </button>
               {c.suggestions.length === 0 && (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                   nothing to raise
