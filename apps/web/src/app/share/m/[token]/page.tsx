@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Loader2, Lock } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
+import { Logo } from "@/components/ui/logo";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -152,64 +153,101 @@ function ShareBody({
   recordingUrl: string | null | undefined;
 }) {
   const isClip = data.kind === "clip";
+  const hasWords = isClip
+    ? !!data.transcriptText
+    : (data.transcript?.length ?? 0) > 0;
+
+  const player =
+    recordingUrl === undefined ? (
+      <div className="flex h-48 items-center justify-center rounded-xl border border-border bg-card">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    ) : recordingUrl ? (
+      <ClipPlayer
+        url={recordingUrl}
+        startSeconds={data.startSeconds}
+        endSeconds={data.endSeconds}
+      />
+    ) : (
+      // The words are still worth reading without the video, so this says
+      // what's missing rather than rendering a broken player.
+      <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+        The recording for this meeting isn&apos;t available.
+      </div>
+    );
+
+  const words = isClip ? (
+    <pre className="whitespace-pre-wrap rounded-xl border border-border bg-card p-5 font-sans text-[13px] leading-relaxed">
+      {data.transcriptText}
+    </pre>
+  ) : (
+    <div className="max-h-[70vh] space-y-3 overflow-y-auto rounded-xl border border-border bg-card p-5">
+      {data.transcript?.map((s: any, i: number) => (
+        <div key={i} className="text-[13px] leading-relaxed">
+          <span className="font-semibold">{s.speaker}</span>
+          <span className="ml-2 text-muted-foreground">{s.text}</span>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-3xl px-5 py-10">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-          {isClip ? "Clip" : "Meeting"}
+      {/* This page is what a recipient sees with no other context — often
+          their first contact with the product. The mark carries that, big and
+          centred, linking home. */}
+      <header className="border-b border-border py-8">
+        <div className="flex justify-center">
+          <Logo height={44} href="https://sequ3nce.ai" />
         </div>
-        <h1 className="mt-1.5 text-2xl font-semibold tracking-tight">{data.title}</h1>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {new Date(data.metAt).toLocaleDateString()}
-          {isClip
-            ? ` · ${formatRange(data.startSeconds, data.endSeconds)}`
-            : data.duration
-              ? ` · ${Math.round(data.duration / 60)} min`
-              : ""}
-        </p>
+      </header>
+
+      <div className="mx-auto max-w-6xl px-5 py-8">
+        <div className="text-center">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+            {isClip ? "Clip" : "Meeting"}
+          </div>
+          <h1 className="mt-1.5 text-2xl font-semibold tracking-tight">
+            {data.title}
+          </h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {new Date(data.metAt).toLocaleDateString()}
+            {isClip
+              ? ` · ${formatRange(data.startSeconds, data.endSeconds)}`
+              : data.duration
+                ? ` · ${Math.round(data.duration / 60)} min`
+                : ""}
+          </p>
+        </div>
 
         {data.notes && (
-          <p className="mt-4 rounded-xl border border-border bg-muted/40 p-4 text-sm leading-relaxed">
+          <p className="mx-auto mt-5 max-w-2xl rounded-xl border border-border bg-muted/40 p-4 text-sm leading-relaxed">
             {data.notes}
           </p>
         )}
 
-        {recordingUrl === undefined ? (
-          <div className="mt-6 flex h-40 items-center justify-center rounded-xl border border-border bg-card">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : recordingUrl ? (
-          <ClipPlayer
-            url={recordingUrl}
-            startSeconds={data.startSeconds}
-            endSeconds={data.endSeconds}
-          />
-        ) : (
-          // The words are still worth reading without the video, so this says
-          // what's missing rather than rendering a broken player.
-          <div className="mt-6 rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-            The recording for this meeting isn&apos;t available.
-          </div>
-        )}
-
-        {isClip && data.transcriptText && (
-          <pre className="mt-6 whitespace-pre-wrap rounded-xl border border-border bg-card p-5 font-sans text-[13px] leading-relaxed">
-            {data.transcriptText}
-          </pre>
-        )}
-
-        {!isClip && data.transcript?.length > 0 && (
-          <div className="mt-6 space-y-3">
-            {data.transcript.map((s: any, i: number) => (
-              <div key={i} className="text-[13px] leading-relaxed">
-                <span className="font-semibold">{s.speaker}</span>
-                <span className="ml-2 text-muted-foreground">{s.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Video beside the words on a desktop, stacked on a phone. When there
+            are no words, the video takes the middle alone rather than sitting
+            in a lopsided half-filled grid. */}
+        <div
+          className={
+            "mt-7 " +
+            (hasWords
+              ? "grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-start"
+              : "mx-auto max-w-3xl")
+          }
+        >
+          <div className="lg:sticky lg:top-6">{player}</div>
+          {hasWords && words}
+        </div>
       </div>
+
+      <footer className="pb-10 pt-2 text-center text-[11px] text-muted-foreground">
+        Recorded with{" "}
+        <a href="https://sequ3nce.ai" className="font-medium text-foreground hover:underline">
+          Sequ3nce.ai
+        </a>
+      </footer>
     </div>
   );
 }
