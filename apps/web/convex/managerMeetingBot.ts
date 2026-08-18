@@ -156,7 +156,33 @@ export const createManagerBot = internalAction({
             b64_data: MANAGER_BOT_AVATAR_JPEG_B64,
           },
         },
-        automatic_leave: { everyone_left_timeout: 15 },
+        automatic_leave: {
+          everyone_left_timeout: 15,
+          // Ten minutes for a scheduled bot. A manager running late to their
+          // own one-to-one shouldn't lose the recording.
+          noone_joined_timeout: 600,
+        },
+        // Without this Recall records video and produces NO transcript at all
+        // — the transcript shortcut comes back null and there is nothing to
+        // fetch. Found by testing rather than review: the bot recorded
+        // perfectly and the transcript was simply never generated.
+        recording_config: {
+          retention: { type: "forever" as const },
+          video_mixed_layout: "gallery_view_v2",
+          transcript: {
+            diarization: {
+              // Who said what. For a one-to-one that's the whole point —
+              // "the manager said" and "the rep said" are different facts.
+              use_separate_streams_when_available: true,
+            },
+            provider: {
+              recallai_streaming: {
+                language_code: "en",
+                mode: "prioritize_low_latency",
+              },
+            },
+          },
+        },
       }),
     });
 

@@ -7,16 +7,16 @@ import { useSearchParams } from "next/navigation";
 import { CalendarPlus, Loader2, Lock, Video } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
+import { MeetingDetail } from "./components/MeetingDetail";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * Manager Mode.
  *
- * Phase 1: connect a calendar, see what the bot will join, see what it
- * recorded. Summaries, briefs and clipping come later — this exists so a real
- * manager can connect a real Google account, which is the only way to find out
- * whether any of the rest works.
+ * Connect a calendar, see what the bot will join, see what it recorded, and
+ * open any recording to read it back. The brief, rep cards and clipping are
+ * later phases.
  */
 export default function ManagerModePage() {
   const { user } = useUser();
@@ -40,6 +40,7 @@ export default function ManagerModePage() {
   const disconnect = useMutation(api.managerCalendar.disconnectManagerCalendar);
   const setAutoJoin = useMutation(api.managerCalendar.setManagerAutoJoin);
 
+  const [openMeeting, setOpenMeeting] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +81,13 @@ export default function ManagerModePage() {
         description="Your one-to-ones, team meetings, leadership calls and interviews"
       />
       <div className="max-w-4xl space-y-5 p-6">
+        {openMeeting ? (
+          <MeetingDetail
+            meetingId={openMeeting}
+            onBack={() => setOpenMeeting(null)}
+          />
+        ) : (
+        <>
         {justConnected && (
           <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             Calendar connected. Meetings on it will be recorded from now on.
@@ -230,9 +238,10 @@ export default function ManagerModePage() {
                   </div>
                 ) : (
                   meetings.map((m: any) => (
-                    <div
+                    <button
                       key={m._id}
-                      className="flex items-center gap-3 border-b border-border/50 px-5 py-3 last:border-0"
+                      onClick={() => setOpenMeeting(m._id)}
+                      className="flex w-full items-center gap-3 border-b border-border/50 px-5 py-3 text-left last:border-0 hover:bg-muted/40"
                     >
                       <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
                       <div className="flex-1">
@@ -254,12 +263,14 @@ export default function ManagerModePage() {
                           {m.failureReason}
                         </span>
                       )}
-                    </div>
+                    </button>
                   ))
                 )}
               </div>
             </section>
           </>
+        )}
+        </>
         )}
       </div>
     </>

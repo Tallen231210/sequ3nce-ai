@@ -143,6 +143,8 @@ import type * as liveStreams from "../liveStreams.js";
 import type * as managerBotAvatar from "../managerBotAvatar.js";
 import type * as managerCalendar from "../managerCalendar.js";
 import type * as managerCalendarSync from "../managerCalendarSync.js";
+import type * as managerMeetingAnalysis from "../managerMeetingAnalysis.js";
+import type * as managerMeetingAnalysisRun from "../managerMeetingAnalysisRun.js";
 import type * as managerMeetingBot from "../managerMeetingBot.js";
 import type * as managerMeetingBotSchedule from "../managerMeetingBotSchedule.js";
 import type * as managerMeetingQueries from "../managerMeetingQueries.js";
@@ -348,6 +350,8 @@ declare const fullApi: ApiFromModules<{
   managerBotAvatar: typeof managerBotAvatar;
   managerCalendar: typeof managerCalendar;
   managerCalendarSync: typeof managerCalendarSync;
+  managerMeetingAnalysis: typeof managerMeetingAnalysis;
+  managerMeetingAnalysisRun: typeof managerMeetingAnalysisRun;
   managerMeetingBot: typeof managerMeetingBot;
   managerMeetingBotSchedule: typeof managerMeetingBotSchedule;
   managerMeetingQueries: typeof managerMeetingQueries;
