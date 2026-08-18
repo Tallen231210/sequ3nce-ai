@@ -3443,6 +3443,21 @@ export default defineSchema({
     attendees: v.optional(v.string()),
     /** Manager pressed "don't record this one". Survives every later sync. */
     excluded: v.optional(v.boolean()),
+    /**
+     * Which rep this meeting is with, worked out from the invite or the title.
+     *
+     * Only 16% of real calendar events carry any attendee list, and the ones
+     * observed were prospects rather than colleagues — so this is frequently
+     * null and the UI has to cope rather than assume.
+     */
+    matchedCloserId: v.optional(v.id("closers")),
+    /** How we worked it out, so a wrong guess is explainable: "attendee" | "title" */
+    matchedBy: v.optional(v.string()),
+    /**
+     * Set by the manager when we got it wrong or couldn't tell. Always wins
+     * over matchedCloserId, and survives every later sync.
+     */
+    taggedCloserId: v.optional(v.id("closers")),
     fetchedAt: v.number(),
   })
     .index("by_user_and_start", ["userId", "startTime"])

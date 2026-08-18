@@ -9,6 +9,7 @@ import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { MeetingDetail } from "./components/MeetingDetail";
 import { RepCards } from "./components/RepCards";
+import { NextMeetingBrief } from "./components/NextMeetingBrief";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -181,6 +182,8 @@ export default function ManagerModePage() {
                 </button>
               </div>
             </div>
+
+            <NextMeetingBrief />
 
             <RepCards />
 
