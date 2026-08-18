@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option D — Glasswork (futuristic light, depth + glow)</title>
+<link rel="stylesheet" href="./_shared.css">
+<style>
+/* ============================================================
+   OPTION D — "Glasswork"
+   Futuristic light mode: a white canvas with faint aurora
+   tints, floating glass surfaces, layered depth, one electric
+   indigo→cyan accent, live-feeling charts. Geist throughout.
+   ============================================================ */
+:root {
+  --ink: #0b0c10;
+  --sub: #6b7080;
+  --faint: #9aa0ae;
+  --line: rgba(15, 20, 40, .08);
+  --glass: rgba(255, 255, 255, .72);
+  --accent: #4f46e5;
+  --accent2: #06b6d4;
+  --grad: linear-gradient(92deg, #4f46e5, #06b6d4);
+}
+body {
+  color: var(--ink);
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(79,70,229,.10), transparent 60%),
+    radial-gradient(700px 420px at -5% 30%, rgba(6,182,212,.09), transparent 55%),
+    radial-gradient(800px 500px at 60% 110%, rgba(79,70,229,.06), transparent 60%),
+    #fbfbfd;
+  min-height: 100vh;
+}
+/* faint engineering grid over the canvas */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(15,20,40,.05) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(1200px 800px at 50% 0%, #000 30%, transparent 85%);
+}
+
+.shell { display: flex; gap: 22px; padding: 18px; min-height: 100vh; }
+
+/* Floating glass sidebar */
+.side {
+  width: 218px; flex: none; align-self: flex-start; position: sticky; top: 18px;
+  background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-radius: 22px; padding: 18px 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.9),
+    0 1px 2px rgba(15,20,40,.05),
+    0 12px 32px -12px rgba(15,20,40,.18);
+  border: 1px solid rgba(255,255,255,.6);
+  outline: 1px solid var(--line);
+  max-height: calc(100vh - 36px); overflow: auto;
+}
+.logo { display: flex; align-items: center; gap: 9px; padding: 4px 10px 16px; }
+.logo .mark {
+  width: 26px; height: 26px; border-radius: 8px; background: var(--grad);
+  box-shadow: 0 4px 12px -2px rgba(79,70,229,.5);
+}
+.logo .t { font-weight: 800; letter-spacing: -0.02em; font-size: 13.5px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px; padding: 8px 11px;
+  border-radius: 12px; font-size: 13px; color: var(--sub); margin-bottom: 2px;
+  transition: all .15s;
+}
+.nav a:hover { background: rgba(15,20,40,.045); color: var(--ink); }
+.nav a.on {
+  background: #0e0f14; color: #fff; font-weight: 600;
+  box-shadow: 0 8px 20px -8px rgba(14,15,20,.5), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.nav a.on .ic { background: var(--grad); opacity: 1; }
+.nav .ic { width: 15px; height: 15px; border-radius: 5px; background: currentColor; opacity: .2; flex: none; }
+.nav .sect { font-size: 9.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--faint); padding: 15px 11px 6px; }
+
+.main { flex: 1; max-width: 1150px; }
+
+/* Top bar */
+.top { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px 18px; }
+.top h1 { font-size: 21px; font-weight: 750; letter-spacing: -0.025em; }
+.top .sub { font-size: 12.5px; color: var(--sub); margin-top: 2px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--glass); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.6); outline: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 14px; font-size: 12.5px; font-weight: 550;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 8px -2px rgba(15,20,40,.1);
+}
+.live { width: 7px; height: 7px; border-radius: 99px; background: #10b981; box-shadow: 0 0 0 4px rgba(16,185,129,.15); }
+
+/* Glass surface base */
+.glass {
+  background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-radius: 20px; border: 1px solid rgba(255,255,255,.65); outline: 1px solid var(--line);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    0 1px 2px rgba(15,20,40,.04),
+    0 16px 40px -18px rgba(15,20,40,.16);
+}
+
+/* BENTO hero */
+.bento { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; grid-auto-rows: 132px; gap: 14px; margin-bottom: 14px; }
+.cash { grid-row: span 2; padding: 24px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+.cash .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--sub); font-weight: 650; }
+.cash .v {
+  font-size: 52px; font-weight: 800; letter-spacing: -0.045em; line-height: 1; margin-top: 12px;
+  background: linear-gradient(180deg, #0b0c10 60%, #3a3f52); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.cash .d { font-size: 12.5px; color: #0a9c5d; font-weight: 600; margin-top: 8px; }
+.cash .mtd { font-size: 12px; color: var(--sub); margin-top: 3px; }
+.cash svg { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 46%; }
+.tile { padding: 18px 20px; position: relative; overflow: hidden; }
+.tile .k { font-size: 10px; text-transform: uppercase; letter-spacing: .13em; color: var(--sub); font-weight: 650; }
+.tile .v { font-size: 30px; font-weight: 750; letter-spacing: -0.035em; margin-top: 8px; }
+.tile .v .dim { font-size: 15px; color: var(--faint); font-weight: 550; }
+.tile .d { font-size: 11.5px; margin-top: 4px; color: var(--faint); }
+.tile .d.up { color: #0a9c5d; } .tile .d.down { color: #d64545; }
+.tile .mini { position: absolute; right: 14px; top: 16px; display: flex; gap: 3px; align-items: flex-end; height: 26px; }
+.tile .mini i { width: 5px; border-radius: 2px; background: rgba(15,20,40,.12); }
+.tile .mini i.hot { background: var(--grad); }
+
+/* Prize ring card */
+.ringcard { display: flex; align-items: center; gap: 16px; padding: 16px 20px; }
+.ring { width: 74px; height: 74px; border-radius: 99px; flex: none; position: relative;
+  background: conic-gradient(from 220deg, #4f46e5, #06b6d4 330deg, rgba(15,20,40,.08) 330deg);
+  -webkit-mask: radial-gradient(circle at center, transparent 26px, #000 27px);
+  mask: radial-gradient(circle at center, transparent 26px, #000 27px);
+}
+.ringwrap { position: relative; width: 74px; height: 74px; flex: none; }
+.ringwrap .pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; letter-spacing: -0.02em; }
+.ringcard .t { font-size: 12.5px; color: var(--sub); }
+.ringcard .t b { color: var(--ink); font-weight: 700; }
+.ringcard .amt { font-size: 17px; font-weight: 750; letter-spacing: -0.02em; margin-top: 3px; }
+
+/* Board */
+.board { margin-top: 22px; }
+.bhead { display: flex; align-items: baseline; justify-content: space-between; padding: 0 6px 10px; }
+.bhead .t { font-size: 11px; text-transform: uppercase; letter-spacing: .15em; font-weight: 750; color: var(--sub); }
+.bhead .m { font-size: 12px; color: var(--faint); }
+.rowg {
+  display: grid; grid-template-columns: 44px 1.5fr repeat(4, .75fr) 1fr 110px; align-items: center; gap: 10px;
+  padding: 15px 20px; margin-bottom: 10px; transition: transform .15s;
+}
+.rowg:hover { transform: translateY(-1px); }
+.rowg.top { position: relative; }
+.rowg.top::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 21px; padding: 1.5px;
+  background: var(--grad);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+}
+.pos { font-size: 13px; font-weight: 800; color: var(--faint); width: 26px; height: 26px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center; background: rgba(15,20,40,.05); }
+.rowg.top .pos { background: var(--grad); color: #fff; box-shadow: 0 6px 14px -4px rgba(79,70,229,.5); }
+.who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ava { width: 34px; height: 34px; border-radius: 12px; background: #0e0f14; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 4px 10px -4px rgba(14,15,20,.4); }
+.who .n { font-weight: 650; font-size: 13.5px; }
+.who .s { font-size: 11px; color: var(--faint); margin-top: 1.5px; }
+.who .s .warn { color: #c77414; font-weight: 650; }
+.cellk { font-size: 9px; text-transform: uppercase; letter-spacing: .12em; color: var(--faint); font-weight: 650; }
+.cellv { font-size: 16px; font-weight: 750; letter-spacing: -0.02em; margin-top: 3px; }
+.cash2 { font-size: 17px; font-weight: 800; letter-spacing: -0.025em;
+  background: linear-gradient(92deg, #0b0c10, #3d4460); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.trend { display: flex; gap: 3.5px; align-items: flex-end; height: 30px; justify-content: flex-end; }
+.trend i { width: 7px; border-radius: 3px; background: rgba(15,20,40,.1); }
+.trend i.hot { background: var(--grad); box-shadow: 0 3px 8px -2px rgba(79,70,229,.45); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="logo"><span class="mark"></span><span class="t">SEQU3NCE.AI</span></div>
+    <nav class="nav">
+      <a href="#"><span class="ic"></span>Dashboard</a>
+      <a href="#"><span class="ic"></span>Live Calls</a>
+      <a href="#"><span class="ic"></span>Schedule</a>
+      <a href="#"><span class="ic"></span>Call Reviews</a>
+      <div class="sect">Performance</div>
+      <a href="#" class="on"><span class="ic"></span>Team Performance</a>
+      <a href="#"><span class="ic"></span>Closer Stats</a>
+      <a href="#"><span class="ic"></span>Analytics</a>
+      <a href="#"><span class="ic"></span>Collections</a>
+      <div class="sect">Manager</div>
+      <a href="#"><span class="ic"></span>Manager Mode</a>
+      <a href="#"><span class="ic"></span>Setter Data</a>
+      <div class="sect">Workspace</div>
+      <a href="#"><span class="ic"></span>Playbook</a>
+      <a href="#"><span class="ic"></span>Team</a>
+      <a href="#"><span class="ic"></span>Settings</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h1>Team Performance</h1>
+        <div class="sub">ManyJobs · Monday, August 18</div>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <span class="chip"><span class="live"></span>2 calls live now</span>
+        <span class="chip">◀ &nbsp;Today&nbsp; ▶</span>
+      </div>
+    </div>
+
+    <div class="bento">
+      <div class="glass cash">
+        <div class="k">Cash collected today</div>
+        <div class="v num">$6,000</div>
+        <div class="d">▲ $6,000 vs yesterday</div>
+        <div class="mtd num">$68,730 month to date</div>
+        <svg viewBox="0 0 400 90" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="a" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#4f46e5" stop-opacity=".28"/>
+              <stop offset="1" stop-color="#06b6d4" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="s" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#06b6d4"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,70 C40,66 60,58 90,60 C130,63 150,40 190,44 C230,48 250,30 290,26 C330,22 360,14 400,10 L400,90 L0,90 Z" fill="url(#a)"/>
+          <path d="M0,70 C40,66 60,58 90,60 C130,63 150,40 190,44 C230,48 250,30 290,26 C330,22 360,14 400,10" fill="none" stroke="url(#s)" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <div class="glass tile">
+        <div class="k">Booked</div><div class="v num">8</div><div class="d up">+3 vs yesterday</div>
+        <span class="mini"><i style="height:35%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:70%"></i><i class="hot" style="height:100%"></i></span>
+      </div>
+      <div class="glass tile">
+        <div class="k">Taken</div><div class="v num">4<span class="dim">/4</span></div><div class="d">every slot filled</div>
+        <span class="mini"><i style="height:50%"></i><i style="height:75%"></i><i style="height:60%"></i><i style="height:80%"></i><i class="hot" style="height:100%"></i></span>
+      </div>
+      <div class="glass ringcard" style="grid-row: span 2;">
+        <div class="ringwrap"><div class="ring"></div><span class="pct num">92%</span></div>
+        <div>
+          <div class="t">Prize · <b>$75k by Aug 31</b></div>
+          <div class="amt num">$68,730</div>
+          <div class="t" style="margin-top:2px">$6,270 to go · 13 days</div>
+        </div>
+      </div>
+      <div class="glass tile">
+        <div class="k">Show rate</div><div class="v num">50%</div><div class="d down">−12 pts</div>
+        <span class="mini"><i style="height:90%"></i><i style="height:75%"></i><i style="height:80%"></i><i style="height:65%"></i><i class="hot" style="height:50%"></i></span>
+      </div>
+      <div class="glass tile">
+        <div class="k">Closes</div><div class="v num">1</div><div class="d up">+1 · $6,000</div>
+        <span class="mini"><i style="height:40%"></i><i style="height:0%"></i><i style="height:40%"></i><i style="height:0%"></i><i class="hot" style="height:40%"></i></span>
+      </div>
+    </div>
+
+    <div class="board">
+      <div class="bhead"><span class="t">The Board · August</span><span class="m">ranked by cash · EOD 1 of 3 filed</span></div>
+
+      <div class="glass rowg top">
+        <span class="pos num">1</span>
+        <span class="who"><span class="ava">GS</span><span><span class="n">Gianni Scott</span><br><span class="s">7 closes · 1:1 recorded today</span></span></span>
+        <span><div class="cellk">Booked</div><div class="cellv num">84</div></span>
+        <span><div class="cellk">Taken</div><div class="cellv num">31</div></span>
+        <span><div class="cellk">Show</div><div class="cellv num">64%</div></span>
+        <span><div class="cellk">Offer→Close</div><div class="cellv num">39%</div></span>
+        <span><div class="cellk">Cash</div><div class="cash2 num">$41,730</div></span>
+        <span class="trend"><i style="height:30%"></i><i style="height:45%"></i><i style="height:38%"></i><i style="height:62%"></i><i style="height:78%"></i><i class="hot" style="height:100%"></i></span>
+      </div>
+
+      <div class="glass rowg">
+        <span class="pos num">2</span>
+        <span class="who"><span class="ava">NK</span><span><span class="n">Nick Kevlar</span><br><span class="s">4 closes · <span class="warn">EOD missing</span></span></span></span>
+        <span><div class="cellk">Booked</div><div class="cellv num">52</div></span>
+        <span><div class="cellk">Taken</div><div class="cellv num">17</div></span>
+        <span><div class="cellk">Show</div><div class="cellv num">58%</div></span>
+        <span><div class="cellk">Offer→Close</div><div class="cellv num">31%</div></span>
+        <span><div class="cellk">Cash</div><div class="cash2 num">$19,000</div></span>
+        <span class="trend"><i style="height:62%"></i><i style="height:72%"></i><i style="height:55%"></i><i style="height:42%"></i><i style="height:34%"></i><i class="hot" style="height:28%"></i></span>
+      </div>
+
+      <div class="glass rowg">
+        <span class="pos num">3</span>
+        <span class="who"><span class="ava">AT</span><span><span class="n">Anthony Tran</span><br><span class="s">1 close · <span class="warn">EOD missing</span></span></span></span>
+        <span><div class="cellk">Booked</div><div class="cellv num">33</div></span>
+        <span><div class="cellk">Taken</div><div class="cellv num">10</div></span>
+        <span><div class="cellk">Show</div><div class="cellv num">49%</div></span>
+        <span><div class="cellk">Offer→Close</div><div class="cellv num">20%</div></span>
+        <span><div class="cellk">Cash</div><div class="cash2 num">$8,000</div></span>
+        <span class="trend"><i style="height:26%"></i><i style="height:32%"></i><i style="height:24%"></i><i style="height:36%"></i><i style="height:28%"></i><i class="hot" style="height:20%"></i></span>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
