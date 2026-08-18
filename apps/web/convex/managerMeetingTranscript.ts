@@ -116,9 +116,15 @@ export const fetchManagerRecording = internalAction({
   },
 });
 
+/** How many times to come back for a transcript that isn't ready, and how
+ *  long between visits. Five minutes of patience total. */
+const TRANSCRIPT_FETCH_MAX_ATTEMPTS = 5;
+const TRANSCRIPT_FETCH_RETRY_MS = 60_000;
+
 export const fetchManagerTranscript = internalAction({
-  args: { meetingId: v.id("managerMeetings") },
+  args: { meetingId: v.id("managerMeetings"), attempt: v.optional(v.number()) },
   handler: async (ctx, args): Promise<{ segments: number }> => {
+    const attempt = args.attempt ?? 1;
     const meeting = await ctx.runQuery(
       internal.managerMeetingTranscript.getMeetingWithBot,
       { meetingId: args.meetingId },
@@ -140,10 +146,28 @@ export const fetchManagerTranscript = internalAction({
       botData.recordings?.[0]?.media_shortcuts?.transcript?.data?.download_url;
 
     if (!transcriptUrl) {
-      // Null when the meeting was silent, or when the bot was created without
-      // a transcript provider. Both are legitimately "nothing to store".
+      // Recall can finish the transcript AFTER it says the bot is done —
+      // observed on Gianni's first meeting, where the transcript completed a
+      // minute behind the done event. Fetching once at done+0 and giving up
+      // would silently drop the words of any meeting on the wrong side of
+      // that race, so come back a few times before concluding there's
+      // nothing. (A transcript that downloads but is EMPTY is different — a
+      // silent meeting — and is handled below without retrying.)
+      if (attempt < TRANSCRIPT_FETCH_MAX_ATTEMPTS) {
+        console.log(
+          `[managerTranscript] Transcript not ready on bot ${meeting.recallBotId}, ` +
+            `retry ${attempt + 1}/${TRANSCRIPT_FETCH_MAX_ATTEMPTS} in ${TRANSCRIPT_FETCH_RETRY_MS / 1000}s`,
+        );
+        await ctx.scheduler.runAfter(
+          TRANSCRIPT_FETCH_RETRY_MS,
+          internal.managerMeetingTranscript.fetchManagerTranscript,
+          { meetingId: args.meetingId, attempt: attempt + 1 },
+        );
+        return { segments: 0 };
+      }
       console.log(
-        `[managerTranscript] No transcript on bot ${meeting.recallBotId}`,
+        `[managerTranscript] No transcript on bot ${meeting.recallBotId} after ` +
+          `${TRANSCRIPT_FETCH_MAX_ATTEMPTS} attempts — giving up`,
       );
       return { segments: 0 };
     }
