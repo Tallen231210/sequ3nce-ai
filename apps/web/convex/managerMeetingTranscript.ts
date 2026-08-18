@@ -162,7 +162,12 @@ export const fetchManagerTranscript = internalAction({
       if (words.length === 0) return [];
       return [
         {
-          speaker: turn.speaker ?? "Unknown",
+          // The meeting platform tells Recall who this is — each participant
+          // has their own audio stream, so this is a lookup rather than
+          // acoustic guesswork, and it works identically on a group call.
+          // `turn.speaker` does not exist; reading it gave every line
+          // "Unknown" on the first real recording.
+          speaker: turn.participant?.name ?? "Unknown",
           text: words.map((w: any) => w.text).join(" "),
           startSeconds: words[0]?.start_timestamp?.relative ?? 0,
           endSeconds: words[words.length - 1]?.end_timestamp?.relative ?? undefined,
