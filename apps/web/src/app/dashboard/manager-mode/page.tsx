@@ -137,8 +137,10 @@ export default function ManagerModePage() {
               closer and no other manager can see them.
             </p>
             <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground">
-              If you don&apos;t want a particular meeting recorded, remove the bot
-              from it — the recording is discarded rather than kept.
+              If you don&apos;t want a particular meeting recorded, remove the
+              bot when it joins. Recording stops the moment it leaves —
+              anything recorded up to that point stays, and you can delete a
+              meeting yourself afterwards.
             </p>
             <button
               onClick={() => void connect()}

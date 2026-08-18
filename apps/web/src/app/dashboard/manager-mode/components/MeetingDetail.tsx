@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
@@ -57,6 +57,61 @@ function WatchRecording({ meetingId }: { meetingId: string }) {
           The recording couldn&apos;t be loaded. It may no longer be stored.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The deliberate act that actually removes a recording — the counterpart to
+ * "kicking the bot keeps what was recorded". Two clicks, with the second
+ * spelling out that the transcript, summary, clips and share links go too.
+ */
+function DeleteMeeting({
+  meetingId,
+  onDeleted,
+}: {
+  meetingId: string;
+  onDeleted: () => void;
+}) {
+  const { user } = useUser();
+  const del = useMutation(api.managerMeetingQueries.deleteManagerMeeting);
+  const [arming, setArming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!arming) {
+    return (
+      <button
+        onClick={() => setArming(true)}
+        className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground hover:border-rose-300 hover:text-rose-600"
+      >
+        Delete
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[12px] text-muted-foreground">
+        Deletes the recording, transcript, summary, clips and every share link.
+      </span>
+      <button
+        disabled={busy}
+        onClick={async () => {
+          if (!user) return;
+          setBusy(true);
+          await del({ clerkId: user.id, meetingId: meetingId as any });
+          onDeleted();
+        }}
+        className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+      >
+        {busy ? "Deleting…" : "Delete forever"}
+      </button>
+      <button
+        onClick={() => setArming(false)}
+        className="text-[12px] text-muted-foreground underline"
+      >
+        cancel
+      </button>
     </div>
   );
 }
@@ -129,8 +184,9 @@ export function MeetingDetail({
         {/* Shares the WHOLE meeting — summary, transcript, recording. Clip
             links are cut down in what they reveal; this one is not, which is
             why it's a deliberate button rather than a default. */}
-        <div className="shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <ShareControls meetingId={meetingId} label="Share meeting" />
+          <DeleteMeeting meetingId={meetingId} onDeleted={onBack} />
         </div>
       </div>
 

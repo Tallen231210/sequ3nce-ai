@@ -91,10 +91,19 @@ export const applyEvent = internalMutation({
 
         if (bot.meetingId) {
           const meeting = await ctx.db.get(bot.meetingId);
+          // A meeting row exists, which means the bot got in and recorded
+          // SOMETHING — so this is a completed meeting whatever ended it.
+          // The first real customer kick proved why: Zion's bot was removed
+          // after 57 recorded minutes (someone tidying the participant list
+          // as the meeting broke up), and "failed — removed from the meeting"
+          // sat on top of a perfectly good recording, transcript and summary.
+          // Kick-at-the-start still reads as failed, correctly, because a bot
+          // kicked before recording never gets a meeting row at all — that's
+          // the `else` branch below.
           await ctx.db.patch(bot.meetingId, {
             endedAt: now,
-            status: reason ? "failed" : "completed",
-            failureReason: reason,
+            status: "completed",
+            failureReason: undefined,
             duration:
               meeting?.startedAt != null
                 ? Math.round((now - meeting.startedAt) / 1000)
@@ -150,5 +159,29 @@ export const applyManagerBotEvent = internalAction({
       );
     }
     return { handled: !!result?.handled };
+  },
+});
+
+/**
+ * One-off repair for meetings marked failed by a kick that happened AFTER
+ * recording — written for Zion's 57-minute team meeting, the first real
+ * customer kick, and idempotent so it can sweep any later stragglers.
+ * A meeting row only exists when the bot recorded something, so every
+ * "failed" row with a recording is mislabelled by the old rule.
+ */
+export const repairKickedMeetings = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const failed = await ctx.db
+      .query("managerMeetings")
+      .filter((q) => q.eq(q.field("status"), "failed"))
+      .collect();
+    const repaired: string[] = [];
+    for (const m of failed) {
+      if (!m.recordingUrl) continue;
+      await ctx.db.patch(m._id, { status: "completed", failureReason: undefined });
+      repaired.push(`${m.title} (${m._id})`);
+    }
+    return { checked: failed.length, repaired };
   },
 });
