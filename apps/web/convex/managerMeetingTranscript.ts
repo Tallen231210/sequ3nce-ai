@@ -177,6 +177,15 @@ export const fetchManagerTranscript = internalAction({
       userId: meeting.userId,
       segments,
     });
+
+    // Read the meeting once its words exist. Scheduled rather than awaited so
+    // a model outage delays the summary without losing the transcript.
+    await ctx.scheduler.runAfter(
+      0,
+      internal.managerMeetingAnalysisRun.analyseManagerMeeting,
+      { meetingId: args.meetingId },
+    );
+
     return { segments: segments.length };
   },
 });

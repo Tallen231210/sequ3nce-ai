@@ -3487,6 +3487,42 @@ export default defineSchema({
     endSeconds: v.optional(v.number()),
   }).index("by_meeting", ["meetingId"]),
 
+  /**
+   * What the AI read off a manager's meeting.
+   *
+   * Separate from managerMeetings so a re-analysis rewrites one row rather
+   * than mutating the recording's own record, and so a meeting with no
+   * analysis is distinguishable from one whose analysis came back empty.
+   */
+  managerMeetingAnalysis: defineTable({
+    meetingId: v.id("managerMeetings"),
+    userId: v.id("users"),
+    teamId: v.id("teams"),
+    /** one_to_one | team | leadership | interview | other */
+    kind: v.string(),
+    summary: v.string(),
+    topics: v.array(v.string()),
+    actionItems: v.array(v.object({ who: v.string(), what: v.string() })),
+    /**
+     * What someone said they would do.
+     *
+     * `measurable` is the load-bearing field: true only when a number could
+     * settle it ("twenty dials a day", "fill in my end of day"). Behaviour and
+     * effort are always false. Getting this wrong is the one way the feature
+     * lies — it would put evidence next to a promise we cannot check.
+     */
+    agreements: v.array(
+      v.object({ who: v.string(), what: v.string(), measurable: v.boolean() }),
+    ),
+    /** Interviews only. */
+    candidateName: v.optional(v.string()),
+    role: v.optional(v.string()), // "closer" | "setter"
+    talkingPoints: v.array(v.string()),
+    analysedAt: v.number(),
+  })
+    .index("by_meeting", ["meetingId"])
+    .index("by_user_and_kind", ["userId", "kind"]),
+
   /** Bot lifecycle. Far simpler than the closer bot's — no attribution. */
   managerMeetingBots: defineTable({
     userId: v.id("users"),
