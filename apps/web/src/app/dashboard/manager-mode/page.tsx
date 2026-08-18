@@ -10,6 +10,7 @@ import { Header } from "@/components/dashboard/header";
 import { MeetingDetail } from "./components/MeetingDetail";
 import { RepCards } from "./components/RepCards";
 import { NextMeetingBrief } from "./components/NextMeetingBrief";
+import { RepHistory } from "./components/RepHistory";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -43,6 +44,7 @@ export default function ManagerModePage() {
   const setAutoJoin = useMutation(api.managerCalendar.setManagerAutoJoin);
 
   const [openMeeting, setOpenMeeting] = useState<string | null>(null);
+  const [openRep, setOpenRep] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,7 +85,9 @@ export default function ManagerModePage() {
         description="Your one-to-ones, team meetings, leadership calls and interviews"
       />
       <div className="max-w-4xl space-y-5 p-6">
-        {openMeeting ? (
+        {openRep ? (
+          <RepHistory closerId={openRep} onBack={() => setOpenRep(null)} />
+        ) : openMeeting ? (
           <MeetingDetail
             meetingId={openMeeting}
             onBack={() => setOpenMeeting(null)}
@@ -185,7 +189,7 @@ export default function ManagerModePage() {
 
             <NextMeetingBrief />
 
-            <RepCards />
+            <RepCards onOpenRep={setOpenRep} />
 
             <section>
               <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
