@@ -1,5 +1,5 @@
-import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { v, ConvexError } from "convex/values";
+import { mutation, query } from "./_generated/server";
 import { resolveAuthUser } from "./setterGhlOauth";
 
 /**
@@ -125,5 +125,58 @@ export const listUpcomingManagerEvents = query({
       hasMeetingUrl: !!e.meetingUrl,
       excluded: e.excluded === true,
     }));
+  },
+});
+
+/**
+ * Delete a meeting and everything that hangs off it.
+ *
+ * This is the flip side of "kicking the bot keeps what was recorded": the
+ * deliberate act that actually removes a recording. It takes the transcript,
+ * the analysis, the clips and every share link with it — a share that outlives
+ * its meeting would keep serving words the manager just chose to destroy.
+ */
+export const deleteManagerMeeting = mutation({
+  args: { clerkId: v.string(), meetingId: v.id("managerMeetings") },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new ConvexError("Not authorised");
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return { deleted: false };
+    if (String(meeting.userId) !== String(user._id)) {
+      throw new ConvexError("Not your meeting");
+    }
+
+    const [transcripts, analyses, clips, shares] = await Promise.all([
+      ctx.db
+        .query("managerMeetingTranscripts")
+        .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+        .collect(),
+      ctx.db
+        .query("managerMeetingAnalysis")
+        .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+        .collect(),
+      ctx.db
+        .query("managerMeetingClips")
+        .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+        .collect(),
+      ctx.db
+        .query("managerMeetingShares")
+        .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+        .collect(),
+    ]);
+    for (const r of [...transcripts, ...analyses, ...clips, ...shares]) {
+      await ctx.db.delete(r._id);
+    }
+    await ctx.db.delete(args.meetingId);
+
+    return {
+      deleted: true,
+      removed: {
+        transcriptSegments: transcripts.length,
+        clips: clips.length,
+        shareLinks: shares.length,
+      },
+    };
   },
 });

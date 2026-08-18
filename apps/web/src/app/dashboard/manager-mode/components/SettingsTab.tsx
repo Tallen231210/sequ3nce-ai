@@ -56,8 +56,9 @@ export function SettingsTab({ state }: { state: any }) {
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="text-sm font-semibold">Not everything should be recorded</div>
         <p className="mt-1 max-w-lg text-[13px] leading-relaxed text-muted-foreground">
-          If a particular meeting shouldn&apos;t be, remove the bot from the call
-          — the recording is discarded rather than kept. Recordings are yours
+          If a particular meeting shouldn&apos;t be, remove the bot when it
+          joins — recording stops the moment it leaves, and anything recorded
+          up to that point stays until you delete it. Recordings are yours
           alone; no closer and no other manager can see them.
         </p>
       </div>
