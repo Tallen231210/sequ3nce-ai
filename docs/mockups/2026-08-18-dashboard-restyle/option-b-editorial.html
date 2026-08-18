@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option B — Editorial (hairlines, flat, premium)</title>
+<link rel="stylesheet" href="./_shared.css">
+<style>
+/* ============================================================
+   OPTION B — "Editorial"
+   Flat and sharp, like the landing page grew a product. No
+   shadows, no floating cards — hairline rules divide sections,
+   numbers are large and set in tabular figures, black is the
+   only accent. The most "premium brand" of the three.
+   ============================================================ */
+body { background: #fff; }
+.shell { display: flex; min-height: 100vh; }
+
+/* Sidebar: flat, hairline divider, black active bar on the left edge */
+.side {
+  width: 216px; border-right: 1px solid #eaeaea; padding: 22px 0;
+  position: sticky; top: 0; height: 100vh;
+}
+.logo { font-weight: 800; letter-spacing: -0.02em; font-size: 14px; padding: 0 22px 22px; }
+.nav a {
+  display: block; padding: 7px 22px; font-size: 13.5px; color: #666;
+  border-left: 2px solid transparent;
+}
+.nav a:hover { color: #000; }
+.nav a.on { color: #000; font-weight: 650; border-left-color: #000; background: #fafafa; }
+.nav .sect { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: #b3b3b3; padding: 20px 22px 6px; }
+
+.main { flex: 1; max-width: 1080px; padding: 0 44px 80px; }
+
+/* Header: a masthead, not a toolbar */
+.mast { padding: 34px 0 22px; border-bottom: 1px solid #000; display: flex; align-items: flex-end; justify-content: space-between; }
+h1 { font-size: 28px; letter-spacing: -0.03em; font-weight: 750; }
+.sub { color: #888; font-size: 13px; margin-top: 4px; }
+.daypick { font-size: 13px; color: #444; letter-spacing: .01em; }
+.daypick b { font-weight: 650; color: #000; }
+
+/* Stat band: one row of big numbers separated by hairlines */
+.band { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid #eaeaea; }
+.band .cell { padding: 22px 4px 20px 18px; border-left: 1px solid #eaeaea; }
+.band .cell:first-child { border-left: 0; padding-left: 0; }
+.band .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .13em; color: #999; }
+.band .v { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; margin-top: 6px; line-height: 1; }
+.band .d { font-size: 11.5px; margin-top: 7px; color: #999; }
+.up { color: #0a7d33; } .down { color: #c92a2a; }
+
+/* Sections divided by rules */
+.sect2 { padding: 30px 0 8px; display: flex; align-items: baseline; justify-content: space-between; }
+.sect2 .t { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; font-weight: 700; }
+.sect2 .m { font-size: 12.5px; color: #999; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead th {
+  text-align: right; font-size: 10px; text-transform: uppercase; letter-spacing: .12em;
+  color: #b3b3b3; font-weight: 600; padding: 8px 14px; border-bottom: 1px solid #000;
+}
+th:first-child { text-align: left; padding-left: 0; }
+td { padding: 14px; text-align: right; border-bottom: 1px solid #f0f0f0; }
+td:first-child { text-align: left; padding-left: 0; font-weight: 650; }
+td .sub2 { display: block; font-size: 11.5px; color: #999; font-weight: 400; margin-top: 2px; }
+.money { font-weight: 750; }
+.flag { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; }
+.flag.ok { color: #0a7d33; }
+.flag.wait { color: #b25e09; }
+
+/* Prize: a sentence with a rule through it, not a widget */
+.prize { display: flex; align-items: center; gap: 16px; padding: 26px 0; border-top: 1px solid #000; margin-top: 34px; }
+.prize .label { font-size: 13px; color: #555; white-space: nowrap; }
+.prize .label b { color: #000; }
+.track { flex: 1; height: 2px; background: #eaeaea; position: relative; }
+.track > div { position: absolute; inset: 0 38% 0 0; background: #000; }
+.track .tick { position: absolute; left: 62%; top: -4px; width: 2px; height: 10px; background: #000; }
+.prize .amt { font-size: 13px; font-weight: 750; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="logo">SEQU3NCE.AI</div>
+    <nav class="nav">
+      <a href="#">Dashboard</a>
+      <a href="#">Live Calls</a>
+      <a href="#">Schedule</a>
+      <a href="#">Call Reviews</a>
+      <div class="sect">Performance</div>
+      <a href="#" class="on">Team Performance</a>
+      <a href="#">Closer Stats</a>
+      <a href="#">Analytics</a>
+      <a href="#">Collections</a>
+      <div class="sect">Manager</div>
+      <a href="#">Manager Mode</a>
+      <a href="#">Setter Data</a>
+      <div class="sect">Workspace</div>
+      <a href="#">Playbook</a>
+      <a href="#">Team</a>
+      <a href="#">Settings</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="mast">
+      <div>
+        <h1>Team Performance</h1>
+        <div class="sub">ManyJobs · 3 active closers</div>
+      </div>
+      <div class="daypick">◀ &nbsp;<b>Monday, Aug 18</b>&nbsp; ▶</div>
+    </div>
+
+    <div class="band">
+      <div class="cell"><div class="k">Booked</div><div class="v num">8</div><div class="d up">+3 vs yesterday</div></div>
+      <div class="cell"><div class="k">Taken</div><div class="v num">4</div><div class="d">of 4 slots</div></div>
+      <div class="cell"><div class="k">Show</div><div class="v num">50%</div><div class="d down">−12 pts</div></div>
+      <div class="cell"><div class="k">Offers</div><div class="v num">2</div><div class="d">&nbsp;</div></div>
+      <div class="cell"><div class="k">Closes</div><div class="v num">1</div><div class="d up">+1</div></div>
+      <div class="cell"><div class="k">Cash</div><div class="v num">$6,000</div><div class="d up">+$6,000</div></div>
+    </div>
+
+    <div class="sect2"><span class="t">Closers · Today</span><span class="m">EOD forms 1 of 3 filed</span></div>
+    <table>
+      <thead><tr><th>Closer</th><th>Slots</th><th>Booked</th><th>Taken</th><th>Offers</th><th>Closes</th><th>Cash</th><th>EOD</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Gianni Scott<span class="sub2">spoke today · 1:1 recorded</span></td>
+          <td class="num">2</td><td class="num">4</td><td class="num">2</td><td class="num">1</td><td class="num">1</td>
+          <td class="num money">$6,000</td><td><span class="flag ok">Filed</span></td>
+        </tr>
+        <tr>
+          <td>Nick Kevlar<span class="sub2">agreed: pitch on every call</span></td>
+          <td class="num">1</td><td class="num">3</td><td class="num">1</td><td class="num">1</td><td class="num">0</td>
+          <td class="num money">$0</td><td><span class="flag wait">Missing</span></td>
+        </tr>
+        <tr>
+          <td>Anthony Tran</td>
+          <td class="num">1</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">0</td>
+          <td class="num money">$0</td><td><span class="flag wait">Missing</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="sect2"><span class="t">Month to date</span><span class="m">August · 12 working days</span></div>
+    <table>
+      <thead><tr><th>Closer</th><th>Booked</th><th>Taken</th><th>Show</th><th>Offer→Close</th><th>Closes</th><th>Contract</th><th>Cash</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Gianni Scott</td>
+          <td class="num">84</td><td class="num">31</td><td class="num">64%</td><td class="num">39%</td><td class="num">7</td>
+          <td class="num">$46,950</td><td class="num money">$41,730</td>
+        </tr>
+        <tr>
+          <td>Nick Kevlar</td>
+          <td class="num">52</td><td class="num">17</td><td class="num">58%</td><td class="num">31%</td><td class="num">4</td>
+          <td class="num">$24,000</td><td class="num money">$19,000</td>
+        </tr>
+        <tr>
+          <td>Anthony Tran<span class="sub2">show rate trailing the team</span></td>
+          <td class="num">33</td><td class="num">10</td><td class="num">49%</td><td class="num">20%</td><td class="num">1</td>
+          <td class="num">$10,000</td><td class="num money">$8,000</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="prize">
+      <span class="label">Team prize · <b>$75k cash by Aug 31</b></span>
+      <div class="track"><div></div><span class="tick"></span></div>
+      <span class="amt num">$68,730 of $75,000</span>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option A — Refined (soft cards, calm depth)</title>
+<link rel="stylesheet" href="./_shared.css">
+<style>
+/* ============================================================
+   OPTION A — "Refined"
+   The current look, grown up. Soft elevated cards, generous
+   spacing, a quiet gray canvas so white cards read as surfaces.
+   Lowest-risk evolution: everything stays where it is today.
+   ============================================================ */
+body { background: #fafafa; }
+.shell { display: flex; min-height: 100vh; }
+
+/* Sidebar: white, roomy, soft active pill */
+.side {
+  width: 232px; background: #fff; border-right: 1px solid #ececec;
+  padding: 20px 12px; position: sticky; top: 0; height: 100vh;
+  display: flex; flex-direction: column;
+}
+.logo { font-weight: 800; letter-spacing: -0.02em; font-size: 15px; padding: 4px 12px 18px; }
+.nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 10px; font-size: 13.5px; color: #555;
+  margin-bottom: 1px;
+}
+.nav a:hover { background: #f4f4f4; color: #111; }
+.nav a.on { background: #111; color: #fff; font-weight: 600; }
+.nav .dot { width: 15px; height: 15px; border-radius: 4px; background: currentColor; opacity: .18; }
+.nav .sect { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: #999; padding: 16px 12px 6px; }
+
+.main { flex: 1; padding: 28px 36px 60px; max-width: 1120px; }
+
+/* Header */
+.crumb { font-size: 12px; color: #999; margin-bottom: 4px; }
+h1 { font-size: 22px; letter-spacing: -0.02em; font-weight: 700; }
+.sub { color: #777; font-size: 13.5px; margin-top: 3px; }
+.headrow { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 24px; }
+.daypick {
+  display: flex; align-items: center; gap: 8px; background: #fff;
+  border: 1px solid #e7e7e7; border-radius: 10px; padding: 7px 12px; font-size: 13px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+
+/* Stat cards */
+.stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 26px; }
+.stat {
+  background: #fff; border: 1px solid #ececec; border-radius: 14px; padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+.stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: #999; }
+.stat .v { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin-top: 4px; }
+.stat .d { font-size: 12px; margin-top: 2px; color: #999; }
+.up { color: #16a34a; } .down { color: #dc2626; }
+
+/* Section card */
+.card {
+  background: #fff; border: 1px solid #ececec; border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05); margin-bottom: 22px; overflow: hidden;
+}
+.card > .chead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 15px 20px; border-bottom: 1px solid #f0f0f0;
+}
+.chead .t { font-weight: 600; font-size: 14.5px; }
+.chead .m { font-size: 12.5px; color: #999; }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th {
+  text-align: right; font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em;
+  color: #a3a3a3; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid #f0f0f0;
+}
+th:first-child { text-align: left; padding-left: 20px; }
+td { padding: 13px 14px; text-align: right; border-bottom: 1px solid #f6f6f6; }
+td:first-child { text-align: left; padding-left: 20px; font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+tr:hover td { background: #fafafa; }
+.money { font-weight: 700; }
+.pill {
+  display: inline-block; font-size: 11px; font-weight: 600; border-radius: 99px; padding: 3px 9px;
+}
+.pill.ok { background: #ecfdf3; color: #067647; }
+.pill.wait { background: #fff6e6; color: #b25e09; }
+.who { display: flex; align-items: center; gap: 10px; }
+.ava {
+  width: 28px; height: 28px; border-radius: 99px; background: #111; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.muted { color: #999; font-weight: 400; }
+
+/* Prize strip */
+.prize { display: flex; align-items: center; gap: 18px; padding: 16px 20px; }
+.prize .label { font-size: 13px; color: #777; }
+.bar { flex: 1; height: 8px; border-radius: 99px; background: #f0f0f0; overflow: hidden; }
+.bar > div { height: 100%; width: 62%; background: #111; border-radius: 99px; }
+.prize .amt { font-size: 13px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="logo">SEQU3NCE.AI</div>
+    <nav class="nav">
+      <a href="#"><span class="dot"></span>Dashboard</a>
+      <a href="#"><span class="dot"></span>Live Calls</a>
+      <a href="#"><span class="dot"></span>Schedule</a>
+      <a href="#"><span class="dot"></span>Call Reviews</a>
+      <div class="sect">Performance</div>
+      <a href="#" class="on"><span class="dot"></span>Team Performance</a>
+      <a href="#"><span class="dot"></span>Closer Stats</a>
+      <a href="#"><span class="dot"></span>Analytics</a>
+      <a href="#"><span class="dot"></span>Collections</a>
+      <div class="sect">Manager</div>
+      <a href="#"><span class="dot"></span>Manager Mode</a>
+      <a href="#"><span class="dot"></span>Setter Data</a>
+      <div class="sect">Workspace</div>
+      <a href="#"><span class="dot"></span>Playbook</a>
+      <a href="#"><span class="dot"></span>Team</a>
+      <a href="#"><span class="dot"></span>Settings</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="headrow">
+      <div>
+        <div class="crumb">Performance</div>
+        <h1>Team Performance</h1>
+        <div class="sub">Monday, August 18 · ManyJobs</div>
+      </div>
+      <div class="daypick">◀ &nbsp; Today &nbsp; ▶</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="k">Booked</div><div class="v num">8</div><div class="d up">▲ 3 vs yesterday</div></div>
+      <div class="stat"><div class="k">Taken</div><div class="v num">4</div><div class="d">of 4 slots</div></div>
+      <div class="stat"><div class="k">Show rate</div><div class="v num">50%</div><div class="d down">▼ 12 pts</div></div>
+      <div class="stat"><div class="k">Offers</div><div class="v num">2</div><div class="d">—</div></div>
+      <div class="stat"><div class="k">Closes</div><div class="v num">1</div><div class="d up">▲ 1</div></div>
+      <div class="stat"><div class="k">Cash</div><div class="v num">$6,000</div><div class="d up">▲ $6,000</div></div>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="t">Closers today</span><span class="m">EOD forms: 1 of 3 filed</span></div>
+      <table>
+        <thead><tr><th>Closer</th><th>Slots</th><th>Booked</th><th>Taken</th><th>Offers</th><th>Closes</th><th>Cash</th><th>EOD</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="who"><span class="ava">GS</span>Gianni Scott</span></td>
+            <td class="num">2</td><td class="num">4</td><td class="num">2</td><td class="num">1</td><td class="num">1</td>
+            <td class="num money">$6,000</td><td><span class="pill ok">Filed</span></td>
+          </tr>
+          <tr>
+            <td><span class="who"><span class="ava">NK</span>Nick Kevlar</span></td>
+            <td class="num">1</td><td class="num">3</td><td class="num">1</td><td class="num">1</td><td class="num">0</td>
+            <td class="num money">$0</td><td><span class="pill wait">Missing</span></td>
+          </tr>
+          <tr>
+            <td><span class="who"><span class="ava">AT</span>Anthony Tran</span></td>
+            <td class="num">1</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">0</td>
+            <td class="num money">$0</td><td><span class="pill wait">Missing</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="chead"><span class="t">Month to date</span><span class="m">August · 12 working days</span></div>
+      <table>
+        <thead><tr><th>Closer</th><th>Booked</th><th>Taken</th><th>Show</th><th>Offer→Close</th><th>Closes</th><th>Contract</th><th>Cash</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="who"><span class="ava">GS</span>Gianni Scott</span></td>
+            <td class="num">84</td><td class="num">31</td><td class="num">64%</td><td class="num">39%</td><td class="num">7</td>
+            <td class="num">$46,950</td><td class="num money">$41,730</td>
+          </tr>
+          <tr>
+            <td><span class="who"><span class="ava">NK</span>Nick Kevlar</span></td>
+            <td class="num">52</td><td class="num">17</td><td class="num">58%</td><td class="num">31%</td><td class="num">4</td>
+            <td class="num">$24,000</td><td class="num money">$19,000</td>
+          </tr>
+          <tr>
+            <td><span class="who"><span class="ava">AT</span>Anthony Tran</span></td>
+            <td class="num">33</td><td class="num">10</td><td class="num">49% <span class="muted">low</span></td><td class="num">20%</td><td class="num">1</td>
+            <td class="num">$10,000</td><td class="num money">$8,000</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="prize">
+        <span class="label">Team prize · <b>$75k cash by Aug 31</b></span>
+        <div class="bar"><div></div></div>
+        <span class="amt num">$68,730 / $75,000</span>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

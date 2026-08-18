@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option C — Scoreboard (data-forward, ranked, alive)</title>
+<link rel="stylesheet" href="./_shared.css">
+<style>
+/* ============================================================
+   OPTION C — "Scoreboard"
+   Still white and Geist, but built like a sales floor: a hero
+   cash figure, ranked closers with sparklines and progress to
+   target, dense rows. The page answers "who's winning and are
+   we on pace" before anyone scrolls.
+   ============================================================ */
+body { background: #fff; }
+.shell { display: flex; min-height: 100vh; }
+
+/* Sidebar: icon-compact so the data gets the width */
+.side {
+  width: 200px; border-right: 1px solid #ececec; padding: 20px 10px;
+  position: sticky; top: 0; height: 100vh; background: #fcfcfc;
+}
+.logo { font-weight: 800; letter-spacing: -0.02em; font-size: 13.5px; padding: 2px 10px 16px; }
+.nav a {
+  display: block; padding: 6.5px 10px; border-radius: 8px; font-size: 13px; color: #666; margin-bottom: 1px;
+}
+.nav a:hover { background: #f1f1f1; color: #111; }
+.nav a.on { background: #111; color: #fff; font-weight: 600; }
+.nav .sect { font-size: 9.5px; text-transform: uppercase; letter-spacing: .12em; color: #aaa; padding: 14px 10px 5px; }
+
+.main { flex: 1; padding: 26px 34px 70px; max-width: 1180px; }
+
+.headrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+h1 { font-size: 20px; letter-spacing: -0.02em; font-weight: 700; }
+.daypick { border: 1px solid #e5e5e5; border-radius: 9px; padding: 6px 12px; font-size: 12.5px; }
+
+/* HERO: the day, as a scoreboard */
+.hero {
+  display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 0;
+  border: 1px solid #e5e5e5; border-radius: 18px; overflow: hidden; margin-bottom: 14px;
+}
+.hero .cash { background: #111; color: #fff; padding: 22px 26px; }
+.hero .cash .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .14em; color: #9a9a9a; }
+.hero .cash .v { font-size: 44px; font-weight: 750; letter-spacing: -0.04em; line-height: 1.05; margin-top: 8px; }
+.hero .cash .d { font-size: 12px; color: #7ee2a0; margin-top: 6px; }
+.hero .cash .mtd { font-size: 12px; color: #bbb; margin-top: 14px; }
+.hero .cell { padding: 22px 20px; border-left: 1px solid #efefef; }
+.hero .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .13em; color: #999; }
+.hero .v { font-size: 27px; font-weight: 700; letter-spacing: -0.03em; margin-top: 8px; }
+.hero .d { font-size: 11.5px; margin-top: 4px; color: #999; }
+.up { color: #16a34a; } .down { color: #dc2626; }
+
+/* Pace bar under hero */
+.pace {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 26px;
+  border: 1px solid #e5e5e5; border-radius: 14px; padding: 13px 18px;
+}
+.pace .t { font-size: 12.5px; color: #555; white-space: nowrap; }
+.pace .t b { color: #000; }
+.bar { flex: 1; height: 10px; border-radius: 99px; background: #f1f1f1; overflow: hidden; }
+.bar > div { height: 100%; width: 91.6%; background: linear-gradient(90deg, #111, #444); border-radius: 99px; }
+.pace .pct { font-size: 13px; font-weight: 750; }
+
+/* Ranked closer rows */
+.rank-h { display: flex; align-items: baseline; justify-content: space-between; margin: 0 2px 10px; }
+.rank-h .t { font-size: 11px; text-transform: uppercase; letter-spacing: .15em; font-weight: 700; color: #666; }
+.rank-h .m { font-size: 12px; color: #999; }
+.row {
+  display: grid; grid-template-columns: 34px 1.6fr repeat(5, .8fr) 1.1fr; align-items: center;
+  border: 1px solid #ececec; border-radius: 14px; padding: 13px 18px; margin-bottom: 9px;
+  gap: 8px;
+}
+.row.top { border-color: #111; box-shadow: 0 0 0 1px #111 inset; }
+.pos { font-size: 15px; font-weight: 800; color: #c9c9c9; }
+.row.top .pos { color: #111; }
+.who { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.ava {
+  width: 30px; height: 30px; border-radius: 99px; background: #111; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex: none;
+}
+.who .n { font-weight: 650; font-size: 13.5px; }
+.who .s { font-size: 11px; color: #999; margin-top: 1px; }
+.cellk { font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em; color: #b0b0b0; }
+.cellv { font-size: 15px; font-weight: 700; margin-top: 2px; }
+.cellv .dim { color: #bbb; font-weight: 500; font-size: 12px; }
+.spark { display: flex; align-items: flex-end; gap: 3px; height: 26px; justify-content: flex-end; }
+.spark i { width: 6px; background: #d9d9d9; border-radius: 2px; }
+.spark i.hot { background: #111; }
+.eod { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; }
+.eod.ok { color: #16a34a; } .eod.no { color: #d97706; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="logo">SEQU3NCE.AI</div>
+    <nav class="nav">
+      <a href="#">Dashboard</a>
+      <a href="#">Live Calls</a>
+      <a href="#">Schedule</a>
+      <a href="#">Call Reviews</a>
+      <div class="sect">Performance</div>
+      <a href="#" class="on">Team Performance</a>
+      <a href="#">Closer Stats</a>
+      <a href="#">Analytics</a>
+      <a href="#">Collections</a>
+      <div class="sect">Manager</div>
+      <a href="#">Manager Mode</a>
+      <a href="#">Setter Data</a>
+      <div class="sect">Workspace</div>
+      <a href="#">Playbook</a>
+      <a href="#">Team</a>
+      <a href="#">Settings</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="headrow">
+      <h1>Team Performance</h1>
+      <div class="daypick">◀ &nbsp; Monday, Aug 18 &nbsp; ▶</div>
+    </div>
+
+    <div class="hero">
+      <div class="cash">
+        <div class="k">Cash collected today</div>
+        <div class="v num">$6,000</div>
+        <div class="d">▲ $6,000 vs yesterday</div>
+        <div class="mtd num">Month to date · $68,730</div>
+      </div>
+      <div class="cell"><div class="k">Booked</div><div class="v num">8</div><div class="d up">+3</div></div>
+      <div class="cell"><div class="k">Taken</div><div class="v num">4<span style="color:#bbb;font-size:15px;font-weight:500">/4</span></div><div class="d">all slots</div></div>
+      <div class="cell"><div class="k">Show</div><div class="v num">50%</div><div class="d down">−12 pts</div></div>
+      <div class="cell"><div class="k">Closes</div><div class="v num">1</div><div class="d up">+1</div></div>
+    </div>
+
+    <div class="pace">
+      <span class="t">Prize · <b>$75k cash by Aug 31</b></span>
+      <div class="bar"><div></div></div>
+      <span class="pct num">$68,730 · 92%</span>
+    </div>
+
+    <div class="rank-h"><span class="t">The Board · August</span><span class="m">ranked by cash · EOD 1/3 filed</span></div>
+
+    <div class="row top">
+      <span class="pos num">1</span>
+      <span class="who"><span class="ava">GS</span><span><span class="n">Gianni Scott</span><br><span class="s">7 closes · spoke today</span></span></span>
+      <span><div class="cellk">Booked</div><div class="cellv num">84</div></span>
+      <span><div class="cellk">Taken</div><div class="cellv num">31</div></span>
+      <span><div class="cellk">Show</div><div class="cellv num">64%</div></span>
+      <span><div class="cellk">Offer→Close</div><div class="cellv num">39%</div></span>
+      <span><div class="cellk">Cash</div><div class="cellv num">$41,730</div></span>
+      <span class="spark"><i style="height:30%"></i><i style="height:45%"></i><i style="height:38%"></i><i style="height:65%"></i><i style="height:80%"></i><i class="hot" style="height:100%"></i></span>
+    </div>
+
+    <div class="row">
+      <span class="pos num">2</span>
+      <span class="who"><span class="ava">NK</span><span><span class="n">Nick Kevlar</span><br><span class="s">4 closes · <span class="eod no">EOD missing</span></span></span></span>
+      <span><div class="cellk">Booked</div><div class="cellv num">52</div></span>
+      <span><div class="cellk">Taken</div><div class="cellv num">17</div></span>
+      <span><div class="cellk">Show</div><div class="cellv num">58%</div></span>
+      <span><div class="cellk">Offer→Close</div><div class="cellv num">31%</div></span>
+      <span><div class="cellk">Cash</div><div class="cellv num">$19,000</div></span>
+      <span class="spark"><i style="height:60%"></i><i style="height:70%"></i><i style="height:52%"></i><i style="height:40%"></i><i style="height:35%"></i><i class="hot" style="height:28%"></i></span>
+    </div>
+
+    <div class="row">
+      <span class="pos num">3</span>
+      <span class="who"><span class="ava">AT</span><span><span class="n">Anthony Tran</span><br><span class="s">1 close · <span class="eod no">EOD missing</span></span></span></span>
+      <span><div class="cellk">Booked</div><div class="cellv num">33</div></span>
+      <span><div class="cellk">Taken</div><div class="cellv num">10</div></span>
+      <span><div class="cellk">Show</div><div class="cellv num">49%</div></span>
+      <span><div class="cellk">Offer→Close</div><div class="cellv num">20%</div></span>
+      <span><div class="cellk">Cash</div><div class="cellv num">$8,000</div></span>
+      <span class="spark"><i style="height:25%"></i><i style="height:30%"></i><i style="height:22%"></i><i style="height:35%"></i><i style="height:28%"></i><i class="hot" style="height:20%"></i></span>
+    </div>
+  </main>
+</div>
+</body>
+</html>
