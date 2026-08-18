@@ -207,15 +207,21 @@ function ShareBody({
           their first contact with the product. The mark carries that, big and
           centred, linking home. */}
       <header className="border-b border-border py-8">
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center gap-2.5">
           <Logo height={44} href="https://sequ3nce.ai" />
+          {/* Same mark the bot wears in the meeting — a recipient who saw
+              "MGMT" join the call should recognise this page as its output,
+              and a manager's link should read as a manager's link. */}
+          <span className="rounded-md bg-foreground px-2 py-0.5 text-[10px] font-bold tracking-[0.2em] text-background">
+            MGMT
+          </span>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="text-center">
           <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-            {isClip ? "Clip" : "Meeting"}
+            {isClip ? "Manager clip" : "Manager meeting"}
           </div>
           <h1 className="mt-1.5 text-2xl font-semibold tracking-tight">
             {data.title}
