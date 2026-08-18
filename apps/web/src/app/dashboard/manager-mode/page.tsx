@@ -8,6 +8,7 @@ import { CalendarPlus, Loader2, Lock, Video } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { Header } from "@/components/dashboard/header";
 import { MeetingDetail } from "./components/MeetingDetail";
+import { RepCards } from "./components/RepCards";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -180,6 +181,8 @@ export default function ManagerModePage() {
                 </button>
               </div>
             </div>
+
+            <RepCards />
 
             <section>
               <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
