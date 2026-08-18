@@ -3538,6 +3538,64 @@ export default defineSchema({
     .index("by_meeting", ["meetingId"])
     .index("by_user_and_kind", ["userId", "kind"]),
 
+  /**
+   * A clip cut out of a manager's meeting — usually a coaching moment being
+   * turned into training.
+   *
+   * Its own table rather than reusing `highlights`, which keys on
+   * `callId: v.id("calls")`. The design originally said to widen that pointer;
+   * measuring changed the answer. `sharedLinks` and `highlights` are touched by
+   * nine files including the PUBLIC share page, compliance links carrying
+   * AI-redacted transcripts, and B2C shares. Making all of those handle "this
+   * might not be a call" risks a customer-facing page and the compliance path
+   * to save a table.
+   *
+   * It also isn't really a duplicate: a manager clip needs less (no compliance
+   * redaction, no B2C variants) and two things the existing one lacks — an
+   * expiry and a view count.
+   */
+  managerMeetingClips: defineTable({
+    meetingId: v.id("managerMeetings"),
+    userId: v.id("users"),
+    teamId: v.id("teams"),
+    title: v.string(),
+    notes: v.optional(v.string()),
+    startSeconds: v.number(),
+    endSeconds: v.number(),
+    /** The words in the clip, captured at cut time so it reads without the video. */
+    transcriptText: v.optional(v.string()),
+    /** Set when the clip has been pushed into a training playlist. */
+    playlistId: v.optional(v.id("trainingPlaylists")),
+    createdAt: v.number(),
+  })
+    .index("by_meeting", ["meetingId"])
+    .index("by_user", ["userId"]),
+
+  /**
+   * A link to a manager's meeting or a clip of one.
+   *
+   * These are more sensitive than a sales-call share — a one-to-one about
+   * someone's performance shouldn't live on a URL forever with nobody knowing
+   * it was opened. Hence `expiresAt` and `viewCount`, which the closer share
+   * mechanism has never had.
+   */
+  managerMeetingShares: defineTable({
+    token: v.string(),
+    meetingId: v.id("managerMeetings"),
+    clipId: v.optional(v.id("managerMeetingClips")),
+    userId: v.id("users"),
+    teamId: v.id("teams"),
+    passwordHash: v.optional(v.string()), // SHA-256, never the password
+    /** Null means no expiry, which is allowed but never the default. */
+    expiresAt: v.optional(v.number()),
+    viewCount: v.number(),
+    lastViewedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_meeting", ["meetingId"]),
+
   /** Bot lifecycle. Far simpler than the closer bot's — no attribution. */
   managerMeetingBots: defineTable({
     userId: v.id("users"),

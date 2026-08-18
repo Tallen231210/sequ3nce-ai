@@ -4,6 +4,8 @@ import { useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
+import { ClipFromTranscript } from "./ClipFromTranscript";
+import { MeetingClips } from "./MeetingClips";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -194,25 +196,11 @@ export function MeetingDetail({
         </a>
       )}
 
-      {d.transcript.length > 0 && (
-        <details className="rounded-xl border border-border bg-card">
-          <summary className="cursor-pointer px-5 py-3.5 text-sm font-medium">
-            Transcript
-          </summary>
-          <div className="max-h-96 space-y-2.5 overflow-y-auto border-t border-border px-5 py-4">
-            {d.transcript.map((t: any, i: number) => (
-              <div key={i} className="flex gap-3 text-sm leading-relaxed">
-                <span className="w-14 shrink-0 text-xs text-muted-foreground">
-                  {Math.floor(t.startSeconds / 60)}:
-                  {String(Math.floor(t.startSeconds % 60)).padStart(2, "0")}
-                </span>
-                <span className="w-24 shrink-0 font-medium">{t.speaker}</span>
-                <span className="flex-1">{t.text}</span>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
+      <MeetingClips meetingId={meetingId} />
+
+      {/* The transcript doubles as the clipping surface — a manager marks the
+          moment in the words rather than by scrubbing for it. */}
+      <ClipFromTranscript meetingId={meetingId} transcript={d.transcript} />
     </div>
   );
 }
