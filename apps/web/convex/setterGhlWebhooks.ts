@@ -305,6 +305,7 @@ async function handleContactUpsert(
     ghlContactId,
     name: nn(contact.name) ?? buildName(contact),
     email: nn(contact.email),
+    emailNorm: nn(contact.email)?.trim().toLowerCase(),
     phone: nn(contact.phone),
     dateAdded,
     source: nn(contact.source),
