@@ -18,6 +18,9 @@
 // email index documented in setter-data-wider-range-showrate.
 // ============================================================================
 
+import { v } from "convex/values";
+import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { normalizeEmail } from "./setterCloserMatcher";
 
@@ -72,22 +75,37 @@ export async function buildBookingMatcherIndex(
     return e.attendees.some((a) => a.isOrganizer !== true);
   });
 
-  // Build email → lead lookup. Capped at 20k docs, newest-first — this
-  // path only serves the calendarEvents fallback (teams with ≥10 in-range
-  // CRM appointments never reach it), and an uncapped collect over a
-  // 100k-lead org would blow the 32k-doc transaction budget on its own.
-  // Durable fix if a big team ever needs this path: the email index (see
-  // setter-data-wider-range-showrate memo).
-  const leads = (await ctx.db
-    .query("setterLeads")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .withIndex("by_team_and_date_added", (q: any) => q.eq("teamId", teamId))
-    .order("desc")
-    .take(20_000)) as Doc<"setterLeads">[];
+  // Email → lead lookup via the by_team_and_email_norm index: one point
+  // read per UNIQUE guest email on the in-range events, instead of the
+  // 20k-lead scan this used to do. That scan alone blew the 32k-doc budget
+  // on the first genuinely large org (E2: ~200 leads/day) — this was the
+  // "durable fix" the old comment promised.
+  //
+  // emailNorm is stamped at ingest and backfilled per team; a lead from
+  // before the backfill reaches it simply doesn't match, exactly as a lead
+  // outside the old 20k window didn't.
+  const uniqueGuestEmails = new Set<string>();
+  for (const e of eventsWithProspects) {
+    const guest = e.attendees!.find((a) => a.isOrganizer !== true);
+    const norm = normalizeEmail(guest?.email);
+    if (norm) uniqueGuestEmails.add(norm);
+    if (uniqueGuestEmails.size >= 5_000) break; // budget guard, logged below
+  }
+  if (uniqueGuestEmails.size >= 5_000) {
+    console.warn(
+      `[bookingMatcher] >5k unique guest emails in range for team ${teamId} — matching capped`,
+    );
+  }
   const leadsByNormEmail = new Map<string, Doc<"setterLeads">>();
-  for (const lead of leads) {
-    const norm = normalizeEmail(lead.email);
-    if (norm) leadsByNormEmail.set(norm, lead);
+  for (const norm of uniqueGuestEmails) {
+    const lead = (await ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_email_norm", (q: any) =>
+        q.eq("teamId", teamId).eq("emailNorm", norm),
+      )
+      .first()) as Doc<"setterLeads"> | null;
+    if (lead) leadsByNormEmail.set(norm, lead);
   }
 
   // Match + dedup per (lead, week). Keep the earliest booking per week —
@@ -141,3 +159,66 @@ export function weekKeyForTimestamp(ts: number): string {
   const week = Math.floor(days / 7) + 1;
   return `${year}-W${String(week).padStart(2, "0")}`;
 }
+
+/**
+ * Backfill `emailNorm` for one team's leads, in pages.
+ *
+ * Self-schedules until done — kicked ONCE per team, never twice (concurrent
+ * chains OCC-thrash each other to death; see the Convex notes). New writes
+ * stamp emailNorm at ingest, so this only has to catch history.
+ */
+export const backfillEmailNorm = internalMutation({
+  args: { teamId: v.id("teams"), cursor: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<void> => {
+    const page = await ctx.db
+      .query("setterLeads")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .paginate({ cursor: args.cursor ?? null, numItems: 300 });
+
+    let stamped = 0;
+    for (const lead of page.page) {
+      if (lead.email && lead.emailNorm === undefined) {
+        await ctx.db.patch(lead._id, {
+          emailNorm: lead.email.trim().toLowerCase(),
+        });
+        stamped++;
+      }
+    }
+
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        200,
+        internal.setterCloserBookings.backfillEmailNorm,
+        { teamId: args.teamId, cursor: page.continueCursor },
+      );
+    } else {
+      console.log(`[emailNorm] backfill complete for team ${args.teamId}`);
+    }
+    if (stamped > 0) {
+      console.log(`[emailNorm] stamped ${stamped} leads (team ${args.teamId})`);
+    }
+  },
+});
+
+/** How many leads still lack emailNorm despite having an email — must be 0
+ *  per team before the indexed matcher is trusted. Uses the index's own
+ *  undefined-bucket, so it reads only unstamped rows (one paginate limit
+ *  per function in Convex — and no pagination needed this way). */
+export const emailNormCoverage = internalMutation({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const unstamped = (await ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_email_norm", (q: any) =>
+        q.eq("teamId", args.teamId).eq("emailNorm", undefined),
+      )
+      .take(2000)) as Doc<"setterLeads">[];
+    const missing = unstamped.filter((l) => l.email).length;
+    return {
+      unstampedSampled: unstamped.length,
+      missing,
+      complete: unstamped.length < 2000,
+    };
+  },
+});

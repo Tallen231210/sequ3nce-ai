@@ -2744,6 +2744,10 @@ export default defineSchema({
     // Identity
     name: v.optional(v.string()),
     email: v.optional(v.string()),
+    /** email, trimmed + lowercased — exists so booking matching can do an
+     *  indexed point lookup instead of scanning 20k leads per query. Stamped
+     *  at ingest; backfilled per team on demand. */
+    emailNorm: v.optional(v.string()),
     phone: v.optional(v.string()),
     // GHL metadata
     dateAdded: v.number(),                 // GHL-side timestamp, NOT receipt time
@@ -2835,7 +2839,8 @@ export default defineSchema({
     .index("by_team_and_date_added", ["teamId", "dateAdded"])
     .index("by_team_and_ghl_contact_id", ["teamId", "ghlContactId"])
     .index("by_team_and_last_activity", ["teamId", "lastActivityAt"])
-    .index("by_team_and_hyros_status", ["teamId", "hyrosAttributionStatus"]),
+    .index("by_team_and_hyros_status", ["teamId", "hyrosAttributionStatus"])
+    .index("by_team_and_email_norm", ["teamId", "emailNorm"]),
 
   // Append-only event log. Source of truth for all per-lead activity. Powers
   // time-series reports (working hours heatmap, source attribution trends,

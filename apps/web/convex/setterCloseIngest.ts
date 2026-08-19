@@ -228,7 +228,10 @@ export const applyLeadEnrichment = internalMutation({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const patch: Record<string, any> = {};
       if (lead.name === undefined && item.name) patch.name = item.name;
-      if (lead.email === undefined && item.email) patch.email = item.email;
+      if (lead.email === undefined && item.email) {
+        patch.email = item.email;
+        patch.emailNorm = item.email.trim().toLowerCase();
+      }
       if (lead.phone === undefined && item.phone) patch.phone = item.phone;
       if (
         item.dateAdded !== undefined &&
