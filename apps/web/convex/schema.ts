@@ -1229,6 +1229,45 @@ export default defineSchema({
     .index("by_team", ["teamId"]),
 
   // Live transcript segments (for real-time streaming during calls)
+  /**
+   * A team's setters, entered by the manager.
+   *
+   * Distinct from `setterReps` (which is what a CRM sync discovers) because
+   * this roster exists BEFORE any CRM is connected — it's what the EOD links
+   * and the closer attribution dropdown hang off. `setterRepId` links the two
+   * once a sync can identify the same person.
+   */
+  setterRoster: defineTable({
+    teamId: v.id("teams"),
+    name: v.string(),
+    /** The EOD link identity. Bookmark-on-phone auth, same trust model as
+     *  share links. Revoke by rotating. */
+    token: v.string(),
+    active: v.boolean(),
+    setterRepId: v.optional(v.id("setterReps")),
+    createdAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_token", ["token"]),
+
+  /** One setter's end-of-day numbers. Self-reported; the CRM cross-check can
+   *  come later once Close is connected. */
+  setterEodEntries: defineTable({
+    teamId: v.id("teams"),
+    rosterId: v.id("setterRoster"),
+    /** Team-local day, "YYYY-MM-DD". */
+    dayKey: v.string(),
+    dials: v.number(),
+    pickUps: v.number(),
+    sets: v.number(),
+    newLeadsHit: v.number(),
+    followUps: v.number(),
+    note: v.optional(v.string()),
+    submittedAt: v.number(),
+  })
+    .index("by_roster_and_day", ["rosterId", "dayKey"])
+    .index("by_team_and_day", ["teamId", "dayKey"]),
+
   transcriptSegments: defineTable({
     callId: v.id("calls"),
     teamId: v.id("teams"),

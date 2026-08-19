@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
-import { LayoutDashboard, Radio, Calendar, Phone, Users, CreditCard, Settings, BarChart3, BookMarked, TrendingUp, FileText, MessageSquareText, Briefcase, UserCheck, UserCog, Sparkles, Trophy, Wallet } from "lucide-react";
+import { LayoutDashboard, Radio, Calendar, Phone, Users, CreditCard, Settings, BarChart3, BookMarked, TrendingUp, FileText, MessageSquareText, Briefcase, UserCheck, UserCog, Sparkles, Trophy, Wallet, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillingStatus } from "./billing-status";
 import { Logo } from "@/components/ui/logo";
@@ -51,6 +51,9 @@ const baseNavigation = [
   // handles the not-yet-installed state. Hidden only when an admin
   // explicitly sets team.setterDataEnabled = false (kill switch).
   { name: "Setter Data", href: "/dashboard/setter-data", icon: UserCheck },
+  // Setter EODs — beta-gated: only teams whose setters file end-of-day forms
+  // see it (filtered below). Roster + links + the board live here.
+  { name: "Setter EODs", href: "/dashboard/setter-eods", icon: ClipboardList },
   { name: "Playbook", href: "/dashboard/playbook", icon: BookMarked },
   { name: "Resources", href: "/dashboard/resources", icon: FileText },
   { name: "Recruiting", href: "/dashboard/recruiting", icon: Briefcase },
@@ -108,6 +111,12 @@ export function Sidebar() {
     ? baseNavigation.filter((item) => item.href !== "/dashboard/setter-data")
     : baseNavigation;
 
+  // Setter EODs shows only for teams opted in via beta flag — it's a
+  // per-client custom feature (built for E2), not a product-wide tab.
+  const eodFiltered = (team as any)?.betaFeatures?.includes("setter_eods")
+    ? setterFiltered
+    : setterFiltered.filter((item) => item.href !== "/dashboard/setter-eods");
+
   // Then by what this team's plan actually includes.
   //
   // Live Calls, Playbook and Recordings all exist because our meeting bot is
@@ -115,8 +124,8 @@ export function Sidebar() {
   // empty — showing them advertises something the customer didn't buy and
   // makes the product look broken rather than smaller.
   const withoutBotPages = tierHas(team?.productTier, "meetingBot")
-    ? setterFiltered
-    : setterFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
+    ? eodFiltered
+    : eodFiltered.filter((item) => !BOT_ONLY_ROUTES.has(item.href));
   const filteredBase = tierHas(team?.productTier, "callIntelligence")
     ? withoutBotPages
     : withoutBotPages.filter((item) => !RECORDING_ONLY_ROUTES.has(item.href));
