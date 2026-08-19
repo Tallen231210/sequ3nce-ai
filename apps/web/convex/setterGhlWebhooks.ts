@@ -669,7 +669,10 @@ async function recomputeLeadAppointmentCounts(
     .withIndex("by_team_and_contact", (q: any) =>
       q.eq("teamId", teamId).eq("ghlContactId", ghlContactId),
     )
-    .collect();
+    // Capped: one contact with a pathological number of appointments must
+    // not sink the whole ingest transaction. Counts saturate at the cap,
+    // which is indistinguishable from the truth for every metric we show.
+    .take(500);
 
   let appointmentCount = 0;
   let showedCount = 0;
