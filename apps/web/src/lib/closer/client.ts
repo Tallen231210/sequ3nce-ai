@@ -1940,6 +1940,26 @@ export async function markSharedMomentsSeen(closerId: string): Promise<boolean> 
 // ==================== CALL HISTORY + REVIEWS ====================
 
 // Flag call for review
+// Swap Closer/Prospect labels on a call whose transcript got them mixed up.
+export async function swapSpeakerLabels(callId: string, closerId: string): Promise<boolean> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/swapSpeakerLabels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId, closerId }),
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result.success === true;
+  } catch (error) {
+    console.error("[Convex] Failed to swap speaker labels:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "swapSpeakerLabels", integration: "convex" },
+    });
+    return false;
+  }
+}
+
 export async function flagCallForReview(callId: string, closerId: string): Promise<boolean> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/flagCallForReview`, {

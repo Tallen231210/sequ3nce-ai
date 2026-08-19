@@ -338,6 +338,8 @@ export const verifyClosersByRecallApi = internalAction({
     // passes true too. Available as an arg so a future bulk backfill could
     // opt out if scope ever grows past where re-AI is affordable.
     regenerateAi: v.optional(v.boolean()),
+    /** Internal retry counter — see the transient-error handling below. */
+    attempt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<VerifyResult> => {
     const bot = await ctx.runQuery(internal.speakerVerification.getBotForVerify, {
@@ -364,6 +366,28 @@ export const verifyClosersByRecallApi = internalAction({
     // transcript itself — no separate participant-list endpoint exists.
     const transcript = await fetchRecallTranscript(bot.recallBotId);
     if (!transcript.ok) {
+      // A transient Recall failure used to end verification permanently —
+      // fire-and-forget with no retry. That is exactly how a fully inverted
+      // transcript (prospect labelled closer for 30 minutes) shipped to a
+      // customer: the one chance to catch it died on an HTTP 429. Come back
+      // a few times before giving up.
+      const attempt = args.attempt ?? 1;
+      const MAX_ATTEMPTS = 5;
+      if (attempt < MAX_ATTEMPTS) {
+        console.log(
+          `[speakerVerify] Recall fetch failed (${transcript.error}) — ` +
+            `retry ${attempt + 1}/${MAX_ATTEMPTS} in 2 minutes`,
+        );
+        await ctx.scheduler.runAfter(
+          120_000,
+          internal.speakerVerification.verifyClosersByRecallApi,
+          { botId: args.botId, regenerateAi: args.regenerateAi, attempt: attempt + 1 },
+        );
+      } else {
+        console.error(
+          `[speakerVerify] giving up after ${MAX_ATTEMPTS} attempts for bot ${args.botId}: ${transcript.error}`,
+        );
+      }
       return {
         ok: false,
         reason: "skipped_recall_error",

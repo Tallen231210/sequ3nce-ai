@@ -209,6 +209,7 @@ import type * as setterScorecardBackfill from "../setterScorecardBackfill.js";
 import type * as setterScorecardConfig from "../setterScorecardConfig.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
+import type * as speakerSwap from "../speakerSwap.js";
 import type * as speakerVerification from "../speakerVerification.js";
 import type * as stream from "../stream.js";
 import type * as streamActions from "../streamActions.js";
@@ -426,6 +427,7 @@ declare const fullApi: ApiFromModules<{
   setterScorecardConfig: typeof setterScorecardConfig;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
+  speakerSwap: typeof speakerSwap;
   speakerVerification: typeof speakerVerification;
   stream: typeof stream;
   streamActions: typeof streamActions;

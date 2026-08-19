@@ -5916,6 +5916,58 @@ http.route({
   }),
 });
 
+// Swap Closer/Prospect labels on a call's transcript — the closer's own
+// escape hatch for mislabelled speakers. The mutation verifies the call
+// belongs to the closerId supplied, same trust model as every route here.
+http.route({
+  path: "/swapSpeakerLabels",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const { callId, closerId } = body;
+
+      if (!callId || !closerId) {
+        return new Response(JSON.stringify({ error: "callId and closerId are required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runMutation(internal.speakerSwap.swapSpeakerLabelsAsCloser, {
+        callId: callId as Id<"calls">,
+        closerId: closerId as Id<"closers">,
+      });
+
+      return new Response(JSON.stringify({ success: true, ...result }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in swapSpeakerLabels:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/swapSpeakerLabels",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+      },
+    });
+  }),
+});
+
 // Flag a call for review
 http.route({
   path: "/flagCallForReview",
