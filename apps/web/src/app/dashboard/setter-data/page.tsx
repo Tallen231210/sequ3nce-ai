@@ -125,10 +125,16 @@ function SetterDataPageInner() {
     );
   }
 
-  // Connected — render the full tab UI.
+  // Connected — render the full tab UI. The description names the SOURCE:
+  // this tab is the measured world, and the Setter EODs tab is the
+  // self-reported one. Keeping that distinction legible is an explicit
+  // customer requirement — the two must never read as one blended number.
   return (
     <>
-      <Header title="Setter Data" />
+      <Header
+        title="Setter Data"
+        description={`Measured from ${installation.provider === "close" ? "Close CRM" : "GoHighLevel"} — what the system saw, not what anyone typed`}
+      />
       <div className="px-6 pt-6">
         {/* Connection error banner (top-level — visible on every tab) */}
         {installation.status === "error" && (
