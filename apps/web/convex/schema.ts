@@ -3600,7 +3600,8 @@ export default defineSchema({
   managerMeetingBots: defineTable({
     userId: v.id("users"),
     teamId: v.id("teams"),
-    calendarEventId: v.id("managerCalendarEvents"),
+    /** Absent for quick bots — a pasted link has no calendar event behind it. */
+    calendarEventId: v.optional(v.id("managerCalendarEvents")),
     meetingId: v.optional(v.id("managerMeetings")),
     recallBotId: v.string(),
     meetingUrl: v.string(),

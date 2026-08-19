@@ -1,11 +1,84 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useState } from "react";
+import { useAction, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
-import { Loader2, Video } from "lucide-react";
+import { Loader2, Video, Zap } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Paste a link, the MGMT bot joins now.
+ *
+ * The scheduled path only covers the manager's own calendar. This covers
+ * everything that isn't on it — someone else's invite, an impromptu call.
+ */
+function QuickBot() {
+  const { user } = useUser();
+  const send = useAction(api.managerMeetingBot.createManagerQuickBot);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function go() {
+    if (!user || !url.trim()) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await send({ clerkId: user.id, meetingUrl: url.trim() });
+      if (r.ok) {
+        setNote({ ok: true, text: "Bot sent — it joins in about 30 seconds. Let it in if there's a waiting room." });
+        setUrl("");
+      } else {
+        setNote({ ok: false, text: r.error ?? "The bot couldn't be sent." });
+      }
+    } catch {
+      setNote({ ok: false, text: "The bot couldn't be sent. Try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center gap-2">
+        <Zap className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-semibold">Record a meeting now</span>
+      </div>
+      <p className="mt-1 text-[13px] text-muted-foreground">
+        For meetings that aren&apos;t on your calendar — paste the link and the
+        bot joins immediately.
+      </p>
+      <form
+        className="mt-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void go();
+        }}
+      >
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://zoom.us/j/… or meet.google.com/…"
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+        <button
+          type="submit"
+          disabled={busy || !url.trim()}
+          className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+        >
+          {busy ? "Sending…" : "Send bot"}
+        </button>
+      </form>
+      {note && (
+        <p className={"mt-2 text-[13px] " + (note.ok ? "text-emerald-700" : "text-rose-600")}>
+          {note.text}
+        </p>
+      )}
+    </section>
+  );
+}
 
 /**
  * What's coming and what was recorded.
@@ -32,6 +105,8 @@ export function MeetingsTab({
 
   return (
     <div className="space-y-6">
+      <QuickBot />
+
       <section>
         <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
           Coming up
