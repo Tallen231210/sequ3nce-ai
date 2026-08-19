@@ -77,7 +77,16 @@ export default function CallReviewPage({
     }
   }, [callId, markManagerRead]);
 
-  // Refresh recording URL on mount (Recall.ai signed URLs expire after ~24h)
+  // Refresh recording URL on mount — Recall's signed URLs expire ~6 hours
+  // after the call, so the stored one is only good on the day.
+  //
+  // This page previously lost a race with itself: the player mounted with the
+  // STALE stored URL on first render, the expired link 403'd in ~200ms, and a
+  // sticky videoError flag showed "Failed to load recording" forever — while
+  // the fresh URL arrived a moment later and was thrown away. That is exactly
+  // what a manager reviewing yesterday's call saw. The player is now gated
+  // below until this refresh settles, and the error flag is cleared whenever
+  // a new URL comes in.
   useEffect(() => {
     if (!call?.recordingUrl || freshRecordingUrl || isRefreshingUrl) return;
     setIsRefreshingUrl(true);
@@ -85,15 +94,43 @@ export default function CallReviewPage({
       .then((result) => {
         if (result.recordingUrl) {
           setFreshRecordingUrl(result.recordingUrl);
+        } else {
+          // No fresh URL to be had (legacy recording with no Recall bot).
+          // The stored one is all there is — let the player try it.
+          setFreshRecordingUrl(call.recordingUrl!);
         }
+        setVideoError(false);
       })
       .catch((err) => {
         console.error("Failed to refresh recording URL:", err);
-        // Fall back to existing URL
+        // The stored URL is very likely expired — that's why we refresh — so
+        // "falling back" to it used to guarantee the failure screen. Try it
+        // anyway (it might still be inside its window), but leave the error
+        // path open to retry below rather than dead-ending.
         setFreshRecordingUrl(call.recordingUrl!);
       })
       .finally(() => setIsRefreshingUrl(false));
   }, [call?.recordingUrl, callId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // One retry on playback error: refresh the URL again and clear the flag.
+  // Covers the refresh itself hiccuping, and a tab left open past the 6-hour
+  // window. One attempt, not a loop — a genuinely missing recording should
+  // say so rather than spin.
+  const retriedRef = useRef(false);
+  useEffect(() => {
+    if (!videoError || retriedRef.current || !call?.recordingUrl) return;
+    retriedRef.current = true;
+    refreshRecordingUrl({ callId: callId as Id<"calls"> })
+      .then((result) => {
+        if (result.recordingUrl) {
+          setFreshRecordingUrl(result.recordingUrl);
+          setVideoError(false);
+        }
+      })
+      .catch(() => {
+        // The error card is already showing; nothing better to do.
+      });
+  }, [videoError, call?.recordingUrl, callId, refreshRecordingUrl]);
 
   // Cleanup video on unmount
   useEffect(() => {
@@ -267,13 +304,17 @@ export default function CallReviewPage({
           {/* Video — fixed at top, never scrolls */}
           <div className="shrink-0 p-4">
             {call.recordingUrl && !videoError ? (
-              isRefreshingUrl && !freshRecordingUrl ? (
+              // Wait for the refreshed URL rather than mounting the player
+              // with the stored one. The stored URL is expired for any call
+              // older than ~6 hours, and mounting with it starts the race
+              // this page used to lose.
+              !freshRecordingUrl ? (
                 <Card className="flex items-center justify-center h-48 bg-zinc-50">
                   <p className="text-muted-foreground text-sm animate-pulse">Loading recording...</p>
                 </Card>
               ) : (
                 <VideoReviewPlayer
-                  recordingUrl={freshRecordingUrl || call.recordingUrl}
+                  recordingUrl={freshRecordingUrl}
                   comments={comments ?? []}
                   currentTime={currentTime}
                   duration={duration}
