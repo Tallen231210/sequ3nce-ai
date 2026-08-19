@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option G — Instrument (premium material, zero motion)</title>
+<link rel="stylesheet" href="./_shared.css">
+<style>
+/* ============================================================
+   OPTION G — "Instrument"
+   Futuristic without a single ambient animation. The premium
+   comes from MATERIAL and PRECISION instead:
+   · a black-glass hero anchoring the white page (the brand's
+     black, made dimensional)
+   · Geist Mono for every data caption — the page reads like
+     a calibrated instrument, not a brochure
+   · real stroke iconography, a ⌘K command pill, segmented
+     controls — it looks operable
+   · engineered detail: tick rulers under the chart, a dotted
+     target line, hairline in-card dividers
+   Everything is still. Light is a material here, not an event.
+   ============================================================ */
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900; font-display: swap;
+}
+:root {
+  --ink: #0b0c10;
+  --sub: #697083;
+  --faint: #9aa0ae;
+  --line: rgba(15, 20, 40, .08);
+  --glass: rgba(255, 255, 255, .76);
+  --accent: #4f46e5;
+  --accent2: #06b6d4;
+  --grad: linear-gradient(92deg, #4f46e5, #06b6d4);
+  --mono: "Geist Mono", ui-monospace, monospace;
+}
+body {
+  color: var(--ink); min-height: 100vh;
+  background:
+    radial-gradient(900px 500px at 85% -10%, rgba(79,70,229,.06), transparent 60%),
+    radial-gradient(700px 420px at -5% 30%, rgba(6,182,212,.05), transparent 55%),
+    #fbfbfd;
+}
+.mono { font-family: var(--mono); letter-spacing: 0; }
+
+.shell { display: flex; gap: 22px; padding: 18px; min-height: 100vh; }
+
+/* ---------- Sidebar with real iconography ---------- */
+.side {
+  width: 222px; flex: none; align-self: flex-start; position: sticky; top: 18px;
+  background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-radius: 22px; padding: 16px 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(15,20,40,.04), 0 14px 36px -18px rgba(15,20,40,.14);
+  border: 1px solid rgba(255,255,255,.6); outline: 1px solid var(--line);
+  max-height: calc(100vh - 36px); overflow: auto;
+}
+.logo { display: flex; align-items: center; gap: 9px; padding: 6px 10px 14px; }
+.logo .mark { width: 26px; height: 26px; border-radius: 8px; background: #0e0f14;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  font-family: var(--mono); font-size: 12px; font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 4px 10px -3px rgba(14,15,20,.5); }
+.logo .t { font-weight: 800; letter-spacing: -0.02em; font-size: 13.5px; }
+.nav a {
+  display: flex; align-items: center; gap: 11px; padding: 8px 11px;
+  border-radius: 12px; font-size: 13px; color: var(--sub); margin-bottom: 1px;
+  transition: background .14s, color .14s;
+}
+.nav a svg { width: 15px; height: 15px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .75; }
+.nav a:hover { background: rgba(15,20,40,.045); color: var(--ink); }
+.nav a:active { transform: scale(.98); }
+.nav a.on { background: #0e0f14; color: #fff; font-weight: 600;
+  box-shadow: 0 8px 20px -8px rgba(14,15,20,.5), inset 0 1px 0 rgba(255,255,255,.12); }
+.nav a.on svg { opacity: 1; }
+.nav .sect { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .16em; color: var(--faint); padding: 15px 11px 6px; }
+
+.main { flex: 1; max-width: 1150px; }
+
+/* ---------- Top bar: title + command pill ---------- */
+.top { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 18px; }
+.top h1 { font-size: 21px; font-weight: 750; letter-spacing: -0.025em; }
+.top .sub { font-size: 12.5px; color: var(--sub); margin-top: 2px; }
+.tools { display: flex; gap: 10px; align-items: center; }
+.cmd {
+  display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+  background: var(--glass); backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.6); outline: 1px solid var(--line);
+  border-radius: 12px; padding: 8px 12px; font-size: 12.5px; color: var(--sub); min-width: 190px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 8px -2px rgba(15,20,40,.08);
+  transition: transform .1s, box-shadow .14s;
+}
+.cmd:active { transform: scale(.97); }
+.cmd .k { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--faint);
+  border: 1px solid var(--line); border-radius: 5px; padding: 2px 5px; background: rgba(255,255,255,.6); }
+.seg {
+  display: inline-flex; background: rgba(15,20,40,.05); border-radius: 11px; padding: 3px;
+}
+.seg button {
+  border: 0; background: transparent; font: inherit; font-size: 12px; font-weight: 550; color: var(--sub);
+  padding: 5px 12px; border-radius: 8px; cursor: pointer; transition: transform .1s;
+}
+.seg button:active { transform: scale(.95); }
+.seg button.on { background: #fff; color: var(--ink); font-weight: 650;
+  box-shadow: 0 1px 3px rgba(15,20,40,.12), inset 0 1px 0 rgba(255,255,255,.9); }
+
+/* ---------- Glass base ---------- */
+.glass {
+  background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-radius: 20px; border: 1px solid rgba(255,255,255,.65); outline: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(15,20,40,.04), 0 14px 36px -18px rgba(15,20,40,.14);
+  position: relative;
+}
+
+/* ---------- Bento ---------- */
+.bento { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; grid-auto-rows: 132px; gap: 14px; margin-bottom: 14px; }
+
+/* THE ANCHOR: black glass. The brand's black given depth — translucent,
+   lit from within by the data itself. */
+.cash {
+  grid-row: span 2; padding: 24px; overflow: hidden; display: flex; flex-direction: column;
+  background: linear-gradient(160deg, rgba(14,15,20,.97), rgba(24,26,38,.94));
+  border: 1px solid rgba(255,255,255,.08); outline: 1px solid rgba(15,20,40,.2);
+  border-radius: 20px; color: #fff; position: relative;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.14),
+    0 2px 4px rgba(15,20,40,.12),
+    0 24px 48px -20px rgba(14,15,20,.55);
+}
+.cash .k { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .18em; color: #8b90a3; }
+.cash .v { font-size: 54px; font-weight: 800; letter-spacing: -0.045em; line-height: 1; margin-top: 12px; color: #fff; }
+.cash .d { font-size: 12.5px; color: #58e0a1; font-weight: 600; margin-top: 8px; }
+.cash .mtd { font-family: var(--mono); font-size: 11px; color: #8b90a3; margin-top: 4px; }
+.cash svg.chart { position: absolute; left: 0; right: 0; bottom: 14px; width: 100%; height: 42%; }
+/* tick ruler under the chart — the instrument detail */
+.ruler { position: absolute; left: 24px; right: 24px; bottom: 8px; display: flex; justify-content: space-between; }
+.ruler i { width: 1px; height: 4px; background: rgba(255,255,255,.22); }
+.ruler i:nth-child(4n+1) { height: 7px; background: rgba(255,255,255,.4); }
+
+.tile { padding: 18px 20px; overflow: hidden; }
+.tile .k { font-family: var(--mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: .16em; color: var(--sub); }
+.tile .v { font-size: 30px; font-weight: 750; letter-spacing: -0.035em; margin-top: 9px; }
+.tile .v .dim { font-size: 15px; color: var(--faint); font-weight: 550; }
+.tile .d { font-size: 11.5px; margin-top: 4px; color: var(--faint); }
+.tile .d.up { color: #0a9c5d; } .tile .d.down { color: #d64545; }
+.tile .mini { position: absolute; right: 16px; top: 18px; display: flex; gap: 3px; align-items: flex-end; height: 26px; }
+.tile .mini i { width: 5px; border-radius: 2px; background: rgba(15,20,40,.1); }
+.tile .mini i.hot { background: var(--grad); box-shadow: 0 2px 6px -1px rgba(79,70,229,.5); }
+
+/* Prize: ring + dotted target line detail */
+.ringcard { display: flex; align-items: center; gap: 16px; padding: 16px 20px; }
+.ringwrap { position: relative; width: 74px; height: 74px; flex: none; }
+.ring { position: absolute; inset: 0; border-radius: 99px;
+  background: conic-gradient(from 220deg, #4f46e5, #06b6d4 330deg, rgba(15,20,40,.08) 330deg);
+  -webkit-mask: radial-gradient(circle at center, transparent 26px, #000 27px);
+  mask: radial-gradient(circle at center, transparent 26px, #000 27px);
+  filter: drop-shadow(0 4px 10px rgba(79,70,229,.28));
+}
+.ringwrap .pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 13px; font-weight: 800; }
+.ringcard .t { font-size: 12.5px; color: var(--sub); }
+.ringcard .t b { color: var(--ink); font-weight: 700; }
+.ringcard .amt { font-size: 17px; font-weight: 750; letter-spacing: -0.02em; margin-top: 3px; }
+.ringcard .goal { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-top: 3px; }
+
+/* ---------- The Board ---------- */
+.board { margin-top: 22px; }
+.bhead { display: flex; align-items: baseline; justify-content: space-between; padding: 0 6px 10px; }
+.bhead .t { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .18em; font-weight: 700; color: var(--sub); }
+.bhead .m { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.rowg {
+  display: grid; grid-template-columns: 44px 1.5fr repeat(4, .75fr) 1fr 110px;
+  align-items: center; gap: 10px; padding: 15px 20px; margin-bottom: 10px;
+  cursor: pointer; transition: transform .14s, box-shadow .18s;
+}
+.rowg:hover { transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(15,20,40,.05), 0 20px 44px -18px rgba(15,20,40,.2); }
+.rowg:active { transform: none; }
+.rowg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rowg.top::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 21px; padding: 1.5px;
+  background: var(--grad);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+}
+.pos { font-family: var(--mono); font-size: 12px; font-weight: 800; color: var(--faint);
+  width: 26px; height: 26px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center; background: rgba(15,20,40,.05); }
+.rowg.top .pos { background: var(--grad); color: #fff; box-shadow: 0 6px 14px -4px rgba(79,70,229,.45); }
+.who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ava { width: 34px; height: 34px; border-radius: 12px; background: #0e0f14; color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 4px 10px -4px rgba(14,15,20,.4); }
+.who .n { font-weight: 650; font-size: 13.5px; }
+.who .s { font-size: 11px; color: var(--faint); margin-top: 1.5px; }
+.who .s .warn { color: #c77414; font-weight: 650; }
+.cellk { font-family: var(--mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--faint); }
+.cellv { font-size: 16px; font-weight: 750; letter-spacing: -0.02em; margin-top: 3px; }
+.cash2 { font-size: 17px; font-weight: 800; letter-spacing: -0.025em; }
+.trend { display: flex; gap: 3.5px; align-items: flex-end; height: 30px; justify-content: flex-end; }
+.trend i { width: 7px; border-radius: 3px; background: rgba(15,20,40,.1); }
+.trend i.hot { background: var(--grad); box-shadow: 0 2px 6px -1px rgba(79,70,229,.45); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="logo"><span class="mark">3</span><span class="t">SEQU3NCE.AI</span></div>
+    <nav class="nav">
+      <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>Live Calls</a>
+      <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2.5"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Schedule</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M9 12l2 2 4-5"/></svg>Call Reviews</a>
+      <div class="sect">Performance</div>
+      <a href="#" class="on"><svg viewBox="0 0 24 24"><path d="M3 20h18M6 20V9M12 20V4M18 20v-7"/></svg>Team Performance</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Closer Stats</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>Analytics</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>Collections</a>
+      <div class="sect">Manager</div>
+      <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="13" rx="2.5"/><path d="M8 21h8"/></svg>Manager Mode</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/></svg>Setter Data</a>
+      <div class="sect">Workspace</div>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M4 19V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h7"/></svg>Playbook</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.5 2.5-5 6-5s6 1.5 6 5M14 15.5c3 0 6 1 6 4.5"/></svg>Team</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>Settings</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h1>Team Performance</h1>
+        <div class="sub">ManyJobs · Monday, August 18</div>
+      </div>
+      <div class="tools">
+        <button class="cmd"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>Search anything<span class="k">⌘K</span></button>
+        <span class="seg">
+          <button class="on">Today</button>
+          <button>Week</button>
+          <button>Month</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="bento">
+      <div class="cash">
+        <div class="k">Cash collected · Today</div>
+        <div class="v num">$6,000</div>
+        <div class="d">▲ $6,000 vs yesterday</div>
+        <div class="mtd num">MTD $68,730 · 2 CALLS LIVE</div>
+        <svg class="chart" viewBox="0 0 400 90" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="a" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#06b6d4" stop-opacity=".35"/>
+              <stop offset="1" stop-color="#06b6d4" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="s" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#22d3ee"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,70 C40,66 60,58 90,60 C130,63 150,40 190,44 C230,48 250,30 290,26 C330,22 360,14 400,10 L400,90 L0,90 Z" fill="url(#a)"/>
+          <path d="M0,70 C40,66 60,58 90,60 C130,63 150,40 190,44 C230,48 250,30 290,26 C330,22 360,14 400,10" fill="none" stroke="url(#s)" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <div class="ruler">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+
+      <div class="glass tile">
+        <div class="k">Booked</div><div class="v num">8</div><div class="d up">+3 vs yesterday</div>
+        <span class="mini"><i style="height:35%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:70%"></i><i class="hot" style="height:100%"></i></span>
+      </div>
+      <div class="glass tile">
+        <div class="k">Taken</div><div class="v num">4<span class="dim">/4</span></div><div class="d">every slot filled</div>
+        <span class="mini"><i style="height:50%"></i><i style="height:75%"></i><i style="height:60%"></i><i style="height:80%"></i><i class="hot" style="height:100%"></i></span>
+      </div>
+      <div class="glass ringcard" style="grid-row: span 2;">
+        <div class="ringwrap"><div class="ring"></div><span class="pct num">92%</span></div>
+        <div>
+          <div class="t">Prize · <b>$75k by Aug 31</b></div>
+          <div class="amt num">$68,730</div>
+          <div class="goal num">TARGET −$6,270 · 13 DAYS</div>
+        </div>
+      </div>
+      <div class="glass tile">
+        <div class="k">Show rate</div><div class="v num">50%</div><div class="d down">−12 pts</div>
+        <span class="mini"><i style="height:90%"></i><i style="height:75%"></i><i style="height:80%"></i><i style="height:65%"></i><i class="hot" style="height:50%"></i></span>
+      </div>
+      <div class="glass tile">
+        <div class="k">Closes</div><div class="v num">1</div><div class="d up">+1 · $6,000</div>
+        <span class="mini"><i style="height:40%"></i><i style="height:0%"></i><i style="height:40%"></i><i style="height:0%"></i><i class="hot" style="height:40%"></i></span>
+      </div>
+    </div>
+
+    <div class="board">
+      <div class="bhead"><span class="t">The Board · August</span><span class="m">RANKED BY CASH · EOD 1/3</span></div>
+
+      <div class="glass rowg top" tabindex="0">
+        <span class="pos num">01</span>
+        <span class="who"><span class="ava">GS</span><span><span class="n">Gianni Scott</span><br><span class="s">7 closes · 1:1 recorded today</span></span></span>
+        <span><div class="cellk">Booked</div><div class="cellv num">84</div></span>
+        <span><div class="cellk">Taken</div><div class="cellv num">31</div></span>
+        <span><div class="cellk">Show</div><div class="cellv num">64%</div></span>
+        <span><div class="cellk">Offer→Close</div><div class="cellv num">39%</div></span>
+        <span><div class="cellk">Cash</div><div class="cash2 num">$41,730</div></span>
+        <span class="trend"><i style="height:30%"></i><i style="height:45%"></i><i style="height:38%"></i><i style="height:62%"></i><i style="height:78%"></i><i class="hot" style="height:100%"></i></span>
+      </div>
+
+      <div class="glass rowg" tabindex="0">
+        <span class="pos num">02</span>
+        <span class="who"><span class="ava">NK</span><span><span class="n">Nick Kevlar</span><br><span class="s">4 closes · <span class="warn">EOD missing</span></span></span></span>
+        <span><div class="cellk">Booked</div><div class="cellv num">52</div></span>
+        <span><div class="cellk">Taken</div><div class="cellv num">17</div></span>
+        <span><div class="cellk">Show</div><div class="cellv num">58%</div></span>
+        <span><div class="cellk">Offer→Close</div><div class="cellv num">31%</div></span>
+        <span><div class="cellk">Cash</div><div class="cash2 num">$19,000</div></span>
+        <span class="trend"><i style="height:62%"></i><i style="height:72%"></i><i style="height:55%"></i><i style="height:42%"></i><i style="height:34%"></i><i class="hot" style="height:28%"></i></span>
+      </div>
+
+      <div class="glass rowg" tabindex="0">
+        <span class="pos num">03</span>
+        <span class="who"><span class="ava">AT</span><span><span class="n">Anthony Tran</span><br><span class="s">1 close · <span class="warn">EOD missing</span></span></span></span>
+        <span><div class="cellk">Booked</div><div class="cellv num">33</div></span>
+        <span><div class="cellk">Taken</div><div class="cellv num">10</div></span>
+        <span><div class="cellk">Show</div><div class="cellv num">49%</div></span>
+        <span><div class="cellk">Offer→Close</div><div class="cellv num">20%</div></span>
+        <span><div class="cellk">Cash</div><div class="cash2 num">$8,000</div></span>
+        <span class="trend"><i style="height:26%"></i><i style="height:32%"></i><i style="height:24%"></i><i style="height:36%"></i><i style="height:28%"></i><i class="hot" style="height:20%"></i></span>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

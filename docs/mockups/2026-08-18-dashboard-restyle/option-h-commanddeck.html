@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Option H — Command Deck (no sidebar, ticker + player cards)</title>
+<link rel="stylesheet" href="./_shared.css">
+<style>
+/* ============================================================
+   OPTION H — "Command Deck"
+   A drastic swing. The sidebar is GONE — navigation lives in a
+   top bar. Beneath it, a full-width black-glass ticker carries
+   the day like a trading tape. The closers aren't table rows:
+   each is a PLAYER CARD, standing side by side like a game
+   lobby. Same data, completely different geometry.
+   ============================================================ */
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900; font-display: swap;
+}
+:root {
+  --ink: #0b0c10;
+  --sub: #697083;
+  --faint: #9aa0ae;
+  --line: rgba(15, 20, 40, .08);
+  --glass: rgba(255, 255, 255, .76);
+  --grad: linear-gradient(92deg, #4f46e5, #06b6d4);
+  --mono: "Geist Mono", ui-monospace, monospace;
+}
+body {
+  color: var(--ink); min-height: 100vh;
+  background:
+    radial-gradient(1000px 500px at 50% -14%, rgba(79,70,229,.07), transparent 60%),
+    #fbfbfd;
+}
+.mono { font-family: var(--mono); }
+
+/* ---------- Top bar navigation ---------- */
+.bar {
+  display: flex; align-items: center; gap: 22px;
+  padding: 14px 30px; border-bottom: 1px solid var(--line);
+  background: rgba(255,255,255,.7); backdrop-filter: blur(18px);
+  position: sticky; top: 0; z-index: 5;
+}
+.logo { display: flex; align-items: center; gap: 9px; }
+.logo .mark { width: 26px; height: 26px; border-radius: 8px; background: #0e0f14; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 800; }
+.logo .t { font-weight: 800; letter-spacing: -0.02em; font-size: 13.5px; }
+.topnav { display: flex; gap: 2px; margin-left: 8px; }
+.topnav a {
+  padding: 7px 13px; border-radius: 10px; font-size: 13px; color: var(--sub);
+  transition: background .14s, color .14s;
+}
+.topnav a:hover { background: rgba(15,20,40,.05); color: var(--ink); }
+.topnav a:active { transform: scale(.97); }
+.topnav a.on { background: #0e0f14; color: #fff; font-weight: 600; }
+.bar .cmd {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 10px;
+  border: 1px solid var(--line); border-radius: 11px; padding: 7px 12px;
+  font-size: 12.5px; color: var(--sub); min-width: 210px; cursor: pointer;
+  background: rgba(255,255,255,.8); transition: transform .1s;
+}
+.bar .cmd:active { transform: scale(.97); }
+.bar .cmd .k { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--faint);
+  border: 1px solid var(--line); border-radius: 5px; padding: 2px 5px; }
+.ava-top { width: 30px; height: 30px; border-radius: 99px; background: var(--grad); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 26px 30px 80px; }
+
+/* ---------- The tape: full-width black glass ---------- */
+.tape {
+  background: linear-gradient(165deg, rgba(14,15,20,.97), rgba(24,26,38,.94));
+  border-radius: 22px; color: #fff; padding: 0; overflow: hidden;
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 28px 56px -24px rgba(14,15,20,.55);
+  display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1.3fr;
+}
+.tape .cell { padding: 24px 24px 22px; border-left: 1px solid rgba(255,255,255,.07); }
+.tape .cell:first-child { border-left: 0; }
+.tape .k { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .18em; color: #8b90a3; }
+.tape .v { font-size: 34px; font-weight: 800; letter-spacing: -0.04em; margin-top: 10px; line-height: 1; }
+.tape .cell.lead .v { font-size: 44px; }
+.tape .d { font-size: 11.5px; margin-top: 8px; color: #8b90a3; }
+.tape .d.up { color: #58e0a1; } .tape .d.down { color: #ff8f8f; }
+.tape .dim { color: #566; font-size: 18px; font-weight: 500; color: #8b90a3; }
+/* prize cell: number + inline meter */
+.meter { margin-top: 12px; height: 4px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
+.meter > i { display: block; height: 100%; width: 91.6%; background: var(--grad); border-radius: 99px; }
+.tape .goal { font-family: var(--mono); font-size: 10px; color: #8b90a3; margin-top: 8px; }
+
+/* ---------- Player cards ---------- */
+.lobby { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 26px; align-items: start; }
+.player {
+  background: var(--glass); backdrop-filter: blur(18px);
+  border-radius: 24px; border: 1px solid rgba(255,255,255,.65); outline: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 16px 40px -20px rgba(15,20,40,.16);
+  padding: 26px 24px 22px; position: relative; cursor: pointer;
+  transition: transform .15s, box-shadow .2s;
+}
+.player:hover { transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 26px 52px -22px rgba(15,20,40,.24); }
+.player:active { transform: translateY(0); }
+.player.top::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 25px; padding: 1.5px;
+  background: var(--grad);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+}
+.rank { position: absolute; top: 20px; right: 22px; font-family: var(--mono);
+  font-size: 12px; font-weight: 800; color: var(--faint); }
+.player.top .rank {
+  background: var(--grad); color: #fff; border-radius: 8px; padding: 3px 8px;
+  box-shadow: 0 6px 14px -4px rgba(79,70,229,.45);
+}
+.face { width: 58px; height: 58px; border-radius: 18px; background: #0e0f14; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 750;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 8px 18px -6px rgba(14,15,20,.45); }
+.pname { font-size: 16.5px; font-weight: 750; letter-spacing: -0.02em; margin-top: 14px; }
+.psub { font-size: 12px; color: var(--faint); margin-top: 2px; }
+.psub .warn { color: #c77414; font-weight: 650; }
+.pcash { margin-top: 16px; }
+.pcash .k { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .18em; color: var(--sub); }
+.pcash .v { font-size: 34px; font-weight: 800; letter-spacing: -0.04em; margin-top: 5px; }
+.grid4 {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin-top: 18px;
+  background: var(--line); border-radius: 14px; overflow: hidden;
+  border: 1px solid var(--line);
+}
+.grid4 > div { background: rgba(255,255,255,.72); padding: 11px 14px; }
+.grid4 .k { font-family: var(--mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: .14em; color: var(--faint); }
+.grid4 .v { font-size: 17px; font-weight: 750; margin-top: 3px; letter-spacing: -0.02em; }
+.ptrend { display: flex; gap: 4px; align-items: flex-end; height: 34px; margin-top: 18px; }
+.ptrend i { flex: 1; border-radius: 3px; background: rgba(15,20,40,.09); }
+.ptrend i.hot { background: var(--grad); }
+.pfoot { display: flex; justify-content: space-between; margin-top: 10px;
+  font-family: var(--mono); font-size: 9px; color: var(--faint); letter-spacing: .1em; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="logo"><span class="mark">3</span><span class="t">SEQU3NCE.AI</span></div>
+  <nav class="topnav">
+    <a href="#">Dashboard</a>
+    <a href="#">Live</a>
+    <a href="#" class="on">Performance</a>
+    <a href="#">Reviews</a>
+    <a href="#">Manager Mode</a>
+    <a href="#">Setters</a>
+    <a href="#">Team</a>
+  </nav>
+  <button class="cmd">Search anything<span class="k">⌘K</span></button>
+  <span class="ava-top">TA</span>
+</div>
+
+<div class="wrap">
+  <div class="tape">
+    <div class="cell lead">
+      <div class="k">Cash · Today</div>
+      <div class="v num">$6,000</div>
+      <div class="d up">▲ $6,000 vs yesterday</div>
+    </div>
+    <div class="cell"><div class="k">Booked</div><div class="v num">8</div><div class="d up">+3</div></div>
+    <div class="cell"><div class="k">Taken</div><div class="v num">4<span class="dim">/4</span></div><div class="d">all slots</div></div>
+    <div class="cell"><div class="k">Show</div><div class="v num">50%</div><div class="d down">−12 pts</div></div>
+    <div class="cell"><div class="k">Closes</div><div class="v num">1</div><div class="d up">+1</div></div>
+    <div class="cell">
+      <div class="k">Prize · $75k by Aug 31</div>
+      <div class="v num" style="font-size:24px; margin-top:12px;">$68,730</div>
+      <div class="meter"><i></i></div>
+      <div class="goal num">92% · 13 DAYS LEFT</div>
+    </div>
+  </div>
+
+  <div class="lobby">
+    <div class="player top" tabindex="0">
+      <span class="rank num">#1</span>
+      <div class="face">GS</div>
+      <div class="pname">Gianni Scott</div>
+      <div class="psub">1:1 recorded today · EOD filed</div>
+      <div class="pcash"><div class="k">Cash · August</div><div class="v num">$41,730</div></div>
+      <div class="grid4">
+        <div><div class="k">Booked</div><div class="v num">84</div></div>
+        <div><div class="k">Taken</div><div class="v num">31</div></div>
+        <div><div class="k">Show</div><div class="v num">64%</div></div>
+        <div><div class="k">Offer→Close</div><div class="v num">39%</div></div>
+      </div>
+      <div class="ptrend"><i style="height:30%"></i><i style="height:45%"></i><i style="height:38%"></i><i style="height:62%"></i><i style="height:78%"></i><i class="hot" style="height:100%"></i></div>
+      <div class="pfoot"><span>6-WEEK VOLUME</span><span>7 CLOSES</span></div>
+    </div>
+
+    <div class="player" tabindex="0">
+      <span class="rank num">#2</span>
+      <div class="face">NK</div>
+      <div class="pname">Nick Kevlar</div>
+      <div class="psub"><span class="warn">EOD missing</span> · agreed: pitch every call</div>
+      <div class="pcash"><div class="k">Cash · August</div><div class="v num">$19,000</div></div>
+      <div class="grid4">
+        <div><div class="k">Booked</div><div class="v num">52</div></div>
+        <div><div class="k">Taken</div><div class="v num">17</div></div>
+        <div><div class="k">Show</div><div class="v num">58%</div></div>
+        <div><div class="k">Offer→Close</div><div class="v num">31%</div></div>
+      </div>
+      <div class="ptrend"><i style="height:62%"></i><i style="height:72%"></i><i style="height:55%"></i><i style="height:42%"></i><i style="height:34%"></i><i class="hot" style="height:28%"></i></div>
+      <div class="pfoot"><span>6-WEEK VOLUME</span><span>4 CLOSES</span></div>
+    </div>
+
+    <div class="player" tabindex="0">
+      <span class="rank num">#3</span>
+      <div class="face">AT</div>
+      <div class="pname">Anthony Tran</div>
+      <div class="psub"><span class="warn">EOD missing</span> · show rate trailing</div>
+      <div class="pcash"><div class="k">Cash · August</div><div class="v num">$8,000</div></div>
+      <div class="grid4">
+        <div><div class="k">Booked</div><div class="v num">33</div></div>
+        <div><div class="k">Taken</div><div class="v num">10</div></div>
+        <div><div class="k">Show</div><div class="v num">49%</div></div>
+        <div><div class="k">Offer→Close</div><div class="v num">20%</div></div>
+      </div>
+      <div class="ptrend"><i style="height:26%"></i><i style="height:32%"></i><i style="height:24%"></i><i style="height:36%"></i><i style="height:28%"></i><i class="hot" style="height:20%"></i></div>
+      <div class="pfoot"><span>6-WEEK VOLUME</span><span>1 CLOSE</span></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

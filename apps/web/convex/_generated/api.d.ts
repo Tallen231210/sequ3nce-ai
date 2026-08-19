@@ -130,6 +130,7 @@ import type * as hyrosReadActions from "../hyrosReadActions.js";
 import type * as hyrosReadInternal from "../hyrosReadInternal.js";
 import type * as lib_audioDuration from "../lib/audioDuration.js";
 import type * as lib_callQualityAggregator from "../lib/callQualityAggregator.js";
+import type * as lib_closerTitleMatch from "../lib/closerTitleMatch.js";
 import type * as lib_dateRanges from "../lib/dateRanges.js";
 import type * as lib_encrypt from "../lib/encrypt.js";
 import type * as lib_extractProspectFromTitle from "../lib/extractProspectFromTitle.js";
@@ -346,6 +347,7 @@ declare const fullApi: ApiFromModules<{
   hyrosReadInternal: typeof hyrosReadInternal;
   "lib/audioDuration": typeof lib_audioDuration;
   "lib/callQualityAggregator": typeof lib_callQualityAggregator;
+  "lib/closerTitleMatch": typeof lib_closerTitleMatch;
   "lib/dateRanges": typeof lib_dateRanges;
   "lib/encrypt": typeof lib_encrypt;
   "lib/extractProspectFromTitle": typeof lib_extractProspectFromTitle;

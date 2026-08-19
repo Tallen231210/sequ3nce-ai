@@ -6,6 +6,7 @@ import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
 import { getContentForCallTx } from "./callContent";
 import { classifyMeeting } from "./fathomClassify";
 import { extractProspectFromTitle } from "./lib/extractProspectFromTitle";
+import { matchCloserInTitle, type TitleRosterCloser } from "./lib/closerTitleMatch";
 
 /**
  * "Nick's Sequ3nce.ai Bot" — the Fathom convention. Participants who see a
@@ -517,6 +518,15 @@ export const createBot = action({
     prospectName: v.optional(v.string()),
     calendarEventId: v.optional(v.string()),
     scheduledAt: v.optional(v.number()),
+    /**
+     * Join with the team's neutral name instead of "{closer}'s ... Bot".
+     * Set by auto-scheduling when it cannot PROVE whose call this is — on a
+     * shared calendar the schedule-time owner is a guess, and a bot wearing
+     * the wrong closer's name in front of a prospect is worse than a bot
+     * wearing no one's. Attribution of the call itself is still corrected
+     * from the transcript afterwards either way.
+     */
+    neutralBotName: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
     // 0. Dedup — is this meeting already covered?
@@ -562,7 +572,9 @@ export const createBot = action({
     });
     const closerName = closer?.name;
 
-    const botName = personalizedBotName(closerName, team?.meetingBotName);
+    const botName = args.neutralBotName
+      ? team?.meetingBotName || "Sequ3nce.ai"
+      : personalizedBotName(closerName, team?.meetingBotName);
 
     // Store closerName on bot record for webhook transcript speaker identification
     if (closerName) {
@@ -2470,6 +2482,20 @@ function pickMeetingOwner<
  * sales call, so the scoping gets proven against real data before the cron is
  * ever switched on.
  */
+/** Active closers on a team, for naming decisions at schedule time. */
+export const getTeamCloserRoster = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args): Promise<TitleRosterCloser[]> => {
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .take(200);
+    return closers
+      .filter((c) => c.status === "active" && c.name)
+      .map((c) => ({ closerId: String(c._id), name: c.name as string }));
+  },
+});
+
 export const autoScheduleBotsForAllClosers = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (
@@ -2593,12 +2619,37 @@ export const autoScheduleBotsForAllClosers = internalAction({
     const budget = new Map<string, { booked: number; cap: number }>();
     const cappedTeams = new Set<string>();
 
+    // Roster per team, read once per run — used to read the closer's name out
+    // of the booking title, which is the one schedule-time signal that says
+    // whose call this actually is on a shared calendar.
+    const rosters = new Map<string, TitleRosterCloser[]>();
+
     for (const [key, candidates] of byMeeting) {
       // Somebody's bot already covers this meeting.
       if (candidates.some((c) => c.alreadyHasBot)) continue;
 
-      const owner = pickMeetingOwner(candidates);
+      let owner = pickMeetingOwner(candidates);
       const teamKey = String(owner.teamId);
+
+      if (!rosters.has(teamKey)) {
+        rosters.set(
+          teamKey,
+          await ctx.runQuery(internal.meetingBot.getTeamCloserRoster, {
+            teamId: owner.teamId,
+          }),
+        );
+      }
+      const titleMatch = matchCloserInTitle(owner.title, rosters.get(teamKey)!);
+      if (titleMatch) {
+        // The title names exactly one closer — the booking is theirs, whoever's
+        // calendar it sits on. This fixes both the bot's display name AND the
+        // provisional attribution (transcript reattribution still runs after).
+        owner = { ...owner, closerId: titleMatch.closerId as Id<"closers"> };
+      }
+      // Personalise the bot's name only when we can defend it: the title named
+      // them, or exactly one closer can even see this meeting. A shared
+      // calendar with an anonymous title gets the neutral team name.
+      const confidentName = !!titleMatch || candidates.length === 1;
 
       if (!budget.has(teamKey)) {
         budget.set(
@@ -2644,6 +2695,7 @@ export const autoScheduleBotsForAllClosers = internalAction({
           prospectName: owner.title,
           calendarEventId: owner.uid,
           scheduledAt: owner.startTime,
+          neutralBotName: !confidentName,
         });
 
         totalScheduled++;
