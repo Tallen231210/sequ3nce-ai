@@ -866,15 +866,21 @@ export const createQuickBot = action({
   },
   handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
     // 1. Create the meetingBot record with status "scheduled" and source "quick_bot"
-    // closerIsHost=false: QuickBot = closer pasted external Zoom URL = joining as guest,
-    // not host. decideSpeaker uses this to match Recall's participant.is_host correctly.
+    // closerIsHost=true: the original assumption here was the opposite —
+    // "QuickBot = closer pasted an EXTERNAL link = joining as guest". Real
+    // usage is the reverse: a closer spins up their own impromptu meeting
+    // (not on any calendar) and pastes THAT link, which makes them the host.
+    // The guest assumption inverted every speaker label on the first two
+    // calls of a closer who used it the normal way. The rare
+    // genuinely-external case now leans on the post-call verifier and the
+    // manual flip instead of the common case being wrong by default.
     const botId: Id<"meetingBots"> = await ctx.runMutation(internal.meetingBot.insertBot, {
       closerId: args.closerId,
       teamId: args.teamId,
       meetingUrl: args.meetingUrl,
       prospectName: args.prospectName,
       source: "quick_bot",
-      closerIsHost: false,
+      closerIsHost: true,
     });
 
     // 2. Get team info for bot name configuration
