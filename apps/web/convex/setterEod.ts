@@ -1,5 +1,5 @@
 import { v, ConvexError } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { generateShareToken } from "./lib/shareSecurity";
@@ -279,5 +279,22 @@ export const submitEod = mutation({
       await ctx.db.insert("setterEodEntries", doc);
     }
     return { ok: true, dayKey: today };
+  },
+});
+
+/**
+ * Hard-delete a roster row and every entry it filed. Support tool — the UI
+ * only deactivates, deliberately, so history survives normal management.
+ */
+export const hardDeleteSetter = internalMutation({
+  args: { rosterId: v.id("setterRoster") },
+  handler: async (ctx, args) => {
+    const entries = await ctx.db
+      .query("setterEodEntries")
+      .withIndex("by_roster_and_day", (q) => q.eq("rosterId", args.rosterId))
+      .collect();
+    for (const e of entries) await ctx.db.delete(e._id);
+    await ctx.db.delete(args.rosterId);
+    return { entriesDeleted: entries.length };
   },
 });
