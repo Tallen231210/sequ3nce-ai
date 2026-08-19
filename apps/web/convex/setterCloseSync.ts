@@ -213,21 +213,31 @@ export const closeFastBackfill = internalAction({
           );
 
           if (rows.length > 0) {
-            if (phase === "calls") {
-              await ctx.runMutation(internal.setterCloseIngest.ingestCloseCalls, {
-                ...base,
-                calls: rows.map(mapCall),
-              });
-            } else if (phase === "sms") {
-              await ctx.runMutation(internal.setterCloseIngest.ingestCloseSms, {
-                ...base,
-                messages: rows.map(mapSms),
-              });
-            } else {
-              await ctx.runMutation(internal.setterCloseIngest.ingestCloseMeetings, {
-                ...base,
-                meetings: rows.map(mapMeeting),
-              });
+            // Small chunks per mutation, not the whole page in one
+            // transaction. A page of meetings fans out into per-lead reads
+            // (find lead + recount that lead's appointments), and on the
+            // first high-volume org one page's fan-out blew the 32k-document
+            // budget — which killed the whole backfill chain silently,
+            // because scheduled mutations that throw do not retry.
+            const CHUNK = 25;
+            for (let i = 0; i < rows.length; i += CHUNK) {
+              const chunk = rows.slice(i, i + CHUNK);
+              if (phase === "calls") {
+                await ctx.runMutation(internal.setterCloseIngest.ingestCloseCalls, {
+                  ...base,
+                  calls: chunk.map(mapCall),
+                });
+              } else if (phase === "sms") {
+                await ctx.runMutation(internal.setterCloseIngest.ingestCloseSms, {
+                  ...base,
+                  messages: chunk.map(mapSms),
+                });
+              } else {
+                await ctx.runMutation(internal.setterCloseIngest.ingestCloseMeetings, {
+                  ...base,
+                  meetings: chunk.map(mapMeeting),
+                });
+              }
             }
           }
 
