@@ -58,7 +58,7 @@ export default function SetterEodsPage() {
     <>
       <Header
         title="Setter EODs"
-        description="Each setter gets a personal link — they bookmark it and file in 30 seconds"
+        description="Self-reported by your setters — their own end-of-day numbers, filed through personal links"
       />
       <div className="max-w-5xl space-y-6 p-6">
         {/* Roster */}
