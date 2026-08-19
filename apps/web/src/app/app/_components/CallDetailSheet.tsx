@@ -16,6 +16,7 @@ import {
   flagCallForReview,
   unflagCall,
   refreshRecordingUrl,
+  swapSpeakerLabels,
   createSharedLink,
   getCallAnalysis,
 } from '@/lib/closer/client';
@@ -44,6 +45,8 @@ export function CallDetailSheet({
   const playback = resolvePlayback(call);
 
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
+  const [isSwappingLabels, setIsSwappingLabels] = useState(false);
+  const [swappedLabels, setSwappedLabels] = useState(false);
   const [ammoItems, setAmmoItems] = useState<AmmoItem[]>([]);
   const [isLoadingTranscript, setIsLoadingTranscript] = useState(true);
   const [isLoadingAmmo, setIsLoadingAmmo] = useState(true);
@@ -354,6 +357,38 @@ export function CallDetailSheet({
               onSeek={handleSeek}
               fallbackText={call.transcriptText}
             />
+            {/* Escape hatch for mislabelled speakers — the closer was on the
+                call and knows instantly which way is right. Flips every label
+                server-side and regenerates the summary. */}
+            {transcript.length > 0 && (
+              <div className="shrink-0 border-t border-border px-5 py-2 text-right">
+                {swappedLabels ? (
+                  <span className="text-[11px] text-muted-foreground">
+                    Labels flipped — summary regenerating.
+                  </span>
+                ) : (
+                  <button
+                    disabled={isSwappingLabels}
+                    onClick={async () => {
+                      if (!window.confirm('Flip every Closer/Prospect label on this call? The summary will be regenerated.')) return;
+                      setIsSwappingLabels(true);
+                      const ok = await swapSpeakerLabels(call._id, closerInfo.closerId);
+                      setIsSwappingLabels(false);
+                      if (ok) {
+                        setSwappedLabels(true);
+                        setTranscript((t) => t.map((s) => ({
+                          ...s,
+                          speaker: s.speaker === 'closer' ? 'prospect' : 'closer',
+                        })));
+                      }
+                    }}
+                    className="text-[11px] text-muted-foreground underline hover:text-foreground disabled:opacity-50"
+                  >
+                    {isSwappingLabels ? 'Flipping…' : 'Speakers mixed up? Flip Closer/Prospect'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-5">

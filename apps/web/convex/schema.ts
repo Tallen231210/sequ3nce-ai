@@ -878,6 +878,10 @@ export default defineSchema({
     meetingBotId: v.optional(v.id("meetingBots")), // Link to meeting bot that recorded this call
     // Talk-to-listen ratio (from Deepgram speaker diarization)
     closerTalkTime: v.optional(v.number()), // Closer talk time in seconds
+    /** A human flipped Closer/Prospect on this call's transcript. Automation
+     *  (speaker verification) must never overrule it. */
+    speakerLabelsFlippedAt: v.optional(v.number()),
+    speakerLabelsFlippedBy: v.optional(v.string()),
     prospectTalkTime: v.optional(v.number()), // Prospect talk time in seconds
     // Speaker mapping (maps Deepgram speakers to closer/prospect)
     speakerMapping: v.optional(v.object({

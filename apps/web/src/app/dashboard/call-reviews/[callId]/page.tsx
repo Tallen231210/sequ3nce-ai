@@ -4,6 +4,8 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { useTeam } from "@/hooks/useTeam";
+import { useUser } from "@clerk/nextjs";
+import { ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -368,6 +370,11 @@ export default function CallReviewPage({
               >
                 Analysis
               </button>
+              {/* The escape hatch for mislabelled speakers. Automation gets
+                  this wrong in ways no heuristic anticipates (a closer
+                  quick-botting her own meeting inverted two full calls); the
+                  humans on the call know instantly which way is right. */}
+              <SwapSpeakersButton callId={callId as Id<"calls">} flippedAt={(call as any).speakerLabelsFlippedAt} />
             </div>
             {activeTab === "transcript" ? (
               <TranscriptPanel
@@ -408,5 +415,74 @@ export default function CallReviewPage({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Flip Closer ↔ Prospect on the whole call. Two clicks — the second states
+ * the consequences — then the swap runs server-side: segments, the flat
+ * transcript copy, talk times, and a fresh summary/analysis. A human flip is
+ * final for automation; the verifier will not undo it.
+ */
+function SwapSpeakersButton({
+  callId,
+  flippedAt,
+}: {
+  callId: Id<"calls">;
+  flippedAt?: number;
+}) {
+  const { user } = useUser();
+  const swap = useMutation(api.speakerSwap.swapSpeakerLabelsAsManager);
+  const [arming, setArming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  if (done || flippedAt) {
+    return (
+      <span className="ml-auto self-center text-[11px] text-muted-foreground">
+        speaker labels manually corrected
+      </span>
+    );
+  }
+
+  if (!arming) {
+    return (
+      <button
+        onClick={() => setArming(true)}
+        className="ml-auto self-center inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+        title="If the transcript has the closer and prospect mixed up, flip every label on this call"
+      >
+        <ArrowLeftRight className="h-3 w-3" />
+        Speakers mixed up?
+      </button>
+    );
+  }
+
+  return (
+    <span className="ml-auto self-center inline-flex items-center gap-2 text-[11px]">
+      <span className="text-muted-foreground">
+        Flips every Closer/Prospect label and regenerates the summary.
+      </span>
+      <button
+        disabled={busy}
+        onClick={async () => {
+          if (!user) return;
+          setBusy(true);
+          try {
+            await swap({ clerkId: user.id, callId });
+            setDone(true);
+          } finally {
+            setBusy(false);
+            setArming(false);
+          }
+        }}
+        className="rounded-md bg-foreground px-2 py-0.5 font-medium text-background disabled:opacity-50"
+      >
+        {busy ? "Flipping…" : "Flip them"}
+      </button>
+      <button onClick={() => setArming(false)} className="text-muted-foreground underline">
+        cancel
+      </button>
+    </span>
   );
 }
