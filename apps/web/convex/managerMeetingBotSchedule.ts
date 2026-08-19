@@ -61,6 +61,10 @@ export const getOrphanedBots = internalQuery({
       // Already started — leave it alone, the webhook owns it from here.
       if (b.scheduledStartTime < Date.now()) continue;
 
+      // Quick bots have no calendar event, so there is no meeting to have
+      // been deleted or moved — nothing here can orphan them.
+      if (!b.calendarEventId) continue;
+
       const ev = await ctx.db.get(b.calendarEventId);
       if (!ev) {
         out.push({ botId: b._id, recallBotId: b.recallBotId, reason: "meeting deleted" });

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { MANAGER_BOT_AVATAR_JPEG_B64 } from "./managerBotAvatar";
@@ -77,7 +77,7 @@ export const recordBot = internalMutation({
   args: {
     userId: v.id("users"),
     teamId: v.id("teams"),
-    calendarEventId: v.id("managerCalendarEvents"),
+    calendarEventId: v.optional(v.id("managerCalendarEvents")),
     recallBotId: v.string(),
     meetingUrl: v.string(),
     meetingTitle: v.string(),
@@ -238,5 +238,145 @@ export const cancelManagerBot = internalAction({
       reason: args.reason,
     });
     return { cancelled: true };
+  },
+});
+
+// ============================================================================
+// Quick bot: paste a link, the MGMT bot joins now.
+//
+// Requested by ManyJobs. The scheduled path covers the manager's own
+// calendar; this covers everything that isn't on it — someone else's invite,
+// an impromptu call, a meeting on a calendar we don't sync.
+// ============================================================================
+
+/** The manager behind a clerkId, with whether their plan records at all. */
+export const getManagerForQuickBot = internalQuery({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) return null;
+    const team = await ctx.db.get(user.teamId);
+    const tier = team ? ((team as any).productTierOverride ?? team.productTier) : null;
+    return {
+      userId: user._id,
+      teamId: user.teamId,
+      canRecord: tier === "overwatch",
+    };
+  },
+});
+
+/** A live bot this manager already has in the same room, if any. */
+export const getActiveBotForUrl = internalQuery({
+  args: { userId: v.id("users"), meetingUrl: v.string() },
+  handler: async (ctx, args) => {
+    const bots = await ctx.db
+      .query("managerMeetingBots")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    return (
+      bots.find(
+        (b) =>
+          b.meetingUrl === args.meetingUrl &&
+          ["scheduled", "joining", "active"].includes(b.status),
+      ) ?? null
+    );
+  },
+});
+
+export const createManagerQuickBot = action({
+  args: { clerkId: v.string(), meetingUrl: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const mgr = await ctx.runQuery(internal.managerMeetingBot.getManagerForQuickBot, {
+      clerkId: args.clerkId,
+    });
+    if (!mgr) return { ok: false, error: "Not authorised" };
+    if (!mgr.canRecord) return { ok: false, error: "Recording needs Overwatch" };
+
+    const url = args.meetingUrl.trim();
+    // The platforms the bot can actually join. Anything else fails at Recall
+    // with a worse message than this one.
+    const looksJoinable =
+      /https:\/\/([a-z0-9-]+\.)?(zoom\.us|meet\.google\.com|teams\.microsoft\.com|teams\.live\.com)\//i.test(
+        url,
+      );
+    if (!looksJoinable) {
+      return { ok: false, error: "That doesn't look like a Zoom, Meet or Teams link" };
+    }
+
+    // URL dedup is CORRECT here, unlike scheduling: "join this room now"
+    // twice means two notetakers in one call, not two meetings.
+    const existing = await ctx.runQuery(internal.managerMeetingBot.getActiveBotForUrl, {
+      userId: mgr.userId,
+      meetingUrl: url,
+    });
+    if (existing) return { ok: true };
+
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const todayCount = await ctx.runQuery(internal.managerMeetingBot.countBotsToday, {
+      userId: mgr.userId,
+      since: dayAgo,
+    });
+    if (todayCount >= 20) {
+      return { ok: false, error: "Daily recording limit reached" };
+    }
+
+    const botName = await ctx.runQuery(internal.managerMeetingBot.getTeamBotName, {
+      teamId: mgr.teamId as Id<"teams">,
+      userId: mgr.userId as Id<"users">,
+    });
+
+    const res = await fetch(`${RECALL_BASE}/bot/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${process.env.RECALL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        meeting_url: url,
+        bot_name: botName,
+        // No join_at: "now" is the entire point of a quick bot.
+        automatic_video_output: {
+          in_call_recording: { kind: "jpeg" as const, b64_data: MANAGER_BOT_AVATAR_JPEG_B64 },
+          in_call_not_recording: { kind: "jpeg" as const, b64_data: MANAGER_BOT_AVATAR_JPEG_B64 },
+        },
+        automatic_leave: {
+          everyone_left_timeout: 15,
+          // Five minutes, not the scheduled bot's ten — the manager pastes the
+          // link when the meeting is happening, so an empty room means a typo.
+          noone_joined_timeout: 300,
+        },
+        recording_config: {
+          retention: { type: "forever" as const },
+          video_mixed_layout: "gallery_view_v2",
+          transcript: {
+            diarization: { use_separate_streams_when_available: true },
+            provider: {
+              recallai_streaming: { language_code: "en", mode: "prioritize_low_latency" },
+            },
+          },
+        },
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[managerQuickBot] Recall rejected: ${res.status} ${await res.text()}`);
+      return { ok: false, error: "The bot couldn't be sent. Check the link and try again." };
+    }
+    const bot = await res.json();
+
+    await ctx.runMutation(internal.managerMeetingBot.recordBot, {
+      userId: mgr.userId,
+      teamId: mgr.teamId as Id<"teams">,
+      recallBotId: bot.id,
+      meetingUrl: url,
+      meetingTitle: "Quick recording",
+      scheduledStartTime: Date.now(),
+    });
+    return { ok: true };
   },
 });
