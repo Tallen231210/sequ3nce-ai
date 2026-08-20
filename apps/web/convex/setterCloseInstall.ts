@@ -126,3 +126,20 @@ export const disconnectClose = mutation({
     return { ok: true as const };
   },
 });
+
+/**
+ * Clear an error state so the backfill can be re-kicked. The chain's guard
+ * (rightly) refuses to run an errored install; after fixing whatever killed
+ * it, this is the reset lever. Support tool, CLI-only.
+ */
+export const clearInstallError = internalMutation({
+  args: { installationId: v.id("setterGhlInstallations") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.installationId, {
+      status: "active",
+      errorMessage: undefined,
+      errorAt: undefined,
+    });
+    return { ok: true };
+  },
+});
