@@ -28,6 +28,12 @@ export const mainConfig: Configuration = {
   // Same rationale: pre-bundled, optional, dynamically-required.
   externals: {
     'electron-updater': 'commonjs2 electron-updater',
+    // uiohook-napi loads its prebuilt .node via node-gyp-build's runtime
+    // path resolution — webpack's asset relocator can't trace that, so
+    // bundling it ships an app with NO native binary (Stream's Windows
+    // hotkey was silently dead). Externalized + copied whole by the forge
+    // externals plugin, its prebuilds/ tree included.
+    'uiohook-napi': 'commonjs2 uiohook-napi',
     'bufferutil': 'commonjs2 bufferutil',
     'utf-8-validate': 'commonjs2 utf-8-validate',
   },
