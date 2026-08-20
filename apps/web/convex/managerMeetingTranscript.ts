@@ -67,6 +67,18 @@ export const saveSegments = internalMutation({
   },
 });
 
+/** Terminal stamp: this meeting will never produce media, stop repairing it. */
+export const markMeetingFailure = internalMutation({
+  args: { meetingId: v.id("managerMeetings"), reason: v.string() },
+  handler: async (ctx, args) => {
+    const m = await ctx.db.get(args.meetingId);
+    if (m && !m.failureReason) {
+      await ctx.db.patch(args.meetingId, { failureReason: args.reason });
+    }
+    return { marked: true };
+  },
+});
+
 export const saveRecordingUrl = internalMutation({
   args: { meetingId: v.id("managerMeetings"), recordingUrl: v.string() },
   handler: async (ctx, args) => {
@@ -119,8 +131,22 @@ export const fetchManagerRecording = internalAction({
 
     if (!url) {
       // Legitimate for a meeting nobody joined, or one that produced nothing.
-      // Not an error, and not worth throwing over.
+      // Not an error — but it IS terminal once the meeting is old: stamp it
+      // so the nightly repair sweep stops re-asking Recall for a recording
+      // that never existed.
       console.log(`[managerRecording] No recording on bot ${meeting.recallBotId}`);
+      const codes = (data.status_changes || []).map((sc: any) => sc.code);
+      const ended = codes.includes("done") || codes.includes("call_ended");
+      const everRecorded = codes.includes("in_call_recording");
+      if (ended && !everRecorded) {
+        await ctx.runMutation(
+          internal.managerMeetingTranscript.markMeetingFailure,
+          {
+            meetingId: args.meetingId,
+            reason: "nobody joined — nothing recorded",
+          },
+        );
+      }
       return { recordingUrl: null };
     }
 

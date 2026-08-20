@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation } from "convex/react";
+import { CustomRangeControl } from "@/components/CustomRangeControl";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
 import { Header } from "@/components/dashboard/header";
@@ -47,7 +48,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Id } from "../../../../convex/_generated/dataModel";
 
 // Filter types
-type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days" | "last_90_days";
+type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days" | "last_90_days" | "custom";
 type OutcomeFilter = "all" | "closed" | "not_closed" | "follow_up" | "lost" | "no_show" | "rescheduled";
 type ObjectionFilter = "all" | "none" | "spouse_partner" | "price_money" | "timing" | "need_to_think" | "not_qualified" | "logistics" | "competitor" | "other";
 
@@ -58,6 +59,7 @@ const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: "this_month", label: "This Month" },
   { value: "last_30_days", label: "Last 30 Days" },
   { value: "last_90_days", label: "Last 90 Days" },
+  { value: "custom", label: "Custom range" },
 ];
 
 const OUTCOME_FILTER_OPTIONS: { value: OutcomeFilter; label: string }[] = [
@@ -347,8 +349,17 @@ function ComplianceCell({
 }
 
 // Helper function to check if a date falls within a filter range
-function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
+function isWithinDateFilter(
+  timestamp: number,
+  filter: DateFilter,
+  customRange: { start: number; end: number } | null,
+): boolean {
   if (filter === "all") return true;
+  if (filter === "custom") {
+    // No range picked yet: show everything rather than nothing.
+    if (!customRange) return true;
+    return timestamp >= customRange.start && timestamp <= customRange.end;
+  }
 
   const date = new Date(timestamp);
   const now = new Date();
@@ -394,6 +405,7 @@ export default function CompletedCallsPage() {
 
   // Filter state
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [customRange, setCustomRange] = useState<{ start: number; end: number } | null>(null);
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   const [objectionFilter, setObjectionFilter] = useState<ObjectionFilter>("all");
   const [selectedClosers, setSelectedClosers] = useState<Set<string>>(new Set());
@@ -498,7 +510,7 @@ export default function CompletedCallsPage() {
     return calls.filter((call) => {
       // Date filter
       const callDate = call.startedAt || call.createdAt;
-      if (!isWithinDateFilter(callDate, dateFilter)) return false;
+      if (!isWithinDateFilter(callDate, dateFilter, customRange)) return false;
 
       // Outcome filter — multiOutcomes (URL-driven multi-value, e.g.
       // "lost,follow_up") wins over the single-value outcomeFilter when set.
@@ -552,7 +564,7 @@ export default function CompletedCallsPage() {
 
       return true;
     });
-  }, [calls, dateFilter, outcomeFilter, multiOutcomes, uncollectedOnly, objectionFilter, complianceOnly, selectedClosers, prospectSearch]);
+  }, [calls, dateFilter, customRange, outcomeFilter, multiOutcomes, uncollectedOnly, objectionFilter, complianceOnly, selectedClosers, prospectSearch]);
 
   // Check if any filters are active
   const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || (multiOutcomes !== null && multiOutcomes.size > 0) || uncollectedOnly || objectionFilter !== "all" || complianceOnly || selectedClosers.size > 0 || prospectSearch.trim() !== "";
@@ -560,6 +572,7 @@ export default function CompletedCallsPage() {
   // Clear all filters
   const clearAllFilters = () => {
     setDateFilter("all");
+    setCustomRange(null);
     setOutcomeFilter("all");
     setMultiOutcomes(null);
     setUncollectedOnly(false);
@@ -626,6 +639,9 @@ export default function CompletedCallsPage() {
               ))}
             </SelectContent>
           </Select>
+          {dateFilter === "custom" && (
+            <CustomRangeControl range={customRange} onChange={setCustomRange} />
+          )}
 
           {/* Outcome Filter */}
           <Select value={outcomeFilter} onValueChange={(v) => setOutcomeFilter(v as OutcomeFilter)}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { CustomRangeControl } from "@/components/CustomRangeControl";
 import { RequiresFeature } from "@/components/dashboard/requires-feature";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
@@ -28,7 +29,7 @@ import { useRouter } from "next/navigation";
 import { resolvePlayback } from "@/lib/callPlayback";
 
 // Filter types
-type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days";
+type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days" | "custom";
 type OutcomeFilter = "all" | "closed" | "not_closed" | "follow_up" | "lost" | "no_show" | "rescheduled";
 
 const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
@@ -37,6 +38,7 @@ const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: "this_week", label: "This Week" },
   { value: "this_month", label: "This Month" },
   { value: "last_30_days", label: "Last 30 Days" },
+  { value: "custom", label: "Custom range" },
 ];
 
 const OUTCOME_FILTER_OPTIONS: { value: OutcomeFilter; label: string }[] = [
@@ -110,8 +112,17 @@ function getOutcomeBadge(outcome?: string) {
   }
 }
 
-function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
+function isWithinDateFilter(
+  timestamp: number,
+  filter: DateFilter,
+  customRange: { start: number; end: number } | null,
+): boolean {
   if (filter === "all") return true;
+  if (filter === "custom") {
+    // No range picked yet: show everything rather than nothing.
+    if (!customRange) return true;
+    return timestamp >= customRange.start && timestamp <= customRange.end;
+  }
 
   const date = new Date(timestamp);
   const now = new Date();
@@ -300,6 +311,7 @@ function RecordingsPageInner() {
 
   // Filter state
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [customRange, setCustomRange] = useState<{ start: number; end: number } | null>(null);
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all");
   const [selectedClosers, setSelectedClosers] = useState<Set<string>>(new Set());
 
@@ -331,7 +343,7 @@ function RecordingsPageInner() {
     return recordings.filter((rec) => {
       // Date filter
       const recDate = rec.startedAt || rec.createdAt;
-      if (!isWithinDateFilter(recDate, dateFilter)) return false;
+      if (!isWithinDateFilter(recDate, dateFilter, customRange)) return false;
 
       // Outcome filter
       if (outcomeFilter !== "all") {
@@ -346,12 +358,13 @@ function RecordingsPageInner() {
 
       return true;
     });
-  }, [recordings, dateFilter, outcomeFilter, selectedClosers]);
+  }, [recordings, dateFilter, customRange, outcomeFilter, selectedClosers]);
 
   const hasActiveFilters = dateFilter !== "all" || outcomeFilter !== "all" || selectedClosers.size > 0;
 
   const clearAllFilters = () => {
     setDateFilter("all");
+    setCustomRange(null);
     setOutcomeFilter("all");
     setSelectedClosers(new Set());
   };
@@ -412,6 +425,9 @@ function RecordingsPageInner() {
               ))}
             </SelectContent>
           </Select>
+          {dateFilter === "custom" && (
+            <CustomRangeControl range={customRange} onChange={setCustomRange} />
+          )}
 
           {/* Outcome Filter */}
           <Select value={outcomeFilter} onValueChange={(v) => setOutcomeFilter(v as OutcomeFilter)}>
