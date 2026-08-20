@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Logo } from "@/components/ui/logo";
 import { Check, Loader2 } from "lucide-react";
 
 // ============================================================================
@@ -83,18 +84,39 @@ export default function PersonalCheckoutPage() {
 
   return (
     <div className="min-h-screen bg-white text-zinc-900">
-      <header className="border-b border-zinc-100 py-5 text-center">
-        <span className="text-lg font-bold tracking-tight">SEQU3NCE</span>
-        <span className="ml-2 rounded bg-zinc-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
-          PERSONAL
-        </span>
+      <header className="border-b border-zinc-200/60 bg-white/70 py-4 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-5xl items-center justify-center gap-2.5 px-6">
+          <Logo href="/personal" height={22} />
+          <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-white">
+            PERSONAL
+          </span>
+        </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-14">
-        <h1 className="text-center text-3xl font-bold tracking-tight">
-          Choose your plan
+      <main className="relative mx-auto max-w-5xl px-6 py-16 sm:py-20">
+        {/* Faint dot grid + radial fade — same ground the landing page stands on */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgb(228 228 231) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+            maskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 30%, black 30%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 30%, black 30%, transparent 80%)",
+          }}
+        />
+        <p className="mb-4 text-center text-[12px] uppercase tracking-[0.22em] text-zinc-500">
+          Full access · every plan
+        </p>
+        <h1 className="text-center text-4xl sm:text-5xl font-semibold tracking-[-0.04em] leading-[0.95] text-zinc-950">
+          Choose your{" "}
+          <span className="font-serif italic font-normal">commitment</span>
+          <span className="text-zinc-300">.</span>
         </h1>
-        <p className="mx-auto mt-3 max-w-xl text-center text-zinc-600">
+        <p className="mx-auto mt-6 max-w-xl text-center text-base text-zinc-600 leading-relaxed">
           Every plan is the full product. Pay, set your password, download the
           app — you&apos;ll be recording calls in five minutes.
         </p>
@@ -104,19 +126,19 @@ export default function PersonalCheckoutPage() {
             <div
               key={p.key}
               className={
-                "relative flex flex-col rounded-2xl border p-6 " +
+                "relative flex flex-col rounded-2xl bg-white p-6 " +
                 (p.highlight
-                  ? "border-zinc-900 shadow-lg"
-                  : "border-zinc-200")
+                  ? "border-2 border-zinc-900 shadow-lg shadow-zinc-200/50"
+                  : "border border-zinc-200")
               }
             >
               {p.note && (
                 <span
                   className={
-                    "absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-[11px] font-bold " +
+                    "absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em] uppercase " +
                     (p.highlight
                       ? "bg-zinc-900 text-white"
-                      : "bg-zinc-100 text-zinc-700")
+                      : "border border-zinc-200 bg-zinc-50 text-zinc-700")
                   }
                 >
                   {p.note}
@@ -125,19 +147,19 @@ export default function PersonalCheckoutPage() {
               <span className="text-sm font-semibold text-zinc-500">
                 {p.label}
               </span>
-              <span className="mt-2 text-4xl font-bold tracking-tight">
+              <span className="mt-2 text-5xl font-semibold tracking-[-0.04em] leading-none text-zinc-900">
                 {p.perMonth}
-                <span className="text-base font-medium text-zinc-400">/mo</span>
+                <span className="text-lg font-medium tracking-tight text-zinc-400">/mo</span>
               </span>
               <span className="mt-1 text-[12px] text-zinc-500">{p.charged}</span>
               <button
                 onClick={() => buy(p.key)}
                 disabled={busyPlan !== null}
                 className={
-                  "mt-6 rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50 " +
+                  "mt-6 rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-50 " +
                   (p.highlight
-                    ? "bg-zinc-900 text-white"
-                    : "border border-zinc-300 hover:border-zinc-500")
+                    ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                    : "border border-zinc-300 text-zinc-900 hover:border-zinc-900")
                 }
               >
                 {busyPlan === p.key ? (

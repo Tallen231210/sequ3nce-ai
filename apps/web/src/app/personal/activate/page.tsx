@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { Logo } from "@/components/ui/logo";
 import { useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -93,8 +94,8 @@ function ActivateInner() {
       <a
         href={dl(dmg)}
         className={
-          "flex items-center justify-center gap-2 rounded-xl border border-zinc-200 px-5 py-4 text-sm font-semibold " +
-          (dmg ? "hover:border-zinc-400" : "pointer-events-none opacity-40")
+          "flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-4 text-sm font-semibold transition-colors " +
+          (dmg ? "hover:border-zinc-900" : "pointer-events-none opacity-40")
         }
       >
         <Download className="h-4 w-4" /> Download for Mac
@@ -102,8 +103,8 @@ function ActivateInner() {
       <a
         href={dl(exe)}
         className={
-          "flex items-center justify-center gap-2 rounded-xl border border-zinc-200 px-5 py-4 text-sm font-semibold " +
-          (exe ? "hover:border-zinc-400" : "pointer-events-none opacity-40")
+          "flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-4 text-sm font-semibold transition-colors " +
+          (exe ? "hover:border-zinc-900" : "pointer-events-none opacity-40")
         }
       >
         <Download className="h-4 w-4" /> Download for Windows
@@ -116,8 +117,10 @@ function ActivateInner() {
     return (
       <Shell>
         <Mail className="mx-auto h-10 w-10 text-zinc-400" />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">
-          Payment received — you&apos;re in.
+        <h1 className="mt-5 text-3xl sm:text-4xl font-semibold tracking-[-0.04em] leading-[0.95] text-zinc-950">
+          Payment received — you&apos;re{" "}
+          <span className="font-serif italic font-normal">in</span>
+          <span className="text-zinc-300">.</span>
         </h1>
         <p className="mx-auto mt-3 max-w-md text-zinc-600">
           We just emailed you a link to set your password (it can take a
@@ -139,8 +142,10 @@ function ActivateInner() {
     return (
       <Shell>
         <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">
-          You&apos;re all set.
+        <h1 className="mt-5 text-3xl sm:text-4xl font-semibold tracking-[-0.04em] leading-[0.95] text-zinc-950">
+          You&apos;re all{" "}
+          <span className="font-serif italic font-normal">set</span>
+          <span className="text-zinc-300">.</span>
         </h1>
         <p className="mx-auto mt-3 max-w-md text-zinc-600">
           Download the app and sign in with <strong>{email}</strong> and your
@@ -155,7 +160,7 @@ function ActivateInner() {
   if (!email || !code) {
     return (
       <Shell>
-        <h1 className="text-2xl font-bold tracking-tight">
+        <h1 className="text-3xl font-semibold tracking-[-0.04em] text-zinc-950">
           This link is incomplete
         </h1>
         <p className="mx-auto mt-3 max-w-md text-zinc-600">
@@ -169,7 +174,11 @@ function ActivateInner() {
   // ---- State: the set-password form ----
   return (
     <Shell>
-      <h1 className="text-2xl font-bold tracking-tight">Set your password</h1>
+      <h1 className="text-3xl sm:text-4xl font-semibold tracking-[-0.04em] leading-[0.95] text-zinc-950">
+        Set your{" "}
+        <span className="font-serif italic font-normal">password</span>
+        <span className="text-zinc-300">.</span>
+      </h1>
       <p className="mt-2 text-zinc-600">
         For <strong>{email}</strong> — then you&apos;ll download the app.
       </p>
@@ -193,7 +202,7 @@ function ActivateInner() {
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-lg bg-zinc-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          className="w-full rounded-lg bg-zinc-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
         >
           {busy ? "Saving…" : "Set password & continue"}
         </button>
@@ -205,11 +214,13 @@ function ActivateInner() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-white text-zinc-900">
-      <header className="border-b border-zinc-100 py-5 text-center">
-        <span className="text-lg font-bold tracking-tight">SEQU3NCE</span>
-        <span className="ml-2 rounded bg-zinc-900 px-1.5 py-0.5 text-[10px] font-bold text-white">
-          PERSONAL
-        </span>
+      <header className="border-b border-zinc-200/60 bg-white/70 py-4 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-5xl items-center justify-center gap-2.5 px-6">
+          <Logo href="/personal" height={22} />
+          <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-white">
+            PERSONAL
+          </span>
+        </div>
       </header>
       <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16 text-center">
         {children}
