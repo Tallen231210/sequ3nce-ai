@@ -1796,10 +1796,16 @@ export default defineSchema({
   // B2C user accounts (Sequ3nce Personal)
   b2cUsers: defineTable({
     email: v.string(),
-    phone: v.string(),                    // SMS-verified, primary identity key
+    /** Optional since Polar provisioning (2026-08-19): accounts created from a
+     *  web checkout have no phone until the user adds one. Email is the login
+     *  key; phone remains unique WHEN present. */
+    phone: v.optional(v.string()),
     phoneVerified: v.boolean(),
     name: v.string(),
-    passwordHash: v.string(),
+    /** Optional since Polar provisioning: a checkout-created account has no
+     *  password until the welcome email's set-password link is used. Login is
+     *  refused (with guidance) while unset. */
+    passwordHash: v.optional(v.string()),
     personalWorkspaceId: v.id("teams"),   // Their "team of one"
     stripeCustomerId: v.optional(v.string()),
     subscriptionStatus: v.union(
@@ -1809,6 +1815,13 @@ export default defineSchema({
       v.literal("none"),
     ),
     subscriptionId: v.optional(v.string()),
+    // --- Polar (B2C moved to Polar 2026-08-19; Stripe fields above are legacy,
+    // kept for schema compatibility — there were zero paying Stripe users) ---
+    polarCustomerId: v.optional(v.string()),
+    polarSubscriptionId: v.optional(v.string()),
+    /** "monthly" | "3month" | "6month" | "yearly" — from product metadata. */
+    planTerm: v.optional(v.string()),
+    currentPeriodEnd: v.optional(v.number()),
     profileSlug: v.optional(v.string()),  // URL-safe unique slug
     linkedCloserIds: v.optional(v.array(v.id("closers"))), // B2B closer IDs matched by phone
     createdAt: v.number(),
@@ -1833,7 +1846,8 @@ export default defineSchema({
     .index("by_phone", ["phone"])
     .index("by_profile_slug", ["profileSlug"])
     .index("by_subscription_status", ["subscriptionStatus"])
-    .index("by_stripe_customer", ["stripeCustomerId"]),
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_polar_customer", ["polarCustomerId"]),
 
   // ==================== B2C Community Tables (Phase A) ====================
 

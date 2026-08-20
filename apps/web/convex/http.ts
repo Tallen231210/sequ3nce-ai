@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import { mapPolarStatusToB2C } from "./b2cPolar";
 import { Id } from "./_generated/dataModel";
 import { COLLECTIONS_UPDATE_ACTION } from "./collectionsNotifications";
 
@@ -12523,6 +12524,54 @@ http.route({
 
       if (!sub.customer_id || !sub.id) {
         console.error(`[polar] ${type} arrived without a customer or id`);
+        return new Response(null, { status: 202 });
+      }
+
+      // ------------------------------------------------------------------
+      // B2C branch: a product tagged b2c_plan is Sequ3nce Personal. Routed
+      // BEFORE the team logic so neither side can misfile the other's money.
+      // The account may not exist yet — for Personal, the payment IS the
+      // signup (see convex/b2cPolar.ts).
+      // ------------------------------------------------------------------
+      const b2cPlanTag = sub.product?.metadata?.b2c_plan ?? sub.metadata?.b2c_plan;
+      if (typeof b2cPlanTag === "string") {
+        const plan = b2cPlanTag.trim().toLowerCase();
+        if (!["monthly", "3month", "6month", "yearly"].includes(plan)) {
+          console.error(`[polar] b2c event with unknown plan "${plan}" — ignored`);
+          return new Response(null, { status: 202 });
+        }
+        const customer = (sub as any).customer as
+          | { email?: string | null; name?: string | null }
+          | null
+          | undefined;
+        const periodEndB2C = sub.current_period_end
+          ? Date.parse(sub.current_period_end)
+          : null;
+        const b2cResult = await ctx.runMutation(
+          internal.b2cPolar.applyB2CSubscription,
+          {
+            polarCustomerId: sub.customer_id,
+            polarSubscriptionId: sub.id,
+            status: mapPolarStatusToB2C(sub.status),
+            planTerm: plan as "monthly" | "3month" | "6month" | "yearly",
+            email: customer?.email ?? undefined,
+            name: customer?.name ?? undefined,
+            currentPeriodEnd:
+              periodEndB2C !== null && Number.isFinite(periodEndB2C)
+                ? periodEndB2C
+                : undefined,
+          },
+        );
+        if (!b2cResult.applied) {
+          console.error(
+            `[polar] b2c ${type} not applied: ${b2cResult.reason} ` +
+              `(customer ${sub.customer_id})`,
+          );
+        } else if (b2cResult.provisioned) {
+          console.log(
+            `[polar] b2c account provisioned from checkout (customer ${sub.customer_id})`,
+          );
+        }
         return new Response(null, { status: 202 });
       }
 

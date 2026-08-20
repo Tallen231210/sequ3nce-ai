@@ -181,6 +181,16 @@ export const loginB2CUser = mutation({
     }
 
     // Verify password (constant-time comparison)
+    if (!user.passwordHash) {
+      // Checkout-provisioned account that never set a password. Point them at
+      // the path that works instead of telling them their password is wrong.
+      return {
+        success: false,
+        error:
+          "Your account was created from your purchase but has no password yet. " +
+          "Use the link in your welcome email, or tap \"Forgot password\".",
+      };
+    }
     const valid = await verifyPassword(args.password, user.passwordHash);
     if (!valid) {
       return { success: false, error: "Invalid email or password" };
@@ -388,8 +398,10 @@ const RESET_CODE_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 
 /** Generate a 6-digit reset code and store its hash on the user record */
 export const generatePasswordResetCode = internalMutation({
-  args: { email: v.string() },
-  handler: async (ctx, { email }) => {
+  // expiryMs: welcome emails use a 7-day code (it sits in an inbox); the
+  // interactive reset flow keeps its short default.
+  args: { email: v.string(), expiryMs: v.optional(v.number()) },
+  handler: async (ctx, { email, expiryMs }) => {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await ctx.db
       .query("b2cUsers")
@@ -407,7 +419,7 @@ export const generatePasswordResetCode = internalMutation({
 
     await ctx.db.patch(user._id, {
       passwordResetCode: codeHash,
-      passwordResetExpiry: Date.now() + RESET_CODE_EXPIRY_MS,
+      passwordResetExpiry: Date.now() + (expiryMs ?? RESET_CODE_EXPIRY_MS),
     });
 
     return { success: true, code, userName: user.name };
