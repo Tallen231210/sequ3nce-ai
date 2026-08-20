@@ -174,7 +174,9 @@ export async function analyzeTranscriptForDetection(
     const systemPrompt = buildDetectionPrompt(ammoConfig, manifesto);
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      // Haiku, deliberately: this is structured extraction (quotes + booleans),
+      // not prose quality, and it runs on every completed call.
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 2048,
       messages: [
         {

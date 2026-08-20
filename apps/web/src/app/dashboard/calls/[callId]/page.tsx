@@ -1559,6 +1559,20 @@ export default function CallDetailPage() {
 
   const createHighlight = useMutation(api.highlights.createHighlight);
   const updateCallData = useMutation(api.calls.updateCallData);
+  const liveViewHeartbeat = useMutation(api.calls.liveViewHeartbeat);
+
+  // Watching a call's detail page while it is still live counts as a live
+  // viewer for the audio processor's analysis loop. No-op once completed.
+  const liveCallId = call && call.status !== "completed" && call.status !== "no_show" ? call._id : null;
+  useEffect(() => {
+    if (!liveCallId) return;
+    const beat = () => {
+      liveViewHeartbeat({ callId: liveCallId as Id<"calls"> }).catch(() => {});
+    };
+    beat();
+    const interval = setInterval(beat, 20_000);
+    return () => clearInterval(interval);
+  }, [liveCallId, liveViewHeartbeat]);
 
   const [audioSeekTime, setAudioSeekTime] = useState<number | undefined>(undefined);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);

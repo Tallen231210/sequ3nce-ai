@@ -300,7 +300,12 @@ export class AmmoAnalyzer {
   startPeriodicAnalysis(
     getTranscript: () => string,
     onAnalysis: (analysis: AmmoV2Analysis) => void,
-    intervalMs: number = 45000
+    intervalMs: number = 45000,
+    // Asked before every cycle. Bot calls pass a "does anyone have a live
+    // view open?" check here — analyzing a call nobody is watching was most
+    // of the Anthropic bill. Omitted (desktop calls) = always analyze: the
+    // desktop app IS the viewer, attached to this very WebSocket.
+    shouldAnalyze?: () => Promise<boolean>
   ): void {
     this.onAnalysisCallback = onAnalysis;
 
@@ -308,6 +313,10 @@ export class AmmoAnalyzer {
 
     this.analysisInterval = setInterval(async () => {
       try {
+        if (shouldAnalyze && !(await shouldAnalyze())) {
+          logger.info(`[AmmoAnalyzer] No live viewer for call ${this.callId} — skipping cycle`);
+          return;
+        }
         const transcript = getTranscript();
         const analysis = await this.analyze(transcript);
 

@@ -8,7 +8,7 @@ import type {
   TeamResource,
 } from '@/lib/closer/client';
 import {
-  getAmmoAnalysis,
+  getAmmoAnalysis, sendLiveViewHeartbeat,
   getTranscriptSegments,
   getActiveResources,
   isAmmoV2Enabled,
@@ -110,8 +110,15 @@ export function ActiveCallView({
     });
 
     // Poll ammo + transcript every 5s
+    let lastHeartbeatAt = 0;
     const poll = async () => {
       try {
+        // Viewer heartbeat (~20s): keeps live analysis running for this
+        // call while this screen is open. See sendLiveViewHeartbeat.
+        if (Date.now() - lastHeartbeatAt > 20_000) {
+          lastHeartbeatAt = Date.now();
+          void sendLiveViewHeartbeat(callId);
+        }
         const [a, t] = await Promise.all([
           getAmmoAnalysis(callId),
           getTranscriptSegments(callId),

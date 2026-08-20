@@ -1670,6 +1670,65 @@ http.route({
 
 // GET endpoint to check if Ammo V2 is enabled for a team (called by audio processor)
 http.route({
+  path: "/liveViewHeartbeat",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = (await request.json()) as { callId?: string };
+      if (!body.callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const result = await ctx.runMutation(api.calls.liveViewHeartbeat, {
+        callId: body.callId as Id<"calls">,
+      });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch {
+      return new Response(JSON.stringify({ ok: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/hasLiveViewer",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+    if (!callId) {
+      return new Response(JSON.stringify({ error: "callId is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    try {
+      const result = await ctx.runQuery(internal.calls.hasLiveViewer, {
+        callId: callId as Id<"calls">,
+      });
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch {
+      // Unknown/invalid id: no viewer. The audio processor treats any
+      // failure as "skip the cycle" — the cheap direction.
+      return new Response(JSON.stringify({ hasViewer: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }),
+});
+
+http.route({
   path: "/isAmmoV2Enabled",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
