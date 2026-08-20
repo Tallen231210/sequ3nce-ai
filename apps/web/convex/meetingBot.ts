@@ -2234,13 +2234,15 @@ export const getExcludedEventIds = internalQuery({
 /**
  * Ceiling on bots one team's calendar can book in a rolling day.
  *
- * Generous on purpose — the busiest team we have books around 14 a day, so 50
- * is a runaway detector rather than a budget. Hitting it means something is
- * wrong (duplicated calendar events, a sync loop, a customer who connected the
- * wrong diary), and the right response is to stop and say so rather than keep
- * spending.
+ * A runaway detector, not a budget — but it fails SILENTLY, so it must sit
+ * far above real usage. 50 was sized when the busiest team booked ~14/day;
+ * then E2's floor legitimately booked ~50/day and auto-join quietly stopped
+ * booking mid-day, which reached us as closers saying "the bot only sometimes
+ * joins". 150 keeps runaway protection (a sync loop still hits it fast)
+ * without starving a big floor. Per-team override:
+ * autoJoinDiagnostics:setAutoJoinDailyCap.
  */
-const AUTO_JOIN_DEFAULT_DAILY_CAP = 50;
+const AUTO_JOIN_DEFAULT_DAILY_CAP = 150;
 
 /**
  * What did auto-join actually do?
