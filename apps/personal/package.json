@@ -1,8 +1,8 @@
 {
   "name": "sequ3nce-personal",
   "productName": "Sequ3nce Personal",
-  "version": "1.18.0",
-  "description": "Sequ3nce Personal — call recording, verified stats, and career tools for high-ticket closers",
+  "version": "1.18.1",
+  "description": "Sequ3nce Personal \u2014 call recording, verified stats, and career tools for high-ticket closers",
   "main": ".webpack/main",
   "scripts": {
     "start": "npm run build:native && electron-forge start",
