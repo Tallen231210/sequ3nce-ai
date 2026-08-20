@@ -918,11 +918,40 @@ async function computeBookingsFromGhlAppointments(
   const now = Date.now();
   const futureScheduled = valid.filter((a) => a.startTime > now).length;
 
-  // Time-to-book is from the lead's dateAdded (need to look up). Skip — we'd
-  // need a setterLeads join keyed by ghlContactId which is doable but adds
-  // a per-appointment read. For the GHL appointments source we have
-  // bookedAt directly, but no easy dateAdded lookup. Mark as null for v1.
-  const medianTimeToBookMs: number | null = null;
+  // Time-to-book: lead entered the funnel → booking created. Both endpoints
+  // live in the CRM regardless of where the conversation happened, so unlike
+  // speed-to-lead this needs no where-was-the-first-reply caveat. One point
+  // read per unique contact via the contact-id index; capped loudly rather
+  // than silently on a pathological range.
+  const uniqueContacts = Array.from(new Set(valid.map((a) => a.ghlContactId)));
+  const CONTACT_LOOKUP_CAP = 1_500;
+  if (uniqueContacts.length > CONTACT_LOOKUP_CAP) {
+    console.warn(
+      `[bookings] ${uniqueContacts.length} unique booked contacts — time-to-book computed on the first ${CONTACT_LOOKUP_CAP}`,
+    );
+  }
+  const dateAddedByContact = new Map<string, number>();
+  for (const cid of uniqueContacts.slice(0, CONTACT_LOOKUP_CAP)) {
+    const lead = (await ctx.db
+      .query("setterLeads")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .withIndex("by_team_and_ghl_contact_id", (q: any) =>
+        q.eq("teamId", args.teamId).eq("ghlContactId", cid),
+      )
+      .first()) as Doc<"setterLeads"> | null;
+    if (lead?.dateAdded) dateAddedByContact.set(cid, lead.dateAdded);
+  }
+  const bookDeltas = valid
+    .map((a) => {
+      const added = dateAddedByContact.get(a.ghlContactId);
+      return added && a.bookedAt >= added ? a.bookedAt - added : null;
+    })
+    .filter((d): d is number => d !== null)
+    .sort((a, b) => a - b);
+  // Median, deliberately: a lead from last year booking today is a
+  // re-engagement, and a median shrugs at it where an average drowns.
+  const medianTimeToBookMs: number | null =
+    bookDeltas.length > 0 ? bookDeltas[Math.floor(bookDeltas.length / 2)] : null;
 
   const byDayOfWeek = [0, 0, 0, 0, 0, 0, 0];
   for (const a of valid) {
