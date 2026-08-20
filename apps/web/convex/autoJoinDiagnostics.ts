@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -138,5 +139,45 @@ export const setAutoJoinDailyCap = internalMutation({
     const previous = (team as { autoJoinDailyCap?: number }).autoJoinDailyCap ?? 50;
     await ctx.db.patch(args.teamId, { autoJoinDailyCap: args.cap });
     return { team: team.name, previous, now: args.cap };
+  },
+});
+
+/**
+ * Bots that JOINED a meeting (so a recording exists at Recall) but whose
+ * recording URL never landed — the immortal-retry-loop storm burned their
+ * three fetch attempts on 429s. Read-only count + optional repair kick.
+ *
+ * `kick: true` re-schedules the (now fixed) fetch for each, staggered 5s
+ * apart so the repair itself can't recreate the rate-limit pile-up.
+ */
+export const repairMissingRecordings = internalMutation({
+  args: { kick: v.boolean() },
+  handler: async (ctx, args) => {
+    const bots = await ctx.db.query("meetingBots").order("desc").take(1000);
+    const candidates = bots.filter(
+      (b) =>
+        !!b.joinedAt &&
+        !b.recordingUrl &&
+        !!b.recallBotId &&
+        b.status !== "failed",
+    );
+    if (args.kick) {
+      for (let i = 0; i < candidates.length; i++) {
+        await ctx.scheduler.runAfter(
+          i * 5000,
+          internal.meetingBot.fetchBotRecording,
+          { recallBotId: candidates[i].recallBotId as string, attempt: 1 },
+        );
+      }
+    }
+    return {
+      scanned: bots.length,
+      missingRecording: candidates.length,
+      kicked: args.kick,
+      sample: candidates.slice(0, 10).map((b) => ({
+        title: b.meetingTitle ?? null,
+        joined: b.joinedAt ? new Date(b.joinedAt).toISOString() : null,
+      })),
+    };
   },
 });
