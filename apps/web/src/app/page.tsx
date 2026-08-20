@@ -1195,6 +1195,88 @@ export default function Home() {
       {/* ═══════════════════════════════════════════ */}
       {/* FAQ — Two-column                             */}
       {/* ═══════════════════════════════════════════ */}
+      {/* ═══════════════════════════════════════════ */}
+      {/* WHAT SEQU3NCE.AI IS                          */}
+      {/* Plain statement of what the software does,   */}
+      {/* including the Google Calendar disclosure.    */}
+      {/* Google's OAuth reviewers rejected the app    */}
+      {/* because this page never said what it was —   */}
+      {/* this section is the fix, and it has to name  */}
+      {/* "Sequ3nce.ai" to match the consent screen.   */}
+      {/* ═══════════════════════════════════════════ */}
+      <section id="about" className="py-32 relative z-10">
+        <div className="mx-auto max-w-7xl px-6">
+          <AnimatedSection>
+            <div className="text-[10px] tracking-[0.25em] uppercase text-zinc-400 font-medium mb-5">
+              The software
+            </div>
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05] text-zinc-950 max-w-3xl">
+              What Sequ3nce.ai{" "}
+              <span className="font-serif italic font-normal">actually is</span>
+              <span className="text-zinc-300">.</span>
+            </h2>
+          </AnimatedSection>
+
+          <div className="mt-16 grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
+            <AnimatedSection delay={100}>
+              <p className="text-lg text-zinc-500 leading-relaxed">
+                Sequ3nce.ai is the sales call intelligence platform behind
+                everything above. Closers take their scheduled sales calls;
+                Sequ3nce.ai&apos;s AI notetaker joins the meeting, records and
+                transcribes the conversation, then turns it into summaries,
+                call scores and live dashboards — so managers see every call,
+                every closer and every deal without sitting in on a single
+                meeting.
+              </p>
+              <p className="mt-6 text-lg text-zinc-500 leading-relaxed">
+                It ships as a web dashboard for managers and a desktop app for
+                closers, and connects to the tools sales teams already run on —
+                calendars, CRMs and Slack.
+              </p>
+            </AnimatedSection>
+
+            <AnimatedSection delay={200}>
+              <div className="rounded-2xl border border-zinc-200 bg-white p-8">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-10 h-10 rounded-xl bg-zinc-950 flex items-center justify-center">
+                    <Calendar className="h-5 w-5 text-white" strokeWidth={1.5} />
+                  </div>
+                  <h3 className="text-lg font-semibold text-zinc-950">
+                    How the Google Calendar connection works
+                  </h3>
+                </div>
+                <ul className="space-y-3 text-sm text-zinc-500 leading-relaxed">
+                  <li className="flex gap-2.5">
+                    <Check className="h-4 w-4 mt-0.5 shrink-0 text-zinc-950" strokeWidth={2} />
+                    Closers can connect their Google Calendar so Sequ3nce.ai
+                    knows when their sales calls are scheduled.
+                  </li>
+                  <li className="flex gap-2.5">
+                    <Check className="h-4 w-4 mt-0.5 shrink-0 text-zinc-950" strokeWidth={2} />
+                    The app reads event times, meeting links and attendees —
+                    read-only — to show each closer their day and to send its
+                    notetaker to the right meeting at the right time.
+                  </li>
+                  <li className="flex gap-2.5">
+                    <Check className="h-4 w-4 mt-0.5 shrink-0 text-zinc-950" strokeWidth={2} />
+                    You choose which calendars it can see. It never creates,
+                    edits or deletes events, and you can disconnect at any
+                    time.
+                  </li>
+                </ul>
+                <Link
+                  href="/privacy"
+                  className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-zinc-950 hover:underline"
+                >
+                  Read our Privacy Policy
+                  <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </Link>
+              </div>
+            </AnimatedSection>
+          </div>
+        </div>
+      </section>
+
       <section id="faq" className="py-32 relative z-10">
         <div className="mx-auto max-w-7xl px-6">
           <div className="grid lg:grid-cols-[1fr,1.5fr] gap-16 max-w-6xl mx-auto">
@@ -1302,8 +1384,8 @@ export default function Home() {
             <div className="md:col-span-2">
               <Logo height={28} />
               <p className="mt-4 text-sm text-zinc-500 max-w-xs leading-relaxed">
-                Sales call intelligence for high-ticket teams. Full visibility
-                into every call, every closer, every deal.
+                Sequ3nce.ai — sales call intelligence for high-ticket teams.
+                Full visibility into every call, every closer, every deal.
               </p>
             </div>
 
