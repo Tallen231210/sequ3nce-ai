@@ -4,6 +4,7 @@ import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
 import { getContentForCallTx } from "./callContent";
+import { identifyProspect } from "./calls";
 import { classifyMeeting } from "./fathomClassify";
 import { extractProspectFromTitle } from "./lib/extractProspectFromTitle";
 import { matchCloserInTitle, type TitleRosterCloser } from "./lib/closerTitleMatch";
@@ -1504,6 +1505,38 @@ export const linkCallToBot = mutation({
         meetingBotId: botDocId,
         recordingType: "video",
       });
+
+      // Denormalize the bot's calendar event + prospect identity onto the
+      // call. Without this, bot-created calls carry no prospectEmail/Phone
+      // and no calendarEventId, which starved the show-rate evidence
+      // waterfall of matches — E2 resolved 0 of 993 appointments purely
+      // because this link was missing. bot.calendarEventId is a raw UID
+      // string; resolve it through the closer's synced events.
+      if (bot.calendarEventId && bot.closerId) {
+        const event = await ctx.db
+          .query("calendarEvents")
+          .withIndex("by_closer_and_uid", (q) =>
+            q.eq("closerId", bot.closerId).eq("uid", bot.calendarEventId!),
+          )
+          .first();
+        if (event) {
+          const call = await ctx.db.get(callDocId);
+          const closer = await ctx.db.get(bot.closerId);
+          const attendees = (event.attendees ?? []).filter(
+            (a: { email?: string }) => !!a.email,
+          ) as Array<{ email: string; name?: string; isOrganizer?: boolean }>;
+          const prospect =
+            closer?.email && attendees.length > 0
+              ? identifyProspect(attendees, closer.email)
+              : null;
+          await ctx.db.patch(callDocId, {
+            ...(call?.calendarEventId ? {} : { calendarEventId: event._id }),
+            ...(prospect?.email && !call?.prospectEmail
+              ? { prospectEmail: prospect.email.trim().toLowerCase() }
+              : {}),
+          });
+        }
+      }
 
       console.log(`[linkCallToBot] Linked call ${args.callId} to bot ${args.botId}`);
       return { success: true };

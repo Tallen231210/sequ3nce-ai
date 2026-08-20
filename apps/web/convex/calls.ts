@@ -1665,7 +1665,7 @@ export const findMatchingScheduledCall = query({
  * Identify the prospect from a list of calendar event attendees.
  * Filters out the closer and same-domain team members.
  */
-function identifyProspect(
+export function identifyProspect(
   attendees: Array<{ email: string; name?: string; isOrganizer?: boolean }>,
   closerEmail: string
 ): { email: string; name?: string } | null {

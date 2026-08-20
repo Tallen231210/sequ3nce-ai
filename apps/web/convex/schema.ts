@@ -883,6 +883,14 @@ export default defineSchema({
     speakerLabelsFlippedAt: v.optional(v.number()),
     speakerLabelsFlippedBy: v.optional(v.string()),
     prospectTalkTime: v.optional(v.number()), // Prospect talk time in seconds
+    /** How many distinct participants SPOKE (Recall's roster is derived from
+     *  utterances — a silent attendee is invisible). Persisted by speaker
+     *  verification, which already computes and used to discard this. */
+    participantCount: v.optional(v.number()),
+    /** True when a non-closer, non-bot participant spoke. The honest test
+     *  for "did the prospect actually show" — a closer waiting alone
+     *  produces a long recording and this stays false. */
+    prospectJoined: v.optional(v.boolean()),
     // Speaker mapping (maps Deepgram speakers to closer/prospect)
     speakerMapping: v.optional(v.object({
       closerSpeaker: v.string(), // "speaker_0" or "speaker_1" from Deepgram
@@ -3023,6 +3031,34 @@ export default defineSchema({
     providerStatus: v.optional(v.string()),
     bookedAt: v.number(),
     lastUpdatedAt: v.number(),
+    /**
+     * Attendance verdict — what actually happened at this appointment,
+     * classified automatically (nightly sweep + CRM-status stamping) or by a
+     * human. `manual` outranks everything and is never overwritten by
+     * automation, mirroring the speaker-flip contract. Absent = not yet
+     * classified (pre-feature rows, future slots, non-beta teams).
+     */
+    attendance: v.optional(v.union(
+      v.literal("showed"),
+      v.literal("no_show"),
+      v.literal("cancelled"),
+      v.literal("rescheduled"),
+      v.literal("unverifiable"),
+    )),
+    /** Who produced the verdict — the outcomeSource pattern. */
+    attendanceSource: v.optional(v.union(
+      v.literal("crm_status"),
+      v.literal("call_evidence"),
+      v.literal("reschedule_link"),
+      v.literal("assumed"),
+      v.literal("manual"),
+    )),
+    attendanceAt: v.optional(v.number()),
+    /** Evidence pointer when attendanceSource is call_evidence. */
+    attendanceCallId: v.optional(v.id("calls")),
+    /** The rebook this cancelled appointment turned into — makes a
+     *  reschedule a TRANSITION between rows, not a terminal state. */
+    rescheduledToAppointmentId: v.optional(v.id("setterAppointments")),
   })
     .index("by_team", ["teamId"])
     .index("by_team_and_setter", ["teamId", "bookedByGhlUserId"])

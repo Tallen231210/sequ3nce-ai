@@ -455,6 +455,25 @@ export const verifyClosersByRecallApi = internalAction({
     }
     const trueCloserPid = dominantCloserPid;
 
+    // Persist prospect presence — the data this pass always had in hand and
+    // used to discard. `prospectJoined` is the honest answer to "did the
+    // prospect actually show": a closer waiting alone produces a long
+    // recording and this stays false. Roster is utterance-derived, so a
+    // silent attendee is invisible — the attendance ladder duration-gates
+    // its use and manual override is the escape hatch.
+    const prospectJoined = participants.some(
+      (p) =>
+        !closerIds.has(String(p.id)) &&
+        !isLikelyBotName(p.name ?? "", configuredBotName),
+    );
+    if (bot.callId) {
+      await ctx.runMutation(internal.speakerVerification.persistPresence, {
+        callId: bot.callId,
+        participantCount: participants.length,
+        prospectJoined,
+      });
+    }
+
     // Compare against current state — if closer-chars share is within 3pp of
     // what the live segments already represent, treat as no-change to save
     // a segment rewrite. Otherwise the pin or earlier labeling was wrong
@@ -660,5 +679,20 @@ export const verifyClosersByRecallApi = internalAction({
         `${newSegments.length} segments relabeled, closer ${newCloserTalkTime}s vs prospect ${newProspectTalkTime}s` +
         (closerIds.size > 1 ? ` (closer had ${closerIds.size} participant ids)` : ""),
     };
+  },
+});
+
+/** Written by the verifier from Recall's roster — see the call above. */
+export const persistPresence = internalMutation({
+  args: {
+    callId: v.id("calls"),
+    participantCount: v.number(),
+    prospectJoined: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.callId, {
+      participantCount: args.participantCount,
+      prospectJoined: args.prospectJoined,
+    });
   },
 });
