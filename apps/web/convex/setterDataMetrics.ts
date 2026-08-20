@@ -138,6 +138,9 @@ export interface ScorecardData {
   avgSpeedMs: number | null;
   p50SpeedMs: number | null;
   p90SpeedMs: number | null;
+  /** Leads first-touched more than 7 days after arriving — excluded from the
+   *  speed stats as revivals, and counted here so the trim is visible. */
+  revivedLeadCount: number;
   /** Phase 2 — team-wide appointment rollup. */
   totalAppointments: number;
   totalShowed: number;
@@ -465,6 +468,11 @@ export async function computeScorecard(
       .map((l) => normalizeSpeedToLeadMs(l.firstDialAt, l.dateAdded))
       .filter((ms): ms is number => ms !== null)
       .sort((a, b) => a - b);
+    // Excluded ≠ hidden: revivals are reported alongside, so "we trimmed 12
+    // anomalies" is a visible fact rather than silent surgery on the stats.
+    const revivedLeadCount = dialedLeads.filter(
+      (l) => l.firstDialAt - l.dateAdded > SPEED_TO_LEAD_ELIGIBILITY_MS,
+    ).length;
 
     const avgSpeedMs =
       speedsMs.length > 0
@@ -760,6 +768,7 @@ export async function computeScorecard(
       avgSpeedMs,
       p50SpeedMs,
       p90SpeedMs,
+      revivedLeadCount,
       totalAppointments,
       totalShowed,
       totalNoShow,
@@ -1401,11 +1410,22 @@ export async function computeShowRateEvidence(
  */
 const SPEED_TO_LEAD_SKEW_TOLERANCE_MS = 5 * 60_000;
 
+/**
+ * A first touch later than this after the lead arrived is not "response
+ * speed" — it's a REVIVAL of a lead that went cold, a different event.
+ * Without this window one six-month-old lead dialed today adds ~4,380
+ * hours to the average and quietly wrecks it (Tyler's exact concern), and
+ * the metric never settles: an old lead's first dial retroactively changes
+ * a month that had already closed.
+ */
+export const SPEED_TO_LEAD_ELIGIBILITY_MS = 7 * 24 * 60 * 60_000;
+
 export function normalizeSpeedToLeadMs(
   firstDialAt: number,
   dateAdded: number,
 ): number | null {
   const delta = firstDialAt - dateAdded;
+  if (delta > SPEED_TO_LEAD_ELIGIBILITY_MS) return null; // a revival, not a response
   if (delta >= 0) return delta;
   if (-delta <= SPEED_TO_LEAD_SKEW_TOLERANCE_MS) return 0;
   return null;

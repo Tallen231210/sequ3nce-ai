@@ -64,16 +64,24 @@ interface KpiStripProps {
 export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      {/* Median leads, average follows: one six-month-old lead dialed today
+          adds thousands of hours to an average and nothing to a median. Leads
+          first touched >7 days after arriving are excluded as revivals — a
+          different event than response speed — and the exclusion is shown, so
+          the trim is a visible fact rather than silent surgery. */}
       <KpiCard
         icon={Clock}
-        label="Speed to lead (avg)"
+        label="Speed to lead (median)"
         value={
-          data.avgSpeedMs !== null ? formatDuration(data.avgSpeedMs) : "—"
+          data.p50SpeedMs !== null ? formatDuration(data.p50SpeedMs) : "—"
         }
         sub={
-          data.p50SpeedMs !== null
-            ? `Median ${formatDuration(data.p50SpeedMs)}`
-            : "No dialed leads"
+          data.p50SpeedMs === null
+            ? "No dialed leads"
+            : `Avg ${data.avgSpeedMs !== null ? formatDuration(data.avgSpeedMs) : "—"}` +
+              ((data as any).revivedLeadCount > 0
+                ? ` · ${(data as any).revivedLeadCount} revived excluded`
+                : "")
         }
       />
       <KpiCard
