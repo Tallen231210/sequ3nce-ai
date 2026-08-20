@@ -324,27 +324,50 @@ function PeopleFunnelSection({
   const settledPeople = funnel.showed + funnel.noShowFinal;
   const showRate =
     settledPeople > 0 ? Math.round((funnel.showed / settledPeople) * 100) : null;
-  const buckets: Array<{ label: string; value: number; tone: string }> = [
+  // Each bucket says how trustworthy it is and why, right on the card —
+  // these five numbers have very different evidence behind them and the
+  // reader shouldn't have to know that from memory.
+  const buckets: Array<{
+    label: string;
+    value: number;
+    tone: string;
+    accuracy: string;
+    tip: string;
+  }> = [
     {
       label: "Showed",
       value: funnel.showed,
       tone: "text-emerald-700 dark:text-emerald-400",
+      accuracy: "Proven — never estimated",
+      tip: "Counted only when a call recording or a CRM status proves the prospect attended.",
     },
     {
       label: "No-showed",
       value: funnel.noShowFinal,
       tone: "text-rose-700 dark:text-rose-400",
+      accuracy: "Proven — undercounted for now",
+      tip: "Counted only when the notetaker watched the closer wait alone, the closer logged it, or the CRM was marked No Show. A no-show nobody witnessed sits in Unverifiable instead.",
     },
     {
       label: "Cancelled, never rebooked",
       value: funnel.cancelledNeverRebooked,
       tone: "text-amber-700 dark:text-amber-400",
+      accuracy: "Exact — from your CRM",
+      tip: "Every cancellation is recorded in your CRM. Counted here only when no rebook followed within 14 days — otherwise it counts as rescheduled.",
     },
-    { label: "Upcoming", value: funnel.upcoming, tone: "text-foreground" },
+    {
+      label: "Upcoming",
+      value: funnel.upcoming,
+      tone: "text-foreground",
+      accuracy: "Slot hasn't happened yet",
+      tip: "Booked in this range, but the meeting time is still ahead (or too recent to judge).",
+    },
     {
       label: "Unverifiable",
       value: funnel.unverifiable,
       tone: "text-muted-foreground",
+      accuracy: "No witness either way",
+      tip: "No notetaker in the meeting and nothing marked in the CRM — could be a show or a silent no-show. Never guessed, never counted in the show rate.",
     },
   ];
   return (
@@ -354,10 +377,13 @@ function PeopleFunnelSection({
           People funnel
         </div>
         {showRate !== null && (
-          <div className="text-xs text-muted-foreground">
+          <div
+            className="text-xs text-muted-foreground"
+            title="Showed ÷ (showed + no-showed). Only proven outcomes count — unverifiable slots are excluded, not assumed."
+          >
             Show rate{" "}
             <span className="font-semibold text-foreground">{showRate}%</span>{" "}
-            of {settledPeople} settled
+            of {settledPeople} proven outcomes
           </div>
         )}
       </div>
@@ -371,12 +397,16 @@ function PeopleFunnelSection({
           <div
             key={b.label}
             className="rounded-md border border-border bg-card px-3 py-2.5"
+            title={b.tip}
           >
             <div className={`text-lg font-semibold tabular-nums ${b.tone}`}>
               {b.value}
             </div>
             <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
               {b.label}
+            </div>
+            <div className="mt-1 text-[9px] leading-snug text-muted-foreground/80">
+              {b.accuracy}
             </div>
           </div>
         ))}
@@ -387,7 +417,8 @@ function PeopleFunnelSection({
             {Math.round(funnel.rescheduledPct * 100)}%
           </span>{" "}
           rescheduled at least once ({funnel.rescheduledAtLeastOnce} of{" "}
-          {funnel.peopleBooked})
+          {funnel.peopleBooked}) — exact, from CRM cancellations followed by a
+          rebook within 14 days
         </div>
       )}
       {watchNote && (
