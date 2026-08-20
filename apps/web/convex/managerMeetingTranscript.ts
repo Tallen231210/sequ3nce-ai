@@ -225,6 +225,15 @@ export const fetchManagerTranscript = internalAction({
         `[managerTranscript] No transcript on bot ${meeting.recallBotId} after ` +
           `${TRANSCRIPT_FETCH_MAX_ATTEMPTS} attempts — giving up`,
       );
+      // Terminal for the repair sweep: Recall has no transcript for this
+      // bot and re-asking nightly won't conjure one.
+      await ctx.runMutation(
+        internal.managerMeetingTranscript.markMeetingFailure,
+        {
+          meetingId: args.meetingId,
+          reason: "transcript unavailable after repeated fetches",
+        },
+      );
       return { segments: 0 };
     }
 
