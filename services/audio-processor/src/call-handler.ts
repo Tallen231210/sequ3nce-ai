@@ -243,7 +243,27 @@ export class CallHandler {
               this.onAmmoV2Analysis(analysis);
             }
           },
-          45000 // 45 seconds
+          45000, // 45 seconds
+          // Bot calls have no inherent viewer, so each cycle first asks
+          // Convex whether any live view (closer web app, manager Live page,
+          // call detail) heartbeated recently. Any failure reads as "no
+          // viewer" — the cheap direction, and if Convex is down nobody can
+          // be watching anyway. Desktop calls skip the check: the streaming
+          // desktop client is the viewer.
+          this.source === "recall"
+            ? async () => {
+                try {
+                  const res = await fetch(
+                    `${process.env.CONVEX_SITE_URL || process.env.CONVEX_URL?.replace(".convex.cloud", ".convex.site")}/hasLiveViewer?callId=${this.convexCallId}`,
+                  );
+                  if (!res.ok) return false;
+                  const data = (await res.json()) as { hasViewer?: boolean };
+                  return data.hasViewer === true;
+                } catch {
+                  return false;
+                }
+              }
+            : undefined
         );
 
         logger.info(`Ammo V2 analyzer started for call ${this.session.metadata.callId}`);

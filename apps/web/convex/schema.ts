@@ -891,6 +891,15 @@ export default defineSchema({
      *  for "did the prospect actually show" — a closer waiting alone
      *  produces a long recording and this stays false. */
     prospectJoined: v.optional(v.boolean()),
+    /**
+     * Last time any live view of this call was open (closer web app, manager
+     * Live page, or the call detail page mid-call). Heartbeated every ~20s by
+     * those screens. The audio processor's 45-second live-analysis loop runs
+     * for bot-sourced calls ONLY while this is fresh — analyzing a call
+     * nobody is watching was most of the Anthropic bill. Desktop-sourced
+     * calls don't need it: the desktop IS the viewer, attached by WebSocket.
+     */
+    liveViewerHeartbeatAt: v.optional(v.number()),
     // Speaker mapping (maps Deepgram speakers to closer/prospect)
     speakerMapping: v.optional(v.object({
       closerSpeaker: v.string(), // "speaker_0" or "speaker_1" from Deepgram

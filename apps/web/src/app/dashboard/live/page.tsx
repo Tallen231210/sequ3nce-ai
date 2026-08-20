@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { RequiresFeature } from "@/components/dashboard/requires-feature";
 import { api } from "../../../../convex/_generated/api";
 import { Id } from "../../../../convex/_generated/dataModel";
@@ -201,6 +201,19 @@ interface LiveCallCardProps {
 
 function LiveCallCard({ call, isExpanded, onToggleExpand, visitorCallId }: LiveCallCardProps) {
   const [elapsed, setElapsed] = useState(0);
+  const liveViewHeartbeat = useMutation(api.calls.liveViewHeartbeat);
+
+  // A manager looking at this card counts as a live viewer: the audio
+  // processor only runs live analysis on bot calls while some view is
+  // heartbeating. ~20s cadence; misses just pause analysis for a cycle.
+  useEffect(() => {
+    const beat = () => {
+      liveViewHeartbeat({ callId: call._id as Id<"calls"> }).catch(() => {});
+    };
+    beat();
+    const interval = setInterval(beat, 20_000);
+    return () => clearInterval(interval);
+  }, [call._id, liveViewHeartbeat]);
 
   // Update elapsed time every second
   useEffect(() => {
