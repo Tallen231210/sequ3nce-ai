@@ -52,7 +52,9 @@ export function ContentSubmissionsView({ closerInfo }: ContentSubmissionsViewPro
       <div className="px-6 flex border-b border-gray-200 dark:border-gray-700">
         {([
           { id: 'creator-cash' as const, label: 'Creator Cash' },
-          { id: 'affiliate' as const, label: 'Affiliate Program' },
+          // Affiliate tab hidden 2026-08-19 — the Refgrow integration isn't
+          // functional (web→app boundary breaks the referral chain) and Tyler
+          // is revisiting it later. RefgrowWidget stays for that day.
         ]).map((tab) => (
           <button
             key={tab.id}

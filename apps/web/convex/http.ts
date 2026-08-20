@@ -5917,6 +5917,51 @@ http.route({
   }),
 });
 
+// Polar billing portal for a B2C user (card updates, invoices, cancel).
+http.route({
+  path: "/b2c/polar-portal",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { b2cUserId } = await request.json();
+      if (!b2cUserId) {
+        return new Response(JSON.stringify({ error: "b2cUserId is required" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+      const result = await ctx.runAction(internal.b2cPolar.createPortalSession, {
+        b2cUserId: b2cUserId as Id<"b2cUsers">,
+      });
+      return new Response(JSON.stringify(result), {
+        status: result.url ? 200 : 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in b2c/polar-portal:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/polar-portal",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+      },
+    });
+  }),
+});
+
 // Swap Closer/Prospect labels on a call's transcript — the closer's own
 // escape hatch for mislabelled speakers. The mutation verifies the call
 // belongs to the closerId supplied, same trust model as every route here.

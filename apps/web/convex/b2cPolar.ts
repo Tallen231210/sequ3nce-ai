@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
@@ -246,5 +246,64 @@ export const sendWelcomeEmail = internalAction({
     } else {
       console.log(`[b2cPolar] welcome email sent to ${args.email}`);
     }
+  },
+});
+
+/**
+ * Polar customer portal session for a B2C user — where they update cards,
+ * see invoices, or cancel. The app's paywall and settings link here.
+ */
+export const createPortalSession = internalAction({
+  args: { b2cUserId: v.id("b2cUsers") },
+  handler: async (ctx, args): Promise<{ url?: string; error?: string }> => {
+    const user = await ctx.runQuery(internal.b2cPolar.getUserForPortal, {
+      b2cUserId: args.b2cUserId,
+    });
+    if (!user) return { error: "Account not found" };
+    if (!user.polarCustomerId) {
+      return { error: "No billing profile yet — subscribe first." };
+    }
+
+    const token = process.env.POLAR_ACCESS_TOKEN;
+    if (!token) {
+      console.error("[b2cPolar] POLAR_ACCESS_TOKEN not set on this deployment");
+      return { error: "Billing portal isn't available right now." };
+    }
+    // Same host discipline as src/lib/polar.ts: unset means PRODUCTION on
+    // purpose (a forgotten env var must not silently point at sandbox), and
+    // anything that isn't a Polar host is refused.
+    const base = process.env.POLAR_API_BASE || "https://api.polar.sh";
+    if (base !== "https://api.polar.sh" && base !== "https://sandbox-api.polar.sh") {
+      console.error(`[b2cPolar] refusing non-Polar POLAR_API_BASE: ${base}`);
+      return { error: "Billing portal isn't available right now." };
+    }
+
+    const res = await fetch(`${base}/v1/customer-sessions/`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ customer_id: user.polarCustomerId }),
+    });
+    if (!res.ok) {
+      console.error(
+        `[b2cPolar] customer session refused: ${res.status} ${await res.text()}`,
+      );
+      return { error: "Billing portal isn't available right now." };
+    }
+    const session = (await res.json()) as { customer_portal_url?: string };
+    if (!session.customer_portal_url) {
+      return { error: "Billing portal isn't available right now." };
+    }
+    return { url: session.customer_portal_url };
+  },
+});
+
+export const getUserForPortal = internalQuery({
+  args: { b2cUserId: v.id("b2cUsers") },
+  handler: async (ctx, args) => {
+    const u = await ctx.db.get(args.b2cUserId);
+    return u ? { polarCustomerId: u.polarCustomerId ?? null } : null;
   },
 });
