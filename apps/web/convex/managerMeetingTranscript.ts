@@ -264,7 +264,15 @@ export const fetchManagerTranscript = internalAction({
       ];
     });
 
-    if (segments.length === 0) return { segments: 0 };
+    if (segments.length === 0) {
+      // Downloaded fine and contains no words: a silent meeting. Terminal —
+      // mark it so the nightly repair stops re-fetching an empty file.
+      await ctx.runMutation(
+        internal.managerMeetingTranscript.markMeetingFailure,
+        { meetingId: args.meetingId, reason: "silent meeting — nothing was said" },
+      );
+      return { segments: 0 };
+    }
 
     await ctx.runMutation(internal.managerMeetingTranscript.saveSegments, {
       meetingId: args.meetingId,

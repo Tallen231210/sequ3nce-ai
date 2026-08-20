@@ -315,6 +315,13 @@ export const extractCall = internalAction({
 
     const transcript = (args.transcript ?? info.transcript ?? "").trim();
     if (transcript.length < MIN_TRANSCRIPT_CHARS) {
+      // Recorded, not just returned: an unmarked early exit re-qualifies for
+      // the nightly repair sweep forever — the transcript will be exactly as
+      // short tomorrow.
+      await ctx.runMutation(
+        internal.callExtractionRun.recordExtractionFailure,
+        { callId: args.callId, reason: `transcript is ${transcript.length} chars — too short` },
+      );
       return { ok: false, reason: "transcript too short to read" };
     }
 
