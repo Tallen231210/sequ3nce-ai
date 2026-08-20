@@ -753,6 +753,9 @@ export class CallHandler {
 
     // Stop Ammo V2 analyzer if running
     if (this.ammoAnalyzer) {
+      // Final snapshot before stopping — post-call surfaces read the last
+      // saved analysis, and gated (unwatched) calls may never have run one.
+      await this.ammoAnalyzer.runFinalAnalysis(this.session.fullTranscript);
       this.ammoAnalyzer.stop();
       this.ammoAnalyzer = null;
       logger.info(`Ammo V2 analyzer stopped for call ${this.session.metadata.callId}`);
