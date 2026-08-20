@@ -109,7 +109,9 @@ export function InlineLeadForm({
           },
         );
 
-        router.push("/personal/download");
+        // Lead captured (GHL nurture + Refgrow attribution) — then straight to
+      // checkout. Payment now precedes download; the app itself is the lock.
+      router.push("/personal/checkout");
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Something went wrong. Please try again.",
