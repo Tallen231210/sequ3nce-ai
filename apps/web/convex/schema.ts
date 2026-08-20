@@ -3580,6 +3580,21 @@ export default defineSchema({
      * than leave a silent gap someone later reads as "no meeting happened".
      */
     failureReason: v.optional(v.string()),
+    /**
+     * What KIND of meeting this was — the tabs in Manager Mode. Denormalized
+     * from the analysis's `kind` (judged from the conversation, not the
+     * title) so the meetings list never joins the analysis table. Manual
+     * re-filing outranks the AI and is never overwritten, the same contract
+     * as every other human-vs-model field.
+     */
+    meetingType: v.optional(v.union(
+      v.literal("one_to_one"),
+      v.literal("team"),
+      v.literal("leadership"),
+      v.literal("interview"),
+      v.literal("other"),
+    )),
+    meetingTypeSource: v.optional(v.union(v.literal("ai"), v.literal("manual"))),
     createdAt: v.number(),
   })
     .index("by_user_and_created", ["userId", "createdAt"])

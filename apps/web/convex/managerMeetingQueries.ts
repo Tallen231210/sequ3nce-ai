@@ -32,6 +32,7 @@ export const listManagerMeetings = query({
       status: m.status,
       hasRecording: !!m.recordingUrl,
       failureReason: m.failureReason ?? null,
+      meetingType: m.meetingType ?? null,
     }));
   },
 });
@@ -75,6 +76,8 @@ export const getManagerMeetingDetail = query({
       status: meeting.status,
       recordingUrl: meeting.recordingUrl ?? null,
       failureReason: meeting.failureReason ?? null,
+      meetingType: meeting.meetingType ?? null,
+      meetingTypeSource: meeting.meetingTypeSource ?? null,
       hasTranscript: transcript.length > 0,
       transcript: transcript.slice(0, 400).map((t) => ({
         speaker: t.speaker,
@@ -125,6 +128,39 @@ export const listUpcomingManagerEvents = query({
       hasMeetingUrl: !!e.meetingUrl,
       excluded: e.excluded === true,
     }));
+  },
+});
+
+/**
+ * Re-file a meeting under a different type. Human overrides the AI and the
+ * AI never overrides back — the analysis pass checks meetingTypeSource
+ * before writing.
+ */
+export const setMeetingType = mutation({
+  args: {
+    clerkId: v.string(),
+    meetingId: v.id("managerMeetings"),
+    meetingType: v.union(
+      v.literal("one_to_one"),
+      v.literal("team"),
+      v.literal("leadership"),
+      v.literal("interview"),
+      v.literal("other"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new ConvexError("Not authorised");
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) throw new ConvexError("Meeting not found");
+    if (String(meeting.userId) !== String(user._id)) {
+      throw new ConvexError("Not your meeting");
+    }
+    await ctx.db.patch(args.meetingId, {
+      meetingType: args.meetingType,
+      meetingTypeSource: "manual",
+    });
+    return { ok: true };
   },
 });
 

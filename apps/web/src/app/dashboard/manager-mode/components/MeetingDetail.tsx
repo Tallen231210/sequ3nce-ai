@@ -129,6 +129,53 @@ function fmtDuration(seconds: number | null): string {
  * empty, and read with something in it. Collapsing those into one silent
  * blank is how a working feature gets reported as broken.
  */
+/**
+ * The type badge, but editable. The AI files each meeting from its
+ * conversation; this is the human correction — one change and the model
+ * never re-files it.
+ */
+function TypeRefiler({
+  meetingId,
+  current,
+}: {
+  meetingId: string;
+  current: string | null;
+}) {
+  const { user } = useUser();
+  const setType = useMutation(api.managerMeetingQueries.setMeetingType);
+  const OPTIONS: Array<{ value: string; label: string }> = [
+    { value: "one_to_one", label: "1-on-1" },
+    { value: "team", label: "Team meeting" },
+    { value: "leadership", label: "Leadership" },
+    { value: "interview", label: "Interview" },
+    { value: "other", label: "Other" },
+  ];
+  return (
+    <select
+      value={current ?? ""}
+      onChange={(e) => {
+        if (!user || !e.target.value) return;
+        void setType({
+          clerkId: user.id,
+          meetingId: meetingId as any,
+          meetingType: e.target.value as any,
+        }).catch(() => {});
+      }}
+      className="cursor-pointer rounded-full border-0 bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground outline-none hover:text-foreground"
+      title="Re-file this meeting — your choice overrides the AI"
+    >
+      <option value="" disabled>
+        Unsorted
+      </option>
+      {OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function MeetingDetail({
   meetingId,
   onBack,
@@ -168,11 +215,10 @@ export function MeetingDetail({
         <div>
           <div className="flex items-baseline gap-3">
             <h2 className="text-xl font-semibold tracking-tight">{d.title}</h2>
-            {a && (
-              <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                {KIND_LABEL[a.kind] ?? "Meeting"}
-              </span>
-            )}
+            <TypeRefiler
+              meetingId={meetingId}
+              current={(d as any).meetingType ?? a?.kind ?? null}
+            />
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {d.startedAt ? new Date(d.startedAt).toLocaleString() : "—"}
