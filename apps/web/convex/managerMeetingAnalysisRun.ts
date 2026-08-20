@@ -115,6 +115,15 @@ export const analyseManagerMeeting = internalAction({
       console.warn(
         `[managerAnalysis] ${meeting.title}: ${result.reason} after ${result.attempts} attempts`,
       );
+      // A transcript too short to read stays too short forever — terminal
+      // for the nightly repair. Transient failures (model outage) stay
+      // unmarked so the sweep retries them tomorrow.
+      if (result.reason.includes("too short")) {
+        await ctx.runMutation(
+          internal.managerMeetingTranscript.markMeetingFailure,
+          { meetingId: args.meetingId, reason: "too little was said to analyse" },
+        );
+      }
       return { analysed: false, reason: result.reason };
     }
 
