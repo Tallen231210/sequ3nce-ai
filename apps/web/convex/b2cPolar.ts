@@ -209,7 +209,7 @@ export const sendWelcomeEmail = internalAction({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Sequ3nce <noreply@sequ3nce.ai>",
+        from: "Sequ3nce <noreply@noreply.sequ3nce.ai>",
         to: args.email,
         subject: "Your Sequ3nce Personal access is ready",
         html: `
