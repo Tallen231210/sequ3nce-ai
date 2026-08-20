@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { CloserInfo } from '../convex';
-import { createB2CCheckout, createB2CPortal, getSubscriptionStatus } from '../convex';
+import { createB2CPortal, getSubscriptionStatus } from '../convex';
 import logoImage from '../../assets/logo.png';
 
 interface SubscriptionGateProps {
@@ -62,29 +62,11 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
     }, 3000);
   }, [checkStatus]);
 
-  async function handleSubscribe() {
-    if (!closerInfo.b2cUserId) {
-      setError('Account error. Please log out and log back in.');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    const result = await createB2CCheckout(closerInfo.email, closerInfo.b2cUserId);
-
-    if (!mountedRef.current) return;
-    setIsLoading(false);
-
-    if (result.error || !result.url) {
-      setError(result.error || 'Failed to start checkout');
-      return;
-    }
-
-    // Open Stripe Checkout in system browser (setWindowOpenHandler routes to shell.openExternal)
-    window.open(result.url, '_blank');
-
-    // Start polling for subscription activation
+  function handleSubscribe() {
+    // Payment lives on the web now (Polar): the checkout page owns plans and
+    // prices, and paying flips this account active — the poll below sees it
+    // land without the app knowing anything about money.
+    window.open('https://sequ3nce.ai/personal/checkout', '_blank');
     startPolling();
   }
 
@@ -113,15 +95,6 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
 
   const isPastDue = closerInfo.subscriptionStatus === 'past_due';
   const isCancelled = closerInfo.subscriptionStatus === 'cancelled';
-  const isTrialExpired = !!(closerInfo.trialExpiresAt && closerInfo.trialExpiresAt < Date.now());
-  const isNewUser = !closerInfo.trialExpiresAt && !closerInfo.subscriptionStatus?.match(/active|cancelled|past_due/);
-  const isEarlyBird = closerInfo.pricingTier === 'early';
-  const price = isEarlyBird ? '$99' : '$129.99';
-
-  // Calculate trial end date for display
-  const trialEndDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', {
-    month: 'long', day: 'numeric', year: 'numeric',
-  });
 
   return (
     <div className="h-screen flex flex-col bg-white text-black">
@@ -138,22 +111,14 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
             ? 'Payment Issue'
             : isCancelled
               ? 'Subscription Inactive'
-              : isTrialExpired
-                ? 'Trial Ended'
-                : isNewUser
-                  ? 'Start Your Free Trial'
-                  : 'Unlock Sequ3nce Personal'}
+              : 'Unlock Sequ3nce Personal'}
         </h1>
         <p className="text-gray-500 text-sm mb-8 text-center max-w-sm">
           {isPastDue
-            ? 'Your subscription payment failed. Please update your payment method to continue.'
+            ? 'Your subscription payment failed. Update your payment method to continue.'
             : isCancelled
               ? 'Your subscription has been cancelled. Resubscribe to regain access.'
-              : isTrialExpired
-                ? 'Your free trial has ended. Subscribe to continue using Sequ3nce Personal.'
-                : isNewUser
-                  ? `Enter your card to start your 45-day free trial. You won't be charged until ${trialEndDate}.`
-                  : 'Get access to all the tools you need to crush your sales goals.'}
+              : 'Membership is handled on our website — pick a plan there and this screen unlocks the moment your payment lands.'}
         </p>
 
         {/* Features */}
@@ -170,19 +135,11 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
 
         {/* Price card */}
         <div className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl p-6 mb-6 text-center">
-          {isNewUser && (
-            <div className="mb-2">
-              <span className="text-xs font-semibold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">45 days free</span>
-            </div>
-          )}
           <div className="mb-1">
-            <span className="text-3xl font-bold text-gray-900">{price}</span>
+            <span className="text-3xl font-bold text-gray-900">From $83</span>
             <span className="text-gray-500 text-sm">/month</span>
           </div>
-          {isNewUser && (
-            <p className="text-xs text-gray-400 mb-4">after trial ends</p>
-          )}
-          {!isNewUser && <div className="mb-4" />}
+          <p className="text-xs text-gray-400 mb-4">billed annually · monthly &amp; quarterly plans available</p>
 
           {isPastDue ? (
             <button
@@ -198,15 +155,11 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
               disabled={isLoading || isPolling}
               className="w-full py-3 px-4 text-sm font-semibold text-white bg-black rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
-              {isLoading
-                ? 'Opening checkout...'
-                : isPolling
-                  ? 'Waiting for payment...'
-                  : isCancelled
-                    ? 'Resubscribe'
-                    : isNewUser
-                      ? 'Start Free Trial'
-                      : 'Subscribe Now'}
+              {isPolling
+                ? 'Waiting for payment...'
+                : isCancelled
+                  ? 'Resubscribe on the web'
+                  : 'Choose a plan on the web'}
             </button>
           )}
         </div>

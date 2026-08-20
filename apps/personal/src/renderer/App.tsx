@@ -587,13 +587,16 @@ function LoginScreen({ email, setEmail, password, setPassword, onSubmit, isLoadi
         </form>
 
         <p className="mt-8 text-xs text-gray-400 text-center max-w-xs">
+          {/* Accounts are created by PAYMENT on the web (Polar) — the old
+              in-app signup made unpaid accounts that then hit a Stripe trial
+              screen, a second checkout system this app no longer has. */}
           Don't have an account?{' '}
           <button
             type="button"
-            onClick={onSwitchToSignup}
+            onClick={() => window.open('https://sequ3nce.ai/personal/checkout', '_blank')}
             className="text-black font-medium hover:underline"
           >
-            Sign up
+            Get access →
           </button>
         </p>
       </div>
@@ -728,10 +731,10 @@ function ForgotPasswordScreen({ onBack, onSwitchToSignup }: ForgotPasswordScreen
               {' '}
               <button
                 type="button"
-                onClick={onSwitchToSignup}
+                onClick={() => window.open('https://sequ3nce.ai/personal/checkout', '_blank')}
                 className="text-black font-medium hover:underline"
               >
-                Don't have an account? Sign up →
+                Don't have an account? Get access →
               </button>
             </p>
 
@@ -990,17 +993,18 @@ function ErrorScreen({ error, onRetry, onSwitchToSignup }: ErrorScreenProps) {
           </button>
           {showSignupOption && (
             <button
-              onClick={onSwitchToSignup}
+              onClick={() => window.open('https://sequ3nce.ai/personal/checkout', '_blank')}
               className="w-full py-3 bg-white text-black border border-gray-300 font-medium rounded-lg hover:bg-gray-50 transition-colors duration-150"
             >
-              Create an account
+              Get access
             </button>
           )}
         </div>
 
         {showSignupOption && (
           <p className="mt-6 text-xs text-gray-400 text-center max-w-xs">
-            Don't have an account yet? New users need to sign up first.
+            Accounts are created when you join on our website — your welcome
+            email has the sign-in details.
           </p>
         )}
       </div>

@@ -3893,7 +3893,8 @@ export async function createB2CPortal(
   b2cUserId: string
 ): Promise<{ url?: string; error?: string }> {
   try {
-    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/create-portal`, {
+    // Polar customer portal (B2C moved off Stripe 2026-08-19).
+    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/polar-portal`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ b2cUserId }),
