@@ -151,15 +151,22 @@ export const setAutoJoinDailyCap = internalMutation({
  * apart so the repair itself can't recreate the rate-limit pile-up.
  */
 export const repairMissingRecordings = internalMutation({
-  args: { kick: v.boolean() },
+  args: { kick: v.boolean(), sinceDays: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    const since = args.sinceDays
+      ? Date.now() - args.sinceDays * 86_400_000
+      : 0;
     const bots = await ctx.db.query("meetingBots").order("desc").take(1000);
     const candidates = bots.filter(
       (b) =>
         !!b.joinedAt &&
         !b.recordingUrl &&
         !!b.recallBotId &&
-        b.status !== "failed",
+        b.status !== "failed" &&
+        // Terminally resolved ("nobody joined — nothing recorded") bots are
+        // done; re-fetching them nightly is how storms start.
+        !b.failureReason &&
+        (b.scheduledAt ?? b.createdAt ?? 0) >= since,
     );
     if (args.kick) {
       for (let i = 0; i < candidates.length; i++) {

@@ -380,4 +380,19 @@ crons.cron(
   {},
 );
 
+// Nightly pipeline repair: re-kick anything that should have produced data
+// and didn't — closer recordings, manager meeting recordings/transcripts/
+// analyses, AI dispositions. Scheduled actions that throw do NOT retry, so
+// chains die silently; this sweep is the safety net that makes the whole
+// pipeline self-healing instead of trusting every chain to be perfect.
+//
+// 4:20 UTC — after the attendance sweep (3:50), before anyone reads
+// morning numbers. crons.cron, never crons.interval.
+crons.cron(
+  "pipeline-repair-sweep",
+  "20 4 * * *",
+  internal.pipelineRepair.runNightlyRepair,
+  {},
+);
+
 export default crons;
