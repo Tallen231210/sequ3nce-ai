@@ -5,7 +5,7 @@ import { Logo } from "@/components/ui/logo";
 import { useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
-import { CheckCircle2, Download, Loader2, Mail } from "lucide-react";
+import { CheckCircle2, Download, Loader2 } from "lucide-react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -94,8 +94,8 @@ function ActivateInner() {
       <a
         href={dl(dmg)}
         className={
-          "flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-4 text-sm font-semibold transition-colors " +
-          (dmg ? "hover:border-zinc-900" : "pointer-events-none opacity-40")
+          "flex items-center justify-center gap-2 rounded-xl bg-zinc-900 px-5 py-4 text-sm font-semibold text-white transition-colors " +
+          (dmg ? "hover:bg-zinc-800" : "pointer-events-none opacity-40")
         }
       >
         <Download className="h-4 w-4" /> Download for Mac
@@ -116,7 +116,13 @@ function ActivateInner() {
   if (fromCheckout) {
     return (
       <Shell>
-        <Mail className="mx-auto h-10 w-10 text-zinc-400" />
+        <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3.5 py-1.5 text-[12px] font-medium text-zinc-700">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-50" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          Your account is live
+        </div>
         <h1 className="mt-5 text-3xl sm:text-4xl font-semibold tracking-[-0.04em] leading-[0.95] text-zinc-950">
           Payment received — you&apos;re{" "}
           <span className="font-serif italic font-normal">in</span>
@@ -217,13 +223,29 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-zinc-200/60 bg-white/70 py-4 backdrop-blur-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-center gap-2.5 px-6">
           <Logo href="/personal" height={22} />
-          <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-white">
+          <span className="relative -top-[2px] rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-white">
             PERSONAL
           </span>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16 text-center">
-        {children}
+      <main className="relative flex w-full flex-1 items-start justify-center px-6 py-16 sm:py-20">
+        {/* The landing page's ground: faint dot grid under a radial fade. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 -z-10"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, rgb(228 228 231) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+            maskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 35%, black 30%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 35%, black 30%, transparent 80%)",
+          }}
+        />
+        <div className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-8 sm:p-10 text-center shadow-lg shadow-zinc-200/40">
+          {children}
+        </div>
       </main>
     </div>
   );

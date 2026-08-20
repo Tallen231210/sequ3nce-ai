@@ -87,7 +87,7 @@ export default function PersonalCheckoutPage() {
       <header className="border-b border-zinc-200/60 bg-white/70 py-4 backdrop-blur-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-center gap-2.5 px-6">
           <Logo href="/personal" height={22} />
-          <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-white">
+          <span className="relative -top-[2px] rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-semibold tracking-[0.18em] text-white">
             PERSONAL
           </span>
         </div>
