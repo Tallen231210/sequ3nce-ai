@@ -27,6 +27,8 @@ interface BookingsData {
 }
 
 export interface AttendanceFunnelData {
+  /** When Sequ3nce first witnessed a call for this team (null = never). */
+  watchingSinceMs: number | null;
   peopleBooked: number;
   totalBookings: number;
   showed: number;
@@ -44,6 +46,8 @@ interface BookingsPanelProps {
   insight?: PanelInsight | null;
   /** Persisted attendance rollup — null for teams without the beta. */
   attendanceFunnel?: AttendanceFunnelData | null;
+  /** Range start, so the funnel can flag slots that predate call-watching. */
+  rangeStart?: number;
 }
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -59,6 +63,7 @@ export function BookingsPanel({
   bookings,
   insight,
   attendanceFunnel,
+  rangeStart,
 }: BookingsPanelProps) {
   if (bookings.source === "none") {
     return (
@@ -187,7 +192,7 @@ export function BookingsPanel({
             Rendered only when persisted attendance verdicts exist (beta) —
             every other team's panel is unchanged. */}
         {attendanceFunnel && attendanceFunnel.peopleBooked > 0 && (
-          <PeopleFunnelSection funnel={attendanceFunnel} />
+          <PeopleFunnelSection funnel={attendanceFunnel} rangeStart={rangeStart} />
         )}
 
         {/* Tier 2: per-setter + connection ratio (setter-driven flow only) */}
@@ -300,7 +305,22 @@ function StatCard({
   );
 }
 
-function PeopleFunnelSection({ funnel }: { funnel: AttendanceFunnelData }) {
+function PeopleFunnelSection({
+  funnel,
+  rangeStart,
+}: {
+  funnel: AttendanceFunnelData;
+  rangeStart?: number;
+}) {
+  const watchNote =
+    funnel.watchingSinceMs !== null &&
+    rangeStart !== undefined &&
+    rangeStart < funnel.watchingSinceMs
+      ? new Date(funnel.watchingSinceMs).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        })
+      : null;
   const settledPeople = funnel.showed + funnel.noShowFinal;
   const showRate =
     settledPeople > 0 ? Math.round((funnel.showed / settledPeople) * 100) : null;
@@ -368,6 +388,13 @@ function PeopleFunnelSection({ funnel }: { funnel: AttendanceFunnelData }) {
           </span>{" "}
           rescheduled at least once ({funnel.rescheduledAtLeastOnce} of{" "}
           {funnel.peopleBooked})
+        </div>
+      )}
+      {watchNote && (
+        <div className="mt-2 text-[10px] text-muted-foreground">
+          Sequ3nce joined its first call for this team on {watchNote} — slots
+          before that can&apos;t earn call evidence and mostly read as
+          unverifiable.
         </div>
       )}
       {funnel.truncated && (
