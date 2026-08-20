@@ -2748,6 +2748,11 @@ export default defineSchema({
      *  indexed point lookup instead of scanning 20k leads per query. Stamped
      *  at ingest; backfilled per team on demand. */
     emailNorm: v.optional(v.string()),
+    /** A team member living in the CRM as a contact, not a prospect. Set
+     *  manually (support CLI). Excluded from every setter metric — the first
+     *  real org had its OWNER as the top-"booked" lead with 182 internal
+     *  meetings counted as bookings. */
+    isInternal: v.optional(v.boolean()),
     phone: v.optional(v.string()),
     // GHL metadata
     dateAdded: v.number(),                 // GHL-side timestamp, NOT receipt time
@@ -2840,7 +2845,8 @@ export default defineSchema({
     .index("by_team_and_ghl_contact_id", ["teamId", "ghlContactId"])
     .index("by_team_and_last_activity", ["teamId", "lastActivityAt"])
     .index("by_team_and_hyros_status", ["teamId", "hyrosAttributionStatus"])
-    .index("by_team_and_email_norm", ["teamId", "emailNorm"]),
+    .index("by_team_and_email_norm", ["teamId", "emailNorm"])
+    .index("by_team_and_internal", ["teamId", "isInternal"]),
 
   // Append-only event log. Source of truth for all per-lead activity. Powers
   // time-series reports (working hours heatmap, source attribution trends,

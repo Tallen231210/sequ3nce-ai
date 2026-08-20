@@ -64,25 +64,29 @@ interface KpiStripProps {
 export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-      {/* Median leads, average follows: one six-month-old lead dialed today
-          adds thousands of hours to an average and nothing to a median. Leads
-          first touched >7 days after arriving are excluded as revivals — a
-          different event than response speed — and the exclusion is shown, so
-          the trim is a visible fact rather than silent surgery. */}
+      {/* Two channels, guessed for nobody: a DM-first funnel's response is a
+          message, a phone-first funnel's is a call. Medians (outlier-proof);
+          leads first touched >7 days after arriving are excluded as revivals
+          and the exclusion is counted, visibly. The caveat matters: this only
+          sees touches logged in the CRM — a team whose real first response
+          happens elsewhere (e.g. Instagram DMs) is faster than shown. */}
       <KpiCard
         icon={Clock}
         label="Speed to lead (median)"
-        value={
-          data.p50SpeedMs !== null ? formatDuration(data.p50SpeedMs) : "—"
-        }
-        sub={
-          data.p50SpeedMs === null
-            ? "No dialed leads"
-            : `Avg ${data.avgSpeedMs !== null ? formatDuration(data.avgSpeedMs) : "—"}` +
-              ((data as any).revivedLeadCount > 0
-                ? ` · ${(data as any).revivedLeadCount} revived excluded`
-                : "")
-        }
+        value={(() => {
+          const ch = (data as any).speedByChannel;
+          const dial = ch?.dial?.p50 ?? data.p50SpeedMs;
+          const sms = ch?.sms?.p50;
+          const parts = [];
+          if (dial !== null && dial !== undefined) parts.push(`${formatDuration(dial)} call`);
+          if (sms !== null && sms !== undefined) parts.push(`${formatDuration(sms)} SMS`);
+          return parts.length ? parts.join(" · ") : "—";
+        })()}
+        sub={(() => {
+          const revived = (data as any).revivedLeadCount ?? 0;
+          const base = "CRM-logged touches only — first replies made elsewhere (e.g. IG DMs) aren't visible";
+          return revived > 0 ? `${base} · ${revived} revived excluded` : base;
+        })()}
       />
       <KpiCard
         icon={Phone}

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { buildMatcherIndex, findCallsForLead } from "./setterCloserMatcher";
 import { readDailyStatsRange, dayKeyOf, DAY_MS } from "./setterRollups";
@@ -141,6 +141,12 @@ export interface ScorecardData {
   /** Leads first-touched more than 7 days after arriving — excluded from the
    *  speed stats as revivals, and counted here so the trim is visible. */
   revivedLeadCount: number;
+  /** Speed to lead split by channel — a DM-first funnel's response is a
+   *  message, a phone-first funnel's is a call; show both, guess neither. */
+  speedByChannel: {
+    dial: { avg: number | null; p50: number | null; p90: number | null; n: number; revived: number };
+    sms: { avg: number | null; p50: number | null; p90: number | null; n: number; revived: number };
+  };
   /** Phase 2 — team-wide appointment rollup. */
   totalAppointments: number;
   totalShowed: number;
@@ -452,36 +458,52 @@ export async function computeScorecard(
         )
         .collect());
 
-    const totalLeads = leads.length;
-    const connectedLeads = leads.filter((l) => l.isConnected).length;
-    const untouchedLeads = leads.filter(
+    // Internal contacts (team members living in the CRM) are not prospects
+    // and are excluded from every lead stat.
+    const prospectLeads = leads.filter((l) => l.isInternal !== true);
+    const totalLeads = prospectLeads.length;
+    const connectedLeads = prospectLeads.filter((l) => l.isConnected).length;
+    const untouchedLeads = prospectLeads.filter(
       (l) => l.dialCount === 0 && l.smsOutboundCount === 0,
     ).length;
 
-    // Speed-to-lead percentiles. Only count leads that actually got dialed
-    // — otherwise we'd be averaging "infinity" for never-touched leads.
-    const dialedLeads = leads.filter(
-      (l): l is Doc<"setterLeads"> & { firstDialAt: number } =>
-        typeof l.firstDialAt === "number",
-    );
-    const speedsMs = dialedLeads
-      .map((l) => normalizeSpeedToLeadMs(l.firstDialAt, l.dateAdded))
-      .filter((ms): ms is number => ms !== null)
-      .sort((a, b) => a - b);
-    // Excluded ≠ hidden: revivals are reported alongside, so "we trimmed 12
-    // anomalies" is a visible fact rather than silent surgery on the stats.
-    const revivedLeadCount = dialedLeads.filter(
-      (l) => l.firstDialAt - l.dateAdded > SPEED_TO_LEAD_ELIGIBILITY_MS,
-    ).length;
+    // Speed-to-lead, as TWO metrics — first dial and first SMS — because a
+    // DM-first funnel's "response" is a message and a phone-first funnel's is
+    // a call, and we can't know per team which they run. Only leads that
+    // actually got that touch count; never-touched leads would average in as
+    // "infinity". Internal contacts (team members in the CRM) are excluded
+    // from everything.
+    const prospects = prospectLeads;
 
-    const avgSpeedMs =
-      speedsMs.length > 0
-        ? speedsMs.reduce((sum, x) => sum + x, 0) / speedsMs.length
-        : null;
-    const p50SpeedMs =
-      speedsMs.length > 0 ? speedsMs[Math.floor(speedsMs.length * 0.5)] : null;
-    const p90SpeedMs =
-      speedsMs.length > 0 ? speedsMs[Math.floor(speedsMs.length * 0.9)] : null;
+    const speedStats = (key: "firstDialAt" | "firstSmsOutboundAt") => {
+      const touched = prospects.filter(
+        (l) => typeof (l as any)[key] === "number",
+      );
+      const speeds = touched
+        .map((l) => normalizeSpeedToLeadMs((l as any)[key], l.dateAdded))
+        .filter((ms): ms is number => ms !== null)
+        .sort((a, b) => a - b);
+      // Excluded ≠ hidden: revivals are reported alongside, so "we trimmed 12
+      // anomalies" is a visible fact rather than silent surgery on the stats.
+      const revived = touched.filter(
+        (l) => (l as any)[key] - l.dateAdded > SPEED_TO_LEAD_ELIGIBILITY_MS,
+      ).length;
+      return {
+        avg: speeds.length ? speeds.reduce((a, b) => a + b, 0) / speeds.length : null,
+        p50: speeds.length ? speeds[Math.floor(speeds.length * 0.5)] : null,
+        p90: speeds.length ? speeds[Math.floor(speeds.length * 0.9)] : null,
+        n: speeds.length,
+        revived,
+      };
+    };
+    const dialSpeed = speedStats("firstDialAt");
+    const smsSpeed = speedStats("firstSmsOutboundAt");
+
+    // Legacy fields keep the dial-based values (the original meaning).
+    const avgSpeedMs = dialSpeed.avg;
+    const p50SpeedMs = dialSpeed.p50;
+    const p90SpeedMs = dialSpeed.p90;
+    const revivedLeadCount = dialSpeed.revived + smsSpeed.revived;
 
     // Per-setter aggregation. We need rep names — fetch the rep list
     // once and look up by ghlUserId. Guarded take: no realistic team has
@@ -769,6 +791,10 @@ export async function computeScorecard(
       p50SpeedMs,
       p90SpeedMs,
       revivedLeadCount,
+      speedByChannel: {
+        dial: dialSpeed,
+        sms: smsSpeed,
+      },
       totalAppointments,
       totalShowed,
       totalNoShow,
@@ -864,9 +890,29 @@ async function computeBookingsFromGhlAppointments(
     )
     .collect()) as Doc<"setterAppointments">[];
 
-  const valid = allAppts.filter(
-    (a) => a.status !== "Cancelled" && a.status !== "Invalid",
-  );
+  // Team members living in the CRM as contacts are not prospects. The first
+  // real org had its OWNER as the top-"booked" lead — 182 internal meetings
+  // counted as bookings in one month.
+  const internalLeads = (await ctx.db
+    .query("setterLeads")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .withIndex("by_team_and_internal", (q: any) =>
+      q.eq("teamId", args.teamId).eq("isInternal", true),
+    )
+    .take(200)) as Doc<"setterLeads">[];
+  const internalContactIds = new Set(internalLeads.map((l) => l.ghlContactId));
+
+  // Dedupe same-contact-same-slot doubles (reschedule artifacts recorded
+  // twice) — 130 of them in the first org's single month.
+  const seenSlot = new Set<string>();
+  const valid = allAppts.filter((a) => {
+    if (a.status === "Cancelled" || a.status === "Invalid") return false;
+    if (internalContactIds.has(a.ghlContactId)) return false;
+    const slot = `${a.ghlContactId}:${a.startTime}`;
+    if (seenSlot.has(slot)) return false;
+    seenSlot.add(slot);
+    return true;
+  });
 
   const total = valid.length;
   const now = Date.now();
@@ -1454,5 +1500,25 @@ export const getScorecardData = internalQuery({
         evidence: args.evidence ?? false,
       },
     );
+  },
+});
+
+/**
+ * Mark a CRM contact as a team member, not a prospect — excluded from every
+ * setter metric from the next query on. Support CLI; the first use was the
+ * org owner sitting in his own funnel with 182 "bookings".
+ */
+export const markLeadInternal = internalMutation({
+  args: { teamId: v.id("teams"), ghlContactId: v.string(), internal: v.boolean() },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db
+      .query("setterLeads")
+      .withIndex("by_team_and_ghl_contact_id", (q) =>
+        q.eq("teamId", args.teamId).eq("ghlContactId", args.ghlContactId),
+      )
+      .first();
+    if (!lead) return { ok: false, error: "no such lead" };
+    await ctx.db.patch(lead._id, { isInternal: args.internal });
+    return { ok: true, name: lead.name };
   },
 });
