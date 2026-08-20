@@ -175,9 +175,61 @@ export const repairMissingRecordings = internalMutation({
       missingRecording: candidates.length,
       kicked: args.kick,
       sample: candidates.slice(0, 10).map((b) => ({
+        recallBotId: b.recallBotId ?? null,
         title: b.meetingTitle ?? null,
         joined: b.joinedAt ? new Date(b.joinedAt).toISOString() : null,
       })),
+    };
+  },
+});
+
+/**
+ * Stuck-pending audit: completed calls with no outcome, decomposed by what
+ * they have (transcript? summary?) so "Pending for days" separates into
+ * "nothing to read" vs "pipeline died mid-chain".
+ */
+export const stuckPendingAudit = internalQuery({
+  args: { teamId: v.id("teams"), days: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const since = Date.now() - (args.days ?? 14) * 86_400_000;
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q: any) =>
+        q.eq("teamId", args.teamId).gte("createdAt", since),
+      )
+      .take(2000);
+
+    const completed = calls.filter((c: any) => c.status === "completed");
+    const pending = completed.filter((c: any) => c.outcome == null);
+    const rows = [];
+    for (const c of pending) {
+      const content = await ctx.db
+        .query("callContent")
+        .withIndex("by_call", (q: any) => q.eq("callId", c._id))
+        .first()
+        .catch(() => null);
+      const transcriptLen = (content as any)?.transcriptText?.length ?? (c as any).transcriptText?.length ?? 0;
+      rows.push({
+        created: new Date(c.createdAt).toISOString().slice(0, 16),
+        ageDays: Math.round((Date.now() - c.createdAt) / 86_400_000),
+        durationMin: c.duration ? Math.round(c.duration / 60) : 0,
+        transcriptChars: transcriptLen,
+        hasSummary: !!(c as any).summary || !!(content as any)?.summary,
+        prospectJoined: (c as any).prospectJoined ?? null,
+        classifiedAs: (c as any).classifiedAs ?? null,
+        outcomeSource: (c as any).outcomeSource ?? null,
+        extractionFailed: ((c as any).extractionFailed ?? null)?.slice(0, 60) ?? null,
+      });
+    }
+    rows.sort((a, b) => (a.created < b.created ? 1 : -1));
+    return {
+      completedCalls: completed.length,
+      withOutcome: completed.length - pending.length,
+      stuckPending: pending.length,
+      pendingWithRealTranscript: rows.filter((r) => r.transcriptChars > 500).length,
+      pendingWithSummaryButNoOutcome: rows.filter((r) => r.hasSummary).length,
+      pendingEmpty: rows.filter((r) => r.transcriptChars <= 500).length,
+      detail: rows.slice(0, 25),
     };
   },
 });
