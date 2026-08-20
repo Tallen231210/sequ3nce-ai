@@ -26,9 +26,24 @@ interface BookingsData {
   rangeClampedToDays?: number;
 }
 
+export interface AttendanceFunnelData {
+  peopleBooked: number;
+  totalBookings: number;
+  showed: number;
+  noShowFinal: number;
+  cancelledNeverRebooked: number;
+  unverifiable: number;
+  upcoming: number;
+  rescheduledAtLeastOnce: number;
+  rescheduledPct: number | null;
+  truncated: boolean;
+}
+
 interface BookingsPanelProps {
   bookings: BookingsData;
   insight?: PanelInsight | null;
+  /** Persisted attendance rollup — null for teams without the beta. */
+  attendanceFunnel?: AttendanceFunnelData | null;
 }
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -40,7 +55,11 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  * self-book teams — answers "what % of bookings did my setters reach
  * before the call?"
  */
-export function BookingsPanel({ bookings, insight }: BookingsPanelProps) {
+export function BookingsPanel({
+  bookings,
+  insight,
+  attendanceFunnel,
+}: BookingsPanelProps) {
   if (bookings.source === "none") {
     return (
       <Card>
@@ -164,6 +183,13 @@ export function BookingsPanel({ bookings, insight }: BookingsPanelProps) {
           </div>
         </div>
 
+        {/* People funnel: what actually happened to everyone booked.
+            Rendered only when persisted attendance verdicts exist (beta) —
+            every other team's panel is unchanged. */}
+        {attendanceFunnel && attendanceFunnel.peopleBooked > 0 && (
+          <PeopleFunnelSection funnel={attendanceFunnel} />
+        )}
+
         {/* Tier 2: per-setter + connection ratio (setter-driven flow only) */}
         {showTier2 && bookings.perSetter.length > 0 && (
           <div className="mt-5 border-t border-border pt-4">
@@ -270,6 +296,86 @@ function StatCard({
       </div>
       <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
       {sub && <div className="mt-0.5 text-[10px] text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}
+
+function PeopleFunnelSection({ funnel }: { funnel: AttendanceFunnelData }) {
+  const settledPeople = funnel.showed + funnel.noShowFinal;
+  const showRate =
+    settledPeople > 0 ? Math.round((funnel.showed / settledPeople) * 100) : null;
+  const buckets: Array<{ label: string; value: number; tone: string }> = [
+    {
+      label: "Showed",
+      value: funnel.showed,
+      tone: "text-emerald-700 dark:text-emerald-400",
+    },
+    {
+      label: "No-showed",
+      value: funnel.noShowFinal,
+      tone: "text-rose-700 dark:text-rose-400",
+    },
+    {
+      label: "Cancelled, never rebooked",
+      value: funnel.cancelledNeverRebooked,
+      tone: "text-amber-700 dark:text-amber-400",
+    },
+    { label: "Upcoming", value: funnel.upcoming, tone: "text-foreground" },
+    {
+      label: "Unverifiable",
+      value: funnel.unverifiable,
+      tone: "text-muted-foreground",
+    },
+  ];
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          People funnel
+        </div>
+        {showRate !== null && (
+          <div className="text-xs text-muted-foreground">
+            Show rate{" "}
+            <span className="font-semibold text-foreground">{showRate}%</span>{" "}
+            of {settledPeople} settled
+          </div>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Where each of the {funnel.peopleBooked} people who booked in this
+        range ended up — including people whose only booking was later
+        cancelled, judged at their final slot so a reschedule counts once.
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {buckets.map((b) => (
+          <div
+            key={b.label}
+            className="rounded-md border border-border bg-card px-3 py-2.5"
+          >
+            <div className={`text-lg font-semibold tabular-nums ${b.tone}`}>
+              {b.value}
+            </div>
+            <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+              {b.label}
+            </div>
+          </div>
+        ))}
+      </div>
+      {funnel.rescheduledPct !== null && funnel.rescheduledAtLeastOnce > 0 && (
+        <div className="mt-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {Math.round(funnel.rescheduledPct * 100)}%
+          </span>{" "}
+          rescheduled at least once ({funnel.rescheduledAtLeastOnce} of{" "}
+          {funnel.peopleBooked})
+        </div>
+      )}
+      {funnel.truncated && (
+        <div className="mt-2 text-[10px] text-muted-foreground">
+          Range too large to read fully — counts cover the first 8,000
+          bookings. Narrow the range for exact numbers.
+        </div>
+      )}
     </div>
   );
 }

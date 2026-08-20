@@ -63,6 +63,12 @@ export function OverviewTab({
     api.setterData.getCadence,
     clerkId ? { clerkId, rangeStart, rangeEnd } : "skip",
   );
+  // Null for every team without the appointment_attendance beta — the
+  // BookingsPanel renders identically to before in that case.
+  const attendanceFunnel = useQuery(
+    api.setterData.getAttendanceFunnel,
+    clerkId ? { clerkId, rangeStart, rangeEnd } : "skip",
+  );
   const pipelines = useQuery(
     api.setterData.getPipelineStageDistribution,
     clerkId ? { clerkId } : "skip",
@@ -111,7 +117,11 @@ export function OverviewTab({
             onUntouchedClick={() => onDrillToLeads("untouched")}
           />
           <FunnelChart data={data} insight={data.funnelInsight} />
-          <BookingsPanel bookings={data.bookings} insight={data.bookingsInsight} />
+          <BookingsPanel
+            bookings={data.bookings}
+            insight={data.bookingsInsight}
+            attendanceFunnel={attendanceFunnel ?? null}
+          />
           <MetricCoveragePanel />
           <LeadAgeDecayCurve rangeStart={rangeStart} rangeEnd={rangeEnd} />
           <BestTimeToCallHeatmap rangeStart={rangeStart} rangeEnd={rangeEnd} />
