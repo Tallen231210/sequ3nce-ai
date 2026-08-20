@@ -336,6 +336,28 @@ export class AmmoAnalyzer {
   }
 
   /**
+   * One last analysis at call end, viewer or no viewer.
+   *
+   * The periodic loop is gated on someone actually watching, but the FINAL
+   * saved analysis also feeds post-call surfaces (the call detail panel,
+   * objection-prediction analytics, Hyros engagement scoring). One Haiku
+   * call per call keeps those whole at 1/60th of the old always-on cost.
+   */
+  async runFinalAnalysis(transcript: string): Promise<void> {
+    try {
+      // Force a run even if the last periodic cycle saw this length.
+      this.lastTranscriptLength = 0;
+      const analysis = await this.analyze(transcript);
+      if (analysis) {
+        await this.saveToConvex(analysis);
+        logger.info(`[AmmoAnalyzer] Final analysis saved for call ${this.callId}`);
+      }
+    } catch (error) {
+      logger.error(`[AmmoAnalyzer] Final analysis failed for call ${this.callId}`, error);
+    }
+  }
+
+  /**
    * Stop the periodic analysis
    */
   stop(): void {
