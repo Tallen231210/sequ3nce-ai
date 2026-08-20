@@ -196,8 +196,7 @@ export function InlineLeadForm({
       </button>
 
       <p className="mt-3 text-[12px] text-zinc-500 text-center leading-relaxed">
-        First 100 users lock in $99/mo for life + the top affiliate tier. No card
-        required. Cancel anytime. Works on Mac &amp; Windows.
+        Plans from $83/mo. Cancel anytime. Works on Mac &amp; Windows.
       </p>
 
       <div className="mt-5 flex flex-col items-center gap-1.5">

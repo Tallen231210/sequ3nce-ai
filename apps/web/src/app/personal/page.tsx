@@ -411,7 +411,7 @@ function PersonalLandingPageInner() {
           <AnimatedSection>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 max-w-3xl mx-auto">
               {[
-                { label: "$99/mo", sub: "First 100 users" },
+                { label: "From $83/mo", sub: "Cancel anytime" },
                 { label: "AI Analysis", sub: "After every call" },
                 { label: "Elite Training", sub: "From top closers" },
                 { label: "Job Board", sub: "Verified companies" },
