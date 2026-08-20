@@ -82,14 +82,26 @@ export function BookingsPanel({ bookings, insight }: BookingsPanelProps) {
 
         {/* Tier 1 stats */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* People lead, bookings follow: 948 bookings can be 808 humans
+              once rebooks are counted as the same person, and "how many
+              prospects did we put on calendars" is the business question.
+              Group-call attendees each count as a person, correctly. */}
           <StatCard
             icon={CalendarCheck}
-            label="Total bookings"
-            value={String(bookings.total)}
+            label="People booked"
+            value={String(
+              (bookings as any).uniquePeopleBooked ?? bookings.total,
+            )}
             sub={
-              bookings.futureScheduled > 0
-                ? `${bookings.futureScheduled} upcoming`
-                : "in this range"
+              ((bookings as any).uniquePeopleBooked ?? bookings.total) !==
+              bookings.total
+                ? `${bookings.total} bookings` +
+                  (bookings.futureScheduled > 0
+                    ? ` · ${bookings.futureScheduled} upcoming`
+                    : "")
+                : bookings.futureScheduled > 0
+                  ? `${bookings.futureScheduled} upcoming`
+                  : "in this range"
             }
           />
           <StatCard
