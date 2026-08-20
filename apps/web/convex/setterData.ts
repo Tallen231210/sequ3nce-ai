@@ -947,8 +947,18 @@ export const getAttendanceFunnel = query({
       }
     }
 
+    // When did Sequ3nce start witnessing this team's calls? Slots before
+    // this date can never earn call evidence — the UI says so instead of
+    // letting a wall of "unverifiable" read as a broken feature.
+    const firstCall = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q) => q.eq("teamId", teamId))
+      .order("asc")
+      .first();
+
     const peopleBooked = contacts.size;
     return {
+      watchingSinceMs: firstCall?.createdAt ?? null,
       peopleBooked,
       totalBookings,
       showed,

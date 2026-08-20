@@ -121,6 +121,7 @@ export function OverviewTab({
             bookings={data.bookings}
             insight={data.bookingsInsight}
             attendanceFunnel={attendanceFunnel ?? null}
+            rangeStart={rangeStart}
           />
           <MetricCoveragePanel />
           <LeadAgeDecayCurve rangeStart={rangeStart} rangeEnd={rangeEnd} />
