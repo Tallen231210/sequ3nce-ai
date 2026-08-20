@@ -83,8 +83,9 @@ export const saveRecordingUrl = internalMutation({
  * says the file exists; asking earlier returns a bot with no recordings on it.
  */
 export const fetchManagerRecording = internalAction({
-  args: { meetingId: v.id("managerMeetings") },
+  args: { meetingId: v.id("managerMeetings"), attempt: v.optional(v.number()) },
   handler: async (ctx, args): Promise<{ recordingUrl: string | null }> => {
+    const attempt = args.attempt ?? 1;
     const meeting = await ctx.runQuery(
       internal.managerMeetingTranscript.getMeetingWithBot,
       { meetingId: args.meetingId },
@@ -95,7 +96,22 @@ export const fetchManagerRecording = internalAction({
       headers: { Authorization: `Token ${process.env.RECALL_API_KEY}` },
     });
     if (!res.ok) {
-      throw new Error(`Recall bot fetch failed: ${res.status}`);
+      // A thrown scheduled action never retries — that silence is how three
+      // of Zion's meetings lost their recordings to a passing 429 storm.
+      // Come back instead, patiently for rate limits.
+      if (attempt < 5) {
+        const delayMs = res.status === 429 ? 180_000 : 60_000 * attempt;
+        console.log(
+          `[managerRecording] Recall ${res.status} for bot ${meeting.recallBotId}, retry ${attempt + 1}/5 in ${delayMs / 1000}s`,
+        );
+        await ctx.scheduler.runAfter(
+          delayMs,
+          internal.managerMeetingTranscript.fetchManagerRecording,
+          { meetingId: args.meetingId, attempt: attempt + 1 },
+        );
+        return { recordingUrl: null };
+      }
+      throw new Error(`Recall bot fetch failed: ${res.status} (after ${attempt} attempts)`);
     }
     const data: any = await res.json();
     const url =
@@ -118,7 +134,7 @@ export const fetchManagerRecording = internalAction({
 
 /** How many times to come back for a transcript that isn't ready, and how
  *  long between visits. Five minutes of patience total. */
-const TRANSCRIPT_FETCH_MAX_ATTEMPTS = 5;
+const TRANSCRIPT_FETCH_MAX_ATTEMPTS = 8;
 const TRANSCRIPT_FETCH_RETRY_MS = 60_000;
 
 export const fetchManagerTranscript = internalAction({
@@ -139,7 +155,21 @@ export const fetchManagerTranscript = internalAction({
       headers: { Authorization: `Token ${process.env.RECALL_API_KEY}` },
     });
     if (!botRes.ok) {
-      throw new Error(`Recall bot fetch failed: ${botRes.status}`);
+      // Same rule as the recording fetch: retry through transient failures
+      // rather than dying silently on the first 429.
+      if (attempt < TRANSCRIPT_FETCH_MAX_ATTEMPTS) {
+        const delayMs = botRes.status === 429 ? 180_000 : TRANSCRIPT_FETCH_RETRY_MS;
+        console.log(
+          `[managerTranscript] Recall ${botRes.status} for bot ${meeting.recallBotId}, retry ${attempt + 1}/${TRANSCRIPT_FETCH_MAX_ATTEMPTS} in ${delayMs / 1000}s`,
+        );
+        await ctx.scheduler.runAfter(
+          delayMs,
+          internal.managerMeetingTranscript.fetchManagerTranscript,
+          { meetingId: args.meetingId, attempt: attempt + 1 },
+        );
+        return { segments: 0 };
+      }
+      throw new Error(`Recall bot fetch failed: ${botRes.status} (after ${attempt} attempts)`);
     }
     const botData: any = await botRes.json();
     const transcriptUrl =

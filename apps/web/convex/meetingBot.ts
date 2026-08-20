@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { syncCallStats } from "./callStats";
 import { mutation, query, action, internalMutation, internalQuery, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
@@ -53,6 +54,43 @@ export const scheduleRecordingFetch = internalMutation({
   },
 });
 
+/**
+ * The meeting ended and the bot never recorded — because recording starts
+ * when a human participant joins, and nobody ever did. Terminal: mark the
+ * bot so nothing re-fetches it nightly, and give the linked call the honest
+ * verdict ("no_show") instead of an eternal "Pending" badge. A closer who
+ * joined would have started the recording, so no recording = nobody came.
+ * Never overrides a human answer.
+ */
+export const markNothingRecorded = internalMutation({
+  args: { recallBotId: v.string() },
+  handler: async (ctx, args) => {
+    const bot = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_recall_bot_id", (q) => q.eq("recallBotId", args.recallBotId))
+      .first();
+    if (!bot) return { marked: false };
+    if (!bot.failureReason) {
+      await ctx.db.patch(bot._id, {
+        failureReason: "nobody joined — nothing recorded",
+      });
+    }
+    if (bot.callId) {
+      const call = await ctx.db.get(bot.callId);
+      const humanTouched =
+        call?.outcomeSource === "closer" || call?.outcomeSource === "manager";
+      if (call && call.outcome == null && !humanTouched) {
+        await ctx.db.patch(bot.callId, {
+          outcome: "no_show",
+          outcomeSource: "ai",
+        });
+        await syncCallStats(ctx, bot.callId);
+      }
+    }
+    return { marked: true };
+  },
+});
+
 // Fetch recording URL from Recall.ai API and update bot + call records
 export const fetchBotRecording = internalAction({
   args: {
@@ -98,6 +136,19 @@ export const fetchBotRecording = internalAction({
       const recordingUrl = data.recordings?.[0]?.media_shortcuts?.video_mixed?.data?.download_url;
 
       if (!recordingUrl) {
+        // Meeting over and recording never started: terminal, not pending.
+        // Retrying forever against a recording that never existed is what
+        // the immortal-loop storm was made of.
+        const codes = (data.status_changes || []).map((sc: any) => sc.code);
+        const ended = codes.includes("done") || codes.includes("call_ended");
+        const everRecorded = codes.includes("in_call_recording");
+        if (ended && !everRecorded) {
+          console.log(`[fetchBotRecording] Bot ${args.recallBotId} ended without ever recording — marking terminal`);
+          await ctx.runMutation(internal.meetingBot.markNothingRecorded, {
+            recallBotId: args.recallBotId,
+          });
+          return;
+        }
         console.log(`[fetchBotRecording] No recording URL yet for ${args.recallBotId}, attempt ${args.attempt}`);
         if (args.attempt < 3) {
           await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
