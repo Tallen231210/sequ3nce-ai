@@ -124,17 +124,36 @@ export const rotateSetterToken = mutation({
 
 /** The board: every setter × recent days, for the manager's tab. */
 export const getEodBoard = query({
-  args: { clerkId: v.string(), days: v.optional(v.number()) },
+  args: {
+    clerkId: v.string(),
+    days: v.optional(v.number()),
+    // Explicit range (ms) for ad-hoc windows. Wins over `days`. Capped at
+    // 31 columns — the board is day-columnar and wider stops being a board.
+    rangeStartMs: v.optional(v.number()),
+    rangeEndMs: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const user = await resolveAuthUser(ctx, args.clerkId);
     if (!user) return null;
     const team = await ctx.db.get(user.teamId as Id<"teams">);
     const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
-    const days = Math.min(Math.max(args.days ?? 7, 1), 31);
 
     const dayKeys: string[] = [];
-    for (let i = 0; i < days; i++) {
-      dayKeys.push(dayKeyInTz(Date.now() - i * 86_400_000, tz));
+    if (args.rangeStartMs != null && args.rangeEndMs != null) {
+      const start = Math.min(args.rangeStartMs, args.rangeEndMs);
+      const end = Math.max(args.rangeStartMs, args.rangeEndMs);
+      for (
+        let t = end, i = 0;
+        t >= start && i < 31;
+        t -= 86_400_000, i++
+      ) {
+        dayKeys.push(dayKeyInTz(t, tz));
+      }
+    } else {
+      const days = Math.min(Math.max(args.days ?? 7, 1), 31);
+      for (let i = 0; i < days; i++) {
+        dayKeys.push(dayKeyInTz(Date.now() - i * 86_400_000, tz));
+      }
     }
 
     const roster = (

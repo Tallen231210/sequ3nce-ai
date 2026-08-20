@@ -360,6 +360,17 @@ export const extractCall = internalAction({
           : ""),
     );
 
+    // Read fine, but the call never stated an outcome. Mark it so the
+    // nightly repair sweep doesn't re-read the same transcript forever —
+    // the words won't change overnight. (A human or a forced re-run can
+    // still answer it.)
+    if (!saved.written.includes("outcome")) {
+      await ctx.runMutation(
+        internal.callExtractionRun.recordExtractionFailure,
+        { callId: args.callId, reason: "read ok — no outcome was stated on the call" },
+      );
+    }
+
     return { ok: true, written: saved.written, data: result.data };
   },
 });

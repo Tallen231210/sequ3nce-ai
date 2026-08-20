@@ -31,7 +31,7 @@ export const listRecentStuckExtractions = internalQuery({
         q.eq("teamId", args.teamId).gte("createdAt", since),
       )
       .take(300);
-    const PERMANENT = /too short|call not found|internal meeting|already/i;
+    const PERMANENT = /too short|call not found|internal meeting|already|no outcome was stated/i;
     return calls
       .filter(
         (c: any) =>
@@ -56,6 +56,9 @@ export const listManagerMeetingsNeedingRepair = internalQuery({
     const out = [];
     for (const m of meetings) {
       if (m.createdAt < since || m.status !== "completed") continue;
+      // Terminally failed ("nobody joined — nothing recorded"): no media
+      // will ever exist; re-fetching nightly is how storms start.
+      if (m.failureReason) continue;
       // Same grace as calls: the live chain gets an hour first.
       if (m.createdAt > Date.now() - 60 * 60 * 1000) continue;
       const seg = await ctx.db
