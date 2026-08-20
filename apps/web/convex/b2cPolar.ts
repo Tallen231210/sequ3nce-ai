@@ -167,6 +167,14 @@ export const applyB2CSubscription = internalMutation({
       name,
     });
 
+    // If they still haven't set a password in 24h, nudge once. They PAID —
+    // a customer who never gets into the app is a refund request brewing.
+    await ctx.scheduler.runAfter(
+      24 * 60 * 60 * 1000,
+      internal.b2cPolar.sendActivationReminder,
+      { b2cUserId, email, name },
+    );
+
     return { applied: true, provisioned: true };
   },
 });
@@ -305,5 +313,87 @@ export const getUserForPortal = internalQuery({
   handler: async (ctx, args) => {
     const u = await ctx.db.get(args.b2cUserId);
     return u ? { polarCustomerId: u.polarCustomerId ?? null } : null;
+  },
+});
+
+
+/**
+ * One reminder, 24h after purchase, only if they never set a password.
+ * Scheduled at provisioning; a customer who activated is silently skipped.
+ */
+export const sendActivationReminder = internalAction({
+  args: {
+    b2cUserId: v.id("b2cUsers"),
+    email: v.string(),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.runQuery(internal.b2cPolar.getActivationState, {
+      b2cUserId: args.b2cUserId,
+    });
+    if (!user) return;
+    if (user.hasPassword) return; // they're in — nothing to say
+    if (user.subscriptionStatus !== "active") return; // refunded/cancelled — don't nudge
+
+    const WELCOME_CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+    const { code } = await ctx.runMutation(
+      internal.b2cAuth.generatePasswordResetCode,
+      { email: args.email, expiryMs: WELCOME_CODE_TTL_MS },
+    );
+
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+      console.error(`[b2cPolar] RESEND_API_KEY not set — reminder NOT sent to ${args.email}`);
+      return;
+    }
+    const activateUrl = `https://sequ3nce.ai/personal/activate?email=${encodeURIComponent(args.email)}&code=${code}`;
+    const firstName = args.name.split(/\s+/)[0] || "there";
+
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Sequ3nce <noreply@noreply.sequ3nce.ai>",
+        to: args.email,
+        subject: "Your Sequ3nce Personal access is waiting",
+        html: `
+          <div style="font-family: -apple-system, Segoe UI, sans-serif; max-width: 520px; margin: 0 auto; color: #111;">
+            <h2 style="margin: 24px 0 8px;">${firstName}, your access is ready — you just haven't stepped in yet.</h2>
+            <p style="color: #444; line-height: 1.6;">
+              You joined Sequ3nce Personal yesterday but haven't set your
+              password. It takes thirty seconds:
+            </p>
+            <p style="margin: 24px 0;">
+              <a href="${activateUrl}"
+                 style="background: #111; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                Set your password &amp; download the app
+              </a>
+            </p>
+            <p style="color: #999; font-size: 13px; line-height: 1.5; margin-top: 32px;">
+              Sign in afterwards with <strong>${args.email}</strong>. Stuck on
+              anything? Reply to this email and a human reads it.
+            </p>
+          </div>
+        `,
+      }),
+    });
+    if (!response.ok) {
+      console.error(`[b2cPolar] Resend refused the reminder for ${args.email}: ${response.status} ${await response.text()}`);
+    } else {
+      console.log(`[b2cPolar] activation reminder sent to ${args.email}`);
+    }
+  },
+});
+
+export const getActivationState = internalQuery({
+  args: { b2cUserId: v.id("b2cUsers") },
+  handler: async (ctx, args) => {
+    const u = await ctx.db.get(args.b2cUserId);
+    return u
+      ? { hasPassword: !!u.passwordHash, subscriptionStatus: u.subscriptionStatus }
+      : null;
   },
 });

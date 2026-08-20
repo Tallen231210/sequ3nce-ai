@@ -214,7 +214,7 @@ function PersonalLandingPageInner() {
         <span className="inline-flex items-center gap-1.5">
           <Zap className="h-3.5 w-3.5" strokeWidth={2.5} />
           <span>
-            Early Access Pricing Ends Soon — Price increases to $129.99/mo after the first 100 users
+            Founding member pricing — plans from $83/mo, cancel anytime
           </span>
         </span>
       </div>
@@ -269,7 +269,7 @@ function PersonalLandingPageInner() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-900 opacity-50" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-zinc-900" />
                 </span>
-                {SPOTS_TAKEN} of {SPOTS_TOTAL} early spots claimed
+                Built by closers doing $50k+ months
               </div>
 
               {/* Eyebrow */}
@@ -296,10 +296,11 @@ function PersonalLandingPageInner() {
 
               {/* Pricing line — separate visual emphasis */}
               <p className="mt-5 text-[13px] sm:text-sm text-zinc-700 max-w-md mx-auto leading-relaxed">
-                The first 100 users lock in{" "}
-                <span className="font-semibold text-zinc-900">$99/mo for life</span>{" "}
-                plus the top affiliate tier. Everyone after pays $129.99. Start with
-                45 days free.
+                Plans from{" "}
+                <span className="font-semibold text-zinc-900">$83/mo</span>{" "}
+                billed annually — or month-to-month at $150. Pick your plan, set
+                your password, download the app. Five minutes to your first
+                recorded call.
               </p>
             </div>
           </AnimatedSection>
@@ -410,7 +411,7 @@ function PersonalLandingPageInner() {
           <AnimatedSection>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 max-w-3xl mx-auto">
               {[
-                { label: "$99/mo", sub: "First 100 users" },
+                { label: "From $83/mo", sub: "Cancel anytime" },
                 { label: "AI Analysis", sub: "After every call" },
                 { label: "Elite Training", sub: "From top closers" },
                 { label: "Job Board", sub: "Verified companies" },
@@ -439,9 +440,9 @@ function PersonalLandingPageInner() {
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 sm:p-6">
               <p className="text-[14px] sm:text-[15px] text-zinc-900 leading-relaxed">
                 <span className="mr-1.5">🔒</span>
-                <span className="font-semibold">Early bird pricing locks in at $99/mo for life.</span>{" "}
-                After the first 100 users, the price increases to $129.99/mo permanently — and
-                there&apos;s no way to lock in the lower rate after that.
+                <span className="font-semibold">Commit longer, pay less.</span>{" "}
+                Month-to-month is $150. A quarter drops it to $133/mo, six months
+                to $100/mo, and the yearly plan is $1,000 flat — under $84 a month.
               </p>
             </div>
           </AnimatedSection>
@@ -619,48 +620,29 @@ function PersonalLandingPageInner() {
 
           <AnimatedSection delay={100}>
             <div className="rounded-2xl border-2 border-zinc-900 bg-white p-7 sm:p-8">
-              {/* Spot progress bar */}
-              <div className="mb-5">
-                <div className="flex items-center justify-between text-[11px] font-medium mb-2">
-                  <span className="text-zinc-700">
-                    {SPOTS_TAKEN}/{SPOTS_TOTAL} early spots claimed
-                  </span>
-                  <span className="text-zinc-900 font-semibold">
-                    {SPOTS_REMAINING} left
-                  </span>
-                </div>
-                <div className="h-2 bg-zinc-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-zinc-900 rounded-full transition-all"
-                    style={{ width: `${(SPOTS_TAKEN / SPOTS_TOTAL) * 100}%` }}
-                  />
-                </div>
-              </div>
-
               <div className="text-center mb-7">
                 <div className="inline-block bg-zinc-900 text-white text-[10px] font-semibold px-3 py-1 rounded-full mb-5 tracking-[0.18em]">
-                  EARLY BIRD — FIRST 100 USERS
+                  FROM
                 </div>
                 <div className="text-7xl sm:text-8xl font-semibold text-zinc-900 leading-none tracking-[-0.04em]">
-                  $99
+                  $83
                   <span className="text-2xl sm:text-3xl font-medium text-zinc-400 tracking-tight">
                     /mo
                   </span>
                 </div>
-                <div className="text-sm text-zinc-400 mt-3 line-through">
-                  $129.99/mo after the first 100 users
-                </div>
-                <p className="text-[13px] text-zinc-500 mt-2 leading-relaxed">
-                  45-day free trial. Cancel anytime. No contracts.
+                <p className="text-[13px] text-zinc-500 mt-3 leading-relaxed">
+                  billed annually · cancel anytime · no contracts
                 </p>
               </div>
 
-              {/* $30/mo anchor callout */}
+              {/* The four terms, honestly */}
               <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-3.5 mb-6">
-                <p className="text-[12px] text-zinc-900 leading-relaxed">
-                  <span className="font-semibold">Price increases to $129.99/mo after the 100th user.</span>{" "}
-                  Lock in $99/mo for life — or pay $30 more every month forever.
-                </p>
+                <div className="space-y-1.5 text-[12px] text-zinc-700">
+                  <div className="flex justify-between"><span>Monthly</span><span className="font-semibold text-zinc-900">$150/mo</span></div>
+                  <div className="flex justify-between"><span>3 months</span><span className="font-semibold text-zinc-900">$400</span></div>
+                  <div className="flex justify-between"><span>6 months</span><span className="font-semibold text-zinc-900">$600</span></div>
+                  <div className="flex justify-between"><span>Yearly</span><span className="font-semibold text-zinc-900">$1,000</span></div>
+                </div>
               </div>
 
               <div className="space-y-2.5 mb-7">
@@ -754,7 +736,7 @@ function PersonalLandingPageInner() {
                 </button>
               </div>
               <p className="mt-6 text-[12px] text-zinc-500">
-                {SPOTS_REMAINING} early spots remaining at $99/mo
+                Plans from $83/mo — five minutes from paying to recording
               </p>
             </div>
           </AnimatedSection>
