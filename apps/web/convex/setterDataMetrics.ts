@@ -214,6 +214,9 @@ export type BookingFlowOverride =
 export interface BookingsData {
   source: "setterAppointments" | "calendarEvents" | "none";
   total: number;
+  /** Distinct humans behind `total` — the honest headline. 948 bookings can
+   *  be 808 people once rebooks are counted as the same person. */
+  uniquePeopleBooked?: number;
   futureScheduled: number;
   medianTimeToBookMs: number | null;
   byDayOfWeek: number[]; // length 7, [Sun..Sat]
@@ -941,6 +944,8 @@ async function computeBookingsFromGhlAppointments(
       .first()) as Doc<"setterLeads"> | null;
     if (lead?.dateAdded) dateAddedByContact.set(cid, lead.dateAdded);
   }
+  const uniquePeopleBooked = uniqueContacts.length;
+
   const bookDeltas = valid
     .map((a) => {
       const added = dateAddedByContact.get(a.ghlContactId);
@@ -980,6 +985,7 @@ async function computeBookingsFromGhlAppointments(
     ...base,
     source: "setterAppointments",
     total,
+    uniquePeopleBooked,
     futureScheduled,
     medianTimeToBookMs,
     byDayOfWeek,
@@ -1022,6 +1028,9 @@ async function computeBookingsFromCalendarEvents(
   }
 
   const total = matcher.bookings.length;
+  const uniquePeopleBooked = new Set(
+    matcher.bookings.map((b) => String(b.setterLeadId)),
+  ).size;
   const now = Date.now();
   const futureScheduled = matcher.bookings.filter(
     (b) => b.startTime > now,
@@ -1115,6 +1124,7 @@ async function computeBookingsFromCalendarEvents(
     ...base,
     source: "calendarEvents",
     total,
+    uniquePeopleBooked,
     futureScheduled,
     medianTimeToBookMs,
     byDayOfWeek,
@@ -1549,5 +1559,86 @@ export const markLeadInternal = internalMutation({
     if (!lead) return { ok: false, error: "no such lead" };
     await ctx.db.patch(lead._id, { isInternal: args.internal });
     return { ok: true, name: lead.name };
+  },
+});
+
+/**
+ * Booking audit — the support tool for "does this number make sense?".
+ * Joins the counted bookings to their leads server-side (CLI exports cap at
+ * 8,192 rows and quietly truncate the join, which produced a false alarm the
+ * first time this question was asked).
+ */
+export const auditBookings = internalQuery({
+  args: { teamId: v.id("teams"), rangeStart: v.number(), rangeEnd: v.number() },
+  handler: async (ctx, args) => {
+    const appts = (await ctx.db
+      .query("setterAppointments")
+      .withIndex("by_team_and_start_time", (q) =>
+        q
+          .eq("teamId", args.teamId)
+          .gte("startTime", args.rangeStart)
+          .lt("startTime", args.rangeEnd),
+      )
+      .collect()) as Doc<"setterAppointments">[];
+
+    const internalLeads = (await ctx.db
+      .query("setterLeads")
+      .withIndex("by_team_and_internal", (q) =>
+        q.eq("teamId", args.teamId).eq("isInternal", true),
+      )
+      .take(200)) as Doc<"setterLeads">[];
+    const internalIds = new Set(internalLeads.map((l) => l.ghlContactId));
+
+    const seen = new Set<string>();
+    const valid = appts.filter((a) => {
+      if (a.status === "Cancelled" || a.status === "Invalid") return false;
+      if (internalIds.has(a.ghlContactId)) return false;
+      const slot = `${a.ghlContactId}:${a.startTime}`;
+      if (seen.has(slot)) return false;
+      seen.add(slot);
+      return true;
+    });
+
+    const uniqueContacts = Array.from(new Set(valid.map((a) => a.ghlContactId)));
+    let noIdentity = 0;
+    let teamDomain = 0;
+    const emailToContacts = new Map<string, Set<string>>();
+    for (const cid of uniqueContacts.slice(0, 1500)) {
+      const lead = (await ctx.db
+        .query("setterLeads")
+        .withIndex("by_team_and_ghl_contact_id", (q) =>
+          q.eq("teamId", args.teamId).eq("ghlContactId", cid),
+        )
+        .first()) as Doc<"setterLeads"> | null;
+      if (!lead || !(lead.name || lead.email || lead.phone)) noIdentity++;
+      const em = (lead?.email || "").toLowerCase();
+      if (em.endsWith("@e2influencers.com")) teamDomain++;
+      if (em) {
+        const set = emailToContacts.get(em) ?? new Set();
+        set.add(cid);
+        emailToContacts.set(em, set);
+      }
+    }
+    const dupEmailContacts = Array.from(emailToContacts.values()).filter(
+      (s) => s.size > 1,
+    ).length;
+
+    // Group slots: many contacts at the same time with the same assignee.
+    const slotCount = new Map<string, number>();
+    for (const a of valid) {
+      const k = `${a.startTime}:${a.assignedToGhlUserId ?? ""}`;
+      slotCount.set(k, (slotCount.get(k) ?? 0) + 1);
+    }
+    let groupSlotBookings = 0;
+    for (const c of slotCount.values()) if (c >= 3) groupSlotBookings += c;
+
+    return {
+      bookings: valid.length,
+      uniqueContacts: uniqueContacts.length,
+      contactsWithNoIdentity: noIdentity,
+      contactsOnTeamDomain: teamDomain,
+      emailsSharedByMultipleContacts: dupEmailContacts,
+      groupSlotBookings,
+    };
   },
 });
