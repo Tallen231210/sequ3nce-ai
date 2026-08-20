@@ -61,7 +61,11 @@ const config: ForgeConfig = {
       NSCameraUsageDescription: 'Sequ3nce uses your camera for live coaching calls.',
     },
   },
-  rebuildConfig: {},
+  // Rebuild NOTHING. The only runtime native module (uiohook-napi) ships
+  // N-API prebuilds for every platform we target — rebuilding it is what has
+  // broken every Windows CI build since May (node-gyp 9 can't parse modern
+  // Visual Studio installs). N-API prebuilds are ABI-stable under Electron.
+  rebuildConfig: { onlyModules: [] },
   makers: [
     // Windows installer is built by electron-builder (NSIS) via the
     // `make:win:nsis` npm script — see apps/personal/package.json `build` block.
