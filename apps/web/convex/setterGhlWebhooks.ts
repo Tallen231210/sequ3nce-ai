@@ -4,6 +4,10 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { bumpDailyStat } from "./setterRollups";
 import {
+  ATTENDANCE_BETA_FLAG,
+  stampAttendanceFromStatus,
+} from "./setterAttendance";
+import {
   normalizeGhlMessageKind,
   isCustomProviderMessage,
 } from "./lib/ghlMessageType";
@@ -639,6 +643,16 @@ export async function upsertAppointment(
   // Cheap (typical lead has < 3 appointments), keeps the snapshot in sync
   // even when GHL reorders status events.
   await recomputeLeadAppointmentCounts(ctx, args.teamId, apt.contactId);
+
+  // Tier-0 attendance stamp: for beta teams, a CRM status that already IS the
+  // answer (Showed / No Show / Cancelled) lands on the row synchronously —
+  // the nightly sweep only has to do the hard cases. Non-manual rows only;
+  // the helper enforces that and never downgrades a linked reschedule.
+  const team = await ctx.db.get(args.teamId);
+  if ((team?.betaFeatures ?? []).includes(ATTENDANCE_BETA_FLAG)) {
+    const row = await findAppointment(ctx, args.teamId, apt.appointmentId);
+    if (row) await stampAttendanceFromStatus(ctx, row._id);
+  }
 }
 
 async function findAppointment(

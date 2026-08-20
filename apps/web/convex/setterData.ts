@@ -5,6 +5,7 @@ import {
   computeScorecard,
   computeCadence,
   computeShowRateEvidence,
+  SHOW_GRACE_MS,
 } from "./setterDataMetrics";
 import {
   buildMatcherIndex,
@@ -823,6 +824,143 @@ export const getShowRateEvidence = query({
       rangeStart: args.rangeStart,
       rangeEnd: args.rangeEnd,
     });
+  },
+});
+
+// ----------------------------------------------------------------------------
+// getAttendanceFunnel — the person-level "what happened to everyone we
+// booked" rollup, read from the PERSISTED attendance verdicts (nightly
+// sweep + CRM stamping). Null unless the team is on the
+// appointment_attendance beta — non-beta teams' UI is byte-identical.
+// ----------------------------------------------------------------------------
+
+export const getAttendanceFunnel = query({
+  args: {
+    clerkId: v.string(),
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const teamId = user.teamId as Id<"teams">;
+    const team = await ctx.db.get(teamId);
+    if (!(team?.betaFeatures ?? []).includes("appointment_attendance")) {
+      return null;
+    }
+
+    // People booked in range, PLUS a 14-day lookahead of bookings so a
+    // reschedule chain that rebooked just past the range end still resolves
+    // to its real terminal state instead of reading "cancelled".
+    const LOOKAHEAD_MS = 14 * 24 * 60 * 60 * 1000;
+    const SCAN_CAP = 8000;
+    const rows = await ctx.db
+      .query("setterAppointments")
+      .withIndex("by_team_and_booked_at", (q) =>
+        q
+          .eq("teamId", teamId)
+          .gte("bookedAt", args.rangeStart)
+          .lt("bookedAt", args.rangeEnd + LOOKAHEAD_MS),
+      )
+      .take(SCAN_CAP);
+    const truncated = rows.length === SCAN_CAP;
+
+    // Same exclusion the People-booked headline applies: contacts flagged
+    // internal (the team booking itself) don't belong in the funnel.
+    const internalLeads = await ctx.db
+      .query("setterLeads")
+      .withIndex("by_team_and_internal", (q) =>
+        q.eq("teamId", teamId).eq("isInternal", true),
+      )
+      .collect();
+    const internalContacts = new Set(internalLeads.map((l) => l.ghlContactId));
+
+    const byContact = new Map<string, Doc<"setterAppointments">[]>();
+    for (const a of rows) {
+      if (internalContacts.has(a.ghlContactId)) continue;
+      const list = byContact.get(a.ghlContactId) ?? [];
+      list.push(a);
+      byContact.set(a.ghlContactId, list);
+    }
+
+    // The funnel population: contacts with a booking INSIDE the range
+    // (lookahead rows only serve as chain targets, never add people).
+    const contacts = new Set<string>();
+    let totalBookings = 0;
+    for (const a of rows) {
+      if (internalContacts.has(a.ghlContactId)) continue;
+      if (a.bookedAt >= args.rangeEnd) continue;
+      contacts.add(a.ghlContactId);
+      if (a.status !== "Cancelled" && a.status !== "Invalid") totalBookings++;
+    }
+
+    const now = Date.now();
+    let showed = 0;
+    let noShowFinal = 0;
+    let cancelledNeverRebooked = 0;
+    let unverifiable = 0;
+    let upcoming = 0;
+    let rescheduledAtLeastOnce = 0;
+
+    for (const cid of contacts) {
+      const list = (byContact.get(cid) ?? []).sort(
+        (x, y) => x.startTime - y.startTime,
+      );
+      if (list.length === 0) continue;
+      if (list.some((a) => a.attendance === "rescheduled")) {
+        rescheduledAtLeastOnce++;
+      }
+      // Terminal state = the person's LAST slot. Reschedule links always
+      // point at later slots, so the latest startTime row IS the end of the
+      // chain whenever the rebook made it into the read window.
+      const terminal = list[list.length - 1];
+      switch (terminal.attendance) {
+        case "showed":
+          showed++;
+          break;
+        case "no_show":
+          noShowFinal++;
+          break;
+        case "cancelled":
+          cancelledNeverRebooked++;
+          break;
+        case "rescheduled":
+          // The rebook exists but landed outside what we read — honesty
+          // over guessing.
+          unverifiable++;
+          break;
+        case "unverifiable":
+          unverifiable++;
+          break;
+        default: {
+          // Not yet classified: a slot still ahead (or inside grace) is
+          // upcoming; a settled slot the sweep hasn't reached reads as
+          // unverifiable until tonight's run.
+          const isCancelledStatus =
+            terminal.status === "Cancelled" || terminal.status === "Invalid";
+          if (!isCancelledStatus && terminal.startTime > now - SHOW_GRACE_MS) {
+            upcoming++;
+          } else {
+            unverifiable++;
+          }
+        }
+      }
+    }
+
+    const peopleBooked = contacts.size;
+    return {
+      peopleBooked,
+      totalBookings,
+      showed,
+      noShowFinal,
+      cancelledNeverRebooked,
+      unverifiable,
+      upcoming,
+      rescheduledAtLeastOnce,
+      rescheduledPct:
+        peopleBooked > 0 ? rescheduledAtLeastOnce / peopleBooked : null,
+      truncated,
+    };
   },
 });
 

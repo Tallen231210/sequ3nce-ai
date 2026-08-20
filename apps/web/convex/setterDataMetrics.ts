@@ -43,18 +43,18 @@ export interface ScorecardSetterCadence {
 
 // --- Show-rate evidence waterfall + lead set rate (Phase: metrics revamp) ---
 // Grace before an appointment is considered "settled" (prospect had their slot).
-const SHOW_GRACE_MS = 24 * 60 * 60 * 1000;
+export const SHOW_GRACE_MS = 24 * 60 * 60 * 1000;
 // Closer-call match window around the appointment start. Tight on purpose:
 // a wide window would mark an entire reschedule chain "showed" off one call.
-const SHOW_MATCH_BEFORE_MS = 6 * 60 * 60 * 1000;
-const SHOW_MATCH_AFTER_MS = 48 * 60 * 60 * 1000;
+export const SHOW_MATCH_BEFORE_MS = 6 * 60 * 60 * 1000;
+export const SHOW_MATCH_AFTER_MS = 48 * 60 * 60 * 1000;
 // A null-outcome completed recording must be at least this long to count as
 // evidence the prospect showed ("joined, nobody came" stubs are no-shows).
-const SHOW_RECORDING_MIN_SEC = 120;
+export const SHOW_RECORDING_MIN_SEC = 120;
 // Tier-3 "no evidence → assume no-show" only applies when at least this share
 // of settled appointments resolved via tiers 1-2 — one non-recording closer
 // must not turn all their real shows into phantom no-shows.
-const SHOW_ASSUME_COVERAGE = 0.6;
+export const SHOW_ASSUME_COVERAGE = 0.6;
 // Per-setter lead set rate suppressed below this many owned leads.
 const LEAD_SET_RATE_MIN_LEADS = 5;
 
@@ -79,6 +79,8 @@ export interface ShowRateEvidence {
   /** Share of candidates resolved by hard evidence (tiers 1-2). */
   coverage: number | null;
   breakdown: {
+    /** Tier 0: persisted attendance verdicts (beta teams' nightly sweep). */
+    fromPersisted: number;
     fromStatus: number;
     fromForm: number;
     fromRecording: number;
@@ -1239,6 +1241,45 @@ async function computeCloserSideShowRate(
  * arrive with manual statuses (tier 1 often resolves), Close meetings all
  * arrive "Confirmed" (tiers 2-3 do the work via closer-call evidence).
  */
+/**
+ * Verdict for one matched call — the single rule both the live waterfall and
+ * the persisted attendance sweep use, so the two can never disagree.
+ *
+ * The presence ladder replaces the old bare `duration >= 120s ⇒ showed`,
+ * which called a show when the CLOSER sat alone for 15 minutes (long
+ * recording, no prospect — Tyler's catch). Recall's roster tells us whether
+ * a non-closer actually SPOKE; Deepgram talk-time is the fallback; legacy
+ * calls without either keep the old duration rule verbatim so history
+ * doesn't move.
+ */
+export function classifyMatchedCall(call: {
+  status?: string;
+  outcome?: string | null;
+  duration?: number | null;
+  prospectJoined?: boolean;
+  prospectTalkTime?: number | null;
+}): "showed" | "noShow" | "rescheduled" | "stub" {
+  if (call.status === "no_show" || call.outcome === "no_show") return "noShow";
+  if (call.outcome === "rescheduled") return "rescheduled";
+  if (call.outcome != null) return "showed";
+
+  const dur = call.duration ?? 0;
+  // Roster outranks talk-time: verification relabels segments by roster
+  // precisely because diarization mislabels.
+  if (call.prospectJoined === true) return "showed";
+  if (call.prospectJoined === false && dur >= SHOW_RECORDING_MIN_SEC) {
+    return "noShow"; // long recording, only closer voices — the closer-alone case
+  }
+  const talk = call.prospectTalkTime;
+  if (typeof talk === "number") {
+    if (talk >= 10) return "showed"; // below 10s is diarization noise / hold music
+    if (talk === 0 && dur >= SHOW_RECORDING_MIN_SEC) return "noShow";
+  }
+  // Legacy calls without presence fields: old behavior verbatim.
+  if (dur >= SHOW_RECORDING_MIN_SEC) return "showed";
+  return "stub"; // short recording stub: closer joined, prospect never did
+}
+
 export async function computeShowRateEvidence(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ctx: { db: any },
@@ -1250,6 +1291,7 @@ export async function computeShowRateEvidence(
 ): Promise<ShowRateEvidence> {
   const now = Date.now();
   const breakdown = {
+    fromPersisted: 0,
     fromStatus: 0,
     fromForm: 0,
     fromRecording: 0,
@@ -1304,16 +1346,45 @@ export async function computeShowRateEvidence(
 
   type Res = "showed" | "noShow" | "unknown";
   const resolution = new Map<string, Res>();
+  // Coverage counts only EVIDENCE-grade resolutions (tiers 0 non-assumed,
+  // 1, 2) — a persisted "assumed" verdict must not launder itself into the
+  // coverage that justifies assuming more.
+  let evidenceResolved = 0;
+
+  // ---- Tier 0: persisted verdicts (beta teams' sweep) ------------------
+  const preresolved = new Set<string>();
+  for (const a of candidates) {
+    if (a.attendance === undefined) continue;
+    if (a.attendance === "showed") {
+      resolution.set(a._id, "showed");
+      breakdown.fromPersisted++;
+    } else if (a.attendance === "no_show") {
+      resolution.set(a._id, "noShow");
+      breakdown.fromPersisted++;
+    } else {
+      // rescheduled / unverifiable / (never-expected here) cancelled —
+      // honest non-answers for this slot.
+      resolution.set(a._id, "unknown");
+      breakdown.unknown++;
+    }
+    preresolved.add(a._id);
+    if (a.attendanceSource !== "assumed" && a.attendance !== "unverifiable") {
+      evidenceResolved++;
+    }
+  }
 
   // ---- Tier 1: CRM manual status --------------------------------------
   const unresolved: Doc<"setterAppointments">[] = [];
   for (const a of candidates) {
+    if (preresolved.has(a._id)) continue;
     if (a.status === "Showed") {
       resolution.set(a._id, "showed");
       breakdown.fromStatus++;
+      evidenceResolved++;
     } else if (a.status === "No Show") {
       resolution.set(a._id, "noShow");
       breakdown.fromStatus++;
+      evidenceResolved++;
     } else {
       unresolved.push(a);
     }
@@ -1388,34 +1459,37 @@ export async function computeShowRateEvidence(
         if (!best) continue;
         consumed.add(best._id);
 
-        if (best.status === "no_show" || best.outcome === "no_show") {
+        const verdict = classifyMatchedCall(best);
+        if (verdict === "noShow" && (best.status === "no_show" || best.outcome === "no_show")) {
           resolution.set(a._id, "noShow");
           breakdown.fromForm++;
-        } else if (best.outcome === "rescheduled") {
+          evidenceResolved++;
+        } else if (verdict === "rescheduled") {
           // The meeting moved — neither showed nor no-show for THIS slot.
           resolution.set(a._id, "unknown");
           breakdown.unknown++;
-        } else if (best.outcome != null) {
+        } else if (verdict === "showed" && best.outcome != null) {
           resolution.set(a._id, "showed");
           breakdown.fromForm++;
-        } else if ((best.duration ?? 0) >= SHOW_RECORDING_MIN_SEC) {
-          // No form answer, but a real recording exists — evidence they showed.
+          evidenceResolved++;
+        } else if (verdict === "showed") {
           resolution.set(a._id, "showed");
           breakdown.fromRecording++;
+          evidenceResolved++;
         } else {
-          // Recording stub: closer joined, prospect never did.
+          // noShow-by-evidence or recording stub — either way, the prospect
+          // never turned up on a call that existed.
           resolution.set(a._id, "noShow");
           breakdown.fromRecording++;
+          evidenceResolved++;
         }
       }
     }
   }
 
-  // Coverage = share of candidates resolved by hard evidence (tiers 1-2).
-  const resolvedByEvidence = Array.from(resolution.values()).filter(
-    (r) => r !== "unknown",
-  ).length;
-  const coverage = resolvedByEvidence / candidates.length;
+  // Coverage = share of candidates resolved by hard evidence (tiers 0-2,
+  // excluding persisted "assumed" verdicts — see the counter above).
+  const coverage = evidenceResolved / candidates.length;
 
   // ---- Tier 3: no evidence → assumed no-show (coverage-gated) ---------
   for (const a of candidates) {

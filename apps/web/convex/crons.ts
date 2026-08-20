@@ -366,4 +366,18 @@ crons.cron(
   {},
 );
 
+// Attendance classification: persist showed / no-show / cancelled /
+// rescheduled verdicts on appointments for beta-flagged teams
+// (appointment_attendance). Nightly at 3:50 UTC — after the day's calls have
+// transcripts and verdicts, before anyone reads morning numbers. Each team
+// runs as its own scheduled chain, so one team's failure can't stop another.
+//
+// crons.cron, never crons.interval. See the note on the collections digest.
+crons.cron(
+  "attendance-classification-sweep",
+  "50 3 * * *",
+  internal.setterAttendance.runNightlySweep,
+  {},
+);
+
 export default crons;

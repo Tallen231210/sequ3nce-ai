@@ -5,6 +5,7 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { normalizeEmail, normalizePhone } from "./setterCloserMatcher";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * Fetch a page of calls for this team starting after the cursor, joining
@@ -92,6 +93,30 @@ export const fetchUnpatchedBatch = internalQuery({
           const attendees =
             (evt as { attendees?: Array<{ email: string; isOrganizer?: boolean }> })
               .attendees ?? [];
+          const guest = attendees.find((a) => a.isOrganizer !== true);
+          derivedEmail = (guest ?? attendees[0])?.email ?? null;
+        }
+      }
+
+      // Bot rung: the bot's calendar link, never denormalized onto the
+      // call until 2026-08. Exact — resolves the bot's raw event UID
+      // through the closer's synced events, which is precisely how the bot
+      // was scheduled in the first place. Cheaper and more reliable than
+      // the time-based inference below.
+      if (!derivedEmail && call.meetingBotId) {
+        const bot = await ctx.db.get(call.meetingBotId);
+        const uid = (bot as { calendarEventId?: string } | null)?.calendarEventId;
+        const closerId = (bot as { closerId?: Id<"closers"> } | null)?.closerId;
+        if (uid && closerId) {
+          const evt = await ctx.db
+            .query("calendarEvents")
+            .withIndex("by_closer_and_uid", (q) =>
+              q.eq("closerId", closerId).eq("uid", uid),
+            )
+            .first();
+          const attendees =
+            (evt as { attendees?: Array<{ email: string; isOrganizer?: boolean }> } | null)
+              ?.attendees ?? [];
           const guest = attendees.find((a) => a.isOrganizer !== true);
           derivedEmail = (guest ?? attendees[0])?.email ?? null;
         }
