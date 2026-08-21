@@ -193,6 +193,7 @@ import type * as setterDataMetrics from "../setterDataMetrics.js";
 import type * as setterDataMutations from "../setterDataMutations.js";
 import type * as setterDataNotifications from "../setterDataNotifications.js";
 import type * as setterEod from "../setterEod.js";
+import type * as setterEodNotifications from "../setterEodNotifications.js";
 import type * as setterFunnelAdmin from "../setterFunnelAdmin.js";
 import type * as setterFunnelResolve from "../setterFunnelResolve.js";
 import type * as setterFunnelTypes from "../setterFunnelTypes.js";
@@ -418,6 +419,7 @@ declare const fullApi: ApiFromModules<{
   setterDataMutations: typeof setterDataMutations;
   setterDataNotifications: typeof setterDataNotifications;
   setterEod: typeof setterEod;
+  setterEodNotifications: typeof setterEodNotifications;
   setterFunnelAdmin: typeof setterFunnelAdmin;
   setterFunnelResolve: typeof setterFunnelResolve;
   setterFunnelTypes: typeof setterFunnelTypes;

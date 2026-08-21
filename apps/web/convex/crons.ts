@@ -407,4 +407,15 @@ crons.cron(
   {},
 );
 
+// Setter EOD notifications: the reminder blast to setters and the
+// missing-report to the manager, each gated on its team-configured local
+// hour AND days. Minute 25 is unused by the jobs above.
+// crons.cron, never crons.interval.
+crons.cron(
+  "setter-eod-notifications",
+  "25 * * * *",
+  internal.setterEodNotifications.runSetterEodNotifications,
+  {},
+);
+
 export default crons;
