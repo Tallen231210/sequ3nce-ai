@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Loader2, Play, X } from "lucide-react";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
@@ -79,6 +80,13 @@ function OptInInner() {
           (body as { error?: string }).error || "That didn't save — try again.",
         );
       }
+      // Ad-platform conversion signal — the funnel is the pixel's Lead
+      // source now that the landing page no longer captures leads.
+      void trackMetaEvent(
+        "Lead",
+        { product: "b2c", funnel: "start", variant: variant ?? "a" },
+        { email: email.trim(), phone: phone.trim(), firstName: firstName.trim() },
+      );
       router.push(`/start/thanks?p=${encodeURIComponent(phone.trim())}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "That didn't save — try again.");
