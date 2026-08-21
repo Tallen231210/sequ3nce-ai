@@ -60,18 +60,23 @@ export const getNotificationConfig = query({
     const team: any = await ctx.db.get(user.teamId as Id<"teams">);
     if (!team) return null;
     return {
+      // A connected workspace is what matters — this platform picks a
+      // channel per notification, not one team-wide default.
       channelReady:
-        !!(team.slackAccessToken && team.slackChannelId) ||
-        !!team.setterEodDiscordWebhookUrl,
+        !!team.slackAccessToken || !!team.setterEodDiscordWebhookUrl,
       reminder: {
         enabled: team.setterEodReminderEnabled === true,
         hourLocal: team.setterEodReminderHourLocal ?? 18,
         days: team.setterEodReminderDays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        slackChannelId: team.setterEodReminderSlackChannelId ?? null,
+        slackChannelName: team.setterEodReminderSlackChannelName ?? null,
       },
       missing: {
         enabled: team.setterEodMissingEnabled === true,
         hourLocal: team.setterEodMissingHourLocal ?? 20,
         days: team.setterEodMissingDays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        slackChannelId: team.setterEodMissingSlackChannelId ?? null,
+        slackChannelName: team.setterEodMissingSlackChannelName ?? null,
       },
     };
   },
@@ -84,6 +89,8 @@ export const setNotificationConfig = mutation({
     enabled: v.boolean(),
     hourLocal: v.number(),
     days: dayList,
+    slackChannelId: v.optional(v.string()),
+    slackChannelName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await resolveAuthUser(ctx, args.clerkId);
@@ -101,11 +108,23 @@ export const setNotificationConfig = mutation({
             setterEodReminderEnabled: args.enabled,
             setterEodReminderHourLocal: args.hourLocal,
             setterEodReminderDays: args.days,
+            ...(args.slackChannelId !== undefined
+              ? {
+                  setterEodReminderSlackChannelId: args.slackChannelId,
+                  setterEodReminderSlackChannelName: args.slackChannelName,
+                }
+              : {}),
           }
         : {
             setterEodMissingEnabled: args.enabled,
             setterEodMissingHourLocal: args.hourLocal,
             setterEodMissingDays: args.days,
+            ...(args.slackChannelId !== undefined
+              ? {
+                  setterEodMissingSlackChannelId: args.slackChannelId,
+                  setterEodMissingSlackChannelName: args.slackChannelName,
+                }
+              : {}),
           };
     await ctx.db.patch(user.teamId as Id<"teams">, patch as any);
     return { ok: true };
@@ -199,6 +218,9 @@ async function deliver(
   embed: any,
 ): Promise<{ ok: boolean; reason?: string }> {
   const slackChannel = slackChannelOverride || team.slackChannelId;
+  if (team.slackAccessToken && !slackChannel) {
+    return { ok: false, reason: "slack connected but no channel picked for this notification" };
+  }
   if (team.slackAccessToken && slackChannel) {
     const r = await postSlackMessage({
       accessToken: team.slackAccessToken,

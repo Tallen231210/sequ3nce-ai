@@ -127,10 +127,12 @@ export default defineSchema({
     setterEodReminderHourLocal: v.optional(v.number()),
     setterEodReminderDays: v.optional(v.array(v.union(v.literal("Sun"), v.literal("Mon"), v.literal("Tue"), v.literal("Wed"), v.literal("Thu"), v.literal("Fri"), v.literal("Sat")))),
     setterEodReminderSlackChannelId: v.optional(v.string()),
+    setterEodReminderSlackChannelName: v.optional(v.string()),
     setterEodMissingEnabled: v.optional(v.boolean()),
     setterEodMissingHourLocal: v.optional(v.number()),
     setterEodMissingDays: v.optional(v.array(v.union(v.literal("Sun"), v.literal("Mon"), v.literal("Tue"), v.literal("Wed"), v.literal("Thu"), v.literal("Fri"), v.literal("Sat")))),
     setterEodMissingSlackChannelId: v.optional(v.string()),
+    setterEodMissingSlackChannelName: v.optional(v.string()),
     setterEodDiscordWebhookUrl: v.optional(v.string()),
     // Manager EOD digest — the recordings-only end-of-day report for
     // managers/owners. Same config shape as the cash digest; the two are
