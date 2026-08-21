@@ -10,14 +10,17 @@ interface OnboardingQuestionnaireProps {
 
 const STEPS = [
   {
-    question: 'Where did you find us?',
-    subtitle: 'This helps us understand what\'s working.',
-    key: 'source',
+    // "Where did you find us?" died with the funnel launch — buyers come
+    // through a sales call and their source is already on the lead record.
+    // A goal is something we can actually act on.
+    question: 'What\'s your #1 goal for the next 90 days?',
+    subtitle: 'We\'ll point you at the right things first.',
+    key: 'source', // stored in the legacy source field, values prefixed goal_
     options: [
-      { value: 'instagram', label: 'Instagram' },
-      { value: 'youtube', label: 'YouTube' },
-      { value: 'google', label: 'Google' },
-      { value: 'referral', label: 'Referral' },
+      { value: 'goal_land_first_seat', label: 'Land my first commission seat' },
+      { value: 'goal_better_offer', label: 'Move to a better offer' },
+      { value: 'goal_close_more', label: 'Close more on my current offer' },
+      { value: 'goal_build_record', label: 'Build a verified track record' },
     ],
   },
   {
@@ -46,6 +49,7 @@ const STEPS = [
 ] as const;
 
 export function OnboardingQuestionnaire({ closerInfo, onComplete }: OnboardingQuestionnaireProps) {
+  const [showWelcome, setShowWelcome] = useState(true);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -78,6 +82,48 @@ export function OnboardingQuestionnaire({ closerInfo, onComplete }: OnboardingQu
       setStep(step + 1);
     }
   };
+
+  if (showWelcome) {
+    return (
+      <div className="h-screen flex flex-col bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
+        <div className="titlebar h-8 shrink-0" />
+        <div className="flex-1 flex flex-col items-center justify-center px-8">
+          <img src={logoImage} alt="Sequ3nce" className="h-16 mb-8 dark-invert" />
+          <h1 className="text-3xl font-bold text-center mb-3">
+            Welcome to the stack{closerInfo.name ? `, ${closerInfo.name.split(' ')[0]}` : ''}.
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-8 max-w-md">
+            Everything you were promised lives right here. Two quick questions
+            first, then you&apos;re in.
+          </p>
+          <div className="w-full max-w-md space-y-3 mb-10">
+            {[
+              ['Six-week closing program', 'Community → Training. Start with module 1 today.'],
+              ['Weekly live coaching calls', 'Run inside the app by our head coach — schedule is in Community.'],
+              ['The room', 'Closers running real floors. Ask anything, any hour.'],
+              ['Your verified track record', 'Every call recorded, analysed and scored — it builds from your first call.'],
+            ].map(([title, sub]) => (
+              <div key={title} className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3">
+                <svg className="w-5 h-5 mt-0.5 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold">{title}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{sub}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowWelcome(false)}
+            className="w-full max-w-md py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-semibold rounded-lg hover:opacity-80 transition-opacity"
+          >
+            Let&apos;s go
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
