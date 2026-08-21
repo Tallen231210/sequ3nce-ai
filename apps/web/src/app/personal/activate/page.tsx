@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { CheckCircle2, Download, Loader2 } from "lucide-react";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -31,7 +32,40 @@ function ActivateInner() {
   const params = useSearchParams();
   const email = params.get("email") ?? "";
   const code = params.get("code") ?? "";
-  const fromCheckout = !!params.get("checkout_id") && !code;
+  const checkoutId = params.get("checkout_id");
+  const fromCheckout = !!checkoutId && !code;
+
+  // The purchase conversion. Payment happens on Polar's domain where our
+  // pixel can't run, so the buyer's return HERE is the signal. The amount
+  // and plan come from a server-side checkout lookup (succeeded-only), and
+  // a localStorage guard keyed by checkout id keeps a refresh from firing
+  // the event twice.
+  useEffect(() => {
+    if (!checkoutId) return;
+    const guard = `meta-sub-${checkoutId}`;
+    try {
+      if (localStorage.getItem(guard)) return;
+    } catch {
+      /* storage unavailable — fire anyway */
+    }
+    fetch(`/api/polar/checkout-info?id=${encodeURIComponent(checkoutId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.paid) return;
+        void trackMetaEvent("Subscribe", {
+          product: "b2c",
+          value: (d.amountCents ?? 0) / 100,
+          currency: "USD",
+          contentIds: d.plan ? [d.plan] : undefined,
+        });
+        try {
+          localStorage.setItem(guard, "1");
+        } catch {
+          /* best effort */
+        }
+      })
+      .catch(() => {});
+  }, [checkoutId]);
 
   const resetPassword = useMutation(api.b2cAuth.resetPassword);
 

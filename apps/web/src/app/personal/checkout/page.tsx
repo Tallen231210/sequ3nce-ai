@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Logo } from "@/components/ui/logo";
 import { Check, Loader2 } from "lucide-react";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 // ============================================================================
 // The plan picker. Four plans, one product — the only variable is commitment.
@@ -64,6 +65,10 @@ export default function PersonalCheckoutPage() {
   async function buy(plan: string) {
     setBusyPlan(plan);
     setError(null);
+    void trackMetaEvent("InitiateCheckout", {
+      product: "b2c",
+      contentIds: [plan],
+    });
     try {
       const res = await fetch("/api/polar/b2c-checkout", {
         method: "POST",
