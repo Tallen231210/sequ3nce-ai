@@ -102,8 +102,11 @@ footer{border-top:1px solid var(--rule);padding:20px;text-align:center;
 .pair{display:grid;grid-template-columns:1fr;gap:22px}
 .sticky{position:static}
 @media(min-width:920px){
-  .split{grid-template-columns:1.15fr .85fr;gap:64px;align-items:start}
-  .sticky{position:sticky;top:84px}
+  .split{grid-template-columns:1.15fr .85fr;gap:64px;align-items:center}
+  .sticky{position:static}
+  .card{padding:36px 32px}
+  .form input{padding:16px 18px;font-size:16px}
+  .form .cta{padding:18px;font-size:16px}
   .duo{grid-template-columns:1fr 1fr;gap:24px;align-items:stretch}
   .pair{grid-template-columns:1fr 1fr;gap:40px;align-items:start}
 }
@@ -138,6 +141,8 @@ footer{border-top:1px solid var(--rule);padding:20px;text-align:center;
 
     <div class="sticky">
       <div class="card">
+        <p class="kicker" style="margin-bottom:6px">Start here</p>
+        <p style="font-size:14px;color:var(--mute);line-height:1.5;margin-bottom:18px">Thirty seconds to fill in &mdash; we call you within minutes.</p>
         <!-- ══ REPLACE: LEAD FORM ══ Map these fields in GHL, or swap the block for a GHL form embed. -->
         <div class="form">
           <input type="text" placeholder="First name" aria-label="First name">
