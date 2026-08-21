@@ -74,8 +74,13 @@ function ActivateInner() {
   // signal (screen width lies on tablets and split windows).
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
+    // ?device=mobile|desktop overrides detection — for previewing either
+    // state from any machine (and for automated testing).
+    const forced = params.get("device");
+    if (forced === "mobile") return setIsMobile(true);
+    if (forced === "desktop") return setIsMobile(false);
     setIsMobile(window.matchMedia("(pointer: coarse)").matches);
-  }, []);
+  }, [params]);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
