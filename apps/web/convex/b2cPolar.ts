@@ -234,8 +234,14 @@ export const sendWelcomeEmail = internalAction({
               </a>
             </p>
             <p style="color: #444; line-height: 1.6;">
-              2 · Download the app from the same page and sign in with
+              2 · Download the app and sign in with
               <strong>${args.email}</strong>.
+            </p>
+            <p style="color: #444; line-height: 1.6;">
+              On your phone right now? No problem — the app runs on Mac and
+              Windows. When you're at your computer, open
+              <a href="https://sequ3nce.ai/personal/download" style="color: #111; font-weight: 600;">sequ3nce.ai/personal/download</a>
+              — this email will still be here.
             </p>
             <p style="color: #999; font-size: 13px; line-height: 1.5; margin-top: 32px;">
               This link works for 7 days. If it expires, use "Forgot password"
@@ -371,6 +377,11 @@ export const sendActivationReminder = internalAction({
                  style="background: #111; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600;">
                 Set your password &amp; download the app
               </a>
+            </p>
+            <p style="color: #444; line-height: 1.6;">
+              On your phone? The app runs on Mac and Windows — when you're at
+              your computer, open
+              <a href="https://sequ3nce.ai/personal/download" style="color: #111; font-weight: 600;">sequ3nce.ai/personal/download</a>.
             </p>
             <p style="color: #999; font-size: 13px; line-height: 1.5; margin-top: 32px;">
               Sign in afterwards with <strong>${args.email}</strong>. Stuck on

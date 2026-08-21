@@ -69,6 +69,14 @@ function ActivateInner() {
 
   const resetPassword = useMutation(api.b2cAuth.resetPassword);
 
+  // Phones can't run the desktop app — swap download buttons for the
+  // "we emailed you the link" card there. Coarse pointer is the honest
+  // signal (screen width lies on tablets and split windows).
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    setIsMobile(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
+
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -111,10 +119,13 @@ function ActivateInner() {
       if (res?.success) {
         setDone(true);
       } else {
+        // A used or expired code usually means the password is ALREADY set
+        // (they activated on another device and re-opened the email). Say
+        // the useful thing instead of a cryptic code error.
         setError(
-          (res?.error ?? "That didn't work.") +
-            " If the link expired, use “Forgot password” in the app — it does the same thing.",
+          "This link was already used or has expired. If you've set your password, just sign in in the app — get it at sequ3nce.ai/personal/download. Otherwise use “Forgot password” in the app to get a fresh link.",
         );
+        void res;
       }
     } catch {
       setError("Something went wrong — try again.");
@@ -123,7 +134,22 @@ function ActivateInner() {
     }
   }
 
-  const downloads = (
+  const mobileDownloads = (
+    <div className="mx-auto mt-8 max-w-md rounded-2xl border border-zinc-200 bg-zinc-50 p-5 text-left">
+      <p className="text-sm font-semibold">The app runs on Mac &amp; Windows</p>
+      <p className="mt-1.5 text-sm leading-relaxed text-zinc-600">
+        We&apos;ve emailed you the download link — open it on your computer
+        when you&apos;re there and sign in with your email and password. Or go
+        straight to{" "}
+        <span className="font-semibold text-zinc-900">
+          sequ3nce.ai/personal/download
+        </span>{" "}
+        on your Mac or PC.
+      </p>
+    </div>
+  );
+
+  const desktopDownloads = (
     <div className="mt-8 grid gap-3 sm:grid-cols-2">
       <a
         href={dl(dmg)}
@@ -145,6 +171,8 @@ function ActivateInner() {
       </a>
     </div>
   );
+
+  const downloads = isMobile ? mobileDownloads : desktopDownloads;
 
   // ---- State: arrived from checkout, code lives in their inbox ----
   if (fromCheckout) {
