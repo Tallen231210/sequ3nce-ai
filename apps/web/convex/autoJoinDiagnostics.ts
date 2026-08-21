@@ -361,3 +361,40 @@ export const allFathomConnections = internalQuery({
     return out;
   },
 });
+
+/** Fathom calls that made it into the counted numbers, and whether the same
+ *  meeting also has a non-Fathom row (i.e. the bot recorded it too). */
+export const fathomCountedCalls = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .take(3000);
+    const counted = calls.filter(
+      (c) => c.source === "fathom" && c.status !== "unclassified",
+    );
+    return counted.map((c) => {
+      const started = c.startedAt ?? c.createdAt;
+      const twins = calls.filter(
+        (o) =>
+          o.source !== "fathom" &&
+          Math.abs((o.startedAt ?? o.createdAt) - started) < 30 * 60 * 1000,
+      );
+      return {
+        id: c._id,
+        prospectName: c.prospectName ?? null,
+        status: c.status,
+        outcome: c.outcome ?? null,
+        startedAt: new Date(started).toISOString(),
+        durationMin: c.duration ? Math.round(c.duration / 60) : null,
+        sameTimeNonFathomCalls: twins.map((t) => ({
+          source: t.source ?? "app",
+          prospectName: t.prospectName ?? null,
+          status: t.status,
+          durationMin: t.duration ? Math.round(t.duration / 60) : null,
+        })),
+      };
+    });
+  },
+});

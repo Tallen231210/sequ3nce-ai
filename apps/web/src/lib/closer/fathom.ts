@@ -15,6 +15,8 @@ import { convexFetch, CONVEX_SITE_URL } from "./client";
 export interface FathomStatus {
   /** Fathom is the Oversight plan's recorder; other plans use the bot. */
   availableOnPlan: boolean;
+  /** Their own connection was revoked because the plan doesn't include it. */
+  disconnectedByPlan: boolean;
   connected: boolean;
   connectionId: string | null;
   /** Connected at the company level — this closer has nothing to do. */

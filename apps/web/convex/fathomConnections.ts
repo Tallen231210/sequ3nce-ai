@@ -84,8 +84,17 @@ export const getStatusForCloser = internalQuery({
       (team as any)?.productTierOverride ?? (team as any)?.productTier;
     const availableOnPlan = tier === "oversight";
 
+    // This closer once had their OWN connection and it's been revoked on a
+    // plan that doesn't include Fathom: tell them once, in the app, instead
+    // of letting the card silently vanish.
+    const mineRevoked = all.some(
+      (c) =>
+        String(c.closerId) === String(args.closerId) && c.status === "revoked",
+    );
+
     return {
       availableOnPlan,
+      disconnectedByPlan: !availableOnPlan && !conn && mineRevoked,
       connected: !!conn,
       connectionId: conn?._id ?? null,
       // Whether this closer connected it, or it came with the company account.

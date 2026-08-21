@@ -660,7 +660,14 @@ export const pollForNewMeetings = internalAction({
  * dryRun reports what it WOULD delete.
  */
 export const purgeTeamFathomImport = internalMutation({
-  args: { teamId: v.id("teams"), dryRun: v.boolean() },
+  args: {
+    teamId: v.id("teams"),
+    dryRun: v.boolean(),
+    // A call's transcript segments alone can be hundreds of rows, and one
+    // transaction tops out at 4096 reads — so delete a few calls per run and
+    // report how many remain. Run again until remaining is 0.
+    batch: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const conns = await ctx.db
       .query("fathomConnections")
@@ -682,18 +689,37 @@ export const purgeTeamFathomImport = internalMutation({
     if (args.dryRun) {
       return { wouldDelete: fathomCalls.length, sample };
     }
-    let contentRows = 0;
-    for (const c of fathomCalls) {
-      const contents = await ctx.db
-        .query("callContent")
-        .withIndex("by_call", (q) => q.eq("callId", c._id))
-        .collect();
-      for (const row of contents) {
-        await ctx.db.delete(row._id);
-        contentRows++;
+    const batch = Math.min(Math.max(args.batch ?? 4, 1), 20);
+    const thisRun = fathomCalls.slice(0, batch);
+    let sideRows = 0;
+    for (const c of thisRun) {
+      // Everything hanging off the call, including the callStats sidecar —
+      // stats queries read that table directly, so an orphaned row would
+      // keep a deleted call in the numbers forever.
+      for (const table of [
+        "callContent",
+        "callStats",
+        "ammo",
+        "transcriptSegments",
+        "objections",
+        "highlights",
+      ] as const) {
+        const rows = await ctx.db
+          .query(table)
+          .withIndex("by_call", (q: any) => q.eq("callId", c._id))
+          .collect();
+        for (const row of rows) {
+          await ctx.db.delete(row._id);
+          sideRows++;
+        }
       }
       await ctx.db.delete(c._id);
     }
-    return { deleted: fathomCalls.length, contentRows, sample };
+    return {
+      deleted: thisRun.length,
+      remaining: fathomCalls.length - thisRun.length,
+      sideRows,
+      sample,
+    };
   },
 });
