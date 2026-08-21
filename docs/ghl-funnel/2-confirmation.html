@@ -129,9 +129,11 @@ footer{border-top:1px solid var(--rule);padding:20px;text-align:center;
   <div class="pair">
     <div>
       <div class="numbox">
-        <div class="l">Calling from</div>
-        <!-- ══ REPLACE: the number your dialer shows ══ -->
-        <div class="n">(XXX) XXX-XXXX</div>
+        <div class="l">This is the number we&rsquo;re calling</div>
+        <!-- {{contact.phone}} is GHL's merge tag — it renders as the phone
+             number the lead just entered on the opt-in form. If your funnel
+             uses a different field key, swap the tag accordingly. -->
+        <div class="n">{{contact.phone}}</div>
         <div class="s">We&rsquo;ll come up as <strong>Sequ3nce</strong> &mdash; not an unknown number.</div>
       </div>
 
