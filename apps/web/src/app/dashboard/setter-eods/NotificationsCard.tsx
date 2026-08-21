@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Bell, Check, Loader2 } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
@@ -30,6 +30,14 @@ export function NotificationsCard() {
     api.setterEodNotifications.getNotificationConfig,
     clerkId ? { clerkId } : "skip",
   );
+  const getSlackChannels = useAction(api.slack.getSlackChannels);
+  const [channels, setChannels] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    if (!clerkId) return;
+    void getSlackChannels({ clerkId }).then((r: any) => {
+      if (r && "channels" in r) setChannels(r.channels);
+    });
+  }, [clerkId, getSlackChannels]);
 
   if (config === undefined) {
     return (
@@ -47,8 +55,8 @@ export function NotificationsCard() {
         <span className="text-sm font-semibold">Notifications</span>
         {!config.channelReady && (
           <span className="ml-auto text-[11px] text-amber-700">
-            No Slack/Discord connected yet — schedules save, sending starts
-            once a channel is set up.
+            Connect Slack or Discord in Settings first — schedules save,
+            sending starts once connected.
           </span>
         )}
       </div>
@@ -57,6 +65,7 @@ export function NotificationsCard() {
         title="Remind setters to file"
         description="Posts every setter's name with their personal link, where your setters look."
         initial={config.reminder}
+        channels={channels}
       />
       <div className="border-t border-border/60" />
       <NotificationRow
@@ -64,6 +73,7 @@ export function NotificationsCard() {
         title="Tell me who hasn't filed"
         description="Names anyone still missing their EOD — and says so when everyone's done."
         initial={config.missing}
+        channels={channels}
       />
     </section>
   );
@@ -74,11 +84,19 @@ function NotificationRow({
   title,
   description,
   initial,
+  channels,
 }: {
   which: "reminder" | "missing";
   title: string;
   description: string;
-  initial: { enabled: boolean; hourLocal: number; days: string[] };
+  initial: {
+    enabled: boolean;
+    hourLocal: number;
+    days: string[];
+    slackChannelId: string | null;
+    slackChannelName: string | null;
+  };
+  channels: Array<{ id: string; name: string }>;
 }) {
   const { user } = useUser();
   const save = useMutation(api.setterEodNotifications.setNotificationConfig);
@@ -86,6 +104,7 @@ function NotificationRow({
   const [enabled, setEnabled] = useState(initial.enabled);
   const [hour, setHour] = useState(initial.hourLocal);
   const [days, setDays] = useState<string[]>(initial.days);
+  const [channelId, setChannelId] = useState<string | null>(initial.slackChannelId);
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -94,13 +113,16 @@ function NotificationRow({
     setEnabled(initial.enabled);
     setHour(initial.hourLocal);
     setDays(initial.days);
+    setChannelId(initial.slackChannelId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial.enabled, initial.hourLocal, initial.days.join(",")]);
+  }, [initial.enabled, initial.hourLocal, initial.days.join(","), initial.slackChannelId]);
 
   async function persist(next: {
     enabled?: boolean;
     hourLocal?: number;
     days?: string[];
+    slackChannelId?: string;
+    slackChannelName?: string;
   }) {
     if (!user) return;
     const payload = {
@@ -109,6 +131,9 @@ function NotificationRow({
       enabled: next.enabled ?? enabled,
       hourLocal: next.hourLocal ?? hour,
       days: (next.days ?? days) as any,
+      ...(next.slackChannelId !== undefined
+        ? { slackChannelId: next.slackChannelId, slackChannelName: next.slackChannelName }
+        : {}),
     };
     setDirty(true);
     try {
@@ -144,6 +169,27 @@ function NotificationRow({
           )}
           {dirty && (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+          )}
+          {channels.length > 0 && (
+            <select
+              value={channelId ?? ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                const name = channels.find((c) => c.id === id)?.name ?? "";
+                setChannelId(id || null);
+                if (id) void persist({ slackChannelId: id, slackChannelName: name });
+              }}
+              className="max-w-40 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none"
+            >
+              <option value="" disabled>
+                Pick a channel…
+              </option>
+              {channels.map((c) => (
+                <option key={c.id} value={c.id}>
+                  #{c.name}
+                </option>
+              ))}
+            </select>
           )}
           <select
             value={hour}
