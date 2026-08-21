@@ -14,7 +14,7 @@
 // ============================================================================
 
 import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import { internalAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
@@ -649,5 +649,51 @@ export const pollForNewMeetings = internalAction({
     }
 
     return { teams: connections.length, imported };
+  },
+});
+
+
+/**
+ * Remove a team's Fathom-imported calls — the undo for a connection that
+ * should never have been allowed. Refuses while a connection is still
+ * active (disconnect first, or the webhook just refills the table), and
+ * dryRun reports what it WOULD delete.
+ */
+export const purgeTeamFathomImport = internalMutation({
+  args: { teamId: v.id("teams"), dryRun: v.boolean() },
+  handler: async (ctx, args) => {
+    const conns = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    if (conns.some((c) => c.status === "active")) {
+      throw new Error("Disconnect the Fathom connection first — an active webhook would refill what this deletes.");
+    }
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .take(3000);
+    const fathomCalls = calls.filter((c) => c.source === "fathom");
+    const sample = fathomCalls.slice(0, 5).map((c) => ({
+      prospectName: c.prospectName ?? null,
+      createdAt: new Date(c.createdAt).toISOString(),
+      status: c.status,
+    }));
+    if (args.dryRun) {
+      return { wouldDelete: fathomCalls.length, sample };
+    }
+    let contentRows = 0;
+    for (const c of fathomCalls) {
+      const contents = await ctx.db
+        .query("callContent")
+        .withIndex("by_call", (q) => q.eq("callId", c._id))
+        .collect();
+      for (const row of contents) {
+        await ctx.db.delete(row._id);
+        contentRows++;
+      }
+      await ctx.db.delete(c._id);
+    }
+    return { deleted: fathomCalls.length, contentRows, sample };
   },
 });

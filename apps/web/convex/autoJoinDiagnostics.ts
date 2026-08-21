@@ -290,3 +290,74 @@ export const callSourceCensus = internalQuery({
     return { totalRows: calls.length, bySource, byStatus, fathom };
   },
 });
+
+/** Who connected Fathom for a team, and when. */
+export const fathomConnectionInfo = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const conns = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .collect()
+      .catch(() => [] as any[]);
+    const out = [];
+    for (const c of conns) {
+      const closer = c.closerId ? await ctx.db.get(c.closerId) : null;
+      out.push({
+        connectedAt: new Date(c._creationTime).toISOString(),
+        status: c.status,
+        scope: c.closerId ? "single closer" : "team-wide",
+        closerName: (closer as any)?.name ?? null,
+        closerEmail: (closer as any)?.email ?? null,
+        lastSyncedAt: c.lastSyncedAt ? new Date(c.lastSyncedAt).toISOString() : null,
+      });
+    }
+    return out;
+  },
+});
+
+
+/** Closer ids + names only — the closers table itself carries tokens. */
+export const listCloserIds = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    return closers.map((c) => ({ id: c._id, name: c.name, status: c.status }));
+  },
+});
+
+/** Every Fathom connection in the deployment, with team names and recent flow. */
+export const allFathomConnections = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const conns = await ctx.db.query("fathomConnections").collect();
+    const out = [];
+    for (const c of conns) {
+      const team = await ctx.db.get(c.teamId);
+      const closer = c.closerId ? await ctx.db.get(c.closerId) : null;
+      const recent = await ctx.db
+        .query("calls")
+        .withIndex("by_team_and_date", (q) =>
+          q.eq("teamId", c.teamId).gte("createdAt", Date.now() - 30 * 86_400_000),
+        )
+        .take(2000);
+      const fathomRecent = recent.filter((r) => r.source === "fathom");
+      out.push({
+        team: (team as any)?.name ?? String(c.teamId),
+        tier:
+          (team as any)?.productTierOverride ?? (team as any)?.productTier ?? null,
+        status: c.status,
+        scope: c.closerId ? `closer: ${(closer as any)?.name ?? "?"}` : "team-wide",
+        connectedAt: new Date(c._creationTime).toISOString().slice(0, 10),
+        lastSyncedAt: c.lastSyncedAt
+          ? new Date(c.lastSyncedAt).toISOString().slice(0, 10)
+          : null,
+        fathomCallsLast30d: fathomRecent.length,
+      });
+    }
+    return out;
+  },
+});

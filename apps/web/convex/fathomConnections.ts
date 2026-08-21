@@ -72,7 +72,20 @@ export const getStatusForCloser = internalQuery({
     const mine = live.find((c) => String(c.closerId) === String(args.closerId));
     const conn = mine ?? teamWide ?? null;
 
+    // Fathom is the Oversight plan's recording source — and no customer team
+    // is on it today; every live team records with the Sequ3nce bot. Two
+    // closers (CreateFreedom Aug 6, E2 Aug 21) have already found this button
+    // and wired up personal Fathom accounts, which creates a second, poorer
+    // pipeline for the same meetings (no live view, mixed sources, double
+    // rows) that reads as breakage. Plan decides, no exceptions — the gate is
+    // on connecting, existing connections keep syncing until revoked.
+    const team = await ctx.db.get(args.teamId);
+    const tier =
+      (team as any)?.productTierOverride ?? (team as any)?.productTier;
+    const availableOnPlan = tier === "oversight";
+
     return {
+      availableOnPlan,
       connected: !!conn,
       connectionId: conn?._id ?? null,
       // Whether this closer connected it, or it came with the company account.
