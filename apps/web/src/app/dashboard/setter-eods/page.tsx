@@ -6,6 +6,7 @@ import { useUser } from "@clerk/nextjs";
 import { Check, Copy, Loader2, Plus, RefreshCw } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { CustomRangeControl } from "@/components/CustomRangeControl";
+import { NotificationsCard } from "./NotificationsCard";
 import { Header } from "@/components/dashboard/header";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -191,6 +192,8 @@ export default function SetterEodsPage() {
             </div>
           )}
         </section>
+
+        <NotificationsCard />
 
         {/* The board */}
         <section>
