@@ -12817,6 +12817,20 @@ http.route({
           { status: 200, headers: CLOSER_JSON },
         );
       }
+      const planCheck = await ctx.runQuery(
+        internal.fathomConnections.getStatusForCloser,
+        { teamId: caller.teamId, closerId: caller.closerId },
+      );
+      if (!planCheck.availableOnPlan) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error:
+              "Fathom isn't part of your team's plan — your calls are recorded by the Sequ3nce bot automatically. Ask your manager if you think this is wrong.",
+          }),
+          { status: 200, headers: CLOSER_JSON },
+        );
+      }
       // Scoped to this closer unless they say otherwise. A personal key that
       // silently became the company-wide connection would route a teammate's
       // calls through one person's Fathom account.

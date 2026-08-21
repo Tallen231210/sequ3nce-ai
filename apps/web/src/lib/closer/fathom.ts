@@ -13,6 +13,8 @@ import * as Sentry from "@sentry/nextjs";
 import { convexFetch, CONVEX_SITE_URL } from "./client";
 
 export interface FathomStatus {
+  /** Fathom is the Oversight plan's recorder; other plans use the bot. */
+  availableOnPlan: boolean;
   connected: boolean;
   connectionId: string | null;
   /** Connected at the company level — this closer has nothing to do. */
