@@ -18,9 +18,8 @@ import {
   Mic,
 } from "lucide-react";
 import { useState, useEffect, useCallback, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { InlineLeadForm } from "@/components/InlineLeadForm";
 
 /* ─── Data ───────────────────────────────────────── */
 
@@ -180,6 +179,8 @@ export default function PersonalLandingPage() {
 function PersonalLandingPageInner() {
   const searchParams = useSearchParams();
   const refParam = searchParams.get("ref") || undefined;
+  void refParam; // affiliate attribution moved with the lead form; param kept for future use
+  const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   const [showStickyCta, setShowStickyCta] = useState(false);
@@ -200,12 +201,13 @@ function PersonalLandingPageInner() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // The landing page stopped being a funnel (2026-08-21): no lead capture,
+  // no nurture entry — a visitor who wants in goes straight to checkout.
+  // Rep-driven acquisition lives at /start; this page is the public face
+  // and the self-serve door. Name kept so every CTA call-site updates at once.
   const scrollToForm = useCallback(() => {
-    document.getElementById("lead-form")?.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
-  }, []);
+    router.push("/personal/checkout");
+  }, [router]);
 
   return (
     <main className="min-h-screen bg-white relative overflow-hidden">
@@ -214,7 +216,7 @@ function PersonalLandingPageInner() {
         <span className="inline-flex items-center gap-1.5">
           <Zap className="h-3.5 w-3.5" strokeWidth={2.5} />
           <span>
-            Founding member pricing — plans from $83/mo, cancel anytime
+            Plans from $83/mo — cancel anytime
           </span>
         </span>
       </div>
@@ -305,20 +307,18 @@ function PersonalLandingPageInner() {
             </div>
           </AnimatedSection>
 
-          {/* Inline lead form */}
+          {/* Direct CTA — the lead form is gone; buying is the only step. */}
           <AnimatedSection delay={100}>
-            <div className="mt-10">
-              <div className="text-center max-w-md mx-auto mb-5">
-                <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-zinc-950">
-                  Get instant access.
-                </h2>
-                <p className="mt-1.5 text-[13px] sm:text-sm text-zinc-600 leading-relaxed">
-                  Drop your details below and your download link is on its way —
-                  it&apos;ll be waiting in your inbox the second you&apos;re at your
-                  computer.
-                </p>
-              </div>
-              <InlineLeadForm source="hero" refParam={refParam} variant="hero" />
+            <div className="mt-10 text-center">
+              <button
+                onClick={scrollToForm}
+                className="inline-block bg-zinc-900 hover:bg-zinc-800 text-white font-semibold px-8 py-3.5 rounded-xl transition-colors"
+              >
+                Get Access →
+              </button>
+              <p className="mt-3 text-[12px] text-zinc-500">
+                Pick a plan, set your password, download the app.
+              </p>
             </div>
           </AnimatedSection>
 
