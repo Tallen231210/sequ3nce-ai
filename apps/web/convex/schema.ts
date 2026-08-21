@@ -119,6 +119,14 @@ export default defineSchema({
     // ---- End-of-day cash digest -------------------------------------------
     // Today, month to date, year to date, pace against the team's goal, and
     // who collected what. Same config shape as the collections digest.
+    // Manager EOD digest — the recordings-only end-of-day report for
+    // managers/owners. Same config shape as the cash digest; the two are
+    // siblings, not replacements.
+    managerEodEnabled: v.optional(v.boolean()),
+    managerEodHourLocal: v.optional(v.number()),
+    managerEodChannel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
+    managerEodSlackChannelId: v.optional(v.string()),
+    managerEodDiscordWebhookUrl: v.optional(v.string()),
     cashDigestEnabled: v.optional(v.boolean()),
     cashDigestCadence: v.optional(v.string()),        // "daily" | "weekly"
     cashDigestHourLocal: v.optional(v.number()),      // 0-23 in the team's zone

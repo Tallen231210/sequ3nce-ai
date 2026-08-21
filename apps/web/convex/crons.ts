@@ -395,4 +395,16 @@ crons.cron(
   {},
 );
 
+// Manager EOD: the recordings-only end-of-day report (calls taken, real
+// conversations, why calls didn't close, one call worth reviewing,
+// tomorrow's load). Hourly with per-team local-hour gating, same shape as
+// the cash digest. Minute 40 is unused by the jobs above.
+// crons.cron, never crons.interval.
+crons.cron(
+  "manager-eod-digest",
+  "40 * * * *",
+  internal.managerEodDigest.runManagerEod,
+  {},
+);
+
 export default crons;
