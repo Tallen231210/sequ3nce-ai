@@ -268,8 +268,19 @@ async function narrateDay(data: ManagerEodData): Promise<string | null> {
 // Formatting
 // ----------------------------------------------------------------------------
 
+/** Slack link labels can't carry the link syntax's own characters: a title
+ *  like "Avenue and Gresham | AI Implementation" would end the label at its
+ *  pipe. Strip the delimiters, escape the entities. */
+function slackSafe(label: string): string {
+  return label
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "")
+    .replace(/>/g, "")
+    .replace(/\|/g, "-");
+}
+
 function callLink(ref: EodCallRef): string {
-  return `<${DASHBOARD_CALL_URL}/${ref.callId}|${ref.label}>`;
+  return `<${DASHBOARD_CALL_URL}/${ref.callId}|${slackSafe(ref.label)}>`;
 }
 
 function outcomeWord(outcome: string | null): string {
@@ -359,7 +370,7 @@ function buildSlackBlocks(
       text: {
         type: "mrkdwn",
         text:
-          `🔍 *One call worth reviewing:* <${DASHBOARD_CALL_URL}/${p.callId}|${p.label}> — ` +
+          `🔍 *One call worth reviewing:* <${DASHBOARD_CALL_URL}/${p.callId}|${slackSafe(p.label)}> — ` +
           `${p.objectionCount} objection${p.objectionCount === 1 ? "" : "s"}, ${p.durationMin} min, ${outcomeWord(p.outcome)}.`,
       },
     });
@@ -539,6 +550,30 @@ export const runManagerEod = internalAction({
       console.log(`[managerEod] sent ${processed}, skipped ${skipped}, errored ${errored}`);
     }
     return { processed, skipped, errored };
+  },
+});
+
+/**
+ * The whole digest — data, narrative, rendered Slack blocks — without
+ * posting anywhere. The bench tool: how the report gets judged against a
+ * real team's day before anyone's channel sees it.
+ */
+export const previewManagerEod = internalAction({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args): Promise<any> => {
+    const nowMs = Date.now();
+    const data: ManagerEodData = await ctx.runQuery(
+      internal.managerEodDigest.getManagerEodData,
+      { teamId: args.teamId, nowMs },
+    );
+    const narrative = await narrateDay(data);
+    const team = await ctx.runQuery(
+      internal.cashDigestNotifications.getTeamForCashDigest,
+      { teamId: args.teamId },
+    );
+    const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
+    const local = formatInTimeZone(new Date(nowMs), tz);
+    return { data, narrative, blocks: buildSlackBlocks(data, narrative, local) };
   },
 });
 
