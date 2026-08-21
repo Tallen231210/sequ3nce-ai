@@ -84,7 +84,7 @@ function OptInInner() {
       // source now that the landing page no longer captures leads.
       void trackMetaEvent(
         "Lead",
-        { product: "b2c", funnel: "start", variant: variant ?? "a" },
+        { product: "b2c", content_name: `start-funnel-${variant ?? "a"}` },
         { email: email.trim(), phone: phone.trim(), firstName: firstName.trim() },
       );
       router.push(`/start/thanks?p=${encodeURIComponent(phone.trim())}`);
