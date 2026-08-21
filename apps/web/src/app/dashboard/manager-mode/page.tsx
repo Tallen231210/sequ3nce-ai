@@ -14,6 +14,7 @@ import { RepHistory } from "./components/RepHistory";
 import { MeetingsTab } from "./components/MeetingsTab";
 import { ClipsTab } from "./components/ClipsTab";
 import { SettingsTab } from "./components/SettingsTab";
+import { ManagerEodTab } from "./components/ManagerEodTab";
 import { TabBar, type ManagerTab } from "./components/TabBar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -190,6 +191,8 @@ export default function ManagerModePage() {
               <MeetingsTab onOpenMeeting={openMeetingFrom} />
             ) : tab === "clips" ? (
               <ClipsTab onOpenMeeting={openMeetingFrom} />
+            ) : tab === "eod" ? (
+              <ManagerEodTab />
             ) : (
               <SettingsTab state={state} />
             )}

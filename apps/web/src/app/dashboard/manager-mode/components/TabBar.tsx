@@ -6,6 +6,7 @@ export const MANAGER_TABS = [
   { key: "overview", label: "Overview" },
   { key: "meetings", label: "Meetings" },
   { key: "clips", label: "Clips" },
+  { key: "eod", label: "EOD Report" },
   { key: "settings", label: "Settings" },
 ] as const;
 

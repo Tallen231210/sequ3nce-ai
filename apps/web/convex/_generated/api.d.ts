@@ -147,6 +147,7 @@ import type * as managerBotAvatar from "../managerBotAvatar.js";
 import type * as managerBrief from "../managerBrief.js";
 import type * as managerCalendar from "../managerCalendar.js";
 import type * as managerCalendarSync from "../managerCalendarSync.js";
+import type * as managerEodDigest from "../managerEodDigest.js";
 import type * as managerMeetingAnalysis from "../managerMeetingAnalysis.js";
 import type * as managerMeetingAnalysisRun from "../managerMeetingAnalysisRun.js";
 import type * as managerMeetingBot from "../managerMeetingBot.js";
@@ -370,6 +371,7 @@ declare const fullApi: ApiFromModules<{
   managerBrief: typeof managerBrief;
   managerCalendar: typeof managerCalendar;
   managerCalendarSync: typeof managerCalendarSync;
+  managerEodDigest: typeof managerEodDigest;
   managerMeetingAnalysis: typeof managerMeetingAnalysis;
   managerMeetingAnalysisRun: typeof managerMeetingAnalysisRun;
   managerMeetingBot: typeof managerMeetingBot;
