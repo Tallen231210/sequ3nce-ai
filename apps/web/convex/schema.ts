@@ -119,6 +119,29 @@ export default defineSchema({
     // ---- End-of-day cash digest -------------------------------------------
     // Today, month to date, year to date, pace against the team's goal, and
     // who collected what. Same config shape as the collections digest.
+    // Setter EOD notifications — the reminder blast (setter names + their
+    // personal filing links, where the setters look) and the missing-report
+    // (who hasn't filed, for the manager). Hour + days configurable from
+    // the Setter EODs tab; delivery details via CLI.
+    setterEodReminderEnabled: v.optional(v.boolean()),
+    setterEodReminderHourLocal: v.optional(v.number()),
+    setterEodReminderDays: v.optional(v.array(v.union(v.literal("Sun"), v.literal("Mon"), v.literal("Tue"), v.literal("Wed"), v.literal("Thu"), v.literal("Fri"), v.literal("Sat")))),
+    setterEodReminderSlackChannelId: v.optional(v.string()),
+    setterEodReminderSlackChannelName: v.optional(v.string()),
+    setterEodMissingEnabled: v.optional(v.boolean()),
+    setterEodMissingHourLocal: v.optional(v.number()),
+    setterEodMissingDays: v.optional(v.array(v.union(v.literal("Sun"), v.literal("Mon"), v.literal("Tue"), v.literal("Wed"), v.literal("Thu"), v.literal("Fri"), v.literal("Sat")))),
+    setterEodMissingSlackChannelId: v.optional(v.string()),
+    setterEodMissingSlackChannelName: v.optional(v.string()),
+    setterEodDiscordWebhookUrl: v.optional(v.string()),
+    // Manager EOD digest — the recordings-only end-of-day report for
+    // managers/owners. Same config shape as the cash digest; the two are
+    // siblings, not replacements.
+    managerEodEnabled: v.optional(v.boolean()),
+    managerEodHourLocal: v.optional(v.number()),
+    managerEodChannel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
+    managerEodSlackChannelId: v.optional(v.string()),
+    managerEodDiscordWebhookUrl: v.optional(v.string()),
     cashDigestEnabled: v.optional(v.boolean()),
     cashDigestCadence: v.optional(v.string()),        // "daily" | "weekly"
     cashDigestHourLocal: v.optional(v.number()),      // 0-23 in the team's zone
@@ -891,6 +914,15 @@ export default defineSchema({
      *  for "did the prospect actually show" — a closer waiting alone
      *  produces a long recording and this stays false. */
     prospectJoined: v.optional(v.boolean()),
+    /**
+     * Last time any live view of this call was open (closer web app, manager
+     * Live page, or the call detail page mid-call). Heartbeated every ~20s by
+     * those screens. The audio processor's 45-second live-analysis loop runs
+     * for bot-sourced calls ONLY while this is fresh — analyzing a call
+     * nobody is watching was most of the Anthropic bill. Desktop-sourced
+     * calls don't need it: the desktop IS the viewer, attached by WebSocket.
+     */
+    liveViewerHeartbeatAt: v.optional(v.number()),
     // Speaker mapping (maps Deepgram speakers to closer/prospect)
     speakerMapping: v.optional(v.object({
       closerSpeaker: v.string(), // "speaker_0" or "speaker_1" from Deepgram
@@ -3585,6 +3617,21 @@ export default defineSchema({
      * than leave a silent gap someone later reads as "no meeting happened".
      */
     failureReason: v.optional(v.string()),
+    /**
+     * What KIND of meeting this was — the tabs in Manager Mode. Denormalized
+     * from the analysis's `kind` (judged from the conversation, not the
+     * title) so the meetings list never joins the analysis table. Manual
+     * re-filing outranks the AI and is never overwritten, the same contract
+     * as every other human-vs-model field.
+     */
+    meetingType: v.optional(v.union(
+      v.literal("one_to_one"),
+      v.literal("team"),
+      v.literal("leadership"),
+      v.literal("interview"),
+      v.literal("other"),
+    )),
+    meetingTypeSource: v.optional(v.union(v.literal("ai"), v.literal("manual"))),
     createdAt: v.number(),
   })
     .index("by_user_and_created", ["userId", "createdAt"])

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { CustomRangeControl } from "@/components/CustomRangeControl";
 import { RequiresFeature } from "@/components/dashboard/requires-feature";
 import { api } from "../../../../convex/_generated/api";
 import { useTeam } from "@/hooks/useTeam";
@@ -36,7 +37,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 type StatusFilter = "all" | "flagged" | "reviewed";
-type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days";
+type DateFilter = "all" | "today" | "this_week" | "this_month" | "last_30_days" | "custom";
 
 const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: "all", label: "All Time" },
@@ -44,6 +45,7 @@ const DATE_FILTER_OPTIONS: { value: DateFilter; label: string }[] = [
   { value: "this_week", label: "This Week" },
   { value: "this_month", label: "This Month" },
   { value: "last_30_days", label: "Last 30 Days" },
+  { value: "custom", label: "Custom range" },
 ];
 
 function formatDuration(seconds: number): string {
@@ -88,8 +90,17 @@ function formatDate(timestamp: number): string {
   }
 }
 
-function isWithinDateFilter(timestamp: number, filter: DateFilter): boolean {
+function isWithinDateFilter(
+  timestamp: number,
+  filter: DateFilter,
+  customRange: { start: number; end: number } | null,
+): boolean {
   if (filter === "all") return true;
+  if (filter === "custom") {
+    // No range picked yet: show everything rather than nothing.
+    if (!customRange) return true;
+    return timestamp >= customRange.start && timestamp <= customRange.end;
+  }
 
   const date = new Date(timestamp);
   const now = new Date();
@@ -286,6 +297,7 @@ function CallReviewsPageInner() {
 
   // Filter state
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [customRange, setCustomRange] = useState<{ start: number; end: number } | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedClosers, setSelectedClosers] = useState<Set<string>>(new Set());
 
@@ -317,7 +329,7 @@ function CallReviewsPageInner() {
     return calls.filter((call) => {
       // Date filter
       const callDate = call.startedAt || call.createdAt;
-      if (!isWithinDateFilter(callDate, dateFilter)) return false;
+      if (!isWithinDateFilter(callDate, dateFilter, customRange)) return false;
 
       // Status filter
       if (statusFilter === "flagged") {
@@ -333,7 +345,7 @@ function CallReviewsPageInner() {
 
       return true;
     });
-  }, [calls, dateFilter, statusFilter, selectedClosers]);
+  }, [calls, dateFilter, customRange, statusFilter, selectedClosers]);
 
   // Group calls into sections
   const { flaggedCalls, reviewedCalls, allCalls } = useMemo(() => {
@@ -351,6 +363,7 @@ function CallReviewsPageInner() {
 
   const clearAllFilters = () => {
     setDateFilter("all");
+    setCustomRange(null);
     setStatusFilter("all");
     setSelectedClosers(new Set());
   };
@@ -423,6 +436,9 @@ function CallReviewsPageInner() {
               ))}
             </SelectContent>
           </Select>
+          {dateFilter === "custom" && (
+            <CustomRangeControl range={customRange} onChange={setCustomRange} />
+          )}
 
           {/* Closer Filter (Multi-select) */}
           {uniqueClosers.length > 1 && (

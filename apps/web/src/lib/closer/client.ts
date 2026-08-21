@@ -983,6 +983,24 @@ export interface AmmoV2Analysis {
   analyzedAt?: number;
 }
 
+/**
+ * Tell the backend a live view of this call is open. The audio processor
+ * only spends live-analysis API calls on bot calls while somebody is
+ * actually watching — this ping is what "watching" means. Fire-and-forget.
+ */
+export async function sendLiveViewHeartbeat(callId: string): Promise<void> {
+  try {
+    await convexFetch(`${CONVEX_SITE_URL}/liveViewHeartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callId }),
+    });
+  } catch {
+    // Missing a heartbeat only pauses live analysis for a cycle — never
+    // worth surfacing to the closer mid-call.
+  }
+}
+
 export async function getAmmoAnalysis(callId: string): Promise<AmmoV2Analysis | null> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/getAmmoAnalysis?callId=${encodeURIComponent(callId)}`);

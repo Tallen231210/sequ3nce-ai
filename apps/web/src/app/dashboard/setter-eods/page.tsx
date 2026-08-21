@@ -5,6 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { Check, Copy, Loader2, Plus, RefreshCw } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
+import { CustomRangeControl } from "@/components/CustomRangeControl";
+import { NotificationsCard } from "./NotificationsCard";
 import { Header } from "@/components/dashboard/header";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -25,9 +27,15 @@ export default function SetterEodsPage() {
     api.setterEod.listRoster,
     clerkId ? { clerkId } : "skip",
   );
+  const [boardDays, setBoardDays] = useState<number>(7);
+  const [boardRange, setBoardRange] = useState<{ start: number; end: number } | null>(null);
   const board = useQuery(
     api.setterEod.getEodBoard,
-    clerkId ? { clerkId, days: 7 } : "skip",
+    clerkId
+      ? boardRange
+        ? { clerkId, rangeStartMs: boardRange.start, rangeEndMs: boardRange.end }
+        : { clerkId, days: boardDays }
+      : "skip",
   );
 
   const addSetter = useMutation(api.setterEod.addSetter);
@@ -185,11 +193,35 @@ export default function SetterEodsPage() {
           )}
         </section>
 
+        <NotificationsCard />
+
         {/* The board */}
         <section>
-          <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-            Last 7 days
-          </h3>
+          <div className="mb-2.5 flex items-center justify-between gap-3">
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+              {boardRange ? "Custom range" : `Last ${boardDays} days`}
+            </h3>
+            <div className="flex items-center gap-1.5 text-[12px]">
+              {[7, 14, 31].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => {
+                    setBoardRange(null);
+                    setBoardDays(d);
+                  }}
+                  className={
+                    "rounded-md border px-2 py-1 transition-colors " +
+                    (!boardRange && boardDays === d
+                      ? "border-foreground font-medium"
+                      : "border-border text-muted-foreground hover:text-foreground")
+                  }
+                >
+                  {d}d
+                </button>
+              ))}
+              <CustomRangeControl range={boardRange} onChange={setBoardRange} />
+            </div>
+          </div>
           <div className="overflow-x-auto rounded-xl border border-border bg-card">
             {board === undefined ? (
               <div className="flex h-24 items-center justify-center">

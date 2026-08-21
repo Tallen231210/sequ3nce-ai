@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { syncCallStats } from "./callStats";
 import { mutation, query, action, internalMutation, internalQuery, internalAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
@@ -29,19 +30,64 @@ function personalizedBotName(
   return first ? `${first}'s Sequ3nce.ai Bot` : "Sequ3nce.ai";
 }
 
-// Schedule a delayed fetch of the recording URL from Recall.ai API
+// Schedule a delayed fetch of the recording URL from Recall.ai API.
+//
+// `attempt` MUST be threaded through. This used to hardcode `attempt: 1`,
+// which made fetchBotRecording's `attempt < 3` cutoff unreachable — every
+// bot that never produced a recording (all the never-admitted ones) retried
+// every 30 seconds FOREVER. Hundreds of those immortal chains saturated
+// Recall's rate limit around the clock, which is what starved manager-mode
+// transcript/recording fetches to death with 429s.
 export const scheduleRecordingFetch = internalMutation({
   args: {
     recallBotId: v.optional(v.string()),
     delayMs: v.number(),
+    attempt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     if (args.recallBotId) {
       await ctx.scheduler.runAfter(args.delayMs, internal.meetingBot.fetchBotRecording, {
         recallBotId: args.recallBotId,
-        attempt: 1,
+        attempt: args.attempt ?? 1,
       });
     }
+  },
+});
+
+/**
+ * The meeting ended and the bot never recorded — because recording starts
+ * when a human participant joins, and nobody ever did. Terminal: mark the
+ * bot so nothing re-fetches it nightly, and give the linked call the honest
+ * verdict ("no_show") instead of an eternal "Pending" badge. A closer who
+ * joined would have started the recording, so no recording = nobody came.
+ * Never overrides a human answer.
+ */
+export const markNothingRecorded = internalMutation({
+  args: { recallBotId: v.string() },
+  handler: async (ctx, args) => {
+    const bot = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_recall_bot_id", (q) => q.eq("recallBotId", args.recallBotId))
+      .first();
+    if (!bot) return { marked: false };
+    if (!bot.failureReason) {
+      await ctx.db.patch(bot._id, {
+        failureReason: "nobody joined — nothing recorded",
+      });
+    }
+    if (bot.callId) {
+      const call = await ctx.db.get(bot.callId);
+      const humanTouched =
+        call?.outcomeSource === "closer" || call?.outcomeSource === "manager";
+      if (call && call.outcome == null && !humanTouched) {
+        await ctx.db.patch(bot.callId, {
+          outcome: "no_show",
+          outcomeSource: "ai",
+        });
+        await syncCallStats(ctx, bot.callId);
+      }
+    }
+    return { marked: true };
   },
 });
 
@@ -73,7 +119,10 @@ export const fetchBotRecording = internalAction({
         if (args.attempt < 3) {
           await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
             recallBotId: args.recallBotId,
-            delayMs: args.attempt * 30000, // 30s, 60s, 90s (Recall is faster than MBaaS)
+            // 429s get a long pause — hammering a rate limit back-to-back
+            // is how the storm fed itself.
+            delayMs: response.status === 429 ? 120000 : args.attempt * 30000,
+            attempt: args.attempt + 1,
           });
         }
         return;
@@ -87,11 +136,25 @@ export const fetchBotRecording = internalAction({
       const recordingUrl = data.recordings?.[0]?.media_shortcuts?.video_mixed?.data?.download_url;
 
       if (!recordingUrl) {
+        // Meeting over and recording never started: terminal, not pending.
+        // Retrying forever against a recording that never existed is what
+        // the immortal-loop storm was made of.
+        const codes = (data.status_changes || []).map((sc: any) => sc.code);
+        const ended = codes.includes("done") || codes.includes("call_ended");
+        const everRecorded = codes.includes("in_call_recording");
+        if (ended && !everRecorded) {
+          console.log(`[fetchBotRecording] Bot ${args.recallBotId} ended without ever recording — marking terminal`);
+          await ctx.runMutation(internal.meetingBot.markNothingRecorded, {
+            recallBotId: args.recallBotId,
+          });
+          return;
+        }
         console.log(`[fetchBotRecording] No recording URL yet for ${args.recallBotId}, attempt ${args.attempt}`);
         if (args.attempt < 3) {
           await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
             recallBotId: args.recallBotId,
             delayMs: args.attempt * 30000,
+            attempt: args.attempt + 1,
           });
         } else {
           console.error(`[fetchBotRecording] Gave up fetching recording for ${args.recallBotId} after ${args.attempt} attempts`);
@@ -137,6 +200,7 @@ export const fetchBotRecording = internalAction({
         await ctx.runMutation(internal.meetingBot.scheduleRecordingFetch, {
           recallBotId: args.recallBotId,
           delayMs: args.attempt * 30000,
+          attempt: args.attempt + 1,
         });
       }
       await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
@@ -2234,13 +2298,15 @@ export const getExcludedEventIds = internalQuery({
 /**
  * Ceiling on bots one team's calendar can book in a rolling day.
  *
- * Generous on purpose — the busiest team we have books around 14 a day, so 50
- * is a runaway detector rather than a budget. Hitting it means something is
- * wrong (duplicated calendar events, a sync loop, a customer who connected the
- * wrong diary), and the right response is to stop and say so rather than keep
- * spending.
+ * A runaway detector, not a budget — but it fails SILENTLY, so it must sit
+ * far above real usage. 50 was sized when the busiest team booked ~14/day;
+ * then E2's floor legitimately booked ~50/day and auto-join quietly stopped
+ * booking mid-day, which reached us as closers saying "the bot only sometimes
+ * joins". 150 keeps runaway protection (a sync loop still hits it fast)
+ * without starving a big floor. Per-team override:
+ * autoJoinDiagnostics:setAutoJoinDailyCap.
  */
-const AUTO_JOIN_DEFAULT_DAILY_CAP = 50;
+const AUTO_JOIN_DEFAULT_DAILY_CAP = 150;
 
 /**
  * What did auto-join actually do?

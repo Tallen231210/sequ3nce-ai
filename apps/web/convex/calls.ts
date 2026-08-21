@@ -2944,6 +2944,39 @@ export const getAmmoAnalysis = query({
   },
 });
 
+/**
+ * A live view of this call is open somewhere — closer web app, manager Live
+ * page, or the call detail page mid-call. Heartbeated every ~20s while the
+ * screen is mounted. The audio processor reads this (via /hasLiveViewer) to
+ * decide whether the 45-second live-analysis loop should spend an API call:
+ * bot calls with no fresh heartbeat skip the cycle entirely.
+ */
+export const liveViewHeartbeat = mutation({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    // Only meaningful while the call is live; a heartbeat on a finished call
+    // is a stale tab, not a viewer.
+    if (!call || call.status === "completed" || call.status === "no_show") {
+      return { ok: false };
+    }
+    await ctx.db.patch(args.callId, { liveViewerHeartbeatAt: Date.now() });
+    return { ok: true };
+  },
+});
+
+/** Fresh means a view pinged within the last 90s (heartbeats fire every ~20s,
+ *  so this tolerates a few dropped ticks before the loop goes quiet). */
+export const hasLiveViewer = internalQuery({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return { hasViewer: false };
+    const hb = call.liveViewerHeartbeatAt ?? 0;
+    return { hasViewer: Date.now() - hb < 90_000 };
+  },
+});
+
 // ADMIN: Enable Ammo V2 for a team by team ID
 export const enableAmmoV2ForTeam = mutation({
   args: {

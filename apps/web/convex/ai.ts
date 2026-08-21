@@ -887,7 +887,9 @@ export const generateSetterCallSummary = internalAction({
 
     try {
       const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
+        // Haiku: structured 3-bullet summaries of short setter calls at
+        // ~120/day volume — the cheapest model is the right model here.
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 500,
         system: SETTER_SUMMARY_PROMPT,
         messages: [

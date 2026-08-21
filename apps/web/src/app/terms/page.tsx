@@ -28,7 +28,7 @@ export default function TermsPage() {
 
         <div className="prose prose-zinc max-w-none">
           <p className="text-muted-foreground text-lg mb-8">
-            Last updated: December 2024
+            Last updated: August 20, 2026
           </p>
 
           <section className="mb-8">
@@ -114,7 +114,7 @@ export default function TermsPage() {
             </p>
             <ul className="list-disc list-inside text-muted-foreground space-y-2 mb-4">
               <li><strong>Billing Cycle:</strong> Fees are billed monthly in advance based on your selected plan</li>
-              <li><strong>Payment Processing:</strong> All payments are processed securely through Stripe</li>
+              <li><strong>Payment Processing:</strong> All payments are processed securely through our payment providers (Stripe and Polar)</li>
               <li><strong>Seat-Based Pricing:</strong> Additional team members may incur additional fees per your plan</li>
               <li><strong>Failed Payments:</strong> We may suspend service after repeated failed payment attempts</li>
               <li><strong>Price Changes:</strong> We will provide 30 days notice before any pricing changes take effect</li>

@@ -53,6 +53,20 @@ export const saveAnalysis = internalMutation({
       .query("managerMeetingAnalysis")
       .withIndex("by_meeting", (q) => q.eq("meetingId", meetingId))
       .first();
+    // Stamp the meeting's type from the analysis verdict — this is what the
+    // Manager Mode tabs filter on. A manager who re-filed the meeting by
+    // hand outranks the model and is never overwritten.
+    const meeting = await ctx.db.get(meetingId);
+    if (meeting && meeting.meetingTypeSource !== "manual") {
+      const KINDS = ["one_to_one", "team", "leadership", "interview", "other"];
+      if (KINDS.includes(args.kind)) {
+        await ctx.db.patch(meetingId, {
+          meetingType: args.kind as any,
+          meetingTypeSource: "ai",
+        });
+      }
+    }
+
     if (existing) {
       await ctx.db.patch(existing._id, { ...rest, analysedAt: Date.now() });
       return { updated: true };
@@ -101,6 +115,15 @@ export const analyseManagerMeeting = internalAction({
       console.warn(
         `[managerAnalysis] ${meeting.title}: ${result.reason} after ${result.attempts} attempts`,
       );
+      // A transcript too short to read stays too short forever — terminal
+      // for the nightly repair. Transient failures (model outage) stay
+      // unmarked so the sweep retries them tomorrow.
+      if (result.reason.includes("too short")) {
+        await ctx.runMutation(
+          internal.managerMeetingTranscript.markMeetingFailure,
+          { meetingId: args.meetingId, reason: "too little was said to analyse" },
+        );
+      }
       return { analysed: false, reason: result.reason };
     }
 
@@ -139,5 +162,29 @@ export const previewAnalysis = internalAction({
     return result.ok
       ? { ok: true, attempts: result.attempts, ...result.data }
       : { ok: false, reason: result.reason, attempts: result.attempts };
+  },
+});
+
+/**
+ * One-shot backfill: meetings analysed before meetingType existed get their
+ * type copied up from the analysis. Manual classifications are untouched.
+ */
+export const backfillMeetingTypes = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const analyses = await ctx.db.query("managerMeetingAnalysis").take(500);
+    const KINDS = ["one_to_one", "team", "leadership", "interview", "other"];
+    let stamped = 0;
+    for (const a of analyses) {
+      if (!KINDS.includes(a.kind)) continue;
+      const m = await ctx.db.get(a.meetingId);
+      if (!m || m.meetingType || m.meetingTypeSource === "manual") continue;
+      await ctx.db.patch(a.meetingId, {
+        meetingType: a.kind as any,
+        meetingTypeSource: "ai",
+      });
+      stamped++;
+    }
+    return { analyses: analyses.length, stamped };
   },
 });

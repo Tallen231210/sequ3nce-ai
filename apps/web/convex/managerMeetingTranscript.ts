@@ -67,6 +67,18 @@ export const saveSegments = internalMutation({
   },
 });
 
+/** Terminal stamp: this meeting will never produce media, stop repairing it. */
+export const markMeetingFailure = internalMutation({
+  args: { meetingId: v.id("managerMeetings"), reason: v.string() },
+  handler: async (ctx, args) => {
+    const m = await ctx.db.get(args.meetingId);
+    if (m && !m.failureReason) {
+      await ctx.db.patch(args.meetingId, { failureReason: args.reason });
+    }
+    return { marked: true };
+  },
+});
+
 export const saveRecordingUrl = internalMutation({
   args: { meetingId: v.id("managerMeetings"), recordingUrl: v.string() },
   handler: async (ctx, args) => {
@@ -83,8 +95,9 @@ export const saveRecordingUrl = internalMutation({
  * says the file exists; asking earlier returns a bot with no recordings on it.
  */
 export const fetchManagerRecording = internalAction({
-  args: { meetingId: v.id("managerMeetings") },
+  args: { meetingId: v.id("managerMeetings"), attempt: v.optional(v.number()) },
   handler: async (ctx, args): Promise<{ recordingUrl: string | null }> => {
+    const attempt = args.attempt ?? 1;
     const meeting = await ctx.runQuery(
       internal.managerMeetingTranscript.getMeetingWithBot,
       { meetingId: args.meetingId },
@@ -95,7 +108,22 @@ export const fetchManagerRecording = internalAction({
       headers: { Authorization: `Token ${process.env.RECALL_API_KEY}` },
     });
     if (!res.ok) {
-      throw new Error(`Recall bot fetch failed: ${res.status}`);
+      // A thrown scheduled action never retries — that silence is how three
+      // of Zion's meetings lost their recordings to a passing 429 storm.
+      // Come back instead, patiently for rate limits.
+      if (attempt < 5) {
+        const delayMs = res.status === 429 ? 180_000 : 60_000 * attempt;
+        console.log(
+          `[managerRecording] Recall ${res.status} for bot ${meeting.recallBotId}, retry ${attempt + 1}/5 in ${delayMs / 1000}s`,
+        );
+        await ctx.scheduler.runAfter(
+          delayMs,
+          internal.managerMeetingTranscript.fetchManagerRecording,
+          { meetingId: args.meetingId, attempt: attempt + 1 },
+        );
+        return { recordingUrl: null };
+      }
+      throw new Error(`Recall bot fetch failed: ${res.status} (after ${attempt} attempts)`);
     }
     const data: any = await res.json();
     const url =
@@ -103,8 +131,22 @@ export const fetchManagerRecording = internalAction({
 
     if (!url) {
       // Legitimate for a meeting nobody joined, or one that produced nothing.
-      // Not an error, and not worth throwing over.
+      // Not an error — but it IS terminal once the meeting is old: stamp it
+      // so the nightly repair sweep stops re-asking Recall for a recording
+      // that never existed.
       console.log(`[managerRecording] No recording on bot ${meeting.recallBotId}`);
+      const codes = (data.status_changes || []).map((sc: any) => sc.code);
+      const ended = codes.includes("done") || codes.includes("call_ended");
+      const everRecorded = codes.includes("in_call_recording");
+      if (ended && !everRecorded) {
+        await ctx.runMutation(
+          internal.managerMeetingTranscript.markMeetingFailure,
+          {
+            meetingId: args.meetingId,
+            reason: "nobody joined — nothing recorded",
+          },
+        );
+      }
       return { recordingUrl: null };
     }
 
@@ -118,7 +160,7 @@ export const fetchManagerRecording = internalAction({
 
 /** How many times to come back for a transcript that isn't ready, and how
  *  long between visits. Five minutes of patience total. */
-const TRANSCRIPT_FETCH_MAX_ATTEMPTS = 5;
+const TRANSCRIPT_FETCH_MAX_ATTEMPTS = 8;
 const TRANSCRIPT_FETCH_RETRY_MS = 60_000;
 
 export const fetchManagerTranscript = internalAction({
@@ -139,7 +181,21 @@ export const fetchManagerTranscript = internalAction({
       headers: { Authorization: `Token ${process.env.RECALL_API_KEY}` },
     });
     if (!botRes.ok) {
-      throw new Error(`Recall bot fetch failed: ${botRes.status}`);
+      // Same rule as the recording fetch: retry through transient failures
+      // rather than dying silently on the first 429.
+      if (attempt < TRANSCRIPT_FETCH_MAX_ATTEMPTS) {
+        const delayMs = botRes.status === 429 ? 180_000 : TRANSCRIPT_FETCH_RETRY_MS;
+        console.log(
+          `[managerTranscript] Recall ${botRes.status} for bot ${meeting.recallBotId}, retry ${attempt + 1}/${TRANSCRIPT_FETCH_MAX_ATTEMPTS} in ${delayMs / 1000}s`,
+        );
+        await ctx.scheduler.runAfter(
+          delayMs,
+          internal.managerMeetingTranscript.fetchManagerTranscript,
+          { meetingId: args.meetingId, attempt: attempt + 1 },
+        );
+        return { segments: 0 };
+      }
+      throw new Error(`Recall bot fetch failed: ${botRes.status} (after ${attempt} attempts)`);
     }
     const botData: any = await botRes.json();
     const transcriptUrl =
@@ -168,6 +224,15 @@ export const fetchManagerTranscript = internalAction({
       console.log(
         `[managerTranscript] No transcript on bot ${meeting.recallBotId} after ` +
           `${TRANSCRIPT_FETCH_MAX_ATTEMPTS} attempts — giving up`,
+      );
+      // Terminal for the repair sweep: Recall has no transcript for this
+      // bot and re-asking nightly won't conjure one.
+      await ctx.runMutation(
+        internal.managerMeetingTranscript.markMeetingFailure,
+        {
+          meetingId: args.meetingId,
+          reason: "transcript unavailable after repeated fetches",
+        },
       );
       return { segments: 0 };
     }
@@ -199,7 +264,15 @@ export const fetchManagerTranscript = internalAction({
       ];
     });
 
-    if (segments.length === 0) return { segments: 0 };
+    if (segments.length === 0) {
+      // Downloaded fine and contains no words: a silent meeting. Terminal —
+      // mark it so the nightly repair stops re-fetching an empty file.
+      await ctx.runMutation(
+        internal.managerMeetingTranscript.markMeetingFailure,
+        { meetingId: args.meetingId, reason: "silent meeting — nothing was said" },
+      );
+      return { segments: 0 };
+    }
 
     await ctx.runMutation(internal.managerMeetingTranscript.saveSegments, {
       meetingId: args.meetingId,

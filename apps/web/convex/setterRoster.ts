@@ -13,7 +13,7 @@
 // ============================================================================
 
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 
@@ -205,3 +205,66 @@ export async function setterIdsFor(
     .filter((r: Doc<"setterRoleAssignments">) => r.role === "setter")
     .map((r: Doc<"setterRoleAssignments">) => r.crmUserId);
 }
+
+/**
+ * Fill every unassigned roster row with role "other" (not sales floor).
+ *
+ * For teams too big to classify by hand: the manager marks the setters and
+ * closers they know; everyone left — predecessors' accounts, support users,
+ * integrations — is by their own definition not their sales floor. Same
+ * enumeration listRoster shows (CRM users ∪ anyone with outbound activity in
+ * the lookback), so nothing visible stays blank.
+ */
+export const autofillUnassignedAsOther = internalMutation({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const since = Date.now() - LOOKBACK_DAYS * 86_400_000;
+
+    const reps = await ctx.db
+      .query("setterReps")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .take(500);
+    const nameById = new Map<string, string>();
+    for (const r of reps as any[]) {
+      if (r.ghlUserId) nameById.set(r.ghlUserId, r.name || r.email || "");
+    }
+
+    const assigned = await ctx.db
+      .query("setterRoleAssignments")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .take(500);
+    const assignedIds = new Set((assigned as any[]).map((a) => a.crmUserId));
+
+    const ids = new Set<string>(nameById.keys());
+    for (const eventType of ["dial_outbound", "sms_outbound"]) {
+      const rows = await ctx.db
+        .query("setterLeadEvents")
+        .withIndex("by_team_and_type_and_time", (q: any) =>
+          q.eq("teamId", args.teamId).eq("eventType", eventType).gte("occurredAt", since),
+        )
+        .take(MAX_EVENTS);
+      for (const e of rows as any[]) {
+        if (e.ghlUserId) ids.add(e.ghlUserId);
+      }
+    }
+
+    const filled: string[] = [];
+    for (const id of ids) {
+      if (assignedIds.has(id)) continue;
+      await ctx.db.insert("setterRoleAssignments", {
+        teamId: args.teamId,
+        crmUserId: id,
+        role: "other",
+        displayName: nameById.get(id) || undefined,
+        assignedBy: "autofill: unclassified = not sales",
+        assignedAt: Date.now(),
+      });
+      filled.push(nameById.get(id) || id);
+    }
+    return {
+      alreadyAssigned: assignedIds.size,
+      autofilledAsOther: filled.length,
+      names: filled,
+    };
+  },
+});

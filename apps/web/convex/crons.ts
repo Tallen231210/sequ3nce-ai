@@ -380,4 +380,42 @@ crons.cron(
   {},
 );
 
+// Nightly pipeline repair: re-kick anything that should have produced data
+// and didn't — closer recordings, manager meeting recordings/transcripts/
+// analyses, AI dispositions. Scheduled actions that throw do NOT retry, so
+// chains die silently; this sweep is the safety net that makes the whole
+// pipeline self-healing instead of trusting every chain to be perfect.
+//
+// 4:20 UTC — after the attendance sweep (3:50), before anyone reads
+// morning numbers. crons.cron, never crons.interval.
+crons.cron(
+  "pipeline-repair-sweep",
+  "20 4 * * *",
+  internal.pipelineRepair.runNightlyRepair,
+  {},
+);
+
+// Manager EOD: the recordings-only end-of-day report (calls taken, real
+// conversations, why calls didn't close, one call worth reviewing,
+// tomorrow's load). Hourly with per-team local-hour gating, same shape as
+// the cash digest. Minute 40 is unused by the jobs above.
+// crons.cron, never crons.interval.
+crons.cron(
+  "manager-eod-digest",
+  "40 * * * *",
+  internal.managerEodDigest.runManagerEod,
+  {},
+);
+
+// Setter EOD notifications: the reminder blast to setters and the
+// missing-report to the manager, each gated on its team-configured local
+// hour AND days. Minute 25 is unused by the jobs above.
+// crons.cron, never crons.interval.
+crons.cron(
+  "setter-eod-notifications",
+  "25 * * * *",
+  internal.setterEodNotifications.runSetterEodNotifications,
+  {},
+);
+
 export default crons;

@@ -257,6 +257,40 @@ export const recordExtractionFailure = internalMutation({
  * Scheduled from `generateCallAnalysis`, the one place every transcript source
  * funnels through — bot, Fathom, desktop and speaker re-verification.
  */
+/**
+ * The extraction read the call and it was not a sales call. Stamp it the
+ * same way the manual not-a-sales-call control does — classifiedAs
+ * "internal", out of Completed Calls (status "unclassified"), out of the
+ * stats (countsTowardStats false, sidecar synced). Without this stamp a
+ * bot-recorded team meeting wears the "Pending" badge forever and pollutes
+ * every closer metric.
+ *
+ * Never overrides a human: a closer or manager who said "this IS a sales
+ * call" outranks the model.
+ */
+export const markNonSalesFromExtraction = internalMutation({
+  args: { callId: v.id("calls"), callType: v.string() },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return { stamped: false };
+    if (call.classifiedBy === "closer" || call.classifiedBy === "manager") {
+      return { stamped: false };
+    }
+    if (call.outcome != null) return { stamped: false };
+    await ctx.db.patch(args.callId, {
+      classifiedAs: "internal",
+      classifiedBy: "auto",
+      countsTowardStats: false,
+      status: "unclassified",
+    });
+    await syncCallStats(ctx, args.callId);
+    console.log(
+      `[CallExtraction] ${args.callId} read as "${args.callType}" — marked not-a-sales-call`,
+    );
+    return { stamped: true };
+  },
+});
+
 export const extractCall = internalAction({
   args: {
     callId: v.id("calls"),
@@ -281,6 +315,13 @@ export const extractCall = internalAction({
 
     const transcript = (args.transcript ?? info.transcript ?? "").trim();
     if (transcript.length < MIN_TRANSCRIPT_CHARS) {
+      // Recorded, not just returned: an unmarked early exit re-qualifies for
+      // the nightly repair sweep forever — the transcript will be exactly as
+      // short tomorrow.
+      await ctx.runMutation(
+        internal.callExtractionRun.recordExtractionFailure,
+        { callId: args.callId, reason: `transcript is ${transcript.length} chars — too short` },
+      );
       return { ok: false, reason: "transcript too short to read" };
     }
 
@@ -303,6 +344,17 @@ export const extractCall = internalAction({
       return { ok: false, reason: result.reason };
     }
 
+    // Non-sales calls get STAMPED, not silently skipped. Before this, a
+    // bot-recorded team meeting produced `written: []` and stayed "Pending"
+    // in Completed Calls forever, counting toward every closer metric.
+    if (result.data.callType && result.data.callType !== "sales") {
+      const stamped = await ctx.runMutation(
+        internal.callExtractionRun.markNonSalesFromExtraction,
+        { callId: args.callId, callType: result.data.callType },
+      );
+      return { ok: true, written: [], stamped, data: result.data };
+    }
+
     const saved = await ctx.runMutation(
       internal.callExtractionRun.saveExtraction,
       { callId: args.callId, data: result.data },
@@ -314,6 +366,17 @@ export const extractCall = internalAction({
           ? ` | discarded: ${result.data.discarded.join("; ")}`
           : ""),
     );
+
+    // Read fine, but the call never stated an outcome. Mark it so the
+    // nightly repair sweep doesn't re-read the same transcript forever —
+    // the words won't change overnight. (A human or a forced re-run can
+    // still answer it.)
+    if (!saved.written.includes("outcome")) {
+      await ctx.runMutation(
+        internal.callExtractionRun.recordExtractionFailure,
+        { callId: args.callId, reason: "read ok — no outcome was stated on the call" },
+      );
+    }
 
     return { ok: true, written: saved.written, data: result.data };
   },
