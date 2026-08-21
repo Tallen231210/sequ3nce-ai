@@ -950,11 +950,16 @@ export const getAttendanceFunnel = query({
     // When did Sequ3nce start witnessing this team's calls? Slots before
     // this date can never earn call evidence — the UI says so instead of
     // letting a wall of "unverifiable" read as a broken feature.
-    const firstCall = await ctx.db
+    // Imported history (e.g. a Fathom backfill) carries the ORIGINAL meeting
+    // dates — E2's import included a 2021 recording, which read as "watching
+    // since 2021" and silenced the accuracy note entirely. Witnessing starts
+    // with the first call we were actually present for.
+    const earliest = await ctx.db
       .query("calls")
       .withIndex("by_team_and_date", (q) => q.eq("teamId", teamId))
       .order("asc")
-      .first();
+      .take(200);
+    const firstCall = earliest.find((c) => !(c as any).isHistorical) ?? null;
 
     const peopleBooked = contacts.size;
     return {

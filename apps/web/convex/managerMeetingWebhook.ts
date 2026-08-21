@@ -121,6 +121,21 @@ export const applyEvent = internalMutation({
         return { handled: true, status: "done", meetingId: bot.meetingId ?? null };
       }
 
+      case "bot.fatal": {
+        // Recall gave up on this bot. Ignoring this event left bots reading
+        // "joining" for days — the tab showed a meeting perpetually about to
+        // be recorded that Recall had already written off.
+        await ctx.db.patch(bot._id, {
+          status: "failed",
+          endedAt: now,
+          failureReason:
+            (args.subCode && NOT_A_RECORDING[args.subCode]) ??
+            args.subCode ??
+            "bot failed before joining",
+        });
+        return { handled: true, status: "failed" };
+      }
+
       default:
         return { handled: true, status: `ignored ${args.event}` };
     }
