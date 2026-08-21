@@ -73,3 +73,48 @@ export const teamManagerModeAudit = internalQuery({
     };
   },
 });
+
+/**
+ * Bot-state detail for a team's manager bots: ages of anything stuck in a
+ * non-terminal status, plus recall ids for silent-marked meetings so a
+ * support session can cross-check Recall's own transcript state.
+ */
+export const managerBotStateDetail = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const all = await ctx.db.query("managerMeetingBots").withIndex("by_user").collect();
+    const bots = all.filter((b) => String(b.teamId) === String(args.teamId));
+    const now = Date.now();
+    const nonTerminal = bots
+      .filter(
+        (b) =>
+          b.status !== "completed" &&
+          b.status !== "failed" &&
+          b.status !== "cancelled",
+      )
+      .map((b) => ({
+        status: b.status,
+        ageHours: Math.round((now - b._creationTime) / 3_600_000),
+        scheduledAt: new Date(b.scheduledStartTime).toISOString(),
+        title: b.meetingTitle,
+        recallBotId: b.recallBotId,
+      }));
+    const meetings = await ctx.db
+      .query("managerMeetings")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .order("desc")
+      .take(20);
+    const silent = [];
+    for (const m of meetings) {
+      if (!m.failureReason?.includes("silent")) continue;
+      const bot = bots.find((b) => b.meetingId === m._id) ?? null;
+      silent.push({
+        title: m.title,
+        createdAt: new Date(m._creationTime).toISOString(),
+        durationMin: m.duration ? Math.round(m.duration / 60) : 0,
+        recallBotId: bot?.recallBotId ?? null,
+      });
+    }
+    return { nonTerminal, silent };
+  },
+});

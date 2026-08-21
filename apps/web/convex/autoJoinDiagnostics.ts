@@ -114,7 +114,7 @@ export const teamAutoJoinAudit = internalQuery({
     return {
       team: team?.name,
       tier: (team as any)?.productTierOverride ?? (team as any)?.productTier,
-      autoJoinDailyCap: (team as any)?.autoJoinDailyCap ?? 50,
+      autoJoinDailyCap: (team as any)?.autoJoinDailyCap ?? 150,
       windowDays: days,
       activeClosers: perCloser.length,
       closersWithAutoJoinOn: perCloser.filter((c) => c.autoJoinEnabled).length,
@@ -238,5 +238,55 @@ export const stuckPendingAudit = internalQuery({
       pendingEmpty: rows.filter((r) => r.transcriptChars <= 500).length,
       detail: rows.slice(0, 25),
     };
+  },
+});
+
+/** Earliest call rows for a team — corrupt createdAt values poison "watching since". */
+export const earliestCalls = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q) => q.eq("teamId", args.teamId))
+      .order("asc")
+      .take(5);
+    return calls.map((c) => ({
+      id: c._id,
+      createdAt: new Date(c.createdAt).toISOString(),
+      _creationTime: new Date(c._creationTime).toISOString(),
+      status: c.status,
+      duration: c.duration ?? null,
+      source: (c as any).source ?? null,
+      prospectName: (c as any).prospectName ?? null,
+    }));
+  },
+});
+
+/** Ingest-source census for a team's calls: how many, from where, in what state. */
+export const callSourceCensus = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .take(3000);
+    const bySource: Record<string, number> = {};
+    const byStatus: Record<string, number> = {};
+    const fathom = { total: 0, unclassified: 0, oldest: null as string | null, newest: null as string | null, last24hIngested: 0 };
+    const now = Date.now();
+    for (const c of calls) {
+      const src = (c as any).source ?? "app";
+      bySource[src] = (bySource[src] ?? 0) + 1;
+      byStatus[c.status] = (byStatus[c.status] ?? 0) + 1;
+      if (src === "fathom") {
+        fathom.total++;
+        if (c.status === "unclassified") fathom.unclassified++;
+        const d = new Date(c.createdAt).toISOString();
+        if (!fathom.oldest || d < fathom.oldest) fathom.oldest = d;
+        if (!fathom.newest || d > fathom.newest) fathom.newest = d;
+        if (now - c._creationTime < 86_400_000) fathom.last24hIngested++;
+      }
+    }
+    return { totalRows: calls.length, bySource, byStatus, fathom };
   },
 });

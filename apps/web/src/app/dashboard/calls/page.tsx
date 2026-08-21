@@ -164,7 +164,11 @@ function formatDate(timestamp: number): string {
   }
 }
 
-function getOutcomeBadge(outcome?: string) {
+function getOutcomeBadge(
+  outcome?: string,
+  classifiedAs?: string,
+  extractionFailed?: string,
+) {
   switch (outcome) {
     case "closed":
       return <Badge variant="default">Closed</Badge>;
@@ -179,6 +183,14 @@ function getOutcomeBadge(outcome?: string) {
     case "rescheduled":
       return <Badge variant="secondary">Rescheduled</Badge>;
     default:
+      // No outcome will ever arrive for these two — say what the call was
+      // instead of promising a verdict that's never coming.
+      if (classifiedAs === "internal") {
+        return <Badge variant="outline">Internal</Badge>;
+      }
+      if (extractionFailed) {
+        return <Badge variant="outline">No conversation</Badge>;
+      }
       return <Badge variant="outline">Pending</Badge>;
   }
 }
@@ -820,7 +832,7 @@ export default function CompletedCallsPage() {
                           prospectTalkTime={call.prospectTalkTime}
                         />
                       </TableCell>
-                      <TableCell>{getOutcomeBadge(call.outcome)}</TableCell>
+                      <TableCell>{getOutcomeBadge(call.outcome, call.classifiedAs, call.extractionFailed)}</TableCell>
                       {complianceOn && (
                         <TableCell>
                           <ComplianceCell

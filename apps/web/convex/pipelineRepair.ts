@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalAction, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -93,6 +93,105 @@ export const listAllTeamIds = internalQuery({
   },
 });
 
+/** Manager bots that never reached a terminal status. A missed or ignored
+ *  webhook (the 429 storm swallowed several) leaves them reading "joining"
+ *  forever; Recall knows what actually happened. */
+export const listStaleManagerBots = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const bots = await ctx.db
+      .query("managerMeetingBots")
+      .withIndex("by_user")
+      .collect();
+    const cutoff = Date.now() - 12 * 3_600_000;
+    return bots
+      .filter(
+        (b) =>
+          b.status !== "completed" &&
+          b.status !== "failed" &&
+          b.status !== "cancelled" &&
+          b.scheduledStartTime < cutoff,
+      )
+      .map((b) => ({
+        botId: b._id,
+        recallBotId: b.recallBotId,
+        title: b.meetingTitle,
+        hasMeetingRow: !!b.meetingId,
+      }));
+  },
+});
+
+export const markManagerBotTerminal = internalMutation({
+  args: {
+    botId: v.id("managerMeetingBots"),
+    status: v.union(v.literal("completed"), v.literal("failed")),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const bot = await ctx.db.get(args.botId);
+    if (!bot) return;
+    if (bot.status === "completed" || bot.status === "failed") return;
+    await ctx.db.patch(args.botId, {
+      status: args.status,
+      endedAt: bot.endedAt ?? Date.now(),
+      failureReason: args.reason,
+    });
+  },
+});
+
+export const reconcileStaleManagerBots = internalAction({
+  args: {},
+  handler: async (ctx): Promise<any> => {
+    const stale: any[] = await ctx.runQuery(
+      internal.pipelineRepair.listStaleManagerBots,
+      {},
+    );
+    const report = { checked: stale.length, reconciled: 0, needsManualLook: [] as string[] };
+    for (const b of stale) {
+      const res = await fetch(
+        `https://us-west-2.recall.ai/api/v1/bot/${b.recallBotId}/`,
+        { headers: { Authorization: `Token ${process.env.RECALL_API_KEY}` } },
+      );
+      if (!res.ok) {
+        console.log(`[reconcileStaleManagerBots] Recall ${res.status} for ${b.recallBotId}, skipping`);
+        continue;
+      }
+      const data: any = await res.json();
+      const codes: string[] = (data.status_changes ?? []).map((c: any) => c.code);
+      const recorded = codes.includes("in_call_recording");
+      if (recorded && !b.hasMeetingRow) {
+        // Recall has a real recording we never ingested — repairing that is
+        // a webhook replay, not a status stamp. Flag it instead of burying it.
+        report.needsManualLook.push(`${b.title} (${b.recallBotId})`);
+        continue;
+      }
+      if (codes.includes("fatal")) {
+        await ctx.runMutation(internal.pipelineRepair.markManagerBotTerminal, {
+          botId: b.botId,
+          status: "failed",
+          reason: "bot failed before joining",
+        });
+        report.reconciled++;
+      } else if (codes.includes("done") && !recorded) {
+        await ctx.runMutation(internal.pipelineRepair.markManagerBotTerminal, {
+          botId: b.botId,
+          status: "completed",
+          reason: "nobody joined — nothing recorded",
+        });
+        report.reconciled++;
+      }
+      // Anything else (still live at Recall, unknown trail): leave it for the
+      // next nightly pass rather than guess.
+    }
+    if (report.needsManualLook.length > 0) {
+      console.error(
+        `[reconcileStaleManagerBots] ${report.needsManualLook.length} bots recorded at Recall with no meeting row: ${report.needsManualLook.join("; ")}`,
+      );
+    }
+    return report;
+  },
+});
+
 export const runNightlyRepair = internalAction({
   args: {},
   handler: async (ctx): Promise<any> => {
@@ -109,6 +208,17 @@ export const runNightlyRepair = internalAction({
       report.botRecordings = r.missingRecording ?? 0;
     } catch (e) {
       console.error("[pipelineRepair] bot recording sweep failed", e);
+    }
+
+    // 1b. Manager bots stranded in a non-terminal status by a missed webhook.
+    try {
+      const r: any = await ctx.runAction(
+        internal.pipelineRepair.reconcileStaleManagerBots,
+        {},
+      );
+      (report as any).staleManagerBots = r.reconciled ?? 0;
+    } catch (e) {
+      console.error("[pipelineRepair] stale manager bot sweep failed", e);
     }
 
     // 2. Manager meetings missing recording / transcript / analysis.
