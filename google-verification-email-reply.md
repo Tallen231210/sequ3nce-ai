@@ -1,7 +1,7 @@
 # Draft reply to Google's Third-Party Data Safety Team (rejection of 2026-08-21)
 
 Send as a direct reply to their email, from the developer contact address.
-Only one thing left to fill in: the YouTube link, in section 1.
+Ready to send as-is.
 
 ---
 
@@ -11,8 +11,8 @@ Thank you for the detailed review. Responding to each request:
 
 **1. New demonstration video**
 
-We have recorded a new demonstration video: [YOUTUBE LINK — record per the
-script first]. It shows the OAuth consent screen with all requested scopes
+We have recorded a new demonstration video: https://youtu.be/4AH7zgxTMnE
+It shows the OAuth consent screen with all requested scopes
 fully expanded and readable, and demonstrates the full user-facing
 functionality of `https://www.googleapis.com/auth/calendar.events.readonly`:
 the user's upcoming meetings appearing in the app with times and titles read
