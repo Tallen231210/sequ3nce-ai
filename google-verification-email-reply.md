@@ -1,7 +1,7 @@
 # Draft reply to Google's Third-Party Data Safety Team (rejection of 2026-08-21)
 
 Send as a direct reply to their email, from the developer contact address.
-Two placeholders to confirm before sending — both marked ⚠️.
+Only one thing left to fill in: the YouTube link, in section 1.
 
 ---
 
@@ -28,14 +28,15 @@ Sequ3nce.ai integrates with the following AI service providers:
 
 - **Anthropic** (Claude API) — used to summarize and analyze sales-call
   recordings and transcripts captured by our own meeting notetaker. Accessed
-  directly via the Anthropic API on the standard commercial API plan
-  (pay-as-you-go ⚠️ — confirm this matches how the Anthropic account is
-  billed). Models: `claude-sonnet-4-6` and `claude-haiku-4-5-20251001`.
+  directly via the Anthropic API on the standard commercial pay-as-you-go
+  API plan (usage-based billing; no free or consumer tier is used).
+  Models: `claude-sonnet-4-6` and `claude-haiku-4-5-20251001`.
   Under Anthropic's Commercial Terms of Service, Anthropic does not train
   models on API customer content.
 - **Speechmatics** — real-time speech-to-text of call audio captured by our
-  notetaker or desktop app, on the standard SaaS API plan (⚠️ — confirm
-  tier). Speechmatics never receives any Google user data of any kind.
+  notetaker or desktop app, on the standard commercial pay-as-you-go API
+  plan (usage-based billing). Speechmatics never receives any Google user
+  data of any kind.
 
 **3. Aggregators, gateways, and model hubs**
 
