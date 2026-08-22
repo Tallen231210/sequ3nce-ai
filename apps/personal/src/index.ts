@@ -5,7 +5,7 @@
 import { initSentry } from './sentry';
 initSentry();
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, globalShortcut, clipboard, dialog, Notification, screen, powerMonitor, systemPreferences, desktopCapturer } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, globalShortcut, dialog, Notification, systemPreferences, desktopCapturer } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import WebSocket from 'ws';
 import * as os from 'os';

@@ -24,8 +24,9 @@ function isPending(call: any): boolean {
   if (call.status !== "completed") return false;
   if (call.classifiedAs === "internal") return false;
   if ((call.duration ?? 0) < MIN_DURATION_SECONDS) return false;
-  // Human-confirmed = done. AI-filled or empty = still needs the closer.
-  return call.outcomeSource !== "closer";
+  // Human-confirmed = done (closer form, or a manager on the shared backend).
+  // AI-filled or empty = still needs the closer.
+  return call.outcomeSource !== "closer" && call.outcomeSource !== "manager";
 }
 
 /** Badge + list for the in-app form queue. */

@@ -181,9 +181,13 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
               <button
                 onClick={() => {
                   onOpenQuestionnaire(firstPending.callId, firstPending.prospectName ?? undefined);
+                  // Bounded fast repoll so the banner clears promptly after a
+                  // submit; if the user dismisses the form instead, the regular
+                  // 15s poll takes over rather than this looping forever.
+                  let tries = 0;
                   const repoll = () => getPendingDispositions(closerInfo.closerId).then((info) => {
                     setPendingInfo(info);
-                    if (info.count > 0) setTimeout(repoll, 5000);
+                    if (info.count > 0 && ++tries < 6) setTimeout(repoll, 5000);
                   });
                   setTimeout(repoll, 3000);
                 }}

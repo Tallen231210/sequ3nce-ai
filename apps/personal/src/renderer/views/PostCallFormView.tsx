@@ -120,7 +120,11 @@ export function PostCallFormView({ callId, prospectName: initialProspectName, cl
       if (d.prospectName) setProspectName((prev: string) => prev || d.prospectName!);
       if (d.cashCollected != null && d.cashCollected > 0) { setCashCollected(String(d.cashCollected)); applied = true; }
       if (d.contractValue != null && d.contractValue > 0) { setContractValue(String(d.contractValue)); applied = true; }
-      if (d.pitchedValue != null && d.pitchedValue > 0) { setPitchedValue(String(d.pitchedValue)); applied = true; }
+      // The AI reports a pitched-but-not-agreed price as contractValue (there is
+      // no pitchedValue field in the schema), so on a non-closed call that same
+      // number belongs in the Pitched Value field.
+      const pitched = d.pitchedValue ?? (d.outcome !== 'closed' ? d.contractValue : null);
+      if (pitched != null && pitched > 0) { setPitchedValue(String(pitched)); applied = true; }
       const obj = mapToOptions(d.primaryObjection, OBJECTION_OPTIONS);
       if (obj.selected) { setPrimaryObjection(obj.selected); setPrimaryObjectionOther(obj.otherText); applied = true; }
       const overcome = mapToOptions(d.objectionsOvercome, OVERCOME_OPTIONS);
@@ -522,19 +526,23 @@ export function PostCallFormView({ callId, prospectName: initialProspectName, cl
           </button>
         </div>
 
-        {broadcastModalCash !== null && closerInfo.b2cUserId && (
-          <BroadcastCelebrationModal
-            userId={closerInfo.b2cUserId}
-            callId={callId}
-            cashCollected={broadcastModalCash}
-            prospectName={prospectName.trim() || undefined}
-            onClose={() => {
-              setBroadcastModalCash(null);
-              closeForm(true);
-            }}
-          />
-        )}
       </div>
+
+      {/* Money Bells modal — rendered OUTSIDE the sheet because the sheet's
+          slide-up transform creates a containing block that would trap the
+          modal's fixed positioning inside it. */}
+      {broadcastModalCash !== null && closerInfo.b2cUserId && (
+        <BroadcastCelebrationModal
+          userId={closerInfo.b2cUserId}
+          callId={callId}
+          cashCollected={broadcastModalCash}
+          prospectName={prospectName.trim() || undefined}
+          onClose={() => {
+            setBroadcastModalCash(null);
+            closeForm(true);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -783,9 +783,12 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
           })}
         </div>
 
-        {/* In-app post-call form (bottom sheet) */}
+        {/* In-app post-call form (bottom sheet). Keyed by callId so switching
+            to a different call remounts the form — its field state initializes
+            on mount and must never carry over from another call. */}
         {postCallForm && (
           <PostCallFormView
+            key={postCallForm.callId}
             callId={postCallForm.callId}
             prospectName={postCallForm.prospectName}
             closerInfo={closerInfo}
