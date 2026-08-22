@@ -198,7 +198,14 @@ export const createManagerBot = internalAction({
     });
 
     if (!res.ok) {
-      throw new Error(`Recall rejected the bot: ${res.status} ${await res.text()}`);
+      const errorText = await res.text();
+      // A billing refusal takes down every bot on the platform, not this one.
+      if (res.status === 402 || errorText.includes("insufficient_credit_balance")) {
+        await ctx.scheduler.runAfter(0, internal.adminAlerts.raiseRecallBillingAlert, {
+          detail: `Recall ${res.status}: ${errorText}`,
+        });
+      }
+      throw new Error(`Recall rejected the bot: ${res.status} ${errorText}`);
     }
     const bot = await res.json();
 

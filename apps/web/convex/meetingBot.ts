@@ -799,6 +799,13 @@ export const createBot = action({
       return { botId, recallBotId };
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
+        // A billing refusal isn't one bot failing — it's every bot failing
+        // until a human pays. Page the founder, don't just file it.
+        if (error.message.includes("insufficient_credit_balance") || error.message.includes(" 402 ")) {
+          await ctx.scheduler.runAfter(0, internal.adminAlerts.raiseRecallBillingAlert, {
+            detail: error.message,
+          });
+        }
         await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
           message: error instanceof Error ? error.message : String(error),
           feature: "createBot",
@@ -1075,6 +1082,11 @@ export const createQuickBot = action({
       return { botId, recallBotId };
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
+        if (error.message.includes("insufficient_credit_balance") || error.message.includes(" 402 ")) {
+          await ctx.scheduler.runAfter(0, internal.adminAlerts.raiseRecallBillingAlert, {
+            detail: error.message,
+          });
+        }
         await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
           message: error instanceof Error ? error.message : String(error),
           feature: "createQuickBot",

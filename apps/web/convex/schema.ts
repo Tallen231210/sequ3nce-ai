@@ -1118,6 +1118,11 @@ export default defineSchema({
   // 16 MiB per-query read limit (a calls row averages ~97 KB; a
   // callStats row is ~80 bytes). Kept in sync via the maintainCallStats
   // hook in calls.ts on every create/patch/delete of the parent call.
+  adminAlerts: defineTable({
+    kind: v.string(),
+    sentAt: v.number(),
+  }).index("by_kind", ["kind", "sentAt"]),
+
   callStats: defineTable({
     callId: v.id("calls"),
     teamId: v.id("teams"),
