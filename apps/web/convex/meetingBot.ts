@@ -2225,6 +2225,23 @@ export const getClosersWithCalendars = internalQuery({
 
         if (!hasCalendar) continue;
 
+        // A calendar that has stopped refreshing is a frozen snapshot, not a
+        // schedule. Booking from it sends bots to meetings that may have
+        // moved or died — measured on one closer whose connection expired:
+        // 119 bots in a week, zero ever joined, all billed waiting-room
+        // time. Two days of silence is the line; reconnecting resumes
+        // booking on the next cycle.
+        const STALE_SYNC_MS = 48 * 60 * 60 * 1000;
+        if (
+          closer.calendarLastSyncAt &&
+          Date.now() - closer.calendarLastSyncAt > STALE_SYNC_MS
+        ) {
+          console.log(
+            `[autoSchedule] skipping ${closer.email} — calendar last synced ${new Date(closer.calendarLastSyncAt).toISOString()}, connection looks dead`,
+          );
+          continue;
+        }
+
         results.push({
           closerId: closer._id,
           teamId: team._id,

@@ -398,3 +398,68 @@ export const fathomCountedCalls = internalQuery({
     });
   },
 });
+
+/** Events with meeting links around NOW for a team — support lever for
+ *  "send a bot to my current meeting". */
+export const currentEventsForTeam = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    const now = Date.now();
+    const out = [];
+    for (const c of closers) {
+      if (c.status !== "active") continue;
+      const events = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_closer", (q) => q.eq("closerId", c._id))
+        .filter((q) =>
+          q.and(
+            q.gte(q.field("startTime"), now - 60 * 60 * 1000),
+            q.lte(q.field("startTime"), now + 90 * 60 * 1000),
+          ),
+        )
+        .take(20);
+      for (const e of events) {
+        if (!e.meetingUrl) continue;
+        out.push({
+          closerId: c._id,
+          closerName: c.name,
+          closerEmail: c.email,
+          title: e.title,
+          start: new Date(e.startTime).toISOString(),
+          meetingUrl: e.meetingUrl,
+        });
+      }
+    }
+    return out;
+  },
+});
+
+/** A closer's not-yet-dispatched bots — the tail left behind when their
+ *  calendar connection dies and booking stops but bookings remain. */
+export const listPendingBotsForCloser = internalQuery({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    const bots = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .order("desc")
+      .take(300);
+    const now = Date.now();
+    return bots
+      .filter(
+        (b) =>
+          b.status === "scheduled" &&
+          (b.scheduledAt ?? 0) > now,
+      )
+      .map((b) => ({
+        botId: b._id,
+        title: b.meetingTitle,
+        scheduledAt: new Date(b.scheduledAt!).toISOString(),
+        recallBotId: (b as any).recallBotId ?? null,
+      }));
+  },
+});
