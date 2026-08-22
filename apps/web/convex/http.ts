@@ -10425,6 +10425,33 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// POST /b2c/money-bells/opt-out — leave Money Bells (past broadcasts remain)
+http.route({
+  path: "/b2c/money-bells/opt-out",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.userId) {
+        return b2cJsonResponse({ error: "userId is required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cMoneyBells.leaveMoneyBells, {
+        userId: body.userId as Id<"b2cUsers">,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/money-bells/opt-out",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // POST /b2c/money-bells/broadcast — create a broadcast
 http.route({
   path: "/b2c/money-bells/broadcast",

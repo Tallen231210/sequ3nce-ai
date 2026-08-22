@@ -4736,6 +4736,24 @@ export async function joinMoneyBells(
   }
 }
 
+export async function leaveMoneyBells(
+  userId: string
+): Promise<{ success: boolean; wasOptedIn?: boolean; error?: string }> {
+  try {
+    const res = await convexFetch(`${CONVEX_SITE_URL}/b2c/money-bells/opt-out`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    return await res.json();
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "leaveMoneyBells", integration: "convex" },
+    });
+    return { success: false, error: "Network error" };
+  }
+}
+
 export async function createMoneyBellBroadcast(
   userId: string,
   callId: string,

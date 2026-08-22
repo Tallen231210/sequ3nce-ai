@@ -53,6 +53,24 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
 
   const firstPending = pendingInfo.calls[0];
 
+  // Opens the in-app post-call form, then briefly fast-repolls so the banner,
+  // badge and call list all reflect the submit promptly. Bounded: if the user
+  // dismisses the form instead, the regular 15s poll takes over rather than
+  // this looping forever.
+  const openFormWithRefresh = (callId: string, prospectName?: string) => {
+    if (!onOpenQuestionnaire) return;
+    onOpenQuestionnaire(callId, prospectName);
+    let tries = 0;
+    const repoll = () => {
+      getPendingDispositions(closerInfo.closerId).then((info) => {
+        setPendingInfo(info);
+        if (info.count > 0 && ++tries < 6) setTimeout(repoll, 5000);
+      });
+      getCallHistory(closerInfo.closerId, 100).then(setCalls);
+    };
+    setTimeout(repoll, 3000);
+  };
+
   const filteredCalls = useMemo(() => {
     let result = calls;
 
@@ -101,6 +119,15 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
           call={selectedCall}
           onClose={() => setSelectedCall(null)}
           onCallUpdated={handleCallUpdated}
+          onEditOutcome={
+            onOpenQuestionnaire
+              ? () => {
+                  const c = selectedCall;
+                  setSelectedCall(null);
+                  openFormWithRefresh(c._id, c.prospectName || undefined);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -179,18 +206,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
             </div>
             {firstPending && onOpenQuestionnaire && (
               <button
-                onClick={() => {
-                  onOpenQuestionnaire(firstPending.callId, firstPending.prospectName ?? undefined);
-                  // Bounded fast repoll so the banner clears promptly after a
-                  // submit; if the user dismisses the form instead, the regular
-                  // 15s poll takes over rather than this looping forever.
-                  let tries = 0;
-                  const repoll = () => getPendingDispositions(closerInfo.closerId).then((info) => {
-                    setPendingInfo(info);
-                    if (info.count > 0 && ++tries < 6) setTimeout(repoll, 5000);
-                  });
-                  setTimeout(repoll, 3000);
-                }}
+                onClick={() => openFormWithRefresh(firstPending.callId, firstPending.prospectName ?? undefined)}
                 className="px-3 py-1.5 text-[12px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-800/30 hover:bg-amber-200 dark:hover:bg-amber-800/50 rounded-md transition-colors shrink-0"
               >
                 Fill Out Now
