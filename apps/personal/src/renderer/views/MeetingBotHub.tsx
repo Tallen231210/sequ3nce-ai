@@ -5,7 +5,7 @@ import {
   needsCalendarOnboarding,
   getActiveCallForCloserBot,
   endCallManually,
-  getPendingQuestionnaireInfo,
+  getPendingDispositions,
   getIncomingFriendRequests,
   getDMUnreadCount,
   sendHeartbeat,
@@ -19,6 +19,7 @@ import { useTheme } from '../ThemeContext';
 import { playNotificationChime } from './notificationSound';
 import logoImage from '../../assets/logo.png';
 import { DashboardView } from './DashboardView';
+import { PostCallFormView } from './PostCallFormView';
 import { StatsView } from './StatsView';
 import { CallHistoryView } from './CallHistoryView';
 import { BotOnboardingView } from './BotOnboardingView';
@@ -188,10 +189,9 @@ const NAV_ITEMS: NavItem[] = [
 
 // Minimum call duration in seconds before showing questionnaire
 const MIN_CALL_DURATION = 30;
-// Bot polling interval in ms
 // Bot polling interval — bumped from 3s to 10s. Top contributor to
-// Convex action saturation per task #348. UX tolerance for the floating
-// ammo panel opening is ~10s, not 3s.
+// Convex action saturation per task #348; the active-call banner appearing
+// within ~10s is fine UX.
 const BOT_POLL_INTERVAL = 10_000;
 
 interface MeetingBotHubProps {
@@ -219,7 +219,7 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
-  // Active call state (for banner display only — ammo panel is a floating window)
+  // Active call state (drives the banner)
   const [activeCall, setActiveCall] = useState<ActiveBotCall | null>(null);
   const activeCallStartRef = useRef<number | null>(null);
   const previousCallRef = useRef<ActiveBotCall | null>(null);
@@ -227,6 +227,12 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Post-call pending state (soft prompt instead of auto-fire)
   const [callEndedPending, setCallEndedPending] = useState<{
+    callId: string;
+    prospectName?: string;
+  } | null>(null);
+
+  // In-app post-call form (replaces the old floating post-call window)
+  const [postCallForm, setPostCallForm] = useState<{
     callId: string;
     prospectName?: string;
   } | null>(null);
@@ -290,7 +296,7 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
   usePoll(
     'callsPending',
     async () => {
-      const info = await getPendingQuestionnaireInfo(closerInfo.closerId);
+      const info = await getPendingDispositions(closerInfo.closerId);
       setCallsPendingCount(info.count);
     },
     15_000,
@@ -492,19 +498,13 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
       return;
     }
     const callId = activeCall.callId;
+    const prospectName = activeCall.prospectName || undefined;
     // 1. Write to Convex FIRST — prevents poll from seeing this call as active
     await endCallManually(closerInfo.closerId);
-    // 2. Close ammo panel via IPC
+    // 2. Tell the main process the call ended (clears its call context)
     window.electron?.bot?.callEnded({ callId, closerId: closerInfo.closerId });
-    // 3. Open post-call form immediately for THIS call
-    window.electron?.bot?.openQuestionnaire({
-      callId,
-      closerId: closerInfo.closerId,
-      closerName: closerInfo.name,
-      teamId: closerInfo.teamId,
-      prospectName: activeCall.prospectName || undefined,
-      b2cUserId: closerInfo.b2cUserId,
-    });
+    // 3. Open the in-app post-call form for THIS call
+    setPostCallForm({ callId, prospectName });
     // 4. Clear local state
     setActiveCall(null);
     activeCallStartRef.current = null;
@@ -512,36 +512,35 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
     setCallEndedPending(null);
   }, [activeCall, closerInfo]);
 
-  // Soft prompt "Fill Out Form" — opens form directly
+  // Soft prompt "Fill Out Form" — opens the in-app form
   const handleGoToPostCallForm = useCallback(() => {
     if (callEndedPending?.callId) {
-      window.electron?.bot?.openQuestionnaire({
+      setPostCallForm({
         callId: callEndedPending.callId,
-        closerId: closerInfo.closerId,
-        closerName: closerInfo.name,
-        teamId: closerInfo.teamId,
         prospectName: callEndedPending.prospectName,
-        b2cUserId: closerInfo.b2cUserId,
       });
     }
     setCallEndedPending(null);
-  }, [callEndedPending, closerInfo]);
+  }, [callEndedPending]);
 
-  // Open floating post-call questionnaire via IPC (used by "Fill Out Now" banner in CallHistoryView)
+  // Open the in-app post-call form (used by "Fill Out Now" banner in CallHistoryView)
   const handleOpenQuestionnaire = useCallback((callId: string, prospectName?: string) => {
     if (!callId) {
       console.warn('[MeetingBotHub] handleOpenQuestionnaire invoked with empty callId — skipping.');
       return;
     }
-    window.electron?.bot?.openQuestionnaire({
-      callId,
-      closerId: closerInfo.closerId,
-      closerName: closerInfo.name,
-      teamId: closerInfo.teamId,
-      prospectName,
-      b2cUserId: closerInfo.b2cUserId,
-    });
-  }, [closerInfo]);
+    setPostCallForm({ callId, prospectName });
+  }, []);
+
+  // Form closed — refresh the Calls badge right away when an outcome was saved
+  const handlePostCallFormClose = useCallback((submitted: boolean) => {
+    setPostCallForm(null);
+    if (submitted) {
+      getPendingDispositions(closerInfo.closerId).then((info) => {
+        setCallsPendingCount(info.count);
+      });
+    }
+  }, [closerInfo.closerId]);
 
   // Routes the deep-link target from an adoption-checklist task CTA.
   // Tabs: switch active sidebar tab. Modals: open the relevant modal.
@@ -746,20 +745,12 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
                 Active Call: {activeCall.prospectName || activeCall.meetingTitle || 'In Progress'}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => window.electron?.ammo?.toggle()}
-                className="text-xs font-medium bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md transition-colors"
-              >
-                Show Ammo Panel
-              </button>
-              <button
-                onClick={handleEndCall}
-                className="text-xs font-medium bg-white text-green-700 hover:bg-green-50 px-3 py-1 rounded-md transition-colors"
-              >
-                End Call
-              </button>
-            </div>
+            <button
+              onClick={handleEndCall}
+              className="text-xs font-medium bg-white text-green-700 hover:bg-green-50 px-3 py-1 rounded-md transition-colors"
+            >
+              End Call
+            </button>
           </div>
         )}
 
@@ -791,6 +782,16 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
             onNavigateToMessage: handleNavigateToMessage,
           })}
         </div>
+
+        {/* In-app post-call form (bottom sheet) */}
+        {postCallForm && (
+          <PostCallFormView
+            callId={postCallForm.callId}
+            prospectName={postCallForm.prospectName}
+            closerInfo={closerInfo}
+            onClose={handlePostCallFormClose}
+          />
+        )}
 
         {/* Messages slide-out panel */}
         {showMessages && (

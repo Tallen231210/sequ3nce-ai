@@ -5976,6 +5976,51 @@ http.route({
   }),
 });
 
+// B2C post-call dispositions: the in-app form's badge/queue + prefill.
+http.route({
+  path: "/b2c/pending-dispositions",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const closerId = url.searchParams.get("closerId");
+    if (!closerId) {
+      return b2cJsonResponse({ error: "closerId is required" }, 400);
+    }
+    try {
+      const result = await ctx.runQuery(api.b2cDispositions.getPendingDispositions, {
+        closerId: closerId as Id<"closers">,
+      });
+      return b2cJsonResponse(result, 200);
+    } catch (error) {
+      console.error("[HTTP] pending-dispositions:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/call-disposition",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const callId = url.searchParams.get("callId");
+    const closerId = url.searchParams.get("closerId");
+    if (!callId || !closerId) {
+      return b2cJsonResponse({ error: "callId and closerId are required" }, 400);
+    }
+    try {
+      const result = await ctx.runQuery(api.b2cDispositions.getCallDisposition, {
+        callId: callId as Id<"calls">,
+        closerId: closerId as Id<"closers">,
+      });
+      return b2cJsonResponse(result ?? { error: "not found" }, result ? 200 : 404);
+    } catch (error) {
+      console.error("[HTTP] call-disposition:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+
 // Polar billing portal for a B2C user (card updates, invoices, cancel).
 http.route({
   path: "/b2c/polar-portal",

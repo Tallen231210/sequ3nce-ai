@@ -124,10 +124,6 @@ function AppContent() {
       username: info.name,
     });
 
-    window.electron?.training?.setCloserId(info.closerId);
-    window.electron?.ammo?.setTeamId(info.teamId);
-    window.electron?.schedule?.setCloserEmail(info.email);
-    window.electron?.schedule?.setTeamId(info.teamId);
     window.electron?.chat?.startPolling(info.closerId, info.teamId, info.name);
 
     // All B2C users use meeting bots — set window to hub size
@@ -361,8 +357,6 @@ function AppContent() {
     // logged-out closer.
     Sentry.setUser(null);
 
-    // Clear closer ID for the training window
-    window.electron?.training?.setCloserId(null);
     // Stop chat polling
     window.electron?.chat?.stopPolling();
   };

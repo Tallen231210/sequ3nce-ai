@@ -130,46 +130,6 @@ const config: ForgeConfig = {
             },
           },
           {
-            html: './src/ammo-tracker.html',
-            js: './src/ammo-tracker-renderer.ts',
-            name: 'ammo_tracker',
-            preload: {
-              js: './src/ammo-tracker-preload.ts',
-            },
-          },
-          {
-            html: './src/training.html',
-            js: './src/training-renderer.ts',
-            name: 'training',
-            preload: {
-              js: './src/training-preload.ts',
-            },
-          },
-          {
-            html: './src/roleplay.html',
-            js: './src/roleplay-renderer.ts',
-            name: 'roleplay',
-            preload: {
-              js: './src/roleplay-preload.ts',
-            },
-          },
-          {
-            html: './src/schedule.html',
-            js: './src/schedule-renderer.ts',
-            name: 'schedule',
-            preload: {
-              js: './src/schedule-preload.ts',
-            },
-          },
-          {
-            html: './src/post-call.html',
-            js: './src/post-call-renderer.ts',
-            name: 'post_call',
-            preload: {
-              js: './src/post-call-preload.ts',
-            },
-          },
-          {
             html: './src/stream-overlay.html',
             js: './src/stream-overlay-renderer.ts',
             name: 'stream_overlay',

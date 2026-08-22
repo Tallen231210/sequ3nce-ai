@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import type { CloserInfo, CallHistoryItem } from '../convex';
-import { getCallHistory, getPendingQuestionnaireInfo, dismissOrphanedQuestionnaires } from '../convex';
+import type { CloserInfo, CallHistoryItem, PendingDisposition } from '../convex';
+import { getCallHistory, getPendingDispositions } from '../convex';
 import { CallDetailSheet } from './CallDetailSheet';
 import { TaskHintBanner } from './adoption-checklist/TaskHintBanner';
 import { usePoll } from '../lib/usePoll';
@@ -26,7 +26,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
   const [search, setSearch] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
   const [selectedCall, setSelectedCall] = useState<CallHistoryItem | null>(null);
-  const [pendingInfo, setPendingInfo] = useState<{ count: number; firstCallId?: string; firstProspectName?: string }>({ count: 0 });
+  const [pendingInfo, setPendingInfo] = useState<{ count: number; calls: PendingDisposition[] }>({ count: 0, calls: [] });
 
   useEffect(() => {
     setIsLoading(true);
@@ -34,22 +34,24 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
       setCalls(result);
       setIsLoading(false);
     });
-    // Also fetch pending questionnaire info
-    getPendingQuestionnaireInfo(closerInfo.closerId).then(setPendingInfo);
+    // Also fetch pending dispositions for the banner
+    getPendingDispositions(closerInfo.closerId).then(setPendingInfo);
   }, [closerInfo.closerId]);
 
   // Refresh pending info — bumped 3s → 15s. Task #348: 3s was wildly
   // aggressive; the "Fill Out Now" banner appearing within 15s of End
   // Call is fine UX, and 3s was a top contributor to saturation.
   usePoll(
-    'pendingQuestionnaireInfo',
+    'pendingDispositions',
     async () => {
-      const info = await getPendingQuestionnaireInfo(closerInfo.closerId);
+      const info = await getPendingDispositions(closerInfo.closerId);
       setPendingInfo(info);
     },
     15_000,
     { immediate: false },
   );
+
+  const firstPending = pendingInfo.calls[0];
 
   const filteredCalls = useMemo(() => {
     let result = calls;
@@ -164,42 +166,32 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
               <span className="text-[13px] font-medium text-amber-800 dark:text-amber-300">
                 {pendingInfo.count} call{pendingInfo.count === 1 ? '' : 's'} need{pendingInfo.count === 1 ? 's' : ''} outcomes
               </span>
-              {pendingInfo.firstProspectName && (
+              {firstPending?.prospectName && (
                 <span className="text-[12px] text-amber-600 dark:text-amber-400 ml-1">
-                  — {pendingInfo.firstProspectName}
+                  — {firstPending.prospectName}
+                </span>
+              )}
+              {firstPending?.aiFilled && (
+                <span className="text-[12px] text-amber-600 dark:text-amber-400 ml-1">
+                  (pre-filled from the recording — confirm the numbers)
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {pendingInfo.firstCallId ? (
-                <button
-                  onClick={() => {
-                    if (onOpenQuestionnaire) {
-                      onOpenQuestionnaire(pendingInfo.firstCallId!, pendingInfo.firstProspectName);
-                      const repoll = () => getPendingQuestionnaireInfo(closerInfo.closerId).then((info) => {
-                        setPendingInfo(info);
-                        if (info.count > 0) setTimeout(repoll, 5000);
-                      });
-                      setTimeout(repoll, 3000);
-                    }
-                  }}
-                  className="px-3 py-1.5 text-[12px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-800/30 hover:bg-amber-200 dark:hover:bg-amber-800/50 rounded-md transition-colors"
-                >
-                  Fill Out Now
-                </button>
-              ) : (
-                <button
-                  onClick={async () => {
-                    await dismissOrphanedQuestionnaires(closerInfo.closerId);
-                    const info = await getPendingQuestionnaireInfo(closerInfo.closerId);
+            {firstPending && onOpenQuestionnaire && (
+              <button
+                onClick={() => {
+                  onOpenQuestionnaire(firstPending.callId, firstPending.prospectName ?? undefined);
+                  const repoll = () => getPendingDispositions(closerInfo.closerId).then((info) => {
                     setPendingInfo(info);
-                  }}
-                  className="px-3 py-1.5 text-[12px] font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
-                >
-                  Dismiss
-                </button>
-              )}
-            </div>
+                    if (info.count > 0) setTimeout(repoll, 5000);
+                  });
+                  setTimeout(repoll, 3000);
+                }}
+                className="px-3 py-1.5 text-[12px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-800/30 hover:bg-amber-200 dark:hover:bg-amber-800/50 rounded-md transition-colors shrink-0"
+              >
+                Fill Out Now
+              </button>
+            )}
           </div>
         </div>
       )}
