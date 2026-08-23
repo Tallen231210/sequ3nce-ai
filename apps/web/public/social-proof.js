@@ -84,9 +84,12 @@
   .sp-minimal .sp-x{display:none}
 
   @media (max-width:640px){
-    .sp-host{padding:10px}
-    .sp-host[data-pos^="bottom"]{bottom:0}
-    .sp-toast{width:calc(100vw - 20px)}
+    /* Phones: a centered banner floated in from the top, never glued to the
+       bottom edge of the page. */
+    .sp-host{padding:0;left:50% !important;right:auto !important;top:64px !important;bottom:auto !important;
+      transform:translateX(-50%);width:calc(100vw - 24px);max-width:380px}
+    .sp-toast{width:100%;transform:translateY(-10px) scale(.97)}
+    .sp-toast.in{transform:none}
   }
   @media (prefers-reduced-motion:reduce){
     .sp-toast{transition:opacity .01ms}
