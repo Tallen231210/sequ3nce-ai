@@ -88,12 +88,12 @@ function OptInInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Social-proof widgets (public/social-proof.js + public/counter.js) — part
-  // of the A/B: variant A gets card-style toasts, variant B minimal ones;
-  // both get the live counter above the form. Wired to REAL endpoints that
-  // return nothing until enough genuine leads exist (the widgets then stay
-  // hidden — they never invent data). ?sp=demo forces the scripts' built-in
-  // sample data for previewing; that flag is for us, never for ad traffic.
+  // Social-proof widgets (public/social-proof.js + public/counter.js) —
+  // identical on both variants: card-style toasts bottom-left + live counter
+  // above the form. Wired to REAL endpoints that return nothing until enough
+  // genuine leads exist (the widgets then stay hidden — they never invent
+  // data). ?sp=demo forces the scripts' built-in sample data for previewing;
+  // that flag is for us, never for ad traffic.
   useEffect(() => {
     if (!variant) return;
     const w = window as unknown as Record<string, unknown>;
@@ -102,8 +102,11 @@ function OptInInner() {
     const demo = params.get("sp") === "demo";
     w.SP_CONFIG = {
       ...(demo ? { demo: true } : { endpoint: `${CONVEX_SITE_URL}/b2c/recent-signups` }),
-      style: variant === "a" ? "card" : "minimal",
+      style: "card",
       position: "bottom-left",
+      firstDelay: 3500,
+      interval: 12000,
+      duration: 7000,
     };
     w.SP_COUNTER = demo
       ? { mode: "tick", start: 259, anchor: "form", label: "closers claimed free access" }

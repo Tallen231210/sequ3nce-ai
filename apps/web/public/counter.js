@@ -26,16 +26,16 @@
 
   var CSS = `
   .spc{display:flex;align-items:center;gap:12px;max-width:450px;margin:0 auto 12px;
-    background:#fff;border:1px solid #e4e4e7;border-radius:14px;padding:11px 14px;
-    box-shadow:0 4px 16px rgba(9,9,11,.05);
+    background:#fff;border:1px solid #d4d4d8;border-radius:14px;padding:14px 16px;
+    box-shadow:0 8px 28px rgba(9,9,11,.10);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  .spc-dot{width:7px;height:7px;border-radius:50%;background:#10b981;flex:none;position:relative}
+  .spc-dot{width:8px;height:8px;border-radius:50%;background:#10b981;flex:none;position:relative}
   .spc-dot::after{content:"";position:absolute;inset:-3px;border-radius:50%;background:#10b981;opacity:.35;animation:spc-p 2s ease-out infinite}
   @keyframes spc-p{0%{transform:scale(.6);opacity:.5}100%{transform:scale(1.5);opacity:0}}
   .spc-body{flex:1;min-width:0}
-  .spc-l1{font-size:13.5px;line-height:1.35;color:#18181b;letter-spacing:-.008em}
-  .spc-l1 b{font-weight:650;font-variant-numeric:tabular-nums}
-  .spc-l2{font-size:11px;color:#a1a1aa;margin-top:3px}
+  .spc-l1{font-size:15px;line-height:1.35;color:#18181b;letter-spacing:-.008em}
+  .spc-l1 b{font-weight:700;font-variant-numeric:tabular-nums;color:#059669}
+  .spc-l2{font-size:11.5px;color:#a1a1aa;margin-top:3px}
   .spc-bar{height:5px;border-radius:99px;background:#eeeef0;overflow:hidden;margin-top:7px}
   .spc-fill{height:100%;border-radius:99px;background:#18181b;transition:width .9s cubic-bezier(.16,1,.3,1)}
   .spc-fill.low{background:#e11d48}
