@@ -9983,6 +9983,38 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// GET /b2c/recent-signups — real opt-ins for the social-proof toasts.
+// Empty array below the honesty floor (see b2cLeads.getRecentSignupsPublic).
+http.route({
+  path: "/b2c/recent-signups",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const list = await ctx.runQuery(api.b2cLeads.getRecentSignupsPublic, {});
+      return b2cJsonResponse(list, 200);
+    } catch (error) {
+      console.error("[HTTP] recent-signups:", error);
+      return b2cJsonResponse([], 200);
+    }
+  }),
+});
+
+// GET /b2c/lead-count — real lead total for the live-counter widget.
+// Empty object below the honesty floor → the widget renders nothing.
+http.route({
+  path: "/b2c/lead-count",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const result = await ctx.runQuery(api.b2cLeads.getLeadCountPublic, {});
+      return b2cJsonResponse(result, 200);
+    } catch (error) {
+      console.error("[HTTP] lead-count:", error);
+      return b2cJsonResponse({}, 200);
+    }
+  }),
+});
+
 // ============================================
 // B2C MULTI-CALENDAR
 // ============================================

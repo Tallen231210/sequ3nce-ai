@@ -88,6 +88,41 @@ function OptInInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Social-proof widgets (public/social-proof.js + public/counter.js) — part
+  // of the A/B: variant A gets card-style toasts, variant B minimal ones;
+  // both get the live counter above the form. Wired to REAL endpoints that
+  // return nothing until enough genuine leads exist (the widgets then stay
+  // hidden — they never invent data). ?sp=demo forces the scripts' built-in
+  // sample data for previewing; that flag is for us, never for ad traffic.
+  useEffect(() => {
+    if (!variant) return;
+    const w = window as unknown as Record<string, unknown>;
+    if (w.__spLoaded) return;
+    w.__spLoaded = true;
+    const demo = params.get("sp") === "demo";
+    w.SP_CONFIG = {
+      ...(demo ? { demo: true } : { endpoint: `${CONVEX_SITE_URL}/b2c/recent-signups` }),
+      style: variant === "a" ? "card" : "minimal",
+      position: "bottom-left",
+    };
+    w.SP_COUNTER = demo
+      ? { mode: "tick", start: 259, anchor: "form", label: "closers claimed free access" }
+      : { mode: "total", endpoint: `${CONVEX_SITE_URL}/b2c/lead-count`, anchor: "form", label: "closers claimed free access" };
+    const tags = ["/social-proof.js", "/counter.js"].map((src) => {
+      const t = document.createElement("script");
+      t.src = src;
+      document.body.appendChild(t);
+      return t;
+    });
+    return () => {
+      // Client-side navigation must not leave toasts running on other pages.
+      (w.SequenceSocialProof as { stop?: () => void } | undefined)?.stop?.();
+      document.querySelectorAll(".sp-host, .spc").forEach((el) => el.remove());
+      tags.forEach((t) => t.remove());
+      w.__spLoaded = false;
+    };
+  }, [variant, params]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
