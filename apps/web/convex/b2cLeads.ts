@@ -105,16 +105,23 @@ const LEAD_COUNT_FLOOR = 25; // smaller total than this → show no counter
 export const getRecentSignupsPublic = query({
   args: {},
   handler: async (ctx) => {
-    const recent = await ctx.db.query("b2cLeads").order("desc").take(30);
+    const recent = await ctx.db.query("b2cLeads").order("desc").take(50);
     const named = recent.filter((l) => (l.firstName ?? "").trim().length > 0);
     if (named.length < RECENT_SIGNUPS_FLOOR) return [];
-    return named.slice(0, 20).map((l) => ({
-      name:
-        l.firstName!.trim() +
-        ((l.lastName ?? "").trim() ? ` ${l.lastName!.trim().charAt(0).toUpperCase()}.` : ""),
-      action: "claimed free access",
-      ts: Math.floor((l.createdAt ?? l._creationTime) / 1000),
-    }));
+    // First name ONLY (privacy: no surname, no location, no timestamp — a
+    // bare first name identifies nobody), deduped so a scroll session shows
+    // different names rather than the same lead twice.
+    const seen = new Set<string>();
+    const out: Array<{ name: string; action: string }> = [];
+    for (const l of named) {
+      const name =
+        l.firstName!.trim().charAt(0).toUpperCase() + l.firstName!.trim().slice(1).toLowerCase();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      out.push({ name, action: "claimed free access" });
+      if (out.length >= 20) break;
+    }
+    return out;
   },
 });
 

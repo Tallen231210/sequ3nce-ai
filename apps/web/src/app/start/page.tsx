@@ -104,9 +104,11 @@ function OptInInner() {
       ...(demo ? { demo: true } : { endpoint: `${CONVEX_SITE_URL}/b2c/recent-signups` }),
       style: "card",
       position: "bottom-left",
-      firstDelay: 3500,
-      interval: 12000,
-      duration: 7000,
+      // Cadence tuned so an average scroll of the page sees 4+ different
+      // names: first at 2.5s, then one every 8s, each visible 5.5s.
+      firstDelay: 2500,
+      interval: 8000,
+      duration: 5500,
     };
     w.SP_COUNTER = demo
       ? { mode: "tick", start: 259, anchor: "form", label: "closers claimed free access" }

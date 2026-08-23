@@ -28,15 +28,17 @@
 
   if (!CFG.mobile && window.matchMedia("(max-width: 640px)").matches) return;
 
+  // Demo entries mirror the production shape: first name only, no location,
+  // no timestamp. Preview only — real traffic gets the real endpoint.
   var DEMO = [
-    { name: "Jake W.",   location: "Wisconsin",   action: "claimed free access", ago: "2 minutes ago" },
-    { name: "Marcus T.", location: "Georgia",     action: "booked an onboarding call", ago: "6 minutes ago" },
-    { name: "Priya R.",  location: "Ontario",     action: "claimed free access", ago: "11 minutes ago" },
-    { name: "Danny O.",  location: "Manchester",  action: "joined from a solar role", ago: "18 minutes ago" },
-    { name: "Alicia M.", location: "Arizona",     action: "claimed free access", ago: "24 minutes ago" },
-    { name: "Tyrone B.", location: "Texas",       action: "booked an onboarding call", ago: "31 minutes ago" },
-    { name: "Sam K.",    location: "New South Wales", action: "claimed free access", ago: "38 minutes ago" },
-    { name: "Ravi P.",   location: "Florida",     action: "joined from an insurance role", ago: "45 minutes ago" }
+    { name: "Jake",   action: "claimed free access" },
+    { name: "Marcus", action: "claimed free access" },
+    { name: "Priya",  action: "claimed free access" },
+    { name: "Danny",  action: "claimed free access" },
+    { name: "Alicia", action: "claimed free access" },
+    { name: "Tyrone", action: "claimed free access" },
+    { name: "Sam",    action: "claimed free access" },
+    { name: "Ravi",   action: "claimed free access" }
   ];
 
   var events = [], idx = 0, shown = 0, timer = null, host = null, root = null;
