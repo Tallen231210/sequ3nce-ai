@@ -10,13 +10,12 @@ const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 // ============================================================================
 // Opt-in with a built-in A/B split — round two, copy by the co-founder.
 //
-// Variant A: the JOB angle ("land a remote closing seat"), Brunson-style.
-// Variant B: the INCOME angle ("you already sell — get paid properly"),
-// Hormozi-style. Different audiences on purpose: this round tests the angle,
-// not the wording. Assignment is a coin flip persisted in localStorage
-// (a returning visitor keeps their arm); ?v=a / ?v=b overrides for previews
-// and for ads that force an arm. The arm ships with the lead as
-// source: "start-funnel-a" | "start-funnel-b".
+// Both arms sell the JOB angle ("land a remote closing seat"): variant A is
+// the Brunson-style long form, variant B the shorter Hormozi-style page.
+// This round tests the style, not the audience. Assignment is a coin flip
+// persisted in localStorage (a returning visitor keeps their arm); ?v=a /
+// ?v=b overrides for previews and for ads that force an arm. The arm ships
+// with the lead as source: "start-funnel-a" | "start-funnel-b".
 //
 // The design collects name + mobile + email (email added back to the
 // mockups deliberately: the lead pipeline and GHL sync key on it).
@@ -262,7 +261,7 @@ function OptInInner() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-50" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            {variant === "a" ? "Free training · Live openings" : "Free training · Built for working reps"}
+            Free training · Live openings
           </div>
         </div>
 
@@ -277,7 +276,7 @@ function OptInInner() {
           <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
             {variant === "a"
               ? "The whole thing explained · 90 seconds"
-              : "The four grand vs twenty grand breakdown · 90 seconds"}
+              : "How the whole thing works · 90 seconds"}
           </span>
         </div>
 
@@ -291,9 +290,9 @@ function OptInInner() {
             </>
           ) : (
             <>
-              You’re already good at selling. You’re just selling{" "}
-              <span className="num"><span className="font-serif italic font-normal">the wrong thing</span></span>{" "}
-              for the wrong money<span className="text-zinc-300">.</span>
+              Make{" "}
+              <span className="num"><span className="font-serif italic font-normal">$10–20k a month</span></span>{" "}
+              as a remote closer. The training costs you nothing<span className="text-zinc-300">.</span>
             </>
           )}
         </h1>
@@ -301,22 +300,15 @@ function OptInInner() {
         <p className="lede">
           {variant === "a"
             ? "This isn't a better way to job hunt. It's a different door. The seats that get filled by referral before anyone posts them, and an intro to the person doing the filling."
-            : "Four grand a month and twenty grand a month take the same amount of work. The rep making twenty isn't better than you. He's on a bigger offer with booked calls and no territory. That's the whole difference."}
+            : "The average rep makes four grand a month. The top ones make thirty. Same phone, same hours. The gap is which offer you're on and whether you can run a call."}
         </p>
 
         <div className="outrow">
-          {(variant === "a"
-            ? [
-                ["Live commission roles", "We open the door. You still have to close it."],
-                ["$10–20k months", "What the seats on our board pay"],
-                ["$0 for the training", "You cover the software. Nothing else."],
-              ]
-            : [
-                ["Same skill, better offer", "You keep selling. The number changes."],
-                ["$3–4k → $20k", "The ceiling we train toward"],
-                ["$0 for the training", "You cover the software. Nothing else."],
-              ]
-          ).map(([b, s]) => (
+          {[
+            ["Live commission roles", "We open the door. You still have to close it."],
+            ["$10–20k months", "What the seats on our board pay"],
+            ["$0 for the training", "You cover the software. Nothing else."],
+          ].map(([b, s]) => (
             <div key={b} className="out">
               <b>{b}</b>
               <span>{s}</span>
@@ -354,16 +346,10 @@ function OptInInner() {
           </>
         ) : (
           <>
-            {bodySection("Let's say the quiet part out loud", [
-              "You're driving forty minutes each way to sit in a room and dial a list somebody else bought. The quota went up again in January and nobody explained why. The good leads go to the guy who's been there six years, and you get the aged ones nobody wanted.",
-              "Meanwhile the job market is the worst it's been in a decade for anything that isn't already senior. Every posting has four hundred applicants. Every recruiter ghosts. So you stay, because staying pays four grand and leaving pays nothing.",
-              "Here's what nobody tells you: you're not underpaid because you're bad at this. You're underpaid because you're pointing a real skill at a product with a small commission and a territory that caps you. Same calls, same hours, same you — different offer, and the number changes completely.",
-            ])}
-            {divider}
             {valueStack("Everything you get")}
             {divider}
             {bodySection("What's the catch", [
-              "You pay for the software it all runs on, which costs about what your phone does. And you have to actually do the six weeks. Those are the only two things we ask, and you're hearing both now instead of on the call.",
+              "You pay for the software it all runs on. Costs about what your phone does. That's the catch, all of it, and you're hearing it now instead of on the call.",
             ], true)}
           </>
         )}
