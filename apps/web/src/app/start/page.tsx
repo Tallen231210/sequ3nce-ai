@@ -138,7 +138,7 @@ function OptInInner() {
 
   const cta = variant === "a" ? "Yes, get me access" : "Get all of it free";
 
-  const formCard = (kick?: string) => (
+  const formCard = (
     <div
       className="rounded-[20px] border bg-white"
       style={{
@@ -149,7 +149,6 @@ function OptInInner() {
         padding: 26,
       }}
     >
-      {kick && <p className="kick">{kick}</p>}
       <form onSubmit={submit} className="grid gap-2.5">
         <input
           value={firstName}
@@ -324,7 +323,7 @@ function OptInInner() {
           ))}
         </div>
 
-        {formCard()}
+        {formCard}
 
         {divider}
 
@@ -371,7 +370,16 @@ function OptInInner() {
         {divider}
         {guarantee}
 
-        <div className="sect">{formCard("Start here")}</div>
+        {/* Bottom CTA — one form per page is enough; this scrolls back to it */}
+        <div className="sect" style={{ maxWidth: 450, margin: "46px auto 0" }}>
+          <button
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="w-full rounded-[10px] bg-zinc-900 px-4 text-white transition-colors hover:bg-zinc-800"
+            style={{ paddingTop: 17, paddingBottom: 17, fontSize: 16, fontWeight: 600, letterSpacing: "-.01em" }}
+          >
+            Get Instant Access
+          </button>
+        </div>
       </div>
     </main>
   );
