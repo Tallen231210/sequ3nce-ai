@@ -2,21 +2,24 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Loader2, Play, X } from "lucide-react";
+import { Check, Loader2, Play } from "lucide-react";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 
 const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
 // ============================================================================
-// Opt-in with a built-in A/B split.
+// Opt-in with a built-in A/B split — round two, copy by the co-founder.
 //
-// Variant A: form only. Variant B: video above the form, its own lede copy —
-// the copy difference is part of the test, straight from the mockup spec.
-// Assignment is a coin flip persisted in localStorage (a returning visitor
-// keeps their arm); ?v=a / ?v=b overrides for previewing and for ads that
-// want to force an arm. The chosen arm ships with the lead as
-// source: "start-funnel-a" | "start-funnel-b", so conversion attribution
-// lives on the lead record itself.
+// Variant A: the JOB angle ("land a remote closing seat"), Brunson-style.
+// Variant B: the INCOME angle ("you already sell — get paid properly"),
+// Hormozi-style. Different audiences on purpose: this round tests the angle,
+// not the wording. Assignment is a coin flip persisted in localStorage
+// (a returning visitor keeps their arm); ?v=a / ?v=b overrides for previews
+// and for ads that force an arm. The arm ships with the lead as
+// source: "start-funnel-a" | "start-funnel-b".
+//
+// The design collects name + mobile + email (email added back to the
+// mockups deliberately: the lead pipeline and GHL sync key on it).
 // ============================================================================
 
 const GROUND: React.CSSProperties = {
@@ -25,6 +28,37 @@ const GROUND: React.CSSProperties = {
   WebkitMaskImage: "radial-gradient(ellipse 70% 55% at 50% 12%, black 30%, transparent 75%)",
   maskImage: "radial-gradient(ellipse 70% 55% at 50% 12%, black 30%, transparent 75%)",
 };
+
+// Typography + layout system from the copy mockups. Scoped under .cc.
+const CC_CSS = `
+.cc h1{text-wrap:balance;font-feature-settings:"ss01","cv01";letter-spacing:-.038em;line-height:.99;max-width:19ch;margin:0 auto;text-align:center}
+.cc .lede{text-wrap:pretty;font-size:17px;line-height:1.58;letter-spacing:-.006em;color:#71717a;max-width:52ch;margin:18px auto 24px;text-align:center}
+.cc .body{text-wrap:pretty;font-size:15.5px;line-height:1.72;letter-spacing:-.003em;color:#52525b;max-width:64ch;margin-left:auto;margin-right:auto}
+.cc .kick{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.17em;color:#a1a1aa;margin:0 0 16px;text-align:center}
+.cc .sect{margin-top:46px}
+.cc .divider{height:1px;background:#e4e4e7;margin:46px 0}
+.cc .num{font-variant-numeric:tabular-nums}
+.cc .outrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:620px;margin:0 auto 26px}
+.cc .out{text-align:center;padding:12px 8px;border:1px solid #e4e4e7;border-radius:12px;background:#fff}
+.cc .out b{display:block;font-size:14px;font-weight:600;letter-spacing:-.015em;line-height:1.25;color:#18181b}
+.cc .out span{display:block;font-size:11.5px;line-height:1.35;color:#a1a1aa;margin-top:5px;text-wrap:pretty}
+.cc .checks{display:grid;gap:11px;max-width:600px;margin:0 auto}
+.cc .checks p{font-size:14.5px;line-height:1.55;margin:0;text-wrap:pretty}
+@media(max-width:420px){
+.cc .outrow{gap:6px}
+.cc .out{padding:10px 5px;border-radius:10px}
+.cc .out b{font-size:12.5px}
+.cc .out span{font-size:10.5px;margin-top:3px}
+.cc .lede{font-size:16px;margin:14px auto 20px}
+}
+`;
+
+const STACK_ROWS: Array<[string, string]> = [
+  ["Six-week closing program", "$2,000"],
+  ["Live role board & warm intros", "$3,000"],
+  ["Call recording, AI scoring, verified profile", "$1,800"],
+  ["The closer room", "$1,200"],
+];
 
 function OptInInner() {
   const router = useRouter();
@@ -102,34 +136,20 @@ function OptInInner() {
     );
   }
 
-  const formCard = (
+  const cta = variant === "a" ? "Yes, get me access" : "Get all of it free";
+
+  const formCard = (kick?: string) => (
     <div
-      className={
-        "rounded-[20px] border border-zinc-200 bg-white p-7 shadow-[0_14px_44px_rgba(9,9,11,0.07)] " +
-        (variant === "b" ? "lg:sticky lg:top-24" : "")
-      }
+      className="rounded-[20px] border bg-white"
+      style={{
+        maxWidth: 450,
+        margin: "0 auto",
+        boxShadow: "0 22px 58px rgba(9,9,11,.13)",
+        borderColor: "#d4d4d8",
+        padding: 26,
+      }}
     >
-      {variant === "b" && (
-        // ══ REPLACE: VSL embed goes here when the video exists ══
-        <div className="mb-4 flex aspect-video flex-col items-center justify-center gap-2.5 rounded-xl bg-zinc-950 text-white">
-          <span className="flex h-13 w-13 items-center justify-center rounded-full bg-white p-3.5">
-            <Play className="h-5 w-5 fill-zinc-950 text-zinc-950" />
-          </span>
-          <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-            Watch first · 90 seconds
-          </span>
-        </div>
-      )}
-      {variant === "a" && (
-        <>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            Start here
-          </p>
-          <p className="mb-4 mt-1 text-sm leading-relaxed text-zinc-500">
-            Thirty seconds to fill in — we call you within minutes.
-          </p>
-        </>
-      )}
+      {kick && <p className="kick">{kick}</p>}
       <form onSubmit={submit} className="grid gap-2.5">
         <input
           value={firstName}
@@ -154,130 +174,204 @@ function OptInInner() {
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-[10px] bg-zinc-900 px-4 py-4 text-[15px] font-semibold text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
+          className="w-full rounded-[10px] bg-zinc-900 px-4 text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
+          style={{ paddingTop: 17, paddingBottom: 17, fontSize: 16, fontWeight: 600, letterSpacing: "-.01em" }}
         >
-          {busy ? "One second…" : "Get instant access"}
+          {busy ? "One second…" : cta}
         </button>
       </form>
       {error && <p className="mt-2 text-center text-sm text-rose-600">{error}</p>}
-      <p className="mt-3 text-center text-xs leading-relaxed text-zinc-400">
-        We call you within minutes to get you set up. Keep your phone on you.
+      <p
+        className="mt-3 text-center text-xs leading-relaxed text-zinc-400"
+        style={{ textWrap: "pretty", maxWidth: "36ch", marginLeft: "auto", marginRight: "auto" }}
+      >
+        A closer from our team calls you within minutes. Keep your phone on you.
       </p>
     </div>
   );
 
-  const ledeA =
-    "We do both, and we charge for neither. Live commission roles from offers we've screened, plus the six-week program that gets you ready to take them. You pay for the software that runs it — that's the entire deal, and we'd rather say it now than halfway through.";
-  const ledeB =
-    "Six weeks of training, a vetted board of live commission roles, and a room full of closers actually doing the work. You pay for the software that runs it. That's the entire deal — and we'd rather say it now than halfway through.";
+  const valueStack = (title: string) => (
+    <>
+      <p className="kick">{title}</p>
+      <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        {STACK_ROWS.map(([label, price]) => (
+          <div
+            key={label}
+            style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "11px 0", borderBottom: "1px solid #e4e4e7" }}
+          >
+            <span className="text-sm">{label}</span>
+            <span className="text-sm" style={{ color: "#71717a", textDecoration: "line-through", whiteSpace: "nowrap" }}>
+              {price}
+            </span>
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "14px 0", borderBottom: "2px solid #18181b" }}>
+          <span className="text-sm font-semibold">What it costs elsewhere</span>
+          <span className="text-sm font-semibold" style={{ textDecoration: "line-through" }}>$8,000</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "16px 0" }}>
+          <span style={{ fontSize: 17, fontWeight: 600 }}>Your price</span>
+          <span style={{ fontSize: 17, fontWeight: 600 }} className="text-emerald-600">$0</span>
+        </div>
+      </div>
+    </>
+  );
+
+  const bodySection = (kick: string, paras: string[], centerLone = false) => (
+    <>
+      <p className="kick">{kick}</p>
+      <div style={{ display: "grid", gap: 15, maxWidth: "64ch", margin: "0 auto" }}>
+        {paras.map((p, i) => (
+          <p
+            key={i}
+            className="body"
+            style={{
+              ...(i === paras.length - 1 && paras.length > 1 ? { color: "#18181b", fontWeight: 500 } : {}),
+              ...(centerLone ? { textAlign: "center" } : {}),
+            }}
+          >
+            {p}
+          </p>
+        ))}
+      </div>
+    </>
+  );
+
+  const guarantee = (
+    <div style={{ maxWidth: 620, margin: "0 auto", border: "2px solid #18181b", borderRadius: 18, padding: 24, background: "#fafafa" }}>
+      <p className="kick" style={{ color: "#18181b", marginBottom: 9 }}>The guarantee</p>
+      <p style={{ fontSize: 16.5, lineHeight: 1.55, fontWeight: 500, margin: 0, textWrap: "pretty", textAlign: "center" }}>
+        Do the six weeks, take the call reviews, go after the roles on the board. If you
+        haven&apos;t landed a commission seat, we refund every month you paid for the
+        software. You keep the training either way.
+      </p>
+    </div>
+  );
+
+  const divider = <div className="divider" />;
 
   return (
-    <main className="relative mx-auto max-w-[1120px] px-6 py-12 lg:py-16">
+    <main className="relative mx-auto max-w-[1120px] px-6 py-12 lg:py-16" style={{ paddingTop: 34 }}>
       <div aria-hidden className="absolute inset-0 -z-10" style={GROUND} />
+      <style dangerouslySetInnerHTML={{ __html: CC_CSS }} />
 
-      <div
-        className={
-          "grid gap-11 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16 " +
-          (variant === "a" ? "lg:items-center" : "lg:items-start")
-        }
-      >
-        <div>
+      <div className="cc">
+        <div style={{ textAlign: "center" }}>
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3.5 py-1.5 text-xs font-medium text-zinc-700">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-50" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            Free training · Free role placement
+            {variant === "a" ? "Free training · Live openings" : "Free training · Built for working reps"}
           </div>
-          <p className="mb-4 text-xs font-medium uppercase tracking-[0.22em] text-zinc-500">
-            The closer career, without the course fee
-          </p>
-          <h1 className="text-[clamp(32px,4.6vw,54px)] font-semibold leading-[0.98] tracking-[-0.04em] text-zinc-950">
-            They charge $5,000 to teach you closing. Then you&apos;re{" "}
-            <span className="font-serif italic font-normal">on your own</span> to
-            find the job<span className="text-zinc-300">.</span>
-          </h1>
-          <p className="mt-4 max-w-[56ch] text-base leading-relaxed text-zinc-500">
-            {variant === "a" ? ledeA : ledeB}
-          </p>
+        </div>
 
-          <div className="mt-8">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-              Who this is for
-            </p>
-            {[
-              "You want a commission seat and don't have one yet",
-              "You've sold something before and want to move to commission work",
-              "You're closing now and want your numbers to travel with you",
-            ].map((line) => (
-              <div key={line} className="mb-2.5 flex items-start gap-2.5">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" strokeWidth={3} />
-                <p className="text-sm leading-normal">{line}</p>
-              </div>
-            ))}
-            <div className="mb-2.5 flex items-start gap-2.5">
-              <X className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" strokeWidth={3} />
-              <p className="text-sm leading-normal text-zinc-500">
-                You want passive income and won&apos;t get on the phone
-              </p>
+        {/* ══ REPLACE: VSL embed goes here when the video exists ══ */}
+        <div
+          className="flex aspect-video flex-col items-center justify-center gap-2.5 rounded-xl bg-zinc-950 text-white"
+          style={{ maxWidth: 660, margin: "0 auto 26px", boxShadow: "0 20px 56px rgba(9,9,11,.20)" }}
+        >
+          <span className="flex h-13 w-13 items-center justify-center rounded-full bg-white p-3.5">
+            <Play className="h-5 w-5 fill-zinc-950 text-zinc-950" />
+          </span>
+          <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+            {variant === "a"
+              ? "The whole thing explained · 90 seconds"
+              : "The four grand vs twenty grand breakdown · 90 seconds"}
+          </span>
+        </div>
+
+        <h1 className="text-[clamp(32px,4.6vw,54px)] font-semibold leading-[0.98] tracking-[-0.04em] text-zinc-950">
+          {variant === "a" ? (
+            <>
+              How to land a{" "}
+              <span className="num"><span className="font-serif italic font-normal">$10–20k a month</span></span>{" "}
+              remote closing role — without buying a course, spamming résumés, or needing
+              sales experience<span className="text-zinc-300">.</span>
+            </>
+          ) : (
+            <>
+              You’re already good at selling. You’re just selling{" "}
+              <span className="num"><span className="font-serif italic font-normal">the wrong thing</span></span>{" "}
+              for the wrong money<span className="text-zinc-300">.</span>
+            </>
+          )}
+        </h1>
+
+        <p className="lede">
+          {variant === "a"
+            ? "This isn't a better way to job hunt. It's a different door. The seats that get filled by referral before anyone posts them, and an intro to the person doing the filling."
+            : "Four grand a month and twenty grand a month take the same amount of work. The rep making twenty isn't better than you. He's on a bigger offer with booked calls and no territory. That's the whole difference."}
+        </p>
+
+        <div className="outrow">
+          {(variant === "a"
+            ? [
+                ["Live commission roles", "We open the door. You still have to close it."],
+                ["$10–20k months", "What the seats on our board pay"],
+                ["$0 for the training", "You cover the software. Nothing else."],
+              ]
+            : [
+                ["Same skill, better offer", "You keep selling. The number changes."],
+                ["$3–4k → $20k", "The ceiling we train toward"],
+                ["$0 for the training", "You cover the software. Nothing else."],
+              ]
+          ).map(([b, s]) => (
+            <div key={b} className="out">
+              <b>{b}</b>
+              <span>{s}</span>
             </div>
-          </div>
+          ))}
         </div>
 
-        <div>{formCard}</div>
-      </div>
+        {formCard()}
 
-      <div className="my-10 h-px bg-zinc-200" />
+        {divider}
 
-      <p className="mb-3.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-        What you get, free
-      </p>
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Live commission roles", "Openings from offers we've screened and introductions to the people hiring. Not a scraped job board."],
-          ["Six-week closing program", "Framework, objection handling and call reviews. The same material sold elsewhere for four figures."],
-          ["Your own call data", "Every call analysed and scored. The record belongs to you, not the company you close for."],
-          ["The room", "Closers running real floors. Ask a question at 11pm, get an answer."],
-        ].map(([h, p]) => (
-          <div key={h} className="border-t-2 border-zinc-900 pt-3">
-            <h3 className="text-[15px] font-semibold tracking-[-0.01em]">{h}</h3>
-            <p className="mt-1.5 text-[13.5px] leading-relaxed text-zinc-500">{p}</p>
-          </div>
-        ))}
-      </div>
+        {variant === "a" ? (
+          <>
+            {valueStack("Everything you get today")}
+            {divider}
+            {bodySection("Why the old way stopped working", [
+              "Two years ago you could learn to close, put it on a CV, and get hired. That door's shut. There are more trained closers now than posted roles, so hiring managers stopped posting and started asking people they already trust.",
+              "Which means skill isn't what's standing between you and the money any more. The intro is. And no course can hand you one, because none of them are in the room where the hiring happens.",
+              "We're in that room. That's the whole reason this works.",
+            ])}
+            {divider}
+            <p className="kick">Who this is for</p>
+            <div className="checks">
+              {[
+                "You've sold something before — door to door, insurance, retail, phones — and you want the commission without the driving",
+                "You're already closing and you want your numbers to come with you to a better offer",
+                "You've never sold professionally, but you'll get on the phone and do the reps",
+              ].map((line) => (
+                <div key={line} className="flex items-start gap-2.5">
+                  <Check className="h-4 w-4 shrink-0 text-emerald-600" strokeWidth={3} />
+                  <p>{line}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            {bodySection("Let's say the quiet part out loud", [
+              "You're driving forty minutes each way to sit in a room and dial a list somebody else bought. The quota went up again in January and nobody explained why. The good leads go to the guy who's been there six years, and you get the aged ones nobody wanted.",
+              "Meanwhile the job market is the worst it's been in a decade for anything that isn't already senior. Every posting has four hundred applicants. Every recruiter ghosts. So you stay, because staying pays four grand and leaving pays nothing.",
+              "Here's what nobody tells you: you're not underpaid because you're bad at this. You're underpaid because you're pointing a real skill at a product with a small commission and a territory that caps you. Same calls, same hours, same you — different offer, and the number changes completely.",
+            ])}
+            {divider}
+            {valueStack("Everything you get")}
+            {divider}
+            {bodySection("What's the catch", [
+              "You pay for the software it all runs on, which costs about what your phone does. And you have to actually do the six weeks. Those are the only two things we ask, and you're hearing both now instead of on the call.",
+            ], true)}
+          </>
+        )}
 
-      <div className="my-10 h-px bg-zinc-200" />
+        {divider}
+        {guarantee}
 
-      <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-6">
-          <h3 className="mb-2 text-[15px] font-semibold">Why it&apos;s free</h3>
-          <p className="text-[13.5px] leading-relaxed text-zinc-500">
-            The training only works if you&apos;re running the software while you
-            do it — the call analysis, the scoring, the placement profile. So we
-            stopped charging for the teaching and charge for the tools instead.
-            Sequ3nce and Churp are ours. That&apos;s how we make money, and
-            you&apos;ll hear it again on the call before you&apos;re asked to
-            spend anything.
-          </p>
-        </div>
-        <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            Ready?
-          </p>
-          <p className="mb-4 text-sm leading-relaxed text-zinc-500">
-            Thirty seconds to fill in, and we call you within minutes.
-          </p>
-          <a
-            href="#top"
-            onClick={(e) => {
-              e.preventDefault();
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-            className="block w-full rounded-[10px] bg-zinc-900 px-4 py-4 text-center text-[15px] font-semibold text-white transition-colors hover:bg-zinc-800"
-          >
-            Get instant access
-          </a>
-        </div>
+        <div className="sect">{formCard("Start here")}</div>
       </div>
     </main>
   );
