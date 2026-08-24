@@ -7,39 +7,42 @@ import React, { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Scorecard } from "@/components/scorecard/Scorecard";
+import { RangeControl, weekRange, type ScorecardRange } from "@/components/scorecard/RangeControl";
 import { useSetter } from "../_components/SetterContext";
 
 export default function SetterProjectionsPage() {
   const { sessionToken } = useSetter();
   const weeks = useQuery(api.scorecard.listScorecardWeeks, { sessionToken });
-  const [week, setWeek] = useState<string | null>(null);
-  const activeWeek = week ?? weeks?.currentWeek ?? null;
+  const [range, setRange] = useState<ScorecardRange | null>(null);
+  const activeRange =
+    range ?? (weeks ? weekRange(weeks.currentWeek, true) : null);
   const data = useQuery(
     api.scorecard.getScorecardWeek,
-    activeWeek ? { sessionToken, weekStart: activeWeek } : "skip",
+    activeRange
+      ? {
+          sessionToken,
+          weekStart: activeRange.start,
+          ...(activeRange.end ? { rangeEnd: activeRange.end } : {}),
+        }
+      : "skip",
   );
 
-  if (!weeks || !data || !activeWeek) {
+  if (!weeks || !data || !activeRange) {
     return <div className="py-16 text-center text-sm text-neutral-400">Loading…</div>;
   }
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13px] text-neutral-500">
           Play with your own numbers — nothing here saves.
         </p>
-        <select
-          value={activeWeek}
-          onChange={(e) => setWeek(e.target.value)}
-          className="rounded-lg border border-neutral-200 px-2 py-1 text-[12px]"
-        >
-          {weeks.weeks.map((w: string) => (
-            <option key={w} value={w}>
-              week of Sat {w}
-            </option>
-          ))}
-        </select>
+        <RangeControl
+          weeks={weeks.weeks}
+          currentWeek={weeks.currentWeek}
+          value={activeRange}
+          onChange={setRange}
+        />
       </div>
       <Scorecard
         actualRows={data.rows}
@@ -47,7 +50,7 @@ export default function SetterProjectionsPage() {
         savedCdpbc={data.baseline?.cdpbc ?? null}
         mode="sandbox"
         ownRosterId={data.ownRosterId}
-        weekLabel={activeWeek}
+        weekLabel={activeRange.label}
       />
     </div>
   );

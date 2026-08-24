@@ -117,7 +117,7 @@ export function Scorecard({
     <div className={s.wrap}>
       <div className={s.header}>
         <div>
-          <div className={s.eyebrow}>Weekly ledger · Sat–Sat · {weekLabel}</div>
+          <div className={s.eyebrow}>Ledger · {weekLabel}</div>
           <h2 className={s.title}>Setter Scorecard</h2>
         </div>
         {mode === "manager" && (

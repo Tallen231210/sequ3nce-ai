@@ -76,17 +76,47 @@ export const listScorecardWeeks = query({
   },
 });
 
+/** Days in [start, end] inclusive, capped so a fat-fingered range can't
+ *  scan a year of entries. */
+function spanDayKeys(start: string, end: string): string[] {
+  const out: string[] = [];
+  let k = start;
+  for (let i = 0; i < 92; i++) {
+    out.push(k);
+    if (k === end) return out;
+    k = addDaysKey(k, 1);
+  }
+  throw new ConvexError("That range is too long — 92 days max");
+}
+
+/** Baselines stay keyed by the plain Saturday for standard weeks (so old
+ *  locks survive); custom ranges get a composite key. */
+function baselineKey(weekStart: string, rangeEnd?: string): string {
+  if (!rangeEnd || rangeEnd === addDaysKey(weekStart, 6)) return weekStart;
+  return `${weekStart}_${rangeEnd}`;
+}
+
 export const getScorecardWeek = query({
   args: {
     clerkId: v.optional(v.string()),
     sessionToken: v.optional(v.string()),
     weekStart: v.string(),
+    /** Inclusive end day. Omitted = the classic Sat–Sat week. */
+    rangeEnd: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const caller = await resolveScorecardCaller(ctx, args);
     if (!caller) return null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(args.weekStart)) {
       throw new ConvexError("Bad week key");
+    }
+    if (args.rangeEnd !== undefined) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(args.rangeEnd)) {
+        throw new ConvexError("Bad range end");
+      }
+      if (args.rangeEnd < args.weekStart) {
+        throw new ConvexError("The end date is before the start date");
+      }
     }
 
     const roster = await ctx.db
@@ -95,8 +125,10 @@ export const getScorecardWeek = query({
       .collect();
     const active = roster.filter((r) => r.active);
 
-    const dayKeys: string[] = [];
-    for (let i = 0; i < 7; i++) dayKeys.push(addDaysKey(args.weekStart, i));
+    const dayKeys = spanDayKeys(
+      args.weekStart,
+      args.rangeEnd ?? addDaysKey(args.weekStart, 6),
+    );
 
     const byRoster = new Map<string, ScorecardRow>();
     for (const r of active) {
@@ -135,7 +167,9 @@ export const getScorecardWeek = query({
     const baseline = await ctx.db
       .query("scorecardBaselines")
       .withIndex("by_team_and_week", (q) =>
-        q.eq("teamId", caller.teamId).eq("weekKey", args.weekStart),
+        q
+          .eq("teamId", caller.teamId)
+          .eq("weekKey", baselineKey(args.weekStart, args.rangeEnd)),
       )
       .first();
 
@@ -164,6 +198,7 @@ export const lockBaseline = mutation({
   args: {
     clerkId: v.string(),
     weekStart: v.string(),
+    rangeEnd: v.optional(v.string()),
     rows: v.optional(v.union(v.string(), v.null())),
     cdpbc: v.optional(v.union(v.number(), v.null())),
   },
@@ -172,6 +207,9 @@ export const lockBaseline = mutation({
     if (!user) throw new ConvexError("Only managers can lock a baseline");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(args.weekStart)) {
       throw new ConvexError("Bad week key");
+    }
+    if (args.rangeEnd !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(args.rangeEnd)) {
+      throw new ConvexError("Bad range end");
     }
     if (args.rows && args.rows.length > 100_000) {
       throw new ConvexError("Baseline too large");
@@ -183,10 +221,11 @@ export const lockBaseline = mutation({
       throw new ConvexError("Check the CDPBC number");
     }
 
+    const key = baselineKey(args.weekStart, args.rangeEnd);
     const existing = await ctx.db
       .query("scorecardBaselines")
       .withIndex("by_team_and_week", (q) =>
-        q.eq("teamId", user.teamId as Id<"teams">).eq("weekKey", args.weekStart),
+        q.eq("teamId", user.teamId as Id<"teams">).eq("weekKey", key),
       )
       .first();
 
@@ -199,7 +238,7 @@ export const lockBaseline = mutation({
     } else {
       await ctx.db.insert("scorecardBaselines", {
         teamId: user.teamId as Id<"teams">,
-        weekKey: args.weekStart,
+        weekKey: key,
         rows: (args.rows ?? undefined) as string | undefined,
         cdpbc: (args.cdpbc ?? undefined) as number | undefined,
         lockedAt: Date.now(),

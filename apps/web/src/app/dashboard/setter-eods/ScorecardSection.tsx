@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useUser } from "@clerk/nextjs";
 import { api } from "../../../../convex/_generated/api";
 import { Scorecard } from "@/components/scorecard/Scorecard";
+import { RangeControl, weekRange, type ScorecardRange } from "@/components/scorecard/RangeControl";
 import type { LedgerRow } from "@/components/scorecard/engine";
 
 function parseBaseline(json: string | null): LedgerRow[] | null {
@@ -27,42 +28,48 @@ export function ScorecardSection() {
     api.scorecard.listScorecardWeeks,
     clerkId ? { clerkId } : "skip",
   );
-  const [week, setWeek] = useState<string | null>(null);
-  const activeWeek = week ?? weeks?.currentWeek ?? null;
+  const [range, setRange] = useState<ScorecardRange | null>(null);
+  const activeRange =
+    range ?? (weeks ? weekRange(weeks.currentWeek, true) : null);
   const data = useQuery(
     api.scorecard.getScorecardWeek,
-    clerkId && activeWeek ? { clerkId, weekStart: activeWeek } : "skip",
+    clerkId && activeRange
+      ? {
+          clerkId,
+          weekStart: activeRange.start,
+          ...(activeRange.end ? { rangeEnd: activeRange.end } : {}),
+        }
+      : "skip",
   );
   const lock = useMutation(api.scorecard.lockBaseline);
 
-  if (!weeks || !data || !activeWeek || !clerkId) return null;
+  if (!weeks || !data || !activeRange || !clerkId) return null;
+  const rangeArgs = {
+    weekStart: activeRange.start,
+    ...(activeRange.end ? { rangeEnd: activeRange.end } : {}),
+  };
 
   return (
     <div className="mt-6">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">Scorecard & projections</h2>
-        <select
-          value={activeWeek}
-          onChange={(e) => setWeek(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1 text-[12px]"
-        >
-          {weeks.weeks.map((w: string) => (
-            <option key={w} value={w}>
-              week of Sat {w}
-            </option>
-          ))}
-        </select>
+        <RangeControl
+          weeks={weeks.weeks}
+          currentWeek={weeks.currentWeek}
+          value={activeRange}
+          onChange={setRange}
+        />
       </div>
       <Scorecard
         actualRows={data.rows}
         savedBaselineRows={parseBaseline(data.baseline?.rows ?? null)}
         savedCdpbc={data.baseline?.cdpbc ?? null}
         mode="manager"
-        weekLabel={activeWeek}
+        weekLabel={activeRange.label}
         onLockBaseline={(rowsJson) =>
-          void lock({ clerkId, weekStart: activeWeek, rows: rowsJson })
+          void lock({ clerkId, ...rangeArgs, rows: rowsJson })
         }
-        onCdpbcSave={(v) => void lock({ clerkId, weekStart: activeWeek, cdpbc: v })}
+        onCdpbcSave={(v) => void lock({ clerkId, ...rangeArgs, cdpbc: v })}
       />
     </div>
   );
