@@ -92,6 +92,48 @@ export const addSetter = mutation({
 });
 
 /** Deactivate rather than delete — their history stays attributable. */
+/** Edit a roster row's identity fields. Email is the setter-app login;
+ *  pod is the scorecard grouping. Manager-gated like every roster mutation. */
+export const updateSetter = mutation({
+  args: {
+    clerkId: v.string(),
+    rosterId: v.id("setterRoster"),
+    name: v.optional(v.string()),
+    email: v.optional(v.union(v.string(), v.null())),
+    pod: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new ConvexError("Not signed in");
+    const row = await ctx.db.get(args.rosterId);
+    if (!row || String(row.teamId) !== String(user.teamId)) {
+      throw new ConvexError("That setter isn't on your roster");
+    }
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (!name) throw new ConvexError("Give the setter a name");
+      patch.name = name.slice(0, 80);
+    }
+    if (args.email !== undefined) {
+      if (args.email === null || args.email.trim() === "") {
+        patch.email = undefined;
+      } else {
+        const email = args.email.trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw new ConvexError("That doesn't look like an email address");
+        }
+        patch.email = email;
+      }
+    }
+    if (args.pod !== undefined) {
+      patch.pod = args.pod === null ? undefined : args.pod.trim().slice(0, 20) || undefined;
+    }
+    if (Object.keys(patch).length > 0) await ctx.db.patch(args.rosterId, patch);
+    return { ok: true };
+  },
+});
+
 export const setSetterActive = mutation({
   args: { clerkId: v.string(), rosterId: v.id("setterRoster"), active: v.boolean() },
   handler: async (ctx, args) => {
