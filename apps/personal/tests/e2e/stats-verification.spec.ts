@@ -117,9 +117,21 @@ function cleanupTesterState(): void {
 test.describe("Stats Verification — end-to-end", () => {
   test.describe.configure({ mode: "serial" });
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     // Reset Tester's verification state to guarantee a clean run each time
     cleanupTesterState();
+    // The founder-approval step patches isManuallyVerified on the tester's
+    // PROFILE row — which only exists if one was ever saved. Fresh test
+    // accounts have none, so seed it.
+    await fetch("https://ideal-ram-982.convex.site/b2c/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: TESTER.b2cUserId,
+        statsSource: "manual",
+        manualStats: { cashCollected: 100000, closeRate: 25, callsCompleted: 100 },
+      }),
+    });
   });
 
   test("1. founder sees 'Verification Review' sidebar tab", async ({ page }) => {
