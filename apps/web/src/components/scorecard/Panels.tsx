@@ -55,10 +55,10 @@ export function DriverPanel({
                   onEditStart={onEditStart}
                   onEditEnd={onEditEnd}
                 />
-                <span style={{ font: "400 12px/1 var(--mono)", color: "var(--mute)" }}>%</span>
+                <span style={{ fontSize: 12, color: "var(--mute)" }}>%</span>
               </span>
             ) : (
-              <span style={{ font: "700 14px/1 var(--mono)" }}>{fp(gv[gap])}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{fp(gv[gap])}</span>
             )}
             <div className={s.dsub}>
               {d.sub} · <Delta now={gv[gap]} was={gb[gap]} unit="pp" dp={1} />
@@ -168,7 +168,7 @@ export function Cards({
         )}
         <div className={s.cdiv}>
           {!(cdpbc > 0) ? (
-            <div style={{ font: "400 12px/1.6 var(--sans)", color: "var(--mute)" }}>
+            <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--mute)" }}>
               {cdpbcEditable
                 ? "Enter your CDPBC to price the funnel. Collected dollars ÷ booked calls, trailing 60–90 days."
                 : "Your manager hasn't set a CDPBC yet."}
@@ -178,7 +178,7 @@ export function Cards({
               <div className={s.big}>{money(rev)}</div>
               <div className={s.sm}>off {fn(t.booked)} booked calls</div>
               <div
-                style={{ marginTop: 8, font: "700 13px/1.4 var(--mono)" }}
+                style={{ marginTop: 8, fontSize: 13, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}
                 className={up ? s.greenText : s.redText}
               >
                 {up ? "+" : "−"}

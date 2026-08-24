@@ -82,6 +82,7 @@ export default function SetterEodPage() {
 
   return (
     <div className="mx-auto max-w-md">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
       <div className="mb-5">
         <h1 className="text-[17px] font-semibold tracking-tight">End of day</h1>
         <p className="mt-0.5 text-[13px] text-neutral-500">
@@ -110,7 +111,7 @@ export default function SetterEodPage() {
                   setValues((v) => ({ ...v, [f.key]: e.target.value.replace(/\D/g, "") }))
                 }
                 placeholder="0"
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-[16px] tabular-nums outline-none transition-colors focus:border-neutral-900"
+                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-[16px] tabular-nums outline-none transition-shadow focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10"
               />
             </label>
           ))}
@@ -129,7 +130,7 @@ export default function SetterEodPage() {
         </label>
         <button
           disabled={busy}
-          className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition-opacity disabled:opacity-50"
+          className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-neutral-800 active:bg-neutral-950 disabled:opacity-50"
         >
           {busy ? "Saving…" : home.filedToday ? "Update today's numbers" : "Submit EOD"}
         </button>
@@ -142,6 +143,7 @@ export default function SetterEodPage() {
           </p>
         )}
       </form>
+      </div>
     </div>
   );
 }

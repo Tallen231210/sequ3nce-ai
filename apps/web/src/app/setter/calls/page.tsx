@@ -96,14 +96,16 @@ export default function SetterCallsPage() {
         </div>
       )}
 
-      {data.active.length === 0 ? (
-        <p className="py-12 text-center text-sm text-neutral-400">
-          No matched calls yet — they appear here once a meeting titled with
-          your initials is recorded.
-        </p>
-      ) : (
-        data.active.map((c: any) => <Row key={c.callId} c={c} dismissed={false} />)
-      )}
+      <div className="rounded-2xl border border-neutral-200 bg-white px-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        {data.active.length === 0 ? (
+          <p className="py-12 text-center text-sm text-neutral-400">
+            No matched calls yet — they appear here once a meeting titled with
+            your initials is recorded.
+          </p>
+        ) : (
+          data.active.map((c: any) => <Row key={c.callId} c={c} dismissed={false} />)
+        )}
+      </div>
 
       {data.dismissed.length > 0 && (
         <div className="mt-6">

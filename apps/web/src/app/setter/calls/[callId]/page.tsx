@@ -43,7 +43,7 @@ export default function SetterCallDetailPage() {
   const videoUrl = d.recordingUrl ?? d.externalShareUrl;
 
   return (
-    <div>
+    <div className="mx-auto max-w-3xl">
       <Link href="/setter/calls" className="text-[12px] text-neutral-400 hover:text-neutral-900">
         ← Calls you&apos;ve set
       </Link>

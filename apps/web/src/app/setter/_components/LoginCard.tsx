@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { useAction, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { setSetterToken } from "@/lib/setter/session";
+import { Logo } from "@/components/ui/logo";
 
 export function LoginCard({ onSignedIn }: { onSignedIn: () => void }) {
   const requestCode = useAction(api.setterAuth.requestSetterCode);
@@ -45,11 +46,18 @@ export function LoginCard({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   return (
-    <div className="flex min-h-[70vh] items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
       <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <div className="text-lg font-semibold tracking-tight">Sequ3nce</div>
-          <div className="mt-1 text-sm text-neutral-500">Setter sign-in</div>
+        <div className="mb-6 flex justify-center">
+          <Logo height={28} />
+        </div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)]">
+        <div className="mb-5">
+          <h1 className="text-[16px] font-semibold tracking-tight">Setter sign-in</h1>
+          <p className="mt-1 text-[13px] leading-relaxed text-neutral-500">
+            Your daily numbers, your booked calls, and the team scorecard —
+            in one place.
+          </p>
         </div>
 
         {step === "email" ? (
@@ -65,12 +73,12 @@ export function LoginCard({ onSignedIn }: { onSignedIn: () => void }) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-[15px] outline-none transition-colors focus:border-neutral-900"
+                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-[15px] outline-none transition-shadow focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10"
               />
             </label>
             <button
               disabled={busy}
-              className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition-opacity disabled:opacity-50"
+              className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-neutral-800 active:bg-neutral-950 disabled:opacity-50"
             >
               {busy ? "Sending…" : "Email me a code"}
             </button>
@@ -89,11 +97,11 @@ export function LoginCard({ onSignedIn }: { onSignedIn: () => void }) {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
               placeholder="••••••"
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-center font-mono text-xl tracking-[0.5em] outline-none transition-colors focus:border-neutral-900"
+              className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-center font-mono text-xl tracking-[0.5em] outline-none transition-shadow focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10"
             />
             <button
               disabled={busy || code.length !== 6}
-              className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition-opacity disabled:opacity-50"
+              className="w-full rounded-lg bg-neutral-900 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-neutral-800 active:bg-neutral-950 disabled:opacity-50"
             >
               {busy ? "Checking…" : "Sign in"}
             </button>
@@ -116,6 +124,10 @@ export function LoginCard({ onSignedIn }: { onSignedIn: () => void }) {
             {error}
           </p>
         )}
+        </div>
+        <p className="mt-4 text-center text-[12px] text-neutral-400">
+          No account? Ask your manager to add your email to the roster.
+        </p>
       </div>
     </div>
   );
