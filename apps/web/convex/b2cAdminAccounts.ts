@@ -134,6 +134,8 @@ export const provisionTestAccount = internalMutation({
       passwordHash,
       invitedAt: now,
       activatedAt: now,
+      // UI specs must land on the hub, not the calendar-onboarding overlay
+      calendarOnboardingCompleted: true,
     });
     const b2cUserId = await ctx.db.insert("b2cUsers", {
       email,
@@ -144,6 +146,8 @@ export const provisionTestAccount = internalMutation({
       personalWorkspaceId: teamId,
       subscriptionStatus: args.subscriptionStatus,
       isTestAccount: true,
+      // Skip the welcome/goal questionnaire on real logins in UI specs
+      onboardingCompleted: true,
       createdAt: now,
     });
 

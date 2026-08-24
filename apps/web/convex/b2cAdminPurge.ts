@@ -254,9 +254,14 @@ export const purgeUserSweeps = internalMutation({
       .withIndex("by_user", (q: any) => q.eq("userId", userId))
       .collect();
     for (const r of reactions) {
-      const target: any = await ctx.db.get(r.targetId as any).catch(() => null);
-      if (target && target.authorId !== userId && !dry) {
-        await ctx.db.patch(r.targetId as any, {
+      // targetId is a plain string in the schema — normalize it against the
+      // right table so a stale/malformed id degrades to a skip, not a throw.
+      const targetTable =
+        r.targetType === "post" ? "b2cCommunityPosts" : "b2cCommunityComments";
+      const targetId = ctx.db.normalizeId(targetTable, r.targetId);
+      const target: any = targetId ? await ctx.db.get(targetId) : null;
+      if (target && targetId && target.authorId !== userId && !dry) {
+        await ctx.db.patch(targetId, {
           reactionCounts: decrementReaction(target.reactionCounts, r.emoji),
         });
       }

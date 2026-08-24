@@ -35,6 +35,7 @@ export const purgeB2cAccount = internalAction({
     // Phase 1: calls, batched until drained (a dry run reports one batch's
     // walk plus the total call count — it never loops, since nothing shrinks).
     let totalCalls = 0;
+    let callsRemaining = 0;
     for (let i = 0; i < 200; i++) {
       const r: any = await ctx.runMutation(internal.b2cAdminPurge.purgeCallsBatch, {
         email: args.email,
@@ -43,7 +44,15 @@ export const purgeB2cAccount = internalAction({
       });
       fold(r.report ?? {});
       totalCalls = r.totalCalls ?? totalCalls;
-      if (args.dryRun || r.remaining === 0) break;
+      callsRemaining = r.remaining ?? 0;
+      if (args.dryRun || callsRemaining === 0) break;
+    }
+    if (!args.dryRun && callsRemaining > 0) {
+      // Refuse to delete the account roots while calls survive — orphaned
+      // calls with no closer would haunt every stats query. Run again.
+      throw new Error(
+        `aborted before root deletion: ${callsRemaining} calls still remain after the batch cap — re-run purgeB2cAccount`,
+      );
     }
     if (args.dryRun && totalCalls > 4) {
       warnings.push(`dry run walked 4 of ${totalCalls} calls — child counts scale accordingly`);
