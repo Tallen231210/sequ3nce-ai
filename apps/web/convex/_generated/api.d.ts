@@ -177,6 +177,7 @@ import type * as recallApi from "../recallApi.js";
 import type * as reinforcements from "../reinforcements.js";
 import type * as resources from "../resources.js";
 import type * as rolePlayRoom from "../rolePlayRoom.js";
+import type * as scorecard from "../scorecard.js";
 import type * as setterApp from "../setterApp.js";
 import type * as setterAttendance from "../setterAttendance.js";
 import type * as setterAuth from "../setterAuth.js";
@@ -410,6 +411,7 @@ declare const fullApi: ApiFromModules<{
   reinforcements: typeof reinforcements;
   resources: typeof resources;
   rolePlayRoom: typeof rolePlayRoom;
+  scorecard: typeof scorecard;
   setterApp: typeof setterApp;
   setterAttendance: typeof setterAttendance;
   setterAuth: typeof setterAuth;

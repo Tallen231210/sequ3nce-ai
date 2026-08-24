@@ -8,6 +8,7 @@ import { api } from "../../../../convex/_generated/api";
 import { CustomRangeControl } from "@/components/CustomRangeControl";
 import { NotificationsCard } from "./NotificationsCard";
 import { RosterIdentityInputs } from "./RosterIdentityInputs";
+import { ScorecardSection } from "./ScorecardSection";
 import { Header } from "@/components/dashboard/header";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -203,6 +204,7 @@ export default function SetterEodsPage() {
         </section>
 
         <NotificationsCard />
+      <ScorecardSection />
 
         {/* The board */}
         <section>
