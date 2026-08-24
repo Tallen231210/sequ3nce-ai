@@ -377,13 +377,16 @@ export const listMembers = query({
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
 
-    // Get active subscribers
-    const users = await ctx.db
-      .query("b2cUsers")
-      .withIndex("by_subscription_status", (q) =>
-        q.eq("subscriptionStatus", "active")
-      )
-      .collect();
+    // Get active subscribers — QA/Playwright accounts never appear in the
+    // directory, however active their subscription row looks.
+    const users = (
+      await ctx.db
+        .query("b2cUsers")
+        .withIndex("by_subscription_status", (q) =>
+          q.eq("subscriptionStatus", "active")
+        )
+        .collect()
+    ).filter((u) => u.isTestAccount !== true);
 
     // Filter by search term if provided
     let filtered = users;

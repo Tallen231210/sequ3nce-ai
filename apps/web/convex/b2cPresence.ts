@@ -22,7 +22,7 @@ export const getOnlineUserIds = query({
     const cutoff = Date.now() - ONLINE_THRESHOLD_MS;
     const users = await ctx.db.query("b2cUsers").collect();
     const onlineIds = users
-      .filter((u) => u.lastSeenAt && u.lastSeenAt > cutoff)
+      .filter((u) => u.lastSeenAt && u.lastSeenAt > cutoff && u.isTestAccount !== true)
       .map((u) => u._id);
     return { onlineIds };
   },

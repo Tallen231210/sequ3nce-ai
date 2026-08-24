@@ -1949,6 +1949,7 @@ export default defineSchema({
     emailVerificationExpiry: v.optional(v.number()),       // Unix timestamp
     emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
     lastSeenAt: v.optional(v.number()),                    // Online presence heartbeat timestamp
+    isTestAccount: v.optional(v.boolean()),                // Playwright/QA accounts — hidden from community + presence
     trialExpiresAt: v.optional(v.number()),                 // Beta trial end date (undefined = no trial)
     onboardingCompleted: v.optional(v.boolean()),           // Whether onboarding questionnaire was filled
     onboardingSource: v.optional(v.string()),               // "instagram" | "youtube" | "google" | "referral"
