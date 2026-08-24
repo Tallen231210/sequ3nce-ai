@@ -11,7 +11,7 @@ test.describe("Login Flow", () => {
     await expect(page.locator('input[type="password"]')).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toHaveText("Sign In");
-    await expect(page.locator("text=Sign up")).toBeVisible();
+    await expect(page.locator("text=Get access")).toBeVisible();
   });
 
   test("submit button is disabled when fields are empty", async ({ page }) => {
@@ -79,8 +79,8 @@ test.describe("Login Flow", () => {
     await expect(page.locator('text="Sign in to your account"')).toBeVisible();
   });
 
-  test("can navigate to signup via link", async ({ page }) => {
-    await page.click("text=Sign up");
-    await expect(page.locator('text="Create your account"')).toBeVisible();
+  test("signup entry is the Get access link (no in-app signup)", async ({ page }) => {
+    await expect(page.locator("text=Get access")).toBeVisible();
+    await expect(page.locator('text="Create your account"')).not.toBeVisible();
   });
 });

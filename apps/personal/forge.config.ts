@@ -116,6 +116,11 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       mainConfig,
+      // Port 3000 collides with a long-running local next-server; keep the
+      // dev renderer (and therefore the compiled localhost URL the E2E suite
+      // serves against) on 3100.
+      port: 3100,
+      loggerPort: 9500,
       // Allow all connections in dev mode - the default CSP is too restrictive
       devContentSecurityPolicy: "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * ws: wss: https:;",
       renderer: {

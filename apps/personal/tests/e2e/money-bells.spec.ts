@@ -53,6 +53,11 @@ test.describe("Money Bells", () => {
     const isJoinPrompt = bodyText.includes("Join Money Bells") && bodyText.includes("honor");
 
     if (isJoinPrompt) {
+      // The honor-rules acknowledgement checkbox gates the Join button.
+      const ack = page.locator('input[type="checkbox"]').first();
+      if (await ack.isVisible().catch(() => false)) {
+        await ack.check().catch(() => {});
+      }
       const joinBtn = page.locator('button', { hasText: /Join Money Bells/i }).first();
       if (await joinBtn.isVisible().catch(() => false)) {
         await joinBtn.click();

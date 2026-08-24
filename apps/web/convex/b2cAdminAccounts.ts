@@ -154,3 +154,26 @@ export const provisionTestAccount = internalMutation({
     return { b2cUserId, closerId, teamId };
   },
 });
+
+/** Adjust a TEST account's subscription status (refuses real accounts). */
+export const setTestAccountSubscription = internalMutation({
+  args: {
+    email: v.string(),
+    subscriptionStatus: v.union(
+      v.literal("active"),
+      v.literal("none"),
+      v.literal("cancelled"),
+      v.literal("past_due"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q: any) => q.eq("email", args.email.toLowerCase()))
+      .first();
+    if (!user) throw new Error("no such user");
+    if (user.isTestAccount !== true) throw new Error("refusing: not a test account");
+    await ctx.db.patch(user._id, { subscriptionStatus: args.subscriptionStatus });
+    return { updated: true, subscriptionStatus: args.subscriptionStatus };
+  },
+});

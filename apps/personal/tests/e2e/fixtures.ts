@@ -174,7 +174,8 @@ export async function resetToAuthenticated(page: Page): Promise<void> {
           name: user.name,
           email: user.email,
           status: "active",
-          subscriptionStatus: "none",
+          onboardingCompleted: true,
+          subscriptionStatus: "active",
           b2cUserId: user.b2cUserId,
         };
         localStorage.setItem(key, JSON.stringify(closerInfo));
@@ -191,7 +192,8 @@ export async function resetToAuthenticated(page: Page): Promise<void> {
           name: user.name,
           email: user.email,
           status: "active",
-          subscriptionStatus: "none",
+          onboardingCompleted: true,
+          subscriptionStatus: "active",
           b2cUserId: user.b2cUserId,
         };
         localStorage.setItem(key, JSON.stringify(closerInfo));
