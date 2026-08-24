@@ -151,8 +151,6 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
       meetingBot: {
         meetingBotEnabled: true,
         calendarConnected: calStatus?.connected || false,
-        ammoPanelVisible: mainData.context?.ammoTrackerVisible as boolean || false,
-        questionnairePanelVisible: mainData.context?.postCallPending as boolean || false,
         appMode: 'hub',
       },
       createdAt: Date.now(),

@@ -52,31 +52,10 @@ export interface ScreenSource {
   appIcon: string | null;
 }
 
-export interface AmmoAPI {
-  toggle: () => Promise<boolean>;
-  isVisible: () => Promise<boolean>;
-  setTeamId: (teamId: string) => Promise<void>;
-}
-
 export interface AuthAPI {
   sendMagicLink: (email: string) => Promise<{ success: boolean; error?: string }>;
   verifySession: (token: string) => Promise<boolean>;
   signOut: () => Promise<void>;
-}
-
-export interface TrainingAPI {
-  open: () => Promise<boolean>;
-  setCloserId: (closerId: string | null) => Promise<boolean>;
-}
-
-export interface RoleplayAPI {
-  open: (userInfo: { teamId: string; closerId: string; userName: string }) => Promise<boolean>;
-}
-
-export interface ScheduleAPI {
-  open: () => Promise<boolean>;
-  setCloserEmail: (email: string | null) => Promise<boolean>;
-  setTeamId: (teamId: string | null) => Promise<boolean>;
 }
 
 export interface ChatMessage {
@@ -115,13 +94,6 @@ export interface BotAPI {
     closerId: string;
     prospectName?: string;
   }) => Promise<void>;
-  openQuestionnaire: (data: {
-    callId: string;
-    closerId: string;
-    closerName: string;
-    teamId: string;
-    prospectName?: string;
-  }) => Promise<void>;
 }
 
 export interface DiagnosticsAPI {
@@ -151,11 +123,7 @@ export interface StreamAPI {
 
 export interface ElectronAPI {
   app: AppAPI;
-  ammo: AmmoAPI;
   auth: AuthAPI;
-  training: TrainingAPI;
-  roleplay: RoleplayAPI;
-  schedule: ScheduleAPI;
   chat: ChatAPI;
   bot: BotAPI;
   diagnostics: DiagnosticsAPI;
@@ -182,28 +150,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('app:select-display-media-source', sourceId),
     getScreenSources: () => ipcRenderer.invoke('app:get-screen-sources'),
   },
-  ammo: {
-    toggle: () => ipcRenderer.invoke('ammo:toggle'),
-    isVisible: () => ipcRenderer.invoke('ammo:is-visible'),
-    setTeamId: (teamId: string) => ipcRenderer.invoke('ammo:set-team-id', teamId),
-  },
   auth: {
     sendMagicLink: (email: string) => ipcRenderer.invoke('auth:send-magic-link', email),
     verifySession: (token: string) => ipcRenderer.invoke('auth:verify-session', token),
     signOut: () => ipcRenderer.invoke('auth:sign-out'),
-  },
-  training: {
-    open: () => ipcRenderer.invoke('training:open'),
-    setCloserId: (closerId: string | null) => ipcRenderer.invoke('training:set-closer-id', closerId),
-  },
-  roleplay: {
-    open: (userInfo: { teamId: string; closerId: string; userName: string }) =>
-      ipcRenderer.invoke('roleplay:open', userInfo),
-  },
-  schedule: {
-    open: () => ipcRenderer.invoke('schedule:open'),
-    setCloserEmail: (email: string | null) => ipcRenderer.invoke('schedule:set-closer-email', email),
-    setTeamId: (teamId: string | null) => ipcRenderer.invoke('schedule:set-team-id', teamId),
   },
   chat: {
     getMessages: (closerId: string, limit?: number) =>
@@ -246,14 +196,6 @@ contextBridge.exposeInMainWorld('electron', {
       closerId: string;
       prospectName?: string;
     }) => ipcRenderer.invoke('bot:call-ended', data),
-    openQuestionnaire: (data: {
-      callId: string;
-      closerId: string;
-      closerName: string;
-      teamId: string;
-      prospectName?: string;
-      b2cUserId?: string;
-    }) => ipcRenderer.invoke('bot:open-questionnaire', data),
   },
   diagnostics: {
     collect: () => ipcRenderer.invoke('diagnostics:collect'),

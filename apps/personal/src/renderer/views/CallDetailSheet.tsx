@@ -29,6 +29,10 @@ interface CallDetailSheetProps {
   call: CallHistoryItem;
   onClose: () => void;
   onCallUpdated: (call: CallHistoryItem) => void;
+  /** Opens the post-call form prefilled with this call's current values, so a
+   *  wrong outcome or a cash typo can be fixed without hunting for the call
+   *  in the pending queue. */
+  onEditOutcome?: () => void;
 }
 
 export function CallDetailSheet({
@@ -36,6 +40,7 @@ export function CallDetailSheet({
   call,
   onClose,
   onCallUpdated,
+  onEditOutcome,
 }: CallDetailSheetProps) {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [ammoItems, setAmmoItems] = useState<AmmoItem[]>([]);
@@ -172,6 +177,18 @@ export function CallDetailSheet({
               <span>{formatDate(call.startedAt)}</span>
               <span>{formatDuration(call.duration)}</span>
               <OutcomeBadge outcome={call.outcome} />
+              {onEditOutcome && (
+                <button
+                  onClick={onEditOutcome}
+                  className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Edit the outcome and numbers for this call"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
+                  </svg>
+                  Edit
+                </button>
+              )}
             </div>
           </div>
 

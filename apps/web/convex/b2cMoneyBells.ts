@@ -93,6 +93,25 @@ export const joinMoneyBells = mutation({
   },
 });
 
+// User opts out — deletes the membership row. Past broadcasts stay on the
+// board (they were real closes; delete them individually if wanted). The
+// post-call celebration prompt stops and the view returns to the join
+// prompt. Rejoining later works — join is idempotent.
+export const leaveMoneyBells = mutation({
+  args: {
+    userId: v.id("b2cUsers"),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("b2cMoneyBellOptIns")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing) return { success: true, wasOptedIn: false };
+    await ctx.db.delete(existing._id);
+    return { success: true, wasOptedIn: true };
+  },
+});
+
 // Create a broadcast — atomic 3-step: create post, create broadcast, patch post
 export const createBroadcast = mutation({
   args: {
