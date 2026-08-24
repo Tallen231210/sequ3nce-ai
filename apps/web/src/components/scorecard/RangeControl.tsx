@@ -17,7 +17,10 @@ function isoAddDays(dayKey: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  // The user's local calendar day — toISOString() is UTC and rolls to
+  // tomorrow every evening for anyone west of Greenwich.
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 function fmt(dayKey: string): string {
   const [y, m, d] = dayKey.split("-").map(Number);

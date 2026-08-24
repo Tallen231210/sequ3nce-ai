@@ -64,15 +64,14 @@ function generateSessionToken(): string {
     .join("");
 }
 
-/** Active roster rows for a lowercased email, across all teams. */
+/** Active roster rows for a lowercased email, across all teams. Emails are
+ *  stored lowercased by updateSetter, so the index lookup is exact. */
 async function rosterRowsForEmail(ctx: any, email: string) {
-  // setterRoster has no by_email index and stays small (tens of rows per
-  // team, a handful of teams with the flag) — a filtered scan is fine and
-  // avoids another index migration.
-  const all = await ctx.db.query("setterRoster").collect();
-  return all.filter(
-    (r: any) => r.active === true && (r.email ?? "").toLowerCase() === email,
-  );
+  const rows = await ctx.db
+    .query("setterRoster")
+    .withIndex("by_email", (q: any) => q.eq("email", email))
+    .collect();
+  return rows.filter((r: any) => r.active === true);
 }
 
 // ============================================================================

@@ -1298,7 +1298,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])
-    .index("by_token", ["token"]),
+    .index("by_token", ["token"])
+    .index("by_email", ["email"]),
 
   /** One-time 6-digit login codes for the setter app. Mirrors the closer
    *  magic-link tables: hashed, single-use, 15-minute expiry, lockout. */

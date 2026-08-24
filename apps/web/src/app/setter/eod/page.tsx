@@ -28,10 +28,17 @@ export default function SetterEodPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // The home query re-pushes whenever ANYTHING in its read set changes
+  // (the team doc gets patched by unrelated crons). Prefill exactly once
+  // per submission, keyed on submittedAt — never off object identity, or a
+  // background refresh wipes half-typed numbers.
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
 
   useEffect(() => {
     const e = home.todayEntry;
     if (!e) return;
+    if (loadedAt === e.submittedAt) return;
+    setLoadedAt(e.submittedAt);
     setValues({
       dials: String(e.dials),
       pickUps: String(e.pickUps),
@@ -43,7 +50,8 @@ export default function SetterEodPage() {
       callsClosed: e.callsClosed != null ? String(e.callsClosed) : "",
     });
     setNote(e.note);
-  }, [home.todayEntry]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [home.todayEntry?.submittedAt]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

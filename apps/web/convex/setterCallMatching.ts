@@ -52,13 +52,14 @@ export const matchCallForTeam = internalMutation({
     const hits = matchToken(token, roster);
     if (hits.length === 0) return { matched: 0, reason: `token "${token}" matched nobody` };
 
+    const existing = await ctx.db
+      .query("setterCallMatches")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+    const already = new Set(existing.map((m) => String(m.rosterId)));
     let created = 0;
     for (const rosterId of hits) {
-      const existing = await ctx.db
-        .query("setterCallMatches")
-        .withIndex("by_call", (q) => q.eq("callId", args.callId))
-        .collect();
-      if (existing.some((m) => String(m.rosterId) === rosterId)) continue;
+      if (already.has(rosterId)) continue;
       await ctx.db.insert("setterCallMatches", {
         teamId: call.teamId,
         rosterId: rosterId as Id<"setterRoster">,
