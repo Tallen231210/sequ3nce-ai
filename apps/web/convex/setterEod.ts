@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { generateShareToken } from "./lib/shareSecurity";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
+import { validateEodNumbers, buildEodDoc } from "./setterEodShared";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -19,7 +20,6 @@ import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 // follow-ups) but team-agnostic on purpose.
 // ============================================================================
 
-const FIELD_MAX = 2000; // dials in a day beyond this is a typo, not hustle
 
 // ---------------------------------------------------------------------------
 // Manager side
@@ -226,6 +226,9 @@ export const getEodFormContext = query({
             sets: existing.sets,
             newLeadsHit: existing.newLeadsHit,
             followUps: existing.followUps,
+            callsOnCalendar: existing.callsOnCalendar ?? null,
+            callsShown: existing.callsShown ?? null,
+            callsClosed: existing.callsClosed ?? null,
             note: existing.note ?? "",
           }
         : null,
@@ -241,6 +244,9 @@ export const submitEod = mutation({
     sets: v.number(),
     newLeadsHit: v.number(),
     followUps: v.number(),
+    callsOnCalendar: v.optional(v.number()),
+    callsShown: v.optional(v.number()),
+    callsClosed: v.optional(v.number()),
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -250,22 +256,7 @@ export const submitEod = mutation({
       .first();
     if (!row || !row.active) throw new ConvexError("This link is no longer active");
 
-    for (const [k, val] of Object.entries({
-      dials: args.dials,
-      "pick ups": args.pickUps,
-      sets: args.sets,
-      "new leads": args.newLeadsHit,
-      "follow ups": args.followUps,
-    })) {
-      if (!Number.isInteger(val) || val < 0 || val > FIELD_MAX) {
-        throw new ConvexError(`Check the ${k} number`);
-      }
-    }
-    // Sanity relationships, phrased as help rather than rejection.
-    if (args.pickUps > args.dials) {
-      throw new ConvexError("Pick ups can't be more than dials");
-    }
-    const note = args.note?.trim().slice(0, 500) || undefined;
+    validateEodNumbers(args);
 
     const team = await ctx.db.get(row.teamId);
     const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
@@ -280,18 +271,7 @@ export const submitEod = mutation({
       )
       .first();
 
-    const doc = {
-      teamId: row.teamId,
-      rosterId: row._id,
-      dayKey: today,
-      dials: args.dials,
-      pickUps: args.pickUps,
-      sets: args.sets,
-      newLeadsHit: args.newLeadsHit,
-      followUps: args.followUps,
-      note,
-      submittedAt: Date.now(),
-    };
+    const doc = buildEodDoc(row.teamId, row._id, today, args, args.note);
     if (existing) {
       await ctx.db.replace(existing._id, doc);
     } else {
