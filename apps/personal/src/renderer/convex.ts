@@ -3324,13 +3324,17 @@ export async function getOnlineUserIds(): Promise<string[]> {
 export async function getCommunityMembers(
   limit?: number,
   search?: string,
-  cursor?: number
+  cursor?: number,
+  // Founder-only surfaces (the notification recipient picker) pass true so
+  // flagged QA accounts stay addressable; member-facing surfaces never do.
+  includeTest?: boolean
 ): Promise<{ members: CommunityMember[]; nextCursor: number | null }> {
   try {
     const params = new URLSearchParams();
     if (limit) params.set("limit", String(limit));
     if (search) params.set("search", search);
     if (cursor) params.set("cursor", String(cursor));
+    if (includeTest) params.set("includeTest", "1");
     params.set("_", String(Date.now()));
 
     const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/community/members?${params}`);

@@ -7645,6 +7645,7 @@ http.route({
         cursor: cursor ? Number(cursor) : undefined,
         limit: limit ? Number(limit) : undefined,
         search: search || undefined,
+        includeTest: url.searchParams.get("includeTest") === "1" || undefined,
       });
       return b2cJsonResponse(result);
     } catch (error) {

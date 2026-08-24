@@ -373,6 +373,9 @@ export const listMembers = query({
     cursor: v.optional(v.number()),
     limit: v.optional(v.number()),
     search: v.optional(v.string()),
+    // The founder-only notification recipient picker needs to address QA
+    // accounts; every member-facing surface leaves this unset.
+    includeTest: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
@@ -386,7 +389,7 @@ export const listMembers = query({
           q.eq("subscriptionStatus", "active")
         )
         .collect()
-    ).filter((u) => u.isTestAccount !== true);
+    ).filter((u) => args.includeTest === true || u.isTestAccount !== true);
 
     // Filter by search term if provided
     let filtered = users;

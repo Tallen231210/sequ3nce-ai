@@ -24,7 +24,7 @@ export function RecipientMultiSelect({ currentUserId, selected, onChange }: Reci
 
   const loadMembers = async (searchTerm?: string) => {
     setLoading(true);
-    const result = await getCommunityMembers(50, searchTerm);
+    const result = await getCommunityMembers(50, searchTerm, undefined, true);
     const filtered = result.members.filter((m) => m.userId !== currentUserId);
     setMembers(filtered);
     setLoading(false);
