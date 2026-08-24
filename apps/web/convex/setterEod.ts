@@ -51,6 +51,8 @@ export const listRoster = query({
         _id: r._id,
         name: r.name,
         token: r.token,
+        email: r.email ?? null,
+        pod: r.pod ?? null,
         active: r.active,
         filedToday: !!todayEntry,
       });
@@ -327,6 +329,30 @@ export const submitEod = mutation({
  * Hard-delete a roster row and every entry it filed. Support tool — the UI
  * only deactivates, deliberately, so history survives normal management.
  */
+/** End-of-transition tool: rotate EVERY roster token on a team in one go,
+ *  killing all previously shared links. The app login is unaffected. */
+export const rotateAllTokens = internalMutation({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("setterRoster")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    let rotated = 0;
+    for (const r of rows) {
+      const buf = new Uint8Array(16);
+      crypto.getRandomValues(buf);
+      const token = Array.from(buf)
+        .map((b) => b.toString(36))
+        .join("")
+        .slice(0, 22);
+      await ctx.db.patch(r._id, { token });
+      rotated++;
+    }
+    return { rotated };
+  },
+});
+
 export const hardDeleteSetter = internalMutation({
   args: { rosterId: v.id("setterRoster") },
   handler: async (ctx, args) => {

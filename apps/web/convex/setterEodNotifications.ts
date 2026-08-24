@@ -299,16 +299,21 @@ async function maybeSend(
 
   if (which === "reminder") {
     slackChannelOverride = team.setterEodReminderSlackChannelId;
+    // One shared app link, zero secrets. The per-setter tokenized links used
+    // to be posted here — that was fine for a bare form, but the setter app
+    // now holds call recordings, and a bearer link in a shared channel can't
+    // guard those. Each setter signs into their OWN account at this URL.
+    const APP_URL = "https://www.sequ3nce.ai/setter";
     const lines = state.setters
-      .map((s: any) => `• *${s.name}* — <${EOD_LINK_BASE}/${s.token}|fill out your EOD>`)
+      .map((s: any) => `• *${s.name}*${s.filedToday ? " — filed ✓" : ""}`)
       .join("\n");
-    fallback = "EOD time — fill out your end-of-day numbers.";
+    fallback = "EOD time — open the setter app and file your numbers.";
     blocks = [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `📝 *EOD time.* Find your name, tap your link, thirty seconds:\n${lines}`,
+          text: `📝 *EOD time.* <${APP_URL}|Open the setter app>, thirty seconds:\n${lines}`,
         },
       },
       {
@@ -316,7 +321,7 @@ async function maybeSend(
         elements: [
           {
             type: "mrkdwn",
-            text: "Your link is yours alone — resubmitting updates today's numbers.",
+            text: "Sign in with your work email — resubmitting updates today's numbers.",
           },
         ],
       },
@@ -324,10 +329,7 @@ async function maybeSend(
     embed = {
       title: "📝 EOD time",
       description:
-        "Find your name, tap your link, thirty seconds:\n" +
-        state.setters
-          .map((s: any) => `• **${s.name}** — [fill out your EOD](${EOD_LINK_BASE}/${s.token})`)
-          .join("\n"),
+        `[Open the setter app](${APP_URL}), thirty seconds:\n` + lines.replace(/\*/g, "**"),
       color: 3447003,
     };
   } else {
@@ -436,14 +438,19 @@ export const previewNotifications = internalAction({
       { teamId: args.teamId, nowMs: Date.now() },
     );
     const missing = state.setters.filter((s: any) => !s.filedToday);
+    // Mirror of the REAL reminder copy (single app link — the per-setter
+    // tokenized links were removed when the setter app shipped; a bearer
+    // link in a shared channel can't guard recordings).
+    const reminderText =
+      `📝 *EOD time.* <https://www.sequ3nce.ai/setter|Open the setter app>, thirty seconds:\n` +
+      state.setters
+        .map((s: any) => `• *${s.name}*${s.filedToday ? " — filed ✓" : ""}`)
+        .join("\n");
     return {
       today: state.today,
-      setters: state.setters.map((s: any) => ({
-        name: s.name,
-        filedToday: s.filedToday,
-        link: `${EOD_LINK_BASE}/${s.token.slice(0, 8)}…`,
-      })),
+      reminderText,
       missingCount: missing.length,
+      missingNames: missing.map((s: any) => s.name),
     };
   },
 });
