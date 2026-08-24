@@ -294,12 +294,20 @@ export const purgeRelationsAndRoots = internalMutation({
     }
 
     // --- Pending scheduled jobs referencing the purged user -----------------
-    const pending = await ctx.db.system
+    // The system table keeps completed-job history too, and .filter() walks
+    // every scanned row — enough to blow the 4096-read transaction limit on a
+    // busy deployment. The only jobs that matter here (activation reminders,
+    // welcome emails) are scheduled at signup time, so a recent window is
+    // sufficient; filter in JS.
+    const recentJobs = await ctx.db.system
       .query("_scheduled_functions")
-      .filter((q: any) => q.eq(q.field("state.kind"), "pending"))
-      .take(1000);
-    for (const job of pending) {
-      if (JSON.stringify(job.args ?? []).includes(String(userId))) {
+      .order("desc")
+      .take(300);
+    for (const job of recentJobs) {
+      if (
+        job.state?.kind === "pending" &&
+        JSON.stringify(job.args ?? []).includes(String(userId))
+      ) {
         if (!dry) await ctx.scheduler.cancel(job._id);
         bump(report, "scheduled jobs cancelled");
       }
