@@ -14,9 +14,9 @@ const TYLER = {
 };
 
 const TESTER = {
-  closerId: "jd78w17rxw3f418s5ksq663vss8d310a",
-  teamId: "js761e8r4mjqtd8pvgm3ss4jj58d33zn",
-  b2cUserId: "nh702whwbc3tv37fm3ka5zv8tx8d3ehm",
+  closerId: "jd7fzttq6bdvsj51gawpk8vqds8d38dh",
+  teamId: "js70r7eksmhbtqacq9c67794ad8d3qxt",
+  b2cUserId: "nh76t7zs7q2g9dx91hy4g9r1hd8d32ba",
   name: "Tester Test",
   email: "test@gmail.com",
   badges: [] as string[],

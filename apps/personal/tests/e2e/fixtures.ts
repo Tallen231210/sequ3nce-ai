@@ -8,9 +8,9 @@ export const TEST_USER = {
   email: "pw-test@sequ3nce.ai",
   password: "PlaywrightTest2024",
   name: "Playwright Tester",
-  closerId: "jd7eh02mh77dspkjv3f6q3y9ah8d22k3",
-  teamId: "js7btbv0gf8jngdzb706ftw89x8d34cm",
-  b2cUserId: "nh75we2jj2yjtcrjj1yhae9pkx8d3wjh",
+  closerId: "jd7ax0xew6kqa8k23gmeznq6q18d22cm",
+  teamId: "js76x9nrh6gf3g7xc4mp6hj05d8d2hk2",
+  b2cUserId: "nh7av7ke5g7v1ch98xq3j31fhn8d2m71",
 };
 
 // Storage key used by the app
