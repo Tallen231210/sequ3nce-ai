@@ -6,6 +6,7 @@ import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { Calendar, Loader2, Search } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
+import { ManagerEodSettings } from "./ManagerEodSettings";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -29,6 +30,7 @@ export function ManagerEodTab() {
 
   return (
     <div className="space-y-5">
+      <ManagerEodSettings />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {DAY_LABEL.map((label, i) => (

@@ -141,6 +141,7 @@ export default defineSchema({
     managerEodHourLocal: v.optional(v.number()),
     managerEodChannel: v.optional(v.union(v.literal("slack"), v.literal("discord"))),
     managerEodSlackChannelId: v.optional(v.string()),
+    managerEodSlackChannelName: v.optional(v.string()),
     managerEodDiscordWebhookUrl: v.optional(v.string()),
     cashDigestEnabled: v.optional(v.boolean()),
     cashDigestCadence: v.optional(v.string()),        // "daily" | "weekly"

@@ -1,8 +1,9 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -618,5 +619,62 @@ export const configureManagerEod = internalMutation({
         : {}),
     } as any);
     return { team: team.name, enabled: args.enabled };
+  },
+});
+
+// ----------------------------------------------------------------------------
+// Self-serve delivery settings — the same contract as every other
+// notification: the manager picks the channel, we never guess.
+// ----------------------------------------------------------------------------
+
+export const getManagerEodConfig = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const team = await ctx.db.get(user.teamId as Id<"teams">);
+    if (!team) return null;
+    return {
+      enabled: (team as any).managerEodEnabled === true,
+      hourLocal: (team as any).managerEodHourLocal ?? 19,
+      slackChannelId: (team as any).managerEodSlackChannelId ?? null,
+      slackChannelName: (team as any).managerEodSlackChannelName ?? null,
+      channelReady:
+        !!(team as any).slackAccessToken ||
+        !!(team as any).managerEodDiscordWebhookUrl,
+    };
+  },
+});
+
+export const setManagerEodConfig = mutation({
+  args: {
+    clerkId: v.string(),
+    enabled: v.boolean(),
+    hourLocal: v.number(),
+    slackChannelId: v.optional(v.string()),
+    slackChannelName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new ConvexError("Not signed in");
+    if (
+      !Number.isInteger(args.hourLocal) ||
+      args.hourLocal < 0 ||
+      args.hourLocal > 23
+    ) {
+      throw new ConvexError("Pick an hour between 0 and 23");
+    }
+    await ctx.db.patch(user.teamId as Id<"teams">, {
+      managerEodEnabled: args.enabled,
+      managerEodHourLocal: args.hourLocal,
+      ...(args.slackChannelId !== undefined
+        ? {
+            managerEodChannel: "slack" as const,
+            managerEodSlackChannelId: args.slackChannelId,
+            managerEodSlackChannelName: args.slackChannelName,
+          }
+        : {}),
+    });
+    return { ok: true };
   },
 });
