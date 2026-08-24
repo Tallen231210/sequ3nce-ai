@@ -1286,14 +1286,76 @@ export default defineSchema({
     teamId: v.id("teams"),
     name: v.string(),
     /** The EOD link identity. Bookmark-on-phone auth, same trust model as
-     *  share links. Revoke by rotating. */
+     *  share links. Revoke by rotating. Superseded by email magic-link for
+     *  the setter APP; the token still opens the bare EOD form. */
     token: v.string(),
+    /** Login identity for the setter app. Lowercased. Zion types these. */
+    email: v.optional(v.string()),
+    /** Scorecard grouping ("A", "B"). Freeform, Zion's vocabulary. */
+    pod: v.optional(v.string()),
     active: v.boolean(),
     setterRepId: v.optional(v.id("setterReps")),
     createdAt: v.number(),
   })
     .index("by_team", ["teamId"])
     .index("by_token", ["token"]),
+
+  /** One-time 6-digit login codes for the setter app. Mirrors the closer
+   *  magic-link tables: hashed, single-use, 15-minute expiry, lockout. */
+  setterMagicCodes: defineTable({
+    email: v.string(),
+    rosterId: v.id("setterRoster"),
+    codeHash: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    attempts: v.number(),
+    usedAt: v.optional(v.number()),
+  }).index("by_email", ["email"]),
+
+  /** A signed-in setter device. 90 days; dies when the roster row is
+   *  deactivated. Recordings sit behind this — bearer tokens don't cut it. */
+  setterSessions: defineTable({
+    rosterId: v.id("setterRoster"),
+    teamId: v.id("teams"),
+    tokenHash: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_roster", ["rosterId"]),
+
+  /** "This setter set this call", read off the title's leading (initials)
+   *  token. Deliberately overshoots — "(E)" matches Erten AND Ethan; each
+   *  dismisses what isn't theirs. */
+  setterCallMatches: defineTable({
+    teamId: v.id("teams"),
+    rosterId: v.id("setterRoster"),
+    callId: v.id("calls"),
+    token: v.string(),
+    matchedAt: v.number(),
+  })
+    .index("by_roster", ["rosterId", "matchedAt"])
+    .index("by_call", ["callId"])
+    .index("by_team", ["teamId"]),
+
+  /** Per-setter "not my call". Hides it from THAT setter only; reversible,
+   *  because an invisible suppression rule is how afternoons get wasted. */
+  setterCallDismissals: defineTable({
+    rosterId: v.id("setterRoster"),
+    callId: v.id("calls"),
+    createdAt: v.number(),
+  }).index("by_roster_and_call", ["rosterId", "callId"]),
+
+  /** Zion's locked scorecard baseline, per Sat-start week. The scenario
+   *  itself is a whiteboard; only the lock and CDPBC survive a reload. */
+  scorecardBaselines: defineTable({
+    teamId: v.id("teams"),
+    weekKey: v.string(),
+    rows: v.optional(v.string()),
+    cdpbc: v.optional(v.number()),
+    lockedAt: v.number(),
+  }).index("by_team_and_week", ["teamId", "weekKey"]),
 
   /** One setter's end-of-day numbers. Self-reported; the CRM cross-check can
    *  come later once Close is connected. */
@@ -1307,6 +1369,10 @@ export default defineSchema({
     sets: v.number(),
     newLeadsHit: v.number(),
     followUps: v.number(),
+    /** Zion's additions 2026-08-23 — optional so old entries stay valid. */
+    callsOnCalendar: v.optional(v.number()),
+    callsShown: v.optional(v.number()),
+    callsClosed: v.optional(v.number()),
     note: v.optional(v.string()),
     submittedAt: v.number(),
   })
