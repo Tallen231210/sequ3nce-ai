@@ -10,6 +10,8 @@ export interface ScorecardRange {
   /** Inclusive. null = the classic Sat–Sat week starting at `start`. */
   end: string | null;
   label: string;
+  /** Which picker option produced this — keeps the select honest. */
+  preset?: "last14" | "last30" | "custom";
 }
 
 function isoAddDays(dayKey: string, days: number): string {
@@ -54,7 +56,7 @@ export function RangeControl({
   const [from, setFrom] = useState(value.end ? value.start : isoAddDays(todayIso(), -13));
   const [to, setTo] = useState(value.end ?? todayIso());
 
-  const selectValue = value.end ? "custom" : value.start;
+  const selectValue = value.end ? (value.preset ?? "custom") : value.start;
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -65,12 +67,12 @@ export function RangeControl({
           if (v === "last14") {
             const end = todayIso();
             const start = isoAddDays(end, -13);
-            onChange({ start, end, label: `Last 14 days · ${fmt(start)} – ${fmt(end)}` });
+            onChange({ start, end, label: `Last 14 days · ${fmt(start)} – ${fmt(end)}`, preset: "last14" });
             setCustomOpen(false);
           } else if (v === "last30") {
             const end = todayIso();
             const start = isoAddDays(end, -29);
-            onChange({ start, end, label: `Last 30 days · ${fmt(start)} – ${fmt(end)}` });
+            onChange({ start, end, label: `Last 30 days · ${fmt(start)} – ${fmt(end)}`, preset: "last30" });
             setCustomOpen(false);
           } else if (v === "custom") {
             setCustomOpen(true);
@@ -111,7 +113,7 @@ export function RangeControl({
           <button
             onClick={() => {
               if (!from || !to || to < from) return;
-              onChange({ start: from, end: to, label: `${fmt(from)} – ${fmt(to)}` });
+              onChange({ start: from, end: to, label: `${fmt(from)} – ${fmt(to)}`, preset: "custom" });
             }}
             className="ml-1 rounded-md bg-neutral-900 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-neutral-800"
           >

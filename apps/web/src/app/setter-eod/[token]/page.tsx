@@ -125,6 +125,13 @@ export default function SetterEodPage() {
       <header className="border-b border-border py-6">
         <div className="flex justify-center">
           <Logo height={30} />
+          <a
+            href="/setter"
+            className="mt-3 block rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-center text-[12px] text-sky-800"
+          >
+            The setter app is live — sign in with your email at{" "}
+            <span className="font-medium underline">sequ3nce.ai/setter</span>
+          </a>
         </div>
       </header>
 

@@ -81,8 +81,14 @@ export default function SetterEodPage() {
       });
       setSaved(true);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg.replace(/^.*Uncaught ConvexError:?\s*/, "").split("\n")[0] || "Couldn't save.");
+      // ConvexError carries the human message in .data; anything else gets a
+      // plain fallback rather than request-id plumbing.
+      const data = (err as { data?: unknown })?.data;
+      setError(
+        typeof data === "string" && data
+          ? data
+          : "That didn't save — check the numbers and try again.",
+      );
     } finally {
       setBusy(false);
     }
