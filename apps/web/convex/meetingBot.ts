@@ -1666,6 +1666,12 @@ export const completeCallFromBot = internalMutation({
       ...(canonicalDuration && { duration: canonicalDuration }),
     });
 
+    // Setter attribution off the title's "(initials)" token — no-op for teams
+    // without the setter app flag.
+    await ctx.scheduler.runAfter(0, internal.setterCallMatching.matchCallForTeam, {
+      callId: args.callId,
+    });
+
     // Schedule AI summary generation with 60s delay to let transcript fully flush
     // Only schedule if not already generated (user may have submitted form first)
     // Blobs live on the callContent sibling post-migration.

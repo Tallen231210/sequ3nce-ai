@@ -3,6 +3,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { generateShareToken } from "./lib/shareSecurity";
+import { internal } from "./_generated/api";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { validateEodNumbers, buildEodDoc } from "./setterEodShared";
 
@@ -88,6 +89,13 @@ export const addSetter = mutation({
       token: generateShareToken(),
       active: true,
       createdAt: Date.now(),
+    });
+    // A new setter's past calls should appear in their app without anyone
+    // asking — re-run title matching over the recent window. Idempotent, so
+    // the rare add-during-add collision just double-checks the same rows.
+    await ctx.scheduler.runAfter(0, internal.setterCallMatching.backfillMatches, {
+      teamId: user.teamId as Id<"teams">,
+      sinceDays: 30,
     });
     return { rosterId: id };
   },
@@ -361,7 +369,32 @@ export const hardDeleteSetter = internalMutation({
       .withIndex("by_roster_and_day", (q) => q.eq("rosterId", args.rosterId))
       .collect();
     for (const e of entries) await ctx.db.delete(e._id);
+    // The setter-app footprint goes with the row: matches, dismissals,
+    // sessions (kills any signed-in device instantly), pending codes.
+    const matches = await ctx.db
+      .query("setterCallMatches")
+      .withIndex("by_roster", (q) => q.eq("rosterId", args.rosterId))
+      .collect();
+    for (const m of matches) await ctx.db.delete(m._id);
+    const dismissals = await ctx.db
+      .query("setterCallDismissals")
+      .withIndex("by_roster_and_call", (q) => q.eq("rosterId", args.rosterId))
+      .collect();
+    for (const d of dismissals) await ctx.db.delete(d._id);
+    const sessions = await ctx.db
+      .query("setterSessions")
+      .withIndex("by_roster", (q) => q.eq("rosterId", args.rosterId))
+      .collect();
+    for (const sess of sessions) await ctx.db.delete(sess._id);
+    const row = await ctx.db.get(args.rosterId);
+    if (row?.email) {
+      const codes = await ctx.db
+        .query("setterMagicCodes")
+        .withIndex("by_email", (q) => q.eq("email", row.email!))
+        .collect();
+      for (const c of codes) await ctx.db.delete(c._id);
+    }
     await ctx.db.delete(args.rosterId);
-    return { entriesDeleted: entries.length };
+    return { entriesDeleted: entries.length, matchesDeleted: matches.length };
   },
 });

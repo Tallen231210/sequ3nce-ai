@@ -143,6 +143,7 @@ import type * as lib_googleCalendarPalette from "../lib/googleCalendarPalette.js
 import type * as lib_rangeScan from "../lib/rangeScan.js";
 import type * as lib_recommendationRules from "../lib/recommendationRules.js";
 import type * as lib_sentry from "../lib/sentry.js";
+import type * as lib_setterTitleMatch from "../lib/setterTitleMatch.js";
 import type * as lib_shareSecurity from "../lib/shareSecurity.js";
 import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
@@ -180,6 +181,7 @@ import type * as setterApp from "../setterApp.js";
 import type * as setterAttendance from "../setterAttendance.js";
 import type * as setterAuth from "../setterAuth.js";
 import type * as setterAvailability from "../setterAvailability.js";
+import type * as setterCallMatching from "../setterCallMatching.js";
 import type * as setterCallTranscriptsMutations from "../setterCallTranscriptsMutations.js";
 import type * as setterCloseClient from "../setterCloseClient.js";
 import type * as setterCloseConnect from "../setterCloseConnect.js";
@@ -374,6 +376,7 @@ declare const fullApi: ApiFromModules<{
   "lib/rangeScan": typeof lib_rangeScan;
   "lib/recommendationRules": typeof lib_recommendationRules;
   "lib/sentry": typeof lib_sentry;
+  "lib/setterTitleMatch": typeof lib_setterTitleMatch;
   "lib/shareSecurity": typeof lib_shareSecurity;
   liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
@@ -411,6 +414,7 @@ declare const fullApi: ApiFromModules<{
   setterAttendance: typeof setterAttendance;
   setterAuth: typeof setterAuth;
   setterAvailability: typeof setterAvailability;
+  setterCallMatching: typeof setterCallMatching;
   setterCallTranscriptsMutations: typeof setterCallTranscriptsMutations;
   setterCloseClient: typeof setterCloseClient;
   setterCloseConnect: typeof setterCloseConnect;
