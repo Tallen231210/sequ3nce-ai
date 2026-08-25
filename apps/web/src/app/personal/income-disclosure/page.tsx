@@ -13,18 +13,18 @@ export default function IncomeDisclosurePage() {
       <header className="border-b border-border">
         <div className="mx-auto max-w-4xl px-6">
           <div className="flex h-16 items-center justify-between">
-            <Logo href="/" height={20} />
+            <Logo href="/personal" height={20} />
           </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-4xl px-6 py-16">
         <Link
-          href="/"
+          href="/personal"
           className="mb-8 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Home
+          Back to Sequ3nce Personal
         </Link>
 
         <h1 className="mb-8 text-4xl font-semibold tracking-tight">Income Disclosure</h1>

@@ -133,10 +133,10 @@ export function LegalFooter() {
     <div className="sect">
       <p className="mj-disc">{DISCLAIMER}</p>
       <p className="mj-legal">
-        <Link href="/privacy">Privacy Policy</Link> |{" "}
-        <Link href="/terms">Terms of Service</Link> |{" "}
-        <Link href="/ftc-disclosure">FTC Disclosure</Link> |{" "}
-        <Link href="/income-disclosure">Income Disclosure</Link>
+        <Link href="/personal/privacy">Privacy Policy</Link> |{" "}
+        <Link href="/personal/terms">Terms of Service</Link> |{" "}
+        <Link href="/personal/ftc-disclosure">FTC Disclosure</Link> |{" "}
+        <Link href="/personal/income-disclosure">Income Disclosure</Link>
       </p>
       <p className="mj-legal">Copyright © {new Date().getFullYear()} Sequ3nce. All rights reserved.</p>
     </div>
