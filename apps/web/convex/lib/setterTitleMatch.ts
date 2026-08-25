@@ -30,6 +30,8 @@ export interface RosterName {
   firstName: string;
   /** Last word of the roster name; "" when the name is a single word. */
   lastName: string;
+  /** Explicit tag; an exact match is exclusive — no overshoot. */
+  tag?: string | null;
 }
 
 /** rosterIds the token matches. Two conventions coexist on E2's calendar
@@ -41,6 +43,10 @@ export interface RosterName {
 export function matchToken(token: string, roster: RosterName[]): string[] {
   const t = token.toLowerCase();
   if (!t) return [];
+  // Explicit tags first, and exclusively: once a team says "(er) IS Ethan",
+  // showing the call to anyone else is noise, not caution.
+  const tagged = roster.filter((r) => (r.tag ?? "").toLowerCase() === t);
+  if (tagged.length > 0) return tagged.map((r) => r.rosterId);
   const hits = new Set<string>();
   for (const r of roster) {
     if (r.firstName.toLowerCase().startsWith(t)) hits.add(r.rosterId);

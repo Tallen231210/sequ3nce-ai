@@ -54,6 +54,7 @@ export const listRoster = query({
         token: r.token,
         email: r.email ?? null,
         pod: r.pod ?? null,
+        tag: r.tag ?? null,
         active: r.active,
         filedToday: !!todayEntry,
       });
@@ -111,6 +112,7 @@ export const updateSetter = mutation({
     name: v.optional(v.string()),
     email: v.optional(v.union(v.string(), v.null())),
     pod: v.optional(v.union(v.string(), v.null())),
+    tag: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const user = await resolveAuthUser(ctx, args.clerkId);
@@ -138,6 +140,12 @@ export const updateSetter = mutation({
     }
     if (args.pod !== undefined) {
       patch.pod = args.pod === null ? undefined : args.pod.trim().slice(0, 20) || undefined;
+    }
+    if (args.tag !== undefined) {
+      patch.tag =
+        args.tag === null
+          ? undefined
+          : args.tag.trim().toLowerCase().slice(0, 5) || undefined;
     }
     if (Object.keys(patch).length > 0) await ctx.db.patch(args.rosterId, patch);
     return { ok: true };

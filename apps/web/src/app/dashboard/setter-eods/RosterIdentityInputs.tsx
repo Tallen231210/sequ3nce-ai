@@ -13,21 +13,25 @@ export function RosterIdentityInputs({
   rosterId,
   email,
   pod,
+  tag,
 }: {
   clerkId: string;
   rosterId: string;
   email: string | null;
   pod: string | null;
+  tag: string | null;
 }) {
   const update = useMutation(api.setterEod.updateSetter);
   const [emailDraft, setEmailDraft] = useState(email ?? "");
   const [podDraft, setPodDraft] = useState(pod ?? "");
+  const [tagDraft, setTagDraft] = useState(tag ?? "");
   const [state, setState] = useState<"idle" | "saved" | "error">("idle");
 
   useEffect(() => setEmailDraft(email ?? ""), [email]);
   useEffect(() => setPodDraft(pod ?? ""), [pod]);
+  useEffect(() => setTagDraft(tag ?? ""), [tag]);
 
-  async function save(fields: { email?: string | null; pod?: string | null }) {
+  async function save(fields: { email?: string | null; pod?: string | null; tag?: string | null }) {
     try {
       await update({ clerkId, rosterId: rosterId as any, ...fields });
       setState("saved");
@@ -50,6 +54,18 @@ export function RosterIdentityInputs({
         }}
         placeholder="email for app login"
         className="w-48 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none focus:border-foreground"
+      />
+      <input
+        value={tagDraft}
+        onChange={(e) => setTagDraft(e.target.value)}
+        onBlur={() => {
+          if ((tag ?? "") !== tagDraft.trim().toLowerCase()) {
+            void save({ tag: tagDraft.trim() || null });
+          }
+        }}
+        placeholder="tag"
+        title="Call-title tag, e.g. 'er' — an exact match goes ONLY to this setter"
+        className="w-14 rounded-md border border-border bg-background px-2 py-1 text-[12px] outline-none focus:border-foreground"
       />
       <input
         value={podDraft}

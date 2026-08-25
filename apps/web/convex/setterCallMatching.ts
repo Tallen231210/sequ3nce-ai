@@ -29,6 +29,7 @@ async function activeRosterNames(ctx: any, teamId: Id<"teams">): Promise<RosterN
       rosterId: String(r._id),
       firstName: firstNameOf(r.name),
       lastName: lastNameOf(r.name),
+      tag: r.tag ?? null,
     }));
 }
 
@@ -118,6 +119,33 @@ export const backfillMatches = internalMutation({
   },
 });
 
+/** Re-judge every existing match for a team against the CURRENT rules and
+ *  roster, deleting rows no longer justified. The convention just got more
+ *  precise ("(er)" is Ethan alone) — stale overshoot rows would keep
+ *  misattributing history. */
+export const pruneMatchesForTeam = internalMutation({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const roster = await activeRosterNames(ctx, args.teamId);
+    const matches = await ctx.db
+      .query("setterCallMatches")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    let pruned = 0;
+    for (const m of matches) {
+      const call = await ctx.db.get(m.callId);
+      const token = extractSetterToken((call as any)?.prospectName);
+      const stillValid =
+        token !== null && matchToken(token, roster).includes(String(m.rosterId));
+      if (!stillValid) {
+        await ctx.db.delete(m._id);
+        pruned++;
+      }
+    }
+    return { checked: matches.length, pruned };
+  },
+});
+
 /** Census for verification: per-setter match counts + the tokens that
  *  matched nobody (the honest gap list). */
 export const matchCensus = internalQuery({
@@ -146,8 +174,8 @@ export const setterTitleMatchBench = internalQuery({
   args: {},
   handler: async () => {
     const roster: RosterName[] = [
-      { rosterId: "erten", firstName: "Erten", lastName: "Kasimogl" },
-      { rosterId: "ethan", firstName: "Ethan", lastName: "Russell" },
+      { rosterId: "erten", firstName: "Erten", lastName: "Kasimogl", tag: "e" },
+      { rosterId: "ethan", firstName: "Ethan", lastName: "Russell", tag: "er" },
       { rosterId: "israel", firstName: "Israel", lastName: "Yanez" },
       { rosterId: "marcus", firstName: "Marcus", lastName: "Hallam" },
       { rosterId: "mo", firstName: "Mo", lastName: "Mash" },
@@ -156,13 +184,13 @@ export const setterTitleMatchBench = internalQuery({
       { rosterId: "sophie", firstName: "Sophie", lastName: "Howell" },
     ];
     const cases: Array<{ title: string; expect: string[] | null }> = [
-      { title: "(e) Tim and Karl", expect: ["erten", "ethan"] },
-      { title: "(E) Pahresha and Karl", expect: ["erten", "ethan"] },
+      { title: "(e) Tim and Karl", expect: ["erten"] },
+      { title: "(E) Pahresha and Karl", expect: ["erten"] },
       { title: "(Mo)Paul X Karl", expect: ["mo"] },
       { title: "(M) Fabian and Joseph", expect: ["marcus", "mo"] },
       { title: "(IY) Ai Implementation Consult", expect: ["israel"] },
-      { title: "(ER) Prospect and Ethan", expect: ["erten", "ethan"] },
-      { title: "(er) lowercase variant", expect: ["erten", "ethan"] },
+      { title: "(ER) Prospect and Ethan", expect: ["ethan"] },
+      { title: "(er) lowercase variant", expect: ["ethan"] },
       { title: "(MH) Marcus by initials", expect: ["marcus"] },
       { title: "(N) Ai Implementation: Kris/Gresham", expect: ["noah"] },
       { title: "( s ) spaced token", expect: ["sophie"] },

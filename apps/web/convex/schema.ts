@@ -1294,6 +1294,10 @@ export default defineSchema({
     email: v.optional(v.string()),
     /** Scorecard grouping ("A", "B"). Freeform, Zion's vocabulary. */
     pod: v.optional(v.string()),
+    /** Explicit call-title tag ("er" = this setter, exclusively). Set when
+     *  the team's convention is known and overshooting would misattribute —
+     *  Erten="e", Ethan="er" on E2. */
+    tag: v.optional(v.string()),
     active: v.boolean(),
     setterRepId: v.optional(v.id("setterReps")),
     createdAt: v.number(),

@@ -138,6 +138,7 @@ export default function SetterEodsPage() {
                     rosterId={r._id}
                     email={r.email}
                     pod={r.pod}
+                    tag={r.tag}
                   />
                 )}
                 <span
