@@ -36,14 +36,9 @@ export const SETUP_TASKS: SetupTaskConfig[] = [
     ctaTarget: { kind: 'subview', tabId: 'community', subview: 'coaching' },
     bannerCopy: "Join any upcoming coaching call, or watch a replay of a past one.",
   },
-  {
-    id: 'stream',
-    title: 'Try Sequ3nce Stream',
-    description: 'Hold-to-talk dictation. Use it once and the muscle memory builds.',
-    ctaLabel: 'Try it now →',
-    ctaTarget: { kind: 'modal', modalId: 'stream' },
-    bannerCopy: "Hold your hotkey to dictate. Your first transcription marks this complete.",
-  },
+  // The 'stream' task was removed 2026-08-25 when Sequ3nce Stream was hidden
+  // (Churp owns dictation). Saved progress with a stream key is ignored by
+  // every consumer — they all iterate this array.
 ];
 
 export function getSetupTask(id: SetupTaskId): SetupTaskConfig {

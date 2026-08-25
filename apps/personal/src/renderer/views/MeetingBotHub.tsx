@@ -239,6 +239,10 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
 
   // Quick bot modal
   const [showQuickBot, setShowQuickBot] = useState(false);
+  // Mirror of STREAM_FEATURE_ENABLED in src/stream/index.ts (the renderer
+  // can't import main-process code). Stream is hidden — Churp owns dictation
+  // now. Flip both switches to true to bring it back.
+  const STREAM_UI_ENABLED = false;
   const [showStream, setShowStream] = useState(false);
   const [streamEnabled, setStreamEnabled] = useState(false);
 
@@ -556,7 +560,7 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
       if (target.modalId === 'quickBot') {
         window.location.hash = '#setup=firstCall';
         setShowQuickBot(true);
-      } else if (target.modalId === 'stream') {
+      } else if (target.modalId === 'stream' && STREAM_UI_ENABLED) {
         window.location.hash = '#setup=stream';
         setShowStream(true);
       }
@@ -585,7 +589,7 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
       )}
 
       {/* Sequ3nce Stream modal */}
-      {showStream && (
+      {STREAM_UI_ENABLED && showStream && (
         <StreamModal
           closerInfo={closerInfo}
           onClose={() => setShowStream(false)}
@@ -707,7 +711,8 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
               </span>
             )}
           </button>
-          {/* Sequ3nce Stream button (dictation) */}
+          {/* Sequ3nce Stream button (dictation) — hidden with the feature */}
+          {STREAM_UI_ENABLED && (
           <button
             onClick={() => setShowStream(true)}
             className="no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-gray-900 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors"
@@ -726,6 +731,7 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
             </svg>
             Sequ3nce Stream
           </button>
+          )}
           {/* Quick Bot button */}
           <button onClick={() => setShowQuickBot(true)}
             className="no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 transition-colors">
