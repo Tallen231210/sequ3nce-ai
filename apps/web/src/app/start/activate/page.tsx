@@ -4,6 +4,12 @@
 // after the first payment to run the second.
 // ============================================================================
 
+// ⚠ SANDBOX — Churp's checkout is a Vercel preview deployment with a share
+// token; real cards won't be charged. Swap for the production Churp URL
+// before the funnel goes live (it's on the go-live checklist).
+const CHURP_CHECKOUT_URL =
+  "https://landing-33gxj3xt7-tyler-allens-projects-bb6ab01b.vercel.app/checkout?_vercel_share=6z6zDgbvkuaJ4fuHkF13XJzkloHmBZhf";
+
 const GROUND: React.CSSProperties = {
   backgroundImage: "radial-gradient(circle, rgb(228 228 231) 1px, transparent 1px)",
   backgroundSize: "24px 24px",
@@ -69,9 +75,8 @@ export default function ActivatePage() {
             Required to run the workflow in module 3 of the program. Activate it
             right after Sequ3nce — it takes about a minute.
           </p>
-          {/* ══ REPLACE: Churp pricing page URL ══ */}
           <a
-            href="#CHURP_LINK"
+            href={CHURP_CHECKOUT_URL}
             target="_blank"
             rel="noopener"
             className="block w-full rounded-[10px] border border-zinc-300 px-4 py-4 text-center text-[15px] font-semibold text-zinc-900 transition-colors hover:bg-zinc-50"
