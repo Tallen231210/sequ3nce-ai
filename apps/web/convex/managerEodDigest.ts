@@ -699,9 +699,16 @@ export const setManagerEodConfig = mutation({
     ) {
       throw new ConvexError("Pick an hour between 0 and 23");
     }
+    const team = await ctx.db.get(user.teamId as Id<"teams">);
     await ctx.db.patch(user.teamId as Id<"teams">, {
       managerEodEnabled: args.enabled,
       managerEodHourLocal: args.hourLocal,
+      // Default the delivery channel to Slack when nothing is configured —
+      // "enabled" with channel undefined used to skip silently every night.
+      ...((team as any)?.managerEodChannel === undefined &&
+      !(team as any)?.managerEodDiscordWebhookUrl
+        ? { managerEodChannel: "slack" as const }
+        : {}),
       ...(args.slackChannelId !== undefined
         ? {
             managerEodChannel: "slack" as const,

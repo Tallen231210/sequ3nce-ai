@@ -85,11 +85,15 @@ export function ManagerEodSettings() {
         </span>
         {state === "saved" && <span className="text-[11px] text-emerald-600">saved ✓</span>}
         {state === "error" && <span className="text-[11px] text-rose-600">couldn&apos;t save</span>}
-        {!config.channelReady && (
+        {!config.channelReady ? (
           <span className="ml-auto text-[11px] text-amber-700">
             Connect Slack in Settings first — the schedule saves either way.
           </span>
-        )}
+        ) : enabled && !channelId ? (
+          <span className="ml-auto text-[11px] text-amber-700">
+            Pick a channel — nothing sends until you do.
+          </span>
+        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-3 text-[13px]">
         <label className="flex items-center gap-2">
