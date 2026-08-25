@@ -156,7 +156,7 @@ export default function PersonalDownloadPage() {
           </h1>
           <p className="text-xl text-zinc-600 max-w-2xl mx-auto">
             Verified closer profiles, AI call analysis, highlight reels, and career tools
-            for high-ticket closers. $129.99/mo.
+            for high-ticket closers.
           </p>
         </div>
 
@@ -224,7 +224,7 @@ export default function PersonalDownloadPage() {
               <span className="w-6 h-6 rounded-full bg-white text-black text-sm font-medium flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
                 2
               </span>
-              <span>Create your account and subscribe ($129.99/mo)</span>
+              <span>Log in with your account — you set the password from your welcome email</span>
             </li>
             <li className="flex items-start">
               <span className="w-6 h-6 rounded-full bg-white text-black text-sm font-medium flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
