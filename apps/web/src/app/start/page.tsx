@@ -93,7 +93,7 @@ const VARIANTS: Record<"a" | "b", VariantCopy> = {
     ),
     lede: "Before you spend $6,000 on a program, learn the fundamentals and start getting paid inside 30 days. Becoming elite can come after that.",
     videoLabel: "The whole thing explained · 90 seconds",
-    cta: "Yes, get me access",
+    cta: "Get on the board",
     whyKick: "Why the old way stopped working",
     whyTiles: [
       {
@@ -123,7 +123,7 @@ const VARIANTS: Record<"a" | "b", VariantCopy> = {
     ),
     lede: "Six weeks of coaching, a live board of seats that are hiring, and an intro to the person doing the hiring. Fill the form and a coach calls you within minutes.",
     videoLabel: "How to get in without paying to get in · 90 seconds",
-    cta: "Get all of it free",
+    cta: "Show me the roles",
     whyKick: "Why this works",
     whyTiles: [
       {
@@ -294,9 +294,6 @@ function OptInInner() {
 
         <div className="divider" />
         <WhyTiles kick={c.whyKick} tiles={c.whyTiles.concat(SHARED_TILES)} />
-        <div className="sect">
-          <Cta label={c.cta} onOpen={openModal} />
-        </div>
 
         <div className="divider" />
         <Steps />
