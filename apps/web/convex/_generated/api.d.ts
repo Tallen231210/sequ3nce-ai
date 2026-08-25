@@ -167,6 +167,7 @@ import type * as managerSuggestions from "../managerSuggestions.js";
 import type * as meetingBot from "../meetingBot.js";
 import type * as metaAdsConfig from "../metaAdsConfig.js";
 import type * as metaAdsInternal from "../metaAdsInternal.js";
+import type * as metaCapi from "../metaCapi.js";
 import type * as onboarding from "../onboarding.js";
 import type * as pipelineRepair from "../pipelineRepair.js";
 import type * as polar from "../polar.js";
@@ -393,6 +394,7 @@ declare const fullApi: ApiFromModules<{
   meetingBot: typeof meetingBot;
   metaAdsConfig: typeof metaAdsConfig;
   metaAdsInternal: typeof metaAdsInternal;
+  metaCapi: typeof metaCapi;
   onboarding: typeof onboarding;
   pipelineRepair: typeof pipelineRepair;
   polar: typeof polar;

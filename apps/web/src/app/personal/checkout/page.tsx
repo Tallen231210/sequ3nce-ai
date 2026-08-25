@@ -69,11 +69,23 @@ export default function PersonalCheckoutPage() {
       product: "b2c",
       contentIds: [plan],
     });
+    // Meta click identifiers ride into the Polar checkout as metadata so the
+    // order.paid webhook can attribute the Purchase back to the ad click.
+    // _fbp/_fbc are set by the pixel; if _fbc is missing but the visit still
+    // carries ?fbclid=..., build _fbc the way the pixel would.
+    const cookie = (name: string) =>
+      document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]+)`))?.[1];
+    const fbp = cookie("_fbp");
+    let fbc = cookie("_fbc");
+    if (!fbc) {
+      const fbclid = new URLSearchParams(window.location.search).get("fbclid");
+      if (fbclid) fbc = `fb.1.${Date.now()}.${fbclid}`;
+    }
     try {
       const res = await fetch("/api/polar/b2c-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, fbp, fbc }),
       });
       const data = await res.json();
       if (res.ok && data.url) {
