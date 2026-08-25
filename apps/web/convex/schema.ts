@@ -1302,6 +1302,15 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_email", ["email"]),
 
+  /** Every setter sign-in attempt, matched or not. Exists because "the
+   *  setters didn't get the email" was undiagnosable: a mistyped address
+   *  left no trace. Kept small — attempts, not sessions. */
+  setterLoginAttempts: defineTable({
+    email: v.string(),
+    matched: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
   /** One-time 6-digit login codes for the setter app. Mirrors the closer
    *  magic-link tables: hashed, single-use, 15-minute expiry, lockout. */
   setterMagicCodes: defineTable({

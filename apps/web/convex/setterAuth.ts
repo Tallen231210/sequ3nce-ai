@@ -96,6 +96,13 @@ export const generateSetterCode = internalMutation({
     }
 
     const rows = await rosterRowsForEmail(ctx, email);
+    // Record the attempt either way — a wrong address that vanishes without
+    // a trace turns into a "the emails are broken" support thread.
+    await ctx.db.insert("setterLoginAttempts", {
+      email,
+      matched: rows.length > 0,
+      createdAt: Date.now(),
+    });
     if (rows.length === 0) {
       return { code: null, reason: "unknown_email" };
     }
@@ -340,5 +347,32 @@ export const logoutSetter = mutation({
       .first();
     if (session) await ctx.db.delete(session._id);
     return { success: true };
+  },
+});
+
+/** Support lens: recent sign-in attempts next to the roster's emails, so a
+ *  mistyped address is a ten-second diagnosis instead of a guess. */
+export const loginAttemptReport = internalQuery({
+  args: { days: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const since = Date.now() - (args.days ?? 7) * 86_400_000;
+    const attempts = await ctx.db
+      .query("setterLoginAttempts")
+      .withIndex("by_created", (q) => q.gte("createdAt", since))
+      .collect();
+    const roster = await ctx.db.query("setterRoster").collect();
+    const rosterEmails = roster
+      .filter((r) => r.active && r.email)
+      .map((r) => ({ name: r.name, email: r.email }));
+    return {
+      attempts: attempts
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map((a) => ({
+          email: a.email,
+          matched: a.matched,
+          at: new Date(a.createdAt).toISOString().slice(0, 16),
+        })),
+      rosterEmails,
+    };
   },
 });
