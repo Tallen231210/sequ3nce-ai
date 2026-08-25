@@ -1,64 +1,150 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Loader2, Play } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 import { trackMetaEvent } from "@/lib/meta-pixel";
+import { LeadModal } from "./LeadModal";
+import { Cta, FaqList, Guarantee, LegalFooter, SeatsLine, Steps, ValueStack, WhyTiles } from "./sections";
+import { SHARED_TILES, type VariantCopy } from "./copy";
 
 const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
-// ============================================================================
-// Opt-in with a built-in A/B split — round two, copy by the co-founder.
-//
-// Variant A: the JOB angle ("land a remote closing seat"), Brunson-style.
-// Variant B: the INCOME angle ("you already sell — get paid properly"),
-// Hormozi-style. Different audiences on purpose: this round tests the angle,
-// not the wording. Assignment is a coin flip persisted in localStorage
-// (a returning visitor keeps their arm); ?v=a / ?v=b overrides for previews
-// and for ads that force an arm. The arm ships with the lead as
-// source: "start-funnel-a" | "start-funnel-b".
-//
-// The design collects name + mobile + email (email added back to the
-// mockups deliberately: the lead pipeline and GHL sync key on it).
-// ============================================================================
+// The cohort countdown bar stays off until there is a REAL session date to
+// count to — with null, urgency.js renders no bar at all. Set an ISO date
+// ("2026-09-02T18:00:00Z") when a live session is actually scheduled.
+const COHORT_DEADLINE: string | null = null;
+
+// The sponsored-seats counter: cap must be a real business commitment (free
+// access actually closes, or the price actually changes, when it's reached).
+// claimed = genuine lead count from /b2c/lead-count, which returns nothing
+// below its honesty floor — the counter simply doesn't render until then.
+const SEAT_CAP = 300;
 
 const GROUND: React.CSSProperties = {
-  backgroundImage: "radial-gradient(circle, rgb(228 228 231) 1px, transparent 1px)",
-  backgroundSize: "24px 24px",
-  WebkitMaskImage: "radial-gradient(ellipse 70% 55% at 50% 12%, black 30%, transparent 75%)",
-  maskImage: "radial-gradient(ellipse 70% 55% at 50% 12%, black 30%, transparent 75%)",
+  background:
+    "radial-gradient(1100px 480px at 50% -80px, rgba(24,24,27,.045), transparent 60%), #fafafa",
 };
 
-// Typography + layout system from the copy mockups. Scoped under .cc.
 const CC_CSS = `
-.cc h1{text-wrap:balance;font-feature-settings:"ss01","cv01";letter-spacing:-.038em;line-height:.99;max-width:19ch;margin:0 auto;text-align:center}
 .cc .lede{text-wrap:pretty;font-size:17px;line-height:1.58;letter-spacing:-.006em;color:#71717a;max-width:52ch;margin:18px auto 24px;text-align:center}
 .cc .body{text-wrap:pretty;font-size:15.5px;line-height:1.72;letter-spacing:-.003em;color:#52525b;max-width:64ch;margin-left:auto;margin-right:auto}
 .cc .kick{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.17em;color:#a1a1aa;margin:0 0 16px;text-align:center}
 .cc .sect{margin-top:46px}
 .cc .divider{height:1px;background:#e4e4e7;margin:46px 0}
 .cc .num{font-variant-numeric:tabular-nums}
-.cc .outrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:620px;margin:0 auto 26px}
-.cc .out{text-align:center;padding:12px 8px;border:1px solid #e4e4e7;border-radius:12px;background:#fff}
-.cc .out b{display:block;font-size:14px;font-weight:600;letter-spacing:-.015em;line-height:1.25;color:#18181b}
-.cc .out span{display:block;font-size:11.5px;line-height:1.35;color:#a1a1aa;margin-top:5px;text-wrap:pretty}
-.cc .checks{display:grid;gap:11px;max-width:600px;margin:0 auto}
-.cc .checks p{font-size:14.5px;line-height:1.55;margin:0;text-wrap:pretty}
-@media(max-width:420px){
-.cc .outrow{gap:6px}
-.cc .out{padding:10px 5px;border-radius:10px}
-.cc .out b{font-size:12.5px}
-.cc .out span{font-size:10.5px;margin-top:3px}
-.cc .lede{font-size:16px;margin:14px auto 20px}
-}
+@media(max-width:420px){.cc .lede{font-size:16px;margin:14px auto 20px}}
+
+.mj-h1{font-size:clamp(29px,4.3vw,50px);font-weight:650;line-height:1.03;letter-spacing:-.035em;text-wrap:balance;max-width:20ch;margin:0 auto;text-align:center;color:#18181b}
+.mj-free{background:#18181b;color:#fff;padding:1px 12px;border-radius:8px;display:inline-block}
+.mj-cta{display:block;width:100%;max-width:430px;margin:0 auto;border:0;border-radius:12px;background:#18181b;color:#fff;padding:19px;font-size:17px;font-weight:650;letter-spacing:-.015em;cursor:pointer;font-family:inherit;box-shadow:0 12px 30px rgba(9,9,11,.18)}
+.mj-cta:hover{background:#27272a}
+.mj-cta:disabled{opacity:.55;cursor:default}
+.mj-rev{text-align:center;font-size:12.5px;color:#a1a1aa;margin:11px 0 0}
+.mj-rev b{color:#18181b;font-weight:600}
+.mj-scar{text-align:center;font-size:13px;color:#e11d48;font-weight:600;margin:13px auto 0;max-width:44ch;line-height:1.5}
+.mj-stack{max-width:560px;margin:0 auto;border:1px solid #e4e4e7;border-radius:18px;overflow:hidden;background:#fff}
+.mj-row{display:flex;justify-content:space-between;gap:14px;padding:13px 18px;border-bottom:1px solid #f4f4f5}
+.mj-row span:first-child{font-size:14.5px;letter-spacing:-.008em}
+.mj-row span:last-child{font-size:14px;color:#a1a1aa;white-space:nowrap;font-variant-numeric:tabular-nums}
+.mj-tot{display:flex;justify-content:space-between;gap:14px;padding:15px 18px;background:#fafafa;border-bottom:1px solid #e4e4e7}
+.mj-tot span{font-size:15px;font-weight:650}
+.mj-tot span:last-child{text-decoration:line-through;color:#71717a}
+.mj-now{display:flex;justify-content:space-between;gap:14px;padding:17px 18px;align-items:center}
+.mj-now span:first-child{font-size:15px;font-weight:650}
+.mj-now span:last-child{font-size:23px;font-weight:700;letter-spacing:-.03em;color:#059669}
+.mj-why{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));max-width:880px;margin:0 auto}
+.mj-w{border:1px solid #e4e4e7;border-radius:14px;padding:17px;background:#fff}
+.mj-w h4{font-size:15px;font-weight:650;margin:0 0 6px;letter-spacing:-.015em}
+.mj-w p{font-size:13.5px;line-height:1.6;color:#71717a;margin:0;text-wrap:pretty}
+.mj-step{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;max-width:660px;margin:0 auto}
+.mj-step h3{font-size:15.5px;font-weight:600;letter-spacing:-.012em;margin:0 0 5px}
+.mj-step p{font-size:14.5px;line-height:1.65;color:#71717a;margin:0;text-wrap:pretty}
+.mj-badge{background:#18181b;color:#fff;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border-radius:7px;white-space:nowrap}
+.mj-faq{max-width:640px;margin:0 auto}
+.mj-q{border-bottom:1px solid #e4e4e7;padding:16px 0}
+.mj-q p:first-child{font-size:15.5px;font-weight:650;margin:0 0 6px;letter-spacing:-.015em}
+.mj-q p:last-child{font-size:14px;line-height:1.62;color:#71717a;margin:0;text-wrap:pretty}
+.mj-disc{max-width:70ch;margin:0 auto;font-size:11.5px;line-height:1.65;color:#a1a1aa;text-align:center}
+.mj-legal{text-align:center;font-size:11.5px;color:#a1a1aa;margin-top:12px}
+.mj-legal a{color:#71717a;text-decoration:underline}
+.mj-modal{position:fixed;inset:0;background:rgba(9,9,11,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:18px;backdrop-filter:blur(3px)}
+.mj-modal.on{display:flex}
+.mj-box{position:relative;background:#fff;border-radius:20px;padding:26px 24px;max-width:430px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.4);max-height:92vh;overflow:auto}
+.mj-box h3{font-size:22px;font-weight:650;letter-spacing:-.028em;margin:0 0 5px;text-align:center}
+.mj-box .sb{font-size:13.5px;color:#71717a;text-align:center;margin:0 0 17px;line-height:1.5}
+.mj-in{width:100%;border:1px solid #d4d4d8;border-radius:10px;padding:13px 14px;font-size:15px;outline:none;font-family:inherit;margin-bottom:9px}
+.mj-in:focus{border-color:#18181b}
+.mj-chk{display:flex;gap:10px;align-items:flex-start;margin:13px 0;padding:12px;background:#fafafa;border:1px solid #e4e4e7;border-radius:11px}
+.mj-chk input{margin:2px 0 0;flex:none;width:17px;height:17px;accent-color:#18181b}
+.mj-chk label{font-size:12.5px;line-height:1.5;color:#3f3f46}
+.mj-fine{font-size:10.5px;line-height:1.55;color:#a1a1aa;margin:11px 0 0}
+.mj-x{position:absolute;top:14px;right:16px;border:0;background:#f4f4f5;width:30px;height:30px;border-radius:50%;font-size:17px;cursor:pointer;color:#71717a}
 `;
 
-const STACK_ROWS: Array<[string, string]> = [
-  ["Six-week closing program", "$2,000"],
-  ["Live role board & warm intros", "$3,000"],
-  ["Call recording, AI scoring, verified profile", "$1,800"],
-  ["The closer room", "$1,200"],
-];
+// ── Per-variant copy: "a" = JOB · Brunson, "b" = JOB · Hormozi ──────────────
+const VARIANTS: Record<"a" | "b", VariantCopy> = {
+  a: {
+    headline: (
+      <>
+        How To Land A <span className="num">$10–20k</span> A Month Closing Role Without Buying A
+        Course Or Spamming Your Résumé Into The Void. <span className="mj-free">100% Free</span>
+      </>
+    ),
+    lede: "Before you spend $6,000 on a program, learn the fundamentals and start getting paid inside 30 days. Becoming elite can come after that.",
+    videoLabel: "The whole thing explained · 90 seconds",
+    cta: "Yes, get me access",
+    whyKick: "Why the old way stopped working",
+    whyTiles: [
+      {
+        h: "Paid First, Elite Later",
+        p: "Most people get this backwards. They spend six grand getting great at a job nobody's hired them for.",
+      },
+      {
+        h: "The Intro Is The Bottleneck",
+        p: "Managers stopped posting seats and started asking people they trust. That's why nobody writes back.",
+      },
+      {
+        h: "We're In That Room",
+        p: "No course can hand you an introduction. None of them are where the hiring happens.",
+      },
+    ],
+    faqSwap: {
+      q: "Do I need sales experience?",
+      a: "No. Most people we place came from doors, solar, insurance, retail or cars. If you've never sold at all, do the six weeks properly rather than skim it.",
+    },
+  },
+  b: {
+    headline: (
+      <>
+        Get Into Remote Sales Without Paying <span className="num">$6,000</span> To Find Out If
+        You&rsquo;re Any Good At It. <span className="mj-free">100% Free</span>
+      </>
+    ),
+    lede: "Six weeks of coaching, a live board of seats that are hiring, and an intro to the person doing the hiring. Fill the form and a coach calls you within minutes.",
+    videoLabel: "How to get in without paying to get in · 90 seconds",
+    cta: "Get all of it free",
+    whyKick: "Why this works",
+    whyTiles: [
+      {
+        h: "$6,000 Of Value. You Pay $0",
+        p: "Not a made-up number. It's what the seven things above cost one at a time.",
+      },
+      {
+        h: "Get Paid While You Get Good",
+        p: "Nobody gets great before their first seat. You get good on live calls, with somebody reviewing them.",
+      },
+      {
+        h: "No Ceiling",
+        p: "No quota. No territory. What you close is what you're paid.",
+      },
+    ],
+    faqSwap: {
+      q: "What's the catch?",
+      a: "That's it. There isn't a second one. We get paid when you're using our software on a real seat, so putting you on one fast is the whole business.",
+    },
+  },
+};
 
 function OptInInner() {
   const router = useRouter();
@@ -68,8 +154,8 @@ function OptInInner() {
   useEffect(() => {
     const forced = params.get("v");
     if (forced === "a" || forced === "b") {
-      setVariant(forced);
       localStorage.setItem("start-variant", forced);
+      setVariant(forced);
       return;
     }
     const stored = localStorage.getItem("start-variant");
@@ -82,18 +168,16 @@ function OptInInner() {
     setVariant(coin);
   }, [params]);
 
-  const [firstName, setFirstName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const openModal = useCallback(() => setModalOpen(true), []);
+  const closeModal = useCallback(() => setModalOpen(false), []);
 
-  // Social-proof widgets (public/social-proof.js + public/counter.js) —
-  // identical on both variants: card-style toasts bottom-left + live counter
-  // above the form. Wired to REAL endpoints that return nothing until enough
-  // genuine leads exist (the widgets then stay hidden — they never invent
-  // data). ?sp=demo forces the scripts' built-in sample data for previewing;
-  // that flag is for us, never for ad traffic.
+  // Toasts + sponsored-seats counter, identical on both variants. Wired to
+  // REAL endpoints that return nothing until enough genuine leads exist (the
+  // widgets then stay hidden — they never invent data). ?sp=demo forces the
+  // scripts' built-in sample numbers for previewing; for us, never for ads.
   useEffect(() => {
     if (!variant) return;
     const w = window as unknown as Record<string, unknown>;
@@ -110,58 +194,53 @@ function OptInInner() {
       interval: 8000,
       duration: 5500,
     };
-    w.SP_COUNTER = demo
-      ? { mode: "tick", start: 259, anchor: "form", label: "closers claimed free access" }
-      : { mode: "total", endpoint: `${CONVEX_SITE_URL}/b2c/lead-count`, anchor: "form", label: "closers claimed free access" };
-    const tags = ["/social-proof.js", "/counter.js"].map((src) => {
+    w.SP_URGENCY = {
+      deadline: COHORT_DEADLINE,
+      cap: SEAT_CAP,
+      ...(demo ? { claimed: 259 } : { endpoint: `${CONVEX_SITE_URL}/b2c/lead-count` }),
+    };
+    const tags = ["/social-proof.js", "/urgency.js"].map((src) => {
       const t = document.createElement("script");
       t.src = src;
       document.body.appendChild(t);
       return t;
     });
     return () => {
-      // Client-side navigation must not leave toasts running on other pages.
+      // Client-side navigation must not leave widgets running on other pages.
       (w.SequenceSocialProof as { stop?: () => void } | undefined)?.stop?.();
+      (w.SequenceUrgency as { stop?: () => void } | undefined)?.stop?.();
       document.querySelectorAll(".sp-host, .spc").forEach((el) => el.remove());
       tags.forEach((t) => t.remove());
       w.__spLoaded = false;
     };
   }, [variant, params]);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(fields: { firstName: string; email: string; phone: string }) {
     setError(null);
-    if (!firstName.trim() || !email.trim() || !phone.trim()) {
-      setError("All three fields — that's how we call you.");
-      return;
-    }
     setBusy(true);
     try {
       const res = await fetch(`${CONVEX_SITE_URL}/b2c/leads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          firstName: firstName.trim(),
+          firstName: fields.firstName,
           lastName: "",
-          email: email.trim(),
-          phone: phone.trim(),
+          email: fields.email,
+          phone: fields.phone,
           source: `start-funnel-${variant ?? "a"}`,
         }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(
-          (body as { error?: string }).error || "That didn't save — try again.",
-        );
+        throw new Error((body as { error?: string }).error || "That didn't save — try again.");
       }
-      // Ad-platform conversion signal — the funnel is the pixel's Lead
-      // source now that the landing page no longer captures leads.
+      // Ad-platform conversion signal — the funnel is the pixel's Lead source.
       void trackMetaEvent(
         "Lead",
         { product: "b2c", contentIds: [`start-funnel-${variant ?? "a"}`] },
-        { email: email.trim(), phone: phone.trim(), firstName: firstName.trim() },
+        { email: fields.email, phone: fields.phone, firstName: fields.firstName },
       );
-      router.push(`/start/thanks?p=${encodeURIComponent(phone.trim())}`);
+      router.push(`/start/thanks?p=${encodeURIComponent(fields.phone)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "That didn't save — try again.");
       setBusy(false);
@@ -176,118 +255,7 @@ function OptInInner() {
     );
   }
 
-  const cta = variant === "a" ? "Yes, get me access" : "Get all of it free";
-
-  const formCard = (
-    <div
-      className="rounded-[20px] border bg-white"
-      style={{
-        maxWidth: 450,
-        margin: "0 auto",
-        boxShadow: "0 22px 58px rgba(9,9,11,.13)",
-        borderColor: "#d4d4d8",
-        padding: 26,
-      }}
-    >
-      <form onSubmit={submit} className="grid gap-2.5">
-        <input
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          placeholder="First name"
-          className="w-full rounded-[10px] border border-zinc-300 px-4 py-3.5 text-[15px] outline-none focus:border-zinc-900"
-        />
-        <input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          type="email"
-          placeholder="Email"
-          className="w-full rounded-[10px] border border-zinc-300 px-4 py-3.5 text-[15px] outline-none focus:border-zinc-900"
-        />
-        <input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          type="tel"
-          placeholder="Mobile number"
-          className="w-full rounded-[10px] border border-zinc-300 px-4 py-3.5 text-[15px] outline-none focus:border-zinc-900"
-        />
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-[10px] bg-zinc-900 px-4 text-white transition-colors hover:bg-zinc-800 disabled:opacity-50"
-          style={{ paddingTop: 17, paddingBottom: 17, fontSize: 16, fontWeight: 600, letterSpacing: "-.01em" }}
-        >
-          {busy ? "One second…" : cta}
-        </button>
-      </form>
-      {error && <p className="mt-2 text-center text-sm text-rose-600">{error}</p>}
-      <p
-        className="mt-3 text-center text-xs leading-relaxed text-zinc-400"
-        style={{ textWrap: "pretty", maxWidth: "36ch", marginLeft: "auto", marginRight: "auto" }}
-      >
-        A closer from our team calls you within minutes. Keep your phone on you.
-      </p>
-    </div>
-  );
-
-  const valueStack = (title: string) => (
-    <>
-      <p className="kick">{title}</p>
-      <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        {STACK_ROWS.map(([label, price]) => (
-          <div
-            key={label}
-            style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "11px 0", borderBottom: "1px solid #e4e4e7" }}
-          >
-            <span className="text-sm">{label}</span>
-            <span className="text-sm" style={{ color: "#71717a", textDecoration: "line-through", whiteSpace: "nowrap" }}>
-              {price}
-            </span>
-          </div>
-        ))}
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "14px 0", borderBottom: "2px solid #18181b" }}>
-          <span className="text-sm font-semibold">What it costs elsewhere</span>
-          <span className="text-sm font-semibold" style={{ textDecoration: "line-through" }}>$8,000</span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "16px 0" }}>
-          <span style={{ fontSize: 17, fontWeight: 600 }}>Your price</span>
-          <span style={{ fontSize: 17, fontWeight: 600 }} className="text-emerald-600">$0</span>
-        </div>
-      </div>
-    </>
-  );
-
-  const bodySection = (kick: string, paras: string[], centerLone = false) => (
-    <>
-      <p className="kick">{kick}</p>
-      <div style={{ display: "grid", gap: 15, maxWidth: "64ch", margin: "0 auto" }}>
-        {paras.map((p, i) => (
-          <p
-            key={i}
-            className="body"
-            style={{
-              ...(i === paras.length - 1 && paras.length > 1 ? { color: "#18181b", fontWeight: 500 } : {}),
-              ...(centerLone ? { textAlign: "center" } : {}),
-            }}
-          >
-            {p}
-          </p>
-        ))}
-      </div>
-    </>
-  );
-
-  const guarantee = (
-    <div style={{ maxWidth: 620, margin: "0 auto", border: "2px solid #18181b", borderRadius: 18, padding: 24, background: "#fafafa" }}>
-      <p className="kick" style={{ color: "#18181b", marginBottom: 9 }}>The guarantee</p>
-      <p style={{ fontSize: 16.5, lineHeight: 1.55, fontWeight: 500, margin: 0, textWrap: "pretty", textAlign: "center" }}>
-        Do the six weeks, take the call reviews, go after the roles on the board. If you
-        haven&apos;t landed a commission seat, we refund every month you paid for the
-        software. You keep the training either way.
-      </p>
-    </div>
-  );
-
-  const divider = <div className="divider" />;
+  const c = VARIANTS[variant];
 
   return (
     <main className="relative mx-auto max-w-[1120px] px-6 py-12 lg:py-16" style={{ paddingTop: 34 }}>
@@ -295,132 +263,58 @@ function OptInInner() {
       <style dangerouslySetInnerHTML={{ __html: CC_CSS }} />
 
       <div className="cc">
-        <div style={{ textAlign: "center" }}>
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3.5 py-1.5 text-xs font-medium text-zinc-700">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-50" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            </span>
-            {variant === "a" ? "Free training · Live openings" : "Free training · Built for working reps"}
-          </div>
-        </div>
+        <h1 className="mj-h1">{c.headline}</h1>
+        <p className="lede">{c.lede}</p>
 
         {/* ══ REPLACE: VSL embed goes here when the video exists ══ */}
         <div
           className="flex aspect-video flex-col items-center justify-center gap-2.5 rounded-xl bg-zinc-950 text-white"
-          style={{ maxWidth: 660, margin: "0 auto 26px", boxShadow: "0 20px 56px rgba(9,9,11,.20)" }}
+          style={{ maxWidth: 660, margin: "0 auto 10px", boxShadow: "0 20px 56px rgba(9,9,11,.20)" }}
         >
           <span className="flex h-13 w-13 items-center justify-center rounded-full bg-white p-3.5">
             <Play className="h-5 w-5 fill-zinc-950 text-zinc-950" />
           </span>
-          <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-            {variant === "a"
-              ? "The whole thing explained · 90 seconds"
-              : "The four grand vs twenty grand breakdown · 90 seconds"}
-          </span>
+          <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">{c.videoLabel}</span>
         </div>
-
-        <h1 className="text-[clamp(32px,4.6vw,54px)] font-semibold leading-[0.98] tracking-[-0.04em] text-zinc-950">
-          {variant === "a" ? (
-            <>
-              How to land a{" "}
-              <span className="num"><span className="font-serif italic font-normal">$10–20k a month</span></span>{" "}
-              remote closing role — without buying a course, spamming résumés, or needing
-              sales experience<span className="text-zinc-300">.</span>
-            </>
-          ) : (
-            <>
-              You’re already good at selling. You’re just selling{" "}
-              <span className="num"><span className="font-serif italic font-normal">the wrong thing</span></span>{" "}
-              for the wrong money<span className="text-zinc-300">.</span>
-            </>
-          )}
-        </h1>
-
-        <p className="lede">
-          {variant === "a"
-            ? "This isn't a better way to job hunt. It's a different door. The seats that get filled by referral before anyone posts them, and an intro to the person doing the filling."
-            : "Four grand a month and twenty grand a month take the same amount of work. The rep making twenty isn't better than you. He's on a bigger offer with booked calls and no territory. That's the whole difference."}
+        <p className="body" style={{ textAlign: "center", fontSize: 14, color: "#a1a1aa" }}>
+          Watch this first. It&rsquo;s short and it explains everything.
         </p>
 
-        <div className="outrow">
-          {(variant === "a"
-            ? [
-                ["Live commission roles", "We open the door. You still have to close it."],
-                ["$10–20k months", "What the seats on our board pay"],
-                ["$0 for the training", "You cover the software. Nothing else."],
-              ]
-            : [
-                ["Same skill, better offer", "You keep selling. The number changes."],
-                ["$3–4k → $20k", "The ceiling we train toward"],
-                ["$0 for the training", "You cover the software. Nothing else."],
-              ]
-          ).map(([b, s]) => (
-            <div key={b} className="out">
-              <b>{b}</b>
-              <span>{s}</span>
-            </div>
-          ))}
+        <div className="sect" style={{ marginTop: 26 }}>
+          <SeatsLine />
+          <div style={{ height: 11 }} />
+          <Cta label={c.cta} onOpen={openModal} scar />
         </div>
 
-        {formCard}
-
-        {divider}
-
-        {variant === "a" ? (
-          <>
-            {valueStack("Everything you get today")}
-            {divider}
-            {bodySection("Why the old way stopped working", [
-              "Two years ago you could learn to close, put it on a CV, and get hired. That door's shut. There are more trained closers now than posted roles, so hiring managers stopped posting and started asking people they already trust.",
-              "Which means skill isn't what's standing between you and the money any more. The intro is. And no course can hand you one, because none of them are in the room where the hiring happens.",
-              "We're in that room. That's the whole reason this works.",
-            ])}
-            {divider}
-            <p className="kick">Who this is for</p>
-            <div className="checks">
-              {[
-                "You've sold something before — door to door, insurance, retail, phones — and you want the commission without the driving",
-                "You're already closing and you want your numbers to come with you to a better offer",
-                "You've never sold professionally, but you'll get on the phone and do the reps",
-              ].map((line) => (
-                <div key={line} className="flex items-start gap-2.5">
-                  <Check className="h-4 w-4 shrink-0 text-emerald-600" strokeWidth={3} />
-                  <p>{line}</p>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            {bodySection("Let's say the quiet part out loud", [
-              "You're driving forty minutes each way to sit in a room and dial a list somebody else bought. The quota went up again in January and nobody explained why. The good leads go to the guy who's been there six years, and you get the aged ones nobody wanted.",
-              "Meanwhile the job market is the worst it's been in a decade for anything that isn't already senior. Every posting has four hundred applicants. Every recruiter ghosts. So you stay, because staying pays four grand and leaving pays nothing.",
-              "Here's what nobody tells you: you're not underpaid because you're bad at this. You're underpaid because you're pointing a real skill at a product with a small commission and a territory that caps you. Same calls, same hours, same you — different offer, and the number changes completely.",
-            ])}
-            {divider}
-            {valueStack("Everything you get")}
-            {divider}
-            {bodySection("What's the catch", [
-              "You pay for the software it all runs on, which costs about what your phone does. And you have to actually do the six weeks. Those are the only two things we ask, and you're hearing both now instead of on the call.",
-            ], true)}
-          </>
-        )}
-
-        {divider}
-        {guarantee}
-
-        {/* Bottom CTA — one form per page is enough; this scrolls back to it */}
-        <div className="sect" style={{ maxWidth: 450, margin: "46px auto 0" }}>
-          <button
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="w-full rounded-[10px] bg-zinc-900 px-4 text-white transition-colors hover:bg-zinc-800"
-            style={{ paddingTop: 17, paddingBottom: 17, fontSize: 16, fontWeight: 600, letterSpacing: "-.01em" }}
-          >
-            Get Instant Access
-          </button>
+        <div className="divider" />
+        <ValueStack />
+        <div className="sect">
+          <Cta label={c.cta} onOpen={openModal} scar />
         </div>
+
+        <div className="divider" />
+        <WhyTiles kick={c.whyKick} tiles={c.whyTiles.concat(SHARED_TILES)} />
+        <div className="sect">
+          <Cta label={c.cta} onOpen={openModal} />
+        </div>
+
+        <div className="divider" />
+        <Steps />
+
+        <div className="divider" />
+        <Guarantee />
+
+        <div className="divider" />
+        <FaqList swap={c.faqSwap} />
+
+        <div className="sect">
+          <Cta label={c.cta} onOpen={openModal} scar />
+        </div>
+
+        <LegalFooter />
       </div>
+
+      <LeadModal open={modalOpen} onClose={closeModal} busy={busy} error={error} onSubmit={submit} />
     </main>
   );
 }
