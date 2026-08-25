@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  SignInButton,
   SignedIn,
   SignedOut,
 } from "@clerk/nextjs";
@@ -275,7 +274,7 @@ export default function Home() {
                 href="/personal"
                 className="text-sm text-zinc-400 hover:text-zinc-900 transition-colors whitespace-nowrap"
               >
-                For Closers
+                Sequ3nce Personal
               </Link>
             </nav>
             <div className="flex items-center gap-3">
