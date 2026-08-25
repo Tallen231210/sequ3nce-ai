@@ -785,8 +785,8 @@ export function buildCallCompletedBlocks(
    * they hadn't got to it yet. At the old ninety seconds this would have
    * fired on nearly every call and meant nothing.
    */
-  flagMissingForm?: boolean
-) {
+  flagMissingForm?: boolean,
+  publicUrl?: string | null) {
   // Emoji based on outcome (⏳ = pending, closer hasn't submitted questionnaire yet)
   const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" :
                         outcome ? "❌" : "⏳";
@@ -796,9 +796,13 @@ export function buildCallCompletedBlocks(
                       outcome === "no_show" ? "No Show" :
                       outcome ? outcome : "Pending";
 
-  const dashboardUrl = callId
-    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://sequ3nce.ai/dashboard";
+  // The public watch page when one exists — team channels include setters,
+  // who can't open the manager dashboard.
+  const dashboardUrl =
+    publicUrl ??
+    (callId
+      ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+      : "https://sequ3nce.ai/dashboard");
 
   // Format duration nicely
   const durationText =
@@ -1337,6 +1341,19 @@ export const sendCallCompletedNotification = internalAction({
         (notifyTeam as { flagMissingPostCallForm?: boolean } | null)
           ?.flagMissingPostCallForm === true;
 
+      // Public watch-link so anyone in the channel — setters included — can
+      // open the call. Falls back to the dashboard when nothing recorded.
+      let publicUrl: string | null = null;
+      try {
+        const minted = await ctx.runMutation(
+          internal.sharedLinks.getOrCreateDigestShareLink,
+          { callId: args.callId },
+        );
+        publicUrl = minted?.url ?? null;
+      } catch (e) {
+        console.error(`[slack] share link mint failed for ${args.callId}`, e);
+      }
+
       const { blocks, text } = buildCallCompletedBlocks(
         closer.name,
         call.prospectName,
@@ -1346,7 +1363,8 @@ export const sendCallCompletedNotification = internalAction({
         call.cashCollected,
         call.contractValue,
         args.callId,
-        flagMissingForm
+        flagMissingForm,
+        publicUrl
       );
 
       // Send via unified notification system
@@ -1369,7 +1387,8 @@ export const sendCallCompletedNotification = internalAction({
           call.cashCollected,
           call.contractValue,
           args.callId,
-          flagMissingForm
+          flagMissingForm,
+          publicUrl
         );
 
         await ctx.runAction(internal.discord.sendDiscordNotification, {
