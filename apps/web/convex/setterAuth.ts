@@ -169,7 +169,7 @@ export const requestSetterCode = action({
       return {
         success: false,
         error:
-          "No setter account found for that email — ask your manager to add it on the roster.",
+          "That doesn't match the email your manager set up for you. Ask your manager which email they used, and sign in with that one.",
       };
     }
     if (result.reason === "cooldown") {
