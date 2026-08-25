@@ -203,8 +203,8 @@ export default function Home() {
       {/* ─── B2C Banner ─── */}
       <div className="fixed top-0 left-0 right-0 z-[60] bg-zinc-950 text-zinc-400 h-9 flex items-center justify-center text-[13px]">
         <Link href="/personal" className="hover:text-white transition-colors">
-          <span className="hidden sm:inline">Individual closer? Try Sequ3nce Personal — your sales career, verified.</span>
-          <span className="sm:hidden">Closer? Try Sequ3nce Personal</span>
+          <span className="hidden sm:inline">Not on a company team? Sequ3nce Personal — your sales career, verified.</span>
+          <span className="sm:hidden">Solo closer? Sequ3nce Personal</span>
           <span className="text-white ml-1">&rarr;</span>
         </Link>
       </div>
@@ -280,7 +280,7 @@ export default function Home() {
             </nav>
             <div className="flex items-center gap-3">
               <SignedOut>
-                <SignInButton mode="modal">
+                <Link href="/login">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -288,7 +288,7 @@ export default function Home() {
                   >
                     Log in
                   </Button>
-                </SignInButton>
+                </Link>
                 <BookDemoButton>See if you qualify</BookDemoButton>
               </SignedOut>
               <SignedIn>
@@ -1425,11 +1425,9 @@ export default function Home() {
               <ul className="space-y-3 text-sm text-zinc-500">
                 <li>
                   <SignedOut>
-                    <SignInButton mode="modal">
-                      <button className="hover:text-zinc-900 transition-colors">
-                        Log in
-                      </button>
-                    </SignInButton>
+                    <Link href="/login" className="hover:text-zinc-900 transition-colors">
+                      Log in
+                    </Link>
                   </SignedOut>
                   <SignedIn>
                     <Link href="/dashboard" className="hover:text-zinc-900 transition-colors">
