@@ -82,17 +82,18 @@
     if (typeof C.cap !== "number" || C.cap <= 0) return;
     var left = Math.max(0, C.cap - claimed);
     var pct = Math.min(100, (claimed / C.cap) * 100);
-    // Page CTAs only ([data-open]) — never the submit button inside the modal.
-    document.querySelectorAll(".mj-cta[data-open]").forEach(function (btn) {
-      var el = document.createElement("div");
-      el.className = "u-seats";
-      el.setAttribute("aria-live", "polite");
-      el.innerHTML = '<span class="u-dot" aria-hidden="true"></span><div class="u-body">' +
-        '<div class="u-l1"><b>' + left + "</b> of " + C.cap + " sponsored seats left</div>" +
-        '<div class="u-track"><div class="u-fill' + (left <= C.cap * 0.15 ? " low" : "") + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
-        "</div>";
-      btn.parentNode.insertBefore(el, btn);
-    });
+    // The hero CTA only — one counter per page. ([data-open] excludes the
+    // modal's submit button.)
+    var btn = document.querySelector(".mj-cta[data-open]");
+    if (!btn) return;
+    var el = document.createElement("div");
+    el.className = "u-seats";
+    el.setAttribute("aria-live", "polite");
+    el.innerHTML = '<span class="u-dot" aria-hidden="true"></span><div class="u-body">' +
+      '<div class="u-l1"><b>' + left + "</b> of " + C.cap + " sponsored seats left</div>" +
+      '<div class="u-track"><div class="u-fill' + (left <= C.cap * 0.15 ? " low" : "") + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+      "</div>";
+    btn.parentNode.insertBefore(el, btn);
   }
 
   var styleTag = null;

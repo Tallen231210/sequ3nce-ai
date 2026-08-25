@@ -289,7 +289,7 @@ function OptInInner() {
         <div className="divider" />
         <ValueStack />
         <div className="sect">
-          <Cta label={c.cta} onOpen={openModal} scar />
+          <Cta label={c.cta} onOpen={openModal} />
         </div>
 
         <div className="divider" />
@@ -308,7 +308,7 @@ function OptInInner() {
         <FaqList swap={c.faqSwap} />
 
         <div className="sect">
-          <Cta label={c.cta} onOpen={openModal} scar />
+          <Cta label={c.cta} onOpen={openModal} />
         </div>
 
         <LegalFooter />
