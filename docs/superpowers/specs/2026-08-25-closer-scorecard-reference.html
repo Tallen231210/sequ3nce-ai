@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Closer Scorecard — CDPBC ledger</title>
+<style>
+  :root{
+    --paper:#F6F5F0; --bar:#DEE8D9; --ink:#1B1B18; --mute:#76746B;
+    --rule:#C6C3B6; --hard:#8C8A7D; --red:#A32A1F; --green:#2C6438;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);padding:26px 20px 40px}
+  .wrap{max-width:1200px;margin:0 auto}
+  h1{font:700 27px/1 var(--mono);margin:0;letter-spacing:-.02em}
+  h2{font:700 10px/1 var(--sans);letter-spacing:.18em;text-transform:uppercase;margin:0 0 12px}
+  .eyebrow{font:400 10px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+  header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:20px}
+  button.act{font:400 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;background:transparent;border:1px solid var(--hard);color:var(--ink);padding:7px 12px;cursor:pointer;border-radius:0}
+  button.act:hover{background:var(--bar)}
+  button.act:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+  p.lede{font:400 12px/1.6 var(--sans);color:var(--mute);margin:0 0 20px;max-width:720px}
+  .assume{display:flex;flex-wrap:wrap;gap:26px;border:1px solid var(--rule);padding:12px 16px;margin-bottom:24px;align-items:center}
+  .aitem{display:flex;align-items:center;gap:8px;font:400 11px/1.4 var(--sans);color:var(--mute)}
+  .fstage{display:flex;align-items:center;gap:10px;padding:3px 0}
+  .flabel{width:104px;font:400 10px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--mute);flex-shrink:0}
+  .ftrack{flex:1;min-width:40px;height:14px;position:relative}
+  .fghost{position:absolute;inset:0;border:1px dashed var(--hard);opacity:.55}
+  .ffill{position:absolute;top:2px;bottom:2px;left:0;background:var(--ink);transition:width .18s ease}
+  .fval{width:96px;text-align:right;font:700 13px/1 var(--mono);flex-shrink:0}
+  .fdelta{width:74px;flex-shrink:0}
+  .fgate{display:flex;align-items:center;gap:10px;padding:1px 0}
+  .fgate .g{flex:1;font:400 11px/1.3 var(--mono);color:var(--mute);border-left:1px solid var(--rule);padding-left:8px;margin-left:2px}
+  .scroll{overflow-x:auto;margin-bottom:24px}
+  table{border-collapse:collapse;width:100%}
+  #main{min-width:1240px}
+  #tiers{min-width:640px}
+  th{font:400 9px/1.3 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--mute);padding:0 7px 6px;text-align:right;white-space:nowrap;vertical-align:bottom}
+  td{font:400 13px/1.5 var(--mono);padding:4px 7px;text-align:right;white-space:nowrap}
+  th.l,td.l{text-align:left;padding-left:10px}
+  .sep{border-left:1px solid var(--rule)}
+  tr.stripe{background:var(--bar)}
+  tr.tot td{font-weight:700;border-top:2px solid var(--ink)}
+  tr.tot td.l{font:700 12px/1.5 var(--sans);letter-spacing:.08em;text-transform:uppercase}
+  input.num{width:66px;background:transparent;border:none;border-bottom:1px dotted var(--hard);outline:none;text-align:right;font:400 13px/1.4 var(--mono);color:var(--ink);padding:1px 2px;border-radius:0}
+  input.num.b{font-weight:700}
+  input.name{background:transparent;border:none;outline:none;font:400 13px/1.5 var(--mono);color:var(--ink);width:96px;padding:0}
+  .rm{background:transparent;border:none;color:var(--mute);cursor:pointer;font:400 14px/1 var(--mono);padding:2px}
+  .drivers{border:2px solid var(--ink);padding:16px 18px;margin-bottom:24px}
+  .dhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .dnote{font:400 11px/1.5 var(--sans);color:var(--mute)}
+  .drow{display:flex;flex-wrap:wrap;gap:22px}
+  .driver{flex:1 1 165px;min-width:155px}
+  .dlabel{font:400 9px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+  .dsub{margin-top:5px;font:400 11px/1.4 var(--mono);color:var(--mute)}
+  .diag{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  .dcard{flex:1 1 260px;min-width:250px;border:1px solid var(--rule);padding:13px 15px}
+  .dname{font:700 13px/1 var(--mono);margin-bottom:9px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .dtag{font:400 9px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;padding:3px 6px;border:1px solid var(--hard);color:var(--mute)}
+  .dline{font:400 12px/1.65 var(--sans)}
+  .dlever{font:700 12px/1.55 var(--sans);margin-top:7px}
+  .foot{font:400 11px/1.6 var(--sans);color:var(--mute);margin-top:6px;border-top:1px solid var(--rule);padding-top:12px}
+  .up{color:var(--green);font:700 11px/1 var(--mono);white-space:nowrap}
+  .down{color:var(--red);font:700 11px/1 var(--mono);white-space:nowrap}
+  .flat{color:var(--mute);font-size:11px}
+  .sect{border-top:1px solid var(--rule);padding-top:20px;margin-bottom:16px}
+  @media (prefers-reduced-motion: reduce){.ffill{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Weekly ledger · closers</div>
+      <h1>Closer Scorecard</h1>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="act" id="lock">Lock as baseline</button>
+      <button class="act" id="revert">Revert to baseline</button>
+      <button class="act" id="reset">Reset to sample</button>
+    </div>
+  </header>
+
+  <p class="lede"><strong>Sample data — overwrite with your own.</strong> Change any number and everything downstream recalculates at the current rates: booked calls → shows → closes → gross → collected. Nothing upstream ever moves. CDPBC is the keystone; every other column exists to tell you which lever moved it.</p>
+
+  <div class="assume">
+    <div class="aitem">Cost per booked call <input class="num" id="cpc" type="number" style="width:56px"></div>
+    <div class="aitem">Target CDPBC <input class="num" id="tgt" type="number" style="width:62px"></div>
+    <div class="aitem">Tier prices <input class="num" id="t1" type="number" style="width:62px"> <input class="num" id="t2" type="number" style="width:62px"> <input class="num" id="t3" type="number" style="width:66px"></div>
+  </div>
+
+  <div id="funnel" style="margin-bottom:24px"></div>
+
+  <div class="scroll">
+    <table id="main">
+      <thead>
+        <tr>
+          <th class="l">Closer</th>
+          <th>Booked</th><th>Live</th><th>Closes</th><th>Gross $</th><th>Collected $</th>
+          <th class="sep">FU bkd</th><th>FU shown</th>
+          <th class="sep">Show</th><th>Live close</th><th>Bkd close</th><th>AOV</th><th>Collect</th>
+          <th class="sep">CDPBC</th><th>ROAS</th><th>FU show</th>
+          <th class="sep">Delta $</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="drivers">
+    <div class="dhead">
+      <h2 style="margin:0">Team rate drivers</h2>
+      <div class="dnote">Set a rate — the funnel below it recalculates and every closer moves pro-rata.</div>
+    </div>
+    <div class="drow" id="drivers"></div>
+  </div>
+
+  <div class="sect">
+    <h2>What to work on — one lever per closer</h2>
+    <div class="diag" id="diag"></div>
+  </div>
+
+  <div class="sect">
+    <h2>Tier pitch mix</h2>
+    <div class="scroll">
+      <table id="tiers">
+        <thead>
+          <tr><th class="l">Closer</th><th id="h1"></th><th id="h2"></th><th id="h3"></th><th class="sep">Pitched</th><th>Avg tier pitched</th><th>AOV</th><th>Downsell gap</th></tr>
+        </thead>
+        <tbody id="tbody2"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="foot"><strong>Three things to keep straight.</strong> Booked-call close rate is the KPI — live close rate is diagnostic only, because a closer can flatter it by hiding behind no-shows. Show rate on <em>first</em> calls belongs to your setters and confirmation motion, not to the closer; the only show rate a closer owns is FU show, on calls they booked themselves. And rounding compounds down the chain, so a big scale-up lands a unit or two off a hand calc — directional, not penny-exact. Nothing saves; reload to start over.</p>
+</div>
+
+<script>
+"use strict";
+var FIELDS=["booked","live","closes","gross","collected"];
+var SEED=[
+  {id:1,name:"Closer 1",booked:60,live:36,closes:7,gross:74600,collected:61000,fub:14,fus:9,p1:8,p2:20,p3:8},
+  {id:2,name:"Closer 2",booked:58,live:30,closes:4,gross:33200,collected:24000,fub:12,fus:4,p1:18,p2:10,p3:2},
+  {id:3,name:"Closer 3",booked:55,live:35,closes:6,gross:58800,collected:52000,fub:11,fus:7,p1:6,p2:22,p3:7},
+  {id:4,name:"Closer 4",booked:52,live:24,closes:3,gross:20400,collected:13600,fub:9,fus:3,p1:14,p2:9,p3:1}
+];
+var clone=function(rs){return rs.map(function(r){return Object.assign({},r);});};
+var rows=clone(SEED), baseline=clone(SEED), nextId=5;
+var cpc=200, target=800, prices=[6800,9800,20000];
+
+function pct(n,d){return d>0?(n/d)*100:null;}
+function rat(n,d){return d>0?n/d:null;}
+function fp(v){return (v===null||!isFinite(v))?"—":v.toFixed(1)+"%";}
+function fx(v){return (v===null||!isFinite(v))?"—":v.toFixed(1)+"x";}
+function fn(v){return (v||0).toLocaleString();}
+function m0(v){return (v===null||!isFinite(v))?"—":"$"+Math.round(v).toLocaleString();}
+
+function ratesOf(r){var o=[];for(var i=0;i<4;i++){var a=+r[FIELDS[i]]||0,b=+r[FIELDS[i+1]]||0;o[i]=a>0?b/a:0;}return o;}
+function cascadeWith(r,idx,rates,val){
+  var o=Object.assign({},r);
+  o[FIELDS[idx]]=Math.max(0,Math.round(val));
+  for(var i=idx;i<4;i++){o[FIELDS[i+1]]=Math.round((+o[FIELDS[i]]||0)*rates[i]);}
+  return o;
+}
+function distribute(rs,field,newTotal){
+  var n=rs.length; if(!n) return rs;
+  var t=Math.max(0,Math.round(newTotal));
+  var cur=rs.reduce(function(a,r){return a+(+r[field]||0);},0);
+  var raw=cur>0?rs.map(function(r){return (+r[field]||0)*t/cur;}):rs.map(function(){return t/n;});
+  var out=raw.map(function(x){return Math.floor(x);});
+  var rem=t-out.reduce(function(a,b){return a+b;},0);
+  var ord=raw.map(function(x,i){return {i:i,f:x-Math.floor(x)};}).sort(function(a,b){return b.f-a.f;});
+  var k=0; while(rem>0){out[ord[k%n].i]+=1;rem-=1;k+=1;}
+  return rs.map(function(r,i){var o=Object.assign({},r);o[field]=out[i];return o;});
+}
+function teamSet(rs,idx,total){
+  var rates=rs.map(ratesOf);
+  return distribute(rs,FIELDS[idx],total).map(function(r,i){return cascadeWith(r,idx,rates[i],r[FIELDS[idx]]);});
+}
+function roll(rs){
+  var t=rs.reduce(function(a,r){return{
+    booked:a.booked+(+r.booked||0),live:a.live+(+r.live||0),closes:a.closes+(+r.closes||0),
+    gross:a.gross+(+r.gross||0),collected:a.collected+(+r.collected||0),
+    fub:a.fub+(+r.fub||0),fus:a.fus+(+r.fus||0)};},
+    {booked:0,live:0,closes:0,gross:0,collected:0,fub:0,fus:0});
+  t.show=pct(t.live,t.booked); t.lc=pct(t.closes,t.live); t.bc=pct(t.closes,t.booked);
+  t.aov=rat(t.gross,t.closes); t.coll=pct(t.collected,t.gross);
+  t.cdpbc=rat(t.collected,t.booked); t.gdpbc=rat(t.gross,t.booked);
+  t.roas=cpc>0?rat(t.collected,t.booked*cpc):null; t.fushow=pct(t.fus,t.fub);
+  return t;
+}
+function dHTML(now,was,unit,dp,inv){
+  if(now===null||was===null||!isFinite(now)||!isFinite(was))return"";
+  var d=now-was; if(Math.abs(d)<0.05)return '<span class="flat">—</span>';
+  var good=inv?d<0:d>0;
+  var txt=unit==="$"?("$"+Math.round(Math.abs(d)).toLocaleString()):(Math.abs(d).toFixed(dp)+unit);
+  return '<span class="'+(good?"up":"down")+'">'+(d>0?"▲":"▼")+" "+txt+"</span>";
+}
+
+var el={};
+function mkNum(w,bold,fn2){
+  var i=document.createElement("input");
+  i.type="number"; i.className="num"+(bold?" b":""); i.style.width=w+"px";
+  i.addEventListener("input",function(){fn2(i.value===""?0:Math.max(0,+i.value));});
+  return i;
+}
+function td(c){var t=document.createElement("td"); if(c)t.className=c; return t;}
+
+function buildMain(){
+  var tb=document.getElementById("tbody"); tb.innerHTML=""; el.rows={};
+  rows.forEach(function(r,ri){
+    var tr=document.createElement("tr"); if(ri%2===1)tr.className="stripe";
+    var c={inputs:[],out:[]};
+    var n=td("l"); var ni=document.createElement("input"); ni.className="name"; ni.value=r.name;
+    ni.addEventListener("input",function(){ var cur=rows.filter(function(x){return x.id===r.id;})[0]; if(cur)cur.name=ni.value; renderDiag(); });
+    n.appendChild(ni); tr.appendChild(n);
+    [["booked",56],["live",50],["closes",50],["gross",76],["collected",76]].forEach(function(f,fi){
+      var cell=td();
+      var inp=mkNum(f[1],false,function(v){
+        var idx=rows.map(function(x){return x.id;}).indexOf(r.id);
+        rows[idx]=cascadeWith(rows[idx],fi,ratesOf(rows[idx]),v); update(inp);
+      });
+      cell.appendChild(inp); tr.appendChild(cell); c.inputs.push(inp);
+    });
+    [["fub",48,"sep"],["fus",50,""]].forEach(function(f){
+      var cell=td(f[2]);
+      var inp=mkNum(f[1],false,function(v){
+        var cur=rows.filter(function(x){return x.id===r.id;})[0]; cur[f[0]]=v; update(inp);
+      });
+      cell.appendChild(inp); tr.appendChild(cell); c.inputs.push(inp);
+    });
+    ["sep","","","","","sep","","","sep"].forEach(function(cl){var cell=td(cl);tr.appendChild(cell);c.out.push(cell);});
+    var last=td(); var b=document.createElement("button"); b.className="rm"; b.textContent="×";
+    b.setAttribute("aria-label","Remove closer");
+    b.addEventListener("click",function(){rows=rows.filter(function(x){return x.id!==r.id;});buildMain();buildTiers();update();});
+    last.appendChild(b); tr.appendChild(last); tb.appendChild(tr);
+    el.rows[r.id]=c;
+  });
+
+  var ar=document.createElement("tr"); var ac=document.createElement("td"); ac.colSpan=18; ac.style.padding="6px 0 0 10px";
+  var ab=document.createElement("button"); ab.className="act"; ab.style.padding="4px 9px"; ab.style.fontSize="10px"; ab.style.borderStyle="dashed";
+  ab.textContent="+ Add closer";
+  ab.addEventListener("click",function(){
+    rows.push({id:nextId++,name:"New closer",booked:0,live:0,closes:0,gross:0,collected:0,fub:0,fus:0,p1:0,p2:0,p3:0});
+    buildMain();buildTiers();update();
+  });
+  ac.appendChild(ab); ar.appendChild(ac); tb.appendChild(ar);
+
+  var tr2=document.createElement("tr"); tr2.className="tot";
+  var tl=td("l"); tl.textContent="Team"; tr2.appendChild(tl);
+  el.teamIn=[];
+  [56,50,50,76,76].forEach(function(w,fi){
+    var cell=td(); var inp=mkNum(w,true,function(v){rows=teamSet(rows,fi,v);update(inp);});
+    cell.appendChild(inp); tr2.appendChild(cell); el.teamIn.push(inp);
+  });
+  el.teamOut=[];
+  ["sep","","sep","","","","","sep","","","sep"].forEach(function(cl){var cell=td(cl);tr2.appendChild(cell);el.teamOut.push(cell);});
+  tr2.appendChild(td()); tb.appendChild(tr2);
+}
+
+function buildTiers(){
+  var tb=document.getElementById("tbody2"); tb.innerHTML=""; el.tier={};
+  rows.forEach(function(r,ri){
+    var tr=document.createElement("tr"); if(ri%2===1)tr.className="stripe";
+    var n=td("l"); n.id="tn"+r.id; tr.appendChild(n);
+    var c={name:n,inputs:[],out:[]};
+    ["p1","p2","p3"].forEach(function(k){
+      var cell=td(); var inp=mkNum(48,false,function(v){
+        var cur=rows.filter(function(x){return x.id===r.id;})[0]; cur[k]=v; update(inp);
+      });
+      cell.appendChild(inp); tr.appendChild(cell); c.inputs.push(inp);
+    });
+    ["sep","","",""].forEach(function(cl){var cell=td(cl);tr.appendChild(cell);c.out.push(cell);});
+    tb.appendChild(tr); el.tier[r.id]=c;
+  });
+}
+
+function buildFunnel(){
+  var f=document.getElementById("funnel"); f.innerHTML=""; el.st=[]; el.gt=[];
+  var names=["Booked calls","Live calls","Closes","Gross written","Cash collected"];
+  var g=["show rate","live close rate","AOV","collection rate"];
+  names.forEach(function(nm,i){
+    var row=document.createElement("div"); row.className="fstage";
+    row.innerHTML='<div class="flabel">'+nm+'</div><div class="ftrack"><div class="fghost"></div><div class="ffill"></div></div><div class="fval"></div><div class="fdelta"></div>';
+    f.appendChild(row);
+    el.st.push({gh:row.querySelector(".fghost"),fi:row.querySelector(".ffill"),v:row.querySelector(".fval"),d:row.querySelector(".fdelta")});
+    if(i<4){
+      var gg=document.createElement("div"); gg.className="fgate";
+      gg.innerHTML='<div class="flabel"></div><div class="g"></div><div style="width:84px;flex-shrink:0"></div>';
+      f.appendChild(gg); el.gt.push({node:gg.querySelector(".g"),label:g[i]});
+    }
+  });
+}
+
+function buildDrivers(){
+  var d=document.getElementById("drivers"); d.innerHTML=""; el.dr=[];
+  [["Show rate","shows off booked","%"],["Live close rate","closes off shows","%"],["AOV","gross off closes","$"],["Collection rate","cash off gross","%"]]
+  .forEach(function(s,gap){
+    var box=document.createElement("div"); box.className="driver";
+    box.innerHTML='<div class="dlabel">'+s[0]+'</div>';
+    var wrap=document.createElement("span"); wrap.style.display="inline-flex"; wrap.style.alignItems="baseline"; wrap.style.gap="2px";
+    if(s[2]==="$"){var pre=document.createElement("span");pre.style.font="400 12px/1 var(--mono)";pre.style.color="var(--mute)";pre.textContent="$";wrap.appendChild(pre);}
+    var inp=document.createElement("input");
+    inp.type="number"; inp.step=s[2]==="$"?"100":"0.1"; inp.className="num b"; inp.style.width=s[2]==="$"?"72px":"58px";
+    inp.addEventListener("input",function(){
+      var p=parseFloat(inp.value); if(isNaN(p)||p<0)return;
+      var t=roll(rows); var parent=[t.booked,t.live,t.closes,t.gross][gap];
+      rows=teamSet(rows,gap+1, s[2]==="$" ? parent*p : parent*p/100);
+      update(inp);
+    });
+    wrap.appendChild(inp);
+    if(s[2]==="%"){var pc=document.createElement("span");pc.style.font="400 12px/1 var(--mono)";pc.style.color="var(--mute)";pc.textContent="%";wrap.appendChild(pc);}
+    box.appendChild(wrap);
+    var sub=document.createElement("div"); sub.className="dsub"; box.appendChild(sub);
+    d.appendChild(box); el.dr.push({input:inp,sub:sub,label:s[1],kind:s[2]});
+  });
+}
+
+/* ---- diagnosis: which single lever is worth the most for each closer ---- */
+function renderDiag(){
+  var box=document.getElementById("diag"); box.innerHTML="";
+  if(!rows.length)return;
+  var ms=rows.map(function(r){return roll([r]);});
+  var best={show:0,lc:0,aov:0,coll:0};
+  ms.forEach(function(m){
+    if(m.show!==null&&m.show>best.show)best.show=m.show;
+    if(m.lc!==null&&m.lc>best.lc)best.lc=m.lc;
+    if(m.aov!==null&&m.aov>best.aov)best.aov=m.aov;
+    if(m.coll!==null&&m.coll>best.coll)best.coll=m.coll;
+  });
+  rows.forEach(function(r,i){
+    var m=ms[i];
+    var s=(m.show||0)/100, l=(m.lc||0)/100, a=m.aov||0, c=(m.coll||0)/100;
+    var base=m.booked*s*l*a*c;
+    var opts=[
+      {k:"Show rate",cur:m.show,tgt:best.show,v:m.booked*(best.show/100)*l*a*c,f:fp,note:"confirmation motion / setter handoff"},
+      {k:"Live close rate",cur:m.lc,tgt:best.lc,v:m.booked*s*(best.lc/100)*a*c,f:fp,note:"discovery depth, not closing mechanics"},
+      {k:"AOV",cur:m.aov,tgt:best.aov,v:m.booked*s*l*best.aov*c,f:m0,note:"tier positioning / downselling"},
+      {k:"Collection rate",cur:m.coll,tgt:best.coll,v:m.booked*s*l*a*(best.coll/100),f:fp,note:"payment plans and PIF motion"}
+    ];
+    var pick=null;
+    opts.forEach(function(o){o.gain=o.v-base; if(o.gain>0.5&&(!pick||o.gain>pick.gain))pick=o;});
+    var delta=(target-(m.cdpbc||0))*m.booked;
+    var card=document.createElement("div"); card.className="dcard";
+    var tag = m.cdpbc>=target ? "at target" : (m.roas!==null&&m.roas>=4 ? "under target · ROAS holds" : "under target");
+    var html='<div class="dname"><span>'+(r.name||"—")+'</span><span class="dtag">'+tag+'</span></div>';
+    html+='<div class="dline">CDPBC '+m0(m.cdpbc)+' · ROAS '+fx(m.roas)+'</div>';
+    html+='<div class="dline">'+(delta>0?('Gap to target: <strong>'+m0(delta)+'</strong> left on the table this period'):'Above target — protect the calendar share')+'</div>';
+    if(pick){
+      html+='<div class="dlever">Work on: '+pick.k+' — '+pick.f(pick.cur)+' → '+pick.f(pick.tgt)+' (team best) = <span class="up">+'+m0(pick.gain)+'</span></div>';
+      html+='<div class="dline" style="color:var(--mute);font-size:11px">'+pick.note+'</div>';
+    } else {
+      html+='<div class="dlever">Team best on every lever. This is your control group — document what they do.</div>';
+    }
+    card.innerHTML=html; box.appendChild(card);
+  });
+}
+
+function setVal(i,v,skip){if(i!==skip&&document.activeElement!==i)i.value=v;}
+
+function update(skip){
+  var t=roll(rows), b=roll(baseline);
+
+  rows.forEach(function(r){
+    var c=el.rows[r.id]; if(!c)return;
+    ["booked","live","closes","gross","collected","fub","fus"].forEach(function(f,i){setVal(c.inputs[i],r[f],skip);});
+    var m=roll([r]); var bb=baseline.filter(function(x){return x.id===r.id;})[0]; var bm=bb?roll([bb]):null;
+    c.out[0].innerHTML=fp(m.show)+(bm?"<div>"+dHTML(m.show,bm.show,"pp",1,false)+"</div>":"");
+    c.out[1].innerHTML=fp(m.lc)+(bm?"<div>"+dHTML(m.lc,bm.lc,"pp",1,false)+"</div>":"");
+    c.out[2].innerHTML=fp(m.bc)+(bm?"<div>"+dHTML(m.bc,bm.bc,"pp",1,false)+"</div>":"");
+    c.out[3].innerHTML=m0(m.aov)+(bm?"<div>"+dHTML(m.aov,bm.aov,"$",0,false)+"</div>":"");
+    c.out[4].innerHTML=fp(m.coll)+(bm?"<div>"+dHTML(m.coll,bm.coll,"pp",1,false)+"</div>":"");
+    c.out[5].innerHTML='<span style="color:'+((m.cdpbc||0)>=target?"var(--green)":"var(--red)")+'">'+m0(m.cdpbc)+"</span>"+(bm?"<div>"+dHTML(m.cdpbc,bm.cdpbc,"$",0,false)+"</div>":"");
+    c.out[6].textContent=fx(m.roas);
+    c.out[7].innerHTML=fp(m.fushow)+(bm?"<div>"+dHTML(m.fushow,bm.fushow,"pp",1,false)+"</div>":"");
+    var dv=(target-(m.cdpbc||0))*m.booked;
+    c.out[8].innerHTML= dv>0 ? '<span class="down">'+m0(dv)+"</span>" : '<span class="up">'+m0(-dv)+" over</span>";
+  });
+
+  [t.booked,t.live,t.closes,t.gross,t.collected].forEach(function(v,i){setVal(el.teamIn[i],v,skip);});
+  el.teamOut[0].innerHTML=fn(t.fub); el.teamOut[1].innerHTML=fn(t.fus);
+  el.teamOut[2].innerHTML=fp(t.show)+"<div>"+dHTML(t.show,b.show,"pp",1,false)+"</div>";
+  el.teamOut[3].innerHTML=fp(t.lc)+"<div>"+dHTML(t.lc,b.lc,"pp",1,false)+"</div>";
+  el.teamOut[4].innerHTML=fp(t.bc)+"<div>"+dHTML(t.bc,b.bc,"pp",1,false)+"</div>";
+  el.teamOut[5].innerHTML=m0(t.aov)+"<div>"+dHTML(t.aov,b.aov,"$",0,false)+"</div>";
+  el.teamOut[6].innerHTML=fp(t.coll)+"<div>"+dHTML(t.coll,b.coll,"pp",1,false)+"</div>";
+  el.teamOut[7].innerHTML='<span style="color:'+((t.cdpbc||0)>=target?"var(--green)":"var(--red)")+'">'+m0(t.cdpbc)+"</span><div>"+dHTML(t.cdpbc,b.cdpbc,"$",0,false)+"</div>";
+  el.teamOut[8].innerHTML=fx(t.roas);
+  el.teamOut[9].innerHTML=fp(t.fushow)+"<div>"+dHTML(t.fushow,b.fushow,"pp",1,false)+"</div>";
+  var tdv=(target-(t.cdpbc||0))*t.booked;
+  el.teamOut[10].innerHTML= tdv>0 ? '<span class="down">'+m0(tdv)+"</span>" : '<span class="up">'+m0(-tdv)+" over</span>";
+
+  var sv=[t.booked,t.live,t.closes,t.gross,t.collected], bv=[b.booked,b.live,b.closes,b.gross,b.collected];
+  var mx=Math.max(1,t.booked,b.booked), gmx=Math.max(1,t.gross,b.gross);
+  el.st.forEach(function(s,i){
+    var scale=i<3?mx:gmx;
+    s.gh.style.width=Math.max(0.6,(bv[i]/scale)*100)+"%";
+    s.fi.style.width=Math.max(0.6,(sv[i]/scale)*100)+"%";
+    s.v.textContent= i<3 ? fn(sv[i]) : m0(sv[i]);
+    s.d.innerHTML= i<3 ? dHTML(sv[i],bv[i],"",0,false) : dHTML(sv[i],bv[i],"$",0,false);
+  });
+  var gv=[t.show,t.lc,t.aov,t.coll], gb=[b.show,b.lc,b.aov,b.coll];
+  el.gt.forEach(function(g,i){
+    var val=i===2?m0(gv[i]):fp(gv[i]);
+    var dd=i===2?dHTML(gv[i],gb[i],"$",0,false):dHTML(gv[i],gb[i],"pp",1,false);
+    g.node.innerHTML=g.label+" "+val+' <span style="margin-left:4px">'+dd+"</span>";
+  });
+
+  el.dr.forEach(function(d,i){
+    var v=gv[i];
+    if(document.activeElement!==d.input) d.input.value=(v===null||!isFinite(v))?"":(d.kind==="$"?Math.round(v):v.toFixed(1));
+    d.sub.innerHTML=d.label+" · "+(d.kind==="$"?dHTML(v,gb[i],"$",0,false):dHTML(v,gb[i],"pp",1,false));
+  });
+
+  document.getElementById("h1").textContent="@ "+m0(prices[0]);
+  document.getElementById("h2").textContent="@ "+m0(prices[1]);
+  document.getElementById("h3").textContent="@ "+m0(prices[2]);
+  rows.forEach(function(r){
+    var c=el.tier[r.id]; if(!c)return;
+    c.name.textContent=r.name;
+    ["p1","p2","p3"].forEach(function(k,i){setVal(c.inputs[i],r[k],skip);});
+    var n=(+r.p1||0)+(+r.p2||0)+(+r.p3||0);
+    var avg=n>0?((+r.p1||0)*prices[0]+(+r.p2||0)*prices[1]+(+r.p3||0)*prices[2])/n:null;
+    var m=roll([r]);
+    c.out[0].textContent=fn(n);
+    c.out[1].textContent=m0(avg);
+    c.out[2].textContent=m0(m.aov);
+    if(avg&&m.aov){
+      var gap=m.aov-avg;
+      c.out[3].innerHTML= gap<0 ? '<span class="down">'+m0(gap)+"</span>" : '<span class="up">+'+m0(gap)+"</span>";
+    } else c.out[3].textContent="—";
+  });
+
+  renderDiag();
+}
+
+document.getElementById("cpc").value=cpc;
+document.getElementById("tgt").value=target;
+document.getElementById("t1").value=prices[0];
+document.getElementById("t2").value=prices[1];
+document.getElementById("t3").value=prices[2];
+document.getElementById("cpc").addEventListener("input",function(e){cpc=Math.max(0,+e.target.value||0);update(e.target);});
+document.getElementById("tgt").addEventListener("input",function(e){target=Math.max(0,+e.target.value||0);update(e.target);});
+["t1","t2","t3"].forEach(function(id,i){
+  document.getElementById(id).addEventListener("input",function(e){prices[i]=Math.max(0,+e.target.value||0);update(e.target);});
+});
+document.getElementById("lock").addEventListener("click",function(){baseline=clone(rows);update();});
+document.getElementById("revert").addEventListener("click",function(){rows=clone(baseline);buildMain();buildTiers();update();});
+document.getElementById("reset").addEventListener("click",function(){rows=clone(SEED);baseline=clone(SEED);buildMain();buildTiers();update();});
+
+buildFunnel(); buildDrivers(); buildMain(); buildTiers(); update();
+</script>
+</body>
+</html>
