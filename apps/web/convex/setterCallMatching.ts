@@ -11,6 +11,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import {
   extractSetterToken,
   firstNameOf,
+  lastNameOf,
   matchToken,
   type RosterName,
 } from "./lib/setterTitleMatch";
@@ -24,7 +25,11 @@ async function activeRosterNames(ctx: any, teamId: Id<"teams">): Promise<RosterN
     .collect();
   return rows
     .filter((r: any) => r.active === true)
-    .map((r: any) => ({ rosterId: String(r._id), firstName: firstNameOf(r.name) }));
+    .map((r: any) => ({
+      rosterId: String(r._id),
+      firstName: firstNameOf(r.name),
+      lastName: lastNameOf(r.name),
+    }));
 }
 
 function teamHasFlag(team: Doc<"teams"> | null): boolean {
@@ -141,14 +146,14 @@ export const setterTitleMatchBench = internalQuery({
   args: {},
   handler: async () => {
     const roster: RosterName[] = [
-      { rosterId: "erten", firstName: "Erten" },
-      { rosterId: "ethan", firstName: "Ethan" },
-      { rosterId: "israel", firstName: "Israel" },
-      { rosterId: "marcus", firstName: "Marcus" },
-      { rosterId: "mo", firstName: "Mo" },
-      { rosterId: "noah", firstName: "Noah" },
-      { rosterId: "roane", firstName: "Roane" },
-      { rosterId: "sophie", firstName: "Sophie" },
+      { rosterId: "erten", firstName: "Erten", lastName: "Kasimogl" },
+      { rosterId: "ethan", firstName: "Ethan", lastName: "Russell" },
+      { rosterId: "israel", firstName: "Israel", lastName: "Yanez" },
+      { rosterId: "marcus", firstName: "Marcus", lastName: "Hallam" },
+      { rosterId: "mo", firstName: "Mo", lastName: "Mash" },
+      { rosterId: "noah", firstName: "Noah", lastName: "Vanderlinde" },
+      { rosterId: "roane", firstName: "Roane", lastName: "Hutchinson" },
+      { rosterId: "sophie", firstName: "Sophie", lastName: "Howell" },
     ];
     const cases: Array<{ title: string; expect: string[] | null }> = [
       { title: "(e) Tim and Karl", expect: ["erten", "ethan"] },
@@ -156,6 +161,9 @@ export const setterTitleMatchBench = internalQuery({
       { title: "(Mo)Paul X Karl", expect: ["mo"] },
       { title: "(M) Fabian and Joseph", expect: ["marcus", "mo"] },
       { title: "(IY) Ai Implementation Consult", expect: ["israel"] },
+      { title: "(ER) Prospect and Ethan", expect: ["erten", "ethan"] },
+      { title: "(er) lowercase variant", expect: ["erten", "ethan"] },
+      { title: "(MH) Marcus by initials", expect: ["marcus"] },
       { title: "(N) Ai Implementation: Kris/Gresham", expect: ["noah"] },
       { title: "( s ) spaced token", expect: ["sophie"] },
       { title: "Canceled: (e) X", expect: null },

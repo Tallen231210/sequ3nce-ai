@@ -28,15 +28,28 @@ export function stripSetterToken(title: string): string {
 export interface RosterName {
   rosterId: string;
   firstName: string;
+  /** Last word of the roster name; "" when the name is a single word. */
+  lastName: string;
 }
 
-/** rosterIds the token matches. Primary: token prefixes a first name.
- *  Fallback (overshoot): first letter matches. Empty when nothing does. */
+/** rosterIds the token matches. Two conventions coexist on E2's calendar
+ *  (Zion, 2026-08-24): a name prefix — "(Mo)" — and first+last initials —
+ *  "(ER)" is Ethan Russell, NOT Erten. Both are collected (union, not
+ *  either/or): "(er)" shows the call to Erten AND Ethan, and each
+ *  dismisses what isn't theirs. First-letter fallback only when neither
+ *  convention matches anything. */
 export function matchToken(token: string, roster: RosterName[]): string[] {
   const t = token.toLowerCase();
   if (!t) return [];
-  const prefix = roster.filter((r) => r.firstName.toLowerCase().startsWith(t));
-  if (prefix.length > 0) return prefix.map((r) => r.rosterId);
+  const hits = new Set<string>();
+  for (const r of roster) {
+    if (r.firstName.toLowerCase().startsWith(t)) hits.add(r.rosterId);
+    if (t.length === 2 && r.lastName) {
+      const initials = (r.firstName[0] + r.lastName[0]).toLowerCase();
+      if (initials === t) hits.add(r.rosterId);
+    }
+  }
+  if (hits.size > 0) return Array.from(hits);
   return roster
     .filter((r) => r.firstName.toLowerCase().startsWith(t[0]))
     .map((r) => r.rosterId);
@@ -45,4 +58,10 @@ export function matchToken(token: string, roster: RosterName[]): string[] {
 /** First word of a roster name — "Ethan R" matches on "Ethan". */
 export function firstNameOf(name: string): string {
   return (name.trim().split(/\s+/)[0] ?? "").trim();
+}
+
+/** Last word, "" for single-word names — "Ethan R" → "R". */
+export function lastNameOf(name: string): string {
+  const words = name.trim().split(/\s+/);
+  return words.length > 1 ? words[words.length - 1] : "";
 }
