@@ -1252,6 +1252,10 @@ export const sendCallGoingLongNotification = internalAction({
 export const sendCallCompletedNotification = internalAction({
   args: {
     callId: v.id("calls"),
+    /** Wait-for-recording retries already taken. Threaded through every
+     *  reschedule — a hardcoded counter is how the immortal Recall retry
+     *  loop happened. */
+    waitAttempt: v.optional(v.number()),
     /**
      * Re-send a call that has already been notified.
      *
@@ -1295,7 +1299,34 @@ export const sendCallCompletedNotification = internalAction({
         duration?: number;
         cashCollected?: number;
         contractValue?: number;
+        meetingBotId?: string;
+        recordingUrl?: string;
+        externalShareUrl?: string;
       } | null;
+
+      // Bot calls get a public watch-link in the message — worth a short
+      // wait if Recall hasn't delivered the recording yet, bounded so a call
+      // that never recorded still gets announced (with the dashboard link).
+      const WAIT_EVERY_MS = 2 * 60 * 1000;
+      const WAIT_MAX_ATTEMPTS = 5;
+      const attempt = args.waitAttempt ?? 0;
+      if (
+        call &&
+        (call as any).meetingBotId &&
+        !call.recordingUrl &&
+        !call.externalShareUrl &&
+        attempt < WAIT_MAX_ATTEMPTS
+      ) {
+        await ctx.scheduler.runAfter(
+          WAIT_EVERY_MS,
+          internal.slack.sendCallCompletedNotification,
+          { callId: args.callId, waitAttempt: attempt + 1, force: args.force },
+        );
+        console.log(
+          `[Slack] Recording not fetched yet for ${args.callId} — waiting (attempt ${attempt + 1}/${WAIT_MAX_ATTEMPTS})`,
+        );
+        return { success: true, skipped: true, reason: "waiting for recording" };
+      }
 
       if (!call) {
         console.error("[Slack] Call not found for completed notification:", args.callId);
