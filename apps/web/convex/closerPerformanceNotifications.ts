@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { withSlackTestLabel, withDiscordTestLabel } from "./lib/testLabel";
 import { internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -350,6 +351,8 @@ export async function maybeSendForTeam(
   const monthKey = dayKey.slice(0, 7);
 
   const dedupKey = `${team._id}_closer_scorecard_${dayKey}${opts?.dedupSuffix ?? ""}`;
+
+  const isTest = opts?.dedupSuffix?.includes("_test") === true;
   const alreadySent = await ctx.runQuery(
     internal.setterDataNotifications.hasNotificationByDedupKey,
     { dedupKey },
@@ -385,7 +388,9 @@ export async function maybeSendForTeam(
       accessToken: team.slackAccessToken,
       channelId: slackChannelId,
       text: fallbackText,
-      blocks: buildSlackBlocks(data, yesterday),
+      blocks: isTest
+        ? withSlackTestLabel(buildSlackBlocks(data, yesterday))
+        : buildSlackBlocks(data, yesterday),
     });
     if (!result.ok) throw new Error(`Slack post failed: ${result.error}`);
   } else {

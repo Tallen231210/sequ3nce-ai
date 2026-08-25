@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { withSlackTestLabel, withDiscordTestLabel } from "./lib/testLabel";
 import { internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -165,6 +166,7 @@ export async function maybeSendEodNudgeForTeam(
     return { sent: false, reason: "no notification channel configured" };
   }
 
+  const isTest = opts?.dedupSuffix?.includes("_test") === true;
   const fallbackText = `📝 ${data.missing.length} ${data.missing.length === 1 ? "closer hasn't" : "closers haven't"} filed their end-of-day`;
 
   if (channel === "slack") {
@@ -176,7 +178,9 @@ export async function maybeSendEodNudgeForTeam(
       accessToken: team.slackAccessToken,
       channelId: slackChannelId,
       text: fallbackText,
-      blocks: buildSlackBlocks(data, reported),
+      blocks: isTest
+        ? withSlackTestLabel(buildSlackBlocks(data, reported))
+        : buildSlackBlocks(data, reported),
     });
     if (!result.ok) throw new Error(`Slack post failed: ${result.error}`);
   } else {
@@ -187,7 +191,9 @@ export async function maybeSendEodNudgeForTeam(
     const result = await postDiscordWebhook({
       webhookUrl,
       content: fallbackText,
-      embed: buildDiscordEmbed(data, reported),
+      embed: isTest
+        ? withDiscordTestLabel(buildDiscordEmbed(data, reported))
+        : buildDiscordEmbed(data, reported),
     });
     if (!result.ok) throw new Error(`Discord post failed: ${result.error}`);
   }

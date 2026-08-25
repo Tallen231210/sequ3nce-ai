@@ -1,4 +1,5 @@
 import { v, ConvexError } from "convex/values";
+import { withSlackTestLabel, withDiscordTestLabel } from "./lib/testLabel";
 import {
   internalAction,
   internalMutation,
@@ -477,6 +478,7 @@ async function maybeSendForTeam(
 
   const dayKey = `${local.year}-${pad2(local.month)}-${pad2(local.day)}`;
   const dedupKey = `${team._id}_managereod_${dayKey}${opts?.dedupSuffix ?? ""}`;
+  const isTest = opts?.dedupSuffix?.includes("_test") === true;
   const alreadySent = await ctx.runQuery(
     internal.setterDataNotifications.hasNotificationByDedupKey,
     { dedupKey },
@@ -523,7 +525,9 @@ async function maybeSendForTeam(
       accessToken: (team as any).slackAccessToken,
       channelId,
       text: fallback,
-      blocks: buildSlackBlocks(data, narrative, local, shareUrls),
+      blocks: isTest
+        ? withSlackTestLabel(buildSlackBlocks(data, narrative, local, shareUrls))
+        : buildSlackBlocks(data, narrative, local, shareUrls),
     });
     if (!result.ok) throw new Error(`Slack post failed: ${result.error}`);
   } else if (channel === "discord") {
@@ -532,7 +536,9 @@ async function maybeSendForTeam(
     const result = await postDiscordWebhook({
       webhookUrl,
       content: fallback,
-      embed: buildDiscordEmbed(data, narrative, local, shareUrls),
+      embed: isTest
+        ? withDiscordTestLabel(buildDiscordEmbed(data, narrative, local, shareUrls))
+        : buildDiscordEmbed(data, narrative, local, shareUrls),
     });
     if (!result.ok) throw new Error(`Discord post failed: ${result.error}`);
   } else {

@@ -1,4 +1,5 @@
 import { v, ConvexError } from "convex/values";
+import { withSlackTestLabel, withDiscordTestLabel } from "./lib/testLabel";
 import {
   internalAction,
   internalMutation,
@@ -367,7 +368,14 @@ async function maybeSend(
     }
   }
 
-  const delivered = await deliver(team, slackChannelOverride, fallback, blocks, embed);
+  const isTest = opts?.dedupSuffix?.includes("_test") === true;
+  const delivered = await deliver(
+    team,
+    slackChannelOverride,
+    fallback,
+    isTest ? withSlackTestLabel(blocks) : blocks,
+    isTest && embed ? withDiscordTestLabel(embed) : embed,
+  );
   if (!delivered.ok) return { sent: false, reason: delivered.reason };
 
   await ctx.runMutation(internal.setterDataNotifications.recordSentNotification, {
