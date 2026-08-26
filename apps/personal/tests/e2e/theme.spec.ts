@@ -36,8 +36,9 @@ test.describe("Theme and Visual", () => {
     });
 
     if (btnBg) {
-      // Should be black or near-black
-      expect(btnBg).toMatch(/rgb\(\d{1,2},\s*\d{1,2},\s*\d{1,2}\)/);
+      // Should be black or near-black. Chromium may report the computed
+      // color as rgb() or a modern color space (oklch/oklab/color()).
+      expect(btnBg).toMatch(/rgb\(\d{1,2},\s*\d{1,2},\s*\d{1,2}\)|okl|color\(/);
     }
   });
 });

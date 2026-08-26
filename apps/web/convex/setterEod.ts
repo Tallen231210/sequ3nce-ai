@@ -3,7 +3,9 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { generateShareToken } from "./lib/shareSecurity";
+import { internal } from "./_generated/api";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
+import { validateEodNumbers, buildEodDoc } from "./setterEodShared";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -19,7 +21,6 @@ import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 // follow-ups) but team-agnostic on purpose.
 // ============================================================================
 
-const FIELD_MAX = 2000; // dials in a day beyond this is a typo, not hustle
 
 // ---------------------------------------------------------------------------
 // Manager side
@@ -51,6 +52,9 @@ export const listRoster = query({
         _id: r._id,
         name: r.name,
         token: r.token,
+        email: r.email ?? null,
+        pod: r.pod ?? null,
+        tag: r.tag ?? null,
         active: r.active,
         filedToday: !!todayEntry,
       });
@@ -87,11 +91,67 @@ export const addSetter = mutation({
       active: true,
       createdAt: Date.now(),
     });
+    // A new setter's past calls should appear in their app without anyone
+    // asking — re-run title matching over the recent window. Idempotent, so
+    // the rare add-during-add collision just double-checks the same rows.
+    await ctx.scheduler.runAfter(0, internal.setterCallMatching.backfillMatches, {
+      teamId: user.teamId as Id<"teams">,
+      sinceDays: 30,
+    });
     return { rosterId: id };
   },
 });
 
 /** Deactivate rather than delete — their history stays attributable. */
+/** Edit a roster row's identity fields. Email is the setter-app login;
+ *  pod is the scorecard grouping. Manager-gated like every roster mutation. */
+export const updateSetter = mutation({
+  args: {
+    clerkId: v.string(),
+    rosterId: v.id("setterRoster"),
+    name: v.optional(v.string()),
+    email: v.optional(v.union(v.string(), v.null())),
+    pod: v.optional(v.union(v.string(), v.null())),
+    tag: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new ConvexError("Not signed in");
+    const row = await ctx.db.get(args.rosterId);
+    if (!row || String(row.teamId) !== String(user.teamId)) {
+      throw new ConvexError("That setter isn't on your roster");
+    }
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (!name) throw new ConvexError("Give the setter a name");
+      patch.name = name.slice(0, 80);
+    }
+    if (args.email !== undefined) {
+      if (args.email === null || args.email.trim() === "") {
+        patch.email = undefined;
+      } else {
+        const email = args.email.trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          throw new ConvexError("That doesn't look like an email address");
+        }
+        patch.email = email;
+      }
+    }
+    if (args.pod !== undefined) {
+      patch.pod = args.pod === null ? undefined : args.pod.trim().slice(0, 20) || undefined;
+    }
+    if (args.tag !== undefined) {
+      patch.tag =
+        args.tag === null
+          ? undefined
+          : args.tag.trim().toLowerCase().slice(0, 5) || undefined;
+    }
+    if (Object.keys(patch).length > 0) await ctx.db.patch(args.rosterId, patch);
+    return { ok: true };
+  },
+});
+
 export const setSetterActive = mutation({
   args: { clerkId: v.string(), rosterId: v.id("setterRoster"), active: v.boolean() },
   handler: async (ctx, args) => {
@@ -226,6 +286,9 @@ export const getEodFormContext = query({
             sets: existing.sets,
             newLeadsHit: existing.newLeadsHit,
             followUps: existing.followUps,
+            callsOnCalendar: existing.callsOnCalendar ?? null,
+            callsShown: existing.callsShown ?? null,
+            callsClosed: existing.callsClosed ?? null,
             note: existing.note ?? "",
           }
         : null,
@@ -241,6 +304,9 @@ export const submitEod = mutation({
     sets: v.number(),
     newLeadsHit: v.number(),
     followUps: v.number(),
+    callsOnCalendar: v.optional(v.number()),
+    callsShown: v.optional(v.number()),
+    callsClosed: v.optional(v.number()),
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -250,22 +316,7 @@ export const submitEod = mutation({
       .first();
     if (!row || !row.active) throw new ConvexError("This link is no longer active");
 
-    for (const [k, val] of Object.entries({
-      dials: args.dials,
-      "pick ups": args.pickUps,
-      sets: args.sets,
-      "new leads": args.newLeadsHit,
-      "follow ups": args.followUps,
-    })) {
-      if (!Number.isInteger(val) || val < 0 || val > FIELD_MAX) {
-        throw new ConvexError(`Check the ${k} number`);
-      }
-    }
-    // Sanity relationships, phrased as help rather than rejection.
-    if (args.pickUps > args.dials) {
-      throw new ConvexError("Pick ups can't be more than dials");
-    }
-    const note = args.note?.trim().slice(0, 500) || undefined;
+    validateEodNumbers(args);
 
     const team = await ctx.db.get(row.teamId);
     const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
@@ -280,18 +331,7 @@ export const submitEod = mutation({
       )
       .first();
 
-    const doc = {
-      teamId: row.teamId,
-      rosterId: row._id,
-      dayKey: today,
-      dials: args.dials,
-      pickUps: args.pickUps,
-      sets: args.sets,
-      newLeadsHit: args.newLeadsHit,
-      followUps: args.followUps,
-      note,
-      submittedAt: Date.now(),
-    };
+    const doc = buildEodDoc(row.teamId, row._id, today, args, args.note);
     if (existing) {
       await ctx.db.replace(existing._id, doc);
     } else {
@@ -305,6 +345,30 @@ export const submitEod = mutation({
  * Hard-delete a roster row and every entry it filed. Support tool — the UI
  * only deactivates, deliberately, so history survives normal management.
  */
+/** End-of-transition tool: rotate EVERY roster token on a team in one go,
+ *  killing all previously shared links. The app login is unaffected. */
+export const rotateAllTokens = internalMutation({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("setterRoster")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    let rotated = 0;
+    for (const r of rows) {
+      const buf = new Uint8Array(16);
+      crypto.getRandomValues(buf);
+      const token = Array.from(buf)
+        .map((b) => b.toString(36))
+        .join("")
+        .slice(0, 22);
+      await ctx.db.patch(r._id, { token });
+      rotated++;
+    }
+    return { rotated };
+  },
+});
+
 export const hardDeleteSetter = internalMutation({
   args: { rosterId: v.id("setterRoster") },
   handler: async (ctx, args) => {
@@ -313,7 +377,32 @@ export const hardDeleteSetter = internalMutation({
       .withIndex("by_roster_and_day", (q) => q.eq("rosterId", args.rosterId))
       .collect();
     for (const e of entries) await ctx.db.delete(e._id);
+    // The setter-app footprint goes with the row: matches, dismissals,
+    // sessions (kills any signed-in device instantly), pending codes.
+    const matches = await ctx.db
+      .query("setterCallMatches")
+      .withIndex("by_roster", (q) => q.eq("rosterId", args.rosterId))
+      .collect();
+    for (const m of matches) await ctx.db.delete(m._id);
+    const dismissals = await ctx.db
+      .query("setterCallDismissals")
+      .withIndex("by_roster_and_call", (q) => q.eq("rosterId", args.rosterId))
+      .collect();
+    for (const d of dismissals) await ctx.db.delete(d._id);
+    const sessions = await ctx.db
+      .query("setterSessions")
+      .withIndex("by_roster", (q) => q.eq("rosterId", args.rosterId))
+      .collect();
+    for (const sess of sessions) await ctx.db.delete(sess._id);
+    const row = await ctx.db.get(args.rosterId);
+    if (row?.email) {
+      const codes = await ctx.db
+        .query("setterMagicCodes")
+        .withIndex("by_email", (q) => q.eq("email", row.email!))
+        .collect();
+      for (const c of codes) await ctx.db.delete(c._id);
+    }
     await ctx.db.delete(args.rosterId);
-    return { entriesDeleted: entries.length };
+    return { entriesDeleted: entries.length, matchesDeleted: matches.length };
   },
 });

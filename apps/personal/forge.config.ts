@@ -116,6 +116,11 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       mainConfig,
+      // Port 3000 collides with a long-running local next-server; keep the
+      // dev renderer (and therefore the compiled localhost URL the E2E suite
+      // serves against) on 3100.
+      port: 3100,
+      loggerPort: 9500,
       // Allow all connections in dev mode - the default CSP is too restrictive
       devContentSecurityPolicy: "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * ws: wss: https:;",
       renderer: {
@@ -127,46 +132,6 @@ const config: ForgeConfig = {
             name: 'main_window',
             preload: {
               js: './src/preload.ts',
-            },
-          },
-          {
-            html: './src/ammo-tracker.html',
-            js: './src/ammo-tracker-renderer.ts',
-            name: 'ammo_tracker',
-            preload: {
-              js: './src/ammo-tracker-preload.ts',
-            },
-          },
-          {
-            html: './src/training.html',
-            js: './src/training-renderer.ts',
-            name: 'training',
-            preload: {
-              js: './src/training-preload.ts',
-            },
-          },
-          {
-            html: './src/roleplay.html',
-            js: './src/roleplay-renderer.ts',
-            name: 'roleplay',
-            preload: {
-              js: './src/roleplay-preload.ts',
-            },
-          },
-          {
-            html: './src/schedule.html',
-            js: './src/schedule-renderer.ts',
-            name: 'schedule',
-            preload: {
-              js: './src/schedule-preload.ts',
-            },
-          },
-          {
-            html: './src/post-call.html',
-            js: './src/post-call-renderer.ts',
-            name: 'post_call',
-            preload: {
-              js: './src/post-call-preload.ts',
             },
           },
           {

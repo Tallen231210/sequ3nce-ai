@@ -307,54 +307,72 @@ export async function completeCallWithOutcome(data: {
   }
 }
 
-// Get pending questionnaire info for a closer
-export async function getPendingQuestionnaireInfo(closerId: string): Promise<{
+// One call awaiting a human-confirmed disposition (AI-filled ones included —
+// the leaderboard only fires from a closer-confirmed form submit).
+export interface PendingDisposition {
+  callId: string;
+  prospectName: string | null;
+  startedAt: number;
+  duration: number;
+  aiFilled: boolean;
+}
+
+// Pending dispositions for a closer — feeds the Calls badge and the
+// "needs outcomes" banner. B2C-own endpoint; the legacy B2B
+// getPendingQuestionnaireCount hard-returns 0 and must not be used.
+export async function getPendingDispositions(closerId: string): Promise<{
   count: number;
-  firstCallId?: string;
-  firstProspectName?: string;
+  calls: PendingDisposition[];
 }> {
   try {
-    const response = await convexFetch(`${CONVEX_SITE_URL}/getPendingQuestionnaireCount`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ closerId }),
-    });
-
-    if (!response.ok) {
-      return { count: 0 };
-    }
-
+    const response = await convexFetch(
+      `${CONVEX_SITE_URL}/b2c/pending-dispositions?closerId=${encodeURIComponent(closerId)}`
+    );
+    if (!response.ok) return { count: 0, calls: [] };
     const data = await response.json();
-    return {
-      count: data.count || 0,
-      firstCallId: data.firstCallId || undefined,
-      firstProspectName: data.firstProspectName || undefined,
-    };
+    return { count: data.count || 0, calls: data.calls || [] };
   } catch (error) {
-    console.error("[Convex] Failed to get pending questionnaires:", error);
+    console.error("[Convex] Failed to get pending dispositions:", error);
     Sentry.captureException(error, {
-      tags: { feature: "getPendingQuestionnaireInfo", integration: "convex" },
+      tags: { feature: "getPendingDispositions", integration: "convex" },
     });
-    return { count: 0 };
+    return { count: 0, calls: [] };
   }
 }
 
-// Dismiss orphaned questionnaires (bots without linked call records)
-export async function dismissOrphanedQuestionnaires(closerId: string): Promise<{ dismissed: number }> {
+// Current disposition fields for one call — prefills the post-call form
+// with whatever the AI extraction already wrote.
+export interface CallDisposition {
+  outcome: string | null;
+  outcomeSource: string | null;
+  cashCollected: number | null;
+  contractValue: number | null;
+  pitchedValue: number | null;
+  primaryObjection: string | null;
+  objections: string[] | null;
+  objectionsOvercome: string | null;
+  leadQualityScore: number | null;
+  prospectWasDecisionMaker: string | null;
+  prospectName: string | null;
+  notes: string | null;
+}
+
+export async function getCallDisposition(
+  callId: string,
+  closerId: string
+): Promise<CallDisposition | null> {
   try {
-    const response = await convexFetch(`${CONVEX_SITE_URL}/dismissOrphanedQuestionnaires`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ closerId }),
-    });
-    if (!response.ok) return { dismissed: 0 };
+    const response = await convexFetch(
+      `${CONVEX_SITE_URL}/b2c/call-disposition?callId=${encodeURIComponent(callId)}&closerId=${encodeURIComponent(closerId)}`
+    );
+    if (!response.ok) return null;
     return await response.json();
   } catch (error) {
-    console.error("[Convex] Failed to dismiss orphaned questionnaires:", error);
+    console.error("[Convex] Failed to get call disposition:", error);
     Sentry.captureException(error, {
-      tags: { feature: "dismissOrphanedQuestionnaires", integration: "convex" },
+      tags: { feature: "getCallDisposition", integration: "convex" },
     });
-    return { dismissed: 0 };
+    return null;
   }
 }
 
@@ -3306,13 +3324,17 @@ export async function getOnlineUserIds(): Promise<string[]> {
 export async function getCommunityMembers(
   limit?: number,
   search?: string,
-  cursor?: number
+  cursor?: number,
+  // Founder-only surfaces (the notification recipient picker) pass true so
+  // flagged QA accounts stay addressable; member-facing surfaces never do.
+  includeTest?: boolean
 ): Promise<{ members: CommunityMember[]; nextCursor: number | null }> {
   try {
     const params = new URLSearchParams();
     if (limit) params.set("limit", String(limit));
     if (search) params.set("search", search);
     if (cursor) params.set("cursor", String(cursor));
+    if (includeTest) params.set("includeTest", "1");
     params.set("_", String(Date.now()));
 
     const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/community/members?${params}`);
@@ -4713,6 +4735,24 @@ export async function joinMoneyBells(
   } catch (error) {
     Sentry.captureException(error, {
       tags: { feature: "joinMoneyBells", integration: "convex" },
+    });
+    return { success: false, error: "Network error" };
+  }
+}
+
+export async function leaveMoneyBells(
+  userId: string
+): Promise<{ success: boolean; wasOptedIn?: boolean; error?: string }> {
+  try {
+    const res = await convexFetch(`${CONVEX_SITE_URL}/b2c/money-bells/opt-out`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    return await res.json();
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "leaveMoneyBells", integration: "convex" },
     });
     return { success: false, error: "Network error" };
   }

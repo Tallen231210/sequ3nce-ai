@@ -204,7 +204,7 @@ export function ChannelPostList({
         <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading posts...</div>
       ) : posts.length === 0 ? (
         <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-          No posts yet. Be the first to post in #{channel?.slug || 'this channel'}!
+          Founding cohort territory — nothing in #{channel?.slug || 'this channel'} yet. Claim the first post.
         </div>
       ) : (
         <>

@@ -16,8 +16,10 @@ import { registerStreamIpcHandlers } from './ipc-handlers';
 
 // Feature kill switch. Flipping this to false and shipping a patch release
 // instantly disables all Stream functionality. The UI check in MeetingBotHub
-// mirrors this so the button doesn't render either.
-export const STREAM_FEATURE_ENABLED = true;
+// (STREAM_UI_ENABLED) mirrors this so the button doesn't render either.
+// 2026-08-25: OFF — Churp covers dictation now; Stream is hidden, not
+// deleted. Flip both switches back to true to resurrect it.
+export const STREAM_FEATURE_ENABLED = false;
 
 let hotkeyService: HotkeyService | null = null;
 let initialized = false;

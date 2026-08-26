@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Setter Scorecard — weekly ledger</title>
+<style>
+  :root{
+    --paper:#F6F5F0; --bar:#DEE8D9; --ink:#1B1B18; --mute:#76746B;
+    --rule:#C6C3B6; --hard:#8C8A7D; --red:#A32A1F; --green:#2C6438;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);padding:26px 20px 40px}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font:700 27px/1 var(--mono);margin:0;letter-spacing:-.02em}
+  .eyebrow{font:400 10px/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+  header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:22px}
+  button.act{font:400 11px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;background:transparent;border:1px solid var(--hard);color:var(--ink);padding:7px 12px;cursor:pointer;border-radius:0}
+  button.act:hover{background:var(--bar)}
+  button.act:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+  p.lede{font:400 12px/1.6 var(--sans);color:var(--mute);margin:0 0 22px;max-width:700px}
+  /* funnel */
+  .fstage{display:flex;align-items:center;gap:10px;padding:3px 0}
+  .flabel{width:96px;font:400 10px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--mute);flex-shrink:0}
+  .ftrack{flex:1;min-width:40px;height:14px;position:relative}
+  .fghost{position:absolute;inset:0;border:1px dashed var(--hard);opacity:.55}
+  .ffill{position:absolute;top:2px;bottom:2px;left:0;background:var(--ink);transition:width .18s ease}
+  .fval{width:60px;text-align:right;font:700 13px/1 var(--mono);flex-shrink:0}
+  .fdelta{width:62px;flex-shrink:0}
+  .fgate{display:flex;align-items:center;gap:10px;padding:1px 0}
+  .fgate .g{flex:1;font:400 11px/1.3 var(--mono);color:var(--mute);border-left:1px solid var(--rule);padding-left:8px;margin-left:2px}
+  /* table */
+  .scroll{overflow-x:auto;margin-bottom:26px}
+  table{border-collapse:collapse;width:100%;min-width:940px}
+  th{font:400 9px/1.3 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--mute);padding:0 8px 6px;text-align:right;white-space:nowrap;vertical-align:bottom}
+  td{font:400 13px/1.5 var(--mono);padding:4px 8px;text-align:right;white-space:nowrap}
+  th.l,td.l{text-align:left;padding-left:10px}
+  .sep{border-left:1px solid var(--rule)}
+  tr.stripe{background:var(--bar)}
+  .podhead td{font:700 10px/1 var(--sans);letter-spacing:.18em;text-transform:uppercase;color:var(--mute);padding:18px 0 6px 10px;border-bottom:1px solid var(--rule);text-align:left}
+  tr.tot td{font-weight:700;border-top:1px solid var(--ink)}
+  tr.tot td.l{font:700 12px/1.5 var(--sans);letter-spacing:.08em;text-transform:uppercase}
+  tr.team td{border-top:2px solid var(--ink)}
+  input.num{width:66px;background:transparent;border:none;border-bottom:1px dotted var(--hard);outline:none;text-align:right;font:400 13px/1.4 var(--mono);color:var(--ink);padding:1px 2px;border-radius:0}
+  input.num.b{font-weight:700}
+  input.name{background:transparent;border:none;outline:none;font:400 13px/1.5 var(--mono);color:var(--ink);width:96px;padding:0}
+  .rm{background:transparent;border:none;color:var(--mute);cursor:pointer;font:400 14px/1 var(--mono);padding:2px}
+  /* panels */
+  .drivers{border:2px solid var(--ink);padding:16px 18px;margin-bottom:26px}
+  .dhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .dtitle{font:700 10px/1 var(--sans);letter-spacing:.18em;text-transform:uppercase}
+  .dnote{font:400 11px/1.5 var(--sans);color:var(--mute)}
+  .drow{display:flex;flex-wrap:wrap;gap:22px}
+  .driver{flex:1 1 170px;min-width:160px}
+  .dlabel{font:400 9px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:7px}
+  .dsub{margin-top:5px;font:400 11px/1.4 var(--mono);color:var(--mute)}
+  .cards{display:flex;flex-wrap:wrap;gap:14px;border-top:1px solid var(--rule);padding-top:20px}
+  .card{flex:1 1 250px;min-width:230px;border:1px solid var(--rule);padding:14px 16px}
+  .ctitle{font:400 9px/1 var(--sans);letter-spacing:.16em;text-transform:uppercase;color:var(--mute);margin-bottom:12px}
+  .crow{display:flex;justify-content:space-between;align-items:center;font:400 12px/1.9 var(--sans)}
+  .cstat{display:flex;justify-content:space-between;font:400 12px/1.9 var(--mono)}
+  .cdiv{border-top:1px solid var(--rule);margin-top:10px;padding-top:10px}
+  .card ul{margin:0;padding-left:15px;font:400 12px/1.75 var(--sans)}
+  .foot{font:400 11px/1.6 var(--sans);color:var(--mute);margin-top:20px;border-top:1px solid var(--rule);padding-top:12px}
+  .up{color:var(--green);font:700 11px/1 var(--mono);white-space:nowrap}
+  .down{color:var(--red);font:700 11px/1 var(--mono);white-space:nowrap}
+  .flat{color:var(--mute);font-size:11px}
+  .big{font:700 24px/1.2 var(--mono)}
+  .sm{font:400 11px/1.6 var(--mono);color:var(--mute)}
+  @media (prefers-reduced-motion: reduce){.ffill{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Weekly ledger · Sat–Sat</div>
+      <h1>Setter Scorecard</h1>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="act" id="lock">Lock as baseline</button>
+      <button class="act" id="revert">Revert to baseline</button>
+      <button class="act" id="reset">Reset to actuals</button>
+    </div>
+  </header>
+
+  <p class="lede">Change any number and everything downstream of it recalculates at the current conversion rates. Raise dials and connects, sets, calendar and shows all move with it. Raise a rate and the same chain fires from that point down. Nothing upstream ever moves — the rate directly above whatever you edited absorbs the change.</p>
+
+  <div id="funnel"></div>
+
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th class="l">Setter</th><th>Dials</th><th>Connects</th><th>Sets</th><th>On cal.</th><th>Showed</th>
+          <th class="sep">Pickup</th><th>Conn→set</th><th>Dials/set</th><th>Show</th><th>Dials/show</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="drivers">
+    <div class="dhead">
+      <div class="dtitle">Team rate drivers</div>
+      <div class="dnote">Set a rate — the funnel below it recalculates and every setter moves pro-rata.</div>
+    </div>
+    <div class="drow" id="drivers"></div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="ctitle">Capacity check</div>
+      <label class="crow">Working days in week <input class="num" id="days" type="number" style="width:44px"></label>
+      <label class="crow">Dials per lead (cadence) <input class="num" id="cad" type="number" style="width:44px"></label>
+      <div class="cdiv">
+        <div class="cstat"><span style="color:var(--mute)">Avg dials/setter/day</span><strong id="dpd"></strong></div>
+        <div class="cstat"><span style="color:var(--mute)">Contacts worked</span><strong id="cw"></strong></div>
+        <div class="cstat"><span style="color:var(--mute)">Contact→set</span><strong id="c2set"></strong></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ctitle">What the swing is worth</div>
+      <label class="crow">CDPBC (collected $ / booked call) <input class="num" id="cdpbc" type="number" style="width:64px"></label>
+      <div class="cdiv" id="revbox"></div>
+    </div>
+    <div class="card">
+      <div class="ctitle">Read the ledger</div>
+      <ul>
+        <li>Pickup is the constraint. Move it before you touch talk tracks.</li>
+        <li>Connect→set holds steady across pods — the setting skill is not the problem.</li>
+        <li>Dials/set is your true cost per set. Lower is better.</li>
+        <li>Show rate belongs to setters and confirmations, never to closers.</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="foot"><strong>Two things to keep straight.</strong> Rounding compounds down the chain, so a big scale-up can land a unit or two off a hand calc — directional, not penny-exact. And "on calendar" and "showed" come from a different cohort than this week's sets, so set→calendar is directional only until every set carries a date-set and a date-scheduled field in the CRM. Nothing here saves — reload the page and you're back to the actuals.</p>
+</div>
+
+<script>
+"use strict";
+var FIELDS = ["dials","connects","sets","booked","showed"];
+var SEED = [
+  {id:1,pod:"A",name:"Erten",dials:1216,connects:119,sets:34,booked:67,showed:42},
+  {id:2,pod:"A",name:"Mo",dials:859,connects:65,sets:13,booked:24,showed:4},
+  {id:3,pod:"B",name:"Ethan",dials:770,connects:35,sets:9,booked:7,showed:1},
+  {id:4,pod:"B",name:"Roane",dials:729,connects:19,sets:9,booked:9,showed:3},
+  {id:5,pod:"B",name:"Israel",dials:1076,connects:55,sets:15,booked:6,showed:2},
+  {id:6,pod:"B",name:"Noah",dials:322,connects:30,sets:1,booked:1,showed:1},
+  {id:7,pod:"B",name:"Marcus",dials:280,connects:18,sets:5,booked:6,showed:3}
+];
+var clone = function(rs){ return rs.map(function(r){ return Object.assign({}, r); }); };
+
+var rows = clone(SEED), baseline = clone(SEED), nextId = 8;
+var days = 5, cadence = 12, cdpbc = 0;
+
+/* ---- math ---- */
+function pct(n,d){ return d>0 ? (n/d)*100 : null; }
+function ratio(n,d){ return d>0 ? n/d : null; }
+function fp(v){ return (v===null||!isFinite(v)) ? "—" : v.toFixed(1)+"%"; }
+function fr(v){ return (v===null||!isFinite(v)) ? "—" : Math.round(v).toLocaleString(); }
+function fn(v){ return (v||0).toLocaleString(); }
+function money(v){ return "$"+Math.round(v).toLocaleString(); }
+
+function ratesOf(r){
+  var out=[];
+  for(var i=0;i<4;i++){
+    var a=+r[FIELDS[i]]||0, b=+r[FIELDS[i+1]]||0;
+    out[i] = a>0 ? b/a : 0;
+  }
+  return out;
+}
+function cascadeWith(r, idx, rates, val){
+  var o=Object.assign({},r);
+  o[FIELDS[idx]] = Math.max(0, Math.round(val));
+  for(var i=idx;i<4;i++){ o[FIELDS[i+1]] = Math.round((+o[FIELDS[i]]||0)*rates[i]); }
+  return o;
+}
+function distribute(rs, field, newTotal){
+  var n=rs.length; if(!n) return rs;
+  var target=Math.max(0,Math.round(newTotal));
+  var cur=rs.reduce(function(a,r){return a+(+r[field]||0);},0);
+  var raw = cur>0 ? rs.map(function(r){return (+r[field]||0)*target/cur;}) : rs.map(function(){return target/n;});
+  var out = raw.map(function(x){return Math.floor(x);});
+  var rem = target - out.reduce(function(a,b){return a+b;},0);
+  var order = raw.map(function(x,i){return {i:i,frac:x-Math.floor(x)};}).sort(function(a,b){return b.frac-a.frac;});
+  var k=0;
+  while(rem>0){ out[order[k%n].i]+=1; rem-=1; k+=1; }
+  return rs.map(function(r,i){ var o=Object.assign({},r); o[field]=out[i]; return o; });
+}
+function teamSetCount(rs, idx, newTotal){
+  var rates = rs.map(ratesOf);
+  return distribute(rs, FIELDS[idx], newTotal).map(function(r,i){
+    return cascadeWith(r, idx, rates[i], r[FIELDS[idx]]);
+  });
+}
+function rollup(rs){
+  var t = rs.reduce(function(a,r){ return {
+    dials:a.dials+(+r.dials||0), connects:a.connects+(+r.connects||0), sets:a.sets+(+r.sets||0),
+    booked:a.booked+(+r.booked||0), showed:a.showed+(+r.showed||0) };
+  },{dials:0,connects:0,sets:0,booked:0,showed:0});
+  t.pickup=pct(t.connects,t.dials); t.c2s=pct(t.sets,t.connects);
+  t.dps=ratio(t.dials,t.sets); t.show=pct(t.showed,t.booked); t.dpsh=ratio(t.dials,t.showed);
+  return t;
+}
+function deltaHTML(now, was, unit, dp, invert){
+  if(now===null||was===null||!isFinite(now)||!isFinite(was)) return "";
+  var d=now-was;
+  if(Math.abs(d)<0.05) return '<span class="flat">—</span>';
+  var good = invert ? d<0 : d>0;
+  return '<span class="'+(good?"up":"down")+'">'+(d>0?"▲":"▼")+" "+Math.abs(d).toFixed(dp)+unit+"</span>";
+}
+
+/* ---- build ---- */
+var el = {};
+function mkNum(w, bold, onInput){
+  var i=document.createElement("input");
+  i.type="number"; i.className="num"+(bold?" b":""); i.style.width=w+"px";
+  i.addEventListener("input", function(){
+    var v = i.value==="" ? 0 : Math.max(0, +i.value);
+    onInput(v);
+  });
+  return i;
+}
+function td(cls){ var t=document.createElement("td"); if(cls) t.className=cls; return t; }
+
+function buildTable(){
+  var tb=document.getElementById("tbody");
+  tb.innerHTML=""; el.rows={}; el.pods={};
+  var pods=[]; rows.forEach(function(r){ if(pods.indexOf(r.pod)<0) pods.push(r.pod); });
+  pods.sort();
+  pods.forEach(function(pod){
+    var hr=document.createElement("tr"); hr.className="podhead";
+    var hc=document.createElement("td"); hc.colSpan=12; hc.textContent="Pod "+pod; hr.appendChild(hc); tb.appendChild(hr);
+
+    rows.filter(function(r){return r.pod===pod;}).forEach(function(r,i){
+      var tr=document.createElement("tr"); if(i%2===1) tr.className="stripe";
+      var c={};
+      var n=td("l"); var ni=document.createElement("input"); ni.className="name"; ni.value=r.name;
+      ni.addEventListener("input", function(){ r.name=ni.value; });
+      n.appendChild(ni); tr.appendChild(n);
+      c.inputs=[];
+      [[ "dials",66],["connects",54],["sets",48],["booked",48],["showed",48]].forEach(function(f,fi){
+        var cell=td();
+        var inp=mkNum(f[1], false, function(v){
+          var idx=rows.indexOf(r);
+          rows[idx]=cascadeWith(r, fi, ratesOf(r), v);
+          r=rows[idx]; update(inp);
+        });
+        cell.appendChild(inp); tr.appendChild(cell); c.inputs.push(inp);
+      });
+      c.out=[];
+      ["sep","","","",""].forEach(function(cl){ var cell=td(cl); tr.appendChild(cell); c.out.push(cell); });
+      var last=td(); var b=document.createElement("button"); b.className="rm"; b.textContent="×";
+      b.setAttribute("aria-label","Remove "+r.name);
+      b.addEventListener("click", function(){ rows=rows.filter(function(x){return x.id!==r.id;}); buildTable(); update(); });
+      last.appendChild(b); tr.appendChild(last);
+      tb.appendChild(tr);
+      c.get=function(){ return rows.filter(function(x){return x.id===r.id;})[0]; };
+      el.rows[r.id]=c;
+    });
+
+    var tr2=document.createElement("tr"); tr2.className="tot";
+    var lc=td("l"); lc.textContent="Pod "+pod; tr2.appendChild(lc);
+    var pc=[]; for(var j=0;j<10;j++){ var cell=td(j===5?"sep":""); tr2.appendChild(cell); pc.push(cell); }
+    tr2.appendChild(td()); tb.appendChild(tr2);
+    el.pods[pod]=pc;
+
+    var tr3=document.createElement("tr"); var ac=document.createElement("td"); ac.colSpan=12;
+    ac.style.padding="6px 0 0 10px";
+    var ab=document.createElement("button"); ab.className="act";
+    ab.style.padding="4px 9px"; ab.style.fontSize="10px"; ab.style.borderStyle="dashed";
+    ab.textContent="+ Add setter to pod "+pod;
+    ab.addEventListener("click", function(){
+      rows.push({id:nextId++,pod:pod,name:"New setter",dials:0,connects:0,sets:0,booked:0,showed:0});
+      buildTable(); update();
+    });
+    ac.appendChild(ab); tr3.appendChild(ac); tb.appendChild(tr3);
+  });
+
+  var sp=document.createElement("tr"); var spc=document.createElement("td"); spc.colSpan=12; spc.style.height="14px";
+  sp.appendChild(spc); tb.appendChild(sp);
+
+  var trT=document.createElement("tr"); trT.className="tot team";
+  var tl=td("l"); tl.textContent="Team"; trT.appendChild(tl);
+  el.teamInputs=[];
+  [78,58,50,50,50].forEach(function(w,fi){
+    var cell=td();
+    var inp=mkNum(w, true, function(v){ rows=teamSetCount(rows, fi, v); update(inp); });
+    cell.appendChild(inp); trT.appendChild(cell); el.teamInputs.push(inp);
+  });
+  el.teamOut=[];
+  ["sep","","","",""].forEach(function(cl){ var cell=td(cl); trT.appendChild(cell); el.teamOut.push(cell); });
+  trT.appendChild(td());
+  document.getElementById("tbody").appendChild(trT);
+}
+
+function buildFunnel(){
+  var f=document.getElementById("funnel"); f.innerHTML=""; el.stages=[]; el.gates=[];
+  var names=["Dials","Connects","Sets","On calendar","Showed"];
+  var gnames=["pickup","connect→set","set→calendar","show"];
+  names.forEach(function(nm,i){
+    var row=document.createElement("div"); row.className="fstage";
+    row.innerHTML='<div class="flabel">'+nm+'</div><div class="ftrack"><div class="fghost"></div><div class="ffill"></div></div><div class="fval"></div><div class="fdelta"></div>';
+    f.appendChild(row);
+    el.stages.push({ghost:row.querySelector(".fghost"),fill:row.querySelector(".ffill"),val:row.querySelector(".fval"),delta:row.querySelector(".fdelta")});
+    if(i<4){
+      var g=document.createElement("div"); g.className="fgate";
+      g.innerHTML='<div class="flabel"></div><div class="g"></div><div style="width:122px;flex-shrink:0"></div>';
+      f.appendChild(g);
+      el.gates.push({node:g.querySelector(".g"),label:gnames[i]});
+    }
+  });
+}
+
+function buildDrivers(){
+  var d=document.getElementById("drivers"); d.innerHTML=""; el.drivers=[];
+  [["Pickup","connects off dials"],["Connect→set","sets off connects"],["Set→calendar","calls off sets"],["Show","shows off calls"]]
+  .forEach(function(spec,gap){
+    var box=document.createElement("div"); box.className="driver";
+    box.innerHTML='<div class="dlabel">'+spec[0]+'</div>';
+    var wrap=document.createElement("span");
+    wrap.style.display="inline-flex"; wrap.style.alignItems="baseline"; wrap.style.gap="2px";
+    var inp=document.createElement("input");
+    inp.type="number"; inp.step="0.1"; inp.className="num b"; inp.style.width="62px";
+    inp.addEventListener("input", function(){
+      var p=parseFloat(inp.value);
+      if(isNaN(p)||p<0) return;
+      var t=rollup(rows);
+      var parent=[t.dials,t.connects,t.sets,t.booked][gap];
+      rows=teamSetCount(rows, gap+1, parent*p/100);
+      update(inp);
+    });
+    var pctSpan=document.createElement("span");
+    pctSpan.style.font="400 12px/1 var(--mono)"; pctSpan.style.color="var(--mute)"; pctSpan.textContent="%";
+    wrap.appendChild(inp); wrap.appendChild(pctSpan); box.appendChild(wrap);
+    var sub=document.createElement("div"); sub.className="dsub"; box.appendChild(sub);
+    d.appendChild(box);
+    el.drivers.push({input:inp,sub:sub,label:spec[1]});
+  });
+}
+
+/* ---- update ---- */
+function setVal(input, v, skip){ if(input!==skip && document.activeElement!==input) input.value=v; }
+
+function update(skip){
+  var team=rollup(rows), base=rollup(baseline);
+
+  rows.forEach(function(r){
+    var c=el.rows[r.id]; if(!c) return;
+    FIELDS.forEach(function(f,i){ setVal(c.inputs[i], r[f], skip); });
+    var m=rollup([r]);
+    var b=baseline.filter(function(x){return x.id===r.id;})[0];
+    var bm=b?rollup([b]):null;
+    c.out[0].innerHTML=fp(m.pickup)+(bm?"<div>"+deltaHTML(m.pickup,bm.pickup,"pp",1,false)+"</div>":"");
+    c.out[1].innerHTML=fp(m.c2s)+(bm?"<div>"+deltaHTML(m.c2s,bm.c2s,"pp",1,false)+"</div>":"");
+    c.out[2].textContent=fr(m.dps);
+    c.out[3].innerHTML=fp(m.show)+(bm?"<div>"+deltaHTML(m.show,bm.show,"pp",1,false)+"</div>":"");
+    c.out[4].textContent=fr(m.dpsh);
+  });
+
+  Object.keys(el.pods).forEach(function(pod){
+    var pr=rows.filter(function(r){return r.pod===pod;});
+    var pb=baseline.filter(function(r){return r.pod===pod;});
+    var m=rollup(pr), bm=rollup(pb.length?pb:pr), cells=el.pods[pod];
+    [m.dials,m.connects,m.sets,m.booked,m.showed].forEach(function(v,i){ cells[i].textContent=fn(v); });
+    cells[5].innerHTML=fp(m.pickup)+"<div>"+deltaHTML(m.pickup,bm.pickup,"pp",1,false)+"</div>";
+    cells[6].innerHTML=fp(m.c2s)+"<div>"+deltaHTML(m.c2s,bm.c2s,"pp",1,false)+"</div>";
+    cells[7].innerHTML=fr(m.dps)+"<div>"+deltaHTML(m.dps,bm.dps,"",0,true)+"</div>";
+    cells[8].innerHTML=fp(m.show)+"<div>"+deltaHTML(m.show,bm.show,"pp",1,false)+"</div>";
+    cells[9].textContent=fr(m.dpsh);
+  });
+
+  [team.dials,team.connects,team.sets,team.booked,team.showed].forEach(function(v,i){ setVal(el.teamInputs[i], v, skip); });
+  el.teamOut[0].innerHTML=fp(team.pickup)+"<div>"+deltaHTML(team.pickup,base.pickup,"pp",1,false)+"</div>";
+  el.teamOut[1].innerHTML=fp(team.c2s)+"<div>"+deltaHTML(team.c2s,base.c2s,"pp",1,false)+"</div>";
+  el.teamOut[2].innerHTML=fr(team.dps)+"<div>"+deltaHTML(team.dps,base.dps,"",0,true)+"</div>";
+  el.teamOut[3].innerHTML=fp(team.show)+"<div>"+deltaHTML(team.show,base.show,"pp",1,false)+"</div>";
+  el.teamOut[4].textContent=fr(team.dpsh);
+
+  var sv=[team.dials,team.connects,team.sets,team.booked,team.showed];
+  var bv=[base.dials,base.connects,base.sets,base.booked,base.showed];
+  var max=Math.max(1,team.dials,base.dials);
+  el.stages.forEach(function(s,i){
+    s.ghost.style.width=Math.max(0.6,(bv[i]/max)*100)+"%";
+    s.fill.style.width=Math.max(0.6,(sv[i]/max)*100)+"%";
+    s.val.textContent=fn(sv[i]);
+    s.delta.innerHTML=deltaHTML(sv[i],bv[i],"",0,false);
+  });
+  var gv=[team.pickup,team.c2s,pct(team.booked,team.sets),team.show];
+  var gb=[base.pickup,base.c2s,pct(base.booked,base.sets),base.show];
+  el.gates.forEach(function(g,i){
+    g.node.innerHTML=g.label+" "+fp(gv[i])+' <span style="margin-left:4px">'+deltaHTML(gv[i],gb[i],"pp",1,false)+"</span>";
+  });
+
+  el.drivers.forEach(function(d,i){
+    var v=gv[i];
+    if(document.activeElement!==d.input) d.input.value=(v===null||!isFinite(v))?"":v.toFixed(1);
+    d.sub.innerHTML=d.label+" · "+deltaHTML(v,gb[i],"pp",1,false);
+  });
+
+  var dpd = (days>0 && rows.length) ? team.dials/days/rows.length : null;
+  var cw = cadence>0 ? team.dials/cadence : null;
+  var bcw = cadence>0 ? base.dials/cadence : null;
+  var dpdEl=document.getElementById("dpd");
+  dpdEl.textContent = fr(dpd)+" / 150";
+  dpdEl.style.color = (dpd!==null && dpd<150) ? "var(--red)" : "var(--green)";
+  document.getElementById("cw").innerHTML = fr(cw)+" "+deltaHTML(cw,bcw,"",0,false);
+  document.getElementById("c2set").textContent = fp(pct(team.sets,cw));
+
+  var rb=document.getElementById("revbox");
+  if(!(cdpbc>0)){
+    rb.innerHTML='<div style="font:400 12px/1.6 var(--sans);color:var(--mute)">Enter your CDPBC to price the funnel. Collected dollars ÷ booked calls, trailing 60–90 days.</div>';
+  } else {
+    var rev=team.booked*cdpbc, brev=base.booked*cdpbc, up=rev>=brev;
+    rb.innerHTML='<div class="big">'+money(rev)+'</div><div class="sm">off '+fn(team.booked)+' booked calls</div>'+
+      '<div style="margin-top:8px;font:700 13px/1.4 var(--mono);color:'+(up?"var(--green)":"var(--red)")+'">'+
+      (up?"+":"−")+money(Math.abs(rev-brev))+' vs baseline</div>';
+  }
+}
+
+/* ---- wire ---- */
+document.getElementById("days").value=days;
+document.getElementById("cad").value=cadence;
+document.getElementById("cdpbc").value=cdpbc;
+document.getElementById("days").addEventListener("input",function(e){ days=Math.max(0,+e.target.value||0); update(e.target); });
+document.getElementById("cad").addEventListener("input",function(e){ cadence=Math.max(0,+e.target.value||0); update(e.target); });
+document.getElementById("cdpbc").addEventListener("input",function(e){ cdpbc=Math.max(0,+e.target.value||0); update(e.target); });
+document.getElementById("lock").addEventListener("click",function(){ baseline=clone(rows); update(); });
+document.getElementById("revert").addEventListener("click",function(){ rows=clone(baseline); buildTable(); update(); });
+document.getElementById("reset").addEventListener("click",function(){ rows=clone(SEED); baseline=clone(SEED); buildTable(); update(); });
+
+buildFunnel(); buildDrivers(); buildTable(); update();
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@ interface BugReportViewProps {
 const SCREENS = [
   'Dashboard', 'Stats', 'Calls', 'Highlights', 'Content Review',
   'Schedule', 'Resources', 'Job Board', 'Profile', 'Community',
-  'Settings', 'Stream', 'Other',
+  'Settings', 'Other',
 ];
 
 const STATUS_BADGES: Record<string, { label: string; bg: string; text: string }> = {

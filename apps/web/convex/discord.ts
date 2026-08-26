@@ -194,12 +194,15 @@ export function buildCallCompletedEmbed(
   contractValue?: number,
   callId?: string,
   /** See buildCallCompletedBlocks — same flag, same five-minute reasoning. */
-  flagMissingForm?: boolean
+  flagMissingForm?: boolean,
+  publicUrl?: string | null
 ): { content: string; embeds: DiscordEmbed[] } {
   const missingForm = flagMissingForm === true && !outcome;
-  const dashboardUrl = callId
-    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://sequ3nce.ai/dashboard";
+  const dashboardUrl =
+    publicUrl ??
+    (callId
+      ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+      : "https://sequ3nce.ai/dashboard");
 
   // Color based on outcome: Green=closed, Yellow=follow-up, Red=lost, Grey=pending
   // Discord embeds take a real colour, unlike Slack, so a flagged call is

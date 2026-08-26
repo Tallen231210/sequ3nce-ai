@@ -188,7 +188,7 @@ export function Channels({ userId, channels, isAdmin }: ChannelsProps) {
               <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading posts...</div>
             ) : posts.length === 0 ? (
               <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-                No posts yet. Be the first to post in #{selectedChannel.slug}!
+                Founding cohort territory — nothing in #{selectedChannel.slug} yet. Claim the first post.
               </div>
             ) : (
               <>

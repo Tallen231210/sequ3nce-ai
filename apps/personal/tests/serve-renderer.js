@@ -1,8 +1,8 @@
 /**
  * Simple static file server for Playwright tests.
  *
- * Serves .webpack/renderer/ on port 3000 so that the compiled Electron main
- * process (which has http://localhost:3000 hardcoded by Electron Forge's
+ * Serves .webpack/renderer/ on port 3100 so that the compiled Electron main
+ * process (which has http://localhost:3100 hardcoded by Electron Forge's
  * webpack plugin) can load its renderer files.
  *
  * Usage: node tests/serve-renderer.js
@@ -12,7 +12,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const PORT = 3000;
+const PORT = 3100;
 const ROOT = path.resolve(__dirname, "..", ".webpack", "renderer");
 
 const MIME_TYPES = {

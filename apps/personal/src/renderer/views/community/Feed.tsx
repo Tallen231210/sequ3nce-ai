@@ -218,7 +218,7 @@ export function Feed({ userId, channels, isAdmin }: FeedProps) {
         <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Loading feed...</div>
       ) : posts.length === 0 ? (
         <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
-          No posts yet. Be the first to share something!
+          You're in the founding cohort — the first closers in the stack. Introduce yourself and claim the first post.
         </div>
       ) : (
         <>

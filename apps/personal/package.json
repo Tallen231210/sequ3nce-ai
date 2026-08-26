@@ -1,7 +1,7 @@
 {
   "name": "sequ3nce-personal",
   "productName": "Sequ3nce Personal",
-  "version": "1.18.3",
+  "version": "1.20.0",
   "description": "Sequ3nce Personal \u2014 call recording, verified stats, and career tools for high-ticket closers",
   "main": ".webpack/main",
   "scripts": {

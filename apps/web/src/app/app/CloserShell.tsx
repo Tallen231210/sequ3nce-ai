@@ -23,6 +23,7 @@ import { Logo } from "@/components/ui/logo";
 import { useActiveCall } from "./_components/useActiveCall";
 import { needsCalendarOnboarding } from "@/lib/closer/client";
 import { ActiveCallProvider } from "./_components/ActiveCallContext";
+import { FathomDisconnectedNotice } from "./_components/FathomDisconnectedNotice";
 import { QuickBotModal } from "./_components/QuickBotModal";
 import {
   getCloserInfo,
@@ -244,6 +245,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
         )}
+        <FathomDisconnectedNotice />
         <ActiveCallProvider value={{ activeCall }}>{children}</ActiveCallProvider>
       </main>
 

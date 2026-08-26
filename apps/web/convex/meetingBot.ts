@@ -799,6 +799,13 @@ export const createBot = action({
       return { botId, recallBotId };
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
+        // A billing refusal isn't one bot failing — it's every bot failing
+        // until a human pays. Page the founder, don't just file it.
+        if (error.message.includes("insufficient_credit_balance") || error.message.includes(" 402 ")) {
+          await ctx.scheduler.runAfter(0, internal.adminAlerts.raiseRecallBillingAlert, {
+            detail: error.message,
+          });
+        }
         await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
           message: error instanceof Error ? error.message : String(error),
           feature: "createBot",
@@ -1075,6 +1082,11 @@ export const createQuickBot = action({
       return { botId, recallBotId };
     } catch (error) {
       if (error instanceof Error && error.message.startsWith("Recall.ai API error:")) {
+        if (error.message.includes("insufficient_credit_balance") || error.message.includes(" 402 ")) {
+          await ctx.scheduler.runAfter(0, internal.adminAlerts.raiseRecallBillingAlert, {
+            detail: error.message,
+          });
+        }
         await ctx.scheduler.runAfter(0, internal.lib.sentry.captureFromIsolate, {
           message: error instanceof Error ? error.message : String(error),
           feature: "createQuickBot",
@@ -1654,6 +1666,12 @@ export const completeCallFromBot = internalMutation({
       ...(canonicalDuration && { duration: canonicalDuration }),
     });
 
+    // Setter attribution off the title's "(initials)" token — no-op for teams
+    // without the setter app flag.
+    await ctx.scheduler.runAfter(0, internal.setterCallMatching.matchCallForTeam, {
+      callId: args.callId,
+    });
+
     // Schedule AI summary generation with 60s delay to let transcript fully flush
     // Only schedule if not already generated (user may have submitted form first)
     // Blobs live on the callContent sibling post-migration.
@@ -2212,6 +2230,23 @@ export const getClosersWithCalendars = internalQuery({
           !!closer.microsoftCalendarRefreshToken;
 
         if (!hasCalendar) continue;
+
+        // A calendar that has stopped refreshing is a frozen snapshot, not a
+        // schedule. Booking from it sends bots to meetings that may have
+        // moved or died — measured on one closer whose connection expired:
+        // 119 bots in a week, zero ever joined, all billed waiting-room
+        // time. Two days of silence is the line; reconnecting resumes
+        // booking on the next cycle.
+        const STALE_SYNC_MS = 48 * 60 * 60 * 1000;
+        if (
+          closer.calendarLastSyncAt &&
+          Date.now() - closer.calendarLastSyncAt > STALE_SYNC_MS
+        ) {
+          console.log(
+            `[autoSchedule] skipping ${closer.email} — calendar last synced ${new Date(closer.calendarLastSyncAt).toISOString()}, connection looks dead`,
+          );
+          continue;
+        }
 
         results.push({
           closerId: closer._id,

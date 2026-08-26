@@ -14,7 +14,7 @@
 // ============================================================================
 
 import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import { internalAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
@@ -649,5 +649,77 @@ export const pollForNewMeetings = internalAction({
     }
 
     return { teams: connections.length, imported };
+  },
+});
+
+
+/**
+ * Remove a team's Fathom-imported calls — the undo for a connection that
+ * should never have been allowed. Refuses while a connection is still
+ * active (disconnect first, or the webhook just refills the table), and
+ * dryRun reports what it WOULD delete.
+ */
+export const purgeTeamFathomImport = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    dryRun: v.boolean(),
+    // A call's transcript segments alone can be hundreds of rows, and one
+    // transaction tops out at 4096 reads — so delete a few calls per run and
+    // report how many remain. Run again until remaining is 0.
+    batch: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const conns = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    if (conns.some((c) => c.status === "active")) {
+      throw new Error("Disconnect the Fathom connection first — an active webhook would refill what this deletes.");
+    }
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .take(3000);
+    const fathomCalls = calls.filter((c) => c.source === "fathom");
+    const sample = fathomCalls.slice(0, 5).map((c) => ({
+      prospectName: c.prospectName ?? null,
+      createdAt: new Date(c.createdAt).toISOString(),
+      status: c.status,
+    }));
+    if (args.dryRun) {
+      return { wouldDelete: fathomCalls.length, sample };
+    }
+    const batch = Math.min(Math.max(args.batch ?? 4, 1), 20);
+    const thisRun = fathomCalls.slice(0, batch);
+    let sideRows = 0;
+    for (const c of thisRun) {
+      // Everything hanging off the call, including the callStats sidecar —
+      // stats queries read that table directly, so an orphaned row would
+      // keep a deleted call in the numbers forever.
+      for (const table of [
+        "callContent",
+        "callStats",
+        "ammo",
+        "transcriptSegments",
+        "objections",
+        "highlights",
+      ] as const) {
+        const rows = await ctx.db
+          .query(table)
+          .withIndex("by_call", (q: any) => q.eq("callId", c._id))
+          .collect();
+        for (const row of rows) {
+          await ctx.db.delete(row._id);
+          sideRows++;
+        }
+      }
+      await ctx.db.delete(c._id);
+    }
+    return {
+      deleted: thisRun.length,
+      remaining: fathomCalls.length - thisRun.length,
+      sideRows,
+      sample,
+    };
   },
 });

@@ -192,6 +192,52 @@ export const getOrCreateComplianceShareLink = internalMutation({
   },
 });
 
+/**
+ * Public watch-link for a call referenced in a Slack digest. Same contract
+ * as the compliance-alert links: minted once per call, reused forever,
+ * full access, comments off — the channel the digest posts to includes
+ * setters, and "click to watch the call" is the whole point.
+ */
+export const getOrCreateDigestShareLink = internalMutation({
+  args: { callId: v.id("calls") },
+  handler: async (ctx, args): Promise<{ url: string } | null> => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) return null;
+    if (!call.recordingUrl && !(call as any).externalShareUrl) return null;
+
+    const existing = await ctx.db
+      .query("sharedLinks")
+      .withIndex("by_call", (q) => q.eq("callId", args.callId))
+      .collect();
+    const reusable = existing.find(
+      (l) =>
+        l.isActive &&
+        l.shareType === "full" &&
+        (l.createdBy === DIGEST_CREATOR || l.createdBy === COMPLIANCE_CREATOR),
+    );
+    if (reusable) {
+      return { url: `https://sequ3nce.ai/share/${reusable.token}` };
+    }
+
+    const token = generateToken();
+    await ctx.db.insert("sharedLinks", {
+      callId: args.callId,
+      teamId: call.teamId,
+      token,
+      shareType: "full",
+      includeComments: false,
+      createdBy: DIGEST_CREATOR,
+      createdByType: "manager",
+      isActive: true,
+      createdAt: Date.now(),
+      accessType: "full_access",
+    });
+    return { url: `https://sequ3nce.ai/share/${token}` };
+  },
+});
+
+const DIGEST_CREATOR = "eod-digest";
+
 /** Marks links minted by the alert, so they can be found and reused or revoked. */
 const COMPLIANCE_CREATOR = "compliance-alert";
 

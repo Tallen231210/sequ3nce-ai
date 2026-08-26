@@ -15,9 +15,9 @@ const TYLER = {
 };
 
 const TESTER = {
-  closerId: "jd7cqe07a3xzr18yrm8kpasyrh83s7sy",
-  teamId: "js730x7996s2pp0c9stp6mkym983r7tf",
-  b2cUserId: "nh7b19d9w23cbgk07sejx36dfx83rwgt",
+  closerId: "jd7fzttq6bdvsj51gawpk8vqds8d38dh",
+  teamId: "js70r7eksmhbtqacq9c67794ad8d3qxt",
+  b2cUserId: "nh76t7zs7q2g9dx91hy4g9r1hd8d32ba",
   name: "Tester Test",
   email: "test@gmail.com",
   badges: [] as string[],
@@ -48,6 +48,7 @@ async function injectAuth(page: Page, user: UserFixture): Promise<void> {
           name: user.name,
           email: user.email,
           status: "active",
+          onboardingCompleted: true,
           subscriptionStatus: "active",
           b2cUserId: user.b2cUserId,
           badges: user.badges,
@@ -69,6 +70,7 @@ async function injectAuth(page: Page, user: UserFixture): Promise<void> {
           name: user.name,
           email: user.email,
           status: "active",
+          onboardingCompleted: true,
           subscriptionStatus: "active",
           b2cUserId: user.b2cUserId,
           badges: user.badges,
@@ -115,9 +117,21 @@ function cleanupTesterState(): void {
 test.describe("Stats Verification — end-to-end", () => {
   test.describe.configure({ mode: "serial" });
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     // Reset Tester's verification state to guarantee a clean run each time
     cleanupTesterState();
+    // The founder-approval step patches isManuallyVerified on the tester's
+    // PROFILE row — which only exists if one was ever saved. Fresh test
+    // accounts have none, so seed it.
+    await fetch("https://ideal-ram-982.convex.site/b2c/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: TESTER.b2cUserId,
+        statsSource: "manual",
+        manualStats: { cashCollected: 100000, closeRate: 25, callsCompleted: 100 },
+      }),
+    });
   });
 
   test("1. founder sees 'Verification Review' sidebar tab", async ({ page }) => {

@@ -47,7 +47,22 @@ async function setAdminVerification(verified: boolean) {
 
 test.describe("Profile Verification System", () => {
   test.beforeAll(async () => {
-    // Start clean
+    // Start clean. The test account is re-provisioned from time to time, so
+    // claim the public slug the assertions fetch by — idempotent for the
+    // owner, and freed whenever the account is purged.
+    await fetch(`${CONVEX_SITE_URL}/b2c/profile/slug`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: TEST_USER.b2cUserId, slug: "playwright-tester" }),
+    });
+    // getPublicProfile only serves profiles with isPublic true; the upsert
+    // never unsets fields it isn't given, so this survives the per-test
+    // statsSource resets.
+    await fetch(`${CONVEX_SITE_URL}/b2c/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: TEST_USER.b2cUserId, isPublic: true }),
+    });
     await resetProfileStats("auto");
     await setAdminVerification(false);
   });
@@ -113,8 +128,8 @@ test.describe("Profile Verification System", () => {
     const selfReportedBadge = page.locator("text=Self-Reported").first();
     await expect(selfReportedBadge).toBeVisible({ timeout: 5_000 });
 
-    // Should show "Get Verified" button
-    const getVerifiedBtn = page.locator("text=Get Verified").first();
+    // Should show the verification CTA (renamed from "Get Verified")
+    const getVerifiedBtn = page.locator("text=Submit for verification").first();
     await getVerifiedBtn.scrollIntoViewIfNeeded();
     await expect(getVerifiedBtn).toBeVisible({ timeout: 5_000 });
   });

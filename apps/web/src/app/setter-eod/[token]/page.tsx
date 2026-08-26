@@ -20,7 +20,11 @@ const FIELDS: Array<{ key: string; label: string; hint?: string }> = [
   { key: "sets", label: "Sets" },
   { key: "newLeadsHit", label: "New leads hit" },
   { key: "followUps", label: "Follow ups", hint: "leads you followed up with" },
+  { key: "callsOnCalendar", label: "Calls on the calendar" },
+  { key: "callsShown", label: "Calls shown" },
+  { key: "callsClosed", label: "Calls closed" },
 ];
+const OPTIONAL_KEYS = new Set(["callsOnCalendar", "callsShown", "callsClosed"]);
 
 export default function SetterEodPage() {
   const { token } = useParams<{ token: string }>();
@@ -44,6 +48,9 @@ export default function SetterEodPage() {
         sets: String(e.sets),
         newLeadsHit: String(e.newLeadsHit),
         followUps: String(e.followUps),
+        callsOnCalendar: e.callsOnCalendar != null ? String(e.callsOnCalendar) : "",
+        callsShown: e.callsShown != null ? String(e.callsShown) : "",
+        callsClosed: e.callsClosed != null ? String(e.callsClosed) : "",
       });
       setNote(e.note ?? "");
     }
@@ -89,6 +96,10 @@ export default function SetterEodPage() {
     setBusy(true);
     setError(null);
     try {
+      const opt = (k: string) => {
+        const raw = (values[k] ?? "").trim();
+        return raw === "" ? undefined : Number(raw);
+      };
       await submit({
         token,
         dials: Number(values.dials ?? 0),
@@ -96,6 +107,9 @@ export default function SetterEodPage() {
         sets: Number(values.sets ?? 0),
         newLeadsHit: Number(values.newLeadsHit ?? 0),
         followUps: Number(values.followUps ?? 0),
+        callsOnCalendar: opt("callsOnCalendar"),
+        callsShown: opt("callsShown"),
+        callsClosed: opt("callsClosed"),
         note: note.trim() || undefined,
       });
       setDone(true);
@@ -111,6 +125,13 @@ export default function SetterEodPage() {
       <header className="border-b border-border py-6">
         <div className="flex justify-center">
           <Logo height={30} />
+          <a
+            href="/setter"
+            className="mt-3 block rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-center text-[12px] text-sky-800"
+          >
+            The setter app is live — sign in with your email at{" "}
+            <span className="font-medium underline">sequ3nce.ai/setter</span>
+          </a>
         </div>
       </header>
 

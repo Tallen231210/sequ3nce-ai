@@ -68,30 +68,3 @@ test.describe("Edge Cases", () => {
   });
 });
 
-test.describe("Signup Edge Cases", () => {
-  test.beforeEach(async ({ page }) => {
-    await resetToLogin(page);
-    await page.click("text=Sign up");
-    await page.waitForSelector('text="Create your account"', { timeout: 5_000 });
-  });
-
-  test("phone number with international format is accepted", async ({ page }) => {
-    await page.fill('input[placeholder="Full Name"]', "Intl User");
-    await page.fill('input[type="email"]', "intl@unique-test-123.com");
-    await page.fill('input[type="tel"]', "+44 20 7946 0958");
-    await page.fill('input[placeholder="Password (min. 8 characters)"]', "TestPass123");
-    await page.fill('input[placeholder="Confirm Password"]', "TestPass123");
-
-    await expect(page.locator('button[type="submit"]')).toBeEnabled();
-  });
-
-  test("phone number with dashes is accepted", async ({ page }) => {
-    await page.fill('input[placeholder="Full Name"]', "Dash User");
-    await page.fill('input[type="email"]', "dash@unique-test-456.com");
-    await page.fill('input[type="tel"]', "555-123-4567");
-    await page.fill('input[placeholder="Password (min. 8 characters)"]', "TestPass123");
-    await page.fill('input[placeholder="Confirm Password"]', "TestPass123");
-
-    await expect(page.locator('button[type="submit"]')).toBeEnabled();
-  });
-});

@@ -938,8 +938,15 @@ export const completeCallWithOutcome = mutation({
       throw new Error(`Call not found: ${args.callId}`);
     }
 
-    // Idempotency: if already completed with same outcome, skip re-processing
-    if (call.status === "completed" && call.outcome === args.outcome) {
+    // Idempotency: skip only when the closer already submitted this same
+    // outcome (double-click protection). An AI-filled call must fall through —
+    // the human confirm is what flips outcomeSource to "closer", and their
+    // corrected numbers must actually be written.
+    if (
+      call.status === "completed" &&
+      call.outcome === args.outcome &&
+      call.outcomeSource === "closer"
+    ) {
       return { success: true };
     }
 

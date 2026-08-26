@@ -785,8 +785,8 @@ export function buildCallCompletedBlocks(
    * they hadn't got to it yet. At the old ninety seconds this would have
    * fired on nearly every call and meant nothing.
    */
-  flagMissingForm?: boolean
-) {
+  flagMissingForm?: boolean,
+  publicUrl?: string | null) {
   // Emoji based on outcome (⏳ = pending, closer hasn't submitted questionnaire yet)
   const outcomeEmoji = outcome === "closed" ? "🎉" : outcome === "follow_up" ? "📅" :
                         outcome ? "❌" : "⏳";
@@ -796,9 +796,13 @@ export function buildCallCompletedBlocks(
                       outcome === "no_show" ? "No Show" :
                       outcome ? outcome : "Pending";
 
-  const dashboardUrl = callId
-    ? `https://sequ3nce.ai/dashboard/calls/${callId}`
-    : "https://sequ3nce.ai/dashboard";
+  // The public watch page when one exists — team channels include setters,
+  // who can't open the manager dashboard.
+  const dashboardUrl =
+    publicUrl ??
+    (callId
+      ? `https://sequ3nce.ai/dashboard/calls/${callId}`
+      : "https://sequ3nce.ai/dashboard");
 
   // Format duration nicely
   const durationText =
@@ -1248,6 +1252,10 @@ export const sendCallGoingLongNotification = internalAction({
 export const sendCallCompletedNotification = internalAction({
   args: {
     callId: v.id("calls"),
+    /** Wait-for-recording retries already taken. Threaded through every
+     *  reschedule — a hardcoded counter is how the immortal Recall retry
+     *  loop happened. */
+    waitAttempt: v.optional(v.number()),
     /**
      * Re-send a call that has already been notified.
      *
@@ -1291,7 +1299,34 @@ export const sendCallCompletedNotification = internalAction({
         duration?: number;
         cashCollected?: number;
         contractValue?: number;
+        meetingBotId?: string;
+        recordingUrl?: string;
+        externalShareUrl?: string;
       } | null;
+
+      // Bot calls get a public watch-link in the message — worth a short
+      // wait if Recall hasn't delivered the recording yet, bounded so a call
+      // that never recorded still gets announced (with the dashboard link).
+      const WAIT_EVERY_MS = 2 * 60 * 1000;
+      const WAIT_MAX_ATTEMPTS = 5;
+      const attempt = args.waitAttempt ?? 0;
+      if (
+        call &&
+        (call as any).meetingBotId &&
+        !call.recordingUrl &&
+        !call.externalShareUrl &&
+        attempt < WAIT_MAX_ATTEMPTS
+      ) {
+        await ctx.scheduler.runAfter(
+          WAIT_EVERY_MS,
+          internal.slack.sendCallCompletedNotification,
+          { callId: args.callId, waitAttempt: attempt + 1, force: args.force },
+        );
+        console.log(
+          `[Slack] Recording not fetched yet for ${args.callId} — waiting (attempt ${attempt + 1}/${WAIT_MAX_ATTEMPTS})`,
+        );
+        return { success: true, skipped: true, reason: "waiting for recording" };
+      }
 
       if (!call) {
         console.error("[Slack] Call not found for completed notification:", args.callId);
@@ -1337,6 +1372,19 @@ export const sendCallCompletedNotification = internalAction({
         (notifyTeam as { flagMissingPostCallForm?: boolean } | null)
           ?.flagMissingPostCallForm === true;
 
+      // Public watch-link so anyone in the channel — setters included — can
+      // open the call. Falls back to the dashboard when nothing recorded.
+      let publicUrl: string | null = null;
+      try {
+        const minted = await ctx.runMutation(
+          internal.sharedLinks.getOrCreateDigestShareLink,
+          { callId: args.callId },
+        );
+        publicUrl = minted?.url ?? null;
+      } catch (e) {
+        console.error(`[slack] share link mint failed for ${args.callId}`, e);
+      }
+
       const { blocks, text } = buildCallCompletedBlocks(
         closer.name,
         call.prospectName,
@@ -1346,7 +1394,8 @@ export const sendCallCompletedNotification = internalAction({
         call.cashCollected,
         call.contractValue,
         args.callId,
-        flagMissingForm
+        flagMissingForm,
+        publicUrl
       );
 
       // Send via unified notification system
@@ -1369,7 +1418,8 @@ export const sendCallCompletedNotification = internalAction({
           call.cashCollected,
           call.contractValue,
           args.callId,
-          flagMissingForm
+          flagMissingForm,
+          publicUrl
         );
 
         await ctx.runAction(internal.discord.sendDiscordNotification, {

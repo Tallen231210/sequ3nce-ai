@@ -7,6 +7,8 @@ import { Check, Copy, Loader2, Plus, RefreshCw } from "lucide-react";
 import { api } from "../../../../convex/_generated/api";
 import { CustomRangeControl } from "@/components/CustomRangeControl";
 import { NotificationsCard } from "./NotificationsCard";
+import { RosterIdentityInputs } from "./RosterIdentityInputs";
+import { ScorecardSection } from "./ScorecardSection";
 import { Header } from "@/components/dashboard/header";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -130,6 +132,15 @@ export default function SetterEodsPage() {
                 className="flex flex-wrap items-center gap-3 border-b border-border/50 px-5 py-3 last:border-0"
               >
                 <span className="min-w-32 text-sm font-medium">{r.name}</span>
+                {clerkId && (
+                  <RosterIdentityInputs
+                    clerkId={clerkId}
+                    rosterId={r._id}
+                    email={r.email}
+                    pod={r.pod}
+                    tag={r.tag}
+                  />
+                )}
                 <span
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] font-medium " +
@@ -194,6 +205,7 @@ export default function SetterEodsPage() {
         </section>
 
         <NotificationsCard />
+      <ScorecardSection />
 
         {/* The board */}
         <section>

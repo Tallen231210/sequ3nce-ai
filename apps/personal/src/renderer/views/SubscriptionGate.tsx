@@ -136,10 +136,12 @@ export function SubscriptionGate({ closerInfo, onSubscribed, onLogout }: Subscri
         {/* Price card */}
         <div className="w-full max-w-xs bg-gray-50 border border-gray-200 rounded-xl p-6 mb-6 text-center">
           <div className="mb-1">
-            <span className="text-3xl font-bold text-gray-900">From $83</span>
+            <span className="text-3xl font-bold text-gray-900">$150</span>
             <span className="text-gray-500 text-sm">/month</span>
           </div>
-          <p className="text-xs text-gray-400 mb-4">billed annually · monthly &amp; quarterly plans available</p>
+          <p className="text-xs text-gray-400 mb-4">
+            or as low as $83/mo on the yearly plan ($1,000 billed once a year)
+          </p>
 
           {isPastDue ? (
             <button

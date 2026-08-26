@@ -8,9 +8,9 @@ export const TEST_USER = {
   email: "pw-test@sequ3nce.ai",
   password: "PlaywrightTest2024",
   name: "Playwright Tester",
-  closerId: "jd7b1tv33ta2b6k9s9101tbv2d825bg7",
-  teamId: "js74ha9rj7ayar9p2rrh32w2jd824pdr",
-  b2cUserId: "nh78j2406z31vddy744rdyvza1825710",
+  closerId: "jd7ax0xew6kqa8k23gmeznq6q18d22cm",
+  teamId: "js76x9nrh6gf3g7xc4mp6hj05d8d2hk2",
+  b2cUserId: "nh7av7ke5g7v1ch98xq3j31fhn8d2m71",
 };
 
 // Storage key used by the app
@@ -174,7 +174,8 @@ export async function resetToAuthenticated(page: Page): Promise<void> {
           name: user.name,
           email: user.email,
           status: "active",
-          subscriptionStatus: "none",
+          onboardingCompleted: true,
+          subscriptionStatus: "active",
           b2cUserId: user.b2cUserId,
         };
         localStorage.setItem(key, JSON.stringify(closerInfo));
@@ -191,7 +192,8 @@ export async function resetToAuthenticated(page: Page): Promise<void> {
           name: user.name,
           email: user.email,
           status: "active",
-          subscriptionStatus: "none",
+          onboardingCompleted: true,
+          subscriptionStatus: "active",
           b2cUserId: user.b2cUserId,
         };
         localStorage.setItem(key, JSON.stringify(closerInfo));

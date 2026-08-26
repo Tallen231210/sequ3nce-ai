@@ -156,6 +156,13 @@ export function FathomCard() {
     );
   }
 
+  // Not on this team's plan and nothing connected: the card simply isn't
+  // there. Showing a connect form that's guaranteed to be refused is an
+  // invitation to file a bug.
+  if (status && !status.availableOnPlan && !status.connected) {
+    return null;
+  }
+
   return (
     <div className="space-y-4">
       {status?.connected ? (

@@ -373,17 +373,23 @@ export const listMembers = query({
     cursor: v.optional(v.number()),
     limit: v.optional(v.number()),
     search: v.optional(v.string()),
+    // The founder-only notification recipient picker needs to address QA
+    // accounts; every member-facing surface leaves this unset.
+    includeTest: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
 
-    // Get active subscribers
-    const users = await ctx.db
-      .query("b2cUsers")
-      .withIndex("by_subscription_status", (q) =>
-        q.eq("subscriptionStatus", "active")
-      )
-      .collect();
+    // Get active subscribers — QA/Playwright accounts never appear in the
+    // directory, however active their subscription row looks.
+    const users = (
+      await ctx.db
+        .query("b2cUsers")
+        .withIndex("by_subscription_status", (q) =>
+          q.eq("subscriptionStatus", "active")
+        )
+        .collect()
+    ).filter((u) => args.includeTest === true || u.isTestAccount !== true);
 
     // Filter by search term if provided
     let filtered = users;

@@ -51,8 +51,8 @@ export function DismissSetupConfirmModal({
           <span className="font-semibold text-gray-900">
             {remainingCount} task{remainingCount === 1 ? '' : 's'}
           </span>{' '}
-          to complete. These five quick steps — profile, first call, highlight
-          clip, coaching, and Stream — are the fastest path to actually getting
+          to complete. These quick steps — profile, first call, highlight
+          clip, and coaching — are the fastest path to actually getting
           value out of Sequ3nce.
         </p>
         <p className="text-[12px] text-gray-500 leading-snug mb-5">

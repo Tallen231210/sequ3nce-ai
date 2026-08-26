@@ -6,6 +6,7 @@ import {
   deleteMoneyBellBroadcast,
   getMoneyBellsFeed,
   getMoneyBellsOptInStatus,
+  leaveMoneyBells,
   removeReaction,
 } from '../../../convex';
 import { PostCard } from '../PostCard';
@@ -114,6 +115,20 @@ export function MoneyBellsView({ closerInfo }: MoneyBellsViewProps) {
     [userId, loadFeed]
   );
 
+  const handleLeave = useCallback(async () => {
+    if (!window.confirm(
+      'Leave Money Bells? You will stop getting the share prompt after closed deals. ' +
+      'Broadcasts you already posted stay on the board (you can delete them individually). ' +
+      'You can rejoin anytime.'
+    )) return;
+    const result = await leaveMoneyBells(userId);
+    if (result.error) {
+      window.alert(result.error);
+      return;
+    }
+    setOptedIn(false);
+  }, [userId]);
+
   const handleDelete = useCallback(
     async (postId: string) => {
       const post = posts.find((p) => p._id === postId);
@@ -170,6 +185,17 @@ export function MoneyBellsView({ closerInfo }: MoneyBellsViewProps) {
             />
           ))
         )}
+      </div>
+
+      {/* Quiet footer: the way out. Mirrors the join prompt's honor-system
+          framing — membership is a choice, both directions. */}
+      <div className="py-6 text-center">
+        <button
+          onClick={handleLeave}
+          className="text-[11px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 underline underline-offset-2 transition-colors"
+        >
+          Leave Money Bells
+        </button>
       </div>
     </div>
   );

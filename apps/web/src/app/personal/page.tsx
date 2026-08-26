@@ -218,6 +218,13 @@ function PersonalLandingPageInner() {
           <span>
             Plans from $83/mo — cancel anytime
           </span>
+          <span className="mx-1.5 hidden text-zinc-600 sm:inline">·</span>
+          <Link
+            href="/login"
+            className="hidden text-zinc-400 underline underline-offset-2 transition-colors hover:text-white sm:inline"
+          >
+            On a company team? Log in here
+          </Link>
         </span>
       </div>
 

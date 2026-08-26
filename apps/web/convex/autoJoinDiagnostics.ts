@@ -290,3 +290,176 @@ export const callSourceCensus = internalQuery({
     return { totalRows: calls.length, bySource, byStatus, fathom };
   },
 });
+
+/** Who connected Fathom for a team, and when. */
+export const fathomConnectionInfo = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const conns = await ctx.db
+      .query("fathomConnections")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .collect()
+      .catch(() => [] as any[]);
+    const out = [];
+    for (const c of conns) {
+      const closer = c.closerId ? await ctx.db.get(c.closerId) : null;
+      out.push({
+        connectedAt: new Date(c._creationTime).toISOString(),
+        status: c.status,
+        scope: c.closerId ? "single closer" : "team-wide",
+        closerName: (closer as any)?.name ?? null,
+        closerEmail: (closer as any)?.email ?? null,
+        lastSyncedAt: c.lastSyncedAt ? new Date(c.lastSyncedAt).toISOString() : null,
+      });
+    }
+    return out;
+  },
+});
+
+
+/** Closer ids + names only — the closers table itself carries tokens. */
+export const listCloserIds = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    return closers.map((c) => ({ id: c._id, name: c.name, status: c.status }));
+  },
+});
+
+/** Every Fathom connection in the deployment, with team names and recent flow. */
+export const allFathomConnections = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const conns = await ctx.db.query("fathomConnections").collect();
+    const out = [];
+    for (const c of conns) {
+      const team = await ctx.db.get(c.teamId);
+      const closer = c.closerId ? await ctx.db.get(c.closerId) : null;
+      const recent = await ctx.db
+        .query("calls")
+        .withIndex("by_team_and_date", (q) =>
+          q.eq("teamId", c.teamId).gte("createdAt", Date.now() - 30 * 86_400_000),
+        )
+        .take(2000);
+      const fathomRecent = recent.filter((r) => r.source === "fathom");
+      out.push({
+        team: (team as any)?.name ?? String(c.teamId),
+        tier:
+          (team as any)?.productTierOverride ?? (team as any)?.productTier ?? null,
+        status: c.status,
+        scope: c.closerId ? `closer: ${(closer as any)?.name ?? "?"}` : "team-wide",
+        connectedAt: new Date(c._creationTime).toISOString().slice(0, 10),
+        lastSyncedAt: c.lastSyncedAt
+          ? new Date(c.lastSyncedAt).toISOString().slice(0, 10)
+          : null,
+        fathomCallsLast30d: fathomRecent.length,
+      });
+    }
+    return out;
+  },
+});
+
+/** Fathom calls that made it into the counted numbers, and whether the same
+ *  meeting also has a non-Fathom row (i.e. the bot recorded it too). */
+export const fathomCountedCalls = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .take(3000);
+    const counted = calls.filter(
+      (c) => c.source === "fathom" && c.status !== "unclassified",
+    );
+    return counted.map((c) => {
+      const started = c.startedAt ?? c.createdAt;
+      const twins = calls.filter(
+        (o) =>
+          o.source !== "fathom" &&
+          Math.abs((o.startedAt ?? o.createdAt) - started) < 30 * 60 * 1000,
+      );
+      return {
+        id: c._id,
+        prospectName: c.prospectName ?? null,
+        status: c.status,
+        outcome: c.outcome ?? null,
+        startedAt: new Date(started).toISOString(),
+        durationMin: c.duration ? Math.round(c.duration / 60) : null,
+        sameTimeNonFathomCalls: twins.map((t) => ({
+          source: t.source ?? "app",
+          prospectName: t.prospectName ?? null,
+          status: t.status,
+          durationMin: t.duration ? Math.round(t.duration / 60) : null,
+        })),
+      };
+    });
+  },
+});
+
+/** Events with meeting links around NOW for a team — support lever for
+ *  "send a bot to my current meeting". */
+export const currentEventsForTeam = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+    const now = Date.now();
+    const out = [];
+    for (const c of closers) {
+      if (c.status !== "active") continue;
+      const events = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_closer", (q) => q.eq("closerId", c._id))
+        .filter((q) =>
+          q.and(
+            q.gte(q.field("startTime"), now - 60 * 60 * 1000),
+            q.lte(q.field("startTime"), now + 90 * 60 * 1000),
+          ),
+        )
+        .take(20);
+      for (const e of events) {
+        if (!e.meetingUrl) continue;
+        out.push({
+          closerId: c._id,
+          closerName: c.name,
+          closerEmail: c.email,
+          title: e.title,
+          start: new Date(e.startTime).toISOString(),
+          meetingUrl: e.meetingUrl,
+        });
+      }
+    }
+    return out;
+  },
+});
+
+/** A closer's not-yet-dispatched bots — the tail left behind when their
+ *  calendar connection dies and booking stops but bookings remain. */
+export const listPendingBotsForCloser = internalQuery({
+  args: { closerId: v.id("closers") },
+  handler: async (ctx, args) => {
+    const bots = await ctx.db
+      .query("meetingBots")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .order("desc")
+      .take(300);
+    const now = Date.now();
+    return bots
+      .filter(
+        (b) =>
+          b.status === "scheduled" &&
+          (b.scheduledAt ?? 0) > now,
+      )
+      .map((b) => ({
+        botId: b._id,
+        title: b.meetingTitle,
+        scheduledAt: new Date(b.scheduledAt!).toISOString(),
+        recallBotId: (b as any).recallBotId ?? null,
+      }));
+  },
+});

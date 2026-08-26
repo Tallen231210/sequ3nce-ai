@@ -6,9 +6,9 @@ import { defineConfig } from "@playwright/test";
  * Uses Playwright's Electron support to launch the app directly.
  * Tests interact with the renderer process via page objects.
  *
- * The webServer config starts a static file server on port 3000 to serve
+ * The webServer config starts a static file server on port 3100 to serve
  * the compiled renderer files. This is necessary because Electron Forge's
- * webpack plugin hardcodes http://localhost:3000 as the renderer entry URL.
+ * webpack plugin hardcodes http://localhost:3100 as the renderer entry URL.
  *
  * Prerequisites: Run `npm run start` once (then stop it) to compile .webpack/
  *
@@ -29,10 +29,10 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
-  // Serve the compiled renderer files on port 3000 (replaces webpack-dev-server)
+  // Serve the compiled renderer files on port 3100 (replaces webpack-dev-server)
   webServer: {
     command: "node tests/serve-renderer.js",
-    port: 3000,
+    port: 3100,
     reuseExistingServer: true, // If `npm run start` is already running, use it
     timeout: 10_000,
   },

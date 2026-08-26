@@ -107,6 +107,21 @@ export default function PrivacyPage() {
               </a>
               , including the Limited Use requirements.
             </p>
+            <p className="text-muted-foreground mt-4">
+              <strong>Artificial intelligence.</strong> Sequ3nce.ai uses AI
+              models provided by Anthropic to summarize and analyze the call
+              recordings and transcripts captured by our notetaker. Limited
+              calendar-derived context — such as a meeting title or a
+              prospect&apos;s name — may be included in those requests to make
+              a summary accurate. The use of raw or derived user data received
+              from Workspace APIs adheres to the Google API Services User Data
+              Policy, including the Limited Use requirements. Google user data
+              is never used to train AI or machine-learning models: our
+              agreement with Anthropic prohibits the use of our data for model
+              training, we access Anthropic directly rather than through any
+              aggregator or model hub, and we do not operate self-hosted
+              models.
+            </p>
           </section>
 
           <section className="mb-8">
@@ -118,8 +133,8 @@ export default function PrivacyPage() {
               <li><strong>Stripe and Polar:</strong> Payment processing</li>
               <li><strong>Amazon Web Services:</strong> Secure storage for call recordings</li>
               <li><strong>Recall.ai:</strong> Meeting notetaker infrastructure — receives the meeting link and start time of a scheduled call so the notetaker can join it</li>
-              <li><strong>Deepgram:</strong> Speech-to-text transcription</li>
-              <li><strong>Anthropic:</strong> AI analysis and insights</li>
+              <li><strong>Speechmatics:</strong> Speech-to-text transcription of call audio captured by the notetaker or desktop app — never receives Google user data</li>
+              <li><strong>Anthropic:</strong> AI analysis and insights — contractually barred from training models on our data</li>
               <li><strong>Clerk:</strong> Authentication and user management</li>
               <li><strong>Convex:</strong> Database and real-time data infrastructure</li>
             </ul>

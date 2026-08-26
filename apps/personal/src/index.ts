@@ -5,7 +5,7 @@
 import { initSentry } from './sentry';
 initSentry();
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, globalShortcut, clipboard, dialog, Notification, screen, powerMonitor, systemPreferences, desktopCapturer } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, session, shell, globalShortcut, dialog, Notification, systemPreferences, desktopCapturer } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import WebSocket from 'ws';
 import * as os from 'os';
@@ -45,16 +45,6 @@ const macOSInfo = process.platform === 'darwin' ? getMacOSVersion() : null;
 // plugin that tells the Electron app where to look for the Webpack-bundled app code
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
-declare const AMMO_TRACKER_WEBPACK_ENTRY: string;
-declare const AMMO_TRACKER_PRELOAD_WEBPACK_ENTRY: string;
-declare const TRAINING_WEBPACK_ENTRY: string;
-declare const TRAINING_PRELOAD_WEBPACK_ENTRY: string;
-declare const ROLEPLAY_WEBPACK_ENTRY: string;
-declare const ROLEPLAY_PRELOAD_WEBPACK_ENTRY: string;
-declare const SCHEDULE_WEBPACK_ENTRY: string;
-declare const SCHEDULE_PRELOAD_WEBPACK_ENTRY: string;
-declare const POST_CALL_WEBPACK_ENTRY: string;
-declare const POST_CALL_PRELOAD_WEBPACK_ENTRY: string;
 declare const STREAM_OVERLAY_WEBPACK_ENTRY: string;
 declare const STREAM_OVERLAY_PRELOAD_WEBPACK_ENTRY: string;
 
@@ -70,11 +60,6 @@ interface AudioCaptureConfig {
 }
 
 let mainWindow: BrowserWindow | null = null;
-let ammoTrackerWindow: BrowserWindow | null = null;
-let postCallWindow: BrowserWindow | null = null;
-let trainingWindow: BrowserWindow | null = null;
-let roleplayWindow: BrowserWindow | null = null;
-let scheduleWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
@@ -111,29 +96,13 @@ let chatCloserId: string | null = null;
 let chatTeamId: string | null = null;
 let chatCloserName: string | null = null;
 
-// Ammo tracker window state
-let ammoTrackerVisible = false;
-let ammoTrackerPreMinimizeBounds: Electron.Rectangle | null = null; // Store bounds before minimize
-
-// Post-call window state
-let postCallData: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string; b2cUserId?: string } | null = null;
-
-// Current logged-in closer ID (for training window)
+// Current logged-in closer ID (used in diagnostics fallback)
 let currentCloserId: string | null = null;
 
-// Current logged-in closer email (for schedule window)
-let currentCloserEmail: string | null = null;
-
-// Current team ID for schedule window (same as currentTeamId but explicit for schedule)
-let currentScheduleTeamId: string | null = null;
-
-// Current role play room user info
-let roleplayUserInfo: { teamId: string; closerId: string; userName: string } | null = null;
-
-// Current team ID (for resources in ammo tracker)
+// Current team ID (stored on bot call start, used in diagnostics)
 let currentTeamId: string | null = null;
 
-// Current theme (synced from main window, sent to floating windows on creation)
+// Current theme (synced from main window, sent to the stream overlay on creation)
 let currentTheme: string = 'light';
 
 // Audio service URL - Production Railway deployment
@@ -210,347 +179,6 @@ const createWindow = (): void => {
   }
 };
 
-// Create the floating ammo tracker window
-const createAmmoTrackerWindow = (): void => {
-  if (ammoTrackerWindow) {
-    ammoTrackerWindow.show();
-    ammoTrackerWindow.focus();
-    return;
-  }
-
-  // Position ammo tracker on right side of screen (matching Swift app)
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const workArea = primaryDisplay.workAreaSize;
-  const panelWidth = 360;
-  const panelHeight = 520;
-
-  // Right side of screen with 10px margin, vertically centered
-  const x = workArea.width - panelWidth - 10;
-  const y = Math.round((workArea.height - panelHeight) / 2);
-
-  ammoTrackerWindow = new BrowserWindow({
-    width: panelWidth,
-    height: panelHeight,
-    minWidth: 320,
-    minHeight: 400,
-    maxWidth: 500,
-    maxHeight: 700,
-    x,
-    y,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: true,
-    hasShadow: true,
-    backgroundColor: '#00000000',
-    show: false,
-    focusable: true, // Allow text input in notes field
-    // A floating overlay should NEVER enter macOS fullscreen. The OS-level flag
-    // prevents both user-initiated (green button / Cmd-Ctrl-F) AND programmatic
-    // transitions — closing the root cause of the "black Space" bug regardless
-    // of trigger (Stage Manager, display sleep/wake, Electron state corruption).
-    fullscreenable: false,
-    webPreferences: {
-      preload: AMMO_TRACKER_PRELOAD_WEBPACK_ENTRY,
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  ammoTrackerWindow.loadURL(AMMO_TRACKER_WEBPACK_ENTRY);
-
-  // macOS: make the overlay follow the user across Spaces AND float above other
-  // apps in fullscreen (Google Meet, Zoom, screen-share). `visibleOnAllWorkspaces`
-  // is NOT a valid constructor option — it's silently ignored there — so we must
-  // set it at runtime via this method call (matches the pattern in
-  // stream/overlay-window.ts).
-  if (process.platform === 'darwin') {
-    ammoTrackerWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  }
-
-  // Exclude this overlay from screen-capture / screen-share APIs. Without
-  // this, Zoom/Meet/Teams enumerate the window in their share-picker AND
-  // composite it into "Share Screen" framebuffers — closers were
-  // accidentally sharing a blank Sequ3nce panel instead of the document
-  // they intended (see v1.11.0 ammo-fullscreen change for the regression
-  // that exposed this). Closer still sees the overlay normally on their
-  // own display; capture APIs see a black/transparent surface.
-  ammoTrackerWindow.setContentProtection(true);
-
-  // Show window when ready
-  ammoTrackerWindow.once('ready-to-show', () => {
-    ammoTrackerWindow?.showInactive(); // Show without focusing
-    ammoTrackerVisible = true;
-
-    // Send current theme immediately so floating window matches main window
-    ammoTrackerWindow?.webContents.send('theme-changed', currentTheme);
-
-    // Send current call ID to the ammo tracker
-    if (currentCallId) {
-      ammoTrackerWindow?.webContents.send('ammo:call-id-changed', currentCallId);
-    }
-  });
-
-  // Handle window close
-  ammoTrackerWindow.on('closed', () => {
-    ammoTrackerWindow = null;
-    ammoTrackerVisible = false;
-  });
-
-  // Prevent the window from being closed by the user, just hide it
-  ammoTrackerWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      ammoTrackerWindow?.hide();
-      ammoTrackerVisible = false;
-    }
-  });
-
-  // Open DevTools in development
-  if (process.env.NODE_ENV === 'development' || process.defaultApp) {
-    // Don't open devtools for ammo tracker by default to reduce clutter
-    // ammoTrackerWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-};
-
-// Toggle ammo tracker window visibility
-const toggleAmmoTracker = (): void => {
-  if (!ammoTrackerWindow) {
-    createAmmoTrackerWindow();
-  } else if (ammoTrackerVisible) {
-    ammoTrackerWindow.hide();
-    ammoTrackerVisible = false;
-  } else {
-    ammoTrackerWindow.showInactive();
-    ammoTrackerVisible = true;
-    // Send current theme and call ID when showing (in case they changed while hidden)
-    ammoTrackerWindow.webContents.send('theme-changed', currentTheme);
-    if (currentCallId) {
-      ammoTrackerWindow.webContents.send('ammo:call-id-changed', currentCallId);
-    }
-  }
-};
-
-// Create the floating post-call questionnaire window (bottom of screen)
-const createPostCallWindow = (data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string; b2cUserId?: string }): void => {
-  // If post-call window already exists for this call, just focus it
-  if (postCallWindow && !postCallWindow.isDestroyed() && postCallData?.callId === data.callId) {
-    postCallWindow.focus();
-    return;
-  }
-  // Close existing post-call window if it's for a different call
-  if (postCallWindow && !postCallWindow.isDestroyed()) {
-    postCallWindow.close();
-    postCallWindow = null;
-  }
-
-  // Store call data for the window to retrieve
-  postCallData = data;
-
-  // Position at bottom of primary display
-  // Cap width at 1100px to prevent horizontal overflow on wide screens, use full width minus padding on narrow ones
-  // Increase max height to 480px so wrapped elements have room
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-  const windowWidth = Math.min(screenWidth - 80, 1100);
-  const windowHeight = Math.min(480, Math.max(300, Math.round(screenHeight * 0.45)));
-  const x = Math.round((screenWidth - windowWidth) / 2); // Center horizontally
-  const y = screenHeight - windowHeight; // Bottom of screen
-
-  postCallWindow = new BrowserWindow({
-    width: windowWidth,
-    height: windowHeight,
-    x,
-    y,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    hasShadow: true,
-    backgroundColor: '#00000000',
-    show: false,
-    focusable: true,
-    webPreferences: {
-      preload: POST_CALL_PRELOAD_WEBPACK_ENTRY,
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  postCallWindow.loadURL(POST_CALL_WEBPACK_ENTRY);
-
-  // Same screen-capture exclusion as the ammo tracker: post-call notes are
-  // private to the closer and shouldn't leak into back-to-back screen shares.
-  postCallWindow.setContentProtection(true);
-
-  // Show window when ready and send call data
-  postCallWindow.once('ready-to-show', () => {
-    postCallWindow?.show();
-    postCallWindow?.focus();
-
-    // Send current theme immediately so floating window matches main window
-    postCallWindow?.webContents.send('theme-changed', currentTheme);
-
-    // Send call data to the renderer
-    if (postCallData) {
-      postCallWindow?.webContents.send('post-call:call-data', postCallData);
-    }
-  });
-
-  // Handle window close
-  postCallWindow.on('closed', () => {
-    postCallWindow = null;
-    postCallData = null;
-  });
-
-  // Allow dismissal — unfilled call stays in pending queue (badge on Calls tab)
-  postCallWindow.on('close', () => {
-    postCallData = null;
-  });
-};
-
-// Create the training window
-const createTrainingWindow = (): void => {
-  if (trainingWindow) {
-    trainingWindow.show();
-    trainingWindow.focus();
-    return;
-  }
-
-  trainingWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    minWidth: 600,
-    minHeight: 400,
-    title: 'Training',
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#ffffff',
-    show: false,
-    webPreferences: {
-      preload: TRAINING_PRELOAD_WEBPACK_ENTRY,
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  trainingWindow.loadURL(TRAINING_WEBPACK_ENTRY);
-
-  // Show window when ready
-  trainingWindow.once('ready-to-show', () => {
-    trainingWindow?.show();
-
-    // Send current closer ID to the training window
-    if (currentCloserId) {
-      trainingWindow?.webContents.send('training:closer-id-changed', currentCloserId);
-    }
-  });
-
-  // Handle window close
-  trainingWindow.on('closed', () => {
-    trainingWindow = null;
-  });
-
-  // Open DevTools in development
-  if (process.env.NODE_ENV === 'development' || process.defaultApp) {
-    // trainingWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-};
-
-// Create the roleplay window
-const createRoleplayWindow = (): void => {
-  if (roleplayWindow) {
-    roleplayWindow.show();
-    roleplayWindow.focus();
-    return;
-  }
-
-  roleplayWindow = new BrowserWindow({
-    width: 900,
-    height: 700,
-    minWidth: 700,
-    minHeight: 500,
-    title: 'Role Play Room',
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#ffffff',
-    show: false,
-    webPreferences: {
-      preload: ROLEPLAY_PRELOAD_WEBPACK_ENTRY,
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  roleplayWindow.loadURL(ROLEPLAY_WEBPACK_ENTRY);
-
-  // Show window when ready
-  roleplayWindow.once('ready-to-show', () => {
-    roleplayWindow?.show();
-
-    // Send user info to the roleplay window
-    if (roleplayUserInfo) {
-      roleplayWindow?.webContents.send('roleplay:user-info-changed', roleplayUserInfo);
-    }
-  });
-
-  // Handle window close
-  roleplayWindow.on('closed', () => {
-    roleplayWindow = null;
-  });
-
-  // Open DevTools in development
-  if (process.env.NODE_ENV === 'development' || process.defaultApp) {
-    // roleplayWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-};
-
-// Create the schedule window
-const createScheduleWindow = (): void => {
-  if (scheduleWindow) {
-    scheduleWindow.show();
-    scheduleWindow.focus();
-    return;
-  }
-
-  scheduleWindow = new BrowserWindow({
-    width: 500,
-    height: 600,
-    minWidth: 400,
-    minHeight: 500,
-    title: 'My Schedule',
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#ffffff',
-    show: false,
-    webPreferences: {
-      preload: SCHEDULE_PRELOAD_WEBPACK_ENTRY,
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  });
-
-  scheduleWindow.loadURL(SCHEDULE_WEBPACK_ENTRY);
-
-  // Show window when ready
-  scheduleWindow.once('ready-to-show', () => {
-    scheduleWindow?.show();
-
-    // Send current closer email to the schedule window
-    if (currentCloserEmail) {
-      scheduleWindow?.webContents.send('schedule:closer-email-changed', currentCloserEmail);
-    }
-  });
-
-  // Handle window close
-  scheduleWindow.on('closed', () => {
-    scheduleWindow = null;
-  });
-
-  // Open DevTools in development
-  if (process.env.NODE_ENV === 'development' || process.defaultApp) {
-    // scheduleWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-};
 
 const createTray = (): void => {
   // Create a simple tray icon from a data URL
@@ -566,14 +194,6 @@ const createTray = (): void => {
       click: () => {
         mainWindow?.show();
         mainWindow?.focus();
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Toggle Ammo Tracker',
-      accelerator: 'CommandOrControl+Shift+A',
-      click: () => {
-        toggleAmmoTracker();
       },
     },
     { type: 'separator' },
@@ -678,11 +298,8 @@ const connectWebSocket = (config: AudioCaptureConfig & { callId: string; convexC
               wsConvexCallId = message.convexCallId;  // Store for reconnection
               currentCallId = message.convexCallId;
 
-              // Notify renderer and ammo tracker of the correct call ID
+              // Notify renderer of the correct call ID
               mainWindow?.webContents.send('audio:call-id-updated', message.convexCallId);
-              if (ammoTrackerWindow) {
-                ammoTrackerWindow.webContents.send('ammo:call-id-changed', message.convexCallId);
-              }
             }
 
             resolve(true);
@@ -1119,7 +736,7 @@ const setupIpcHandlers = (): void => {
       appUptime: Math.round(process.uptime()),
       electronVersion: process.versions.electron,
       chromeVersion: process.versions.chrome,
-      openWindowCount: [mainWindow, ammoTrackerWindow, postCallWindow, trainingWindow, roleplayWindow, scheduleWindow]
+      openWindowCount: [mainWindow, getStreamOverlay()]
         .filter(w => w && !w.isDestroyed()).length,
     };
 
@@ -1155,8 +772,6 @@ const setupIpcHandlers = (): void => {
     // Context
     const context = {
       theme: currentTheme,
-      ammoTrackerVisible,
-      postCallPending: !!postCallData,
       chatPollingActive: !!chatPollingInterval,
     };
 
@@ -1176,510 +791,35 @@ const setupIpcHandlers = (): void => {
     }
   });
 
-  // ---- Ammo Tracker IPC Handlers ----
-
-  // Get current call ID (for ammo tracker window)
-  ipcMain.handle('ammo:get-call-id', () => {
-    return currentCallId;
-  });
-
-  // Get current team ID (for resources in ammo tracker)
-  ipcMain.handle('ammo:get-team-id', () => {
-    return currentTeamId;
-  });
-
-  // Set team ID (called when closer logs in)
-  ipcMain.handle('ammo:set-team-id', (_event, teamId: string) => {
-    console.log('[Main] Setting teamId:', teamId);
-    currentTeamId = teamId;
-  });
-
-  // Open URL in external browser (for resources)
-  // Only allow http/https protocols to prevent shell command injection
-  ipcMain.handle('ammo:open-external', (_event, url: string) => {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-        shell.openExternal(url);
-      } else {
-        console.warn('[Main] Blocked openExternal with non-http protocol:', parsed.protocol);
-      }
-    } catch {
-      console.warn('[Main] Blocked openExternal with invalid URL:', url);
-    }
-  });
-
-  // Copy text to clipboard (from ammo tracker)
-  ipcMain.handle('ammo:copy-to-clipboard', (_event, text: string) => {
-    clipboard.writeText(text);
-    console.log('[Main] Copied to clipboard:', text.slice(0, 50) + '...');
-  });
-
-  // Get current theme for ammo tracker (avoids race with IPC listener on mount)
-  ipcMain.handle('ammo:get-theme', () => {
-    return currentTheme;
-  });
-
-  // Get current theme for stream overlay (same pattern)
+  // Get current theme for stream overlay (avoids race with IPC listener on mount)
   ipcMain.handle('stream:get-theme', () => {
     return currentTheme;
   });
 
-  // Close ammo tracker window
-  ipcMain.handle('ammo:close', () => {
-    if (ammoTrackerWindow) {
-      ammoTrackerWindow.hide();
-      ammoTrackerVisible = false;
-    }
-  });
-
-  // Toggle ammo tracker from main window
-  ipcMain.handle('ammo:toggle', () => {
-    toggleAmmoTracker();
-    return ammoTrackerVisible;
-  });
-
-  // Get ammo tracker visibility status
-  ipcMain.handle('ammo:is-visible', () => {
-    return ammoTrackerVisible;
-  });
-
-  // Minimize ammo panel to small pill on right edge
-  ipcMain.handle('ammo:minimize', () => {
-    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
-      // Store current bounds so we can restore them on expand
-      ammoTrackerPreMinimizeBounds = ammoTrackerWindow.getBounds();
-
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const workArea = primaryDisplay.workAreaSize;
-      const pillWidth = 48;
-      const pillHeight = 80;
-      // Remove min size constraints so the window can shrink to pill size
-      ammoTrackerWindow.setMinimumSize(pillWidth, pillHeight);
-      // Flush against right edge, vertically centered
-      // NOTE: animate: false to prevent rendering artifacts with transparent windows
-      ammoTrackerWindow.setBounds({
-        x: workArea.width - pillWidth,
-        y: Math.round((workArea.height - pillHeight) / 2),
-        width: pillWidth,
-        height: pillHeight,
-      }, false);
-    }
-  });
-
-  // Expand ammo panel back to full size (restores previous user-resized bounds)
-  ipcMain.handle('ammo:expand', () => {
-    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
-      // Restore min size constraints for normal panel mode
-      ammoTrackerWindow.setMinimumSize(320, 400);
-      if (ammoTrackerPreMinimizeBounds) {
-        // Restore the exact bounds the user had before minimizing
-        ammoTrackerWindow.setBounds(ammoTrackerPreMinimizeBounds, false);
-        ammoTrackerPreMinimizeBounds = null;
-      } else {
-        // Fallback to default position
-        const primaryDisplay = screen.getPrimaryDisplay();
-        const workArea = primaryDisplay.workAreaSize;
-        const panelWidth = 360;
-        const panelHeight = 520;
-        ammoTrackerWindow.setBounds({
-          x: workArea.width - panelWidth - 10,
-          y: Math.round((workArea.height - panelHeight) / 2),
-          width: panelWidth,
-          height: panelHeight,
-        }, false);
-      }
-    }
-  });
-
-  // Save notes to a call (via Convex HTTP endpoint)
-  ipcMain.handle('ammo:save-notes', async (_event, callId: string, notes: string) => {
-    try {
-      const response = await fetch('https://ideal-ram-982.convex.site/updateCallNotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callId, notes }),
-      });
-
-      if (!response.ok) {
-        console.error('[Main] Failed to save notes:', response.statusText);
-        return { success: false };
-      }
-
-      console.log('[Main] Notes saved for call:', callId);
-      return { success: true };
-    } catch (error) {
-      console.error('[Main] Error saving notes:', error);
-      return { success: false };
-    }
-  });
-
-  // Get notes for a call
-  ipcMain.handle('ammo:get-notes', async (_event, callId: string) => {
-    try {
-      const response = await fetch(`https://ideal-ram-982.convex.site/getCallNotes?callId=${encodeURIComponent(callId)}`);
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json();
-      return data.notes || null;
-    } catch (error) {
-      console.error('[Main] Error getting notes:', error);
-      return null;
-    }
-  });
-
-  // ---- Bot Call IPC Handlers (floating windows for meeting bot flow) ----
+  // ---- Bot Call IPC Handlers ----
 
   ipcMain.handle('bot:call-started', async (_event, data: { callId: string; teamId: string; closerId: string; closerName: string; prospectName?: string; meetingTitle?: string; botId?: string }) => {
     console.log('[Main] Bot call started:', data.callId);
-    // Store call context (same vars used by ammo tracker)
+    // Store call context for chat + diagnostics
     currentCallId = data.callId;
     currentTeamId = data.teamId;
     chatCloserId = data.closerId;
     chatCloserName = data.closerName;
-    // Open floating ammo panel
-    createAmmoTrackerWindow();
-    // Send call data to ammo tracker (guard against mid-destruction)
-    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
-      ammoTrackerWindow.webContents.send('ammo:call-id-changed', data.callId);
-      ammoTrackerWindow.webContents.send('team-id-changed', data.teamId);
-    }
   });
 
   ipcMain.handle('bot:call-ended', async (_event, data: { callId: string; closerId: string; closerName?: string; teamId?: string; prospectName?: string }) => {
     console.log('[Main] Bot call ended:', data.callId);
     currentCallId = null;
-    // Close ammo panel only — post-call form is now manual (user clicks "End Call" or "Fill Out Form")
-    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
-      ammoTrackerWindow.hide();
-      ammoTrackerWindow.removeAllListeners('close');
-      ammoTrackerWindow.destroy();
-      ammoTrackerWindow = null;
-      ammoTrackerVisible = false;
-    }
-  });
-
-  ipcMain.handle('bot:open-questionnaire', async (_event, data: { callId: string; closerId: string; closerName: string; teamId: string; prospectName?: string; b2cUserId?: string }) => {
-    console.log('[Main] Opening post-call questionnaire for:', data.callId);
-    createPostCallWindow(data);
-  });
-
-  // ---- Post-Call Window IPC Handlers ----
-
-  ipcMain.handle('post-call:get-data', () => {
-    return postCallData;
-  });
-
-  ipcMain.handle('post-call:submitted', () => {
-    console.log('[Main] Post-call questionnaire submitted');
-    if (postCallWindow && !postCallWindow.isDestroyed()) {
-      postCallData = null; // Clear data so close handler allows it
-      postCallWindow.close();
-      postCallWindow = null;
-    }
   });
 
   // ---- Theme Sync IPC Handler ----
 
   ipcMain.handle('app:theme-changed', (_event, theme: string) => {
-    // Store current theme so we can send it to newly created floating windows
+    // Store current theme so we can send it to newly created windows
     currentTheme = theme;
-    // Broadcast theme to all floating windows (guard against mid-destruction)
-    if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
-      ammoTrackerWindow.webContents.send('theme-changed', theme);
-    }
-    if (postCallWindow && !postCallWindow.isDestroyed()) {
-      postCallWindow.webContents.send('theme-changed', theme);
-    }
     const streamOverlay = getStreamOverlay();
     if (streamOverlay && !streamOverlay.isDestroyed()) {
       streamOverlay.webContents.send('theme-changed', theme);
-    }
-  });
-
-  // ---- Training Window IPC Handlers ----
-
-  // Open training window
-  ipcMain.handle('training:open', () => {
-    createTrainingWindow();
-    return true;
-  });
-
-  // Close training window
-  ipcMain.handle('training:close', () => {
-    if (trainingWindow) {
-      trainingWindow.close();
-      trainingWindow = null;
-    }
-    return true;
-  });
-
-  // Minimize training window
-  ipcMain.handle('training:minimize', () => {
-    if (trainingWindow) {
-      trainingWindow.minimize();
-    }
-    return true;
-  });
-
-  // Get current closer ID
-  ipcMain.handle('training:get-closer-id', () => {
-    return currentCloserId;
-  });
-
-  // Set closer ID (called from main window when user logs in)
-  ipcMain.handle('training:set-closer-id', (_event, closerId: string | null) => {
-    currentCloserId = closerId;
-    // Notify training window if it's open
-    if (trainingWindow && closerId) {
-      trainingWindow.webContents.send('training:closer-id-changed', closerId);
-    }
-    return true;
-  });
-
-  // Get assigned playlists for a closer
-  ipcMain.handle('training:get-playlists', async (_event, closerId: string) => {
-    try {
-      const response = await fetch(
-        `https://ideal-ram-982.convex.site/getAssignedTraining?closerId=${encodeURIComponent(closerId)}`
-      );
-
-      if (!response.ok) {
-        console.error('[Main] Failed to get playlists:', response.statusText);
-        return [];
-      }
-
-      const playlists = await response.json();
-      return playlists;
-    } catch (error) {
-      console.error('[Main] Error getting playlists:', error);
-      return [];
-    }
-  });
-
-  // Get playlist details with items
-  ipcMain.handle('training:get-playlist-details', async (_event, playlistId: string, closerId: string) => {
-    try {
-      const response = await fetch(
-        `https://ideal-ram-982.convex.site/getTrainingPlaylistDetails?playlistId=${encodeURIComponent(playlistId)}&closerId=${encodeURIComponent(closerId)}`
-      );
-
-      if (!response.ok) {
-        console.error('[Main] Failed to get playlist details:', response.statusText);
-        return null;
-      }
-
-      const playlist = await response.json();
-      return playlist;
-    } catch (error) {
-      console.error('[Main] Error getting playlist details:', error);
-      return null;
-    }
-  });
-
-  // ---- Role Play Room Window IPC Handlers ----
-
-  // Open roleplay window
-  ipcMain.handle('roleplay:open', (_event, userInfo: { teamId: string; closerId: string; userName: string }) => {
-    roleplayUserInfo = userInfo;
-    createRoleplayWindow();
-    return true;
-  });
-
-  // Close roleplay window
-  ipcMain.handle('roleplay:close', () => {
-    if (roleplayWindow) {
-      roleplayWindow.close();
-      roleplayWindow = null;
-    }
-    return true;
-  });
-
-  // Minimize roleplay window
-  ipcMain.handle('roleplay:minimize', () => {
-    if (roleplayWindow) {
-      roleplayWindow.minimize();
-    }
-    return true;
-  });
-
-  // Get user info for roleplay
-  ipcMain.handle('roleplay:get-user-info', () => {
-    return roleplayUserInfo;
-  });
-
-  // ---- Schedule Window IPC Handlers ----
-
-  // Open schedule window
-  ipcMain.handle('schedule:open', () => {
-    createScheduleWindow();
-    return true;
-  });
-
-  // Close schedule window
-  ipcMain.handle('schedule:close', () => {
-    if (scheduleWindow) {
-      scheduleWindow.close();
-      scheduleWindow = null;
-    }
-    return true;
-  });
-
-  // Minimize schedule window
-  ipcMain.handle('schedule:minimize', () => {
-    if (scheduleWindow) {
-      scheduleWindow.minimize();
-    }
-    return true;
-  });
-
-  // Get current closer email
-  ipcMain.handle('schedule:get-closer-email', () => {
-    return currentCloserEmail;
-  });
-
-  // Set closer email (called from main window when user logs in)
-  ipcMain.handle('schedule:set-closer-email', (_event, email: string | null) => {
-    currentCloserEmail = email;
-    // Notify schedule window if it's open
-    if (scheduleWindow && email) {
-      scheduleWindow.webContents.send('schedule:closer-email-changed', email);
-    }
-    return true;
-  });
-
-  // Get team ID for schedule
-  ipcMain.handle('schedule:get-team-id', () => {
-    return currentScheduleTeamId;
-  });
-
-  // Set team ID for schedule (called from main window when user logs in)
-  ipcMain.handle('schedule:set-team-id', (_event, teamId: string | null) => {
-    currentScheduleTeamId = teamId;
-    return true;
-  });
-
-  // Get calendar status for a closer (requires teamId)
-  ipcMain.handle('schedule:get-calendar-status', async (_event, email: string) => {
-    if (!currentScheduleTeamId) {
-      console.error('[Main] No teamId set for schedule');
-      return null;
-    }
-
-    try {
-      const response = await fetch(
-        `https://ideal-ram-982.convex.site/getCloserCalendarStatusByEmail?email=${encodeURIComponent(email)}&teamId=${encodeURIComponent(currentScheduleTeamId)}`
-      );
-
-      if (!response.ok) {
-        console.error('[Main] Failed to get calendar status:', response.statusText);
-        return null;
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[Main] Error getting calendar status:', error);
-      return null;
-    }
-  });
-
-  // Connect calendar with ICS URL (requires teamId)
-  ipcMain.handle('schedule:connect-calendar', async (_event, email: string, icsUrl: string) => {
-    if (!currentScheduleTeamId) {
-      throw new Error('No teamId set for schedule');
-    }
-
-    try {
-      const response = await fetch('https://ideal-ram-982.convex.site/connectCalendarByEmail', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, teamId: currentScheduleTeamId, icsUrl }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to connect calendar');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[Main] Error connecting calendar:', error);
-      throw error;
-    }
-  });
-
-  // Disconnect calendar (requires teamId)
-  ipcMain.handle('schedule:disconnect-calendar', async (_event, email: string) => {
-    if (!currentScheduleTeamId) {
-      throw new Error('No teamId set for schedule');
-    }
-
-    try {
-      const response = await fetch('https://ideal-ram-982.convex.site/disconnectCalendarByEmail', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, teamId: currentScheduleTeamId }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to disconnect calendar');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[Main] Error disconnecting calendar:', error);
-      throw error;
-    }
-  });
-
-  // Sync calendar (requires teamId)
-  ipcMain.handle('schedule:sync-calendar', async (_event, email: string) => {
-    if (!currentScheduleTeamId) {
-      throw new Error('No teamId set for schedule');
-    }
-
-    try {
-      const response = await fetch('https://ideal-ram-982.convex.site/syncCalendarByEmail', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, teamId: currentScheduleTeamId }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to sync calendar');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[Main] Error syncing calendar:', error);
-      throw error;
-    }
-  });
-
-  // Get events for a date range (requires teamId)
-  ipcMain.handle('schedule:get-events', async (_event, email: string, startDate: number, endDate: number) => {
-    if (!currentScheduleTeamId) {
-      console.error('[Main] No teamId set for schedule');
-      return [];
-    }
-
-    try {
-      const response = await fetch(
-        `https://ideal-ram-982.convex.site/getCloserEventsByEmail?email=${encodeURIComponent(email)}&teamId=${encodeURIComponent(currentScheduleTeamId)}&startDate=${startDate}&endDate=${endDate}`
-      );
-
-      if (!response.ok) {
-        console.error('[Main] Failed to get events:', response.statusText);
-        return [];
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[Main] Error getting events:', error);
-      return [];
     }
   });
 
@@ -1812,9 +952,8 @@ const setupIpcHandlers = (): void => {
             app.dock.setBadge(count > 0 ? String(count) : '');
           }
 
-          // Notify renderer windows
+          // Notify renderer
           mainWindow?.webContents.send('chat:unread-count-changed', count);
-          ammoTrackerWindow?.webContents.send('chat:unread-count-changed', count);
         }
 
         // Get latest unread for notification
@@ -1825,9 +964,8 @@ const setupIpcHandlers = (): void => {
           const latest = await latestResponse.json();
           if (latest && latest._id !== lastSeenMessageId) {
             lastSeenMessageId = latest._id;
-            // Notify renderer windows of new message
+            // Notify renderer of new message
             mainWindow?.webContents.send('chat:new-message', latest);
-            ammoTrackerWindow?.webContents.send('chat:new-message', latest);
 
             // Show notification for new messages from manager
             if (latest.senderType === 'manager') {
@@ -1843,14 +981,9 @@ const setupIpcHandlers = (): void => {
                 silent: true, // Don't play notification sound since we're using shell.beep()
               });
 
-              // When notification is clicked, show the ammo tracker window
+              // When notification is clicked, show the main window
               notification.on('click', () => {
-                if (ammoTrackerWindow) {
-                  ammoTrackerWindow.show();
-                  ammoTrackerWindow.focus();
-                  // Tell the ammo tracker to switch to chat tab
-                  ammoTrackerWindow.webContents.send('chat:switch-to-tab');
-                } else if (mainWindow) {
+                if (mainWindow) {
                   mainWindow.show();
                   mainWindow.focus();
                 }
@@ -1887,7 +1020,7 @@ const setupIpcHandlers = (): void => {
     return { success: true };
   });
 
-  // Get closer info for chat (used by ammo tracker)
+  // Get closer info for chat
   ipcMain.handle('chat:get-closer-info', () => {
     return {
       closerId: chatCloserId,
@@ -1925,33 +1058,12 @@ app.whenReady().then(() => {
 
   // B2C Personal app uses server-side meeting bots — no local audio permissions needed
 
-  // Register global keyboard shortcut for ammo tracker
-  globalShortcut.register('CommandOrControl+Shift+A', () => {
-    toggleAmmoTracker();
-  });
-
   // Initialize Sequ3nce Stream (hold-to-talk dictation)
   // Wrapped in try/catch so any Stream failure cannot break the rest of the app.
   try {
     initializeStream();
   } catch (err) {
     console.error('[Main] initializeStream failed:', err);
-  }
-
-  // Defensive re-assertion for the ammo tracker overlay. macOS events like
-  // display sleep/wake, monitor hot-plug, or Space transitions can silently
-  // desync the visibleOnAllWorkspaces / visibleOnFullScreen collection-behavior
-  // bits (Electron #36364). Re-assert on resume + display changes so the
-  // overlay keeps floating above fullscreen meeting apps after long idle
-  // periods — the exact scenario that triggered the "black Space" bug.
-  if (process.platform === 'darwin') {
-    const reassertAmmoOverlay = () => {
-      if (ammoTrackerWindow && !ammoTrackerWindow.isDestroyed()) {
-        ammoTrackerWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-      }
-    };
-    powerMonitor.on('resume', reassertAmmoOverlay);
-    screen.on('display-metrics-changed', reassertAmmoOverlay);
   }
 
   // Grant permission requests from renderers for the APIs video calling needs.

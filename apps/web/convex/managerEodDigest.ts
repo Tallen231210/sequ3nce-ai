@@ -1,8 +1,10 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
+import { withSlackTestLabel, withDiscordTestLabel } from "./lib/testLabel";
 import {
   internalAction,
   internalMutation,
   internalQuery,
+  mutation,
   query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -279,8 +281,12 @@ function slackSafe(label: string): string {
     .replace(/\|/g, "-");
 }
 
-function callLink(ref: EodCallRef): string {
-  return `<${DASHBOARD_CALL_URL}/${ref.callId}|${slackSafe(ref.label)}>`;
+function callLink(ref: EodCallRef, shareUrls?: Record<string, string>): string {
+  // Slack digests link the PUBLIC watch page when one exists — the channel
+  // includes setters, who can't open the manager dashboard. Falls back to
+  // the dashboard link for calls with nothing to watch.
+  const url = shareUrls?.[String(ref.callId)] ?? `${DASHBOARD_CALL_URL}/${ref.callId}`;
+  return `<${url}|${slackSafe(ref.label)}>`;
 }
 
 function outcomeWord(outcome: string | null): string {
@@ -295,6 +301,7 @@ function buildSlackBlocks(
   data: ManagerEodData,
   narrative: string | null,
   local: { weekday: string; month: number; day: number },
+  shareUrls?: Record<string, string>,
 ): any[] {
   const blocks: any[] = [
     {
@@ -324,7 +331,7 @@ function buildSlackBlocks(
       .map(
         (r) =>
           `• *${r.label}* — ${r.count} call${r.count === 1 ? "" : "s"}` +
-          (r.calls.length ? `  (${r.calls.map(callLink).join(", ")})` : ""),
+          (r.calls.length ? `  (${r.calls.map((c) => callLink(c, shareUrls)).join(", ")})` : ""),
       )
       .join("\n");
     blocks.push({
@@ -370,7 +377,7 @@ function buildSlackBlocks(
       text: {
         type: "mrkdwn",
         text:
-          `🔍 *One call worth reviewing:* <${DASHBOARD_CALL_URL}/${p.callId}|${slackSafe(p.label)}> — ` +
+          `🔍 *One call worth reviewing:* ${callLink({ callId: p.callId, label: p.label }, shareUrls)} — ` +
           `${p.objectionCount} objection${p.objectionCount === 1 ? "" : "s"}, ${p.durationMin} min, ${outcomeWord(p.outcome)}.`,
       },
     });
@@ -401,6 +408,7 @@ function buildDiscordEmbed(
   data: ManagerEodData,
   narrative: string | null,
   local: { weekday: string; month: number; day: number },
+  shareUrls?: Record<string, string>,
 ): any {
   const reasonsText =
     data.reasons.length > 0
@@ -419,7 +427,7 @@ function buildDiscordEmbed(
     const p = data.reviewPick;
     fields.push({
       name: "One call worth reviewing",
-      value: `[${p.label}](${DASHBOARD_CALL_URL}/${p.callId}) — ${p.objectionCount} objections, ${p.durationMin} min, ${outcomeWord(p.outcome)}`,
+      value: `[${p.label}](${shareUrls?.[String(p.callId)] ?? `${DASHBOARD_CALL_URL}/${p.callId}`}) — ${p.objectionCount} objections, ${p.durationMin} min, ${outcomeWord(p.outcome)}`,
     });
   }
   fields.push({
@@ -470,6 +478,7 @@ async function maybeSendForTeam(
 
   const dayKey = `${local.year}-${pad2(local.month)}-${pad2(local.day)}`;
   const dedupKey = `${team._id}_managereod_${dayKey}${opts?.dedupSuffix ?? ""}`;
+  const isTest = opts?.dedupSuffix?.includes("_test") === true;
   const alreadySent = await ctx.runQuery(
     internal.setterDataNotifications.hasNotificationByDedupKey,
     { dedupKey },
@@ -485,6 +494,24 @@ async function maybeSendForTeam(
   // and an owner should know a zero-call day happened.
   const narrative = await narrateDay(data);
 
+  // Public watch-links for every call the message mentions. The channel
+  // includes setters, who can't open the manager dashboard — Zion's ask.
+  const linkedCallIds = new Set<string>();
+  for (const r of data.reasons) for (const c of r.calls) linkedCallIds.add(String(c.callId));
+  if (data.reviewPick) linkedCallIds.add(String(data.reviewPick.callId));
+  const shareUrls: Record<string, string> = {};
+  for (const callId of linkedCallIds) {
+    try {
+      const minted = await ctx.runMutation(
+        internal.sharedLinks.getOrCreateDigestShareLink,
+        { callId: callId as Id<"calls"> },
+      );
+      if (minted?.url) shareUrls[callId] = minted.url;
+    } catch (e) {
+      console.error(`[managerEod] share link mint failed for ${callId}`, e);
+    }
+  }
+
   const channel = (team as any).managerEodChannel;
   const fallback = `Manager EOD: ${data.callsTaken} calls, ${data.realConversations} real conversations, ${data.closes} closed`;
 
@@ -498,7 +525,9 @@ async function maybeSendForTeam(
       accessToken: (team as any).slackAccessToken,
       channelId,
       text: fallback,
-      blocks: buildSlackBlocks(data, narrative, local),
+      blocks: isTest
+        ? withSlackTestLabel(buildSlackBlocks(data, narrative, local, shareUrls))
+        : buildSlackBlocks(data, narrative, local, shareUrls),
     });
     if (!result.ok) throw new Error(`Slack post failed: ${result.error}`);
   } else if (channel === "discord") {
@@ -507,7 +536,9 @@ async function maybeSendForTeam(
     const result = await postDiscordWebhook({
       webhookUrl,
       content: fallback,
-      embed: buildDiscordEmbed(data, narrative, local),
+      embed: isTest
+        ? withDiscordTestLabel(buildDiscordEmbed(data, narrative, local, shareUrls))
+        : buildDiscordEmbed(data, narrative, local, shareUrls),
     });
     if (!result.ok) throw new Error(`Discord post failed: ${result.error}`);
   } else {
@@ -573,7 +604,18 @@ export const previewManagerEod = internalAction({
     );
     const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
     const local = formatInTimeZone(new Date(nowMs), tz);
-    return { data, narrative, blocks: buildSlackBlocks(data, narrative, local) };
+    const linkedCallIds = new Set<string>();
+    for (const r of data.reasons) for (const c of r.calls) linkedCallIds.add(String(c.callId));
+    if (data.reviewPick) linkedCallIds.add(String(data.reviewPick.callId));
+    const shareUrls: Record<string, string> = {};
+    for (const callId of linkedCallIds) {
+      const minted = await ctx.runMutation(
+        internal.sharedLinks.getOrCreateDigestShareLink,
+        { callId: callId as Id<"calls"> },
+      );
+      if (minted?.url) shareUrls[callId] = minted.url;
+    }
+    return { data, narrative, blocks: buildSlackBlocks(data, narrative, local, shareUrls) };
   },
 });
 
@@ -618,5 +660,69 @@ export const configureManagerEod = internalMutation({
         : {}),
     } as any);
     return { team: team.name, enabled: args.enabled };
+  },
+});
+
+// ----------------------------------------------------------------------------
+// Self-serve delivery settings — the same contract as every other
+// notification: the manager picks the channel, we never guess.
+// ----------------------------------------------------------------------------
+
+export const getManagerEodConfig = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) return null;
+    const team = await ctx.db.get(user.teamId as Id<"teams">);
+    if (!team) return null;
+    return {
+      enabled: (team as any).managerEodEnabled === true,
+      hourLocal: (team as any).managerEodHourLocal ?? 19,
+      slackChannelId: (team as any).managerEodSlackChannelId ?? null,
+      slackChannelName: (team as any).managerEodSlackChannelName ?? null,
+      channelReady:
+        !!(team as any).slackAccessToken ||
+        !!(team as any).managerEodDiscordWebhookUrl,
+    };
+  },
+});
+
+export const setManagerEodConfig = mutation({
+  args: {
+    clerkId: v.string(),
+    enabled: v.boolean(),
+    hourLocal: v.number(),
+    slackChannelId: v.optional(v.string()),
+    slackChannelName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await resolveAuthUser(ctx, args.clerkId);
+    if (!user) throw new ConvexError("Not signed in");
+    if (
+      !Number.isInteger(args.hourLocal) ||
+      args.hourLocal < 0 ||
+      args.hourLocal > 23
+    ) {
+      throw new ConvexError("Pick an hour between 0 and 23");
+    }
+    const team = await ctx.db.get(user.teamId as Id<"teams">);
+    await ctx.db.patch(user.teamId as Id<"teams">, {
+      managerEodEnabled: args.enabled,
+      managerEodHourLocal: args.hourLocal,
+      // Default the delivery channel to Slack when nothing is configured —
+      // "enabled" with channel undefined used to skip silently every night.
+      ...((team as any)?.managerEodChannel === undefined &&
+      !(team as any)?.managerEodDiscordWebhookUrl
+        ? { managerEodChannel: "slack" as const }
+        : {}),
+      ...(args.slackChannelId !== undefined
+        ? {
+            managerEodChannel: "slack" as const,
+            managerEodSlackChannelId: args.slackChannelId,
+            managerEodSlackChannelName: args.slackChannelName,
+          }
+        : {}),
+    });
+    return { ok: true };
   },
 });
