@@ -93,7 +93,7 @@ const VARIANTS: Record<"a" | "b", VariantCopy> = {
       </>
     ),
     lede: "Before you spend $6,000 on a program, learn the fundamentals and start getting paid inside 30 days. Becoming elite can come after that.",
-    videoLabel: "The whole thing explained · 3 minutes",
+    videoLabel: "The whole thing explained",
     cta: "Get on the board",
     whyKick: "Why the old way stopped working",
     whyTiles: [
@@ -123,7 +123,7 @@ const VARIANTS: Record<"a" | "b", VariantCopy> = {
       </>
     ),
     lede: "Six weeks of coaching, a live board of seats that are hiring, and an intro to the person doing the hiring. Fill the form and a coach calls you within minutes.",
-    videoLabel: "How to get in without paying to get in · 3 minutes",
+    videoLabel: "How to get in without paying to get in",
     cta: "Show me the roles",
     whyKick: "Why this works",
     whyTiles: [
