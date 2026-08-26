@@ -763,15 +763,25 @@ function PersonalLandingPageInner() {
               </li>
               <li>
                 <Link
-                  href="/privacy"
+                  href="/personal/privacy"
                   className="hover:text-zinc-900 transition-colors"
                 >
                   Privacy
                 </Link>
               </li>
               <li>
-                <Link href="/terms" className="hover:text-zinc-900 transition-colors">
+                <Link href="/personal/terms" className="hover:text-zinc-900 transition-colors">
                   Terms
+                </Link>
+              </li>
+              <li>
+                <Link href="/personal/ftc-disclosure" className="hover:text-zinc-900 transition-colors">
+                  FTC Disclosure
+                </Link>
+              </li>
+              <li>
+                <Link href="/personal/income-disclosure" className="hover:text-zinc-900 transition-colors">
+                  Income Disclosure
                 </Link>
               </li>
             </ul>
