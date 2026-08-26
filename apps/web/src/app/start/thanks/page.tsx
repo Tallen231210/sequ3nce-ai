@@ -2,7 +2,8 @@
 
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Loader2, Play } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
+import { VslPlayer } from "../VslPlayer";
 
 // ============================================================================
 // Confirmation: "keep your phone close." The number shown is the LEAD'S own
@@ -88,17 +89,9 @@ function ThanksInner() {
 
         <div>
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            Watch this while you wait — 4 minutes
+            Watch this while you wait
           </p>
-          {/* ══ REPLACE: waiting-room video embed ══ */}
-          <div className="flex aspect-video flex-col items-center justify-center gap-2.5 rounded-xl bg-zinc-950 text-white">
-            <span className="flex h-13 w-13 items-center justify-center rounded-full bg-white p-3.5">
-              <Play className="h-5 w-5 fill-zinc-950 text-zinc-950" />
-            </span>
-            <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-              Start here
-            </span>
-          </div>
+          <VslPlayer src="/videos/thanks.mp4" poster="/videos/thanks-poster.jpg" label="Start here" />
           <p className="mt-2.5 text-xs leading-relaxed text-zinc-400">
             What&apos;s in the program, how placement works, and exactly what we
             sell and why — so nothing on the call is a surprise.
