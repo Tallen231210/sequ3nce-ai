@@ -4,11 +4,8 @@
 // after the first payment to run the second.
 // ============================================================================
 
-// ⚠ SANDBOX — Churp's checkout is a Vercel preview deployment with a share
-// token; real cards won't be charged. Swap for the production Churp URL
-// before the funnel goes live (it's on the go-live checklist).
-const CHURP_CHECKOUT_URL =
-  "https://landing-33gxj3xt7-tyler-allens-projects-bb6ab01b.vercel.app/checkout?_vercel_share=6z6zDgbvkuaJ4fuHkF13XJzkloHmBZhf";
+// Churp's PRODUCTION checkout (real charges) — swapped in 2026-08-26.
+const CHURP_CHECKOUT_URL = "https://www.churp.ai/checkout";
 
 const GROUND: React.CSSProperties = {
   backgroundImage: "radial-gradient(circle, rgb(228 228 231) 1px, transparent 1px)",
