@@ -149,6 +149,7 @@ import type * as lib_recommendationRules from "../lib/recommendationRules.js";
 import type * as lib_sentry from "../lib/sentry.js";
 import type * as lib_setterTitleMatch from "../lib/setterTitleMatch.js";
 import type * as lib_shareSecurity from "../lib/shareSecurity.js";
+import type * as lib_testLabel from "../lib/testLabel.js";
 import type * as liveMessages from "../liveMessages.js";
 import type * as liveStreams from "../liveStreams.js";
 import type * as managerBotAvatar from "../managerBotAvatar.js";
@@ -388,6 +389,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sentry": typeof lib_sentry;
   "lib/setterTitleMatch": typeof lib_setterTitleMatch;
   "lib/shareSecurity": typeof lib_shareSecurity;
+  "lib/testLabel": typeof lib_testLabel;
   liveMessages: typeof liveMessages;
   liveStreams: typeof liveStreams;
   managerBotAvatar: typeof managerBotAvatar;
