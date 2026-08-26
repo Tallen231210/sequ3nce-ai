@@ -2,7 +2,8 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Play } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { VslPlayer } from "./VslPlayer";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { LeadModal } from "./LeadModal";
 import { Cta, FaqList, Guarantee, LegalFooter, SeatsLine, Steps, ValueStack, WhyTiles } from "./sections";
@@ -92,7 +93,7 @@ const VARIANTS: Record<"a" | "b", VariantCopy> = {
       </>
     ),
     lede: "Before you spend $6,000 on a program, learn the fundamentals and start getting paid inside 30 days. Becoming elite can come after that.",
-    videoLabel: "The whole thing explained · 90 seconds",
+    videoLabel: "The whole thing explained · 3 minutes",
     cta: "Get on the board",
     whyKick: "Why the old way stopped working",
     whyTiles: [
@@ -122,7 +123,7 @@ const VARIANTS: Record<"a" | "b", VariantCopy> = {
       </>
     ),
     lede: "Six weeks of coaching, a live board of seats that are hiring, and an intro to the person doing the hiring. Fill the form and a coach calls you within minutes.",
-    videoLabel: "How to get in without paying to get in · 90 seconds",
+    videoLabel: "How to get in without paying to get in · 3 minutes",
     cta: "Show me the roles",
     whyKick: "Why this works",
     whyTiles: [
@@ -266,16 +267,7 @@ function OptInInner() {
         <h1 className="mj-h1">{c.headline}</h1>
         <p className="lede">{c.lede}</p>
 
-        {/* ══ REPLACE: VSL embed goes here when the video exists ══ */}
-        <div
-          className="flex aspect-video flex-col items-center justify-center gap-2.5 rounded-xl bg-zinc-950 text-white"
-          style={{ maxWidth: 660, margin: "0 auto 10px", boxShadow: "0 20px 56px rgba(9,9,11,.20)" }}
-        >
-          <span className="flex h-13 w-13 items-center justify-center rounded-full bg-white p-3.5">
-            <Play className="h-5 w-5 fill-zinc-950 text-zinc-950" />
-          </span>
-          <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">{c.videoLabel}</span>
-        </div>
+        <VslPlayer src="/videos/vsl.mp4" poster="/videos/vsl-poster.jpg" label={c.videoLabel} />
         <p className="body" style={{ textAlign: "center", fontSize: 14, color: "#a1a1aa" }}>
           Watch this first. It&rsquo;s short and it explains everything.
         </p>
