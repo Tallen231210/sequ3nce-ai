@@ -86,12 +86,19 @@
   .sp-minimal .sp-x{display:none}
 
   @media (max-width:640px){
-    /* Phones: a centered banner floated in from the top, never glued to the
-       bottom edge of the page. */
-    .sp-host{padding:0;left:50% !important;right:auto !important;top:64px !important;bottom:auto !important;
-      transform:translateX(-50%);width:calc(100vw - 24px);max-width:380px}
-    .sp-toast{width:100%;transform:translateY(-10px) scale(.97)}
+    /* Phones: a compact centered banner floated in from the top, never glued
+       to the bottom edge of the page. Deliberately smaller than desktop —
+       it should whisper, not cover the pitch. */
+    .sp-host{padding:0;left:50% !important;right:auto !important;top:60px !important;bottom:auto !important;
+      transform:translateX(-50%);width:auto;max-width:290px}
+    .sp-toast{width:auto;transform:translateY(-10px) scale(.97)}
     .sp-toast.in{transform:none}
+    .sp-card{padding:8px 12px;border-radius:11px;border-left-width:2px;
+      box-shadow:0 8px 26px rgba(9,9,11,.14),0 1px 5px rgba(9,9,11,.06)}
+    .sp-av{width:28px;height:28px;font-size:11px}
+    .sp-l1{font-size:12.5px}
+    .sp-l2{font-size:10px;margin-top:1px}
+    .sp-x{width:16px;height:16px;font-size:13px}
   }
   @media (prefers-reduced-motion:reduce){
     .sp-toast{transition:opacity .01ms}
