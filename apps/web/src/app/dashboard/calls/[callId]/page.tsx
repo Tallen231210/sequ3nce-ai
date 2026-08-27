@@ -1940,19 +1940,24 @@ export default function CallDetailPage() {
                     buildText={() => {
                       // Segments are the source of truth (the flat text copy
                       // has gone stale before); fall back only when they're
-                      // missing entirely.
+                      // missing entirely. Speaker labels go through the same
+                      // mapper the on-screen transcript uses — raw segments
+                      // can say "Speaker 1"/"Speaker 2", not closer/prospect.
                       const segs = call.transcriptSegments;
                       if (segs && segs.length > 0) {
                         const closerName = call.closer?.name || "Closer";
                         const prospect = call.prospectName || "Prospect";
                         return segs
-                          .map((s) =>
-                            transcriptLine(
-                              s.timestamp,
-                              s.speaker === "closer" ? closerName : prospect,
-                              s.text,
-                            ),
-                          )
+                          .map((s) => {
+                            const label = mapSpeakerLabel(s.speaker, call.speakerMapping);
+                            const name =
+                              label === "Closer"
+                                ? closerName
+                                : label === "Prospect"
+                                  ? prospect
+                                  : label;
+                            return transcriptLine(s.timestamp, name, s.text);
+                          })
                           .join("\n");
                       }
                       return call.transcriptText || "";
