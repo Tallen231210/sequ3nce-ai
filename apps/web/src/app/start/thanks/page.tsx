@@ -87,7 +87,9 @@ function ThanksInner() {
           </p>
         </div>
 
-        <div>
+        {/* On phones the video leads (co-founder's call) — desktop keeps it
+            in the right column via lg:order-none. */}
+        <div className="order-first lg:order-none">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
             Watch this while you wait
           </p>
