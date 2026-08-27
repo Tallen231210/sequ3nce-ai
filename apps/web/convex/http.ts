@@ -10029,6 +10029,38 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// GET /b2c/recent-signups — real opt-ins for the social-proof toasts.
+// Empty array below the honesty floor (see b2cLeads.getRecentSignupsPublic).
+http.route({
+  path: "/b2c/recent-signups",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const list = await ctx.runQuery(api.b2cLeads.getRecentSignupsPublic, {});
+      return b2cJsonResponse(list, 200);
+    } catch (error) {
+      console.error("[HTTP] recent-signups:", error);
+      return b2cJsonResponse([], 200);
+    }
+  }),
+});
+
+// GET /b2c/lead-count — real lead total for the live-counter widget.
+// Empty object below the honesty floor → the widget renders nothing.
+http.route({
+  path: "/b2c/lead-count",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const result = await ctx.runQuery(api.b2cLeads.getLeadCountPublic, {});
+      return b2cJsonResponse(result, 200);
+    } catch (error) {
+      console.error("[HTTP] lead-count:", error);
+      return b2cJsonResponse({}, 200);
+    }
+  }),
+});
+
 // ============================================
 // B2C MULTI-CALENDAR
 // ============================================
@@ -12678,10 +12710,62 @@ http.route({
       };
       const type = event.type ?? "";
 
-      // Only subscription events change what a team is entitled to. Everything
-      // else Polar might send is acknowledged and ignored rather than treated
-      // as an error.
-      if (!type.startsWith("subscription.")) {
+      // Subscription events change entitlements; order.paid feeds the Meta
+      // Purchase conversion (B2C only, below). Everything else Polar might
+      // send is acknowledged and ignored rather than treated as an error.
+      if (!type.startsWith("subscription.") && type !== "order.paid") {
+        return new Response(null, { status: 202 });
+      }
+
+      // ------------------------------------------------------------------
+      // order.paid → Meta CAPI Purchase. Ad conversions only: the order must
+      // carry the b2c_plan tag (B2B money never touches the ad pixel), and
+      // only a FIRST order counts — renewal cycles are not new conversions.
+      // The send itself runs on the scheduler (convex/metaCapi.ts); this
+      // handler only acks. event_id = order id, so redeliveries can't
+      // double-count at Meta even if this branch runs twice.
+      // ------------------------------------------------------------------
+      if (type === "order.paid") {
+        const order = (event.data ?? {}) as {
+          id?: string;
+          billing_reason?: string;
+          total_amount?: number | null;
+          currency?: string | null;
+          customer_id?: string;
+          created_at?: string;
+          metadata?: Record<string, unknown> | null;
+          product?: {
+            id?: string;
+            name?: string;
+            metadata?: Record<string, unknown> | null;
+          } | null;
+          customer?: { email?: string | null } | null;
+        };
+        const orderPlanTag =
+          order.product?.metadata?.b2c_plan ?? order.metadata?.b2c_plan;
+        const firstOrder =
+          order.billing_reason === "purchase" ||
+          order.billing_reason === "subscription_create";
+        if (order.id && typeof orderPlanTag === "string" && firstOrder) {
+          const meta = (order.metadata ?? {}) as Record<string, unknown>;
+          const str = (val: unknown): string | undefined =>
+            typeof val === "string" && val.trim() ? val.trim() : undefined;
+          await ctx.runMutation(internal.metaCapi.schedulePurchase, {
+            orderId: order.id,
+            email: str(order.customer?.email),
+            polarCustomerId: str(order.customer_id),
+            amountCents: typeof order.total_amount === "number" ? order.total_amount : 0,
+            currency: str(order.currency) ?? "usd",
+            productId: str(order.product?.id),
+            productName: str(order.product?.name),
+            createdAt: str(order.created_at),
+            landingUrl: str(meta.landing_url),
+            fbp: str(meta.fbp),
+            fbc: str(meta.fbc),
+            clientIp: str(meta.client_ip),
+            userAgent: str(meta.user_agent),
+          });
+        }
         return new Response(null, { status: 202 });
       }
 

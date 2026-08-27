@@ -177,3 +177,24 @@ export const setTestAccountSubscription = internalMutation({
     return { updated: true, subscriptionStatus: args.subscriptionStatus };
   },
 });
+
+/**
+ * Delete specific b2cLeads rows by id — internal-only maintenance for
+ * scrubbing test leads that would otherwise surface in the public
+ * social-proof feed. Refuses ids that don't resolve to b2cLeads.
+ */
+export const deleteLeadsByIds = internalMutation({
+  args: { leadIds: v.array(v.string()) },
+  handler: async (ctx, { leadIds }) => {
+    const deleted: string[] = [];
+    for (const raw of leadIds) {
+      const id = ctx.db.normalizeId("b2cLeads", raw);
+      if (!id) continue;
+      const row = await ctx.db.get(id);
+      if (!row) continue;
+      await ctx.db.delete(id);
+      deleted.push(raw);
+    }
+    return { deleted };
+  },
+});

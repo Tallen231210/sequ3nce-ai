@@ -89,3 +89,48 @@ export const getLeads = query({
       .take(take);
   },
 });
+
+// ============================================================================
+// Public social-proof feeds for the /start funnel widgets. Deliberately
+// honest: below the floors they return nothing and the widgets stay hidden —
+// "3 closers joined" is anti-proof, and fabricated names are off the table
+// (the widget files themselves say so). Exposes first name + last initial
+// only; never email, phone, or anything else.
+// ============================================================================
+
+const RECENT_SIGNUPS_FLOOR = 5; // fewer real leads than this → show no toasts
+const LEAD_COUNT_FLOOR = 25; // smaller total than this → show no counter
+
+/** Recent opt-ins for the signup-toast widget. */
+export const getRecentSignupsPublic = query({
+  args: {},
+  handler: async (ctx) => {
+    const recent = await ctx.db.query("b2cLeads").order("desc").take(50);
+    const named = recent.filter((l) => (l.firstName ?? "").trim().length > 0);
+    if (named.length < RECENT_SIGNUPS_FLOOR) return [];
+    // First name ONLY (privacy: no surname, no location, no timestamp — a
+    // bare first name identifies nobody), deduped so a scroll session shows
+    // different names rather than the same lead twice.
+    const seen = new Set<string>();
+    const out: Array<{ name: string; action: string }> = [];
+    for (const l of named) {
+      const name =
+        l.firstName!.trim().charAt(0).toUpperCase() + l.firstName!.trim().slice(1).toLowerCase();
+      if (seen.has(name)) continue;
+      seen.add(name);
+      out.push({ name, action: "claimed free access" });
+      if (out.length >= 20) break;
+    }
+    return out;
+  },
+});
+
+/** Total lead count for the live-counter widget. */
+export const getLeadCountPublic = query({
+  args: {},
+  handler: async (ctx) => {
+    const leads = await ctx.db.query("b2cLeads").take(5000);
+    if (leads.length < LEAD_COUNT_FLOOR) return {};
+    return { total: leads.length };
+  },
+});

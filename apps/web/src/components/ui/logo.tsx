@@ -12,9 +12,14 @@ export function Logo({ className = "", height = 24, href }: LogoProps) {
     <Image
       src="/logo.png"
       alt="Sequ3nce.ai"
-      width={height * 5.5} // Approximate aspect ratio from the logo
+      width={height * 5.5} // Layout width driver — keep; rendered height follows the real ratio
       height={height}
       className={className}
+      // The source PNG is 41KB — smaller than most optimizer output. Serving
+      // it untouched keeps the wordmark crisp on retina screens instead of
+      // upscaling a 128px resized copy (the blur Tyler spotted).
+      unoptimized
+      style={{ height: "auto" }}
       priority
     />
   );
