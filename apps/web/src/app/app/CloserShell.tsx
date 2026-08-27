@@ -24,6 +24,7 @@ import { useActiveCall } from "./_components/useActiveCall";
 import { needsCalendarOnboarding } from "@/lib/closer/client";
 import { ActiveCallProvider } from "./_components/ActiveCallContext";
 import { FathomDisconnectedNotice } from "./_components/FathomDisconnectedNotice";
+import { GoogleReconnectModal } from "./_components/GoogleReconnectModal";
 import { QuickBotModal } from "./_components/QuickBotModal";
 import {
   getCloserInfo,
@@ -258,6 +259,7 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
       {quickBotOpen && (
         <QuickBotModal closerInfo={closer} onClose={() => setQuickBotOpen(false)} />
       )}
+      <GoogleReconnectModal closerInfo={closer} />
     </div>
   );
 }

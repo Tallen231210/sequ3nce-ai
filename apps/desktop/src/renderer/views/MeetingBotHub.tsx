@@ -18,6 +18,7 @@ import { CallHistoryView } from './CallHistoryView';
 import { CoachingView } from './CoachingView';
 import { BotOnboardingView } from './BotOnboardingView';
 import { QuickBotModal } from './QuickBotModal';
+import { GoogleReconnectModal } from './GoogleReconnectModal';
 import { ScheduleView } from './schedule/ScheduleView';
 import { ResourcesView } from './ResourcesView';
 import { SettingsView } from './SettingsView';
@@ -337,6 +338,12 @@ export function MeetingBotHub({ closerInfo, onLogout }: MeetingBotHubProps) {
       {/* Quick Bot modal */}
       {showQuickBot && (
         <QuickBotModal closerInfo={closerInfo} onClose={() => setShowQuickBot(false)} />
+      )}
+
+      {/* Google-verified reconnect prompt — hidden while onboarding is up,
+          since onboarding IS the connect flow and two overlays would fight. */}
+      {onboardingChecked && !showOnboarding && (
+        <GoogleReconnectModal closerInfo={closerInfo} />
       )}
 
       {/* Sidebar */}

@@ -57,6 +57,9 @@ export const clearRevokedConnection = internalMutation({
       googleCalendarRefreshToken: undefined,
       calendarProvider: undefined,
       calendarConnectedAt: undefined,
+      // Leaves a visible trace so the connect card can say the connection
+      // expired rather than rendering as never-connected.
+      calendarDisconnectReason: "google_revoked",
     });
   },
 });

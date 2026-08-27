@@ -41,6 +41,7 @@ export const saveGoogleCalendarConnection = mutation({
       googleCalendarRefreshToken: args.refreshToken,
       calendarProvider: "google",
       calendarConnectedAt: Date.now(),
+      calendarDisconnectReason: undefined,
       // Auto-join defaults ON the moment a calendar is connected.
       //
       // It used to default off, one closer enabled by hand at a time, which was
@@ -84,6 +85,7 @@ export const saveMicrosoftCalendarConnection = mutation({
       microsoftCalendarRefreshToken: args.refreshToken,
       calendarProvider: "microsoft",
       calendarConnectedAt: Date.now(),
+      calendarDisconnectReason: undefined,
       // Same default as Google — see saveGoogleCalendarConnection.
       autoJoinEnabled: closer.autoJoinEnabled ?? true,
     });
@@ -112,6 +114,8 @@ export const disconnectCalendar = mutation({
       calendarProvider: undefined,
       calendarConnectedAt: undefined,
       calendarOnboardingCompleted: undefined,
+      // A deliberate disconnect is not an expiry.
+      calendarDisconnectReason: undefined,
     });
 
     return { success: true };

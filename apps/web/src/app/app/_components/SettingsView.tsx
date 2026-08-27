@@ -483,7 +483,14 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
             </div>
           ) : (
             <div className="space-y-3 max-w-md">
-              <p className="text-[13px] text-gray-500">Not connected. Connect your Google Calendar to automatically detect calls.</p>
+              {calStatus?.disconnectReason === 'google_revoked' ? (
+                <p className="text-[13px] text-amber-700">
+                  Your Google connection expired — reconnect below to keep your
+                  calls detected automatically.
+                </p>
+              ) : (
+                <p className="text-[13px] text-gray-500">Not connected. Connect your Google Calendar to automatically detect calls.</p>
+              )}
               <button
                 onClick={() => {
                   const authUrl = `https://sequ3nce.ai/api/auth/google/authorize?closerId=${closerInfo.closerId}`;

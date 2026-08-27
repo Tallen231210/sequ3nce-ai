@@ -131,6 +131,12 @@ export default function ManagerModePage() {
           <div className="rounded-xl border border-border bg-card p-8">
             <CalendarPlus className="h-5 w-5 text-muted-foreground" />
             <h2 className="mt-3 text-base font-semibold">Connect your calendar</h2>
+            {state.disconnectReason === "google_revoked" && (
+              <p className="mt-2 max-w-lg text-sm font-medium text-amber-700">
+                Your Google connection expired — reconnect below to pick up
+                where you left off.
+              </p>
+            )}
             <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
               {state.botName} will join <strong>every meeting on your
               calendar</strong> and record it — one-to-ones, team meetings,

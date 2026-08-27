@@ -45,6 +45,9 @@ export const getCloserCalendarStatusByEmail = query({
       icsUrl: closer.icsUrl,
       connectedAt: closer.calendarConnectedAt,
       lastSynced: closer.calendarLastSyncAt,
+      // "google_revoked" when Google killed the token — lets the connect card
+      // say "your connection expired" instead of looking never-connected.
+      disconnectReason: closer.calendarDisconnectReason ?? null,
     };
   },
 });
@@ -293,6 +296,7 @@ export const connectCalendarByEmail = mutation({
     await ctx.db.patch(closer._id, {
       icsUrl: url,
       calendarConnectedAt: Date.now(),
+      calendarDisconnectReason: undefined,
       autoJoinEnabled: (closer as any).autoJoinEnabled ?? true,
     });
 
@@ -313,6 +317,9 @@ export const disconnectCalendar = mutation({
       microsoftCalendarRefreshToken: undefined,
       calendarProvider: undefined,
       calendarOnboardingCompleted: undefined,
+      // A deliberate disconnect is not an expiry — never show "expired" after
+      // the closer chose to disconnect.
+      calendarDisconnectReason: undefined,
     });
 
     // Delete all calendar events for this closer
@@ -354,6 +361,9 @@ export const disconnectCalendarByEmail = mutation({
       microsoftCalendarRefreshToken: undefined,
       calendarProvider: undefined,
       calendarOnboardingCompleted: undefined,
+      // A deliberate disconnect is not an expiry — never show "expired" after
+      // the closer chose to disconnect.
+      calendarDisconnectReason: undefined,
     });
 
     const events = await ctx.db
