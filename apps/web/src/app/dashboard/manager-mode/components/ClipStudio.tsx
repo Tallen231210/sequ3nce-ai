@@ -7,6 +7,7 @@ import { Loader2, Scissors, X } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import { ClipTimeline } from "./ClipTimeline";
 import { mmss, speakerHue } from "./clipUtils";
+import { CopyTranscriptButton, transcriptLine } from "@/components/ui/copy-transcript-button";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -197,7 +198,7 @@ export function ClipStudio({
           </div>
 
           {/* Speakers, so the strip's colours mean something. */}
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {[...new Set(segments.map((s) => s.speaker))].map((sp) => (
               <span
                 key={sp}
@@ -210,6 +211,15 @@ export function ClipStudio({
                 {sp}
               </span>
             ))}
+            <span className="ml-auto">
+              <CopyTranscriptButton
+                buildText={() =>
+                  segments
+                    .map((t) => transcriptLine(t.startSeconds, t.speaker, t.text))
+                    .join("\n")
+                }
+              />
+            </span>
           </div>
         </div>
 
