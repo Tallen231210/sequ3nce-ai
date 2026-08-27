@@ -73,9 +73,10 @@ function ThanksInner() {
             <p className="mb-3 text-[13.5px] text-zinc-500">
               Can&apos;t take a call in the next few minutes?
             </p>
-            {/* ══ REPLACE: your GHL calendar booking link ══ */}
             <a
-              href="#BOOKING_LINK"
+              href="https://hub.sequ3nce.ai/widget/booking/p5rfq4TTzneuuL8TNK5z"
+              target="_blank"
+              rel="noopener"
               className="block w-full rounded-[10px] border border-zinc-300 px-4 py-3 text-center text-[15px] font-semibold text-zinc-900 transition-colors hover:bg-zinc-50"
             >
               Pick a time instead
