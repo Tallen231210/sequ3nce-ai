@@ -3,6 +3,7 @@ import { SubscriptionGate } from "@/components/dashboard/subscription-gate";
 import { ChatContainer } from "@/components/chat";
 import { ReinforcementAlert } from "@/components/dashboard/reinforcement-alert";
 import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
+import { GoogleReconnectModal } from "@/components/dashboard/google-reconnect-modal";
 import { TimezoneAdopter } from "@/components/dashboard/timezone-adopter";
 
 export default function DashboardLayout({
@@ -17,6 +18,7 @@ export default function DashboardLayout({
         <Sidebar />
         <ReinforcementAlert />
         <OnboardingBanner />
+        <GoogleReconnectModal />
         <main className="pl-64">{children}</main>
         <ChatContainer />
       </div>

@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import type { TranscriptSegment } from '@/lib/closer/client';
+import { CopyTranscriptButton, transcriptLine } from '@/components/ui/copy-transcript-button';
 
 interface CallDetailTranscriptTabProps {
   transcript: TranscriptSegment[];
@@ -88,6 +89,25 @@ export function CallDetailTranscriptTab({
   }
 
   return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex justify-end border-b border-gray-100 px-3 py-1.5">
+        <CopyTranscriptButton
+          buildText={() =>
+            transcript
+              .map((seg) => {
+                const isCloser =
+                  seg.speaker.toLowerCase().includes('closer') ||
+                  seg.speaker.toLowerCase() === 'agent';
+                return transcriptLine(
+                  seg.timestamp,
+                  isCloser ? 'You' : 'Prospect',
+                  seg.text,
+                );
+              })
+              .join('\n')
+          }
+        />
+      </div>
     <div
       ref={containerRef}
       className="overflow-y-auto flex-1 p-3 space-y-1"
@@ -123,6 +143,7 @@ export function CallDetailTranscriptTab({
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

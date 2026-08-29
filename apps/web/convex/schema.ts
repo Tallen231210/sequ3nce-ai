@@ -554,6 +554,10 @@ export default defineSchema({
     googleCalendarRefreshToken: v.optional(v.string()),
     calendarProvider: v.optional(v.string()), // "google"
     calendarConnectedAt: v.optional(v.number()),
+    // Why the connection is gone ("google_revoked") — set when Google kills
+    // the token, cleared on any successful connect. Without it a dead token
+    // renders as "never connected" and reads as a mystery bug.
+    calendarDisconnectReason: v.optional(v.string()),
     calendarOnboardingCompleted: v.optional(v.boolean()),
     /**
      * Written `?? true` at connect time, never a bare true — a manager who
@@ -633,6 +637,10 @@ export default defineSchema({
     googleCalendarRefreshToken: v.optional(v.string()), // Google Calendar OAuth refresh token
     microsoftCalendarRefreshToken: v.optional(v.string()), // Microsoft/Outlook OAuth refresh token
     calendarProvider: v.optional(v.string()), // "google" | "microsoft"
+    // Why the connection is gone ("google_revoked") — set when Google kills
+    // the token, cleared on any successful connect. Distinguishes "expired,
+    // please reconnect" from "never connected" in the UI.
+    calendarDisconnectReason: v.optional(v.string()),
     meetingBaasCalendarId: v.optional(v.string()), // Meeting BaaS calendar integration ID
     calendarOnboardingCompleted: v.optional(v.boolean()), // Whether closer completed bot onboarding
     meetingPlatform: v.optional(v.string()), // "google_meet" | "zoom" | "microsoft_teams"

@@ -28,6 +28,9 @@ export const getManagerCalendarState = query({
       name: user.name ?? null,
       connected: !!user.googleCalendarRefreshToken,
       connectedAt: user.calendarConnectedAt ?? null,
+      // "google_revoked" when Google killed the token — the connect card says
+      // the connection expired rather than rendering as never-connected.
+      disconnectReason: user.calendarDisconnectReason ?? null,
       autoJoin: user.managerAutoJoinEnabled ?? false,
       canConnect: isOverwatch(team?.productTier),
       /** Shown so a manager on the wrong plan is told why, not just refused. */
@@ -111,6 +114,7 @@ export const completeManagerCalendarConnect = mutation({
       googleCalendarRefreshToken: args.refreshToken,
       calendarProvider: "google",
       calendarConnectedAt: Date.now(),
+      calendarDisconnectReason: undefined,
       // `?? true`, never a bare true. A manager who deliberately switched
       // recording off and later reconnects must not be silently switched back
       // on — the closer toggle learned this, and reconnecting is exactly when
@@ -135,6 +139,8 @@ export const disconnectManagerCalendar = mutation({
       calendarProvider: undefined,
       calendarConnectedAt: undefined,
       calendarOnboardingCompleted: undefined,
+      // A deliberate disconnect is not an expiry.
+      calendarDisconnectReason: undefined,
     });
 
     // Their upcoming events are meaningless without a token to refresh them,

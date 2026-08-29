@@ -1539,6 +1539,8 @@ export interface CalendarStatus {
   icsUrl?: string;
   connectedAt?: number;
   lastSynced?: number;
+  /** "google_revoked" when Google killed the token; null otherwise. */
+  disconnectReason?: string | null;
 }
 
 export async function getCalendarStatus(email: string, teamId: string): Promise<CalendarStatus | null> {

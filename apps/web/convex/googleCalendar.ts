@@ -45,6 +45,9 @@ export const clearGoogleConnection = internalMutation({
       googleCalendarRefreshToken: undefined,
       calendarProvider: undefined,
       calendarConnectedAt: undefined,
+      // Leaves a visible trace: the Settings connect card can say "your
+      // connection expired" instead of pretending nothing was ever connected.
+      calendarDisconnectReason: "google_revoked",
     });
   },
 });

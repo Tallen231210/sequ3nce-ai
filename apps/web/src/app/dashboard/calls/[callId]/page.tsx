@@ -6,6 +6,7 @@ import { api } from "../../../../../convex/_generated/api";
 import { Id } from "../../../../../convex/_generated/dataModel";
 import { Header } from "@/components/dashboard/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CopyTranscriptButton, transcriptLine } from "@/components/ui/copy-transcript-button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -1933,7 +1934,36 @@ export default function CallDetailPage() {
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Transcript</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Transcript</CardTitle>
+                  <CopyTranscriptButton
+                    buildText={() => {
+                      // Segments are the source of truth (the flat text copy
+                      // has gone stale before); fall back only when they're
+                      // missing entirely. Speaker labels go through the same
+                      // mapper the on-screen transcript uses — raw segments
+                      // can say "Speaker 1"/"Speaker 2", not closer/prospect.
+                      const segs = call.transcriptSegments;
+                      if (segs && segs.length > 0) {
+                        const closerName = call.closer?.name || "Closer";
+                        const prospect = call.prospectName || "Prospect";
+                        return segs
+                          .map((s) => {
+                            const label = mapSpeakerLabel(s.speaker, call.speakerMapping);
+                            const name =
+                              label === "Closer"
+                                ? closerName
+                                : label === "Prospect"
+                                  ? prospect
+                                  : label;
+                            return transcriptLine(s.timestamp, name, s.text);
+                          })
+                          .join("\n");
+                      }
+                      return call.transcriptText || "";
+                    }}
+                  />
+                </div>
               </CardHeader>
               <CardContent className="max-h-[600px] overflow-y-auto">
                 <TranscriptView
