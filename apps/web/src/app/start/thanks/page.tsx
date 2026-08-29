@@ -74,7 +74,7 @@ function ThanksInner() {
               Can&apos;t take a call in the next few minutes?
             </p>
             <a
-              href="https://hub.sequ3nce.ai/widget/booking/p5rfq4TTzneuuL8TNK5z"
+              href="https://booking.sequ3nce.com/widget/bookings/cash-collectors-onboarding-cal"
               target="_blank"
               rel="noopener"
               className="block w-full rounded-[10px] border border-zinc-300 px-4 py-3 text-center text-[15px] font-semibold text-zinc-900 transition-colors hover:bg-zinc-50"
