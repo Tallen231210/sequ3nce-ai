@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import { VslPlayer } from "../VslPlayer";
 
 // ============================================================================
@@ -20,6 +20,7 @@ const GROUND: React.CSSProperties = {
 
 function ThanksInner() {
   const params = useSearchParams();
+  const [showBooking, setShowBooking] = useState(false);
   const phone = params.get("p") || "your number";
 
   return (
@@ -73,14 +74,13 @@ function ThanksInner() {
             <p className="mb-3 text-[13.5px] text-zinc-500">
               Can&apos;t take a call in the next few minutes?
             </p>
-            <a
-              href="https://booking.sequ3nce.com/widget/bookings/cash-collectors-onboarding-cal"
-              target="_blank"
-              rel="noopener"
-              className="block w-full rounded-[10px] border border-zinc-300 px-4 py-3 text-center text-[15px] font-semibold text-zinc-900 transition-colors hover:bg-zinc-50"
+            <button
+              type="button"
+              onClick={() => setShowBooking(true)}
+              className="block w-full cursor-pointer rounded-[10px] border border-zinc-300 px-4 py-3 text-center text-[15px] font-semibold text-zinc-900 transition-colors hover:bg-zinc-50"
             >
               Pick a time instead
-            </a>
+            </button>
           </div>
           <p className="mt-3 text-center text-xs leading-relaxed text-zinc-400">
             Booking a time doesn&apos;t take you off the list — if we reach you
@@ -101,6 +101,39 @@ function ThanksInner() {
           </p>
         </div>
       </div>
+
+      {/* Embedded booking calendar — GHL widget in an overlay so the lead
+          never leaves the page. */}
+      {showBooking && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 p-3 sm:p-6"
+          onClick={() => setShowBooking(false)}
+        >
+          <div
+            className="relative flex h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                Pick a time
+              </p>
+              <button
+                type="button"
+                aria-label="Close booking"
+                onClick={() => setShowBooking(false)}
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            </div>
+            <iframe
+              src="https://booking.sequ3nce.com/widget/bookings/cash-collectors-onboarding-cal"
+              title="Book a call"
+              className="h-full w-full flex-1 border-0"
+            />
+          </div>
+        </div>
+      )}
     </main>
   );
 }
