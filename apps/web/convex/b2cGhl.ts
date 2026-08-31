@@ -10,6 +10,9 @@ import type { Id } from "./_generated/dataModel";
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 const TAG_LEAD_CAPTURED = "b2c-lead-captured";
+// Funnel-audience tag for the co-founder's GHL automations — every lead the
+// funnel captures carries it (requested 2026-08-31).
+const TAG_CASH_COLLECTORS = "cashcollectors";
 const TAG_SIGNED_UP = "b2c-signed-up";
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -163,7 +166,7 @@ export const syncLeadToGHL = action({
     // rather than replacing it — safe for returning users.
     const tagRes = await ghlFetch(`/contacts/${contactId}/tags`, {
       method: "POST",
-      body: { tags: [TAG_LEAD_CAPTURED] },
+      body: { tags: [TAG_LEAD_CAPTURED, TAG_CASH_COLLECTORS] },
       token: env.token,
     });
     if (!tagRes.ok) {
