@@ -8,11 +8,13 @@
 // person must have given written permission before this page takes ad
 // traffic. Do not add cards that don't meet that bar.
 //
-// SHOW_FEATURED stays false until the three proof screenshots exist at
-// /public/wins/ (niv.png, daniel.png, los.png).
+// Featured trio: Niv exactly per Ben's design; Morgan and Sam W. replace
+// Daniel/Los A. because their proof screenshots arrived first — every
+// bullet quotes the screenshot shown above it. Swap back if Ben sends
+// Daniel's and Los A.'s shots.
 // ============================================================================
 
-const SHOW_FEATURED = false;
+const SHOW_FEATURED = true;
 
 const WINS: { av: string; name: string; text: React.ReactNode }[] = [
   { av: "N", name: "Niv", text: <>One reviewed call to a <b>$50,000</b> contract signed</> },
@@ -47,33 +49,33 @@ const FEATURED = [
     ],
   },
   {
-    shot: "/wins/daniel.png",
-    alt: "Screenshot of a message from Daniel",
-    av: "D",
-    name: "Daniel",
-    role: "Closer, own offer",
-    from: <><b>$15k</b> months</>,
-    to: <><b>$30k</b> months</>,
+    shot: "/wins/morgan.png",
+    alt: "Screenshot of Morgan's messages: $3,375 cash collected, $16,200 contracted last 2 days",
+    av: "M",
+    name: "Morgan",
+    role: "Closer",
+    from: "Two days of calls",
+    to: <><b>$16,200</b> contracted</>,
     points: [
-      <>Presence and tonality were <mark>way off</mark> before the call reviews</>,
-      <>Close rate went from <mark>sub 20% to 35%</mark></>,
-      <>Same offer, same leads, different call</>,
-      <>&ldquo;I never doubt myself on a sales call now&rdquo;</>,
+      <><mark>$3,375 collected</mark> and <mark>$16,200 contracted</mark> in two days</>,
+      <>Sent it to Ben at 9:05 the same morning</>,
+      <>&ldquo;Cash collectors for the win&rdquo; &mdash; her words</>,
+      <>Ben&rsquo;s only note: now get the collected side to match</>,
     ],
   },
   {
-    shot: "/wins/los.png",
-    alt: "Screenshot of a message from Los A.",
-    av: "LA",
-    name: "Los A.",
-    role: "Closer, own offer",
-    from: "No offer, no positioning",
-    to: <><b>First Rolex</b></>,
+    shot: "/wins/samw.png",
+    alt: "Screenshot of Sam Whitney's message: first phone call PIF, first close for 8k",
+    av: "SW",
+    name: "Sam W.",
+    role: "Closer",
+    from: "Never closed on a phone call",
+    to: <><b>$8k</b> paid in full</>,
     points: [
-      <>Came in with <mark>no positioning</mark> and no voice of his own</>,
-      <>Built a script-less selling approach with Ben</>,
-      <>&ldquo;Talking me down off the cliff was all worth it&rdquo;</>,
-      <>Sent Ben a photo of what the commissions bought</>,
+      <>His first ever phone-call close &mdash; <mark>paid in full</mark></>,
+      <><mark>$8,000</mark> collected on one call</>,
+      <>Learned it from Ben&rsquo;s recorded call reviews</>,
+      <>&ldquo;Thanks for all your recent recordings!&rdquo; &mdash; his message to Ben</>,
     ],
   },
 ];
