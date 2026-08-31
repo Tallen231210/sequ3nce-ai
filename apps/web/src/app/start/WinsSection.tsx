@@ -80,6 +80,18 @@ const FEATURED = [
   },
 ];
 
+// The receipts strip: every remaining proof screenshot, horizontally
+// swipeable. Labels state only what the screenshot itself shows.
+const MORE: { shot: string; alt: string; name: string; result: string }[] = [
+  { shot: "/wins/will.png", alt: "Will's message: sold his package, $8k total", name: "Will N.", result: "$8k package sold" },
+  { shot: "/wins/max.png", alt: "Max's post: $5K website redesign plus $2,500/mo ads management", name: "Max S.", result: "$5k + $2,500/mo client" },
+  { shot: "/wins/emma.png", alt: "Emma's message: new setter set 3 calls in 24 hours", name: "Emma S.", result: "3 calls set in 24 hours" },
+  { shot: "/wins/caip9k.png", alt: "Member post: $4k project closed, $9,000 in deals since joining", name: "Member win", result: "$9,000 in his first weeks" },
+  { shot: "/wins/nick.png", alt: "Nick's win: gut health coaching from 5 to 20k per month", name: "Nick", result: "$5k to $20k months" },
+  { shot: "/wins/brandon-deal.png", alt: "Brandon's post: $10k/mo deal on a 6-month engagement", name: "Brandon D.", result: "$10k/mo deal closed" },
+  { shot: "/wins/brandon-testimonial.png", alt: "Brandon's testimonial: same service, price from $3k/mo to $10k/mo", name: "Brandon D.", result: "Same service, 3\u00d7 the price" },
+];
+
 const STATS = [
   { b: "300+", s: "Reps coached" },
   { b: "$50k", s: "Biggest single contract" },
@@ -129,6 +141,19 @@ const WINS_CSS = `
 .w-fl li{font-size:13.5px;line-height:1.5;color:#52525b;padding-left:14px;position:relative;text-wrap:pretty}
 .w-fl li::before{content:"";position:absolute;left:0;top:8px;width:4px;height:4px;border-radius:50%;background:#d4d4d8}
 .w-fl mark{background:#d1fae5;color:#065f46;font-weight:650;padding:0 3px;border-radius:3px;font-variant-numeric:tabular-nums}
+.w-morek{text-align:center;font-size:11px;color:#a1a1aa;letter-spacing:.14em;text-transform:uppercase;
+  font-weight:600;margin:26px 0 0}
+.w-more{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x proximity;padding:12px 24px 16px;margin:0 -24px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.w-more::-webkit-scrollbar{display:none}
+.w-m{flex:none;width:252px;scroll-snap-align:start;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden;
+  background:#fff;box-shadow:0 2px 10px rgba(9,9,11,.04)}
+.w-mshot{position:relative;background:#f4f4f5;height:300px;overflow:hidden;border-bottom:1px solid #e4e4e7}
+.w-mshot img{display:block;width:100%;height:auto}
+.w-mshot::after{content:"";position:absolute;left:0;right:0;bottom:0;height:44px;background:linear-gradient(transparent,#fff)}
+.w-ml{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:10px 13px}
+.w-ml b{font-size:12.5px;font-weight:650;letter-spacing:-.015em;white-space:nowrap}
+.w-ml span{font-size:11.5px;color:#047857;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
 .w-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:640px;margin:26px auto 0}
 .w-s{text-align:center;padding:15px 8px;border:1px solid #e4e4e7;border-radius:14px;background:#fff}
 .w-s b{display:block;font-size:24px;font-weight:700;letter-spacing:-.035em;line-height:1;font-variant-numeric:tabular-nums}
@@ -207,6 +232,24 @@ export function WinsSection() {
           ))}
         </div>
       )}
+
+      <p className="w-morek">More from the wins channel</p>
+      <div className="w-fade">
+        <div className="w-more">
+          {MORE.map((m) => (
+            <div className="w-m" key={m.shot}>
+              <div className="w-mshot">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={m.shot} alt={m.alt} loading="lazy" />
+              </div>
+              <div className="w-ml">
+                <b>{m.name}</b>
+                <span>{m.result}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="w-stats">
         {STATS.map((s) => (
