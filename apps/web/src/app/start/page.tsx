@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { VslPlayer } from "./VslPlayer";
+import { WinsSection } from "./WinsSection";
 import { trackMetaEvent } from "@/lib/meta-pixel";
 import { LeadModal } from "./LeadModal";
 import { Cta, FaqList, Guarantee, LegalFooter, SeatsLine, Steps, ValueStack, WhyTiles } from "./sections";
@@ -277,6 +278,9 @@ function OptInInner() {
           <div style={{ height: 11 }} />
           <Cta label={c.cta} onOpen={openModal} scar />
         </div>
+
+        <div className="divider" />
+        <WinsSection />
 
         <div className="divider" />
         <ValueStack />
