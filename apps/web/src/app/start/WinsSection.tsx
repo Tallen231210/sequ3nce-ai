@@ -14,6 +14,11 @@
 // Daniel's and Los A.'s shots.
 // ============================================================================
 
+"use client";
+
+import { useRef } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 const SHOW_FEATURED = true;
 
 const WINS: { av: string; name: string; text: React.ReactNode }[] = [
@@ -151,6 +156,14 @@ const WINS_CSS = `
 .w-mshot{position:relative;background:#f4f4f5;height:300px;overflow:hidden;border-bottom:1px solid #e4e4e7}
 .w-mshot img{display:block;width:100%;height:auto}
 .w-mshot::after{content:"";position:absolute;left:0;right:0;bottom:0;height:44px;background:linear-gradient(transparent,#fff)}
+.w-morewrap{position:relative}
+.w-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:38px;height:38px;border-radius:50%;
+  background:#fff;border:1px solid #d4d4d8;box-shadow:0 4px 14px rgba(9,9,11,.10);display:flex;align-items:center;
+  justify-content:center;cursor:pointer;color:#3f3f46;transition:background .15s}
+.w-nav:hover{background:#fafafa}
+.w-nav.l{left:-6px}
+.w-nav.r{right:-6px}
+@media(max-width:640px){.w-nav{width:32px;height:32px}.w-nav.l{left:2px}.w-nav.r{right:2px}}
 .w-ml{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:10px 13px}
 .w-ml b{font-size:12.5px;font-weight:650;letter-spacing:-.015em;white-space:nowrap}
 .w-ml span{font-size:11.5px;color:#047857;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
@@ -174,6 +187,7 @@ function WinCard({ w }: { w: (typeof WINS)[number] }) {
 }
 
 export function WinsSection() {
+  const moreRef = useRef<HTMLDivElement>(null);
   // Each row holds its card list twice — the keyframes slide exactly one
   // list-width, so the loop is seamless. Row B runs the opposite direction
   // with a rotated order so the same faces aren't stacked vertically.
@@ -234,8 +248,25 @@ export function WinsSection() {
       )}
 
       <p className="w-morek">More from the wins channel</p>
-      <div className="w-fade">
-        <div className="w-more">
+      <div className="w-morewrap">
+        <button
+          type="button"
+          aria-label="Scroll wins left"
+          className="w-nav l"
+          onClick={() => moreRef.current?.scrollBy({ left: -540, behavior: "smooth" })}
+        >
+          <ChevronLeft className="h-4.5 w-4.5" />
+        </button>
+        <button
+          type="button"
+          aria-label="Scroll wins right"
+          className="w-nav r"
+          onClick={() => moreRef.current?.scrollBy({ left: 540, behavior: "smooth" })}
+        >
+          <ChevronRight className="h-4.5 w-4.5" />
+        </button>
+        <div className="w-fade">
+        <div className="w-more" ref={moreRef}>
           {MORE.map((m) => (
             <div className="w-m" key={m.shot}>
               <div className="w-mshot">
@@ -248,6 +279,7 @@ export function WinsSection() {
               </div>
             </div>
           ))}
+        </div>
         </div>
       </div>
 
