@@ -99,7 +99,7 @@ const MORE: { shot: string; alt: string; name: string; result: string }[] = [
 
 const STATS = [
   { b: "300+", s: "Reps coached" },
-  { b: "$50k", s: "Biggest single contract" },
+  { b: "$50k/mo", s: "Highest earning rep" },
   { b: "$0", s: "For the training" },
 ];
 
