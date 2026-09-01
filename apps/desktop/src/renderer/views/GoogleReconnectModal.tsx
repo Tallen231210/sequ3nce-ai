@@ -41,7 +41,9 @@ export function GoogleReconnectModal({ closerInfo }: { closerInfo: CloserInfo })
   // re-check so the modal clears itself without a restart.
   useEffect(() => {
     if (!show) return;
-    const onFocus = () => void check();
+    const onFocus = (): void => {
+      void check();
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [show, check]);
