@@ -4,7 +4,7 @@
 import * as Sentry from "@sentry/electron/renderer";
 
 // HTTP Action endpoint - hosted at .convex.site (not .convex.cloud)
-const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
+export const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
 // ============================================================================
 // convexFetch — circuit-breaker wrapper around fetch()
@@ -25,7 +25,7 @@ let consecutive429s = 0;
 let lastFailureAt = 0;
 const BREAKER_RESET_MS = 30_000;
 
-async function convexFetch(
+export async function convexFetch(
   input: string,
   init?: RequestInit,
 ): Promise<Response> {

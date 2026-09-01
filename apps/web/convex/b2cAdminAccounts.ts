@@ -198,3 +198,29 @@ export const deleteLeadsByIds = internalMutation({
     return { deleted };
   },
 });
+
+/**
+ * Reset a TEST account's password (isTestAccount rows only — refuses real
+ * accounts). E2E/maintenance tool: lets the rig recover accounts whose
+ * generated passwords weren't retained.
+ */
+export const setTestAccountPassword = internalMutation({
+  args: { email: v.string(), password: v.string() },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .first();
+    if (!user) throw new Error("No such user");
+    if (user.isTestAccount !== true) throw new Error("Refusing: not a test account");
+    const passwordHash = await hashPassword(args.password);
+    await ctx.db.patch(user._id, { passwordHash });
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .first();
+    if (closer) await ctx.db.patch(closer._id, { passwordHash });
+    return { reset: true };
+  },
+});
