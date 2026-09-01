@@ -14,6 +14,7 @@ import {
   type LeaderboardRow,
 } from "@/lib/closer/client";
 import { getCloserInfo } from "@/lib/closer/session";
+import { ConfirmStrip } from "./ConfirmStrip";
 import { PerformanceDayForm } from "./PerformanceDayForm";
 import { PerformanceGrid } from "./PerformanceGrid";
 import { PerformanceStats } from "./PerformanceStats";
@@ -229,6 +230,8 @@ export function NumbersView() {
               </span>
             )}
           </div>
+
+          <ConfirmStrip closerId={closerId} onDataChanged={() => void load()} />
 
           <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
             {today.confirmedAt
