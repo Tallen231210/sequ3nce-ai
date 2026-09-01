@@ -14001,7 +14001,8 @@ for (const route of classroomRoutes) {
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Request failed";
         // Convex wraps thrown errors; keep the human part only.
-        const clean = msg.replace(/^.*Uncaught Error:\s*/s, "").split("\n")[0];
+        // [\s\S] instead of the dotall flag — tsconfig targets pre-es2018.
+        const clean = msg.replace(/^[\s\S]*Uncaught Error:\s*/, "").split("\n")[0];
         const known =
           /must be|too long|not found|already|Only |Founder access|not a coach|own classroom|founder-managed|isn't ready|not available|Bad slug|characters/i.test(
             clean,
