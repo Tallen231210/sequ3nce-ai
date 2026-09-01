@@ -33,6 +33,8 @@ import type * as b2cAuth from "../b2cAuth.js";
 import type * as b2cBilling from "../b2cBilling.js";
 import type * as b2cBugReports from "../b2cBugReports.js";
 import type * as b2cCalendars from "../b2cCalendars.js";
+import type * as b2cClassroomContent from "../b2cClassroomContent.js";
+import type * as b2cClassrooms from "../b2cClassrooms.js";
 import type * as b2cCoachingCalls from "../b2cCoachingCalls.js";
 import type * as b2cCoachingCallsDaily from "../b2cCoachingCallsDaily.js";
 import type * as b2cCoachingReplayWatched from "../b2cCoachingReplayWatched.js";
@@ -278,6 +280,8 @@ declare const fullApi: ApiFromModules<{
   b2cBilling: typeof b2cBilling;
   b2cBugReports: typeof b2cBugReports;
   b2cCalendars: typeof b2cCalendars;
+  b2cClassroomContent: typeof b2cClassroomContent;
+  b2cClassrooms: typeof b2cClassrooms;
   b2cCoachingCalls: typeof b2cCoachingCalls;
   b2cCoachingCallsDaily: typeof b2cCoachingCallsDaily;
   b2cCoachingReplayWatched: typeof b2cCoachingReplayWatched;

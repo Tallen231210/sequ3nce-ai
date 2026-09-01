@@ -5,10 +5,15 @@ import { v } from "convex/values";
 export const listPublishedModules = query({
   args: {},
   handler: async (ctx) => {
-    const modules = await ctx.db
-      .query("b2cTrainingModules")
-      .withIndex("by_published", (q) => q.eq("isPublished", true))
-      .collect();
+    const modules = (
+      await ctx.db
+        .query("b2cTrainingModules")
+        .withIndex("by_published", (q) => q.eq("isPublished", true))
+        .collect()
+    )
+      // House library only — coach-owned modules live in their classrooms
+      // (identical behavior for all pre-classroom rows, which have no coachId).
+      .filter((m) => m.coachId === undefined);
 
     // Resolve thumbnail URLs
     return Promise.all(
