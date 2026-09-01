@@ -17,6 +17,7 @@ export interface SetterHome {
     callsOnCalendar: number | null;
     callsShown: number | null;
     callsClosed: number | null;
+    cashCollected: number | null;
     note: string;
     submittedAt: number;
   } | null;

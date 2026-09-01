@@ -22,9 +22,10 @@ const FIELDS: Array<{ key: string; label: string; hint?: string }> = [
   { key: "followUps", label: "Follow ups", hint: "existing leads you re-contacted today" },
   { key: "callsOnCalendar", label: "Calls on the calendar", hint: "first consults from YOUR sets that were scheduled for today" },
   { key: "callsShown", label: "Calls shown", hint: "of those, how many showed — follow-ups / second calls don't count" },
-  { key: "callsClosed", label: "Calls closed", hint: "of today's shows, how many closed" },
+  { key: "callsClosed", label: "Calls closed", hint: "deals from YOUR sets that closed today — follow-up closes count" },
+  { key: "cashCollected", label: "Cash collected ($)", hint: "cash collected today from your sets' deals — later payments count" },
 ];
-const OPTIONAL_KEYS = new Set(["callsOnCalendar", "callsShown", "callsClosed"]);
+const OPTIONAL_KEYS = new Set(["callsOnCalendar", "callsShown", "callsClosed", "cashCollected"]);
 
 export default function SetterEodPage() {
   const { token } = useParams<{ token: string }>();
@@ -51,6 +52,7 @@ export default function SetterEodPage() {
         callsOnCalendar: e.callsOnCalendar != null ? String(e.callsOnCalendar) : "",
         callsShown: e.callsShown != null ? String(e.callsShown) : "",
         callsClosed: e.callsClosed != null ? String(e.callsClosed) : "",
+        cashCollected: e.cashCollected != null ? String(e.cashCollected) : "",
       });
       setNote(e.note ?? "");
     }
@@ -110,6 +112,7 @@ export default function SetterEodPage() {
         callsOnCalendar: opt("callsOnCalendar"),
         callsShown: opt("callsShown"),
         callsClosed: opt("callsClosed"),
+        cashCollected: opt("cashCollected"),
         note: note.trim() || undefined,
       });
       setDone(true);

@@ -40,6 +40,7 @@ export interface CloserRollup {
   aov: number | null;       // gross ÷ closes
   coll: number | null;      // collected ÷ gross
   cdpbc: number | null;     // collected ÷ booked — the keystone
+  cdplc: number | null;     // collected ÷ live — cash per live call (bonus basis)
   gdpbc: number | null;     // gross ÷ booked
   roas: number | null;      // cdpbc ÷ cost per booked call
   fushow: number | null;    // fus ÷ fub
@@ -141,6 +142,7 @@ export function roll(rs: CloserLedgerRow[], cpc: number | null): CloserRollup {
     aov: rat(t.gross, t.closes),
     coll: pct(t.collected, t.gross),
     cdpbc: rat(t.collected, t.booked),
+    cdplc: rat(t.collected, t.live),
     gdpbc: rat(t.gross, t.booked),
     roas: cpc !== null && cpc > 0 ? rat(t.collected, t.booked * cpc) : null,
     fushow: pct(t.fus, t.fub),

@@ -104,12 +104,17 @@ export function PerformanceStats({
         </p>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <Metric label="Cash collected" value={money(t.cash)} sub={`${t.closes} closes`} />
         <Metric
           label="Avg deal"
           value={money(perf.avgDeal)}
           sub={perf.avgCash !== null ? `${money(perf.avgCash)} collected` : undefined}
+        />
+        <Metric
+          label="Cash / live call"
+          value={money(t.taken > 0 ? t.cash / t.taken : null)}
+          sub="collected ÷ calls taken"
         />
         <Metric label="Calls taken" value={String(t.taken)} sub={`${t.booked} booked`} />
         <Metric

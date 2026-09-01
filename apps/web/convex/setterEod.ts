@@ -289,6 +289,7 @@ export const getEodFormContext = query({
             callsOnCalendar: existing.callsOnCalendar ?? null,
             callsShown: existing.callsShown ?? null,
             callsClosed: existing.callsClosed ?? null,
+            cashCollected: existing.cashCollected ?? null,
             note: existing.note ?? "",
           }
         : null,
@@ -307,6 +308,7 @@ export const submitEod = mutation({
     callsOnCalendar: v.optional(v.number()),
     callsShown: v.optional(v.number()),
     callsClosed: v.optional(v.number()),
+    cashCollected: v.optional(v.number()),
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
