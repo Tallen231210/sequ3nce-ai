@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { isFollowUpTitle } from "./lib/followUpTitle";
+import { classifyMatchedCall } from "./setterDataMetrics";
 import { isSalesBooking, groupBookingCopies } from "./calendarBookings";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -294,15 +295,16 @@ async function recountDayImpl(
         if (isFollowUpTitle(ev.title)) {
           const row = byCloser.get(ownerId)!;
           row.fuBooked += 1;
-          // "FU shown" needs presence evidence on the recorded call linked
-          // to this booking — prospectJoined is the honest signal (a closer
-          // waiting alone produces a long recording and it stays false).
-          // No call or no evidence = not shown.
+          // "FU shown" uses the platform's own show-classifier on the
+          // recorded call linked to this booking — same evidence rules as
+          // the attendance system (outcome beats presence beats duration),
+          // so a call the closer logged as closed counts as shown even if
+          // speaker verification never ran. No call = not shown.
           const linkedCall =
             copies
               .map((c) => callByEventId.get(String(c._id)))
               .find((x): x is Doc<"calls"> => !!x) ?? null;
-          if (linkedCall && linkedCall.prospectJoined === true) {
+          if (linkedCall && classifyMatchedCall(linkedCall) === "showed") {
             row.fuShown += 1;
           }
         }

@@ -74,9 +74,12 @@ export function SettingsRow({
   const prices = settings.tierPrices ?? [];
 
   const saveTier = (i: number, v: number | null) => {
-    const next = [...prices];
-    if (v === null) next.splice(i, 1);
-    else next[i] = v;
+    // Clearing a tier truncates from that position — positions are identity
+    // (tier2Pitched always means "the second price"), so removing the middle
+    // must never shift a later price into an earlier slot and silently
+    // relabel everyone's historical counts.
+    const next = v === null ? prices.slice(0, i) : [...prices];
+    if (v !== null) next[i] = v;
     onSave({ tierPrices: next.length ? next : null });
   };
 

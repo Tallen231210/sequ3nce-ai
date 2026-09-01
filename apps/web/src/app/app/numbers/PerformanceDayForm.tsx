@@ -11,6 +11,8 @@ interface DayField {
   money?: boolean;
   /** No measured layer exists for this field — never seed it from `measured`. */
   noMeasured?: boolean;
+  /** Seed from `measured` only when it's nonzero (see FU_FIELDS). */
+  seedNonzeroOnly?: boolean;
 }
 
 export const FIELDS: readonly DayField[] = [
@@ -26,10 +28,15 @@ export const FIELDS: readonly DayField[] = [
 export type FieldKey = (typeof FIELDS)[number]['key'];
 
 /** Second section: what the AI can't measure yet. FU fields always show;
- *  tier inputs only when the team has tier prices configured. */
+ *  tier inputs only when the team has tier prices configured.
+ *
+ *  seedNonzeroOnly: a measured ZERO must not pre-fill — submitting the form
+ *  would turn our "we saw none" into their reported 0, which then outranks
+ *  any follow-up we measure later that day. Empty means "not reporting",
+ *  which falls through to the measurement. */
 export const FU_FIELDS: readonly DayField[] = [
-  { key: 'fuBooked', label: 'Follow-ups booked', hint: 'follow-up calls you scheduled' },
-  { key: 'fuShown', label: 'Follow-ups shown', hint: 'follow-ups where they showed' },
+  { key: 'fuBooked', label: 'Follow-ups booked', hint: 'follow-up calls you scheduled', seedNonzeroOnly: true },
+  { key: 'fuShown', label: 'Follow-ups shown', hint: 'follow-ups where they showed', seedNonzeroOnly: true },
 ];
 
 export function tierFields(tierPrices: number[] | null | undefined): DayField[] {
@@ -61,8 +68,13 @@ export function initialValues(
     // Only pre-fill from a reading we actually took. Seeding zeros on a day
     // the bot never joined would turn our blank into their reported number
     // the moment they hit submit.
+    const measured = row.measured[f.key] ?? 0;
     out[f.key] =
-      !f.noMeasured && row.measuredExists ? String(row.measured[f.key] ?? 0) : '';
+      !f.noMeasured &&
+      row.measuredExists &&
+      (!f.seedNonzeroOnly || measured > 0)
+        ? String(measured)
+        : '';
   }
   return out;
 }
