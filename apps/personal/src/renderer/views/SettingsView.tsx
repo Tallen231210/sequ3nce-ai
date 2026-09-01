@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import type { CloserInfo, CalendarStatus } from '../convex';
+import { getAutoJoinState, setAutoJoin, type AutoJoinState } from '../autoJoinApi';
 import {
   getCalendarStatus,
   syncCalendar,
@@ -17,6 +18,9 @@ interface SettingsViewProps {
 export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
   // Calendar
   const [calStatus, setCalStatus] = useState<CalendarStatus | null>(null);
+  // Meeting bot auto-join
+  const [autoJoin, setAutoJoinState] = useState<AutoJoinState | null>(null);
+  const [autoJoinBusy, setAutoJoinBusy] = useState(false);
   const [isLoadingCal, setIsLoadingCal] = useState(true);
   const [isWaitingOAuth, setIsWaitingOAuth] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -49,6 +53,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
 
   useEffect(() => {
     setIsLoadingCal(true);
+    getAutoJoinState((closerInfo as any).sessionToken).then(setAutoJoinState);
     getCalendarStatus(closerInfo.email, closerInfo.teamId).then((s) => {
       setCalStatus(s);
       setIsLoadingCal(false);
@@ -60,7 +65,8 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
     function handleCalendarConnected() {
       setIsWaitingOAuth(false);
       // Refresh calendar status
-      getCalendarStatus(closerInfo.email, closerInfo.teamId).then((s) => {
+      getAutoJoinState((closerInfo as any).sessionToken).then(setAutoJoinState);
+    getCalendarStatus(closerInfo.email, closerInfo.teamId).then((s) => {
         setCalStatus(s);
       });
     }
@@ -295,6 +301,49 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
               )}
             </div>
           )}
+        </SettingsSection>
+
+        {/* Meeting Bot Section */}
+        <SettingsSection title="Meeting Bot">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-gray-900 dark:text-white">Auto-join my meetings</p>
+              <p className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                When on, your bot automatically joins meetings from your connected
+                calendars and records them — no need to send it manually each time.
+              </p>
+              {autoJoin?.needsRelogin && (
+                <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-1.5">
+                  Log out and back in once to enable this switch.
+                </p>
+              )}
+              {autoJoin?.ok && autoJoin.enabled && !autoJoin.hasLiveCalendar && (
+                <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-1.5">
+                  Connect a calendar in the Schedule tab — until then there&apos;s nothing to join.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={async () => {
+                if (!autoJoin?.ok || autoJoinBusy) return;
+                setAutoJoinBusy(true);
+                const next = await setAutoJoin((closerInfo as any).sessionToken, !autoJoin.enabled);
+                setAutoJoinState(next);
+                setAutoJoinBusy(false);
+              }}
+              disabled={!autoJoin?.ok || autoJoinBusy}
+              aria-label="Toggle auto-join"
+              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 mt-0.5 ${
+                autoJoin?.enabled ? 'bg-black dark:bg-white' : 'bg-gray-300 dark:bg-zinc-700'
+              } ${!autoJoin?.ok ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white dark:bg-zinc-900 shadow transition-transform ${
+                  autoJoin?.enabled ? 'translate-x-5' : ''
+                }`}
+              />
+            </button>
+          </div>
         </SettingsSection>
 
         {/* Subscription Section */}

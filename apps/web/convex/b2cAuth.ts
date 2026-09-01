@@ -224,12 +224,29 @@ export const loginB2CUser = mutation({
       };
     }
 
+    // Mint an app-session bearer token (hash at rest, raw to the client).
+    // Powers routes that must not trust a client-supplied id — see
+    // sessionTokenHash in schema.ts. Each login rotates it.
+    const tokenBuf = new Uint8Array(32);
+    crypto.getRandomValues(tokenBuf);
+    const sessionToken = Array.from(tokenBuf)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const tokenData = new TextEncoder().encode(sessionToken);
+    const tokenDigest = await crypto.subtle.digest("SHA-256", tokenData);
+    await ctx.db.patch(user._id, {
+      sessionTokenHash: Array.from(new Uint8Array(tokenDigest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join(""),
+    });
+
     return {
       success: true,
       emailVerified: user.emailVerified === undefined ? true : user.emailVerified,
       closer: {
         closerId: closer._id,
         teamId: user.personalWorkspaceId,
+        sessionToken,
         name: user.name,
         email: user.email,
         status: closer.status,

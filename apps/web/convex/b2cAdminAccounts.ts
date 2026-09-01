@@ -295,3 +295,62 @@ export const provisionCoachAccount = internalMutation({
     return { b2cUserId, closerId, teamId, coachId };
   },
 });
+
+/**
+ * Seed/clean auto-join test fixtures for a TEST account: one live-looking
+ * b2cCalendars row and one near-future calendar event with a meeting URL.
+ * Refuses non-test accounts. Used by the auto-join scheduler tests.
+ */
+export const seedAutoJoinFixture = internalMutation({
+  args: { email: v.string(), cleanup: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .first();
+    if (!user || user.isTestAccount !== true) throw new Error("Refusing: not a test account");
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q: any) => q.eq("teamId", user.personalWorkspaceId))
+      .first();
+    if (!closer) throw new Error("No closer row");
+
+    if (args.cleanup) {
+      const cals = await ctx.db
+        .query("b2cCalendars")
+        .withIndex("by_closer", (q: any) => q.eq("closerId", closer._id))
+        .collect();
+      for (const c of cals) if (c.label === "AutoJoin Test") await ctx.db.delete(c._id);
+      const events = await ctx.db
+        .query("calendarEvents")
+        .withIndex("by_closer", (q: any) => q.eq("closerId", closer._id))
+        .collect();
+      let deleted = 0;
+      for (const e of events) if (e.uid?.startsWith("autojoin-test-")) { await ctx.db.delete(e._id); deleted++; }
+      return { cleaned: true, eventsDeleted: deleted };
+    }
+
+    const calId = await ctx.db.insert("b2cCalendars", {
+      closerId: closer._id,
+      teamId: user.personalWorkspaceId,
+      label: "AutoJoin Test",
+      color: "#10b981",
+      provider: "ics",
+      isEnabled: true,
+      lastSyncAt: Date.now(),
+      createdAt: Date.now(),
+    });
+    const eventId = await ctx.db.insert("calendarEvents", {
+      closerId: closer._id,
+      teamId: user.personalWorkspaceId,
+      uid: `autojoin-test-${Date.now()}`,
+      title: "AutoJoin Test Meeting",
+      startTime: Date.now() + 2 * 60 * 60 * 1000,
+      endTime: Date.now() + 3 * 60 * 60 * 1000,
+      meetingUrl: "https://meet.google.com/xxx-autojoin-test",
+      calendarId: calId,
+    } as any);
+    return { seeded: true, calId, eventId };
+  },
+});

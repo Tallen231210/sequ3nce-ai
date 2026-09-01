@@ -1989,6 +1989,11 @@ export default defineSchema({
     emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
     lastSeenAt: v.optional(v.number()),                    // Online presence heartbeat timestamp
     isTestAccount: v.optional(v.boolean()),                // Playwright/QA accounts — hidden from community + presence
+    // SHA-256 of the app-session bearer token minted at login. Exists for
+    // routes where trusting a client-supplied id is not acceptable (the
+    // auto-join recording switch, 2026-09-01). Single active token; each
+    // login rotates it.
+    sessionTokenHash: v.optional(v.string()),
     trialExpiresAt: v.optional(v.number()),                 // Beta trial end date (undefined = no trial)
     onboardingCompleted: v.optional(v.boolean()),           // Whether onboarding questionnaire was filled
     onboardingSource: v.optional(v.string()),               // "instagram" | "youtube" | "google" | "referral"
@@ -1996,6 +2001,7 @@ export default defineSchema({
     onboardingStruggle: v.optional(v.string()),             // "finding_offer" | "networking" | "improving_skills" | "staying_consistent"
   })
     .index("by_email", ["email"])
+    .index("by_session_token_hash", ["sessionTokenHash"])
     .index("by_phone", ["phone"])
     .index("by_profile_slug", ["profileSlug"])
     .index("by_subscription_status", ["subscriptionStatus"])

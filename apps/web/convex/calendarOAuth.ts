@@ -201,3 +201,62 @@ export const readAutoJoinForCloser = internalQuery({
     };
   },
 });
+
+/**
+ * B2C (Personal app) auto-join switch — read and write.
+ *
+ * Same standard as the B2B pair above: this switch decides whether a bot
+ * sits in someone's meetings, so it authenticates by the app-session bearer
+ * token minted at login (b2cUsers.sessionTokenHash), never by a
+ * client-supplied id. Sessions from app versions predating the token simply
+ * get { needsRelogin: true } — one fresh login upgrades them.
+ */
+async function b2cUserByToken(ctx: any, sessionToken: string) {
+  if (!sessionToken || sessionToken.length < 32) return null;
+  const data = new TextEncoder().encode(sessionToken);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const hash = Array.from(new Uint8Array(digest))
+    .map((b: number) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const users = await ctx.db
+    .query("b2cUsers")
+    .withIndex("by_session_token_hash", (q: any) => q.eq("sessionTokenHash", hash))
+    .collect();
+  return users[0] ?? null;
+}
+
+export const autoJoinForB2c = internalMutation({
+  args: { sessionToken: v.string(), enabled: v.optional(v.boolean()) },
+  handler: async (ctx, args): Promise<any> => {
+    const user = await b2cUserByToken(ctx, args.sessionToken);
+    if (!user) return { needsRelogin: true };
+
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q: any) => q.eq("teamId", user.personalWorkspaceId))
+      .first();
+    if (!closer) return { error: "Account data is corrupted." };
+
+    if (typeof args.enabled === "boolean") {
+      await ctx.db.patch(closer._id, { autoJoinEnabled: args.enabled });
+    }
+
+    const cals = await ctx.db
+      .query("b2cCalendars")
+      .withIndex("by_closer", (q: any) => q.eq("closerId", closer._id))
+      .collect();
+    const STALE_MS = 48 * 60 * 60 * 1000;
+    const hasLiveCalendar = cals.some(
+      (c: any) =>
+        c.isEnabled &&
+        !c.syncError &&
+        c.lastSyncAt !== undefined &&
+        Date.now() - c.lastSyncAt < STALE_MS,
+    );
+    return {
+      ok: true,
+      enabled: (closer as any).autoJoinEnabled === true,
+      hasLiveCalendar,
+    };
+  },
+});

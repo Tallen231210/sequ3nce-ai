@@ -2193,7 +2193,13 @@ export const getClosersWithCalendars = internalQuery({
     // A pinned tier wins over the billed one, exactly as it does everywhere
     // else: comped and internal accounts rely on the override.
     const botTeams = allTeams.filter(
-      (t) => (t.productTierOverride ?? t.productTier) === "overwatch",
+      (t) =>
+        (t.productTierOverride ?? t.productTier) === "overwatch" ||
+        // Personal (B2C) workspaces: auto-join opened to individual users
+        // 2026-09-01 (lead-with-value call by Tyler; credits/limits may come
+        // later). Still gated per-closer by autoJoinEnabled below, and by
+        // having a live b2cCalendars connection.
+        t.type === "personal",
     );
 
     if (botTeams.length === 0) return [];
@@ -2224,10 +2230,30 @@ export const getClosersWithCalendars = internalQuery({
 
         // Any calendar, however it was connected. Checking one mechanism is
         // what broke this.
-        const hasCalendar =
+        let hasCalendar =
           !!closer.icsUrl ||
           !!closer.googleCalendarRefreshToken ||
           !!closer.microsoftCalendarRefreshToken;
+
+        // B2C personal users connect calendars through the b2cCalendars
+        // multi-calendar table instead of the closer-row fields. Enabled +
+        // synced within the same 48h staleness line counts as live; a
+        // connection that stopped syncing is skipped exactly like the B2B
+        // case below.
+        if (!hasCalendar && team.type === "personal") {
+          const B2C_STALE_MS = 48 * 60 * 60 * 1000;
+          const b2cCals = await ctx.db
+            .query("b2cCalendars")
+            .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
+            .collect();
+          hasCalendar = b2cCals.some(
+            (c) =>
+              c.isEnabled &&
+              !c.syncError &&
+              c.lastSyncAt !== undefined &&
+              Date.now() - c.lastSyncAt < B2C_STALE_MS,
+          );
+        }
 
         if (!hasCalendar) continue;
 

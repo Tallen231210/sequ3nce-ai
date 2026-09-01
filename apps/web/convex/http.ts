@@ -13979,6 +13979,35 @@ http.route({
 
 closerPreflight("/closer/autoJoin");
 
+// POST /b2c/auto-join — read/set the Personal user's bot auto-join switch.
+// Bearer-token authenticated (the one B2C route that refuses client ids —
+// it toggles recording of meetings with third parties).
+http.route({
+  path: "/b2c/auto-join",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (typeof body.sessionToken !== "string" || body.sessionToken.length === 0) {
+        return b2cJsonResponse({ needsRelogin: true }, 200);
+      }
+      const result = await ctx.runMutation(internal.calendarOAuth.autoJoinForB2c, {
+        sessionToken: body.sessionToken,
+        enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      console.error("[HTTP] /b2c/auto-join:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+http.route({
+  path: "/b2c/auto-join",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // ==================== Coach Classrooms (2026-09-01) ====================
 // One route table instead of 12 hand-rolled blocks. All POST, all
 // b2c-CORS, thin wrappers over b2cClassrooms/b2cClassroomContent — the
