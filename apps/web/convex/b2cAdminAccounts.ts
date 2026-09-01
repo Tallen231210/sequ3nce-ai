@@ -350,6 +350,7 @@ export const seedAutoJoinFixture = internalMutation({
       endTime: Date.now() + 3 * 60 * 60 * 1000,
       meetingUrl: "https://meet.google.com/xxx-autojoin-test",
       calendarId: calId,
+      fetchedAt: Date.now(),
     } as any);
     return { seeded: true, calId, eventId };
   },

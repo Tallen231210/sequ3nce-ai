@@ -240,6 +240,8 @@ export const autoJoinForB2c = internalMutation({
     if (typeof args.enabled === "boolean") {
       await ctx.db.patch(closer._id, { autoJoinEnabled: args.enabled });
     }
+    // Re-read: `closer` above predates the patch and would echo stale state.
+    const fresh = await ctx.db.get(closer._id);
 
     const cals = await ctx.db
       .query("b2cCalendars")
@@ -255,7 +257,7 @@ export const autoJoinForB2c = internalMutation({
     );
     return {
       ok: true,
-      enabled: (closer as any).autoJoinEnabled === true,
+      enabled: (fresh as any)?.autoJoinEnabled === true,
       hasLiveCalendar,
     };
   },
