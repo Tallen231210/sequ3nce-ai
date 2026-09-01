@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { getCalendarStatus, type CloserInfo } from '../convex';
 import logoImage from '../../assets/logo.png';
 

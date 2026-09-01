@@ -100,6 +100,10 @@ function RateCells({
         {money(m.cdpbc)}
         {bm && <div><Delta now={m.cdpbc} was={bm.cdpbc} unit="$" dp={0} /></div>}
       </td>
+      <td>
+        {money(m.cdplc)}
+        {bm && <div><Delta now={m.cdplc} was={bm.cdplc} unit="$" dp={0} /></div>}
+      </td>
       <td>{fx(m.roas)}</td>
       <td>{fp(m.fushow)}</td>
       <td>
@@ -150,7 +154,8 @@ export function CloserLedgerTable({
             <th>Booked</th><th>Live</th><th>Closes</th><th>Gross $</th><th>Collected $</th>
             <th>FU bkd</th><th>FU shown</th>
             <th className={s.sep}>Show</th><th>Live close</th><th>Bkd close</th>
-            <th>AOV</th><th>Collect</th><th>GDPBC</th><th>CDPBC</th><th>ROAS</th>
+            <th>AOV</th><th>Collect</th><th>GDPBC</th><th>CDPBC</th>
+            <th title="Cash collected per live call — collected ÷ live">CDPLC</th><th>ROAS</th>
             <th>FU show</th><th>Gap $</th>
           </tr>
         </thead>
@@ -222,7 +227,7 @@ export function CloserLedgerTable({
           })}
 
           <tr>
-            <td colSpan={18} style={{ height: 12 }} />
+            <td colSpan={19} style={{ height: 12 }} />
           </tr>
           <tr className={s.tot + " " + s.team}>
             <td className={s.left + " " + s.totLabel}>Team</td>
