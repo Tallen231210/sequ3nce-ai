@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import type { CloserInfo, CallHistoryItem } from '@/lib/closer/client';
-import { getCallHistory, getPendingQuestionnaireInfo, dismissOrphanedQuestionnaires } from '@/lib/closer/client';
+import { getCallHistory, getPendingQuestionnaireInfo, dismissOrphanedQuestionnaires, getTeamCallHistory } from '@/lib/closer/client';
+import type { TeamCallHistory, TeamCallItem } from '@/lib/closer/client';
 import { usePoll } from '@/lib/closer/usePoll';
 import { CallDetailSheet } from './CallDetailSheet';
 
@@ -35,6 +36,10 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
   const [search, setSearch] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
   const [selectedCall, setSelectedCall] = useState<CallHistoryItem | null>(null);
+  // Team calls (E2's closer_team_calls flag) — enabled:false hides all of it.
+  const [team, setTeam] = useState<TeamCallHistory>({ enabled: false, closers: [], calls: [] });
+  const [scope, setScope] = useState<'mine' | 'team'>('mine');
+  const [closerFilter, setCloserFilter] = useState<string>('all');
   const [pendingInfo, setPendingInfo] = useState<{ count: number; firstCallId?: string; firstProspectName?: string }>({ count: 0 });
 
   useEffect(() => {
@@ -45,6 +50,9 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
     });
     // Also fetch pending questionnaire info
     getPendingQuestionnaireInfo(closerInfo.closerId).then(setPendingInfo);
+    // Team calls resolve quietly in the background; most teams get
+    // {enabled:false} back and never see the toggle.
+    getTeamCallHistory(closerInfo.closerId, HISTORY_LIMIT).then(setTeam);
   }, [closerInfo.closerId]);
 
   // Refresh pending info — bumped from 10s to 15s. Pauses when hidden.
@@ -60,7 +68,12 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
   );
 
   const filteredCalls = useMemo(() => {
-    let result = calls;
+    let result: CallHistoryItem[] =
+      scope === 'team'
+        ? closerFilter === 'all'
+          ? team.calls
+          : team.calls.filter((c) => c.closerId === closerFilter)
+        : calls;
 
     // Search filter
     if (search.trim()) {
@@ -79,7 +92,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
     }
 
     return result;
-  }, [calls, search, outcomeFilter]);
+  }, [calls, search, outcomeFilter, scope, team.calls, closerFilter]);
 
   // Pages rather than one long scroll. A closer doing five calls a day has
   // hundreds within a year, and scrolling to find last Tuesday is miserable.
@@ -88,7 +101,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
   const pageCount = Math.max(1, Math.ceil(filteredCalls.length / PAGE_SIZE));
   // Searching or filtering changes what page 1 even means, so go back to it —
   // otherwise a search from page 4 lands on an empty page.
-  useEffect(() => { setPage(1); }, [search, outcomeFilter]);
+  useEffect(() => { setPage(1); }, [search, outcomeFilter, scope, closerFilter]);
   const safePage = Math.min(page, pageCount);
   const pagedCalls = useMemo(
     () => filteredCalls.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
@@ -118,14 +131,20 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
   return (
     <div className="mx-auto flex h-full w-full max-w-[1400px] flex-col">
       {/* Call Detail Sheet (overlay) */}
-      {selectedCall && (
-        <CallDetailSheet
-          closerInfo={closerInfo}
-          call={selectedCall}
-          onClose={() => setSelectedCall(null)}
-          onCallUpdated={handleCallUpdated}
-        />
-      )}
+      {selectedCall && (() => {
+        const owner = (selectedCall as TeamCallItem).closerId;
+        const foreign = !!owner && owner !== closerInfo.closerId;
+        return (
+          <CallDetailSheet
+            closerInfo={closerInfo}
+            call={selectedCall}
+            onClose={() => setSelectedCall(null)}
+            onCallUpdated={handleCallUpdated}
+            readOnly={foreign}
+            ownerName={foreign ? (selectedCall as TeamCallItem).closerName : undefined}
+          />
+        );
+      })()}
 
       {/* Header */}
       <div className="flex items-center justify-between px-6 pt-5 pb-3 shrink-0">
@@ -133,6 +152,21 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
           <h1 className="text-2xl font-bold text-black">Calls</h1>
           <p className="text-[13px] text-gray-500">{filteredCalls.length} calls</p>
         </div>
+        {team.enabled && (
+          <div className="flex rounded-lg bg-gray-100 p-0.5">
+            {([['mine', 'My calls'], ['team', 'Team calls']] as const).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setScope(value)}
+                className={`px-3.5 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
+                  scope === value ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Search + Filters */}
@@ -161,7 +195,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
         </div>
 
         {/* Outcome filter buttons */}
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
           {OUTCOME_FILTERS.map((f) => (
             <button
               key={f.value}
@@ -175,6 +209,18 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
               {f.label}
             </button>
           ))}
+          {scope === 'team' && (
+            <select
+              value={closerFilter}
+              onChange={(e) => setCloserFilter(e.target.value)}
+              className="ml-auto px-3 py-1.5 text-[12px] font-medium bg-gray-100 text-gray-700 rounded-md border-0 focus:outline-none focus:ring-1 focus:ring-gray-400"
+            >
+              <option value="all">All closers</option>
+              {team.closers.map((c) => (
+                <option key={c.closerId} value={c.closerId}>{c.name}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -262,6 +308,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
                 key={call._id}
                 call={call}
                 isOdd={i % 2 === 1}
+                closerName={scope === 'team' ? (call as TeamCallItem).closerName : undefined}
                 onClick={() => setSelectedCall(call)}
               />
             ))}
@@ -312,10 +359,12 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
 function CallRow({
   call,
   isOdd,
+  closerName,
   onClick,
 }: {
   call: CallHistoryItem;
   isOdd: boolean;
+  closerName?: string;
   onClick: () => void;
 }) {
   const talkPercent = (() => {
@@ -342,6 +391,9 @@ function CallRow({
       {/* Prospect */}
       <span className="flex-1 text-[13px] font-medium text-black truncate">
         {call.prospectName || 'Unknown'}
+        {closerName && (
+          <span className="ml-2 text-[11px] font-normal text-gray-400">{closerName}</span>
+        )}
       </span>
 
       {/* Outcome badge */}

@@ -1700,8 +1700,16 @@ export const updateCallNotes = mutation({
   args: {
     callId: v.id("calls"),
     notes: v.string(),
+    /** When set (the closer HTTP route sets it from the authed session),
+     *  the call must belong to this closer. */
+    closerId: v.optional(v.id("closers")),
   },
   handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) throw new Error("Call not found");
+    if (args.closerId && String(call.closerId) !== String(args.closerId)) {
+      throw new Error("Not your call");
+    }
     await ctx.db.patch(args.callId, {
       notes: args.notes,
     });

@@ -580,10 +580,17 @@ export const deleteComment = mutation({
 export const flagCallForReview = mutation({
   args: {
     callId: v.id("calls"),
+    /** When set (the closer HTTP routes always set it from the authed
+     *  session), the call must belong to this closer. Optional so the
+     *  manager-side callers keep working unchanged. */
+    closerId: v.optional(v.id("closers")),
   },
   handler: async (ctx, args) => {
     const call = await ctx.db.get(args.callId);
     if (!call) throw new Error("Call not found");
+    if (args.closerId && String(call.closerId) !== String(args.closerId)) {
+      throw new Error("Not your call");
+    }
     await ctx.db.patch(args.callId, {
       flaggedForReview: true,
       flaggedAt: Date.now(),
@@ -598,10 +605,16 @@ export const flagCallForReview = mutation({
 export const unflagCall = mutation({
   args: {
     callId: v.id("calls"),
+    /** Same contract as flagCallForReview: set by the closer routes,
+     *  enforces the call is the closer's own. */
+    closerId: v.optional(v.id("closers")),
   },
   handler: async (ctx, args) => {
     const call = await ctx.db.get(args.callId);
     if (!call) throw new Error("Call not found");
+    if (args.closerId && String(call.closerId) !== String(args.closerId)) {
+      throw new Error("Not your call");
+    }
     await ctx.db.patch(args.callId, {
       flaggedForReview: false,
       flaggedAt: undefined,

@@ -9,9 +9,11 @@ interface CallDetailOverviewTabProps {
   ammoItems: AmmoItem[];
   isLoadingAmmo: boolean;
   closerId: string;
+  /** Teammate's call — the facts editor only makes sense on your own. */
+  readOnly?: boolean;
 }
 
-export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId }: CallDetailOverviewTabProps) {
+export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId, readOnly = false }: CallDetailOverviewTabProps) {
   const talkPercent = (() => {
     const closer = call.closerTalkTime || 0;
     const prospect = call.prospectTalkTime || 0;
@@ -71,14 +73,16 @@ export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId
             recording. The closer is the only person who knows for certain what
             was charged on the day, and this is the one screen they're already
             looking at. */}
-        <CallFactsInlineEditor
-          callId={call._id}
-          closerId={closerId}
-          outcome={call.outcome}
-          cashCollected={call.cashCollected}
-          contractValue={call.contractValue}
-          outcomeSource={call.outcomeSource}
-        />
+        {!readOnly && (
+          <CallFactsInlineEditor
+            callId={call._id}
+            closerId={closerId}
+            outcome={call.outcome}
+            cashCollected={call.cashCollected}
+            contractValue={call.contractValue}
+            outcomeSource={call.outcomeSource}
+          />
+        )}
       </DetailSection>
     </div>
   );

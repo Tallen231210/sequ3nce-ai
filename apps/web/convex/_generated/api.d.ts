@@ -107,6 +107,7 @@ import type * as closerScorecardSettings from "../closerScorecardSettings.js";
 import type * as closerScorecardSupport from "../closerScorecardSupport.js";
 import type * as closerSelfPerformance from "../closerSelfPerformance.js";
 import type * as closerSession from "../closerSession.js";
+import type * as closerTeamCalls from "../closerTeamCalls.js";
 import type * as closers from "../closers.js";
 import type * as collections from "../collections.js";
 import type * as collectionsNotifications from "../collectionsNotifications.js";
@@ -354,6 +355,7 @@ declare const fullApi: ApiFromModules<{
   closerScorecardSupport: typeof closerScorecardSupport;
   closerSelfPerformance: typeof closerSelfPerformance;
   closerSession: typeof closerSession;
+  closerTeamCalls: typeof closerTeamCalls;
   closers: typeof closers;
   collections: typeof collections;
   collectionsNotifications: typeof collectionsNotifications;

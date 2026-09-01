@@ -1513,6 +1513,46 @@ export async function getCallHistory(closerId: string, limit?: number): Promise<
   }
 }
 
+/** A teammate's call in the team view — same row the sheet reads, plus whose it is. */
+export interface TeamCallItem extends CallHistoryItem {
+  closerId: string;
+  closerName: string;
+}
+
+export interface TeamCallHistory {
+  /** false = the team doesn't have the closer_team_calls flag; hide the UI. */
+  enabled: boolean;
+  closers: { closerId: string; name: string }[];
+  calls: TeamCallItem[];
+}
+
+const TEAM_CALLS_DISABLED: TeamCallHistory = { enabled: false, closers: [], calls: [] };
+
+export async function getTeamCallHistory(closerId: string, limit?: number): Promise<TeamCallHistory> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getTeamCallHistory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, limit: limit || 100 }),
+    });
+
+    if (!response.ok) return TEAM_CALLS_DISABLED;
+    const result = await response.json();
+    if (!result || result.enabled !== true) return TEAM_CALLS_DISABLED;
+    return {
+      enabled: true,
+      closers: Array.isArray(result.closers) ? result.closers : [],
+      calls: Array.isArray(result.calls) ? result.calls : [],
+    };
+  } catch (error) {
+    console.error("[Convex] Failed to get team call history:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getTeamCallHistory", integration: "convex" },
+    });
+    return TEAM_CALLS_DISABLED;
+  }
+}
+
 // Fetch just the callAnalysis field for a single call (lightweight polling endpoint)
 export async function getCallAnalysis(callId: string): Promise<CallAnalysis | null> {
   try {

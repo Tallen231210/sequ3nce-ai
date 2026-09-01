@@ -32,6 +32,10 @@ interface CallDetailSheetProps {
   call: CallHistoryItem;
   onClose: () => void;
   onCallUpdated: (call: CallHistoryItem) => void;
+  /** A teammate's call (team-calls view): watch and read everything, change nothing. */
+  readOnly?: boolean;
+  /** Whose call this is, shown in the header when viewing a teammate's. */
+  ownerName?: string;
 }
 
 export function CallDetailSheet({
@@ -39,6 +43,8 @@ export function CallDetailSheet({
   call,
   onClose,
   onCallUpdated,
+  readOnly = false,
+  ownerName,
 }: CallDetailSheetProps) {
   // Shared with the manager dashboard, so a closer and their manager never see
   // different answers about whether a call has a recording.
@@ -221,11 +227,16 @@ export function CallDetailSheet({
               <span>{formatDate(call.startedAt)}</span>
               <span>{formatDuration(call.duration)}</span>
               <OutcomeBadge outcome={call.outcome} />
+              {ownerName && (
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+                  {ownerName}&apos;s call
+                </span>
+              )}
             </div>
           </div>
 
           {/* Flag button */}
-          {hasVideo && (
+          {hasVideo && !readOnly && (
             <button
               onClick={handleToggleFlag}
               disabled={isFlagging}
@@ -243,7 +254,7 @@ export function CallDetailSheet({
           )}
 
           {/* Share Link button */}
-          {hasVideo && (
+          {hasVideo && !readOnly && (
             <ShareButton
               isCreatingLink={isCreatingLink}
               shareCopied={shareCopied}
@@ -282,7 +293,7 @@ export function CallDetailSheet({
             only thing that recorded meetings nobody asked it to. Auto-join does
             the same — a bot sits in whatever is on the calendar — so a standup
             could be recorded and counted with no way to say otherwise. */}
-        {call._id && (
+        {call._id && !readOnly && (
           <CallClassificationBanner
             callId={call._id}
             classifiedAs={call.classifiedAs}
@@ -360,7 +371,7 @@ export function CallDetailSheet({
             {/* Escape hatch for mislabelled speakers — the closer was on the
                 call and knows instantly which way is right. Flips every label
                 server-side and regenerates the summary. */}
-            {transcript.length > 0 && (
+            {transcript.length > 0 && !readOnly && (
               <div className="shrink-0 border-t border-border px-5 py-2 text-right">
                 {swappedLabels ? (
                   <span className="text-[11px] text-muted-foreground">
@@ -397,6 +408,7 @@ export function CallDetailSheet({
                 call={call}
                 ammoItems={ammoItems}
                 isLoadingAmmo={isLoadingAmmo}
+                readOnly={readOnly}
                 closerId={closerInfo.closerId}
               />
             )}

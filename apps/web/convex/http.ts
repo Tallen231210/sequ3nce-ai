@@ -705,7 +705,13 @@ http.route({
         });
       }
 
+      // Best-effort ownership: the web app always carries a session, so a
+      // resolvable identity means the mutation enforces "your own call".
+      // Legacy desktop clients send no credentials on this route — for them
+      // behavior is unchanged rather than broken.
+      const authedCloserId = await closerFromBody(ctx, body);
       await ctx.runMutation(api.calls.updateCallNotes, {
+        ...(authedCloserId ? { closerId: authedCloserId } : {}),
         callId: callId as any,
         notes: notes || "",
       });
@@ -5478,6 +5484,61 @@ http.route({
   }),
 });
 
+// Team-wide call history for a closer — gated per-team by the
+// `closer_team_calls` beta flag (E2's custom build). The query itself
+// re-checks the flag and the viewer's team, so this route adds no reach
+// beyond what the flag grants.
+http.route({
+  path: "/getTeamCallHistory",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      // Web-only feature and the web app always sends a session token, so
+      // require the verified path: a known closerId alone must never unlock
+      // a whole team's recordings.
+      const closerId = await verifiedCloserFromBody(ctx, body);
+      if (!closerId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const result = await ctx.runQuery(api.closerTeamCalls.getTeamCallsForCloser, {
+        closerId: closerId as Id<"closers">,
+        limit: typeof body.limit === "number" ? body.limit : undefined,
+      });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    } catch (error) {
+      console.error("[HTTP] Error in getTeamCallHistory:", error);
+      return new Response(JSON.stringify({ error: "Internal error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+  }),
+});
+
+http.route({
+  path: "/getTeamCallHistory",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
+      },
+    });
+  }),
+});
+
 // Get call analysis for a single call (used by Electron app to poll for pending analysis)
 http.route({
   path: "/getCallAnalysis",
@@ -6134,8 +6195,18 @@ http.route({
         });
       }
 
+      // Both clients send closerId (web also a session token); the mutation
+      // then refuses any call that isn't the authed closer's own.
+      const authedCloserId = await closerFromBody(ctx, body);
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
       await ctx.runMutation(api.callReviews.flagCallForReview, {
         callId: callId as Id<"calls">,
+        closerId: authedCloserId,
       });
 
       return new Response(JSON.stringify({ success: true }), {
@@ -6183,8 +6254,16 @@ http.route({
         });
       }
 
+      const authedCloserId = await closerFromBody(ctx, body);
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
       await ctx.runMutation(api.callReviews.unflagCall, {
         callId: callId as Id<"calls">,
+        closerId: authedCloserId,
       });
 
       return new Response(JSON.stringify({ success: true }), {
