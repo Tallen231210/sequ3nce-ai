@@ -8,6 +8,7 @@ import { MembersPanel } from './community/MembersPanel';
 import { Feed } from './community/Feed';
 import { ChannelPostList } from './community/ChannelPostList';
 import { Training } from './community/Training';
+import { ClassroomView } from './community/classroom/ClassroomView';
 import { WelcomeBanner } from './community/WelcomeBanner';
 import { PostSearch } from './community/PostSearch';
 import { CallOfTheWeekView } from './community/CallOfTheWeekView';
@@ -25,7 +26,7 @@ const REQUEST_COUNT_POLL = 30_000;
 const UNREAD_POLL_INTERVAL = 15_000;
 const MONEY_BELLS_UNREAD_POLL = 20_000;
 const MONEY_BELLS_LAST_VIEWED_KEY = 'sequ3nce_money_bells_last_viewed';
-const SPECIAL_VIEWS = new Set(['feed', 'training', 'call-of-the-week', 'feature-requests', 'bug-report', 'money-bells', 'coaching']);
+const SPECIAL_VIEWS = new Set(['feed', 'training', 'classroom', 'call-of-the-week', 'feature-requests', 'bug-report', 'money-bells', 'coaching']);
 
 function readMoneyBellsLastViewed(): number {
   try {
@@ -166,6 +167,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
     if (selectedView === 'feature-requests') return { title: 'Feature Requests', description: 'Vote on what we build next' };
     if (selectedView === 'bug-report') return { title: 'Report a Bug', description: 'Help us improve by reporting issues' };
     if (selectedView === 'training') return { title: 'Training', description: 'Courses and modules' };
+    if (selectedView === 'classroom') return { title: 'Classroom', description: 'Your coach\u2019s training, replays, and community' };
     const channel = channels.find((c) => c._id === selectedView);
     if (channel) return { title: `# ${channel.slug}`, description: channel.description };
     return { title: 'Community' };
@@ -234,7 +236,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
               isAdmin={isAdmin}
               onClose={() => setShowSearch(false)}
             />
-          ) : loadingChannels && selectedView !== 'training' ? (
+          ) : loadingChannels && selectedView !== 'training' && selectedView !== 'classroom' ? (
             <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
               Loading community...
             </div>
@@ -265,6 +267,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
                 <BugReportView closerInfo={closerInfo} />
               )}
               {selectedView === 'training' && <Training closerInfo={closerInfo} />}
+              {selectedView === 'classroom' && <ClassroomView closerInfo={closerInfo} />}
               {isChannelView && (
                 <ChannelPostList
                   channelId={selectedView}
