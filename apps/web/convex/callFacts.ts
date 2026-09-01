@@ -22,6 +22,7 @@ import { mutation } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { syncCallStats } from "./callStats";
+import { scheduleCloserRecount } from "./closerPerformanceSweep";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -198,11 +199,18 @@ export const updateOwnCallFacts = mutation({
     if (Object.keys(patch).length === 0) return { success: true };
 
     patch.outcomeSource = "closer";
+    // An edit IS a confirmation — the confirm strip reads this stamp.
+    patch.factsConfirmedAt = Date.now();
     await ctx.db.patch(args.callId, patch);
 
     // Collections, closer stats and the team board read the sidecar, not this
     // row. Without this the correction is invisible everywhere it matters.
     await syncCallStats(ctx, args.callId);
+
+    // Refresh the measured daily layer within seconds — the confirm strip
+    // sits next to the day form, and a just-fixed call contradicting the
+    // day's totals for an hour reads as broken numbers.
+    await scheduleCloserRecount(ctx, call.teamId, call.createdAt);
 
     return { success: true };
   },
