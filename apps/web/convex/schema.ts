@@ -525,6 +525,17 @@ export default defineSchema({
     closerPrizeEmoji: v.optional(v.string()),
     closerPrizeTarget: v.optional(v.number()),
 
+    // ---- Closer Scorecard (per-client custom tab; E2 first) ----
+    // Package price per tier, lowest first, e.g. [6800, 9800, 20000].
+    // Teams without this configured see no tier inputs anywhere.
+    closerTierPrices: v.optional(v.array(v.number())),
+    // What the team pays in ads per booked call — a typed setting, not
+    // derived (no ad-spend feed; see the closer-scorecard design doc).
+    closerCostPerBookedCall: v.optional(v.number()),
+    // The manager's target collected-per-booked-call; drives the
+    // performance delta $ column.
+    closerTargetCdpbc: v.optional(v.number()),
+
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.
     // All optional + additive; null/undefined means "not yet" for each.
@@ -1061,6 +1072,13 @@ export default defineSchema({
      * numbers became LESS human-confirmed, not more.
      */
     outcomeSource: v.optional(v.string()),
+    /**
+     * Set when the closer explicitly confirmed this call's figures on the
+     * EOD confirm strip (or edited them, which implies confirmation).
+     * Distinct from outcomeSource: an untouched AI call can still be
+     * human-CONFIRMED without becoming closer-SOURCED.
+     */
+    factsConfirmedAt: v.optional(v.number()),
     /** Claimed before extraction runs, so two triggers can't both do the work. */
     extractionStartedAt: v.optional(v.number()),
     /** Why the last extraction attempt failed, cleared when one succeeds. */
@@ -3476,6 +3494,11 @@ export default defineSchema({
      */
     blockedMinutes: v.optional(v.number()),
     openMinutes: v.optional(v.number()),
+    // Follow-ups measured from the meeting-title convention ("follow up" in
+    // the title — see lib/followUpTitle.ts). Absent until a team adopts the
+    // convention; the closer's manual EOD fields cover the gap.
+    fuBooked: v.optional(v.number()),
+    fuShown: v.optional(v.number()),
     recountedAt: v.number(),
   })
     .index("by_team_and_day", ["teamId", "dayKey"])
@@ -3497,6 +3520,11 @@ export default defineSchema({
     offers: v.optional(v.number()),
     closes: v.optional(v.number()),
     cash: v.optional(v.number()),
+    fuBooked: v.optional(v.number()),
+    fuShown: v.optional(v.number()),
+    tier1Pitched: v.optional(v.number()),
+    tier2Pitched: v.optional(v.number()),
+    tier3Pitched: v.optional(v.number()),
     updatedByClerkId: v.optional(v.string()),
     updatedAt: v.number(),
   })
@@ -3555,6 +3583,12 @@ export default defineSchema({
     /** Total contract value written, so avg DEAL size is distinguishable from
      *  avg cash collected — a $12k contract with $3k upfront is not a $3k deal. */
     contractValue: v.optional(v.number()),
+    // Closer Scorecard manual fields (2026-09: follow-ups + tier pitches).
+    fuBooked: v.optional(v.number()),
+    fuShown: v.optional(v.number()),
+    tier1Pitched: v.optional(v.number()),
+    tier2Pitched: v.optional(v.number()),
+    tier3Pitched: v.optional(v.number()),
     /** Set whenever the closer submits the day, changed or unchanged. */
     confirmedAt: v.number(),
     updatedAt: v.number(),
