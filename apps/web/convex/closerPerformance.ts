@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { isFollowUpTitle } from "./lib/followUpTitle";
 import { isSalesBooking, groupBookingCopies } from "./calendarBookings";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -78,6 +79,9 @@ export interface CloserDayTotals {
   /** Capacity inputs, surfaced so a low Booked% can be interpreted. */
   blockedMinutes: number;
   openMinutes: number;
+  /** Follow-ups measured from the title convention (lib/followUpTitle.ts). */
+  fuBooked: number;
+  fuShown: number;
 }
 
 /** Local part of an email/calendar address, lowercased. */
@@ -112,9 +116,12 @@ async function recountDayImpl(
   // Calendar events that produced a real call — the provider-agnostic
   // "this was a sales call" signal, and the strongest attribution source.
   const closerIdByEventId = new Map<string, string>();
+  // Full call by event, for follow-up "shown" evidence (prospectJoined).
+  const callByEventId = new Map<string, Doc<"calls">>();
   for (const c of calls) {
     if (c.calendarEventId) {
       closerIdByEventId.set(String(c.calendarEventId), String(c.closerId));
+      callByEventId.set(String(c.calendarEventId), c);
     }
   }
 
@@ -122,7 +129,7 @@ async function recountDayImpl(
   const blank = (): CloserDayTotals => ({
     slots: 0, booked: 0, taken: 0, offers: 0, closes: 0, cash: 0,
     contractValue: 0, missingOutcomes: 0, capacityKnown: false,
-    blockedMinutes: 0, openMinutes: 0,
+    blockedMinutes: 0, openMinutes: 0, fuBooked: 0, fuShown: 0,
   });
   for (const c of activeClosers) byCloser.set(String(c._id), blank());
 
@@ -284,6 +291,21 @@ async function recountDayImpl(
         // A call occupies the closer who took it, whichever calendar it
         // synced through.
         pushInterval(bookedIntervals, ownerId, evStart, evEnd);
+        if (isFollowUpTitle(ev.title)) {
+          const row = byCloser.get(ownerId)!;
+          row.fuBooked += 1;
+          // "FU shown" needs presence evidence on the recorded call linked
+          // to this booking — prospectJoined is the honest signal (a closer
+          // waiting alone produces a long recording and it stays false).
+          // No call or no evidence = not shown.
+          const linkedCall =
+            copies
+              .map((c) => callByEventId.get(String(c._id)))
+              .find((x): x is Doc<"calls"> => !!x) ?? null;
+          if (linkedCall && linkedCall.prospectJoined === true) {
+            row.fuShown += 1;
+          }
+        }
       } else {
         // Not ours to credit — counts for the team, not for any rep.
         bookedUnattributed += 1;

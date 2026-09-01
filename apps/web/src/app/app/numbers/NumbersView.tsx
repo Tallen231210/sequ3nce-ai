@@ -14,6 +14,7 @@ import {
   type LeaderboardRow,
 } from "@/lib/closer/client";
 import { getCloserInfo } from "@/lib/closer/session";
+import { ConfirmStrip } from "./ConfirmStrip";
 import { PerformanceDayForm } from "./PerformanceDayForm";
 import { PerformanceGrid } from "./PerformanceGrid";
 import { PerformanceStats } from "./PerformanceStats";
@@ -61,6 +62,7 @@ export function NumbersView() {
 
   const [perf, setPerf] = useState<SelfPerformance | null>(null);
   const [rows, setRows] = useState<DailyEntryRow[]>([]);
+  const [tierPrices, setTierPrices] = useState<number[] | null>(null);
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
   const [year, setYear] = useState<number>(() => new Date().getFullYear());
   const [yearData, setYearData] = useState<SelfYearPerformance | null>(null);
@@ -84,6 +86,7 @@ export function NumbersView() {
       ]);
       setPerf(p);
       setRows(entries?.rows ?? []);
+      setTierPrices(entries?.tierPrices ?? null);
       setBoard(lb?.rows ?? []);
     } catch {
       guard();
@@ -228,6 +231,8 @@ export function NumbersView() {
             )}
           </div>
 
+          <ConfirmStrip closerId={closerId} onDataChanged={() => void load()} />
+
           <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
             {today.confirmedAt
               ? "You’ve submitted today. Change anything that needs correcting and hit Update — you can do this any time, including weeks from now."
@@ -241,6 +246,7 @@ export function NumbersView() {
             saving={savingDay === today.dayKey}
             error={errorDay[today.dayKey] ?? null}
             onSubmit={(v) => void submitDay(today.dayKey, v)}
+            tierPrices={tierPrices}
           />
         </div>
       )}

@@ -2433,7 +2433,13 @@ export async function getCloserPerformance(
 export async function getCloserDailyEntries(
   closerId: string,
   monthKey: string,
-): Promise<{ monthKey: string; todayKey: string; rows: DailyEntryRow[] } | null> {
+): Promise<{
+  monthKey: string;
+  todayKey: string;
+  rows: DailyEntryRow[];
+  /** Team's package prices; drives the tier-pitch inputs on the day form. */
+  tierPrices?: number[] | null;
+} | null> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserDailyEntries`, {
       method: "POST",
@@ -2448,6 +2454,88 @@ export async function getCloserDailyEntries(
       tags: { feature: "getCloserDailyEntries", integration: "convex" },
     });
     return null;
+  }
+}
+
+/** One row of the EOD confirm strip. */
+export interface ConfirmCall {
+  _id: string;
+  prospectName: string;
+  startedAt: number;
+  duration: number | null;
+  outcome: string | null;
+  cashCollected: number | null;
+  contractValue: number | null;
+  outcomeSource: string | null;
+  factsConfirmedAt: number | null;
+}
+
+/** The closer's recent completed calls, for the EOD confirm strip. */
+export async function getCallsToConfirm(
+  closerId: string,
+): Promise<{ calls: ConfirmCall[] } | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/getCallsToConfirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId }),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get calls to confirm:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getCallsToConfirm", integration: "convex" },
+    });
+    return null;
+  }
+}
+
+/** Stamp one call as confirmed without changing its figures. */
+export async function confirmCallFacts(
+  closerId: string,
+  callId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/confirmCallFacts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, callId }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to confirm call:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "confirmCallFacts", integration: "convex" },
+    });
+    return { success: false, error: "Network error — try again." };
+  }
+}
+
+/** Enter a call the bot never recorded. */
+export async function addManualCall(
+  closerId: string,
+  data: {
+    prospectName: string;
+    startedAt: number;
+    outcome: string;
+    cashCollected?: number;
+    contractValue?: number;
+  },
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/addManualCall`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ closerId, ...data }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to add manual call:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "addManualCall", integration: "convex" },
+    });
+    return { success: false, error: "Network error — try again." };
   }
 }
 

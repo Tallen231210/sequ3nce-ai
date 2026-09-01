@@ -17,13 +17,17 @@ Built generic, E2 first. Manager-facing ONLY — no closer-facing version
    tab's PerformanceDayForm). No new weekly form. Zion's views roll up
    with the standard range filters: day / week / month / custom dates
    (reuse `RangeControl`).
-3. **Follow-up attribution:** meeting-title marker, convention PENDING
-   Zion (Tyler asking; proposal "(fu)" token coexisting with setter
-   initials — "(er)(fu) Prospect and Ethan"). The build must not block on
-   it: manual FU fields ship in the EOD form as the fallback/override,
-   and the AI title-matcher layer switches on when the convention is
-   confirmed. Once a call is marked FU, "FU shown" derives free from the
-   attendance system.
+3. **Follow-up attribution: CONFIRMED by Zion 2026-09-01.** The words
+   "follow up" will appear in the call title (not the earlier "(fu)"
+   proposal). Matcher: case-insensitive, match the variants "follow up" /
+   "follow-up" / "followup" anywhere in the title; coexists with setter
+   initials tags. Zion also plans to color these events ORANGE in Google
+   Calendar — treat colorId as a possible secondary signal only if we
+   already sync it (verify), never load-bearing. ⚠️ Zion's team may not
+   have started titling this way yet — measured FU counts can lag the
+   rollout, which is fine: manual FU fields on the EOD form remain the
+   fallback/override (unchanged). Once a call is marked FU, "FU shown"
+   derives free from the attendance system.
 4. **Tier pitches are manual v1** (three counts on the daily form). The
    AI "price pitched" extraction exists and can prefill later — not v1.
 5. Tier prices, cost per booked call, and target CDPBC are Zion-editable
@@ -91,18 +95,70 @@ and one count per configured tier (labels rendered from
 **Gross:** `closerDailyEntries.contractValue` already exists as the
 manual layer; measured gross = `closerDailyStats.contractValue`.
 
-**FU measured layer (when the convention lands):** the daily recount
-that builds `closerDailyStats` gains a title scan — a call whose title
-carries the FU marker counts `fuBooked` on the closer's day; if the
-attendance/presence verdict says the prospect appeared, it also counts
-`fuShown`. Marker parsing lives beside the setter matcher in
-`lib/setterTitleMatch.ts`-style pure code with a CLI bench.
+**FU measured layer (convention confirmed 2026-09-01):** the daily
+recount that builds `closerDailyStats` gains a title scan — a call whose
+title contains "follow up" (or "follow-up"/"followup", case-insensitive)
+counts `fuBooked` on the closer's day; if the attendance/presence verdict
+says the prospect appeared, it also counts `fuShown`. Marker parsing
+lives beside the setter matcher in `lib/setterTitleMatch.ts`-style pure
+code with a CLI bench. Ship it ON from day one — it simply matches
+nothing until Zion's team starts titling, and manual fields cover the
+gap.
 
 **Aggregation query:** `closerScorecard.getRange {clerkId, rangeStart,
 rangeEnd}` — resolves each day per closer through the precedence
 (override > entry > measured) field-by-field, sums the range, returns
 rows + per-field provenance summary (counts of days by source) + the
 team settings. Range capped at 92 days like the setter scorecard.
+
+## Additions agreed with Tyler 2026-08-31
+
+Specced in conversation after the original plan; same do-not-re-litigate
+status. Driving principle (Tyler, explicit): **accuracy of data and ease of
+acquiring it** — confirm beats enter, and never ask for a number we can
+derive.
+
+### 1. "Day's calls" confirm strip on the closer EOD form
+
+A section on the EOD form listing the closer's recorded calls, one row per
+call, prefilled from the AI extraction (prospect, outcome, cash collected,
+contract value). The closer's job is a glance: **"Confirm all"** when
+right, or inline-edit the wrong number right there.
+
+- Edits ride the SAME write path as correcting the call in Calls Completed
+  — the strip becomes the everyday per-call editing surface (subsumes the
+  old "inline editing in the call detail sheet" TODO for this flow).
+- Confirmation adds a provenance tier: ai-measured → **closer-confirmed**
+  → manager-set.
+- **Daily totals derive from confirmed rows** (prefilled sums) instead of
+  being double-entered — the form asks only for what AI can't see (FU
+  fields, tier counts). Totals stay editable: recording coverage has holes
+  (E2 bot admission ~30%), so a closer can bump a total, and the gap
+  between confirmed-call sums and the closer's total is itself surfaced to
+  the manager ("N calls the bot never saw").
+- **"Add a call we missed"** row for unrecorded calls (manual quick-entry).
+- **Catch-up window:** the strip shows unconfirmed calls from the last 2–3
+  days, not strictly today — overnight payments and skipped days get
+  captured instead of lost.
+- Deferred (not v1): real-time post-call confirm nudges.
+
+### 2. "% of calls confirmed" on the scorecard
+
+Per-closer confirmation rate over the selected range, visible to Zion —
+makes the daily confirm habit inspectable and tells him how much to trust
+a rep's measured numbers.
+
+### 3. EOD filing visibility (Zion's explicit ask)
+
+Zion cannot tell from the Team Performance daily grid who has filed their
+EOD and who hasn't. The scorecard must make it crystal clear: **per
+closer, filed vs missing per day over the range** (e.g. a filed/missed
+strip or count per row: "filed 4 of 5 days — missed Tue"). The backend
+already knows this — the EOD nudge system (`convex/eodNudge.ts`) computes
+filed-vs-expected per day for the Slack reminder; this reuses that logic
+as a query, no new tracking. Zion will live in this scorecard rather than
+the Team Performance grid, so the visibility lands HERE (backporting to
+the old grid is a non-goal).
 
 ## Where it lives
 
@@ -126,7 +182,15 @@ RangeControl on top. Manager-gated exactly as the rest of the dashboard.
   measured per FIELD (not per row); provenance counts match.
 - Range parity: day/week/custom sums cross-checked against the Numbers
   tab and Team Performance for the same closer.
-- FU marker bench (once convention confirmed): coexists with setter
-  tags — "(er)(fu) X" attributes Ethan AND counts FU.
+- FU marker bench: "Follow up - Prospect x Ethan", "(er) Follow-up call",
+  "followup w/ John" all count FU; "(er) John x Ethan" does not; setter
+  tag attribution unaffected either way.
 - Zion-side walkthrough: enter tier counts on a closer's day, see the
   scorecard move; edit tier prices, labels update everywhere.
+- Confirm strip: edit a call's cash in the strip → the call detail view
+  shows the same corrected number (one write path); confirm-all stamps
+  every row; daily totals re-derive; "add a missed call" row flows into
+  the day's totals and the scorecard.
+- Filing visibility: a closer with a missing day shows exactly which day
+  is missed; counts match the EOD nudge's filed-vs-expected numbers for
+  the same date.

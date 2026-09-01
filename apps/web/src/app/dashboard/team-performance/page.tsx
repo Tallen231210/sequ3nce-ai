@@ -13,6 +13,8 @@ import { PeriodNav } from "./components/PeriodNav";
 import { TeamView } from "./components/TeamView";
 import { YearView } from "./components/YearView";
 import { SettingsTab } from "./components/SettingsTab";
+import { CloserScorecardSection } from "@/components/closer-scorecard/CloserScorecardSection";
+import { useTeam } from "@/hooks/useTeam";
 
 const HEADER = {
  title: "Team Performance",
@@ -26,7 +28,11 @@ const TABS = [
  ["settings", "Settings"],
 ] as const;
 
-type Tab = (typeof TABS)[number][0];
+// Per-client custom tab (built for E2), gated on the closer_scorecard beta
+// flag — same convention as the Setter EODs sidebar item.
+const SCORECARD_TAB = ["scorecard", "Closer Scorecard"] as const;
+
+type Tab = (typeof TABS)[number][0] | (typeof SCORECARD_TAB)[0];
 
 function currentMonthKey(): string {
  const d = new Date();
@@ -61,10 +67,18 @@ function EmptyState() {
 
 export default function TeamPerformancePage() {
   const { user, isLoaded } = useUser();
+  const { team } = useTeam();
   const thisMonth = useMemo(currentMonthKey, []);
   const [monthKey, setMonthKey] = useState(thisMonth);
   const [weekIndex, setWeekIndex] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>("team");
+
+  const hasCloserScorecard = (
+    (team as { betaFeatures?: string[] } | null | undefined)?.betaFeatures ?? []
+  ).includes("closer_scorecard");
+  const tabs: ReadonlyArray<readonly [Tab, string]> = hasCloserScorecard
+    ? [TABS[0], TABS[1], SCORECARD_TAB, TABS[2], TABS[3]]
+    : TABS;
 
  const data = useQuery(
     api.closerPerformanceQueries.getTeamPerformance,
@@ -103,7 +117,7 @@ export default function TeamPerformancePage() {
 
       <div className={`${GeistMono.variable} space-y-5 px-6 pb-16 pt-4`}>
         <nav className="flex gap-1 border-b border-border">
- {TABS.map(([id, label]) => (
+ {tabs.map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -121,11 +135,13 @@ export default function TeamPerformancePage() {
         </nav>
 
         {/* Sits above the board, because the board is what looks wrong. */}
-        {tab !== "settings" && (
+        {tab !== "settings" && tab !== "scorecard" && (
           <PendingOutcomesNotice teamId={data.teamId} />
         )}
 
-        {tab !== "settings" && tab !== "year" && (
+        {/* The scorecard has its own RangeControl; PeriodNav would be a
+            second, disagreeing range picker. */}
+        {tab !== "settings" && tab !== "year" && tab !== "scorecard" && (
  <PeriodNav
           monthKey={data.monthKey}
           currentMonthKey={thisMonth}
@@ -148,6 +164,7 @@ export default function TeamPerformancePage() {
           />
         )}
         {tab === "daily" && <DailyGrid monthKey={data.monthKey} />}
+        {tab === "scorecard" && <CloserScorecardSection />}
  {tab === "year" && (
  <YearView
             onOpenMonth={(m) => {

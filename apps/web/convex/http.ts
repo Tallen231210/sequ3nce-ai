@@ -12538,6 +12538,109 @@ http.route({
 });
 closerPreflight("/saveCloserDailyEntry");
 
+/** The confirm strip: their recent completed calls with the AI-read figures. */
+http.route({
+  path: "/getCallsToConfirm",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { sessionToken, closerId } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      const data = await ctx.runQuery(internal.callConfirm.getCallsToConfirm, {
+        closerId: authedCloserId,
+      });
+      return new Response(JSON.stringify(data), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] getCallsToConfirm:", error);
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/getCallsToConfirm");
+
+/** "These figures are right" — stamps confirmation, changes no data. */
+http.route({
+  path: "/confirmCallFacts",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { sessionToken, closerId, callId } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      if (!callId) {
+        return new Response(JSON.stringify({ error: "callId is required" }), {
+          status: 400, headers: CLOSER_JSON,
+        });
+      }
+      const result = await ctx.runMutation(internal.callConfirm.confirmOwnCallFacts, {
+        closerId: authedCloserId,
+        callId,
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      console.error("[HTTP] confirmCallFacts:", error);
+      return new Response(JSON.stringify({ success: false, error: "Could not confirm" }), {
+        status: 400, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/confirmCallFacts");
+
+/** A call the bot never saw, entered by hand from the confirm strip. */
+http.route({
+  path: "/addManualCall",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const { sessionToken, closerId, prospectName, startedAt, outcome,
+        cashCollected, contractValue } = await request.json();
+      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      if (!authedCloserId) {
+        return new Response(JSON.stringify({ error: "Not signed in" }), {
+          status: 401, headers: CLOSER_JSON,
+        });
+      }
+      if (!prospectName || typeof startedAt !== "number" || !outcome) {
+        return new Response(
+          JSON.stringify({ error: "prospectName, startedAt and outcome are required" }),
+          { status: 400, headers: CLOSER_JSON },
+        );
+      }
+      const result = await ctx.runMutation(internal.callConfirm.addManualCall, {
+        closerId: authedCloserId,
+        prospectName,
+        startedAt,
+        outcome,
+        ...(typeof cashCollected === "number" ? { cashCollected } : {}),
+        ...(typeof contractValue === "number" ? { contractValue } : {}),
+      });
+      return new Response(JSON.stringify(result), { status: 200, headers: CLOSER_JSON });
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "Could not add the call";
+      const message =
+        raw.replace(/^Uncaught Error:\s*/, "").split("\n")[0].trim() ||
+        "Could not add the call";
+      console.error("[HTTP] addManualCall:", message);
+      return new Response(JSON.stringify({ success: false, error: message }), {
+        status: 400, headers: CLOSER_JSON,
+      });
+    }
+  }),
+});
+closerPreflight("/addManualCall");
+
 /** Team leaderboard, without the columns that expose ad spend. */
 http.route({
   path: "/getTeamLeaderboardForCloser",
