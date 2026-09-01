@@ -9,6 +9,7 @@ import {
   fp,
   fr,
   fn,
+  money,
   rollup,
   type LedgerRow,
 } from "./engine";
@@ -66,6 +67,7 @@ function RateCells({ row, base }: { row: LedgerRow; base: LedgerRow | null }) {
         {bm && <div><Delta now={m.show} was={bm.show} unit="pp" dp={1} /></div>}
       </td>
       <td>{fp(m.setToClose)}</td>
+      <td>{money(m.cps)}</td>
     </>
   );
 }
@@ -77,6 +79,7 @@ export function LedgerTable({
   canEditTeam,
   onCellEdit,
   onClosedEdit,
+  onCashEdit,
   onTeamEdit,
   onEditStart,
   onEditEnd,
@@ -88,6 +91,7 @@ export function LedgerTable({
   canEditTeam: boolean;
   onCellEdit: (rosterId: string, fieldIdx: number, value: number) => void;
   onClosedEdit: (rosterId: string, value: number) => void;
+  onCashEdit: (rosterId: string, value: number) => void;
   onTeamEdit: (fieldIdx: number | "closed", value: number) => void;
   onEditStart: () => void;
   onEditEnd: () => void;
@@ -104,8 +108,8 @@ export function LedgerTable({
         <thead>
           <tr>
             <th className={s.left}>Setter</th>
-            <th>Dials</th><th>Connects</th><th>Sets</th><th>On cal.</th><th>Showed</th><th>Closed</th>
-            <th className={s.sep}>Pickup</th><th>Conn→set</th><th>Dials/set</th><th>Show</th><th>Set→close</th>
+            <th>Dials</th><th>Connects</th><th>Sets</th><th>On cal.</th><th>Showed</th><th>Closed</th><th>Cash</th>
+            <th className={s.sep}>Pickup</th><th>Conn→set</th><th>Dials/set</th><th>Show</th><th>Set→close</th><th>$/set</th>
           </tr>
         </thead>
         <tbody>
@@ -117,7 +121,7 @@ export function LedgerTable({
             return (
               <React.Fragment key={pod}>
                 <tr className={s.podhead}>
-                  <td colSpan={12}>Pod {pod}</td>
+                  <td colSpan={14}>Pod {pod}</td>
                 </tr>
                 {podRows.map((r, i) => {
                   const editable = canEdit(r.rosterId);
@@ -152,6 +156,16 @@ export function LedgerTable({
                           onEditEnd={onEditEnd}
                         />
                       </td>
+                      <td>
+                        <Cell
+                          value={r.cash ?? 0}
+                          editable={editable}
+                          width={64}
+                          onEdit={(v) => onCashEdit(r.rosterId, v)}
+                          onEditStart={onEditStart}
+                          onEditEnd={onEditEnd}
+                        />
+                      </td>
                       <RateCells row={r} base={baseById.get(r.rosterId) ?? null} />
                     </tr>
                   );
@@ -164,6 +178,7 @@ export function LedgerTable({
                   <td>{fn(pm.booked)}</td>
                   <td>{fn(pm.showed)}</td>
                   <td>{fn(pm.closed)}</td>
+                  <td>{money(pm.cash)}</td>
                   <td className={s.sep}>
                     {fp(pm.pickup)}
                     <div><Delta now={pm.pickup} was={pbm.pickup} unit="pp" dp={1} /></div>
@@ -181,13 +196,14 @@ export function LedgerTable({
                     <div><Delta now={pm.show} was={pbm.show} unit="pp" dp={1} /></div>
                   </td>
                   <td>{fp(pm.setToClose)}</td>
+                  <td>{money(pm.cps)}</td>
                 </tr>
               </React.Fragment>
             );
           })}
 
           <tr>
-            <td colSpan={12} style={{ height: 12 }} />
+            <td colSpan={14} style={{ height: 12 }} />
           </tr>
           <tr className={s.tot + " " + s.team}>
             <td className={s.left + " " + s.totLabel}>Team</td>
@@ -215,6 +231,7 @@ export function LedgerTable({
                 onEditEnd={onEditEnd}
               />
             </td>
+            <td><strong>{money(team.cash)}</strong></td>
             <td className={s.sep}>
               {fp(team.pickup)}
               <div><Delta now={team.pickup} was={baseTeam.pickup} unit="pp" dp={1} /></div>
@@ -232,6 +249,7 @@ export function LedgerTable({
               <div><Delta now={team.show} was={baseTeam.show} unit="pp" dp={1} /></div>
             </td>
             <td>{fp(team.setToClose)}</td>
+            <td><strong>{money(team.cps)}</strong></td>
           </tr>
         </tbody>
       </table>

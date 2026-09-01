@@ -8,6 +8,7 @@ import { ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
 export const FIELD_MAX = 2000; // beyond this is a typo, not hustle
+export const CASH_MAX = 100_000_000; // matches the closer-side ceiling
 
 export interface EodNumbers {
   dials: number;
@@ -18,6 +19,7 @@ export interface EodNumbers {
   callsOnCalendar?: number;
   callsShown?: number;
   callsClosed?: number;
+  cashCollected?: number;
 }
 
 /** Throws ConvexError with a human message on any bad number. */
@@ -38,6 +40,15 @@ export function validateEodNumbers(n: EodNumbers): void {
       throw new ConvexError(`Check the ${k} number`);
     }
   }
+  if (n.cashCollected !== undefined) {
+    if (
+      !Number.isInteger(n.cashCollected) ||
+      n.cashCollected < 0 ||
+      n.cashCollected > CASH_MAX
+    ) {
+      throw new ConvexError("Check the cash collected number");
+    }
+  }
   if (n.pickUps > n.dials) {
     throw new ConvexError("Pick ups can't be more than dials");
   }
@@ -55,13 +66,11 @@ export function validateEodNumbers(n: EodNumbers): void {
       "Calls shown can't be more than calls on the calendar — follow-ups and second calls don't count as shown",
     );
   }
-  if (
-    n.callsClosed !== undefined &&
-    n.callsShown !== undefined &&
-    n.callsClosed > n.callsShown
-  ) {
-    throw new ConvexError("Calls closed can't be more than calls shown");
-  }
+  // NO closed<=shown guard: "calls closed" counts deals from this setter's
+  // sets that closed TODAY — including closes that happened on a closer's
+  // follow-up call. A follow-up close on a day with one show is honest
+  // (2 closed, 1 shown). Same for cashCollected: installments from earlier
+  // closes land whenever they land.
 }
 
 export function buildEodDoc(
@@ -83,6 +92,7 @@ export function buildEodDoc(
     callsOnCalendar: n.callsOnCalendar,
     callsShown: n.callsShown,
     callsClosed: n.callsClosed,
+    cashCollected: n.cashCollected,
     note: note?.trim().slice(0, 500) || undefined,
     submittedAt: Date.now(),
   };

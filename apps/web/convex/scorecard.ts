@@ -21,6 +21,7 @@ export interface ScorecardRow {
   booked: number;
   showed: number;
   closed: number;
+  cash: number;
 }
 
 /** teamId + whether the caller may edit (manager) from either credential. */
@@ -142,6 +143,7 @@ export const getScorecardWeek = query({
         booked: 0,
         showed: 0,
         closed: 0,
+        cash: 0,
       });
     }
 
@@ -161,6 +163,7 @@ export const getScorecardWeek = query({
         row.booked += e.callsOnCalendar ?? 0;
         row.showed += e.callsShown ?? 0;
         row.closed += e.callsClosed ?? 0;
+        row.cash += e.cashCollected ?? 0;
       }
     }
 

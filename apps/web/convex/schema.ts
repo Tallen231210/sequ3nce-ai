@@ -1414,6 +1414,10 @@ export default defineSchema({
     callsOnCalendar: v.optional(v.number()),
     callsShown: v.optional(v.number()),
     callsClosed: v.optional(v.number()),
+    /** Cash collected today from deals this setter set — follow-up closes
+     *  and later payments count (defs agreed 2026-09-01). Self-reported;
+     *  the measured cross-check lives on call attribution. */
+    cashCollected: v.optional(v.number()),
     note: v.optional(v.string()),
     submittedAt: v.number(),
   })

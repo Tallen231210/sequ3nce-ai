@@ -199,3 +199,51 @@ export const dayDiag = internalQuery({
     return out;
   },
 });
+
+/** Diagnostic: what measured "cash per set" would say — joins
+ *  setterCallMatches → calls per setter. Read-only. */
+export const cashPerSetter = internalQuery({
+  args: { teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const matches = await ctx.db
+      .query("setterCallMatches")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .take(2000);
+    const byCall = new Map<string, any[]>();
+    for (const m of matches as any[]) {
+      const list = byCall.get(String(m.callId)) ?? [];
+      list.push(m);
+      byCall.set(String(m.callId), list);
+    }
+    const roster = await ctx.db
+      .query("setterRoster")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .take(300);
+    const nameBy = new Map(roster.map((r: any) => [String(r._id), r.name]));
+    const out = new Map<string, { calls: number; closed: number; cash: number }>();
+    let ambiguous = 0;
+    for (const [callId, ms] of byCall) {
+      const call: any = await ctx.db.get(callId as any);
+      if (!call || call.countsTowardStats === false) continue;
+      if (ms.length > 1) ambiguous++;
+      for (const m of ms) {
+        const k = String(m.rosterId);
+        const agg = out.get(k) ?? { calls: 0, closed: 0, cash: 0 };
+        agg.calls++;
+        if (call.outcome === "closed") {
+          agg.closed++;
+          agg.cash += call.cashCollected ?? 0;
+        }
+        out.set(k, agg);
+      }
+    }
+    return {
+      attributedCalls: byCall.size,
+      ambiguousCalls: ambiguous,
+      perSetter: Array.from(out.entries()).map(([rid, a]) => ({
+        name: nameBy.get(rid) ?? rid.slice(-6),
+        ...a,
+      })),
+    };
+  },
+});

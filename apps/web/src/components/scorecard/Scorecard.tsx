@@ -89,6 +89,11 @@ export function Scorecard({
       rs.map((r) => (r.rosterId === rosterId ? { ...r, closed: Math.max(0, Math.round(value)) } : r)),
     );
   }
+  function cashEdit(rosterId: string, value: number) {
+    setRows((rs) =>
+      rs.map((r) => (r.rosterId === rosterId ? { ...r, cash: Math.max(0, Math.round(value)) } : r)),
+    );
+  }
   function teamEdit(fieldIdx: number | "closed", value: number) {
     setRows((rs) => {
       const base = editBase.current ?? rs;
@@ -164,6 +169,7 @@ export function Scorecard({
         canEditTeam={canEditTeam}
         onCellEdit={cellEdit}
         onClosedEdit={closedEdit}
+        onCashEdit={cashEdit}
         onTeamEdit={teamEdit}
         onEditStart={editStart}
         onEditEnd={editEnd}

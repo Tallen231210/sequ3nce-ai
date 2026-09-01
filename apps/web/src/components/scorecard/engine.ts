@@ -27,6 +27,10 @@ export interface LedgerRow {
   booked: number;
   showed: number;
   closed: number;
+  /** Self-reported cash collected from this setter's deals (outcome field,
+   *  outside the cascade like `closed`). Optional so pre-existing locked
+   *  baselines without it keep parsing. */
+  cash?: number;
 }
 
 export interface Rollup {
@@ -36,6 +40,9 @@ export interface Rollup {
   booked: number;
   showed: number;
   closed: number;
+  cash: number;
+  /** Cash per set — the money a setter's pipeline produced per appointment set. */
+  cps: number | null;
   pickup: number | null;
   c2s: number | null;
   dps: number | null;
@@ -129,11 +136,13 @@ export function rollup(rows: LedgerRow[]): Rollup {
       booked: a.booked + (+r.booked || 0),
       showed: a.showed + (+r.showed || 0),
       closed: a.closed + (+r.closed || 0),
+      cash: a.cash + (+(r.cash ?? 0) || 0),
     }),
-    { dials: 0, connects: 0, sets: 0, booked: 0, showed: 0, closed: 0 },
+    { dials: 0, connects: 0, sets: 0, booked: 0, showed: 0, closed: 0, cash: 0 },
   );
   return {
     ...t,
+    cps: ratio(t.cash, t.sets),
     pickup: pct(t.connects, t.dials),
     c2s: pct(t.sets, t.connects),
     dps: ratio(t.dials, t.sets),
@@ -153,6 +162,7 @@ export function fr(v: number | null): string {
 export function fn(v: number): string {
   return (v || 0).toLocaleString();
 }
-export function money(v: number): string {
+export function money(v: number | null): string {
+  if (v === null || !isFinite(v)) return "\u2014";
   return "$" + Math.round(v).toLocaleString();
 }

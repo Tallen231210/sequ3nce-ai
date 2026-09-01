@@ -45,6 +45,7 @@ export const getSetterHome = query({
             callsOnCalendar: entry.callsOnCalendar ?? null,
             callsShown: entry.callsShown ?? null,
             callsClosed: entry.callsClosed ?? null,
+            cashCollected: entry.cashCollected ?? null,
             note: entry.note ?? "",
             submittedAt: entry.submittedAt,
           }
@@ -64,6 +65,7 @@ export const submitEod = mutation({
     callsOnCalendar: v.optional(v.number()),
     callsShown: v.optional(v.number()),
     callsClosed: v.optional(v.number()),
+    cashCollected: v.optional(v.number()),
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
