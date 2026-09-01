@@ -2433,7 +2433,13 @@ export async function getCloserPerformance(
 export async function getCloserDailyEntries(
   closerId: string,
   monthKey: string,
-): Promise<{ monthKey: string; todayKey: string; rows: DailyEntryRow[] } | null> {
+): Promise<{
+  monthKey: string;
+  todayKey: string;
+  rows: DailyEntryRow[];
+  /** Team's package prices; drives the tier-pitch inputs on the day form. */
+  tierPrices?: number[] | null;
+} | null> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/getCloserDailyEntries`, {
       method: "POST",
