@@ -10,6 +10,7 @@
 
 import type * as _debugTestSetterScorecard from "../_debugTestSetterScorecard.js";
 import type * as _demoSeed from "../_demoSeed.js";
+import type * as _probeFollowUp from "../_probeFollowUp.js";
 import type * as _probeTeamStripe from "../_probeTeamStripe.js";
 import type * as adSpend from "../adSpend.js";
 import type * as adSpendInternal from "../adSpendInternal.js";
@@ -103,6 +104,7 @@ import type * as closerPerformanceYear from "../closerPerformanceYear.js";
 import type * as closerScorecard from "../closerScorecard.js";
 import type * as closerScorecardData from "../closerScorecardData.js";
 import type * as closerScorecardSettings from "../closerScorecardSettings.js";
+import type * as closerScorecardSupport from "../closerScorecardSupport.js";
 import type * as closerSelfPerformance from "../closerSelfPerformance.js";
 import type * as closerSession from "../closerSession.js";
 import type * as closers from "../closers.js";
@@ -255,6 +257,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   _debugTestSetterScorecard: typeof _debugTestSetterScorecard;
   _demoSeed: typeof _demoSeed;
+  _probeFollowUp: typeof _probeFollowUp;
   _probeTeamStripe: typeof _probeTeamStripe;
   adSpend: typeof adSpend;
   adSpendInternal: typeof adSpendInternal;
@@ -348,6 +351,7 @@ declare const fullApi: ApiFromModules<{
   closerScorecard: typeof closerScorecard;
   closerScorecardData: typeof closerScorecardData;
   closerScorecardSettings: typeof closerScorecardSettings;
+  closerScorecardSupport: typeof closerScorecardSupport;
   closerSelfPerformance: typeof closerSelfPerformance;
   closerSession: typeof closerSession;
   closers: typeof closers;

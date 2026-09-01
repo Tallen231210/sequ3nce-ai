@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { notFound } from "next/navigation";
 import { CloserScorecard } from "@/components/closer-scorecard/CloserScorecard";
+import { EodFilingCard } from "@/components/closer-scorecard/EodFilingCard";
 import type { CloserLedgerRow } from "@/components/closer-scorecard/engine";
 import type { RowExtras } from "@/components/closer-scorecard/CloserLedgerTable";
 import type { ScorecardSettings } from "@/components/closer-scorecard/SettingsRow";
@@ -38,8 +39,22 @@ export default function CloserScorecardPreview() {
     targetCdpbc: 800,
   });
 
+  const noon = new Date();
+  noon.setHours(9, 12, 0, 0);
+  const later = new Date();
+  later.setHours(10, 45, 0, 0);
+
   return (
     <div className="mx-auto max-w-[1200px] px-6 py-8">
+      <EodFilingCard
+        filedToday={[
+          { name: "Closer 1", at: noon.getTime() },
+          { name: "Closer 3", at: later.getTime() },
+        ]}
+        notYetToday={["Closer 2", "Closer 4"]}
+        missedYesterday={["Closer 4"]}
+        filedYesterday={["Closer 1", "Closer 2", "Closer 3"]}
+      />
       <CloserScorecard
         actualRows={SEED}
         savedBaselineRows={null}

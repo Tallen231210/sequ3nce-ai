@@ -2517,7 +2517,8 @@ export async function addManualCall(
   closerId: string,
   data: {
     prospectName: string;
-    startedAt: number;
+    /** Team-local YYYY-MM-DD; the server picks the instant within it. */
+    dayKey: string;
     outcome: string;
     cashCollected?: number;
     contractValue?: number;

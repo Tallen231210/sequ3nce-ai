@@ -62,6 +62,7 @@ eq("roll no cpc → roas null", mod.roll(SEED, null).roas, null);
 // ---- delta $ ---------------------------------------------------------------
 eq("delta $ vs $800 target", mod.deltaDollars(TARGET, t), 29400, 0.5);
 eq("delta $ null target", mod.deltaDollars(null, t), null);
+eq("delta $ null cdpbc (no booked) → null, not 'at target'", mod.deltaDollars(TARGET, { cdpbc: null, booked: 0 }), null);
 
 // ---- cascade: reference algorithm re-expressed, run against the port -------
 // (verbatim ES5 port of the HTML's cascadeWith, as the independent oracle)

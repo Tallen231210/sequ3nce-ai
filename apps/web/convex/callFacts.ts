@@ -158,6 +158,10 @@ export const updateCallFacts = mutation({
     // Collections, closer stats and the board read the sidecar, not this row.
     await syncCallStats(ctx, args.callId);
 
+    // Same instant-recount the closer path gets — a manager fixing a figure
+    // should see the board move now, not at the next hourly sweep.
+    await scheduleCloserRecount(ctx, call.teamId, call.createdAt);
+
     return { success: true };
   },
 });

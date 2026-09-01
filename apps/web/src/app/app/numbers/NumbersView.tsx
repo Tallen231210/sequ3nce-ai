@@ -231,7 +231,15 @@ export function NumbersView() {
             )}
           </div>
 
-          <ConfirmStrip closerId={closerId} onDataChanged={() => void load()} />
+          <ConfirmStrip
+            closerId={closerId}
+            onDataChanged={() => {
+              // Twice: now for the strip, and again after the ~5s scheduled
+              // recount so the day form's prefill picks up the change.
+              void load();
+              window.setTimeout(() => void load(), 7000);
+            }}
+          />
 
           <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
             {today.confirmedAt

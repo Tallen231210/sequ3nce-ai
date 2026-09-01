@@ -17,6 +17,8 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { syncCallStats } from "./callStats";
 import { scheduleCloserRecount } from "./closerPerformanceSweep";
+import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
+import { getLocalDateRangeUtc } from "./setterDataNotifications";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -31,9 +33,11 @@ const IMPLAUSIBLE_AMOUNT = 5_000_000;
 /** Same list the post-call form accepts. */
 const MANUAL_OUTCOMES = ["closed", "follow_up", "lost", "no_show"];
 
-/** How far back a manual call may be dated. Older corrections belong in a
- *  conversation with the manager, not a quiet backdated row. */
-const MANUAL_BACKDATE_MS = 7 * 24 * 60 * 60 * 1000;
+/** How far back a manual call may be dated (in team-local days). Older
+ *  corrections belong in a conversation with the manager. */
+const MANUAL_BACKDATE_DAYS = 7;
+
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The closer's completed calls from the catch-up window, for the strip.
@@ -43,14 +47,22 @@ export const getCallsToConfirm = internalQuery({
   args: { closerId: v.id("closers") },
   handler: async (ctx, args) => {
     const since = Date.now() - CONFIRM_WINDOW_MS;
+    // Over-fetch, THEN filter — taking 60 raw rows first would let failed
+    // joins and non-counting stubs crowd today's real calls out of the strip
+    // on bot-heavy teams. Manual no-shows carry status "no_show", so they
+    // stay visible here too.
     const rows = await ctx.db
       .query("calls")
       .withIndex("by_closer_and_startedAt", (q: any) =>
         q.eq("closerId", args.closerId).gte("startedAt", since),
       )
-      .take(60);
+      .take(400);
     const calls = rows
-      .filter((c) => c.status === "completed" && c.countsTowardStats !== false)
+      .filter(
+        (c) =>
+          (c.status === "completed" || c.status === "no_show") &&
+          c.countsTowardStats !== false,
+      )
       .map((c) => ({
         _id: c._id,
         prospectName: c.prospectName ?? "Unknown prospect",
@@ -62,7 +74,8 @@ export const getCallsToConfirm = internalQuery({
         outcomeSource: c.outcomeSource ?? null,
         factsConfirmedAt: c.factsConfirmedAt ?? null,
       }))
-      .sort((a, b) => a.startedAt - b.startedAt); // oldest first — clear those out
+      .sort((a, b) => a.startedAt - b.startedAt) // oldest first — clear those out
+      .slice(-60); // and if somehow over 60 real calls, keep the newest
     return { calls };
   },
 });
@@ -94,7 +107,9 @@ export const addManualCall = internalMutation({
   args: {
     closerId: v.id("closers"),
     prospectName: v.string(),
-    startedAt: v.number(),
+    /** Team-local YYYY-MM-DD. The server picks the instant — the browser's
+     *  clock/timezone must not decide which team-local day a call lands on. */
+    dayKey: v.string(),
     outcome: v.string(),
     cashCollected: v.optional(v.number()),
     contractValue: v.optional(v.number()),
@@ -117,13 +132,23 @@ export const addManualCall = internalMutation({
     if (!MANUAL_OUTCOMES.includes(args.outcome)) {
       return { success: false, error: "That isn't a valid outcome." };
     }
+    if (!DAY_KEY_RE.test(args.dayKey)) {
+      return { success: false, error: "That isn't a valid date." };
+    }
     const now = Date.now();
-    if (args.startedAt > now) {
+    const team = await ctx.db.get((closer as any).teamId);
+    const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
+    const todayKey = dayKeyInTz(now, tz);
+    if (args.dayKey > todayKey) {
       return { success: false, error: "That call is in the future." };
     }
-    if (args.startedAt < now - MANUAL_BACKDATE_MS) {
+    if (args.dayKey < dayKeyInTz(now - MANUAL_BACKDATE_DAYS * 86_400_000, tz)) {
       return { success: false, error: "Calls older than a week need a manager." };
     }
+    // Today: the call just happened. A past day: noon team-local — squarely
+    // inside that day no matter where the closer's browser sits.
+    const { startMs } = getLocalDateRangeUtc(args.dayKey, tz);
+    const startedAt = args.dayKey === todayKey ? now : startMs + 12 * 3_600_000;
     for (const value of [args.cashCollected, args.contractValue]) {
       if (value === undefined) continue;
       if (!Number.isFinite(value) || value < 0) {
@@ -138,8 +163,11 @@ export const addManualCall = internalMutation({
       teamId: (closer as any).teamId,
       closerId: args.closerId,
       prospectName: name,
-      status: "completed",
-      speakerCount: 2,
+      // A no-show never happened as a conversation — the recount counts
+      // every completed call as "taken", which would inflate Show% for a
+      // prospect who was never there. status "no_show" keeps it out.
+      status: args.outcome === "no_show" ? "no_show" : "completed",
+      speakerCount: args.outcome === "no_show" ? 1 : 2,
       outcome: args.outcome,
       cashCollected:
         args.cashCollected === undefined ? undefined : Math.round(args.cashCollected),
@@ -151,19 +179,19 @@ export const addManualCall = internalMutation({
       countsTowardStats: true,
       outcomeSource: "closer",
       factsConfirmedAt: now,
-      startedAt: args.startedAt,
+      startedAt,
       completedAt: now,
       // The recount buckets days by createdAt (see calls.ts around
       // completeCallWithOutcome) — so a backdated call must carry the date
       // the call happened, not the date it was typed in.
-      createdAt: args.startedAt,
+      createdAt: startedAt,
     } as any);
 
     // Collections, closer stats and the board read the sidecar.
     await syncCallStats(ctx, callId);
     // Fold it into the measured daily layer within seconds, not at the next
     // hourly sweep.
-    await scheduleCloserRecount(ctx, (closer as any).teamId, args.startedAt);
+    await scheduleCloserRecount(ctx, (closer as any).teamId, startedAt);
 
     return { success: true, callId };
   },
