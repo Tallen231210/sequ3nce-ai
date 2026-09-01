@@ -224,3 +224,74 @@ export const setTestAccountPassword = internalMutation({
     return { reset: true };
   },
 });
+
+/**
+ * Provision a COACH account: a REAL, VISIBLE, comped member (the opposite
+ * of a test account) plus the coach badge and their b2cCoaches classroom
+ * profile. CLI-only, one command per new coach. No GHL sync — coaches are
+ * not leads.
+ */
+export const provisionCoachAccount = internalMutation({
+  args: {
+    email: v.string(),
+    name: v.string(),
+    password: v.string(),
+    slug: v.string(),
+    headline: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const existing = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .first();
+    if (existing) throw new Error(`${email} already exists`);
+    const slug = args.slug.trim().toLowerCase();
+    if (!/^[a-z0-9-]{2,40}$/.test(slug)) throw new Error("Bad slug");
+    const slugTaken = await ctx.db
+      .query("b2cCoaches")
+      .withIndex("by_slug", (q: any) => q.eq("slug", slug))
+      .first();
+    if (slugTaken) throw new Error(`Slug '${slug}' already taken`);
+
+    const passwordHash = await hashPassword(args.password);
+    const now = Date.now();
+    const teamId = await ctx.db.insert("teams", {
+      name: `${args.name}'s Workspace`,
+      type: "personal",
+      plan: "active",
+      createdAt: now,
+    });
+    const closerId = await ctx.db.insert("closers", {
+      email,
+      name: args.name,
+      teamId,
+      status: "active",
+      passwordHash,
+      invitedAt: now,
+      activatedAt: now,
+      calendarOnboardingCompleted: true,
+    });
+    const b2cUserId = await ctx.db.insert("b2cUsers", {
+      email,
+      phoneVerified: false,
+      emailVerified: true,
+      name: args.name,
+      passwordHash,
+      personalWorkspaceId: teamId,
+      subscriptionStatus: "active", // comped — coaches don't pay
+      onboardingCompleted: true,
+      badges: ["coach"],
+      createdAt: now,
+    });
+    const coachId = await ctx.db.insert("b2cCoaches", {
+      userId: b2cUserId,
+      slug,
+      displayName: args.name,
+      headline: args.headline?.trim(),
+      isActive: true,
+      createdAt: now,
+    });
+    return { b2cUserId, closerId, teamId, coachId };
+  },
+});
