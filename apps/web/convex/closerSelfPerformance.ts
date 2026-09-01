@@ -250,6 +250,7 @@ export const getSelfDailyEntries = internalQuery({
           slots: st?.slots ?? 0, booked: st?.booked ?? 0, taken: st?.taken ?? 0,
           offers: st?.offers ?? 0, closes: st?.closes ?? 0, cash: st?.cash ?? 0,
           contractValue: st?.contractValue ?? 0,
+          fuBooked: st?.fuBooked ?? 0, fuShown: st?.fuShown ?? 0,
         },
         // True when the bot recorded nothing — the sheet asks them to fill it
         // in rather than to confirm a row of zeros.
@@ -259,6 +260,9 @@ export const getSelfDailyEntries = internalQuery({
               slots: en.slots, booked: en.booked, taken: en.taken,
               offers: en.offers, closes: en.closes, cash: en.cash,
               contractValue: en.contractValue,
+              fuBooked: en.fuBooked, fuShown: en.fuShown,
+              tier1Pitched: en.tier1Pitched, tier2Pitched: en.tier2Pitched,
+              tier3Pitched: en.tier3Pitched,
             }
           : null,
         confirmedAt: en?.confirmedAt ?? null,
@@ -267,13 +271,20 @@ export const getSelfDailyEntries = internalQuery({
           ? {
               slots: ov.slots, booked: ov.booked, taken: ov.taken,
               offers: ov.offers, closes: ov.closes, cash: ov.cash,
+              fuBooked: ov.fuBooked, fuShown: ov.fuShown,
+              tier1Pitched: ov.tier1Pitched, tier2Pitched: ov.tier2Pitched,
+              tier3Pitched: ov.tier3Pitched,
             }
           : null,
       });
     }
     rows.reverse(); // today first — that's the day they're filling in
 
-    return { monthKey: args.monthKey, timezone: tz, todayKey, rows };
+    // Tier labels for the EOD form; teams without prices see no tier inputs.
+    const team = await ctx.db.get(teamId);
+    const tierPrices = (team as Doc<"teams"> | null)?.closerTierPrices ?? null;
+
+    return { monthKey: args.monthKey, timezone: tz, todayKey, rows, tierPrices };
   },
 });
 

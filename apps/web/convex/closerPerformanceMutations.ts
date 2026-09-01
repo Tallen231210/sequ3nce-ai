@@ -21,6 +21,9 @@ import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 /** Fields a manager may correct. Rates are derived and never stored. */
 const OVERRIDE_FIELDS = [
   "slots", "booked", "taken", "offers", "closes", "cash",
+  // Closer Scorecard fields — mutation-reachable now; DailyGrid columns are
+  // a deliberate fast-follow (see the closer-scorecard plan, scope notes).
+  "fuBooked", "fuShown", "tier1Pitched", "tier2Pitched", "tier3Pitched",
 ] as const;
 type OverrideField = (typeof OVERRIDE_FIELDS)[number];
 
@@ -281,6 +284,7 @@ export const getDailyGrid = query({
 /** Fields a closer may report. contractValue is reportable; slots is too. */
 const ENTRY_FIELDS = [
   "slots", "booked", "taken", "offers", "closes", "cash", "contractValue",
+  "fuBooked", "fuShown", "tier1Pitched", "tier2Pitched", "tier3Pitched",
 ] as const;
 type EntryField = (typeof ENTRY_FIELDS)[number];
 
@@ -314,6 +318,11 @@ export const saveCloserDailyEntry = internalMutation({
       closes: v.optional(v.union(v.number(), v.null())),
       cash: v.optional(v.union(v.number(), v.null())),
       contractValue: v.optional(v.union(v.number(), v.null())),
+      fuBooked: v.optional(v.union(v.number(), v.null())),
+      fuShown: v.optional(v.union(v.number(), v.null())),
+      tier1Pitched: v.optional(v.union(v.number(), v.null())),
+      tier2Pitched: v.optional(v.union(v.number(), v.null())),
+      tier3Pitched: v.optional(v.union(v.number(), v.null())),
     }),
   },
   handler: async (ctx, args): Promise<{ saved: boolean }> => {
