@@ -103,7 +103,16 @@ async function recountDayImpl(
     .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
     .take(500)) as Doc<"closers">[];
   const activeClosers = closers.filter((c) => c.status !== "deactivated");
-  if (activeClosers.length === 0) return { closers: 0, bookedUnattributed: 0 };
+  // DEACTIVATED closers still tally: a closer leaving the team must not
+  // erase the month's history from the board (recounting a day used to
+  // delete their rows as "stale" — real revenue vanished with them,
+  // found live on E2 2026-09-01). They are excluded from CAPACITY below,
+  // so a departed closer's still-syncing calendar can't add phantom slots;
+  // days where they have no concrete activity still prune via isEmpty.
+  const tallyClosers = closers;
+  if (activeClosers.length === 0 && closers.length === 0) {
+    return { closers: 0, bookedUnattributed: 0 };
+  }
 
   // --- Calls for the day (team-local), bucketed by closer ------------------
   const calls = (await ctx.db
@@ -132,11 +141,11 @@ async function recountDayImpl(
     contractValue: 0, missingOutcomes: 0, capacityKnown: false,
     blockedMinutes: 0, openMinutes: 0, fuBooked: 0, fuShown: 0,
   });
-  for (const c of activeClosers) byCloser.set(String(c._id), blank());
+  for (const c of tallyClosers) byCloser.set(String(c._id), blank());
 
   for (const call of calls) {
     const row = byCloser.get(String(call.closerId));
-    if (!row) continue; // call from a deactivated closer
+    if (!row) continue; // closer not on this team's roster at all
     // "Taken" = a call actually happened, which we know because we recorded
     // it. Deliberately NOT gated on the post-call form: form completion
     // ranges 6-100% across teams, and a call is no less taken because
@@ -259,7 +268,7 @@ async function recountDayImpl(
   // calendars and counting each copy doubled a real team's bookings.
   const copiesByUid = groupBookingCopies(events);
 
-  const closerNames = activeClosers.map((c) => ({
+  const closerNames = tallyClosers.map((c) => ({
     id: String(c._id),
     name: c.name ?? "",
   }));

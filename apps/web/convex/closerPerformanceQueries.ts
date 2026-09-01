@@ -297,7 +297,14 @@ export const getTeamPerformance = query({
       return sum;
     };
 
-    const nameById = new Map(closers.map((c) => [String(c._id), c.name]));
+    // A departed closer's history stays on the board (the recount preserves
+    // it) — but it must be OBVIOUS the person is gone.
+    const nameById = new Map(
+      closers.map((c) => [
+        String(c._id),
+        c.status === "deactivated" ? `${c.name} (departed)` : c.name,
+      ]),
+    );
     const rows: CloserRow[] = Array.from(totalsByCloser.entries())
       .map(([closerId, totals]) => {
         const cap = capByCloser.get(closerId) ?? { known: 0, unknown: 0 };

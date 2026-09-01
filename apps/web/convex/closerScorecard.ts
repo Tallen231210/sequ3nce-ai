@@ -125,7 +125,12 @@ export const getRange = query({
       .query("closers")
       .withIndex("by_team", (q: any) => q.eq("teamId", teamId))
       .take(500);
+    // Active closers always get a row. Departed closers get one only when
+    // they have data inside the range (filtered after summing below) — the
+    // month's history stays whole and clearly labelled, without a graveyard
+    // of empty rows.
     const active = closers.filter((c: any) => c.status !== "deactivated");
+    const departed = closers.filter((c: any) => c.status === "deactivated");
 
     const [stats, entries, overrides] = await Promise.all([
       ctx.db
@@ -184,10 +189,13 @@ export const getRange = query({
     }
 
     const rows: CloserRangeRow[] = [];
-    for (const closer of active) {
+    for (const closer of [...active, ...departed]) {
+      const isDeparted = (closer as any).status === "deactivated";
       const row: CloserRangeRow = {
         closerId: String(closer._id),
-        name: (closer as any).name ?? "",
+        name: isDeparted
+          ? `${(closer as any).name ?? ""} (departed)`
+          : ((closer as any).name ?? ""),
         booked: 0, live: 0, closes: 0, gross: 0, collected: 0,
         fub: 0, fus: 0, p1: 0, p2: 0, p3: 0,
         provenance: { manager: 0, closer: 0, measured: 0 },
@@ -228,6 +236,14 @@ export const getRange = query({
       row.callsCompleted = completedBy.get(String(closer._id)) ?? 0;
       row.callsConfirmed = confirmedBy.get(String(closer._id)) ?? 0;
 
+      // Departed with nothing in range = noise, skip. With data = history.
+      if (
+        isDeparted &&
+        row.booked === 0 && row.live === 0 && row.closes === 0 &&
+        row.collected === 0 && row.gross === 0 && row.callsCompleted === 0
+      ) {
+        continue;
+      }
       rows.push(row);
     }
     rows.sort((a, b) => a.name.localeCompare(b.name));
