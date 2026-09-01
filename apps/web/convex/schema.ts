@@ -2016,6 +2016,11 @@ export default defineSchema({
     postCount: v.number(),
     lastActivityAt: v.optional(v.number()),
     createdAt: v.number(),
+    // Coach Classrooms: a coach-owned channel is that classroom's community.
+    // undefined = normal shared channel (all existing rows). Visibility of
+    // coach channels is gated by classroom membership + tier in queries.
+    coachId: v.optional(v.id("b2cCoaches")),
+    tier: v.optional(v.union(v.literal("free"), v.literal("premium"))),
   })
     .index("by_slug", ["slug"])
     .index("by_order", ["order"]),
@@ -2082,6 +2087,36 @@ export default defineSchema({
   // ==================== B2C Community Tables (Phase B — schema only) ====================
 
   // Training modules (admin-curated courses)
+  // ==================== Coach Classrooms (2026-09-01) ====================
+  // Each coach gets a classroom: their training modules, their community
+  // channel, their coaching calls. Free tier = the coach's in-app funnel;
+  // premium tier (Phase 3) = their upsell. Spec:
+  // docs/superpowers/specs/2026-09-01-coach-classrooms-design.md
+
+  b2cCoaches: defineTable({
+    userId: v.id("b2cUsers"),           // the coach's real, visible account
+    slug: v.string(),                   // "ben-byrne" — stable URL-ish handle
+    displayName: v.string(),
+    headline: v.optional(v.string()),   // "Closed $XM in high-ticket sales"
+    bio: v.optional(v.string()),
+    avatarStorageId: v.optional(v.string()),
+    isActive: v.boolean(),              // false = classroom hidden, not deleted
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_slug", ["slug"])
+    .index("by_active", ["isActive"]),
+
+  b2cClassroomMemberships: defineTable({
+    coachId: v.id("b2cCoaches"),
+    userId: v.id("b2cUsers"),
+    tier: v.union(v.literal("free"), v.literal("premium")),
+    joinedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_coach", ["coachId", "joinedAt"])
+    .index("by_coach_user", ["coachId", "userId"]),
+
   b2cTrainingModules: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
@@ -2091,8 +2126,14 @@ export default defineSchema({
     isPublished: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
+    // Coach Classrooms (2026-09-01): undefined coachId = the global house
+    // library (pre-classroom rows keep working untouched); set = the module
+    // lives in that coach's classroom. tier defaults to "free" when unset.
+    coachId: v.optional(v.id("b2cCoaches")),
+    tier: v.optional(v.union(v.literal("free"), v.literal("premium"))),
   })
-    .index("by_published", ["isPublished", "order"]),
+    .index("by_published", ["isPublished", "order"])
+    .index("by_coach", ["coachId", "order"]),
 
   // Individual video lessons within a module
   b2cTrainingLessons: defineTable({
@@ -2308,6 +2349,11 @@ export default defineSchema({
   // processing completes.
   b2cCoachingCalls: defineTable({
     coachUserId: v.id("b2cUsers"),
+    // Coach Classrooms: premium-only calls (unset = free). featuredInTraining
+    // = the coach (or founder) pushed this replay to the house Training tab,
+    // visible to ALL members; founder can un-feature.
+    tier: v.optional(v.union(v.literal("free"), v.literal("premium"))),
+    featuredInTraining: v.optional(v.boolean()),
     title: v.string(),                        // ≤ 120 chars; validated in mutation
     description: v.optional(v.string()),      // ≤ 1000 chars
     scheduledStartTime: v.number(),           // ms epoch

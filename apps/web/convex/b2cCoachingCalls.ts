@@ -131,6 +131,29 @@ export const getPastCoachingCallsWithRecordings = query({
 
     // Only include rows with a ready recording
     all = all.filter((c) => c.recordingStatus === "ready" && c.recordingUrl);
+
+    // Coach Classrooms (2026-09-01): classroom coaches' replays live on their
+    // classroom shelf, NOT here — unless deliberately featured. Calls run by
+    // users without a coach profile (founder/house calls, incl. every
+    // pre-classroom recording) keep appearing exactly as before.
+    const coachUserIds = [...new Set(all.map((c) => c.coachUserId))];
+    const classroomCoachUserIds = new Set(
+      (
+        await Promise.all(
+          coachUserIds.map((uid) =>
+            ctx.db
+              .query("b2cCoaches")
+              .withIndex("by_user", (q) => q.eq("userId", uid))
+              .first(),
+          ),
+        )
+      )
+        .filter((c) => c !== null)
+        .map((c) => c!.userId),
+    );
+    all = all.filter(
+      (c) => !classroomCoachUserIds.has(c.coachUserId) || c.featuredInTraining === true,
+    );
     if (args.cursor) {
       all = all.filter((c) => c.scheduledStartTime < args.cursor!);
     }
