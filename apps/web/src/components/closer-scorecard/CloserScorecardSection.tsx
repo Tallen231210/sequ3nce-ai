@@ -14,6 +14,7 @@ import {
   type ScorecardRange,
 } from "@/components/scorecard/RangeControl";
 import { CloserScorecard } from "./CloserScorecard";
+import { EodFilingCard } from "./EodFilingCard";
 import type { CloserLedgerRow } from "./engine";
 import type { RowExtras } from "./CloserLedgerTable";
 
@@ -47,7 +48,13 @@ export function CloserScorecardSection() {
       : "skip",
   );
   const lock = useMutation(api.closerScorecard.lockCloserBaseline);
-  const saveSettings = useMutation(api.closerScorecard.updateCloserScorecardSettings);
+  const saveSettings = useMutation(
+    api.closerScorecardSupport.updateCloserScorecardSettings,
+  );
+  const filing = useQuery(
+    api.closerScorecardSupport.getEodFilingStatus,
+    clerkId ? { clerkId } : "skip",
+  );
   const [settingsState, setSettingsState] = useState<"idle" | "saved" | "error">("idle");
   const settledTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -86,6 +93,14 @@ export function CloserScorecardSection() {
 
   return (
     <div>
+      {filing && (
+        <EodFilingCard
+          filedToday={filing.filedToday}
+          notYetToday={filing.notYetToday}
+          missedYesterday={filing.missedYesterday}
+          filedYesterday={filing.filedYesterday}
+        />
+      )}
       <div className="mb-2 flex items-center justify-end">
         <RangeControl
           weeks={weeks.weeks}

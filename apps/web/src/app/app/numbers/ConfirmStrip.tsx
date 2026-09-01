@@ -2,11 +2,11 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  addManualCall,
   confirmCallFacts,
   getCallsToConfirm,
   type ConfirmCall,
 } from '@/lib/closer/client';
+import { AddMissedCallRow } from './AddMissedCallRow';
 import { CallFactsInlineEditor } from '../_components/CallFactsInlineEditor';
 
 const LABEL = 'text-[11px] font-medium text-gray-500 uppercase tracking-wider';
@@ -49,25 +49,6 @@ function whenLabel(startedAt: number): string {
   });
 }
 
-const MANUAL_OUTCOMES = [
-  ['closed', 'Closed'],
-  ['follow_up', 'Follow-up'],
-  ['lost', 'No close'],
-  ['no_show', 'No show'],
-] as const;
-
-/** Local YYYY-MM-DD (not toISOString — that rolls to tomorrow every evening
- *  west of Greenwich). */
-function todayIso(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function isoDaysAgo(days: number): string {
-  const d = new Date(Date.now() - days * 86_400_000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 /**
  * The last few days of recorded calls, prefilled with what the AI read, for
  * the closer to confirm or fix in one place. Accuracy machine: every call
@@ -84,11 +65,6 @@ export function ConfirmStrip({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmingAll, setConfirmingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [addBusy, setAddBusy] = useState(false);
-  const [addValues, setAddValues] = useState({
-    prospectName: '', date: todayIso(), outcome: 'closed', cash: '', contract: '',
-  });
 
   const refetch = useCallback(async () => {
     const res = await getCallsToConfirm(closerId);
@@ -124,37 +100,6 @@ export function ConfirmStrip({
     }
     await refetch();
     setConfirmingAll(false);
-  };
-
-  const submitManual = async () => {
-    const name = addValues.prospectName.trim();
-    if (!name) {
-      setError('Give the prospect a name.');
-      return;
-    }
-    setAddBusy(true);
-    setError(null);
-    // Noon local on the chosen day — unambiguous inside the team-local day.
-    const startedAt = new Date(`${addValues.date}T12:00:00`).getTime();
-    const cash = addValues.cash.trim();
-    const contract = addValues.contract.trim();
-    const res = await addManualCall(closerId, {
-      prospectName: name,
-      startedAt,
-      outcome: addValues.outcome,
-      ...(cash !== '' ? { cashCollected: Number(cash.replace(/[$,\s]/g, '')) } : {}),
-      ...(contract !== '' ? { contractValue: Number(contract.replace(/[$,\s]/g, '')) } : {}),
-    });
-    if (!res.success) {
-      setError(res.error ?? 'Could not add the call.');
-      setAddBusy(false);
-      return;
-    }
-    setAddValues({ prospectName: '', date: todayIso(), outcome: 'closed', cash: '', contract: '' });
-    setAdding(false);
-    setAddBusy(false);
-    await refetch();
-    onDataChanged?.();
   };
 
   return (
@@ -227,92 +172,13 @@ export function ConfirmStrip({
         ))}
       </div>
 
-      <div className="mt-3 border-t border-gray-200/60 pt-3">
-        {!adding ? (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="text-[12px] font-medium text-gray-600 underline underline-offset-2 hover:text-gray-900"
-          >
-            + Add a call we missed
-          </button>
-        ) : (
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[140px] flex-1">
-              <label className="mb-1 block text-[10px] text-gray-500">Prospect</label>
-              <input
-                type="text"
-                value={addValues.prospectName}
-                onChange={(e) => setAddValues((v) => ({ ...v, prospectName: e.target.value }))}
-                className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-[13px] focus:border-black focus:outline-none"
-                placeholder="Who was the call with?"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] text-gray-500">Day</label>
-              <input
-                type="date"
-                value={addValues.date}
-                max={todayIso()}
-                min={isoDaysAgo(6)}
-                onChange={(e) => setAddValues((v) => ({ ...v, date: e.target.value }))}
-                className="rounded-md border border-gray-200 px-2.5 py-1.5 text-[13px] focus:border-black focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[10px] text-gray-500">Outcome</label>
-              <select
-                value={addValues.outcome}
-                onChange={(e) => setAddValues((v) => ({ ...v, outcome: e.target.value }))}
-                className="rounded-md border border-gray-200 px-2 py-1.5 text-[13px] focus:border-black focus:outline-none"
-              >
-                {MANUAL_OUTCOMES.map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="w-24">
-              <label className="mb-1 block text-[10px] text-gray-500">Cash</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                value={addValues.cash}
-                placeholder="—"
-                onChange={(e) => setAddValues((v) => ({ ...v, cash: e.target.value }))}
-                className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-[13px] font-mono focus:border-black focus:outline-none"
-              />
-            </div>
-            <div className="w-24">
-              <label className="mb-1 block text-[10px] text-gray-500">Contract</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                value={addValues.contract}
-                placeholder="—"
-                onChange={(e) => setAddValues((v) => ({ ...v, contract: e.target.value }))}
-                className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-[13px] font-mono focus:border-black focus:outline-none"
-              />
-            </div>
-            <div className="flex items-center gap-2 pb-0.5">
-              <button
-                type="button"
-                disabled={addBusy}
-                onClick={() => void submitManual()}
-                className="rounded-md bg-gray-900 px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
-              >
-                {addBusy ? 'Adding…' : 'Add call'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAdding(false); setError(null); }}
-                className="text-[13px] text-gray-500 hover:text-gray-900"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      <AddMissedCallRow
+        closerId={closerId}
+        onAdded={() => {
+          void refetch();
+          onDataChanged?.();
+        }}
+      />
 
       {error && <p className="mt-2 text-[12px] text-red-600">{error}</p>}
     </div>
