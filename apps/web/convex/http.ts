@@ -13960,6 +13960,64 @@ http.route({
 
 closerPreflight("/closer/autoJoin");
 
+// ==================== Coach Classrooms (2026-09-01) ====================
+// One route table instead of 12 hand-rolled blocks. All POST, all
+// b2c-CORS, thin wrappers over b2cClassrooms/b2cClassroomContent — the
+// permission checks live server-side in those functions, never here.
+// Validation failures surface as 400 with the real message so the app can
+// show it; unexpected errors stay generic 500s.
+const classroomRoutes: Array<{
+  path: string;
+  kind: "query" | "mutation";
+  fn: any;
+}> = [
+  { path: "/b2c/classroom/home", kind: "query", fn: api.b2cClassrooms.getClassroomHome },
+  { path: "/b2c/classroom/join", kind: "mutation", fn: api.b2cClassrooms.joinClassroom },
+  { path: "/b2c/classroom/replays", kind: "query", fn: api.b2cClassrooms.getClassroomReplays },
+  { path: "/b2c/classroom/modules", kind: "query", fn: api.b2cClassroomContent.listClassroomModules },
+  { path: "/b2c/classroom/my-coach-profile", kind: "query", fn: api.b2cClassrooms.getMyCoachProfile },
+  { path: "/b2c/classroom/manage/profile", kind: "mutation", fn: api.b2cClassrooms.updateCoachProfile },
+  { path: "/b2c/classroom/manage/create-module", kind: "mutation", fn: api.b2cClassroomContent.createModule },
+  { path: "/b2c/classroom/manage/update-module", kind: "mutation", fn: api.b2cClassroomContent.updateModule },
+  { path: "/b2c/classroom/manage/delete-module", kind: "mutation", fn: api.b2cClassroomContent.deleteModule },
+  { path: "/b2c/classroom/manage/add-lesson", kind: "mutation", fn: api.b2cClassroomContent.addLesson },
+  { path: "/b2c/classroom/manage/delete-lesson", kind: "mutation", fn: api.b2cClassroomContent.deleteLesson },
+  { path: "/b2c/classroom/manage/push-replay", kind: "mutation", fn: api.b2cClassrooms.pushReplayToTraining },
+  { path: "/b2c/classroom/manage/promote-replay", kind: "mutation", fn: api.b2cClassroomContent.promoteReplayToLesson },
+];
+
+for (const route of classroomRoutes) {
+  http.route({
+    path: route.path,
+    method: "POST",
+    handler: httpAction(async (ctx, request) => {
+      try {
+        const body = await request.json();
+        const result =
+          route.kind === "query"
+            ? await ctx.runQuery(route.fn, body)
+            : await ctx.runMutation(route.fn, body);
+        return b2cJsonResponse(result ?? { ok: true });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Request failed";
+        // Convex wraps thrown errors; keep the human part only.
+        const clean = msg.replace(/^.*Uncaught Error:\s*/s, "").split("\n")[0];
+        const known =
+          /must be|too long|not found|already|Only |Founder access|not a coach|own classroom|founder-managed|isn't ready|not available|Bad slug|characters/i.test(
+            clean,
+          );
+        if (!known) console.error(`[classroom] ${route.path}:`, error);
+        return b2cJsonResponse({ error: clean }, known ? 400 : 500);
+      }
+    }),
+  });
+  http.route({
+    path: route.path,
+    method: "OPTIONS",
+    handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+  });
+}
+
 export default http;
 
 // ============================================
