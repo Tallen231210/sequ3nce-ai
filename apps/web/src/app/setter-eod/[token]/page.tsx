@@ -15,14 +15,14 @@ import { Logo } from "@/components/ui/logo";
 // ============================================================================
 
 const FIELDS: Array<{ key: string; label: string; hint?: string }> = [
-  { key: "dials", label: "Dials" },
-  { key: "pickUps", label: "Pick ups" },
-  { key: "sets", label: "Sets" },
-  { key: "newLeadsHit", label: "New leads hit" },
-  { key: "followUps", label: "Follow ups", hint: "leads you followed up with" },
-  { key: "callsOnCalendar", label: "Calls on the calendar" },
-  { key: "callsShown", label: "Calls shown" },
-  { key: "callsClosed", label: "Calls closed" },
+  { key: "dials", label: "Dials", hint: "phone call attempts today — every attempt counts, incl. no-answers" },
+  { key: "pickUps", label: "Pick ups", hint: "dials where a human answered and you spoke" },
+  { key: "sets", label: "Sets", hint: "new sales calls you booked today — prospect committed, time locked in" },
+  { key: "newLeadsHit", label: "New leads hit", hint: "brand-new leads you contacted for the first time today" },
+  { key: "followUps", label: "Follow ups", hint: "existing leads you re-contacted today" },
+  { key: "callsOnCalendar", label: "Calls on the calendar", hint: "first consults from YOUR sets that were scheduled for today" },
+  { key: "callsShown", label: "Calls shown", hint: "of those, how many showed — follow-ups / second calls don't count" },
+  { key: "callsClosed", label: "Calls closed", hint: "of today's shows, how many closed" },
 ];
 const OPTIONAL_KEYS = new Set(["callsOnCalendar", "callsShown", "callsClosed"]);
 

@@ -9,15 +9,15 @@ import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useSetter } from "../_components/SetterContext";
 
-const FIELDS: Array<{ key: string; label: string }> = [
-  { key: "dials", label: "Dials" },
-  { key: "pickUps", label: "Pick ups" },
-  { key: "sets", label: "Sets" },
-  { key: "newLeadsHit", label: "New leads hit" },
-  { key: "followUps", label: "Follow ups" },
-  { key: "callsOnCalendar", label: "Calls on the calendar" },
-  { key: "callsShown", label: "Calls shown" },
-  { key: "callsClosed", label: "Calls closed" },
+const FIELDS: Array<{ key: string; label: string; hint?: string }> = [
+  { key: "dials", label: "Dials", hint: "phone call attempts today — every attempt counts, incl. no-answers" },
+  { key: "pickUps", label: "Pick ups", hint: "dials where a human answered and you spoke" },
+  { key: "sets", label: "Sets", hint: "new sales calls you booked today — prospect committed, time locked in" },
+  { key: "newLeadsHit", label: "New leads hit", hint: "brand-new leads you contacted for the first time today" },
+  { key: "followUps", label: "Follow ups", hint: "existing leads you re-contacted today" },
+  { key: "callsOnCalendar", label: "Calls on the calendar", hint: "first consults from YOUR sets that were scheduled for today" },
+  { key: "callsShown", label: "Calls shown", hint: "of those, how many showed — follow-ups / second calls don't count" },
+  { key: "callsClosed", label: "Calls closed", hint: "of today's shows, how many closed" },
 ];
 
 export default function SetterEodPage() {
@@ -117,6 +117,11 @@ export default function SetterEodPage() {
               <span className="mb-1 block text-[12px] font-medium text-neutral-600">
                 {f.label}
               </span>
+              {f.hint && (
+                <span className="-mt-0.5 mb-1 block text-[10px] leading-tight text-neutral-400">
+                  {f.hint}
+                </span>
+              )}
               <input
                 inputMode="numeric"
                 pattern="[0-9]*"

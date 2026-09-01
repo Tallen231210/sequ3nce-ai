@@ -198,9 +198,12 @@ export function Scorecard({
         <strong>Two things to keep straight.</strong> These numbers are
         self-reported by your setters through their EOD forms. Rounding
         compounds down the chain, so a big scale-up can land a unit or two off
-        a hand calc — directional, not penny-exact. And &ldquo;on calendar&rdquo; and
-        &ldquo;showed&rdquo; come from a different cohort than this week&apos;s sets, so
-        set→calendar and show are directional only.
+        a hand calc — directional, not penny-exact. Since Sep 1, 2026,
+        &ldquo;on calendar&rdquo; means first consults scheduled that day and
+        &ldquo;showed&rdquo; counts only those — so the show rate is a real rate.
+        Set→scheduled still spans cohorts (this week&apos;s sets show up on later
+        weeks&apos; calendars), and entries filed before Sep 1 predate these
+        definitions.
       </p>
     </div>
   );

@@ -6,8 +6,10 @@
 // exactly what `seed` created (uid-prefixed) and the caller re-recounts.
 
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
-import { DEFAULT_TIMEZONE } from "./closerPerformance";
+import { internalMutation, internalQuery } from "./_generated/server";
+import { DEFAULT_TIMEZONE, attributeBooking } from "./closerPerformance";
+import { isFollowUpTitle } from "./lib/followUpTitle";
+import { groupBookingCopies, isSalesBooking } from "./calendarBookings";
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -136,5 +138,64 @@ export const cleanup = internalMutation({
       await ctx.db.delete(args.callId);
     }
     return { cleaned: true };
+  },
+});
+
+/** Diagnostic: replay the recount's calendar-loop decisions for one
+ *  team-day — which events match the FU title, which classify as calls,
+ *  and who they attribute to. Read-only. */
+export const dayDiag = internalQuery({
+  args: { teamId: v.id("teams"), dayKey: v.string() },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.teamId);
+    const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
+    const { startMs, endMs } = getLocalDateRangeUtc(args.dayKey, tz);
+    const events = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_team_and_time", (q: any) =>
+        q.eq("teamId", args.teamId).gte("startTime", startMs).lt("startTime", endMs),
+      )
+      .take(5000);
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q: any) =>
+        q.eq("teamId", args.teamId).gte("createdAt", startMs).lt("createdAt", endMs),
+      )
+      .take(5000);
+    const callByEventId = new Map<string, any>();
+    for (const c of calls as any[]) {
+      if (c.calendarEventId) callByEventId.set(String(c.calendarEventId), c);
+    }
+    const closers = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q: any) => q.eq("teamId", args.teamId))
+      .take(500);
+    const closerNames = closers
+      .filter((c: any) => c.status !== "deactivated")
+      .map((c: any) => ({ id: String(c._id), name: c.name ?? "" }));
+    const copiesByUid = groupBookingCopies(events as any);
+    const out: any[] = [];
+    for (const [, copies] of copiesByUid) {
+      const ev: any = copies[0];
+      if (!isFollowUpTitle(ev.title)) continue;
+      const linked = copies
+        .map((c: any) => callByEventId.get(String(c._id)))
+        .find((x: any) => !!x);
+      const isCall = isSalesBooking(copies as any, {
+        producedARecordedCall: !!linked,
+      });
+      const attr = attributeBooking(copies as any, linked ? String(linked.closerId) : null, closerNames);
+      out.push({
+        title: (ev.title ?? "").slice(0, 60),
+        fuTitleMatch: true,
+        isSalesBooking: isCall,
+        ownerId: attr.closerId ? String(attr.closerId).slice(-6) : null,
+        unknownRep: attr.unknownRep ?? null,
+        hasLinkedCall: !!linked,
+        prospectJoined: linked ? (linked.prospectJoined ?? null) : null,
+        outcome: linked ? (linked.outcome ?? null) : null,
+      });
+    }
+    return out;
   },
 });

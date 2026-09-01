@@ -174,6 +174,9 @@ export const followUpTitleBench = internalQuery({
       { title: "FU John", expect: false },
       { title: "Fellowship onboarding", expect: false },
       { title: "Following up next steps doc", expect: false }, // "following" ≠ "follow up"
+      { title: "Second Call: Blake Davis and Anthony", expect: true }, // E2's older convention
+      { title: "second call w/ Dominick", expect: true },
+      { title: "A second caller rang", expect: false }, // \b keeps "caller" out
       { title: "", expect: false },
     ];
     const results = cases.map((c) => ({

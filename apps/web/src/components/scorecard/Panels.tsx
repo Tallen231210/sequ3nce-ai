@@ -10,8 +10,8 @@ import s from "./scorecard.module.css";
 const DRIVERS: Array<{ label: string; sub: string }> = [
   { label: "Pickup", sub: "connects off dials" },
   { label: "Connect→set", sub: "sets off connects" },
-  { label: "Set→calendar", sub: "calls off sets" },
-  { label: "Show", sub: "shows off calls" },
+  { label: "Set→scheduled", sub: "scheduled calls off sets — directional" },
+  { label: "Show", sub: "shows off scheduled calls" },
 ];
 
 export function DriverPanel({

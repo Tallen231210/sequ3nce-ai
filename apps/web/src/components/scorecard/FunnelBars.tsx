@@ -3,7 +3,7 @@ import { Delta } from "./Delta";
 import s from "./scorecard.module.css";
 
 const STAGES = ["Dials", "Connects", "Sets", "On calendar", "Showed"] as const;
-const GATES = ["pickup", "connect→set", "set→calendar", "show"] as const;
+const GATES = ["pickup", "connect→set", "set→sched", "show"] as const;
 
 export function FunnelBars({ rows, baseline }: { rows: LedgerRow[]; baseline: LedgerRow[] }) {
   const t = rollup(rows);

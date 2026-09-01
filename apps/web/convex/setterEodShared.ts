@@ -41,9 +41,27 @@ export function validateEodNumbers(n: EodNumbers): void {
   if (n.pickUps > n.dials) {
     throw new ConvexError("Pick ups can't be more than dials");
   }
-  // Deliberately NO cross-field rules between the new three — "shown" can
-  // exceed "on calendar" filed the same day (different cohorts; the
-  // scorecard says so in its footnote).
+  // Since 2026-09-01 (defs agreed with the customer): "calls on the
+  // calendar" = first-consult appointments from your sets SCHEDULED today,
+  // and "calls shown" = of those, how many showed. Same cohort by
+  // definition, so shown can no longer exceed on-calendar — earlier the two
+  // measured different cohorts and this guard was deliberately absent.
+  if (
+    n.callsShown !== undefined &&
+    n.callsOnCalendar !== undefined &&
+    n.callsShown > n.callsOnCalendar
+  ) {
+    throw new ConvexError(
+      "Calls shown can't be more than calls on the calendar — follow-ups and second calls don't count as shown",
+    );
+  }
+  if (
+    n.callsClosed !== undefined &&
+    n.callsShown !== undefined &&
+    n.callsClosed > n.callsShown
+  ) {
+    throw new ConvexError("Calls closed can't be more than calls shown");
+  }
 }
 
 export function buildEodDoc(
