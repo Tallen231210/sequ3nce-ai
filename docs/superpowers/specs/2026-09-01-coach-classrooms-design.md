@@ -58,8 +58,34 @@ Coach badge + owning `b2cCoaches` row grants, scoped to their OWN classroom:
 - Post + pin in their classroom channel.
 - Schedule/host coaching calls (already works).
 - See their member list.
+- **Promote a replay to a module** — turn a raw classroom replay into a
+  curated lesson in their own training library.
+- **Push a replay to the house Training tab** (Tyler 2026-09-01):
+  self-serve button on their replays, copy spelling out the consequence —
+  "Share with all users — this pushes the recording to the general
+  Training tab, visible to every Sequ3nce member, not just your
+  classroom." Confirm step before it fires. Founder can un-feature
+  anything (safety valve).
 Explicitly NOT: any admin surface, other classrooms, member private data.
 Founder retains god-mode everywhere.
+
+## Calls & recordings routing (decided 2026-09-01)
+
+The recording pipeline (auto-record → process → replay) is UNTOUCHED —
+every call already carries `coachUserId`, so scoping is a query-level
+visibility layer, not a rewire:
+
+- **Coach's call** → shows on their classroom members' Schedules, joins in
+  the shared in-app room, replay lands automatically on the classroom's
+  **Replays shelf** (new UI). From there the coach curates: promote to
+  module, and/or push to the house Training tab (buttons above).
+- **House call** (founder-run, no coach classroom) → exactly today's
+  behavior: general Schedule + general Training replay section. All
+  existing replays/modules stay put — zero migration.
+- Free classrooms cost nothing to join, so coach calls stay effectively
+  open — but joining is the doorway that builds the coach's member list
+  and later carries the premium tier (a premium call = a call whose tier
+  only some members hold).
 
 ## Phasing
 
@@ -74,6 +100,8 @@ Founder retains god-mode everywhere.
   (auto-membership on first visit; the picker waits for coach #2).
 - Coach-side management UI: reuse the founder training-management surfaces,
   scoped to own coachId.
+- Classroom Replays shelf + promote-to-module + push-to-house-Training
+  actions (the only genuinely new pipeline UI).
 - Videos v1 = embed URLs (Loom/YouTube unlisted — wherever Ben's content
   lives). Proper hosting only when premium gating demands it.
 
