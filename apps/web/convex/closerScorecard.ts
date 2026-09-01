@@ -153,9 +153,35 @@ export const getRange = query({
     const entryBy = new Map(entries.map((r: any) => [key(r.dayKey, r.closerId), r]));
     const ovBy = new Map(overrides.map((r: any) => [key(r.dayKey, r.closerId), r]));
 
-    // Confirmation rate window in UTC ms, from the team-local day span.
-    const { startMs } = getLocalDateRangeUtc(args.weekStart, tz);
+    // % of calls confirmed — ONE team-level scan, capped to the range's
+    // last 14 days. The chip is about the recent habit; per-closer scans
+    // across a 92-day range on a big roster would cross Convex's 32k-doc
+    // budget and blank the whole tab. Bucketed by createdAt like the
+    // recount, so calls that predate startedAt still count.
+    const confStartKey =
+      dayKeys.length > 14 ? dayKeys[dayKeys.length - 14] : args.weekStart;
+    const { startMs: confStartMs } = getLocalDateRangeUtc(confStartKey, tz);
     const { endMs } = getLocalDateRangeUtc(endKey, tz);
+    const confCalls = await ctx.db
+      .query("calls")
+      .withIndex("by_team_and_date", (q: any) =>
+        q.eq("teamId", teamId).gte("createdAt", confStartMs).lt("createdAt", endMs),
+      )
+      .take(4000);
+    const completedBy = new Map<string, number>();
+    const confirmedBy = new Map<string, number>();
+    for (const c of confCalls as any[]) {
+      if (c.status !== "completed" || c.countsTowardStats === false) continue;
+      const k = String(c.closerId);
+      completedBy.set(k, (completedBy.get(k) ?? 0) + 1);
+      if (
+        c.factsConfirmedAt != null ||
+        c.outcomeSource === "closer" ||
+        c.outcomeSource === "manager"
+      ) {
+        confirmedBy.set(k, (confirmedBy.get(k) ?? 0) + 1);
+      }
+    }
 
     const rows: CloserRangeRow[] = [];
     for (const closer of active) {
@@ -199,24 +225,8 @@ export const getRange = query({
         }
       }
 
-      // % of calls confirmed — human eyes on the per-call figures.
-      const calls = await ctx.db
-        .query("calls")
-        .withIndex("by_closer_and_startedAt", (q: any) =>
-          q.eq("closerId", closer._id).gte("startedAt", startMs).lt("startedAt", endMs),
-        )
-        .take(500);
-      for (const c of calls as any[]) {
-        if (c.status !== "completed" || c.countsTowardStats === false) continue;
-        row.callsCompleted += 1;
-        if (
-          c.factsConfirmedAt != null ||
-          c.outcomeSource === "closer" ||
-          c.outcomeSource === "manager"
-        ) {
-          row.callsConfirmed += 1;
-        }
-      }
+      row.callsCompleted = completedBy.get(String(closer._id)) ?? 0;
+      row.callsConfirmed = confirmedBy.get(String(closer._id)) ?? 0;
 
       rows.push(row);
     }

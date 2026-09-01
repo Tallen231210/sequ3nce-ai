@@ -105,12 +105,15 @@ export function PerformanceDayForm({
     initialValues(row, tierPrices),
   );
 
-  // Re-seed when the day changes or a save lands, so the form reflects what
-  // the server now holds rather than a stale draft.
+  // Re-seed when the day changes, a save lands, or the MEASUREMENT moves
+  // (a confirm-strip edit or manual call recounts ~5s later — without this
+  // the stale prefill gets submitted and outranks the corrected measurement).
+  // Trade-off, deliberate: a recount landing mid-typing resets an unsubmitted
+  // draft. Accuracy of what gets submitted wins over draft preservation.
   useEffect(() => {
     setValues(initialValues(row, tierPrices));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row.dayKey, row.confirmedAt]);
+  }, [row.dayKey, row.confirmedAt, JSON.stringify(row.measured)]);
 
   const submit = () => {
     const out: Record<string, number | null> = {};

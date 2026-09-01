@@ -12425,6 +12425,25 @@ async function closerFromBody(
   return resolved ? (resolved.closerId as Id<"closers">) : null;
 }
 
+/**
+ * Like closerFromBody, but ONLY a live session token authenticates — the
+ * legacy bare-closerId fallback is refused. Required for routes that WRITE
+ * money-bearing rows (addManualCall, confirmCallFacts): closer ids circulate
+ * (leaderboards return them), so "knows a closerId" must never be enough to
+ * insert a closed call for someone.
+ */
+async function verifiedCloserFromBody(
+  ctx: any,
+  body: { sessionToken?: string; closerId?: string },
+): Promise<Id<"closers"> | null> {
+  if (!body.sessionToken) return null;
+  const resolved = await ctx.runQuery(internal.closerSession.resolveCloser, {
+    sessionToken: body.sessionToken,
+  });
+  if (!resolved || resolved.verified !== true) return null;
+  return resolved.closerId as Id<"closers">;
+}
+
 const CLOSER_UNAUTHORISED = new Response(
   JSON.stringify({ error: "Not signed in" }),
   { status: 401 },
@@ -12572,7 +12591,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const { sessionToken, closerId, callId } = await request.json();
-      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      const authedCloserId = await verifiedCloserFromBody(ctx, { sessionToken, closerId });
       if (!authedCloserId) {
         return new Response(JSON.stringify({ error: "Not signed in" }), {
           status: 401, headers: CLOSER_JSON,
@@ -12604,24 +12623,24 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const { sessionToken, closerId, prospectName, startedAt, outcome,
+      const { sessionToken, closerId, prospectName, dayKey, outcome,
         cashCollected, contractValue } = await request.json();
-      const authedCloserId = await closerFromBody(ctx, { sessionToken, closerId });
+      const authedCloserId = await verifiedCloserFromBody(ctx, { sessionToken, closerId });
       if (!authedCloserId) {
         return new Response(JSON.stringify({ error: "Not signed in" }), {
           status: 401, headers: CLOSER_JSON,
         });
       }
-      if (!prospectName || typeof startedAt !== "number" || !outcome) {
+      if (!prospectName || typeof dayKey !== "string" || !outcome) {
         return new Response(
-          JSON.stringify({ error: "prospectName, startedAt and outcome are required" }),
+          JSON.stringify({ error: "prospectName, dayKey and outcome are required" }),
           { status: 400, headers: CLOSER_JSON },
         );
       }
       const result = await ctx.runMutation(internal.callConfirm.addManualCall, {
         closerId: authedCloserId,
         prospectName,
-        startedAt,
+        dayKey,
         outcome,
         ...(typeof cashCollected === "number" ? { cashCollected } : {}),
         ...(typeof contractValue === "number" ? { contractValue } : {}),

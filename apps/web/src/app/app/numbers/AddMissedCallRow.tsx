@@ -52,13 +52,13 @@ export function AddMissedCallRow({
     }
     setBusy(true);
     setError(null);
-    // Noon local on the chosen day — unambiguous inside the team-local day.
-    const startedAt = new Date(`${values.date}T12:00:00`).getTime();
+    // The server places the call inside this TEAM-local day (now if today,
+    // noon otherwise) — the browser's clock and timezone stay out of it.
     const cash = values.cash.trim();
     const contract = values.contract.trim();
     const res = await addManualCall(closerId, {
       prospectName: name,
-      startedAt,
+      dayKey: values.date,
       outcome: values.outcome,
       ...(cash !== '' ? { cashCollected: Number(cash.replace(/[$,\s]/g, '')) } : {}),
       ...(contract !== '' ? { contractValue: Number(contract.replace(/[$,\s]/g, '')) } : {}),

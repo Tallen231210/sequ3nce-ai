@@ -209,8 +209,10 @@ export function deltaDollars(
   target: number | null,
   m: { cdpbc: number | null; booked: number },
 ): number | null {
-  if (target === null) return null;
-  return (target - (m.cdpbc || 0)) * m.booked;
+  // No booked calls means no CDPBC means no gap to state — coercing null to
+  // 0 here rendered a zero-data closer as a green "at target".
+  if (target === null || m.cdpbc === null) return null;
+  return (target - m.cdpbc) * m.booked;
 }
 
 /** Tier-pitch stats for one row against the configured prices. */

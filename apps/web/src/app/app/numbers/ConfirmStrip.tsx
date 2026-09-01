@@ -75,7 +75,28 @@ export function ConfirmStrip({
     void refetch();
   }, [refetch]);
 
-  if (!calls || calls.length === 0) return null;
+  if (!calls) return null; // still loading
+
+  // Zero recorded calls is EXACTLY when "add a call we missed" matters most
+  // (bot never admitted all week) — so the card stays, slimmed down.
+  if (calls.length === 0) {
+    return (
+      <div className="mb-5 rounded-lg border border-gray-200/60 bg-[#fafafa] p-4">
+        <p className={LABEL}>Your recent calls</p>
+        <p className="mt-2 text-[12px] text-gray-500">
+          No recorded calls in the last few days. If you took calls the bot
+          missed, add them here so they count.
+        </p>
+        <AddMissedCallRow
+          closerId={closerId}
+          onAdded={() => {
+            void refetch();
+            onDataChanged?.();
+          }}
+        />
+      </div>
+    );
+  }
 
   const unconfirmed = calls.filter((c) => !c.factsConfirmedAt);
 

@@ -78,8 +78,16 @@ export function SettingsRow({
     // (tier2Pitched always means "the second price"), so removing the middle
     // must never shift a later price into an earlier slot and silently
     // relabel everyone's historical counts.
-    const next = v === null ? prices.slice(0, i) : [...prices];
-    if (v !== null) next[i] = v;
+    let next: number[];
+    if (v === null) next = prices.slice(0, i);
+    else {
+      next = [...prices];
+      next[i] = v;
+      // Filling tier 2 while tier 1 is empty would build a sparse array the
+      // validator rejects with an opaque error — compact instead; the value
+      // visibly lands in the first open slot on re-render.
+      next = next.filter((n) => typeof n === "number" && Number.isFinite(n));
+    }
     onSave({ tierPrices: next.length ? next : null });
   };
 
