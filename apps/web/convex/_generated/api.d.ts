@@ -97,6 +97,7 @@ import type * as closerPerformanceNotifications from "../closerPerformanceNotifi
 import type * as closerPerformanceQueries from "../closerPerformanceQueries.js";
 import type * as closerPerformanceSweep from "../closerPerformanceSweep.js";
 import type * as closerPerformanceYear from "../closerPerformanceYear.js";
+import type * as closerScorecard from "../closerScorecard.js";
 import type * as closerScorecardData from "../closerScorecardData.js";
 import type * as closerScorecardSettings from "../closerScorecardSettings.js";
 import type * as closerSelfPerformance from "../closerSelfPerformance.js";
@@ -142,6 +143,7 @@ import type * as lib_closerTitleMatch from "../lib/closerTitleMatch.js";
 import type * as lib_dateRanges from "../lib/dateRanges.js";
 import type * as lib_encrypt from "../lib/encrypt.js";
 import type * as lib_extractProspectFromTitle from "../lib/extractProspectFromTitle.js";
+import type * as lib_followUpTitle from "../lib/followUpTitle.js";
 import type * as lib_ghlMessageType from "../lib/ghlMessageType.js";
 import type * as lib_googleCalendarPalette from "../lib/googleCalendarPalette.js";
 import type * as lib_rangeScan from "../lib/rangeScan.js";
@@ -337,6 +339,7 @@ declare const fullApi: ApiFromModules<{
   closerPerformanceQueries: typeof closerPerformanceQueries;
   closerPerformanceSweep: typeof closerPerformanceSweep;
   closerPerformanceYear: typeof closerPerformanceYear;
+  closerScorecard: typeof closerScorecard;
   closerScorecardData: typeof closerScorecardData;
   closerScorecardSettings: typeof closerScorecardSettings;
   closerSelfPerformance: typeof closerSelfPerformance;
@@ -382,6 +385,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dateRanges": typeof lib_dateRanges;
   "lib/encrypt": typeof lib_encrypt;
   "lib/extractProspectFromTitle": typeof lib_extractProspectFromTitle;
+  "lib/followUpTitle": typeof lib_followUpTitle;
   "lib/ghlMessageType": typeof lib_ghlMessageType;
   "lib/googleCalendarPalette": typeof lib_googleCalendarPalette;
   "lib/rangeScan": typeof lib_rangeScan;
