@@ -70,7 +70,7 @@ function CallbackContent() {
           <p className="text-xs text-zinc-400">
             If the app didn&apos;t open automatically, click the button above.
           </p>
-          <div className="pt-2">
+          <div className="pt-2 flex justify-center">
             <Logo height={20} />
           </div>
         </div>
