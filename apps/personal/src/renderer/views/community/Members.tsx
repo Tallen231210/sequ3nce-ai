@@ -27,7 +27,7 @@ export function Members({ currentUserId, onMessageMember }: MembersProps) {
 
   const loadMembers = async (searchTerm?: string) => {
     setLoading(true);
-    const result = await getCommunityMembers(20, searchTerm);
+    const result = await getCommunityMembers(20, searchTerm, undefined, undefined, currentUserId);
     if (mountedRef.current) {
       setMembers(result.members);
       setNextCursor(result.nextCursor);
@@ -59,7 +59,7 @@ export function Members({ currentUserId, onMessageMember }: MembersProps) {
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
-    const result = await getCommunityMembers(20, search || undefined, nextCursor);
+    const result = await getCommunityMembers(20, search || undefined, nextCursor, undefined, currentUserId);
     if (mountedRef.current) {
       setMembers((prev) => [...prev, ...result.members]);
       setNextCursor(result.nextCursor);

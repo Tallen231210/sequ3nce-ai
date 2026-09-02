@@ -108,7 +108,17 @@ export function VerifiedIcon({ className }: { className?: string }) {
   );
 }
 
-export function VerifiedBadge() {
+export function VerifiedBadge({ gold = false }: { gold?: boolean } = {}) {
+  // Gold Check: VIP (yearly) members' verification renders gold everywhere
+  // their public profile is seen.
+  if (gold) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold text-yellow-800 bg-yellow-50 border border-yellow-300 rounded-full">
+        <VerifiedIcon className="w-3 h-3 text-yellow-500" />
+        Gold Verified by Sequ3nce
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full">
       <VerifiedIcon className="w-3 h-3" />
@@ -183,7 +193,7 @@ export function SocialIcons({ links }: { links: NonNullable<ProfileData["socialL
 
 // ==================== Featured Stat ====================
 
-export function FeaturedStat({ amount, isVerified = true }: { amount: number; isVerified?: boolean }) {
+export function FeaturedStat({ amount, isVerified = true, isGold = false }: { amount: number; isVerified?: boolean; isGold?: boolean }) {
   if (amount <= 0) return null;
   return (
     <div className="text-center py-8">
@@ -197,7 +207,7 @@ export function FeaturedStat({ amount, isVerified = true }: { amount: number; is
         {isVerified ? (
           <>
             <VerifiedIcon className="w-4 h-4 text-emerald-500" />
-            <span className="text-[12px] text-zinc-400 font-medium">Verified by Sequ3nce</span>
+            <span className={"text-[12px] font-medium " + (isGold ? "text-yellow-600" : "text-zinc-400")}>{isGold ? "Gold Verified by Sequ3nce" : "Verified by Sequ3nce"}</span>
           </>
         ) : (
           <span className="text-[12px] text-zinc-400 font-medium">Self-Reported</span>
@@ -209,7 +219,7 @@ export function FeaturedStat({ amount, isVerified = true }: { amount: number; is
 
 // ==================== Stats Grid ====================
 
-export function StatsGrid({ stats, isVerified = true }: { stats: ProfileData["stats"]; isVerified?: boolean }) {
+export function StatsGrid({ stats, isVerified = true, isGold = false }: { stats: ProfileData["stats"]; isVerified?: boolean; isGold?: boolean }) {
   if (!stats) {
     return (
       <div className="py-10 px-6 text-center bg-zinc-50 border border-zinc-200 rounded-2xl">
@@ -225,7 +235,7 @@ export function StatsGrid({ stats, isVerified = true }: { stats: ProfileData["st
     <div>
       <div className="flex items-center gap-2 mb-4">
         <SectionHeading>{isVerified ? "Verified Stats" : "Performance Stats"}</SectionHeading>
-        {isVerified ? <VerifiedBadge /> : <SelfReportedBadge />}
+        {isVerified ? <VerifiedBadge gold={isGold} /> : <SelfReportedBadge />}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Close Rate with progress bar */}

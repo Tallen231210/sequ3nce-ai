@@ -7743,11 +7743,13 @@ http.route({
       const cursor = url.searchParams.get("cursor");
       const limit = url.searchParams.get("limit");
       const search = url.searchParams.get("search");
+      const viewerId = url.searchParams.get("viewerId");
       const result = await ctx.runQuery(api.b2cCommunity.listMembers, {
         cursor: cursor ? Number(cursor) : undefined,
         limit: limit ? Number(limit) : undefined,
         search: search || undefined,
         includeTest: url.searchParams.get("includeTest") === "1" || undefined,
+        viewerId: viewerId ? (viewerId as any) : undefined,
       });
       return b2cJsonResponse(result);
     } catch (error) {
@@ -14172,6 +14174,45 @@ for (const route of classroomRoutes) {
     handler: b2cCorsPreflightHandler("POST, OPTIONS"),
   });
 }
+
+// The Placement Line (VIP internal priority list)
+http.route({
+  path: "/b2c/placement-line/status",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runQuery(api.b2cPlacementLine.getPlacementLineStatus, {
+        userId: body.userId,
+      });
+      return b2cJsonResponse(result ?? { error: "Not found" });
+    } catch (error) {
+      console.error("[HTTP] placement-line/status:", error);
+      return b2cJsonResponse({ error: "Internal server error" }, 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/placement-line/status", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+http.route({
+  path: "/b2c/placement-line/join",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(api.b2cPlacementLine.joinPlacementLine, {
+        userId: body.userId,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Request failed";
+      const clean = msg.replace(/^[\s\S]*Uncaught Error:\s*/, "").split("\n")[0];
+      const known = /yearly|profile|not found/i.test(clean);
+      if (!known) console.error("[HTTP] placement-line/join:", error);
+      return b2cJsonResponse({ error: clean }, known ? 400 : 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/placement-line/join", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
 
 export default http;
 

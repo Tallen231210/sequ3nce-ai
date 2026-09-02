@@ -1993,6 +1993,10 @@ export default defineSchema({
     emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
     lastSeenAt: v.optional(v.number()),                    // Online presence heartbeat timestamp
     isTestAccount: v.optional(v.boolean()),                // Playwright/QA accounts — hidden from community + presence
+    // The Placement Line (VIP): when the member entered the internal
+    // priority list. Eligibility (VIP + complete verified profile) is
+    // re-checked server-side at join time; unset = not on the Line.
+    placementLineJoinedAt: v.optional(v.number()),
     // SHA-256 of the app-session bearer token minted at login. Exists for
     // routes where trusting a client-supplied id is not acceptable (the
     // auto-join recording switch, 2026-09-01). Single active token; each

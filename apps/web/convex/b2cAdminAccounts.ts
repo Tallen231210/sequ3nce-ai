@@ -386,3 +386,63 @@ export const polishDemoCalls = internalMutation({
     return { patched };
   },
 });
+
+/** Flip a TEST account's profile verified flag (screenshot/E2E rig only). */
+export const setTestProfileVerified = internalMutation({
+  args: { email: v.string(), verified: v.boolean() },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .first();
+    if (!user || user.isTestAccount !== true) throw new Error("Refusing: not a test account");
+    let profile = await ctx.db
+      .query("b2cProfiles")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .first();
+    if (!profile) {
+      const id = await ctx.db.insert("b2cProfiles", {
+        userId: user._id,
+        isPublic: false,
+        isManuallyVerified: args.verified,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return { created: true, id };
+    }
+    await ctx.db.patch(profile._id, { isManuallyVerified: args.verified, updatedAt: Date.now() });
+    return { created: false, updated: true };
+  },
+});
+
+/** Fill a TEST account's profile fields (Placement Line E2E rig). */
+export const setTestProfileFields = internalMutation({
+  args: {
+    email: v.string(),
+    headline: v.optional(v.string()),
+    bio: v.optional(v.string()),
+    isPublic: v.optional(v.boolean()),
+    photoStorageId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .first();
+    if (!user || user.isTestAccount !== true) throw new Error("Refusing: not a test account");
+    const profile = await ctx.db
+      .query("b2cProfiles")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .first();
+    if (!profile) throw new Error("No profile row — run setTestProfileVerified first");
+    const patch: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.headline !== undefined) patch.headline = args.headline;
+    if (args.bio !== undefined) patch.bio = args.bio;
+    if (args.isPublic !== undefined) patch.isPublic = args.isPublic;
+    if (args.photoStorageId !== undefined) patch.photoStorageId = args.photoStorageId;
+    await ctx.db.patch(profile._id, patch);
+    return { updated: true };
+  },
+});

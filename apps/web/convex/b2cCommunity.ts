@@ -423,9 +423,15 @@ export const listMembers = query({
     // The founder-only notification recipient picker needs to address QA
     // accounts; every member-facing surface leaves this unset.
     includeTest: v.optional(v.boolean()),
+    // Cloaking mirror (same rule as classroom discovery): when the VIEWER is
+    // itself a test account, test accounts are visible — so E2E and demo
+    // rigs see themselves without ever leaking to real members.
+    viewerId: v.optional(v.id("b2cUsers")),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
+    const viewer = args.viewerId ? await ctx.db.get(args.viewerId) : null;
+    const viewerIsTest = (viewer as any)?.isTestAccount === true;
 
     // Get active subscribers — QA/Playwright accounts never appear in the
     // directory, however active their subscription row looks.
@@ -436,7 +442,7 @@ export const listMembers = query({
           q.eq("subscriptionStatus", "active")
         )
         .collect()
-    ).filter((u) => args.includeTest === true || u.isTestAccount !== true);
+    ).filter((u) => args.includeTest === true || viewerIsTest || u.isTestAccount !== true);
 
     // Filter by search term if provided
     let filtered = users;

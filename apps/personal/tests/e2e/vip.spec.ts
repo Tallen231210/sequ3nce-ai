@@ -41,7 +41,7 @@ test.describe("VIP tier", () => {
     const ic = page.getByRole("button", { name: /inner-circle/ });
     await expect(ic).toBeVisible({ timeout: 10_000 });
     await ic.click();
-    await expect(page.getByText("First post in The Inner Circle")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Welcome to The Inner Circle").first()).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: "test-results/vip-inner-circle.png" });
   });
 
@@ -55,24 +55,27 @@ test.describe("VIP tier", () => {
     await page.screenshot({ path: "test-results/vip-members-chip.png" });
   });
 
-  test("VIP job board pins partner role with ribbon", async ({ page }) => {
+  test("VIP on the Line sees the waiting room", async ({ page }) => {
     await seed(page, VIP_USER);
     await page.getByRole("button", { name: "Job Board" }).first().click();
-    await page.waitForTimeout(3000);
-    await expect(page.getByText("Partner role — VIP first look").first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Senior Closer — Partner Role Test")).toBeVisible();
-    await page.screenshot({ path: "test-results/vip-jobboard.png" });
+    await page.waitForTimeout(2500);
+    await page.getByRole("button", { name: "Internal" }).click();
+    await page.waitForTimeout(2500);
+    await expect(page.getByText("You're on The Placement Line")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Quiet weeks are normal")).toBeVisible();
+    await page.screenshot({ path: "test-results/vip-placement-line.png" });
   });
 
-  test("non-VIP: no Inner Circle, locked teaser on jobs", async ({ page }) => {
+  test("non-VIP: no Inner Circle; internal tab shows the pitch", async ({ page }) => {
     await seed(page, NON_VIP);
     await page.getByRole("button", { name: "Community" }).first().click();
     await page.waitForTimeout(2500);
     await expect(page.getByRole("button", { name: /inner-circle/ })).toHaveCount(0);
     await page.getByRole("button", { name: "Job Board" }).first().click();
-    await page.waitForTimeout(3000);
-    await expect(page.getByText("The Placement Line")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Senior Closer — Partner Role Test")).toHaveCount(0);
-    await page.screenshot({ path: "test-results/nonvip-jobboard-teaser.png" });
+    await page.waitForTimeout(2500);
+    await page.getByRole("button", { name: "Internal" }).click();
+    await page.waitForTimeout(2000);
+    await expect(page.getByText("Reserved for Yearly (VIP) members")).toBeVisible({ timeout: 10_000 });
+    await page.screenshot({ path: "test-results/nonvip-placement-pitch.png" });
   });
 });

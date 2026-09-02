@@ -127,3 +127,46 @@ export function updateCoachProfile(
 ) {
   return classroomPost<{ updated: boolean }>("manage/profile", { userId, ...patch });
 }
+
+// ==================== The Placement Line ====================
+
+export interface PlacementLineStatus {
+  isVip: boolean;
+  checks: {
+    photo: boolean;
+    headline: boolean;
+    bio: boolean;
+    publicProfile: boolean;
+    verifiedStats: boolean;
+  };
+  eligible: boolean;
+  joinedAt: number | null;
+}
+
+export async function getPlacementLineStatus(userId: string): Promise<PlacementLineStatus | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/placement-line/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) return null;
+    return data as PlacementLineStatus;
+  } catch {
+    return null;
+  }
+}
+
+export async function joinPlacementLine(userId: string): Promise<{ joined?: boolean; error?: string }> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/placement-line/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    return await response.json();
+  } catch {
+    return { error: "Network error. Please check your connection." };
+  }
+}

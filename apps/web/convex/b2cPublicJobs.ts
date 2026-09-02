@@ -327,9 +327,10 @@ export const listJobs = query({
         .collect();
     }
 
-    // The Placement Line: partner roles (vipOnly) are listed only for
-    // "vip" badge holders (+ founder/admin). Everyone else gets the count —
-    // enough to know the wall exists, nothing behind it leaks.
+    // Partner roles (vipOnly) never appear on the public board — for anyone.
+    // The Placement Line is not a browsable list: partners get profiles from
+    // us, members wait to be contacted (see b2cPlacementLine.ts). The flag
+    // and count survive for the internal tab's own surfaces.
     const viewer = userId ? await ctx.db.get(userId) : null;
     const viewerBadges: string[] = (viewer as any)?.badges ?? [];
     const vipViewer =
@@ -337,15 +338,7 @@ export const listJobs = query({
       viewerBadges.includes("founder") ||
       viewerBadges.includes("admin");
     const partnerRoleCount = jobs.filter((j) => j.vipOnly === true).length;
-    if (!vipViewer) {
-      jobs = jobs.filter((j) => j.vipOnly !== true);
-    } else {
-      // Partner roles float to the top for VIP members.
-      jobs = [
-        ...jobs.filter((j) => j.vipOnly === true),
-        ...jobs.filter((j) => j.vipOnly !== true),
-      ];
-    }
+    jobs = jobs.filter((j) => j.vipOnly !== true);
 
     if (!userId) {
       return { jobs: jobs.map((j) => ({ ...j, tracking: null })), partnerRoleCount, vipViewer };

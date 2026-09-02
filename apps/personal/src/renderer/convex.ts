@@ -3329,7 +3329,10 @@ export async function getCommunityMembers(
   cursor?: number,
   // Founder-only surfaces (the notification recipient picker) pass true so
   // flagged QA accounts stay addressable; member-facing surfaces never do.
-  includeTest?: boolean
+  includeTest?: boolean,
+  // Lets the server apply test-viewer cloaking rules (test accounts see
+  // each other; real members never see them).
+  viewerId?: string
 ): Promise<{ members: CommunityMember[]; nextCursor: number | null }> {
   try {
     const params = new URLSearchParams();
@@ -3337,6 +3340,7 @@ export async function getCommunityMembers(
     if (search) params.set("search", search);
     if (cursor) params.set("cursor", String(cursor));
     if (includeTest) params.set("includeTest", "1");
+    if (viewerId) params.set("viewerId", viewerId);
     params.set("_", String(Date.now()));
 
     const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/community/members?${params}`);
