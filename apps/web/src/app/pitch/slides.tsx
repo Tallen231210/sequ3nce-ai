@@ -19,6 +19,16 @@ const P = ({ children }: { children: React.ReactNode }) => (
   <p className="text-zinc-400 text-lg leading-relaxed max-w-[46ch]">{children}</p>
 );
 
+// Monochrome icon set (lucide paths) — no color emojis in the deck.
+const ICONS: Record<string, string> = {
+  target: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 4a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z",
+  check: "M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+  crown: "M2 8l4 4 6-8 6 8 4-4v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8Z",
+  door: "M3 21h18M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M14 12h.01",
+  ticket: "M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 0 0 4v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a2 2 0 0 0 0-4V9Z",
+  percent: "M19 5L5 19M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm9 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z",
+};
+
 const perkCard = (icon: string, name: string, line: string, accent?: boolean) => (
   <div
     key={name}
@@ -28,7 +38,13 @@ const perkCard = (icon: string, name: string, line: string, accent?: boolean) =>
         : "border-zinc-800 bg-zinc-900/60"
     }`}
   >
-    <div className="text-2xl mb-2">{icon}</div>
+    <svg
+      className={`w-6 h-6 mb-3 ${accent ? "text-amber-300" : "text-zinc-200"}`}
+      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round"
+    >
+      <path d={ICONS[icon]} />
+    </svg>
     <div className="font-bold text-white text-[15px] mb-1">{name}</div>
     <div className="text-zinc-400 text-[13px] leading-relaxed">{line}</div>
   </div>
@@ -39,7 +55,7 @@ export const SLIDES: Slide[] = [
     title: (
       <div className="text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Sequ3nce.ai" className="h-8 mx-auto mb-10 invert" />
+        <img src="/logo.png" alt="Sequ3nce.ai" className="w-[82vw] max-w-[1100px] mx-auto mb-14 invert" />
         <div className="text-5xl md:text-6xl font-bold tracking-tight text-white leading-[1.05]">
           The operating system
           <br />
@@ -134,19 +150,27 @@ export const SLIDES: Slide[] = [
   },
   {
     kicker: "Membership",
-    title: "Two ways in.",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Four ways in. <span className="text-amber-300">One obvious one.</span></h1>,
     body: (
-      <div className="grid grid-cols-2 gap-6 w-full max-w-3xl">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8">
-          <div className="text-zinc-400 text-sm font-semibold uppercase tracking-wider mb-3">Monthly</div>
-          <div className="text-4xl font-bold text-white">$150<span className="text-lg text-zinc-500">/mo</span></div>
-          <p className="text-zinc-500 text-sm mt-4">The full platform. Cancel anytime.</p>
-        </div>
-        <div className="rounded-2xl border-2 border-amber-400/60 bg-amber-400/[0.05] p-8 relative">
-          <span className="absolute -top-3 left-6 bg-amber-400 text-zinc-950 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">Save 44%</span>
-          <div className="text-amber-300 text-sm font-semibold uppercase tracking-wider mb-3">Yearly — VIP</div>
-          <div className="text-4xl font-bold text-white">$83<span className="text-lg text-zinc-500">/mo</span></div>
-          <p className="text-zinc-400 text-sm mt-4">$1,000 once a year — plus everything on the next slide.</p>
+      <div className="grid grid-cols-4 gap-4 w-full max-w-5xl items-stretch">
+        {[
+          { label: "Monthly", per: "$150", charged: "Billed monthly", note: null },
+          { label: "3 Months", per: "$133", charged: "Billed $400 / 3 mo", note: null },
+          { label: "6 Months", per: "$100", charged: "Billed $600 / 6 mo", note: "Save 33%" },
+        ].map((pl) => (
+          <div key={pl.label} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col">
+            <div className="text-zinc-400 text-[12px] font-semibold uppercase tracking-wider mb-2">{pl.label}</div>
+            <div className="text-3xl font-bold text-white">{pl.per}<span className="text-sm text-zinc-500">/mo</span></div>
+            <p className="text-zinc-500 text-[12px] mt-2">{pl.charged}</p>
+            {pl.note && <span className="mt-auto pt-3 text-[11px] text-zinc-400 font-semibold">{pl.note}</span>}
+          </div>
+        ))}
+        <div className="rounded-2xl border-2 border-amber-400/70 bg-amber-400/[0.07] p-6 relative flex flex-col scale-[1.04]">
+          <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-400 text-zinc-950 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md whitespace-nowrap">Save 44% + VIP</span>
+          <div className="text-amber-300 text-[12px] font-semibold uppercase tracking-wider mb-2">Yearly — VIP</div>
+          <div className="text-3xl font-bold text-white">$83<span className="text-sm text-zinc-500">/mo</span></div>
+          <p className="text-zinc-400 text-[12px] mt-2">Billed $1,000 / year</p>
+          <span className="mt-auto pt-3 text-[11px] text-amber-300 font-semibold">Everything on the next slide &rarr;</span>
         </div>
       </div>
     ),
@@ -157,12 +181,12 @@ export const SLIDES: Slide[] = [
     title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">The VIP tier is a different{" "}<span className="text-amber-300">membership.</span></h1>,
     body: (
       <div className="grid grid-cols-3 gap-4 w-full max-w-4xl">
-        {perkCard("🎯", "The Placement Line", "Companies call US asking for closers. VIP members see those roles first — with a warm intro from Sequ3nce.", true)}
-        {perkCard("🥇", "Gold Check", "Gold verified badge on your profile + priority verification — your numbers certified in 24 hours.")}
-        {perkCard("👑", "VIP Badge", "Your name carries VIP everywhere in the community — same system as Founder and Coach badges.")}
-        {perkCard("🚪", "The Inner Circle", "A private VIP-only room inside the community. Events drop there first. The top closers actually talk there.")}
-        {perkCard("🎟", "VIP Events", "Closer masterminds and member parties — in person and remote. VIP gets the invite.")}
-        {perkCard("💸", "Member Pricing", "20% off everything else, forever — extra coaching, merch, event seats.")}
+        {perkCard("target", "The Placement Line", "Companies call US asking for closers. VIP members see those roles first — with a warm intro from Sequ3nce.", true)}
+        {perkCard("check", "Gold Check", "Gold verified badge on your profile + priority verification — your numbers certified in 24 hours.")}
+        {perkCard("crown", "VIP Badge", "Your name carries VIP everywhere in the community — same system as Founder and Coach badges.")}
+        {perkCard("door", "The Inner Circle", "A private VIP-only room inside the community. Events drop there first. The top closers actually talk there.")}
+        {perkCard("ticket", "VIP Events", "Closer masterminds and member parties — in person and remote. VIP gets the invite.")}
+        {perkCard("percent", "Member Pricing", "20% off everything else, forever — extra coaching, merch, event seats.")}
       </div>
     ),
     wide: true,
