@@ -206,7 +206,7 @@ export function FeaturedStat({ amount, isVerified = true, isGold = false }: { am
       <div className="flex items-center justify-center gap-1 mt-2">
         {isVerified ? (
           <>
-            <VerifiedIcon className="w-4 h-4 text-emerald-500" />
+            <VerifiedIcon className={"w-4 h-4 " + (isGold ? "text-yellow-500" : "text-emerald-500")} />
             <span className={"text-[12px] font-medium " + (isGold ? "text-yellow-600" : "text-zinc-400")}>{isGold ? "Gold Verified by Sequ3nce" : "Verified by Sequ3nce"}</span>
           </>
         ) : (

@@ -218,18 +218,56 @@ export const SLIDES: Slide[] = [
     body: (
       <div className="flex flex-col md:flex-row gap-10 items-center w-full max-w-4xl">
         <div className="flex-1 space-y-4">
-          <P>Hiring companies come to us directly for proven closers. Those seats never touch the public board.</P>
-          <P><span className="text-white font-semibold">VIP members get first look and a warm intro</span> — your verified stats do the talking.</P>
-          <P>One placed seat pays for the year many times over.</P>
+          <P>Hiring companies come to us directly for proven closers. We don&apos;t post those seats anywhere.</P>
+          <P><span className="text-white font-semibold">We send them YOUR profile</span> — photo, story, gold-verified numbers — and make the intro personally.</P>
+          <P>No applications. No job hunting. Your profile does the work; the call comes to you.</P>
         </div>
-        <div className="w-full md:w-[340px] rounded-2xl border border-amber-400/40 bg-zinc-900 p-5 shadow-2xl">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-0.5 rounded">Partner role — VIP first look</span>
+        <div className="w-full md:w-[350px] rounded-2xl border border-amber-400/40 bg-zinc-900 p-5 shadow-2xl">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-3">On The Placement Line</div>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-11 h-11 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center">JR</div>
+            <div>
+              <div className="text-white font-bold text-[15px]">Jordan R. <span className="ml-1 text-[9px] font-bold uppercase bg-amber-400/15 text-amber-300 border border-amber-400/30 px-1 py-0.5 rounded align-middle">VIP</span></div>
+              <div className="text-zinc-400 text-[12px]">Gold Verified &middot; 55% close rate &middot; $31k last week</div>
+            </div>
           </div>
-          <div className="text-white font-bold">Senior Closer — 8-Figure Coaching Offer</div>
-          <div className="text-zinc-400 text-sm mt-1">Remote · $15k–$25k/mo OTE · Warm leads only</div>
-          <div className="mt-4 pt-3 border-t border-zinc-800 text-[12px] text-zinc-500">
-            Introduced by Sequ3nce · <span className="text-amber-300">VIP members see it first</span>
+          <div className="rounded-xl bg-zinc-800/80 px-4 py-3 text-[12.5px] text-zinc-300 leading-relaxed">
+            &ldquo;Sending your profile to an 8-figure coaching offer hiring two
+            closers this month — expect an intro this week.&rdquo;
+            <div className="text-zinc-500 text-[11px] mt-2">— Sequ3nce placement team</div>
+          </div>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  {
+    kicker: "VIP treatment, everywhere",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">At our events, <span className="text-amber-300">you&apos;re the VIP too.</span></h1>,
+    body: (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-4xl items-stretch">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Event invite</div>
+          <div className="text-white font-bold text-[17px] leading-tight">Closing Masterclass</div>
+          <div className="text-zinc-400 text-[12px] mt-1">Live &middot; first date announcing soon</div>
+          <div className="mt-4 pt-3 border-t border-zinc-800">
+            <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-1 rounded">Your seat: front row</span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Event invite</div>
+          <div className="text-white font-bold text-[17px] leading-tight">Members Party</div>
+          <div className="text-zinc-400 text-[12px] mt-1">When we rent the club, you&apos;re on the list</div>
+          <div className="mt-4 pt-3 border-t border-zinc-800">
+            <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-1 rounded">Your table: VIP</span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Sequ3nce merch</div>
+          <div className="text-white font-bold text-[17px] leading-tight">The merch drop</div>
+          <div className="text-zinc-400 text-[12px] mt-1">Store opening inside the app</div>
+          <div className="mt-4 pt-3 border-t border-zinc-800">
+            <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-1 rounded">Member price: 20% off, always</span>
           </div>
         </div>
       </div>
