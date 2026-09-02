@@ -133,6 +133,15 @@ export default defineSchema({
     setterEodMissingDays: v.optional(v.array(v.union(v.literal("Sun"), v.literal("Mon"), v.literal("Tue"), v.literal("Wed"), v.literal("Thu"), v.literal("Fri"), v.literal("Sat")))),
     setterEodMissingSlackChannelId: v.optional(v.string()),
     setterEodMissingSlackChannelName: v.optional(v.string()),
+    // Daily setter EOD scorecard post (NOT the GHL-driven setterDailyScorecard
+    // below — that one is the Setter Data leaderboard) — yesterday's (or, for evening hours,
+    // today's) filed EOD numbers per setter plus week-to-date, where the
+    // setters look. Statistics only, no judgement; same config shape.
+    setterEodScorecardEnabled: v.optional(v.boolean()),
+    setterEodScorecardHourLocal: v.optional(v.number()),
+    setterEodScorecardDays: v.optional(v.array(v.union(v.literal("Sun"), v.literal("Mon"), v.literal("Tue"), v.literal("Wed"), v.literal("Thu"), v.literal("Fri"), v.literal("Sat")))),
+    setterEodScorecardSlackChannelId: v.optional(v.string()),
+    setterEodScorecardSlackChannelName: v.optional(v.string()),
     setterEodDiscordWebhookUrl: v.optional(v.string()),
     // Manager EOD digest — the recordings-only end-of-day report for
     // managers/owners. Same config shape as the cash digest; the two are

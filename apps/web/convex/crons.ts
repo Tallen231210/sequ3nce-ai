@@ -418,4 +418,14 @@ crons.cron(
   {},
 );
 
+// Daily setter scorecard: each setter's filed EOD numbers for the reported
+// day plus week-to-date, per-team local hour AND days. Minute 55 is unused
+// by the jobs above. crons.cron, never crons.interval.
+crons.cron(
+  "setter-scorecard-post",
+  "55 * * * *",
+  internal.setterScorecardNotifications.runSetterScorecard,
+  {},
+);
+
 export default crons;

@@ -135,8 +135,16 @@ export async function collectCashDigest(
     (r: any) => r.confirmed || r.overridden.length > 0,
   );
 
+  // Same label the Team Performance board uses for deactivated closers whose
+  // filed days still count toward month/year — the digest must not read as
+  // though they're still on the team.
   const nameById = new Map<string, string>(
-    closers.map((c: any) => [String(c._id), c.name ?? "Unknown"]),
+    closers.map((c: any) => [
+      String(c._id),
+      c.status === "deactivated"
+        ? `${c.name ?? "Unknown"} (departed)`
+        : (c.name ?? "Unknown"),
+    ]),
   );
 
   let today = 0;

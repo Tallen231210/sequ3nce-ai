@@ -137,7 +137,14 @@ export const getCloserScorecardData = internalQuery({
           .take(500),
       ]);
 
-    const nameById = new Map(closers.map((c) => [String(c._id), c.name]));
+    // Departed closers keep their filed history (see closerPerformance
+    // recount) — the post says so rather than reading like they're still here.
+    const nameById = new Map(
+      closers.map((c) => [
+        String(c._id),
+        c.status === "deactivated" ? `${c.name} (departed)` : c.name,
+      ]),
+    );
 
     const merge = (
       rows: Doc<"closerDailyStats">[],

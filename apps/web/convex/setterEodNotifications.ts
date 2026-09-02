@@ -79,6 +79,13 @@ export const getNotificationConfig = query({
         slackChannelId: team.setterEodMissingSlackChannelId ?? null,
         slackChannelName: team.setterEodMissingSlackChannelName ?? null,
       },
+      scorecard: {
+        enabled: team.setterEodScorecardEnabled === true,
+        hourLocal: team.setterEodScorecardHourLocal ?? 9,
+        days: team.setterEodScorecardDays ?? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        slackChannelId: team.setterEodScorecardSlackChannelId ?? null,
+        slackChannelName: team.setterEodScorecardSlackChannelName ?? null,
+      },
     };
   },
 });
@@ -86,7 +93,7 @@ export const getNotificationConfig = query({
 export const setNotificationConfig = mutation({
   args: {
     clerkId: v.string(),
-    which: v.union(v.literal("reminder"), v.literal("missing")),
+    which: v.union(v.literal("reminder"), v.literal("missing"), v.literal("scorecard")),
     enabled: v.boolean(),
     hourLocal: v.number(),
     days: dayList,
@@ -104,7 +111,19 @@ export const setNotificationConfig = mutation({
       throw new ConvexError("Pick an hour between 0 and 23");
     }
     const patch: Record<string, unknown> =
-      args.which === "reminder"
+      args.which === "scorecard"
+        ? {
+            setterEodScorecardEnabled: args.enabled,
+            setterEodScorecardHourLocal: args.hourLocal,
+            setterEodScorecardDays: args.days,
+            ...(args.slackChannelId !== undefined
+              ? {
+                  setterEodScorecardSlackChannelId: args.slackChannelId,
+                  setterEodScorecardSlackChannelName: args.slackChannelName,
+                }
+              : {}),
+          }
+        : args.which === "reminder"
         ? {
             setterEodReminderEnabled: args.enabled,
             setterEodReminderHourLocal: args.hourLocal,
@@ -211,7 +230,7 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-async function deliver(
+export async function deliver(
   team: any,
   slackChannelOverride: string | undefined,
   fallbackText: string,

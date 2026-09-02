@@ -9,10 +9,10 @@ import { api } from "../../../../convex/_generated/api";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
-// The two Setter EOD notifications, configured where the roster lives:
-// the reminder blast (setters' names + personal links, where they look)
-// and the missing-report (who hasn't filed, for the manager). Hour and
-// days per notification.
+// The Setter EOD notifications, configured where the roster lives: the
+// reminder blast (setters' names, where they look), the missing-report
+// (who hasn't filed, for the manager), and the daily scorecard post (the
+// filed numbers themselves). Hour and days per notification.
 // ============================================================================
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -75,6 +75,14 @@ export function NotificationsCard() {
         initial={config.missing}
         channels={channels}
       />
+      <div className="border-t border-border/60" />
+      <NotificationRow
+        which="scorecard"
+        title="Post the setter scorecard"
+        description="Each setter's filed numbers for the day — dials through cash and $/set — plus week to date. Morning hours report yesterday; 5pm or later reports today."
+        initial={config.scorecard}
+        channels={channels}
+      />
     </section>
   );
 }
@@ -86,7 +94,7 @@ function NotificationRow({
   initial,
   channels,
 }: {
-  which: "reminder" | "missing";
+  which: "reminder" | "missing" | "scorecard";
   title: string;
   description: string;
   initial: {
