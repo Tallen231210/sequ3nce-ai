@@ -83,8 +83,34 @@ export const SLIDES: Slide[] = [
   {
     kicker: "The classroom",
     title: "Coached by killers.",
-    body: <P>Real coaches run classrooms inside the app — training libraries, live call reviews, replays. Ben Byrne&apos;s classroom is open now; more coaches are joining.</P>,
-    shot: "/pitch/deck-classroom.png",
+    body: (
+      <div className="flex flex-col md:flex-row gap-10 items-center w-full max-w-4xl">
+        <div className="flex-1 space-y-4">
+          <P>Real coaches run classrooms inside the app — training libraries, live call reviews, and replays of every session.</P>
+          <P><span className="text-white font-semibold">Ben Byrne&apos;s classroom is open now</span> — and more coaches are joining.</P>
+        </div>
+        <div className="w-full md:w-[360px] rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-zinc-100 text-zinc-950 flex items-center justify-center text-xl font-bold">B</div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-white font-bold text-lg">Ben Byrne</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-400/15 text-amber-300 border border-amber-400/30 px-1.5 py-0.5 rounded">Coach</span>
+              </div>
+              <div className="text-zinc-400 text-[13px] mt-0.5">300+ reps coached &middot; $50k single-call contracts</div>
+            </div>
+          </div>
+          <div className="mt-5 pt-4 border-t border-zinc-800 space-y-2.5">
+            {["Live call reviews — the \u201cit was a disaster\u201d sessions", "Training modules, drop by drop", "Weekly live classroom calls, recorded"].map((t) => (
+              <div key={t} className="flex items-start gap-2 text-[13px] text-zinc-300">
+                <span className="text-amber-300 mt-0.5">&#x2713;</span>{t}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    ),
+    wide: true,
   },
   {
     kicker: "The doors",
