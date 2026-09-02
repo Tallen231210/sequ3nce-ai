@@ -383,6 +383,15 @@ export const upsertSubscriptionEvents = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
+    // Same disconnect-mid-sync guard as the B2C upsert: if the subscription
+    // was deleted while this batch was being fetched from Google, writing it
+    // would re-create events that nothing cleans up afterward.
+    const subscription = await ctx.db.get(args.subscriptionId);
+    if (!subscription) {
+      console.log(`[Sub Sync] Subscription ${args.subscriptionId} deleted mid-sync — dropping batch`);
+      return;
+    }
+
     const now = Date.now();
 
     // Use the by_subscription index (added in cleanup commit) so we don't
@@ -783,6 +792,16 @@ export const upsertB2cCalendarEvents = internalMutation({
     })),
   },
   handler: async (ctx, args) => {
+    // The fetch from Google takes seconds; a disconnect can land in between
+    // and delete this calendar connection plus its events. Writing the batch
+    // anyway would resurrect ghost events nothing ever cleans up again —
+    // exactly the bug the disconnect purge fixed (2026-09-02). Bail instead.
+    const calendar = await ctx.db.get(args.calendarId);
+    if (!calendar) {
+      console.log(`[B2C Sync] Calendar ${args.calendarId} deleted mid-sync — dropping batch`);
+      return { skipped: true };
+    }
+
     const now = Date.now();
 
     for (const event of args.events) {
