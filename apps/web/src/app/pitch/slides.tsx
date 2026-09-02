@@ -320,47 +320,9 @@ export const SLIDES: Slide[] = [
         </div>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col items-center">
           <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-3 self-start">The merch drop</div>
-          <svg viewBox="0 0 240 150" className="w-48 mb-2">
-            <defs>
-              <linearGradient id="hatCrown" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="70%" stopColor="#f1f1f3" />
-                <stop offset="100%" stopColor="#dcdce0" />
-              </linearGradient>
-              <linearGradient id="hatBrim" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f6f6f8" />
-                <stop offset="100%" stopColor="#c9c9cf" />
-              </linearGradient>
-              <pattern id="hatMesh" width="7" height="7" patternUnits="userSpaceOnUse">
-                <rect width="7" height="7" fill="#ececef" />
-                <circle cx="3.5" cy="3.5" r="1.6" fill="#b9b9c0" />
-              </pattern>
-              <clipPath id="frontPanel">
-                <path d="M62 92 Q64 34 120 30 Q176 34 178 92 Z" />
-              </clipPath>
-            </defs>
-            {/* soft ground shadow */}
-            <ellipse cx="120" cy="132" rx="82" ry="9" fill="#000" opacity="0.35" />
-            {/* mesh side panels (peek out behind the front) */}
-            <path d="M40 96 Q40 44 120 38 Q200 44 200 96 Z" fill="url(#hatMesh)" stroke="#b6b6bd" strokeWidth="1.5" />
-            {/* white front panel */}
-            <path d="M62 92 Q64 34 120 30 Q176 34 178 92 Z" fill="url(#hatCrown)" stroke="#c3c3ca" strokeWidth="1.5" />
-            {/* panel seams */}
-            <path d="M100 33 Q98 60 97 92" stroke="#d8d8dd" strokeWidth="1.4" fill="none" />
-            <path d="M140 33 Q142 60 143 92" stroke="#d8d8dd" strokeWidth="1.4" fill="none" />
-            {/* crown button */}
-            <ellipse cx="120" cy="30" rx="6" ry="3.4" fill="#e4e4e8" stroke="#c3c3ca" strokeWidth="1" />
-            {/* logo on the front panel */}
-            <g clipPath="url(#frontPanel)">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <image href="/logo.png" x="70" y="52" width="100" height="24" preserveAspectRatio="xMidYMid meet" />
-            </g>
-            {/* brim: curved trucker bill */}
-            <path d="M38 96 Q120 82 202 96 Q206 104 198 110 Q120 96 42 110 Q34 104 38 96 Z" fill="url(#hatBrim)" stroke="#b6b6bd" strokeWidth="1.5" />
-            <path d="M42 110 Q120 97 198 110 Q120 122 42 110 Z" fill="#d3d3d9" stroke="#b6b6bd" strokeWidth="1" />
-            {/* brim underside shadow line */}
-            <path d="M48 99 Q120 87 192 99" stroke="#ffffff" strokeWidth="1.2" fill="none" opacity="0.8" />
-          </svg>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/pitch/closer-cap.png" alt="The Closer Cap — white trucker hat with the Sequ3nce logo"
+            className="w-44 mb-2 rounded-lg" />
           <div className="text-white font-bold text-[15px]">The Closer Cap</div>
           <div className="mt-2 text-[14px]">
             <span className="text-zinc-500 line-through mr-2">$50</span>
