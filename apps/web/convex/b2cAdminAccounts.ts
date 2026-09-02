@@ -156,6 +156,29 @@ export const provisionTestAccount = internalMutation({
 });
 
 /** Adjust a TEST account's subscription status (refuses real accounts). */
+/**
+ * Comp an account for good: active with NO trial clock. Setting status alone
+ * is not enough — loginB2cUser flips "active" back to "none" whenever
+ * trialExpiresAt is in the past and there is no paid subscriptionId, which
+ * is exactly how the founder account got paywalled (2026-09-02). Clearing
+ * trialExpiresAt removes the tripwire permanently.
+ */
+export const compAccountByEmail = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q) => q.eq("email", args.email.toLowerCase()))
+      .first();
+    if (!user) throw new Error(`No b2cUser with email ${args.email}`);
+    await ctx.db.patch(user._id, {
+      subscriptionStatus: "active",
+      trialExpiresAt: undefined,
+    });
+    return { comped: user.email, badges: user.badges ?? [] };
+  },
+});
+
 export const setTestAccountSubscription = internalMutation({
   args: {
     email: v.string(),
