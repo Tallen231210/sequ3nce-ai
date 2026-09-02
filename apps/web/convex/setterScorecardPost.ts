@@ -22,8 +22,10 @@ export interface SetterDayRow {
   shown: number;
   closed: number;
   cash: number;
+  /** false = no entry carried a cash figure (blank ≠ 0 on the handout). */
+  cashReported: boolean;
   /** Week-to-date for the same setter, same week as the reported day. */
-  week: { sets: number; cash: number };
+  week: { sets: number; cash: number; cashReported: boolean };
 }
 
 export interface SetterScorecardData {
@@ -38,18 +40,21 @@ export interface SetterScorecardData {
     shown: number;
     closed: number;
     cash: number;
+    cashReported: boolean;
   };
-  week: { sets: number; cash: number };
+  week: { sets: number; cash: number; cashReported: boolean };
   filedCount: number;
   rosterCount: number;
 }
 
 const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+/** Cash as reported — "—" when nobody typed a figure (blank ≠ 0). */
+const cashText = (cash: number, reported: boolean) => (reported ? money(cash) : "—");
 const pct = (num: number, den: number) =>
   den > 0 ? `${Math.round((num / den) * 100)}%` : "—";
-/** Cash ÷ sets. "—" until there is a set, never $0 for an idle day. */
-const perSet = (cash: number, sets: number) =>
-  sets > 0 ? money(cash / sets) : "—";
+/** Cash ÷ sets. "—" until cash was reported AND there is a set. */
+const perSet = (cash: number, sets: number, reported: boolean) =>
+  reported && sets > 0 ? money(cash / sets) : "—";
 const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
 
@@ -86,8 +91,8 @@ export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[
         { type: "mrkdwn", text: `*On calendar*\n${t.onCal}` },
         { type: "mrkdwn", text: `*Shown*\n${t.shown}` },
         { type: "mrkdwn", text: `*Closed*\n${t.closed}` },
-        { type: "mrkdwn", text: `*Cash*\n${money(t.cash)}` },
-        { type: "mrkdwn", text: `*$ / set*\n${perSet(t.cash, t.sets)}` },
+        { type: "mrkdwn", text: `*Cash*\n${cashText(t.cash, t.cashReported)}` },
+        { type: "mrkdwn", text: `*$ / set*\n${perSet(t.cash, t.sets, t.cashReported)}` },
       ],
     },
     {
@@ -113,7 +118,9 @@ export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `${badge} *${r.name}* — ${money(r.cash)} · ${plural(r.sets, "set", "sets")}`,
+          text: r.cashReported
+            ? `${badge} *${r.name}* — ${money(r.cash)} · ${plural(r.sets, "set", "sets")}`
+            : `${badge} *${r.name}* — ${plural(r.sets, "set", "sets")}`,
         },
         fields: [
           { type: "mrkdwn", text: `*Dials*\n${r.dials}` },
@@ -121,7 +128,7 @@ export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[
           { type: "mrkdwn", text: `*On cal*\n${r.onCal}` },
           { type: "mrkdwn", text: `*Shown*\n${r.shown}` },
           { type: "mrkdwn", text: `*Closed*\n${r.closed}` },
-          { type: "mrkdwn", text: `*$ / set*\n${perSet(r.cash, r.sets)}` },
+          { type: "mrkdwn", text: `*$ / set*\n${perSet(r.cash, r.sets, r.cashReported)}` },
         ],
       });
       blocks.push({
@@ -131,7 +138,9 @@ export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[
             type: "mrkdwn",
             text:
               `Pickup ${pct(r.pickUps, r.dials)} · Show ${pct(r.shown, r.onCal)} · ` +
-              `Week to date: ${money(r.week.cash)} · ${plural(r.week.sets, "set", "sets")} · ${perSet(r.week.cash, r.week.sets)}/set`,
+              (r.week.cashReported
+                ? `Week to date: ${money(r.week.cash)} · ${plural(r.week.sets, "set", "sets")} · ${perSet(r.week.cash, r.week.sets, true)}/set`
+                : `Week to date: ${plural(r.week.sets, "set", "sets")}`),
           },
         ],
       });
@@ -162,8 +171,10 @@ export function buildSetterScorecardSlackBlocks(data: SetterScorecardData): any[
       {
         type: "mrkdwn",
         text:
-          `Week to date (from ${humanDay(data.weekStartKey)}): *${money(data.week.cash)}* · ` +
-          `${plural(data.week.sets, "set", "sets")} · ${perSet(data.week.cash, data.week.sets)} per set`,
+          data.week.cashReported
+            ? `Week to date (from ${humanDay(data.weekStartKey)}): *${money(data.week.cash)}* · ` +
+              `${plural(data.week.sets, "set", "sets")} · ${perSet(data.week.cash, data.week.sets, true)} per set`
+            : `Week to date (from ${humanDay(data.weekStartKey)}): ${plural(data.week.sets, "set", "sets")} · cash not yet reported`,
       },
     ],
   });
@@ -175,16 +186,16 @@ export function buildSetterScorecardDiscordEmbed(data: SetterScorecardData): any
   const filed = data.rows.filter((r) => r.filed);
   const lines = filed.slice(0, MAX_SETTERS_SHOWN).map(
     (r, i) =>
-      `**${i + 1}. ${r.name}** — ${money(r.cash)} · ${plural(r.sets, "set", "sets")} · ` +
+      `**${i + 1}. ${r.name}** — ${r.cashReported ? money(r.cash) + " · " : ""}${plural(r.sets, "set", "sets")} · ` +
       `dials ${r.dials} · pick-ups ${r.pickUps} · on cal ${r.onCal} · shown ${r.shown} · closed ${r.closed} · ` +
-      `$/set ${perSet(r.cash, r.sets)} · week ${perSet(r.week.cash, r.week.sets)}/set`,
+      `$/set ${perSet(r.cash, r.sets, r.cashReported)} · week ${perSet(r.week.cash, r.week.sets, r.week.cashReported)}/set`,
   );
   return {
     title: `📋 Setter scorecard — ${humanDay(data.reportDayKey)}`,
     description:
       (lines.length ? lines.join("\n") : "_No setter filed an EOD for this day._") +
-      `\n\nWeek to date (from ${humanDay(data.weekStartKey)}): **${money(data.week.cash)}** · ` +
-      `${plural(data.week.sets, "set", "sets")} · ${perSet(data.week.cash, data.week.sets)} per set`,
+      `\n\nWeek to date (from ${humanDay(data.weekStartKey)}): **${cashText(data.week.cash, data.week.cashReported)}** · ` +
+      `${plural(data.week.sets, "set", "sets")} · ${perSet(data.week.cash, data.week.sets, data.week.cashReported)} per set`,
     color: 3447003,
     fields: [
       { name: "Dials", value: String(t.dials), inline: true },
@@ -193,8 +204,8 @@ export function buildSetterScorecardDiscordEmbed(data: SetterScorecardData): any
       { name: "On calendar", value: String(t.onCal), inline: true },
       { name: "Shown", value: String(t.shown), inline: true },
       { name: "Closed", value: String(t.closed), inline: true },
-      { name: "Cash", value: money(t.cash), inline: true },
-      { name: "$ / set", value: perSet(t.cash, t.sets), inline: true },
+      { name: "Cash", value: cashText(t.cash, t.cashReported), inline: true },
+      { name: "$ / set", value: perSet(t.cash, t.sets, t.cashReported), inline: true },
       { name: "Filed", value: `${data.filedCount}/${data.rosterCount}`, inline: true },
     ],
   };
@@ -204,6 +215,6 @@ export function setterScorecardFallbackText(data: SetterScorecardData): string {
   const t = data.team;
   return (
     `Setter scorecard ${humanDay(data.reportDayKey)}: ${t.dials} dials, ${t.sets} sets, ` +
-    `${t.shown} shown, ${t.closed} closed, ${money(t.cash)} cash (${perSet(t.cash, t.sets)}/set).`
+    `${t.shown} shown, ${t.closed} closed, ${cashText(t.cash, t.cashReported)} cash (${perSet(t.cash, t.sets, t.cashReported)}/set).`
   );
 }

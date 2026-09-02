@@ -80,7 +80,8 @@ export const getSetterScorecardData = internalQuery({
         name: r.name,
         filed: false,
         dials: 0, pickUps: 0, sets: 0, onCal: 0, shown: 0, closed: 0, cash: 0,
-        week: { sets: 0, cash: 0 },
+        cashReported: false,
+        week: { sets: 0, cash: 0, cashReported: false },
       });
     }
 
@@ -98,8 +99,13 @@ export const getSetterScorecardData = internalQuery({
       for (const e of entries) {
         const row = byRoster.get(String(e.rosterId));
         if (!row) continue; // deactivated setter — absence is information
+        // Blank means "not reporting", 0 means "the real answer is zero" —
+        // the rule printed on the setters' handout. A day where nobody
+        // typed a cash figure renders "—", never a misleading $0.
+        const cashReported = e.cashCollected !== undefined;
         row.week.sets += e.sets;
         row.week.cash += e.cashCollected ?? 0;
+        row.week.cashReported = row.week.cashReported || cashReported;
         if (isReportDay) {
           row.filed = true;
           row.dials += e.dials;
@@ -109,6 +115,7 @@ export const getSetterScorecardData = internalQuery({
           row.shown += e.callsShown ?? 0;
           row.closed += e.callsClosed ?? 0;
           row.cash += e.cashCollected ?? 0;
+          row.cashReported = row.cashReported || cashReported;
         }
       }
       dayKey = addDaysKey(dayKey, 1);
@@ -118,13 +125,14 @@ export const getSetterScorecardData = internalQuery({
     const rows = Array.from(byRoster.values()).sort(
       (a, b) => b.cash - a.cash || b.sets - a.sets || a.name.localeCompare(b.name),
     );
-    const team = { dials: 0, pickUps: 0, sets: 0, onCal: 0, shown: 0, closed: 0, cash: 0 };
-    const week = { sets: 0, cash: 0 };
+    const team = { dials: 0, pickUps: 0, sets: 0, onCal: 0, shown: 0, closed: 0, cash: 0, cashReported: false };
+    const week = { sets: 0, cash: 0, cashReported: false };
     for (const r of rows) {
       team.dials += r.dials; team.pickUps += r.pickUps; team.sets += r.sets;
       team.onCal += r.onCal; team.shown += r.shown; team.closed += r.closed;
-      team.cash += r.cash;
+      team.cash += r.cash; team.cashReported = team.cashReported || r.cashReported;
       week.sets += r.week.sets; week.cash += r.week.cash;
+      week.cashReported = week.cashReported || r.week.cashReported;
     }
     return {
       reportDayKey: args.reportDayKey,
