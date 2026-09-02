@@ -110,7 +110,21 @@ export function LeadModal({ open, onClose, busy, error, onSubmit }: Props) {
             />
             <label htmlFor="mj-consent">{MODAL.consent}</label>
           </div>
-          <button type="submit" className="mj-cta" style={{ maxWidth: "none", boxShadow: "none" }} disabled={busy}>
+          <button
+            type="submit"
+            className="mj-cta"
+            style={{
+              maxWidth: "none",
+              boxShadow: "none",
+              // Dead until consent — a button that LOOKS unclickable beats a
+              // rejection message after the click (two founder tests were
+              // lost to the quiet version of this gate).
+              opacity: consent ? 1 : 0.35,
+              cursor: consent ? "pointer" : "not-allowed",
+            }}
+            disabled={busy || !consent}
+            title={consent ? undefined : "Tick the box above first"}
+          >
             {busy ? "One second…" : MODAL.submit}
           </button>
         </form>
