@@ -104,8 +104,9 @@ export const getFeed = query({
       .order("desc")
       .collect();
 
-    // Inner Circle posts stay out of the aggregated feed for non-VIP
-    // viewers. One channel-table read, not one per post.
+    // Inner Circle posts never appear in the aggregated feed — for ANYONE
+    // (Tyler 2026-09-02). The room is fully private: its posts live only in
+    // the channel itself. One channel-table read, not one per post.
     const vipChannelIds = new Set(
       (
         await ctx.db
@@ -116,15 +117,13 @@ export const getFeed = query({
         .filter((c) => c.vipOnly === true)
         .map((c) => c._id as string),
     );
-    const vipOk =
-      vipChannelIds.size > 0 ? await canSeeVipChannel(ctx, args.userId) : false;
 
     // Filter deleted, broadcasts, apply visibility, and apply cursor
     let filtered = posts.filter((p) => {
       if (p.isDeleted) return false;
       // Broadcast posts belong to Money Bells — exclude from aggregated Feed
       if (p.broadcastId) return false;
-      if (vipChannelIds.has(p.channelId as string) && !vipOk) return false;
+      if (vipChannelIds.has(p.channelId as string)) return false;
 
       // Friends-only filter: show only posts from friends
       if (args.friendsOnly && friendIdSet) {
