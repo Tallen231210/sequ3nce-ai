@@ -24,6 +24,7 @@ import { StatsView } from './StatsView';
 import { CallHistoryView } from './CallHistoryView';
 import { BotOnboardingView } from './BotOnboardingView';
 import { QuickBotModal } from './QuickBotModal';
+import { AutoJoinPill } from './AutoJoinPill';
 import { StreamModal } from './stream/StreamModal';
 import { ScheduleView } from './schedule/ScheduleView';
 import { ResourcesView } from './ResourcesView';
@@ -732,6 +733,8 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
             Sequ3nce Stream
           </button>
           )}
+          {/* Persistent auto-join switch (Tyler 2026-09-02) */}
+          <AutoJoinPill sessionToken={(closerInfo as any).sessionToken} />
           {/* Quick Bot button */}
           <button onClick={() => setShowQuickBot(true)}
             className="no-drag flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-white bg-black rounded-lg hover:bg-gray-800 transition-colors">
