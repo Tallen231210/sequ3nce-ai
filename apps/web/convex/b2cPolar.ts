@@ -45,6 +45,26 @@ export function mapPolarStatusToB2C(
   }
 }
 
+/**
+ * The VIP tier grants itself: "vip" rides b2cUsers.badges whenever the
+ * member is on an ACTIVE YEARLY plan, and leaves the moment they aren't.
+ * Touches only the "vip" string — founder/coach/admin badges are never
+ * affected. Cancelled-at-period-end keeps VIP until Polar flips the
+ * status at period end, matching how app access already behaves.
+ */
+function withVipSynced(
+  badges: string[] | undefined,
+  planTerm: string | undefined,
+  status: string,
+): string[] | undefined {
+  const isVip = planTerm === "yearly" && status === "active";
+  const current = badges ?? [];
+  const has = current.includes("vip");
+  if (isVip && !has) return [...current, "vip"];
+  if (!isVip && has) return current.filter((b) => b !== "vip");
+  return undefined; // no change needed — avoid pointless writes
+}
+
 export const applyB2CSubscription = internalMutation({
   args: {
     polarCustomerId: v.string(),
@@ -81,12 +101,14 @@ export const applyB2CSubscription = internalMutation({
     }
 
     if (user) {
+      const badgePatch = withVipSynced(user.badges, args.planTerm, status);
       await ctx.db.patch(user._id, {
         polarCustomerId: args.polarCustomerId,
         polarSubscriptionId: args.polarSubscriptionId,
         subscriptionStatus: status,
         planTerm: args.planTerm,
         currentPeriodEnd: args.currentPeriodEnd,
+        ...(badgePatch !== undefined ? { badges: badgePatch } : {}),
         ...(status === "cancelled" ? { cancelledAt: Date.now() } : {}),
       });
       return { applied: true, provisioned: false };
@@ -148,6 +170,7 @@ export const applyB2CSubscription = internalMutation({
       polarSubscriptionId: args.polarSubscriptionId,
       planTerm: args.planTerm,
       currentPeriodEnd: args.currentPeriodEnd,
+      ...(args.planTerm === "yearly" ? { badges: ["vip"] } : {}),
       createdAt: now,
     });
 
@@ -406,5 +429,27 @@ export const getActivationState = internalQuery({
     return u
       ? { hasPassword: !!u.passwordHash, subscriptionStatus: u.subscriptionStatus }
       : null;
+  },
+});
+
+/**
+ * One-off sweep: grant/revoke the vip badge for every user according to
+ * their CURRENT plan. Safe to re-run (no-ops when already correct).
+ */
+export const backfillVipBadges = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("b2cUsers").collect();
+    let granted = 0;
+    let revoked = 0;
+    for (const u of users) {
+      const patch = withVipSynced(u.badges, u.planTerm, u.subscriptionStatus);
+      if (patch !== undefined) {
+        await ctx.db.patch(u._id, { badges: patch });
+        if (patch.includes("vip")) granted++;
+        else revoked++;
+      }
+    }
+    return { granted, revoked, scanned: users.length };
   },
 });

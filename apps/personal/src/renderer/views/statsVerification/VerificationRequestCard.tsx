@@ -93,6 +93,11 @@ export function VerificationRequestCard({
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">
               {request.user?.name ?? 'Unknown user'}
+              {(request as any).requesterIsVip && (
+                <span className="ml-1.5 inline-flex items-center px-1 rounded text-[9px] font-bold uppercase tracking-wider bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-600/50 align-middle">
+                  VIP — priority
+                </span>
+              )}
             </span>
             <span className={`text-[9px] font-mono font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${statusPillClass}`}>
               {request.status}

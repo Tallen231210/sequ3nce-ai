@@ -215,6 +215,7 @@ interface StatsSectionProps {
   manualStats: ManualStats;
   statsSource: "auto" | "manual" | "combined";
   isManuallyVerified: boolean;
+  isVip?: boolean;
   onStatsSourceChange: (source: "auto" | "manual" | "combined") => void;
   onManualStatsChange: (stats: ManualStats) => void;
 }
@@ -231,6 +232,7 @@ export function StatsSection({
   manualStats,
   statsSource,
   isManuallyVerified,
+  isVip,
   onStatsSourceChange,
   onManualStatsChange,
 }: StatsSectionProps) {
@@ -347,6 +349,7 @@ export function StatsSection({
           <VerificationStatusBlock
             userId={userId}
             isManuallyVerified={isManuallyVerified}
+            isVip={isVip}
             manualStats={manualStats}
           />
         </>
@@ -379,6 +382,7 @@ export function StatsSection({
           <VerificationStatusBlock
             userId={userId}
             isManuallyVerified={isManuallyVerified}
+            isVip={isVip}
             manualStats={manualStats}
           />
         </>
@@ -391,10 +395,12 @@ function VerificationStatusBlock({
   userId,
   isManuallyVerified,
   manualStats,
+  isVip,
 }: {
   userId: string;
   isManuallyVerified: boolean;
   manualStats: ManualStats;
+  isVip?: boolean;
 }) {
   const [latest, setLatest] = useState<MyLatestVerificationRequest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -416,6 +422,19 @@ function VerificationStatusBlock({
   }, [refresh]);
 
   if (isManuallyVerified) {
+    // Gold Check: VIP (annual) members' verification renders gold.
+    if (isVip) {
+      return (
+        <div className="flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/15 border border-yellow-300 dark:border-yellow-700/60 rounded-lg">
+          <svg className="w-4 h-4 text-yellow-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+            <path fillRule="evenodd" d="M8.603 3.799A4.49 4.49 0 0112 2.25c1.357 0 2.573.6 3.397 1.549a4.49 4.49 0 013.498 1.307 4.491 4.491 0 011.307 3.497A4.49 4.49 0 0121.75 12a4.49 4.49 0 01-1.549 3.397 4.491 4.491 0 01-1.307 3.497 4.491 4.491 0 01-3.497 1.307A4.49 4.49 0 0112 21.75a4.49 4.49 0 01-3.397-1.549 4.49 4.49 0 01-3.498-1.306 4.491 4.491 0 01-1.307-3.498A4.49 4.49 0 012.25 12c0-1.357.6-2.573 1.549-3.397a4.49 4.49 0 011.307-3.497 4.49 4.49 0 013.497-1.307zM15.61 10.186a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
+          </svg>
+          <span className="text-[12px] font-semibold text-yellow-700 dark:text-yellow-400">
+            Gold Verified — VIP member, stats certified by Sequ3nce.
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
         <svg className="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">

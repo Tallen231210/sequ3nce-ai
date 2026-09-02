@@ -138,7 +138,7 @@ export function CommunityView({ closerInfo, onNavigateToMessage }: CommunityView
   }, [userId, selectedView]);
 
   const loadChannels = async () => {
-    const result = await getCommunityChannels();
+    const result = await getCommunityChannels(userId);
     if (mountedRef.current) {
       setChannels(result);
       setLoadingChannels(false);

@@ -44,11 +44,16 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
   const userId = closerInfo.b2cUserId;
   const isFounder = closerInfo.badges?.includes('founder') || closerInfo.badges?.includes('admin');
 
+  const [partnerRoleCount, setPartnerRoleCount] = useState(0);
+  const [vipViewer, setVipViewer] = useState(false);
+
   const loadJobs = useCallback(async () => {
     if (!userId) return;
     setIsLoading(true);
     const data = await getPublicJobs(userId, industry || undefined);
-    setJobs(data);
+    setJobs(data.jobs);
+    setPartnerRoleCount(data.partnerRoleCount);
+    setVipViewer(data.vipViewer);
     setIsLoading(false);
   }, [userId, industry]);
 
@@ -207,6 +212,20 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
               </div>
             ) : (
               <div className="space-y-3">
+                {/* The Placement Line — locked teaser for non-VIP members */}
+                {!vipViewer && partnerRoleCount > 0 && (
+                  <div className="p-4 rounded-xl border border-yellow-300 dark:border-yellow-700/60 bg-yellow-50 dark:bg-yellow-900/10 flex items-center gap-3">
+                    <span className="text-lg">🔒</span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-gray-900 dark:text-white">
+                        {partnerRoleCount} partner role{partnerRoleCount !== 1 ? 's' : ''} — The Placement Line
+                      </p>
+                      <p className="text-[12px] text-gray-500 dark:text-gray-400">
+                        Companies that came to Sequ3nce directly. Yearly (VIP) members see these first.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {visibleJobs.map((job) => (
                   <JobCard key={job._id} job={job} isFounder={!!isFounder} onTracking={handleTracking} onClose={handleClose} onDelete={handleDelete} />
                 ))}
@@ -247,6 +266,11 @@ function JobCard({ job, isFounder, onTracking, onClose, onDelete }: {
 
   return (
     <div className="p-4 bg-white dark:bg-zinc-900 rounded-xl border border-gray-100 dark:border-zinc-800">
+      {job.vipOnly && (
+        <span className="inline-block mb-2 text-[10px] font-bold uppercase tracking-wider bg-yellow-400 text-black px-2 py-0.5 rounded">
+          Partner role — VIP first look
+        </span>
+      )}
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1 min-w-0">
           <h3 className="text-[14px] font-semibold text-black dark:text-white">{job.title}</h3>

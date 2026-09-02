@@ -29,7 +29,7 @@ export function PostSearch({ channelId, userId, isAdmin, onClose }: PostSearchPr
 
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      const data = await searchCommunityPosts(value.trim(), channelId);
+      const data = await searchCommunityPosts(value.trim(), channelId, undefined, undefined, userId);
       setResults(data.posts);
       setSearched(true);
       setLoading(false);

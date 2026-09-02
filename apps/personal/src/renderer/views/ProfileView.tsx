@@ -362,6 +362,7 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
             manualStats={manualStats}
             statsSource={statsSource}
             isManuallyVerified={isManuallyVerified}
+            isVip={closerInfo.badges?.includes('vip')}
             onStatsSourceChange={(v) => { setStatsSource(v); markDirty(); }}
             onManualStatsChange={(v) => { setManualStats(v); markDirty(); }}
           />

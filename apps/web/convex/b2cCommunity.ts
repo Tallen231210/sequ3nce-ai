@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 
 // ==================== Validation Constants ====================
 
@@ -32,14 +32,38 @@ async function resolvePhotoUrl(
 // ==================== Queries ====================
 
 // List all non-archived channels
+/**
+ * The Inner Circle gate: vipOnly channels exist only for "vip" badge
+ * holders (plus founder/admin, and coaches — they may be invited to speak).
+ * Every surface that touches a vipOnly channel re-checks this server-side;
+ * hiding the channel in the UI is presentation, not security.
+ */
+async function canSeeVipChannel(
+  ctx: { db: any },
+  userId: string | undefined,
+): Promise<boolean> {
+  if (!userId) return false;
+  const user = await ctx.db.get(userId as any);
+  const badges: string[] = user?.badges ?? [];
+  return (
+    badges.includes("vip") ||
+    badges.includes("founder") ||
+    badges.includes("admin") ||
+    badges.includes("coach")
+  );
+}
+
 export const listChannels = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { userId: v.optional(v.id("b2cUsers")) },
+  handler: async (ctx, args) => {
     const channels = await ctx.db
       .query("b2cCommunityChannels")
       .withIndex("by_order")
       .collect();
-    return channels.filter((c) => !c.isArchived);
+    const active = channels.filter((c) => !c.isArchived);
+    if (!active.some((c) => c.vipOnly === true)) return active;
+    const vipOk = await canSeeVipChannel(ctx, args.userId);
+    return vipOk ? active : active.filter((c) => c.vipOnly !== true);
   },
 });
 
@@ -80,11 +104,27 @@ export const getFeed = query({
       .order("desc")
       .collect();
 
+    // Inner Circle posts stay out of the aggregated feed for non-VIP
+    // viewers. One channel-table read, not one per post.
+    const vipChannelIds = new Set(
+      (
+        await ctx.db
+          .query("b2cCommunityChannels")
+          .withIndex("by_order")
+          .collect()
+      )
+        .filter((c) => c.vipOnly === true)
+        .map((c) => c._id as string),
+    );
+    const vipOk =
+      vipChannelIds.size > 0 ? await canSeeVipChannel(ctx, args.userId) : false;
+
     // Filter deleted, broadcasts, apply visibility, and apply cursor
     let filtered = posts.filter((p) => {
       if (p.isDeleted) return false;
       // Broadcast posts belong to Money Bells — exclude from aggregated Feed
       if (p.broadcastId) return false;
+      if (vipChannelIds.has(p.channelId as string) && !vipOk) return false;
 
       // Friends-only filter: show only posts from friends
       if (args.friendsOnly && friendIdSet) {
@@ -170,6 +210,13 @@ export const listPosts = query({
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
+
+    // Inner Circle: reading a vipOnly channel requires the badge — the
+    // channel being hidden client-side is not the security boundary.
+    const channelDoc = await ctx.db.get(args.channelId);
+    if (channelDoc?.vipOnly === true && !(await canSeeVipChannel(ctx, args.userId))) {
+      return { posts: [], nextCursor: null };
+    }
 
     // Build friend set for visibility filtering
     let friendIdSet: Set<string> | null = null;
@@ -476,6 +523,11 @@ export const createPost = mutation({
     // Validate channel
     const channel = await ctx.db.get(args.channelId);
     if (!channel || channel.isArchived) throw new Error("Channel not found");
+    if (channel.vipOnly === true && !(await canSeeVipChannel(ctx, args.userId))) {
+      // Same wording as the missing-channel case: an outsider probing ids
+      // learns nothing about what exists behind the VIP wall.
+      throw new Error("Channel not found");
+    }
 
     // Validate body
     const body = args.body.trim();
@@ -952,11 +1004,34 @@ export const searchPosts = query({
     channelId: v.optional(v.id("b2cCommunityChannels")),
     cursor: v.optional(v.number()),
     limit: v.optional(v.number()),
+    userId: v.optional(v.id("b2cUsers")),
   },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? PAGE_SIZE, MAX_PAGE_SIZE);
     const searchTerm = args.query.trim().toLowerCase();
     if (searchTerm.length === 0) return { posts: [], nextCursor: null };
+
+    // Inner Circle posts are searchable only by VIP viewers. No userId =
+    // no proof = excluded (safe default for any caller that predates this).
+    const vipChannelIds = new Set(
+      (
+        await ctx.db
+          .query("b2cCommunityChannels")
+          .withIndex("by_order")
+          .collect()
+      )
+        .filter((c) => c.vipOnly === true)
+        .map((c) => c._id as string),
+    );
+    const vipOk =
+      vipChannelIds.size > 0 ? await canSeeVipChannel(ctx, args.userId) : false;
+    if (
+      args.channelId &&
+      vipChannelIds.has(args.channelId as string) &&
+      !vipOk
+    ) {
+      return { posts: [], nextCursor: null };
+    }
 
     let posts;
     if (args.channelId) {
@@ -974,7 +1049,9 @@ export const searchPosts = query({
     }
 
     let filtered = posts.filter(
-      (p) => !p.isDeleted && p.body.toLowerCase().includes(searchTerm)
+      (p) =>
+        !(vipChannelIds.has(p.channelId as string) && !vipOk) &&
+        !p.isDeleted && p.body.toLowerCase().includes(searchTerm)
     );
     if (args.cursor) {
       filtered = filtered.filter((p) => p.createdAt < args.cursor!);
@@ -1006,5 +1083,40 @@ export const searchPosts = query({
       posts: enriched,
       nextCursor: hasMore ? results[results.length - 1].createdAt : null,
     };
+  },
+});
+
+/**
+ * Seed The Inner Circle — the VIP-only channel. Internal, idempotent,
+ * run once from the CLI. Icon + copy are the product surface of the
+ * yearly plan's private-room perk.
+ */
+export const seedInnerCircle = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const existing = await ctx.db
+      .query("b2cCommunityChannels")
+      .withIndex("by_slug", (q) => q.eq("slug", "inner-circle"))
+      .first();
+    if (existing) {
+      if (existing.vipOnly !== true) {
+        await ctx.db.patch(existing._id, { vipOnly: true });
+      }
+      return { id: existing._id, alreadyExists: true };
+    }
+    const id = await ctx.db.insert("b2cCommunityChannels", {
+      slug: "inner-circle",
+      name: "The Inner Circle",
+      description:
+        "VIP members only. Events drop here first — and this is where the top closers actually talk.",
+      icon: "👑",
+      order: 0,
+      isDefault: false,
+      isArchived: false,
+      postCount: 0,
+      vipOnly: true,
+      createdAt: Date.now(),
+    });
+    return { id, alreadyExists: false };
   },
 });

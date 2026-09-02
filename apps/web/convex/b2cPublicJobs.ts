@@ -104,6 +104,7 @@ export const addJobsBulk = mutation({
         jobType: v.optional(v.string()),
         experienceLevel: v.optional(v.string()),
         datePosted: v.optional(v.number()),
+        vipOnly: v.optional(v.boolean()),
       }),
     ),
   },
@@ -200,6 +201,7 @@ export const editJob = mutation({
     description: v.optional(v.string()),
     applyUrl: v.optional(v.string()),
     source: v.optional(v.string()),
+    vipOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
@@ -224,6 +226,7 @@ export const editJob = mutation({
       patch.applyUrl = url;
     }
     if (args.source !== undefined) patch.source = args.source.trim() || undefined;
+    if (args.vipOnly !== undefined) patch.vipOnly = args.vipOnly;
 
     await ctx.db.patch(args.jobId, patch);
     return { success: true };
@@ -324,8 +327,28 @@ export const listJobs = query({
         .collect();
     }
 
+    // The Placement Line: partner roles (vipOnly) are listed only for
+    // "vip" badge holders (+ founder/admin). Everyone else gets the count —
+    // enough to know the wall exists, nothing behind it leaks.
+    const viewer = userId ? await ctx.db.get(userId) : null;
+    const viewerBadges: string[] = (viewer as any)?.badges ?? [];
+    const vipViewer =
+      viewerBadges.includes("vip") ||
+      viewerBadges.includes("founder") ||
+      viewerBadges.includes("admin");
+    const partnerRoleCount = jobs.filter((j) => j.vipOnly === true).length;
+    if (!vipViewer) {
+      jobs = jobs.filter((j) => j.vipOnly !== true);
+    } else {
+      // Partner roles float to the top for VIP members.
+      jobs = [
+        ...jobs.filter((j) => j.vipOnly === true),
+        ...jobs.filter((j) => j.vipOnly !== true),
+      ];
+    }
+
     if (!userId) {
-      return jobs.map((j) => ({ ...j, tracking: null }));
+      return { jobs: jobs.map((j) => ({ ...j, tracking: null })), partnerRoleCount, vipViewer };
     }
 
     // Get all tracking records for this user in one query
@@ -335,9 +358,13 @@ export const listJobs = query({
       .collect();
     const trackingByJob = new Map(allTracking.map((t) => [t.jobId, t]));
 
-    return jobs.map((j) => ({
-      ...j,
-      tracking: trackingByJob.get(j._id) ?? null,
-    }));
+    return {
+      jobs: jobs.map((j) => ({
+        ...j,
+        tracking: trackingByJob.get(j._id) ?? null,
+      })),
+      partnerRoleCount,
+      vipViewer,
+    };
   },
 });

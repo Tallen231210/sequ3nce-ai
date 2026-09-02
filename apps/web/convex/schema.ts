@@ -2031,6 +2031,10 @@ export default defineSchema({
     // coach channels is gated by classroom membership + tier in queries.
     coachId: v.optional(v.id("b2cCoaches")),
     tier: v.optional(v.union(v.literal("free"), v.literal("premium"))),
+    // VIP annual tier (2026-09-01): true = The Inner Circle — visible and
+    // usable only by holders of the "vip" badge (+ founder/admin/coach).
+    // Hidden entirely from everyone else, guards re-checked server-side.
+    vipOnly: v.optional(v.boolean()),
   })
     .index("by_slug", ["slug"])
     .index("by_order", ["order"]),
@@ -2656,6 +2660,10 @@ export default defineSchema({
     datePosted: v.optional(v.number()),      // Unix ms — when the company posted, not when we imported
     createdAt: v.number(),
     updatedAt: v.number(),
+    // VIP annual tier: partner roles — companies that came to Sequ3nce
+    // directly. Listed only to "vip" badge holders; everyone else sees an
+    // aggregate count teaser.
+    vipOnly: v.optional(v.boolean()),
   })
     .index("by_status", ["status", "createdAt"])
     .index("by_industry", ["status", "industry", "createdAt"]),

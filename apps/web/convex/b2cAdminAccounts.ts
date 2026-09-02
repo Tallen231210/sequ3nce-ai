@@ -355,3 +355,34 @@ export const seedAutoJoinFixture = internalMutation({
     return { seeded: true, calId, eventId };
   },
 });
+
+/** Give a TEST account's manual calls realistic durations (demo screenshots). */
+export const polishDemoCalls = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_email", (q: any) => q.eq("email", email))
+      .first();
+    if (!user || user.isTestAccount !== true) throw new Error("Refusing: not a test account");
+    const closer = await ctx.db
+      .query("closers")
+      .withIndex("by_team", (q: any) => q.eq("teamId", user.personalWorkspaceId))
+      .first();
+    if (!closer) throw new Error("No closer");
+    const calls = await ctx.db
+      .query("calls")
+      .withIndex("by_closer", (q: any) => q.eq("closerId", closer._id))
+      .collect();
+    let patched = 0;
+    const durations = [2760, 1980, 3240, 1500, 2280, 3060, 1740, 2520, 2940, 1620, 2100, 3300, 1860];
+    for (const c of calls) {
+      if (!(c as any).duration) {
+        await ctx.db.patch(c._id, { duration: durations[patched % durations.length] } as any);
+        patched++;
+      }
+    }
+    return { patched };
+  },
+});

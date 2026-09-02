@@ -21,6 +21,7 @@ const PLANS: Array<{
   charged: string;
   note?: string;
   highlight?: boolean;
+  vip?: boolean;
 }> = [
   {
     key: "monthly",
@@ -44,11 +45,20 @@ const PLANS: Array<{
   },
   {
     key: "yearly",
-    label: "Yearly",
+    label: "Yearly — VIP",
     perMonth: "$83",
     charged: "Billed $1,000 once a year",
-    note: "Save 44%",
+    note: "Save 44% + VIP",
+    vip: true,
   },
+];
+
+// What the yearly plan adds — the VIP tier. Shown compactly on its card.
+const VIP_PERKS = [
+  "The Placement Line — partner roles first",
+  "Gold verified badge + 24h verification",
+  "VIP badge + The Inner Circle community",
+  "VIP events · 20% off coaching & merch",
 ];
 
 const INCLUDED = [
@@ -144,24 +154,28 @@ export default function PersonalCheckoutPage() {
               key={p.key}
               className={
                 "relative flex flex-col rounded-2xl bg-white p-6 " +
-                (p.highlight
-                  ? "border-2 border-zinc-900 shadow-lg shadow-zinc-200/50"
-                  : "border border-zinc-200")
+                (p.vip
+                  ? "border-2 border-amber-400 shadow-lg shadow-amber-100"
+                  : p.highlight
+                    ? "border-2 border-zinc-900 shadow-lg shadow-zinc-200/50"
+                    : "border border-zinc-200")
               }
             >
               {p.note && (
                 <span
                   className={
-                    "absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em] uppercase " +
-                    (p.highlight
-                      ? "bg-zinc-900 text-white"
-                      : "border border-zinc-200 bg-zinc-50 text-zinc-700")
+                    "absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em] uppercase " +
+                    (p.vip
+                      ? "bg-amber-400 text-zinc-950"
+                      : p.highlight
+                        ? "bg-zinc-900 text-white"
+                        : "border border-zinc-200 bg-zinc-50 text-zinc-700")
                   }
                 >
                   {p.note}
                 </span>
               )}
-              <span className="text-sm font-semibold text-zinc-500">
+              <span className={"text-sm font-semibold " + (p.vip ? "text-amber-600" : "text-zinc-500")}>
                 {p.label}
               </span>
               <span className="mt-2 text-5xl font-semibold tracking-[-0.04em] leading-none text-zinc-900">
@@ -169,14 +183,26 @@ export default function PersonalCheckoutPage() {
                 <span className="text-lg font-medium tracking-tight text-zinc-400">/mo</span>
               </span>
               <span className="mt-1 text-[12px] text-zinc-500">{p.charged}</span>
+              {p.vip && (
+                <ul className="mt-4 space-y-1.5">
+                  {VIP_PERKS.map((perk) => (
+                    <li key={perk} className="flex items-start gap-1.5 text-[11.5px] leading-snug text-zinc-600">
+                      <span className="mt-px text-amber-500">✦</span>
+                      {perk}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <button
                 onClick={() => buy(p.key)}
                 disabled={busyPlan !== null}
                 className={
                   "mt-6 rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-50 " +
-                  (p.highlight
-                    ? "bg-zinc-900 text-white hover:bg-zinc-800"
-                    : "border border-zinc-300 text-zinc-900 hover:border-zinc-900")
+                  (p.vip
+                    ? "bg-amber-400 text-zinc-950 hover:bg-amber-300"
+                    : p.highlight
+                      ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                      : "border border-zinc-300 text-zinc-900 hover:border-zinc-900")
                 }
               >
                 {busyPlan === p.key ? (

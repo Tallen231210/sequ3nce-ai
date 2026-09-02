@@ -427,6 +427,23 @@ export const listPendingVerificationRequests = query({
     if (args.cursor) {
       all = all.filter((r) => r.submittedAt < args.cursor!);
     }
+
+    // VIP priority lane ("verified in 24 hours"): annual members' pending
+    // requests surface first in the review queue. Only reorders the pending
+    // view — approved/rejected history stays chronological.
+    if (statusFilter === "pending" && all.length > 1) {
+      const vipFlags = await Promise.all(
+        all.map(async (r) => {
+          const u = await ctx.db.get(r.userId);
+          return ((u as any)?.badges ?? []).includes("vip");
+        }),
+      );
+      const flagged = all.map((r, i) => ({ r, vip: vipFlags[i] }));
+      all = [
+        ...flagged.filter((f) => f.vip).map((f) => f.r),
+        ...flagged.filter((f) => !f.vip).map((f) => f.r),
+      ];
+    }
     const page = all.slice(0, limit + 1);
     const hasMore = page.length > limit;
     const results = page.slice(0, limit);
@@ -434,6 +451,7 @@ export const listPendingVerificationRequests = query({
     const enriched = await Promise.all(
       results.map(async (r) => {
         const user = await ctx.db.get(r.userId);
+        const requesterIsVip = ((user as any)?.badges ?? []).includes("vip");
         const profile = user
           ? await ctx.db
               .query("b2cProfiles")
@@ -450,6 +468,7 @@ export const listPendingVerificationRequests = query({
         return {
           requestId: r._id,
           status: r.status,
+          requesterIsVip,
           submittedAt: r.submittedAt,
           claimedStats: r.claimedStats,
           context: r.context ?? null,

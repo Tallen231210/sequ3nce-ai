@@ -2846,9 +2846,11 @@ export async function getTrainingLessons(moduleId: string): Promise<TrainingLess
 
 // ==================== Community API ====================
 
-export async function getCommunityChannels(): Promise<CommunityChannel[]> {
+export async function getCommunityChannels(userId?: string): Promise<CommunityChannel[]> {
   try {
-    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/community/channels?_=${Date.now()}`);
+    // userId unlocks VIP-only channels (The Inner Circle) server-side.
+    const uid = userId ? `&userId=${encodeURIComponent(userId)}` : "";
+    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/community/channels?_=${Date.now()}${uid}`);
     if (!response.ok) return [];
     return await response.json();
   } catch (error) {
@@ -3492,13 +3494,15 @@ export async function searchCommunityPosts(
   query: string,
   channelId?: string,
   cursor?: number,
-  limit?: number
+  limit?: number,
+  userId?: string
 ): Promise<{ posts: CommunityPost[]; nextCursor: number | null }> {
   try {
     const params = new URLSearchParams({ q: query, _: String(Date.now()) });
     if (channelId) params.set("channelId", channelId);
     if (cursor) params.set("cursor", String(cursor));
     if (limit) params.set("limit", String(limit));
+    if (userId) params.set("userId", userId); // unlocks Inner Circle results for VIP
     const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/community/search?${params}`);
     if (!response.ok) return { posts: [], nextCursor: null };
     return await response.json();
@@ -4503,6 +4507,7 @@ export async function getMyBugReports(authorId: string): Promise<BugReport[]> {
 
 export interface PublicJob {
   _id: string;
+  vipOnly?: boolean;
   companyName: string;
   title: string;
   location: string;
@@ -4526,20 +4531,31 @@ export interface PublicJob {
   } | null;
 }
 
-export async function getPublicJobs(userId: string, industry?: string): Promise<PublicJob[]> {
+export interface PublicJobsResult {
+  jobs: PublicJob[];
+  /** Partner roles behind the VIP wall — shown as a locked count to non-VIP. */
+  partnerRoleCount: number;
+  vipViewer: boolean;
+}
+
+export async function getPublicJobs(userId: string, industry?: string): Promise<PublicJobsResult> {
   try {
     let url = `${CONVEX_SITE_URL}/b2c/public-jobs?userId=${encodeURIComponent(userId)}`;
     if (industry) url += `&industry=${encodeURIComponent(industry)}`;
     const res = await convexFetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) return { jobs: [], partnerRoleCount: 0, vipViewer: false };
     const data = await res.json();
-    return data.jobs || [];
+    return {
+      jobs: data.jobs || [],
+      partnerRoleCount: data.partnerRoleCount ?? 0,
+      vipViewer: data.vipViewer === true,
+    };
   } catch (error) {
     console.error("[Convex] Failed to get public jobs:", error);
     Sentry.captureException(error, {
       tags: { feature: "getPublicJobs", integration: "convex" },
     });
-    return [];
+    return { jobs: [], partnerRoleCount: 0, vipViewer: false };
   }
 }
 

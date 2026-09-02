@@ -7398,9 +7398,14 @@ http.route({
 http.route({
   path: "/b2c/community/channels",
   method: "GET",
-  handler: httpAction(async (ctx) => {
+  handler: httpAction(async (ctx, request) => {
     try {
-      const channels = await ctx.runQuery(api.b2cCommunity.listChannels, {});
+      // userId gates Inner Circle visibility; absent = public view.
+      const url = new URL(request.url);
+      const userId = url.searchParams.get("userId");
+      const channels = await ctx.runQuery(api.b2cCommunity.listChannels, {
+        ...(userId ? { userId: userId as any } : {}),
+      });
       return b2cJsonResponse(channels);
     } catch (error) {
       console.error("Error listing channels:", error);
@@ -7974,11 +7979,13 @@ http.route({
       const channelId = url.searchParams.get("channelId");
       const cursor = url.searchParams.get("cursor");
       const limit = url.searchParams.get("limit");
+      const searchUserId = url.searchParams.get("userId");
       const result = await ctx.runQuery(api.b2cCommunity.searchPosts, {
         query: q,
         channelId: channelId ? (channelId as any) : undefined,
         cursor: cursor ? Number(cursor) : undefined,
         limit: limit ? Number(limit) : undefined,
+        userId: searchUserId ? (searchUserId as any) : undefined,
       });
       return b2cJsonResponse(result);
     } catch (error) {
@@ -12146,11 +12153,13 @@ http.route({
       const url = new URL(request.url);
       const userId = url.searchParams.get("userId");
       const industry = url.searchParams.get("industry");
-      const jobs = await ctx.runQuery(api.b2cPublicJobs.listJobs, {
+      const result = await ctx.runQuery(api.b2cPublicJobs.listJobs, {
         userId: userId ? userId as Id<"b2cUsers"> : undefined,
         industry: industry || undefined,
       });
-      return b2cJsonResponse({ jobs }, 200, true);
+      // result = { jobs, partnerRoleCount, vipViewer } — same `jobs` key the
+      // app has always read, plus the Placement Line metadata.
+      return b2cJsonResponse(result, 200, true);
     } catch (error) {
       return b2cJsonResponse({ error: "Failed to load jobs" }, 500);
     }
