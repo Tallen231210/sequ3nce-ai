@@ -458,6 +458,18 @@ const createScheduleWindow = (): void => {
 
   scheduleWindow.loadURL(SCHEDULE_WEBPACK_ENTRY);
 
+  // Open window.open links (Google Calendar OAuth) in the system browser —
+  // Google refuses to run OAuth inside an embedded Electron window.
+  scheduleWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(url);
+      }
+    } catch { /* ignore invalid URLs */ }
+    return { action: 'deny' };
+  });
+
   // Show window when ready
   scheduleWindow.once('ready-to-show', () => {
     scheduleWindow?.show();
@@ -1158,31 +1170,6 @@ const setupIpcHandlers = (): void => {
     } catch (error) {
       console.error('[Main] Error getting calendar status:', error);
       return { error: 'network_error' };
-    }
-  });
-
-  // Connect calendar with ICS URL (requires teamId)
-  ipcMain.handle('schedule:connect-calendar', async (_event, email: string, icsUrl: string) => {
-    if (!currentScheduleTeamId) {
-      throw new Error('No teamId set for schedule');
-    }
-
-    try {
-      const response = await fetch('https://ideal-ram-982.convex.site/connectCalendarByEmail', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, teamId: currentScheduleTeamId, icsUrl }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to connect calendar');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('[Main] Error connecting calendar:', error);
-      throw error;
     }
   });
 

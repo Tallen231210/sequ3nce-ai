@@ -1119,28 +1119,6 @@ export async function markOnboardingCompleted(closerId: string): Promise<boolean
   }
 }
 
-// Connect calendar with ICS URL
-export async function connectCalendar(
-  email: string,
-  teamId: string,
-  icsUrl: string
-): Promise<boolean> {
-  try {
-    const response = await convexFetch(`${CONVEX_SITE_URL}/connectCalendarByEmail`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, teamId, icsUrl }),
-    });
-    return response.ok;
-  } catch (error) {
-    console.error("[Convex] Failed to connect calendar:", error);
-    Sentry.captureException(error, {
-      tags: { feature: "connectCalendar", integration: "convex" },
-    });
-    return false;
-  }
-}
-
 // Sync calendar events
 export async function syncCalendar(email: string, teamId: string): Promise<boolean> {
   try {
@@ -1475,7 +1453,6 @@ export async function getCallAnalysis(callId: string): Promise<CallAnalysis | nu
 export interface CalendarStatus {
   closerId: string;
   connected: boolean;
-  icsUrl?: string;
   connectedAt?: number;
   lastSynced?: number;
 }
@@ -4268,7 +4245,7 @@ export async function addB2cCalendar(
   teamId: string,
   label: string,
   provider: string,
-  opts?: { googleRefreshToken?: string; googleEmail?: string; icsUrl?: string }
+  opts?: { googleRefreshToken?: string; googleEmail?: string }
 ): Promise<{ id?: string; color?: string; error?: string }> {
   try {
     const res = await convexFetch(`${CONVEX_SITE_URL}/b2c/calendars`, {

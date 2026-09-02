@@ -649,7 +649,9 @@ export default defineSchema({
     clerkId: v.optional(v.string()), // Set when they complete signup
     passwordHash: v.optional(v.string()), // Hashed password for desktop app login
     // Calendar integration via ICS feed
-    icsUrl: v.optional(v.string()), // ICS feed URL from Google Calendar, Calendly, etc.
+    // DEPRECATED 2026-09-02: ICS feed connections removed from the product.
+    // Field kept because schema changes are additive-only; no code writes it.
+    icsUrl: v.optional(v.string()),
     calendarConnected: v.optional(v.boolean()), // Legacy field - kept for backward compatibility
     calendarConnectedAt: v.optional(v.number()), // When calendar was connected
     calendarLastSyncAt: v.optional(v.number()), // Last successful sync timestamp
@@ -2640,7 +2642,9 @@ export default defineSchema({
     provider: v.string(),                           // "google" | "ics"
     googleRefreshToken: v.optional(v.string()),      // Google OAuth refresh token
     googleEmail: v.optional(v.string()),             // Google account email (for display + dupe detection)
-    icsUrl: v.optional(v.string()),                  // ICS feed URL (fallback method)
+    // DEPRECATED 2026-09-02: ICS feed connections removed from the product.
+    // Field kept because schema changes are additive-only; no code writes it.
+    icsUrl: v.optional(v.string()),
     isEnabled: v.boolean(),                          // toggle visibility in schedule
     lastSyncAt: v.optional(v.number()),
     syncError: v.optional(v.string()),

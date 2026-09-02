@@ -2231,7 +2231,6 @@ export const getClosersWithCalendars = internalQuery({
         // Any calendar, however it was connected. Checking one mechanism is
         // what broke this.
         let hasCalendar =
-          !!closer.icsUrl ||
           !!closer.googleCalendarRefreshToken ||
           !!closer.microsoftCalendarRefreshToken;
 
@@ -2931,7 +2930,6 @@ export const needsCalendarOnboarding = query({
 
     // Skip onboarding if already completed OR if calendar is already connected
     if (closer.calendarOnboardingCompleted === true) return false;
-    if (closer.icsUrl) return false;
     if (closer.googleCalendarRefreshToken) return false;
 
     return true;

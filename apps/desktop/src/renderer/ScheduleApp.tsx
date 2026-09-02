@@ -16,7 +16,6 @@ interface CalendarEvent {
 interface CalendarStatus {
   closerId: string;
   connected: boolean;
-  icsUrl?: string;
   connectedAt?: number;
   lastSynced?: number;
 }
@@ -29,10 +28,8 @@ export function ScheduleApp() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Connection form state
-  const [icsUrl, setIcsUrl] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
+  // Google OAuth hand-off state
+  const [isWaitingForOAuth, setIsWaitingForOAuth] = useState(false);
 
   // Current time for countdown
   const [now, setNow] = useState(Date.now());
@@ -124,35 +121,19 @@ export function ScheduleApp() {
     fetchCalendarData();
   }, [fetchCalendarData]);
 
-  // Connect calendar
-  const handleConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!closerEmail || !icsUrl.trim()) return;
-
-    setIsConnecting(true);
-    setError(null);
-
-    try {
-      const connectResult = await window.schedule?.connectCalendar(closerEmail, icsUrl.trim());
-      if (connectResult && !connectResult.success) {
-        throw new Error('Failed to save calendar URL');
-      }
-      // Sync immediately after connecting
-      const syncResult = await window.schedule?.syncCalendar(closerEmail);
-      if (syncResult && !syncResult.success) {
-        // Show the actual error from the sync
-        throw new Error((syncResult as { success: boolean; error?: string }).error || 'Failed to sync calendar');
-      }
-      // Refresh data
-      await fetchCalendarData();
-      setIcsUrl('');
-    } catch (err) {
-      console.error('Failed to connect calendar:', err);
-      setError(err instanceof Error ? err.message : 'Failed to connect calendar');
-    } finally {
-      setIsConnecting(false);
-    }
+  // Connect via Google OAuth — opens the system browser; the connection
+  // completes server-side, so poll until the status flips.
+  const handleGoogleConnect = () => {
+    if (!calendarStatus?.closerId) return;
+    setIsWaitingForOAuth(true);
+    window.open(`https://sequ3nce.ai/api/auth/google/authorize?closerId=${calendarStatus.closerId}`, '_blank');
   };
+
+  useEffect(() => {
+    if (!isWaitingForOAuth || calendarStatus?.connected) return;
+    const id = setInterval(fetchCalendarData, 3000);
+    return () => clearInterval(id);
+  }, [isWaitingForOAuth, calendarStatus?.connected, fetchCalendarData]);
 
   // Disconnect calendar — check result and refresh from backend
   const handleDisconnect = async () => {
@@ -310,99 +291,28 @@ export function ScheduleApp() {
             <p className="text-gray-500 text-sm">Please log in to access your schedule.</p>
           </div>
         ) : !calendarStatus?.connected ? (
-          // Not connected - show connection form
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-md mx-auto">
-              <div className="text-center mb-6">
-                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <h2 className="text-lg font-medium text-gray-900 mb-2">Connect Your Calendar</h2>
-                <p className="text-gray-500 text-sm">
-                  See your schedule in Sequ3nce by connecting your calendar via ICS feed URL.
-                </p>
-              </div>
-
-              <form onSubmit={handleConnect} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    ICS Feed URL
-                  </label>
-                  <input
-                    type="url"
-                    value={icsUrl}
-                    onChange={(e) => setIcsUrl(e.target.value)}
-                    placeholder="https://calendar.google.com/calendar/ical/..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                    required
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isConnecting || !icsUrl.trim()}
-                  className="w-full py-2 px-4 bg-black text-white rounded-lg font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isConnecting ? 'Connecting...' : 'Connect Calendar'}
-                </button>
-              </form>
-
-              {/* Help section */}
-              <div className="mt-6">
-                <button
-                  onClick={() => setShowHelp(!showHelp)}
-                  className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
-                >
-                  <svg className={`w-4 h-4 transition-transform ${showHelp ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  How do I find my ICS URL?
-                </button>
-
-                {showHelp && (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm space-y-4">
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-1">Google Calendar</h4>
-                      <ol className="text-gray-600 space-y-1 list-decimal list-inside">
-                        <li>Go to calendar.google.com</li>
-                        <li>Click the three dots next to your calendar</li>
-                        <li>Click "Settings and sharing"</li>
-                        <li>Scroll to "Integrate calendar"</li>
-                        <li>Copy "Secret address in iCal format"</li>
-                      </ol>
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-1">Calendly</h4>
-                      <ol className="text-gray-600 space-y-1 list-decimal list-inside">
-                        <li>Go to calendly.com/app/scheduled_events</li>
-                        <li>Click "Export"</li>
-                        <li>Copy the ICS feed URL</li>
-                      </ol>
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-1">Outlook</h4>
-                      <ol className="text-gray-600 space-y-1 list-decimal list-inside">
-                        <li>Go to outlook.com calendar</li>
-                        <li>Settings → View all Outlook settings</li>
-                        <li>Calendar → Shared calendars</li>
-                        <li>Publish a calendar → Create ICS link</li>
-                      </ol>
-                    </div>
-
-                    <div>
-                      <h4 className="font-medium text-gray-900 mb-1">Cal.com</h4>
-                      <ol className="text-gray-600 space-y-1 list-decimal list-inside">
-                        <li>Go to app.cal.com</li>
-                        <li>Settings → Calendar</li>
-                        <li>Copy your ICS feed URL</li>
-                      </ol>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+          // Not connected — Google Calendar is the only connect path
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <h2 className="text-lg font-medium text-gray-900 mb-2">Connect Your Calendar</h2>
+            <p className="text-gray-500 text-sm mb-6 max-w-sm">
+              Connect your Google Calendar to see your schedule and join meetings with one click.
+            </p>
+            <button
+              onClick={handleGoogleConnect}
+              disabled={!calendarStatus?.closerId}
+              className="py-2.5 px-5 bg-black text-white rounded-lg font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Connect with Google Calendar
+            </button>
+            {isWaitingForOAuth && (
+              <p className="mt-4 text-sm text-gray-500 max-w-sm">
+                Complete the sign-in in your browser — your schedule will appear
+                here automatically.
+              </p>
+            )}
           </div>
         ) : (
           // Connected - show events

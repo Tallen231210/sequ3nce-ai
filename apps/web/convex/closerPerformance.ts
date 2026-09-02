@@ -361,7 +361,7 @@ async function recountDayImpl(
       if (closersWithAnySub.has(id)) return [id, closersWithOwnCalendar.has(id)];
       return [
         id,
-        !!(c.googleCalendarRefreshToken || c.icsUrl || c.calendarProvider),
+        !!(c.googleCalendarRefreshToken || c.calendarProvider),
       ];
     }),
   );

@@ -15,10 +15,6 @@ contextBridge.exposeInMainWorld('schedule', {
   // Get calendar status (is connected, last sync, etc.)
   getCalendarStatus: (email: string) => ipcRenderer.invoke('schedule:get-calendar-status', email),
 
-  // Connect calendar with ICS URL
-  connectCalendar: (email: string, icsUrl: string) =>
-    ipcRenderer.invoke('schedule:connect-calendar', email, icsUrl),
-
   // Disconnect calendar
   disconnectCalendar: (email: string) => ipcRenderer.invoke('schedule:disconnect-calendar', email),
 

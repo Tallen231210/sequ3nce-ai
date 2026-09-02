@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { CloserInfo } from '../convex';
-import { connectCalendar, syncCalendar, markOnboardingCompleted } from '../convex';
+import { markOnboardingCompleted } from '../convex';
 import logoImage from '../../assets/logo.png';
 
 const APP_URL = 'https://sequ3nce.ai';
@@ -12,16 +12,8 @@ interface BotOnboardingViewProps {
 
 export function BotOnboardingView({ closerInfo, onComplete }: BotOnboardingViewProps) {
   const [step, setStep] = useState(0);
-  const [showIcsFallback, setShowIcsFallback] = useState(false);
-  const [icsUrl, setIcsUrl] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
   const [isWaitingForOAuth, setIsWaitingForOAuth] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const isValidUrl = (() => {
-    const trimmed = icsUrl.trim();
-    return trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('webcal://');
-  })();
 
   // Listen for Google Calendar OAuth callback deep link
   useEffect(() => {
@@ -40,20 +32,6 @@ export function BotOnboardingView({ closerInfo, onComplete }: BotOnboardingViewP
     const authUrl = `${APP_URL}/api/auth/google/authorize?closerId=${closerInfo.closerId}&app=personal`;
     // Open in user's default browser
     window.open(authUrl, '_blank');
-  }
-
-  async function handleIcsConnect() {
-    setIsConnecting(true);
-    setError(null);
-    try {
-      const connected = await connectCalendar(closerInfo.email, closerInfo.teamId, icsUrl.trim());
-      if (!connected) throw new Error('Connection failed');
-      await syncCalendar(closerInfo.email, closerInfo.teamId);
-      setStep(2);
-    } catch {
-      setError('Failed to connect calendar. Please check your URL and try again.');
-    }
-    setIsConnecting(false);
   }
 
   async function handleComplete() {
@@ -132,39 +110,6 @@ export function BotOnboardingView({ closerInfo, onComplete }: BotOnboardingViewP
                     <p className="text-[12px] text-red-600 mt-2 w-full">{error}</p>
                   )}
 
-                  {/* Secondary: ICS fallback */}
-                  <button
-                    onClick={() => setShowIcsFallback(!showIcsFallback)}
-                    className="mt-4 text-[12px] text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    {showIcsFallback ? 'Hide' : 'Or use ICS feed instead'}
-                  </button>
-
-                  {showIcsFallback && (
-                    <div className="w-full mt-3 space-y-3">
-                      <p className="text-[12px] text-gray-500">
-                        Paste your Google Calendar ICS feed URL. Go to Google Calendar Settings, select your calendar, and copy the "Secret address in iCal format".
-                      </p>
-                      <input
-                        type="text"
-                        value={icsUrl}
-                        onChange={(e) => setIcsUrl(e.target.value)}
-                        placeholder="Paste your ICS feed URL here..."
-                        className="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-gray-400"
-                      />
-                      <button
-                        onClick={handleIcsConnect}
-                        disabled={!isValidUrl || isConnecting}
-                        className={`w-full py-2.5 text-[13px] font-semibold rounded-lg transition-colors ${
-                          isValidUrl && !isConnecting
-                            ? 'bg-gray-100 text-black hover:bg-gray-200'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        }`}
-                      >
-                        {isConnecting ? 'Connecting...' : 'Connect via ICS'}
-                      </button>
-                    </div>
-                  )}
                 </>
               )}
             </div>

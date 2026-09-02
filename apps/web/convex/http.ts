@@ -2174,67 +2174,6 @@ http.route({
 
 // POST endpoint to connect calendar with ICS URL (requires teamId)
 http.route({
-  path: "/connectCalendarByEmail",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    try {
-      const body = await request.json();
-      const { email, teamId, icsUrl } = body;
-
-      if (!email || !teamId || !icsUrl) {
-        return new Response(JSON.stringify({ error: "email, teamId, and icsUrl are required" }), {
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
-      }
-
-      const result = await ctx.runMutation(api.calendar.connectCalendarByEmail, {
-        email,
-        teamId: teamId as Id<"teams">,
-        icsUrl,
-      });
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
-    } catch (error) {
-      console.error("[HTTP] Error connecting calendar:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to connect calendar";
-      return new Response(JSON.stringify({ error: errorMessage }), {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
-    }
-  }),
-});
-
-// Handle CORS preflight for connectCalendarByEmail
-http.route({
-  path: "/connectCalendarByEmail",
-  method: "OPTIONS",
-  handler: httpAction(async () => {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Cache-Control, Pragma",
-      },
-    });
-  }),
-});
-
-// POST endpoint to disconnect calendar (requires teamId)
-http.route({
   path: "/disconnectCalendarByEmail",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
@@ -10200,7 +10139,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { closerId, teamId, label, provider, googleEmail, icsUrl } = body ?? {};
+      const { closerId, teamId, label, provider, googleEmail } = body ?? {};
       if (typeof closerId !== "string" || typeof teamId !== "string" || typeof label !== "string" || typeof provider !== "string") {
         return b2cJsonResponse({ error: "closerId, teamId, label, and provider are required" }, 400);
       }
@@ -10211,7 +10150,6 @@ http.route({
         label,
         provider,
         googleEmail: typeof googleEmail === "string" ? googleEmail : undefined,
-        icsUrl: typeof icsUrl === "string" ? icsUrl : undefined,
       });
       return b2cJsonResponse(result, 200, true);
     } catch (error) {

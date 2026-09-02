@@ -336,7 +336,9 @@ export const seedAutoJoinFixture = internalMutation({
       teamId: user.personalWorkspaceId,
       label: "AutoJoin Test",
       color: "#10b981",
-      provider: "ics",
+      // Any non-google provider string keeps the sync cron away from this
+      // fixture row (only rows with Google tokens are swept).
+      provider: "test",
       isEnabled: true,
       lastSyncAt: Date.now(),
       createdAt: Date.now(),

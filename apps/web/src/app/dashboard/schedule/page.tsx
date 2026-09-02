@@ -70,7 +70,7 @@ interface CalendarEvent {
   closerName?: string;
   closerInitials?: string;
   // Resolved hex color from Google (per-event override > calendar default).
-  // When set, prefers over the per-closer hashed color. Optional because ICS
+  // When set, prefers over the per-closer hashed color. Optional because legacy
   // synced events and pre-multi-cal-migration Google events leave it undefined.
   calendarColor?: string;
   calendarLabel?: string;
@@ -308,7 +308,7 @@ function ListView({
               const closerIndex = closerColorMap.get(event.closerId) ?? 0;
               // Prefer Google's per-event / per-calendar color (synced via
               // resolveEventColor from the multi-cal subscription pipeline).
-              // Falls back to per-closer hashed color for ICS users and any
+              // Falls back to per-closer hashed color for any
               // events whose Google color hasn't been resolved yet.
               const color = event.calendarColor ?? getCloserColor(closerIndex);
               const eventId = String(event._id);
@@ -973,7 +973,7 @@ export default function SchedulePage() {
       <>
         <Header
           title="Schedule"
-          description="Team calendar from connected ICS feeds"
+          description="Team calendar from connected calendars"
         />
         <div className="p-6 flex items-center justify-center min-h-[400px]">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -986,7 +986,7 @@ export default function SchedulePage() {
     <>
       <Header
         title="Schedule"
-        description="Team calendar from connected ICS feeds"
+        description="Team calendar from connected calendars"
       />
       <div className="p-6 space-y-4">
         {/* Controls */}

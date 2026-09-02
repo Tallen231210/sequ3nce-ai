@@ -45,7 +45,6 @@ export const addCalendar = mutation({
     label: v.string(),
     provider: v.string(),
     googleEmail: v.optional(v.string()),
-    icsUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const label = args.label.trim();
@@ -88,7 +87,6 @@ export const addCalendar = mutation({
       color,
       provider: args.provider,
       googleEmail: args.googleEmail,
-      icsUrl: args.icsUrl,
       isEnabled: true,
       createdAt: Date.now(),
     });

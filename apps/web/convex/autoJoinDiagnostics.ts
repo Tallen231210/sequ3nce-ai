@@ -88,7 +88,6 @@ export const teamAutoJoinAudit = internalQuery({
         email: c.email,
         autoJoinEnabled: c.autoJoinEnabled === true,
         hasGoogleCalendar: !!c.googleCalendarRefreshToken,
-        hasIcsFeed: !!c.icsUrl,
         calendarLastSyncAt: c.calendarLastSyncAt
           ? new Date(c.calendarLastSyncAt).toISOString()
           : null,

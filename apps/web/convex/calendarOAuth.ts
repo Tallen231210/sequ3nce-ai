@@ -225,7 +225,6 @@ export const readAutoJoinForCloser = internalQuery({
       // different words: one is a plan limit, the other a step they skipped.
       available: tier === "overwatch",
       hasCalendar:
-        !!(closer as any).icsUrl ||
         !!(closer as any).googleCalendarRefreshToken ||
         !!(closer as any).microsoftCalendarRefreshToken,
     };

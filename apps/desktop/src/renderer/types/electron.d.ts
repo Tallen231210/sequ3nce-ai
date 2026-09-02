@@ -228,7 +228,6 @@ export interface CalendarEvent {
 export interface CalendarStatus {
   closerId: string;
   connected: boolean;
-  icsUrl?: string;
   connectedAt?: number;
   lastSynced?: number;
 }
@@ -237,7 +236,6 @@ export interface CalendarStatus {
 export interface ScheduleWindowAPI {
   getCloserEmail: () => Promise<string | null>;
   getCalendarStatus: (email: string) => Promise<CalendarStatus | null>;
-  connectCalendar: (email: string, icsUrl: string) => Promise<{ success: boolean }>;
   disconnectCalendar: (email: string) => Promise<{ success: boolean }>;
   syncCalendar: (email: string) => Promise<{ success: boolean; syncedEvents?: number }>;
   getEvents: (email: string, startDate: number, endDate: number) => Promise<CalendarEvent[]>;

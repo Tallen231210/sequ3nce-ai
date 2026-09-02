@@ -3,7 +3,6 @@ import type { CloserInfo, CalendarEvent, CalendarSubscription } from '../../conv
 import {
   getCalendarEvents,
   getCalendarStatus,
-  connectCalendar,
   syncCalendar,
   disconnectCalendar,
   excludeCalendarEvent,
@@ -49,10 +48,6 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
 
-  // Connection form
-  const [icsUrl, setIcsUrl] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
 
   // Meeting modal
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -119,20 +114,6 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   }, [loadData]);
 
   // Handlers
-  async function handleConnect() {
-    if (!icsUrl.trim()) return;
-    setIsConnecting(true);
-    setConnectError(null);
-    const ok = await connectCalendar(closerInfo.email, closerInfo.teamId, icsUrl.trim());
-    if (ok) {
-      await syncCalendar(closerInfo.email, closerInfo.teamId);
-      await loadData();
-    } else {
-      setConnectError('Failed to connect. Please check the URL and try again.');
-    }
-    setIsConnecting(false);
-  }
-
   async function handleSync() {
     setIsSyncing(true);
     await syncCalendar(closerInfo.email, closerInfo.teamId);
@@ -179,11 +160,8 @@ export function ScheduleView({ closerInfo }: ScheduleViewProps) {
   if (!status?.connected) {
     return (
       <ScheduleConnectForm
-        icsUrl={icsUrl}
-        onIcsUrlChange={setIcsUrl}
-        onConnect={handleConnect}
-        isConnecting={isConnecting}
-        connectError={connectError}
+        closerId={closerInfo.closerId}
+        onConnected={loadData}
       />
     );
   }

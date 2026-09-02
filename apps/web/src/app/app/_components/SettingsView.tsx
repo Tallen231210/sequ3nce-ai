@@ -5,7 +5,6 @@ import { tierHas } from '@/lib/tiers';
 import type { CloserInfo, CalendarStatus, CalendarSubscription } from '@/lib/closer/client';
 import {
   getCalendarStatus,
-  connectCalendar,
   syncCalendar,
   disconnectCalendar,
   changePassword,
@@ -26,8 +25,6 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
   // Calendar
   const [calStatus, setCalStatus] = useState<CalendarStatus | null>(null);
   const [isLoadingCal, setIsLoadingCal] = useState(true);
-  const [icsUrl, setIcsUrl] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   // Multi-calendar subscriptions (B2B only — shows when provider === 'google')
@@ -77,7 +74,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
   }, [closerInfo.email, closerInfo.teamId]);
 
   // Load multi-calendar subscriptions whenever the closer is connected via
-  // Google. ICS users don't have subs.
+  // Google only.
   function refreshSubscriptions() {
     if (calStatus?.provider !== 'google') {
       setSubscriptions([]);
@@ -132,19 +129,6 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
     window.addEventListener('calendar:connected', handleCalendarConnected);
     return () => window.removeEventListener('calendar:connected', handleCalendarConnected);
   }, [closerInfo.email, closerInfo.teamId]);
-
-  async function handleConnectCalendar() {
-    if (!icsUrl.trim()) return;
-    setIsConnecting(true);
-    const ok = await connectCalendar(closerInfo.email, closerInfo.teamId, icsUrl.trim());
-    if (ok) {
-      await syncCalendar(closerInfo.email, closerInfo.teamId);
-      const s = await getCalendarStatus(closerInfo.email, closerInfo.teamId);
-      setCalStatus(s);
-      setIcsUrl('');
-    }
-    setIsConnecting(false);
-  }
 
   async function handleDisconnectCalendar() {
     setIsDisconnecting(true);
@@ -370,7 +354,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
               <div className="flex items-center gap-2 text-[13px]">
                 <span className="w-2 h-2 bg-green-500 rounded-full" />
                 <span className="text-green-700 font-medium">
-                  Connected{calStatus.provider === 'google' ? ' via Google Calendar' : calStatus.provider === 'ics' ? ' via ICS Feed' : ''}
+                  Connected{calStatus.provider === 'google' ? ' via Google Calendar' : ''}
                 </span>
                 {calStatus.lastSynced && (
                   <span className="text-gray-400 text-[11px]">
@@ -379,8 +363,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
                 )}
               </div>
 
-              {/* Sub-calendar subscriptions list — Google only. ICS users
-                  see the legacy single-cal display. */}
+              {/* Sub-calendar subscriptions list — Google only. */}
               {calStatus.provider === 'google' && (
                 <div className="space-y-2 max-w-md">
                   <div className="text-[12px] font-medium text-gray-700">
@@ -506,42 +489,6 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
                 </svg>
                 Connect with Google Calendar
               </button>
-              {/* No ICS on Overview.
-                  
-                  This tier's entire call list comes from spotting sales calls
-                  on the calendar, and that needs to know who's on the meeting.
-                  ICS feeds carry times but not attendees, so they can tell us a
-                  meeting existed and never whether it was a sales call or a
-                  dentist appointment. Offering the option would produce an
-                  account that connects successfully and then shows nothing. */}
-              {closerInfo.productTier === 'overview' ? (
-                <p className="border-t border-gray-100 pt-3 text-[11.5px] text-gray-500 leading-relaxed">
-                  Google Calendar is required on your plan. Your calls are found
-                  by spotting sales meetings on your calendar, and an ICS feed
-                  doesn&apos;t say who&apos;s on a meeting — so we&apos;d see
-                  that something was booked but never that it was a call.
-                </p>
-              ) : (
-              <div className="border-t border-gray-100 pt-3">
-                <p className="text-[11px] text-gray-400 mb-2">Or connect manually with an ICS feed URL:</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={icsUrl}
-                    onChange={(e) => setIcsUrl(e.target.value)}
-                    placeholder="ICS feed URL..."
-                    className="flex-1 px-3 py-2 text-[13px] bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:border-gray-400"
-                  />
-                  <button
-                    onClick={handleConnectCalendar}
-                    disabled={!icsUrl.trim() || isConnecting}
-                    className="px-4 py-2 text-[12px] font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isConnecting ? 'Connecting...' : 'Connect'}
-                  </button>
-                </div>
-              </div>
-              )}
             </div>
           )}
         </SettingsSection>
