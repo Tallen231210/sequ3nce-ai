@@ -1034,14 +1034,17 @@ const setupIpcHandlers = (): void => {
 
 // Register the custom protocol handler
 const registerProtocol = () => {
-  // Register as the default protocol handler for sequ3nce://
-  if (process.defaultApp) {
-    if (process.argv.length >= 2) {
-      app.setAsDefaultProtocolClient(PROTOCOL_NAME, process.execPath, [process.argv[1]]);
-    }
-  } else {
-    app.setAsDefaultProtocolClient(PROTOCOL_NAME);
+  // Register as the default protocol handler for sequ3nce:// — PACKAGED
+  // builds only. A dev/Playwright launch runs under the raw Electron binary,
+  // and registering that steals the protocol on the developer's Mac: the
+  // browser's OAuth hand-back dialog then reads "Open Electron?" instead of
+  // "Open Sequ3nce Personal?" (bitten 2026-09-02). Deep links are a
+  // production feature; dev builds don't need them.
+  if (!app.isPackaged) {
+    console.log(`[Main] Dev build — skipping ${PROTOCOL_NAME}:// registration`);
+    return;
   }
+  app.setAsDefaultProtocolClient(PROTOCOL_NAME);
 
   console.log(`[Main] Registered protocol handler for ${PROTOCOL_NAME}://`);
 };
