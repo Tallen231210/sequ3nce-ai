@@ -204,9 +204,9 @@ export const SLIDES: Slide[] = [
         </div>
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/pitch/vip-jobboard.png" alt="Partner role pinned on the job board"
+          <img src="/pitch/vip-placement-line.png" alt="The Placement Line — VIP internal placement list"
             className="rounded-xl border border-zinc-800 shadow-2xl w-full" />
-          <p className="text-zinc-500 text-[12px] mt-2 text-center">A partner role, pinned first for VIP members</p>
+          <p className="text-zinc-500 text-[12px] mt-2 text-center">The Placement Line — your profile, live with our placement team</p>
         </div>
       </div>
     ),
