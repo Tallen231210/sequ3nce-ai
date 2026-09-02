@@ -51,43 +51,73 @@ const perkCard = (icon: string, name: string, line: string, accent?: boolean) =>
 );
 
 export const SLIDES: Slide[] = [
+  // 1 — Cover: both brands
   {
     title: (
       <div className="text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Sequ3nce.ai" className="w-[82vw] max-w-[1100px] mx-auto -mb-8 invert" />
-        <div className="text-5xl md:text-6xl font-bold tracking-tight text-white leading-[1.05]">
+        <img src="/logo.png" alt="Sequ3nce.ai" className="w-[74vw] max-w-[980px] mx-auto -mb-6 invert" />
+        <div className="text-2xl md:text-3xl font-black tracking-[0.35em] text-amber-300 mb-8">+ CHURP</div>
+        <div className="text-4xl md:text-5xl font-bold tracking-tight text-white leading-[1.05]">
           The operating system
           <br />
           for high-ticket closers.
         </div>
-        <p className="text-zinc-500 mt-6 text-lg">
-          Every call filmed. Every number tracked. Every door opened.
-        </p>
       </div>
     ),
     wide: true,
   },
+  // 2 — Split intro: what each does, why both
   {
-    kicker: "The problem",
-    title: "Closers fly blind.",
+    kicker: "Two products. One machine.",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">The room <span className="text-amber-300">and</span> the weapon.</h1>,
+    body: (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl items-stretch">
+        <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-8 flex flex-col">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Sequ3nce.ai" className="h-5 invert self-start mb-5" />
+          <p className="text-white font-bold text-lg leading-snug mb-3">The community that breeds high performers.</p>
+          <p className="text-zinc-400 text-[14px] leading-relaxed">
+            Your calls filmed and scored, your numbers verified, coaching from
+            8-figure closers, and the doors — public and private — to the seats
+            worth taking.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-amber-400/40 bg-zinc-900 p-8 flex flex-col">
+          <div className="text-white font-black tracking-[0.3em] text-lg self-start mb-5">CHURP</div>
+          <p className="text-white font-bold text-lg leading-snug mb-3">The tool that makes you one.</p>
+          <p className="text-zinc-400 text-[14px] leading-relaxed">
+            AI that replies to your prospects for you — setting, closing, or
+            selling yourself into an offer. Every DM answered in seconds.
+            Ruthlessly efficient.
+          </p>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  // 3 — Let's start with Sequ3nce
+  {
+    kicker: "Part one",
+    title: "Sequ3nce: your sales brain, in one place.",
     body: (
       <div className="space-y-4">
-        <P>No film of their calls. No real numbers. No proof of what they can do when a better seat opens up.</P>
-        <P>Athletes watch tape. Traders track P&amp;L. Closers guess.</P>
+        <P>Your entire ecosystem — and it travels with you no matter what offer you&apos;re on.</P>
+        <P>It records every call, builds your highlight reels, proves your numbers in real time, opens the job board, and puts 8-figure coaches in your corner.</P>
       </div>
     ),
   },
+  // 4-6 — App tour (real screenshots, sample account)
   {
-    kicker: "The answer",
-    title: "Your whole game, in one place.",
-    body: <P>A bot records your sales calls, AI scores every one, and your dashboard turns the week into numbers you can act on. This is a member&apos;s home screen.</P>,
+    kicker: "The cockpit",
+    title: "Your whole game, on one screen.",
+    body: <P>A bot records your sales calls, AI scores every one, and your dashboard turns the week into numbers you can act on.</P>,
     shot: "/pitch/deck-dashboard.png",
   },
   {
     kicker: "The film room",
     title: "Every call, on tape.",
-    body: <P>Full recordings, transcripts, and AI analysis on every call — the exact habit behind every &ldquo;reviewed one call, closed $50k&rdquo; story you&apos;ll see later in this deck.</P>,
+    body: <P>Full recordings, transcripts, and AI analysis on every call — the habit behind every &ldquo;reviewed one call, closed $50k&rdquo; story later in this deck.</P>,
     shot: "/pitch/deck-calls.png",
   },
   {
@@ -96,6 +126,7 @@ export const SLIDES: Slide[] = [
     body: <P>Close rate, cash collected, streaks — tracked automatically and verifiable. Your profile becomes a rep card companies actually trust.</P>,
     shot: "/pitch/deck-stats.png",
   },
+  // 7 — Classroom
   {
     kicker: "The classroom",
     title: "Coached by killers.",
@@ -128,26 +159,50 @@ export const SLIDES: Slide[] = [
     ),
     wide: true,
   },
+  // 8 — Public job board (no hard number)
   {
     kicker: "The doors",
-    title: "364 live remote closing roles.",
-    body: <P>A job board of real, active remote sales seats — refreshed weekly. And that&apos;s just the public list. The private one comes with the yearly plan.</P>,
+    title: "Hundreds of remote closing roles. Added weekly.",
+    body: <P>A live board of real remote sales seats, refreshed every week — from first commission seat to senior closer chairs. And that&apos;s just the public list.</P>,
     shot: "/pitch/deck-jobboard.png",
   },
+  // 9 — The private board (VIP)
+  {
+    kicker: "Yearly members only",
+    title: <>The <span className="text-amber-300">private</span> board.</>,
+    body: (
+      <div className="flex flex-col md:flex-row gap-10 items-center w-full max-w-5xl">
+        <div className="flex-1 space-y-4">
+          <P>Beyond the public board sits our private network — companies that come to Sequ3nce directly for proven closers.</P>
+          <P><span className="text-white font-semibold">Seats paying $10k, $20k, $30k a month</span> — never posted anywhere. We send YOUR verified profile and make the intro personally.</P>
+          <P>Public board for getting in the game. The private network for getting placed.</P>
+        </div>
+        <div className="flex-1 min-w-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/pitch/vip-placement-line.png" alt="The Placement Line"
+            className="rounded-xl border border-zinc-800 shadow-2xl w-full" />
+          <p className="text-zinc-600 text-[11px] mt-2 text-center">The Placement Line — live in the app</p>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  // 10 — Proof
   {
     kicker: "Real members. Real wins.",
     title: "This is what the room produces.",
     body: (
       <div className="grid grid-cols-3 gap-4 items-start">
-        {["niv", "morgan", "samw"].map((s) => (
+        {["niv", "morgan", "samw"].map((w) => (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={s} src={`/wins/${s}.png`} alt="Real member win"
+          <img key={w} src={`/wins/${w}.png`} alt="Real member win"
             className="rounded-xl border border-zinc-800 w-full" />
         ))}
       </div>
     ),
     wide: true,
   },
+  // 11 — Sequ3nce pricing
   {
     kicker: "Membership",
     title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Four ways in. <span className="text-amber-300">One obvious one.</span></h1>,
@@ -170,27 +225,56 @@ export const SLIDES: Slide[] = [
           <div className="text-amber-300 text-[12px] font-semibold uppercase tracking-wider mb-2">Yearly — VIP</div>
           <div className="text-3xl font-bold text-white">$83<span className="text-sm text-zinc-500">/mo</span></div>
           <p className="text-zinc-400 text-[12px] mt-2">Billed $1,000 / year</p>
-          <span className="mt-auto pt-3 text-[11px] text-amber-300 font-semibold">Everything on the next slide &rarr;</span>
+          <span className="mt-auto pt-3 text-[11px] text-amber-300 font-semibold">The three pillars &rarr;</span>
         </div>
       </div>
     ),
     wide: true,
   },
+  // 12 — VIP: three pillars
   {
     kicker: "Yearly only",
-    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">The VIP tier is a different{" "}<span className="text-amber-300">membership.</span></h1>,
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">VIP is <span className="text-amber-300">three pillars.</span></h1>,
     body: (
-      <div className="grid grid-cols-3 gap-4 w-full max-w-4xl">
-        {perkCard("target", "The Placement Line", "Companies call US asking for closers. VIP members see those roles first — with a warm intro from Sequ3nce.", true)}
-        {perkCard("check", "Gold Check", "Gold verified badge on your profile + priority verification — your numbers certified in 24 hours.")}
-        {perkCard("crown", "VIP Badge", "Your name carries VIP everywhere in the community — same system as Founder and Coach badges.")}
-        {perkCard("door", "The Inner Circle", "A private VIP-only room inside the community. Events drop there first. The top closers actually talk there.")}
-        {perkCard("ticket", "VIP Events", "Closer masterminds and member parties — in person and remote. VIP gets the invite.")}
-        {perkCard("percent", "Member Pricing", "20% off everything else, forever — extra coaching, merch, event seats.")}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-5xl items-stretch">
+        {[
+          {
+            n: "01",
+            name: "VIP treatment",
+            lead: "You're treated differently — everywhere.",
+            items: ["VIP badge across the community", "The Inner Circle — private room", "VIP events: front row, VIP tables", "Merch + member pricing: 20% off, always"],
+          },
+          {
+            n: "02",
+            name: "Coached to elite",
+            lead: "We build you into the best version of you.",
+            items: ["Exclusive coaching access", "Call reviews on your real calls", "Live call listening", "Priority verification — skip the line"],
+          },
+          {
+            n: "03",
+            name: "Direct placement",
+            lead: "The best seats come to you.",
+            items: ["The Placement Line — private network", "Your profile sent to partners by us", "Gold verified numbers do the talking", "Warm intros, never cold applications"],
+          },
+        ].map((pil) => (
+          <div key={pil.n} className={"rounded-2xl border p-6 flex flex-col " + (pil.n === "03" ? "border-amber-400/50 bg-amber-400/[0.05]" : "border-zinc-800 bg-zinc-900/60")}>
+            <div className="text-amber-300 text-[12px] font-black tracking-[0.25em] mb-3">{pil.n}</div>
+            <div className="text-white font-bold text-[17px] mb-1">{pil.name}</div>
+            <p className="text-zinc-400 text-[12.5px] mb-4">{pil.lead}</p>
+            <div className="space-y-2 mt-auto">
+              {pil.items.map((it) => (
+                <div key={it} className="flex items-start gap-2 text-[12.5px] text-zinc-300">
+                  <span className="text-amber-300 mt-0.5">&#x2713;</span>{it}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     ),
     wide: true,
   },
+  // 13 — Live in the app
   {
     kicker: "Already live",
     title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Not a promise — <span className="text-amber-300">it&apos;s in the app.</span></h1>,
@@ -204,7 +288,7 @@ export const SLIDES: Slide[] = [
         </div>
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/pitch/vip-placement-line.png" alt="The Placement Line — VIP internal placement list"
+          <img src="/pitch/vip-placement-line.png" alt="The Placement Line"
             className="rounded-xl border border-zinc-800 shadow-2xl w-full" />
           <p className="text-zinc-500 text-[12px] mt-2 text-center">The Placement Line — your profile, live with our placement team</p>
         </div>
@@ -212,40 +296,12 @@ export const SLIDES: Slide[] = [
     ),
     wide: true,
   },
-  {
-    kicker: "The crown jewel",
-    title: "The Placement Line.",
-    body: (
-      <div className="flex flex-col md:flex-row gap-10 items-center w-full max-w-4xl">
-        <div className="flex-1 space-y-4">
-          <P>Hiring companies come to us directly for proven closers. We don&apos;t post those seats anywhere.</P>
-          <P><span className="text-white font-semibold">We send them YOUR profile</span> — photo, story, gold-verified numbers — and make the intro personally.</P>
-          <P>No applications. No job hunting. Your profile does the work; the call comes to you.</P>
-        </div>
-        <div className="w-full md:w-[350px] rounded-2xl border border-amber-400/40 bg-zinc-900 p-5 shadow-2xl">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300 mb-3">On The Placement Line</div>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-11 h-11 rounded-full bg-amber-400 text-zinc-950 font-bold flex items-center justify-center">JR</div>
-            <div>
-              <div className="text-white font-bold text-[15px]">Jordan R. <span className="ml-1 text-[9px] font-bold uppercase bg-amber-400/15 text-amber-300 border border-amber-400/30 px-1 py-0.5 rounded align-middle">VIP</span></div>
-              <div className="text-zinc-400 text-[12px]">Gold Verified &middot; 55% close rate &middot; $31k last week</div>
-            </div>
-          </div>
-          <div className="rounded-xl bg-zinc-800/80 px-4 py-3 text-[12.5px] text-zinc-300 leading-relaxed">
-            &ldquo;Sending your profile to an 8-figure coaching offer hiring two
-            closers this month — expect an intro this week.&rdquo;
-            <div className="text-zinc-500 text-[11px] mt-2">— Sequ3nce placement team</div>
-          </div>
-        </div>
-      </div>
-    ),
-    wide: true,
-  },
+  // 14 — Events + merch (with renders)
   {
     kicker: "VIP treatment, everywhere",
     title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">At our events, <span className="text-amber-300">you&apos;re the VIP too.</span></h1>,
     body: (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-4xl items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-5xl items-stretch">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col">
           <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Event invite</div>
           <div className="text-white font-bold text-[17px] leading-tight">Closing Masterclass</div>
@@ -262,37 +318,135 @@ export const SLIDES: Slide[] = [
             <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-1 rounded">Your table: VIP</span>
           </div>
         </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-3">Sequ3nce merch</div>
-          <div className="text-white font-bold text-[17px] leading-tight">The merch drop</div>
-          <div className="text-zinc-400 text-[12px] mt-1">Store opening inside the app</div>
-          <div className="mt-4 pt-3 border-t border-zinc-800">
-            <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-1 rounded">Member price: 20% off, always</span>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col items-center">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-3 self-start">The merch drop</div>
+          <svg viewBox="0 0 200 110" className="w-40 mb-2">
+            <path d="M30 78 Q30 30 100 30 Q170 30 170 78 L170 84 Q100 96 30 84 Z" fill="#18181b" stroke="#3f3f46" strokeWidth="2" />
+            <path d="M160 80 Q196 82 194 92 Q160 98 150 88" fill="#18181b" stroke="#3f3f46" strokeWidth="2" />
+            <text x="100" y="66" textAnchor="middle" fill="#fafafa" fontSize="13" fontWeight="800" letterSpacing="1">SEQU3NCE.AI</text>
+          </svg>
+          <div className="text-white font-bold text-[15px]">The Closer Cap</div>
+          <div className="mt-2 text-[14px]">
+            <span className="text-zinc-500 line-through mr-2">$50</span>
+            <span className="text-amber-300 font-bold">$20 member price</span>
+          </div>
+          <div className="mt-3 pt-3 border-t border-zinc-800 w-full text-center">
+            <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-1 rounded">Store opening in-app &middot; VIP: 20% off always</span>
           </div>
         </div>
       </div>
     ),
     wide: true,
   },
+  // 15 — Churp intro
   {
-    kicker: "The math",
-    title: "Yearly pays for itself.",
+    kicker: "Part two — Churp",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Your keyboard just <span className="text-amber-300">learned to sell.</span></h1>,
     body: (
-      <div className="space-y-5 max-w-xl">
-        <div className="flex justify-between text-lg border-b border-zinc-800 pb-3"><span className="text-zinc-400">12 months, paid monthly</span><span className="text-zinc-300 font-semibold">$1,800</span></div>
-        <div className="flex justify-between text-lg border-b border-zinc-800 pb-3"><span className="text-zinc-400">Yearly VIP</span><span className="text-white font-bold">$1,000</span></div>
-        <div className="flex justify-between text-lg"><span className="text-amber-300 font-semibold">You keep</span><span className="text-amber-300 font-bold">$800 + the whole VIP tier</span></div>
-        <p className="text-zinc-500 text-sm pt-2">And one Placement Line intro can be worth a $15k/mo seat.</p>
+      <div className="flex flex-col md:flex-row gap-10 items-center w-full max-w-4xl">
+        <div className="flex-1 space-y-4">
+          <P>Churp is the AI that replies to your prospects for you. It reads the conversation on your screen and writes the send-ready reply at your cursor.</P>
+          <P><span className="text-white font-semibold">Three minutes of typing becomes three seconds.</span> Same hours, 10&times; the conversations — objections, follow-ups, closes.</P>
+          <P>Works in every app. Zero typing, all closing.</P>
+        </div>
+        <div className="w-full md:w-[350px] rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl space-y-2.5">
+          {[
+            ["Silent reply", "Press one key — it writes what a closer would send."],
+            ["Command", "\u201cHandle this objection.\u201d It executes against the whole thread."],
+            ["Brief it", "Tell it what you know; it writes the follow-up that fits."],
+            ["Remind", "\u201cRemind me Friday.\u201d Zero follow-ups dropped."],
+          ].map(([m, d]) => (
+            <div key={m} className="rounded-lg bg-zinc-800/70 px-3.5 py-2.5">
+              <span className="text-amber-300 text-[12px] font-bold uppercase tracking-wider">{m}</span>
+              <p className="text-zinc-300 text-[12.5px] mt-0.5">{d}</p>
+            </div>
+          ))}
+        </div>
       </div>
     ),
+    wide: true,
   },
+  // 16 — Churp pricing
   {
-    title: (
-      <div className="text-center">
-        <div className="text-5xl font-bold tracking-tight text-white leading-tight">Lock your seat.</div>
-        <p className="text-zinc-400 mt-6 text-lg">Yearly VIP — $1,000 today, everything you just saw.</p>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Sequ3nce.ai" className="h-6 mx-auto mt-12 invert opacity-60" />
+    kicker: "Churp pricing",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Every plan, everything. <span className="text-amber-300">Annual wins.</span></h1>,
+    body: (
+      <div className="w-full max-w-5xl">
+        <div className="grid grid-cols-4 gap-4 items-stretch mb-6">
+          {[
+            { label: "Monthly", per: "$24.99", sub: "billed monthly", vip: false },
+            { label: "3 Months", per: "$23.33", sub: "$69.99 / 3 mo", vip: false },
+            { label: "6 Months", per: "$21.67", sub: "$129.99 / 6 mo", vip: false },
+            { label: "Annual", per: "$20", sub: "$239.99 / year", vip: true },
+          ].map((pl) => (
+            <div key={pl.label} className={"rounded-2xl border p-5 flex flex-col " + (pl.vip ? "border-2 border-amber-400/70 bg-amber-400/[0.07] scale-[1.04] relative" : "border-zinc-800 bg-zinc-900/60")}>
+              {pl.vip && <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-400 text-zinc-950 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md whitespace-nowrap">Best value</span>}
+              <div className={"text-[12px] font-semibold uppercase tracking-wider mb-2 " + (pl.vip ? "text-amber-300" : "text-zinc-400")}>{pl.label}</div>
+              <div className="text-2xl font-bold text-white">{pl.per}<span className="text-sm text-zinc-500">/mo</span></div>
+              <p className="text-zinc-500 text-[12px] mt-1.5">{pl.sub}</p>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-6 py-4 flex items-center justify-center gap-6 text-[15px]">
+          <span className="text-zinc-400">12 months, paid monthly: <span className="line-through">$299.88</span></span>
+          <span className="text-white font-bold">Annual: $239.99</span>
+          <span className="text-amber-300 font-bold">You keep $60</span>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  // 17 — Lock your seat: both yearlies
+  {
+    kicker: "The close",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Lock your seat.</h1>,
+    body: (
+      <div className="grid grid-cols-2 gap-6 w-full max-w-3xl">
+        <div className="rounded-2xl border-2 border-amber-400/70 bg-amber-400/[0.06] p-7">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Sequ3nce.ai" className="h-4 invert mb-4" />
+          <div className="text-amber-300 text-[12px] font-semibold uppercase tracking-wider mb-1">Yearly — VIP</div>
+          <div className="text-4xl font-bold text-white">$1,000<span className="text-base text-zinc-500">/yr</span></div>
+          <p className="text-zinc-400 text-[12.5px] mt-3">The whole platform + all three VIP pillars.</p>
+        </div>
+        <div className="rounded-2xl border-2 border-amber-400/70 bg-amber-400/[0.06] p-7">
+          <div className="text-white font-black tracking-[0.3em] text-sm mb-4">CHURP</div>
+          <div className="text-amber-300 text-[12px] font-semibold uppercase tracking-wider mb-1">Annual</div>
+          <div className="text-4xl font-bold text-white">$239.99<span className="text-base text-zinc-500">/yr</span></div>
+          <p className="text-zinc-400 text-[12.5px] mt-3">Unlimited replies, every app, trained on your voice.</p>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  // 18 — Path A vs Path B
+  {
+    kicker: "Two paths",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Which one makes sense for you?</h1>,
+    body: (
+      <div className="grid grid-cols-2 gap-6 w-full max-w-4xl items-stretch">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-7 flex flex-col">
+          <div className="text-zinc-400 text-[12px] font-bold uppercase tracking-[0.2em] mb-2">Path A — Starter</div>
+          <div className="text-white font-bold text-xl mb-4">Dip your toes in.</div>
+          <div className="space-y-2 text-[13px] text-zinc-300">
+            <div>Sequ3nce monthly — $150/mo</div>
+            <div>Churp monthly — $24.99/mo</div>
+          </div>
+          <p className="text-zinc-500 text-[12px] mt-auto pt-5">Full platform, full tool. Cancel anytime.</p>
+        </div>
+        <div className="rounded-2xl border-2 border-amber-400/70 bg-amber-400/[0.07] p-7 flex flex-col relative">
+          <span className="absolute -top-3 left-6 bg-amber-400 text-zinc-950 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">The move</span>
+          <div className="text-amber-300 text-[12px] font-bold uppercase tracking-[0.2em] mb-2">Path B — All in</div>
+          <div className="text-white font-bold text-xl mb-4">Everything, locked for a year.</div>
+          <div className="space-y-2 text-[13px] text-zinc-200">
+            <div className="flex items-start gap-2"><span className="text-amber-300">&#x2713;</span>Sequ3nce Yearly VIP — $1,000</div>
+            <div className="flex items-start gap-2"><span className="text-amber-300">&#x2713;</span>Churp Annual — $239.99</div>
+            <div className="flex items-start gap-2"><span className="text-amber-300">&#x2713;</span>All three VIP pillars — placement, coaching, treatment</div>
+            <div className="flex items-start gap-2"><span className="text-amber-300">&#x2713;</span>The Inner Circle + VIP events</div>
+            <div className="flex items-start gap-2"><span className="text-amber-300">&#x2713;</span>Gold verification + member pricing forever</div>
+          </div>
+          <p className="text-amber-300/90 text-[12px] font-semibold mt-auto pt-5">Save $860 vs monthly — and the doors open.</p>
+        </div>
       </div>
     ),
     wide: true,
