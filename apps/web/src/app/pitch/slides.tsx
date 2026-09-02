@@ -1,0 +1,191 @@
+import React from "react";
+
+// ============================================================================
+// Slide content for the closer pitch deck (/pitch). Reps present this on
+// video calls instead of a live app login. UI screenshots carry SAMPLE data
+// (the invisible demo rig) — the proof slide uses REAL wins only.
+// The deck's engineered outcome: close on the YEARLY plan.
+// ============================================================================
+
+export type Slide = {
+  kicker?: string;
+  title: React.ReactNode;
+  body?: React.ReactNode;
+  shot?: string;
+  wide?: boolean;
+};
+
+const P = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-zinc-400 text-lg leading-relaxed max-w-[46ch]">{children}</p>
+);
+
+const perkCard = (icon: string, name: string, line: string, accent?: boolean) => (
+  <div
+    key={name}
+    className={`rounded-2xl border p-5 ${
+      accent
+        ? "border-amber-400/40 bg-amber-400/[0.06]"
+        : "border-zinc-800 bg-zinc-900/60"
+    }`}
+  >
+    <div className="text-2xl mb-2">{icon}</div>
+    <div className="font-bold text-white text-[15px] mb-1">{name}</div>
+    <div className="text-zinc-400 text-[13px] leading-relaxed">{line}</div>
+  </div>
+);
+
+export const SLIDES: Slide[] = [
+  {
+    title: (
+      <div className="text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="Sequ3nce.ai" className="h-8 mx-auto mb-10 invert" />
+        <div className="text-5xl md:text-6xl font-bold tracking-tight text-white leading-[1.05]">
+          The operating system
+          <br />
+          for high-ticket closers.
+        </div>
+        <p className="text-zinc-500 mt-8 text-lg">
+          Every call filmed. Every number tracked. Every door opened.
+        </p>
+      </div>
+    ),
+    wide: true,
+  },
+  {
+    kicker: "The problem",
+    title: "Closers fly blind.",
+    body: (
+      <div className="space-y-4">
+        <P>No film of their calls. No real numbers. No proof of what they can do when a better seat opens up.</P>
+        <P>Athletes watch tape. Traders track P&amp;L. Closers guess.</P>
+      </div>
+    ),
+  },
+  {
+    kicker: "The answer",
+    title: "Your whole game, in one place.",
+    body: <P>A bot records your sales calls, AI scores every one, and your dashboard turns the week into numbers you can act on. This is a member&apos;s home screen.</P>,
+    shot: "/pitch/deck-dashboard.png",
+  },
+  {
+    kicker: "The film room",
+    title: "Every call, on tape.",
+    body: <P>Full recordings, transcripts, and AI analysis on every call — the exact habit behind every &ldquo;reviewed one call, closed $50k&rdquo; story you&apos;ll see later in this deck.</P>,
+    shot: "/pitch/deck-calls.png",
+  },
+  {
+    kicker: "Your numbers",
+    title: "Stats that hire you.",
+    body: <P>Close rate, cash collected, streaks — tracked automatically and verifiable. Your profile becomes a rep card companies actually trust.</P>,
+    shot: "/pitch/deck-stats.png",
+  },
+  {
+    kicker: "The classroom",
+    title: "Coached by killers.",
+    body: <P>Real coaches run classrooms inside the app — training libraries, live call reviews, replays. Ben Byrne&apos;s classroom is open now; more coaches are joining.</P>,
+    shot: "/pitch/deck-classroom.png",
+  },
+  {
+    kicker: "The doors",
+    title: "364 live remote closing roles.",
+    body: <P>A job board of real, active remote sales seats — refreshed weekly. And that&apos;s just the public list. The private one comes with the yearly plan.</P>,
+    shot: "/pitch/deck-jobboard.png",
+  },
+  {
+    kicker: "Real members. Real wins.",
+    title: "This is what the room produces.",
+    body: (
+      <div className="grid grid-cols-3 gap-4 items-start">
+        {["niv", "morgan", "samw"].map((s) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img key={s} src={`/wins/${s}.png`} alt="Real member win"
+            className="rounded-xl border border-zinc-800 w-full" />
+        ))}
+      </div>
+    ),
+    wide: true,
+  },
+  {
+    kicker: "Membership",
+    title: "Two ways in.",
+    body: (
+      <div className="grid grid-cols-2 gap-6 w-full max-w-3xl">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8">
+          <div className="text-zinc-400 text-sm font-semibold uppercase tracking-wider mb-3">Monthly</div>
+          <div className="text-4xl font-bold text-white">$150<span className="text-lg text-zinc-500">/mo</span></div>
+          <p className="text-zinc-500 text-sm mt-4">The full platform. Cancel anytime.</p>
+        </div>
+        <div className="rounded-2xl border-2 border-amber-400/60 bg-amber-400/[0.05] p-8 relative">
+          <span className="absolute -top-3 left-6 bg-amber-400 text-zinc-950 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">Save 44%</span>
+          <div className="text-amber-300 text-sm font-semibold uppercase tracking-wider mb-3">Yearly — VIP</div>
+          <div className="text-4xl font-bold text-white">$83<span className="text-lg text-zinc-500">/mo</span></div>
+          <p className="text-zinc-400 text-sm mt-4">$1,000 once a year — plus everything on the next slide.</p>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  {
+    kicker: "Yearly only",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">The VIP tier is a different{" "}<span className="text-amber-300">membership.</span></h1>,
+    body: (
+      <div className="grid grid-cols-3 gap-4 w-full max-w-4xl">
+        {perkCard("🎯", "The Placement Line", "Companies call US asking for closers. VIP members see those roles first — with a warm intro from Sequ3nce.", true)}
+        {perkCard("🥇", "Gold Check", "Gold verified badge on your profile + priority verification — your numbers certified in 24 hours.")}
+        {perkCard("👑", "VIP Badge", "Your name carries VIP everywhere in the community — same system as Founder and Coach badges.")}
+        {perkCard("🚪", "The Inner Circle", "A private VIP-only room inside the community. Events drop there first. The top closers actually talk there.")}
+        {perkCard("🎟", "VIP Events", "Closer masterminds and member parties — in person and remote. VIP gets the invite.")}
+        {perkCard("💸", "Member Pricing", "20% off everything else, forever — extra coaching, merch, event seats.")}
+      </div>
+    ),
+    wide: true,
+  },
+  {
+    kicker: "The crown jewel",
+    title: "The Placement Line.",
+    body: (
+      <div className="flex flex-col md:flex-row gap-10 items-center w-full max-w-4xl">
+        <div className="flex-1 space-y-4">
+          <P>Hiring companies come to us directly for proven closers. Those seats never touch the public board.</P>
+          <P><span className="text-white font-semibold">VIP members get first look and a warm intro</span> — your verified stats do the talking.</P>
+          <P>One placed seat pays for the year many times over.</P>
+        </div>
+        <div className="w-full md:w-[340px] rounded-2xl border border-amber-400/40 bg-zinc-900 p-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-400 text-zinc-950 px-2 py-0.5 rounded">Partner role — VIP first look</span>
+          </div>
+          <div className="text-white font-bold">Senior Closer — 8-Figure Coaching Offer</div>
+          <div className="text-zinc-400 text-sm mt-1">Remote · $15k–$25k/mo OTE · Warm leads only</div>
+          <div className="mt-4 pt-3 border-t border-zinc-800 text-[12px] text-zinc-500">
+            Introduced by Sequ3nce · <span className="text-amber-300">VIP members see it first</span>
+          </div>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  {
+    kicker: "The math",
+    title: "Yearly pays for itself.",
+    body: (
+      <div className="space-y-5 max-w-xl">
+        <div className="flex justify-between text-lg border-b border-zinc-800 pb-3"><span className="text-zinc-400">12 months, paid monthly</span><span className="text-zinc-300 font-semibold">$1,800</span></div>
+        <div className="flex justify-between text-lg border-b border-zinc-800 pb-3"><span className="text-zinc-400">Yearly VIP</span><span className="text-white font-bold">$1,000</span></div>
+        <div className="flex justify-between text-lg"><span className="text-amber-300 font-semibold">You keep</span><span className="text-amber-300 font-bold">$800 + the whole VIP tier</span></div>
+        <p className="text-zinc-500 text-sm pt-2">And one Placement Line intro can be worth a $15k/mo seat.</p>
+      </div>
+    ),
+  },
+  {
+    title: (
+      <div className="text-center">
+        <div className="text-5xl font-bold tracking-tight text-white leading-tight">Lock your seat.</div>
+        <p className="text-zinc-400 mt-6 text-lg">Yearly VIP — $1,000 today, everything you just saw.</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="Sequ3nce.ai" className="h-6 mx-auto mt-12 invert opacity-60" />
+      </div>
+    ),
+    wide: true,
+  },
+];
