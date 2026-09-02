@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { PlacementLineTab } from './PlacementLineTab';
 import type { CloserInfo, PublicJob } from '../convex';
 import { FreeHireJobBoardPreview } from './FreeHireJobBoardPreview';
-import { getPublicJobs, addPublicJob, closePublicJob, deletePublicJob, updateJobTracking } from '../convex';
+import { getPublicJobs, addPublicJob, closePublicJob, deletePublicJob, updateJobTracking, getFeatureFlags } from '../convex';
 
 interface JobBoardViewProps {
   closerInfo: CloserInfo;
@@ -10,10 +10,11 @@ interface JobBoardViewProps {
 
 type Tab = 'public' | 'internal';
 
-// Development-only visual prototype. Production builds continue to render the
-// legacy job board below. Set this constant to false (or remove the preview
-// import + wrapper) to revoke the prototype without touching the old feature.
-const SHOW_FREEHIRE_JOB_BOARD_PREVIEW = process.env.NODE_ENV === 'development';
+// The FreeHire board is remotely flagged: dev builds always show it; packaged
+// builds ask the server (flag "freehire_job_board" — off / internal / all,
+// flip via b2cFeatureFlags:setFlag). Any fetch failure falls back to the
+// legacy board, so the flag can only ever ADD the new UI.
+const FREEHIRE_ALWAYS_ON = process.env.NODE_ENV === 'development';
 
 const INDUSTRIES = [
   'Solar', 'Insurance', 'Real Estate', 'SaaS', 'Coaching',
@@ -41,7 +42,33 @@ function formatRelative(ts: number): string {
 }
 
 export function JobBoardView(props: JobBoardViewProps) {
-  if (SHOW_FREEHIRE_JOB_BOARD_PREVIEW) {
+  // null = still asking the server; resolves fast, and a 2.5s cap guarantees
+  // the board never hangs on a slow flag check.
+  const [freeHireEnabled, setFreeHireEnabled] = useState<boolean | null>(
+    FREEHIRE_ALWAYS_ON ? true : null,
+  );
+
+  useEffect(() => {
+    if (FREEHIRE_ALWAYS_ON) return;
+    let settled = false;
+    const decide = (enabled: boolean) => {
+      if (!settled) { settled = true; setFreeHireEnabled(enabled); }
+    };
+    const cap = setTimeout(() => decide(false), 2500);
+    getFeatureFlags((props.closerInfo as { sessionToken?: string }).sessionToken)
+      .then((flags) => decide(!!flags?.freehire_job_board))
+      .catch(() => decide(false));
+    return () => clearTimeout(cap);
+  }, [props.closerInfo]);
+
+  if (freeHireEnabled === null) {
+    return (
+      <div className="flex-1 flex items-center justify-center h-full">
+        <span className="w-6 h-6 border-2 border-gray-300 border-t-black dark:border-zinc-600 dark:border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
+  if (freeHireEnabled) {
     return <FreeHireJobBoardPreview closerInfo={props.closerInfo} />;
   }
 

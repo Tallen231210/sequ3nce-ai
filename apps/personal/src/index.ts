@@ -630,6 +630,30 @@ function extractFreeHireCompensation(description: string): string {
   return likelyPay ? likelyPay.replace(/\s+/g, ' ').replace(/k/gi, 'K').trim() : '';
 }
 
+// FreeHire availability for packaged builds: the remote flag's global mode
+// ("off" | "internal" | "all") is the kill switch. Cached for 5 minutes;
+// unreachable config counts as "off" — packaged builds fail closed. Dev
+// builds are always allowed. Per-USER gating happens server-side in the
+// renderer's flag check; this guard only enforces the global switch.
+let freeHireModeCache: { mode: string; fetchedAt: number } | null = null;
+async function freeHireAllowed(): Promise<boolean> {
+  if (process.env.NODE_ENV === 'development' || process.defaultApp) return true;
+  const now = Date.now();
+  if (freeHireModeCache && now - freeHireModeCache.fetchedAt < 5 * 60 * 1000) {
+    return freeHireModeCache.mode !== 'off';
+  }
+  try {
+    const response = await fetch('https://ideal-ram-982.convex.site/b2c/feature-flags/public');
+    const payload = await response.json() as { modes?: Record<string, string> };
+    const mode = payload.modes?.freehire_job_board ?? 'off';
+    freeHireModeCache = { mode, fetchedAt: now };
+    return mode !== 'off';
+  } catch {
+    freeHireModeCache = { mode: 'off', fetchedAt: now };
+    return false;
+  }
+}
+
 // ==================== IPC Handlers ====================
 
 // Set up IPC handlers
@@ -641,8 +665,8 @@ const setupIpcHandlers = (): void => {
   // proxy from being exposed to the UI. Packaged builds remain on the legacy
   // Sequ3nce job board and this handler refuses requests outside development.
   ipcMain.handle('freehire:search', async (_event, rawParams: unknown) => {
-    if (process.env.NODE_ENV !== 'development' && !process.defaultApp) {
-      throw new Error('The FreeHire development feed is disabled in production builds.');
+    if (!(await freeHireAllowed())) {
+      throw new Error('The FreeHire job feed is not enabled on this build.');
     }
 
     const params = rawParams && typeof rawParams === 'object'
@@ -778,8 +802,8 @@ const setupIpcHandlers = (): void => {
   });
 
   ipcMain.handle('freehire:get-job', async (_event, rawSlug: unknown) => {
-    if (process.env.NODE_ENV !== 'development' && !process.defaultApp) {
-      throw new Error('The FreeHire development feed is disabled in production builds.');
+    if (!(await freeHireAllowed())) {
+      throw new Error('The FreeHire job feed is not enabled on this build.');
     }
     const slug = typeof rawSlug === 'string' ? rawSlug.trim() : '';
     if (!/^[a-z0-9-]{3,240}$/.test(slug)) throw new Error('Invalid FreeHire job identifier.');

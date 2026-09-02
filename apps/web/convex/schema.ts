@@ -2730,6 +2730,15 @@ export default defineSchema({
     .index("by_user_job", ["userId", "externalJobId"])
     .index("by_user_updated", ["userId", "updatedAt"]),
 
+  // Remote feature flags for the Personal app — flip features in shipped
+  // builds without a release. Modes: "off" | "internal" (founders + test
+  // accounts) | "all". Missing row = off (fail closed).
+  b2cFeatureFlags: defineTable({
+    key: v.string(),
+    mode: v.string(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   // ============================================
   // B2C COMMUNITY — Feature Requests, Bug Reports
   // ============================================

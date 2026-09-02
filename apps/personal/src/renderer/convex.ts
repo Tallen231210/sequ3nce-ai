@@ -4624,6 +4624,31 @@ export async function updateJobTracking(
   }
 }
 
+// ==================== Remote feature flags ====================
+
+/**
+ * Per-user flag decisions from the server. Any failure returns null and the
+ * caller falls back to the legacy experience — flags can only ever ADD the
+ * new UI, never take the app down.
+ */
+export async function getFeatureFlags(
+  sessionToken: string | undefined,
+): Promise<Record<string, boolean> | null> {
+  if (!sessionToken) return null;
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/feature-flags`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionToken }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data && typeof data.flags === "object" ? data.flags : null;
+  } catch {
+    return null;
+  }
+}
+
 // ==================== FreeHire development activity ====================
 
 export type FreeHireJobStage = "saved" | "preparing" | "applied" | "interviewing";

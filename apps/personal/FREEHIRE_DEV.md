@@ -22,10 +22,15 @@ Sequ3nce Personal.
 
 ## Production safety
 
-`JobBoardView.tsx` renders the new board only when
-`process.env.NODE_ENV === 'development'`. Packaged builds continue to render
-`LegacyJobBoardView`. The main-process FreeHire handler also refuses requests in
-packaged production.
+The board is behind the remote flag `freehire_job_board` (2026-09-02):
+
+- Dev builds always show the new board.
+- Packaged builds ask the server per user. Modes: `off` (default, nobody),
+  `internal` (founders + test accounts), `all`. Flip with:
+  `npx convex run b2cFeatureFlags:setFlag '{"key":"freehire_job_board","mode":"internal"}' --prod`
+- Any flag-fetch failure falls back to the legacy board.
+- The main-process FreeHire handler independently honors the global mode
+  (cached 5 min) — setting `off` is a true kill switch even for running apps.
 
 The Convex additions are isolated to `b2cFreeHireJobTracking`, internal
 functions in `b2cJobBoard.ts`, a B2C session resolver, and one HTTP endpoint.

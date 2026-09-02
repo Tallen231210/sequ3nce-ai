@@ -12313,6 +12313,46 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// Per-user feature-flag decisions. Bearer-token identity only; failures and
+// unknown sessions return all-off so the app falls back to the legacy UI.
+http.route({
+  path: "/b2c/feature-flags",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const sessionToken = typeof body?.sessionToken === "string" ? body.sessionToken : "";
+      const result = await ctx.runQuery(internal.b2cFeatureFlags.evaluateFlagsForSession, {
+        sessionToken,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch {
+      return b2cJsonResponse({ flags: {} }, 200, true);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/feature-flags",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// Global flag MODES (no user data) — read by the Electron main process so
+// the FreeHire IPC bridge honors the kill switch in packaged builds.
+http.route({
+  path: "/b2c/feature-flags/public",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    try {
+      const modes = await ctx.runQuery(api.b2cFeatureFlags.getPublicFlagModes, {});
+      return b2cJsonResponse({ modes }, 200, true);
+    } catch {
+      return b2cJsonResponse({ modes: {} }, 200, true);
+    }
+  }),
+});
+
 // ==================== Adoption Checklist ====================
 
 // POST /b2c/adoption-checklist — get checklist data for a user
