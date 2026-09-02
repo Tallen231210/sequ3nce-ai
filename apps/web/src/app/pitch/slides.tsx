@@ -55,13 +55,13 @@ export const SLIDES: Slide[] = [
     title: (
       <div className="text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Sequ3nce.ai" className="w-[82vw] max-w-[1100px] mx-auto mb-14 invert" />
+        <img src="/logo.png" alt="Sequ3nce.ai" className="w-[82vw] max-w-[1100px] mx-auto -mb-8 invert" />
         <div className="text-5xl md:text-6xl font-bold tracking-tight text-white leading-[1.05]">
           The operating system
           <br />
           for high-ticket closers.
         </div>
-        <p className="text-zinc-500 mt-8 text-lg">
+        <p className="text-zinc-500 mt-6 text-lg">
           Every call filmed. Every number tracked. Every door opened.
         </p>
       </div>
