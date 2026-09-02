@@ -111,7 +111,7 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
         <div className="flex gap-1 bg-gray-100 dark:bg-zinc-800 rounded-lg p-1 w-fit mb-4">
           {([
             { id: 'public' as Tab, label: 'Public Job Board' },
-            { id: 'internal' as Tab, label: 'Internal' },
+            { id: 'internal' as Tab, label: 'The Placement Line' },
           ]).map((tab) => (
             <button
               key={tab.id}
