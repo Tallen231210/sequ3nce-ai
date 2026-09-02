@@ -118,7 +118,37 @@ export const disconnectCalendar = mutation({
       calendarDisconnectReason: undefined,
     });
 
-    return { success: true };
+    // Disconnect means the schedule EMPTIES. Clearing only the tokens leaves
+    // ghosts (bitten 2026-09-02): b2cCalendars rows carry their OWN OAuth
+    // tokens, so the 15-min sync cron re-imports the old account's events
+    // right after this runs unless the rows themselves are deleted. B2B
+    // sub-calendar rows share the closer token we just cleared, so their
+    // events would go permanently stale — wipe those too. Coaching-call
+    // schedule rows are in-app references, not calendar-synced: keep them.
+    const b2cCals = await ctx.db
+      .query("b2cCalendars")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+    for (const c of b2cCals) await ctx.db.delete(c._id);
+
+    const subs = await ctx.db
+      .query("closerCalendarSubscriptions")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+    for (const sub of subs) await ctx.db.delete(sub._id);
+
+    const events = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
+      .collect();
+    let removed = 0;
+    for (const e of events) {
+      if (e.coachingCallId) continue;
+      await ctx.db.delete(e._id);
+      removed++;
+    }
+
+    return { success: true, eventsRemoved: removed, calendarsRemoved: b2cCals.length };
   },
 });
 

@@ -366,13 +366,29 @@ export const disconnectCalendarByEmail = mutation({
       calendarDisconnectReason: undefined,
     });
 
+    // Coaching-call schedule rows are in-app references (booked calls), not
+    // calendar-synced — a calendar disconnect must not erase them.
     const events = await ctx.db
       .query("calendarEvents")
       .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
       .collect();
 
+    let deletedEvents = 0;
     for (const event of events) {
+      if (event.coachingCallId) continue;
       await ctx.db.delete(event._id);
+      deletedEvents++;
+    }
+
+    // B2C multi-calendar rows carry their OWN OAuth tokens — if they survive
+    // the disconnect, the 15-min sync cron re-imports the old account's
+    // events as ghosts (bitten 2026-09-02). Delete the connections outright.
+    const b2cCals = await ctx.db
+      .query("b2cCalendars")
+      .withIndex("by_closer", (q) => q.eq("closerId", closer._id))
+      .collect();
+    for (const cal of b2cCals) {
+      await ctx.db.delete(cal._id);
     }
 
     // Wipe multi-cal subscriptions too. The picker has no way to deal with
@@ -389,7 +405,8 @@ export const disconnectCalendarByEmail = mutation({
 
     return {
       success: true,
-      deletedEvents: events.length,
+      deletedEvents,
+      deletedCalendars: b2cCals.length,
       deletedSubscriptions: subs.length,
     };
   },
