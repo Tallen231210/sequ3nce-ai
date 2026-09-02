@@ -192,6 +192,27 @@ export const SLIDES: Slide[] = [
     wide: true,
   },
   {
+    kicker: "Already live",
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Not a promise — <span className="text-amber-300">it&apos;s in the app.</span></h1>,
+    body: (
+      <div className="grid grid-cols-2 gap-5 w-full max-w-4xl items-start">
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/pitch/vip-inner-circle.png" alt="The Inner Circle — VIP channel"
+            className="rounded-xl border border-zinc-800 shadow-2xl w-full" />
+          <p className="text-zinc-500 text-[12px] mt-2 text-center">The Inner Circle — VIP badge on every post</p>
+        </div>
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/pitch/vip-jobboard.png" alt="Partner role pinned on the job board"
+            className="rounded-xl border border-zinc-800 shadow-2xl w-full" />
+          <p className="text-zinc-500 text-[12px] mt-2 text-center">A partner role, pinned first for VIP members</p>
+        </div>
+      </div>
+    ),
+    wide: true,
+  },
+  {
     kicker: "The crown jewel",
     title: "The Placement Line.",
     body: (
