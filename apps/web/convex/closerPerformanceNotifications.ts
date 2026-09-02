@@ -44,6 +44,9 @@ export const WEEKDAY_INDEX: Record<string, number> = {
 export const DEFAULT_REPORT_DAYS = [1, 2, 3, 4, 5];
 
 const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+/** Cash ÷ calls taken. "—" until a call was taken, never $0 for an idle day. */
+const perLive = (cash: number, taken: number) =>
+  taken > 0 ? money(cash / taken) : "—";
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n)}%`);
 /** "1 close" / "2 closes" — a scoreboard reading "1 closes" looks unfinished. */
 const plural = (n: number, one: string, many: string) =>
@@ -146,6 +149,7 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
         { type: "mrkdwn", text: `*Offer → Close*\n${pct(data.dayRates.offerClosePct)}` },
         { type: "mrkdwn", text: `*Close rate*\n${pct(data.dayRates.closePct)}` },
         { type: "mrkdwn", text: `*Booked %*\n${pct(data.dayRates.bookedPct)}` },
+        { type: "mrkdwn", text: `*$ / live call*\n${perLive(t.cash, t.taken)}` },
       ],
     },
   ];
@@ -192,7 +196,7 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
           {
             type: "mrkdwn",
             text:
-              `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)}` +
+              `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)} · $/live call ${perLive(r.cash, r.taken)}` +
               (r.prev ? "" : "  ·  _first day with numbers, nothing to compare_"),
           },
         ],
@@ -223,7 +227,7 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
     elements: [
       {
         type: "mrkdwn",
-        text: `Month to date: *${money(m.cash)}* · ${plural(m.closes, "close", "closes")} · ${plural(m.taken, "call taken", "calls taken")}`,
+        text: `Month to date: *${money(m.cash)}* · ${plural(m.closes, "close", "closes")} · ${plural(m.taken, "call taken", "calls taken")} · ${perLive(m.cash, m.taken)} per live call`,
       },
     ],
   });
@@ -262,6 +266,7 @@ function buildDiscordEmbed(data: any, zd: ZonedDate): any {
     { name: "Show rate", value: pct(data.dayRates.showPct), inline: true },
     { name: "Offer → Close", value: pct(data.dayRates.offerClosePct), inline: true },
     { name: "Close rate", value: pct(data.dayRates.closePct), inline: true },
+    { name: "$ / live call", value: perLive(t.cash, t.taken), inline: true },
   ];
 
   if (data.rows.length > 0) {
@@ -276,7 +281,7 @@ function buildDiscordEmbed(data: any, zd: ZonedDate): any {
         `**${r.name}** — ${money(r.cash)}${dDelta(r.cash, r.prev?.cash, money)}\n` +
         `Slots ${r.slots}${dDelta(r.slots, r.prev?.slots)} · ` +
         `Booked ${r.booked}${dDelta(r.booked, r.prev?.booked)} · ` +
-        `Taken ${r.taken}${dDelta(r.taken, r.prev?.taken)} · ` +
+        `Taken ${r.taken}${dDelta(r.taken, r.prev?.taken)} · $/live call ${perLive(r.cash, r.taken)} · ` +
         `Offers ${r.offers}${dDelta(r.offers, r.prev?.offers)} · ` +
         `Closes ${r.closes}${dDelta(r.closes, r.prev?.closes)}\n` +
         `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)}`;

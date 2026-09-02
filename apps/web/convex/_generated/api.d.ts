@@ -238,6 +238,8 @@ import type * as setterRosterQueries from "../setterRosterQueries.js";
 import type * as setterRosterResolve from "../setterRosterResolve.js";
 import type * as setterScorecardBackfill from "../setterScorecardBackfill.js";
 import type * as setterScorecardConfig from "../setterScorecardConfig.js";
+import type * as setterScorecardNotifications from "../setterScorecardNotifications.js";
+import type * as setterScorecardPost from "../setterScorecardPost.js";
 import type * as sharedLinks from "../sharedLinks.js";
 import type * as slack from "../slack.js";
 import type * as speakerSwap from "../speakerSwap.js";
@@ -487,6 +489,8 @@ declare const fullApi: ApiFromModules<{
   setterRosterResolve: typeof setterRosterResolve;
   setterScorecardBackfill: typeof setterScorecardBackfill;
   setterScorecardConfig: typeof setterScorecardConfig;
+  setterScorecardNotifications: typeof setterScorecardNotifications;
+  setterScorecardPost: typeof setterScorecardPost;
   sharedLinks: typeof sharedLinks;
   slack: typeof slack;
   speakerSwap: typeof speakerSwap;
