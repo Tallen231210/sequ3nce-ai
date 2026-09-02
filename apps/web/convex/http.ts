@@ -12244,6 +12244,75 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// Authenticated persistence for the development FreeHire catalogue. Identity
+// is derived exclusively from the B2C bearer token; this route intentionally
+// accepts no userId, preventing one member from requesting another's rows.
+http.route({
+  path: "/b2c/freehire-tracking",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const sessionToken = typeof body?.sessionToken === "string"
+        ? body.sessionToken
+        : "";
+      const session = sessionToken
+        ? await ctx.runQuery(internal.b2cAuth.resolveB2CSession, { sessionToken })
+        : null;
+      if (!session) {
+        return b2cJsonResponse(
+          { error: "Your session has expired. Sign in again to sync job activity.", needsRelogin: true },
+          401,
+          true,
+        );
+      }
+
+      if (body.operation === "list") {
+        const activities = await ctx.runQuery(internal.b2cJobBoard.listFreeHireTracking, {
+          userId: session.userId,
+        });
+        return b2cJsonResponse({ activities }, 200, true);
+      }
+
+      if (body.operation === "upsert") {
+        const rawJob = body.job && typeof body.job === "object" ? body.job : {};
+        const result = await ctx.runMutation(internal.b2cJobBoard.upsertFreeHireTracking, {
+          userId: session.userId,
+          externalJobId: typeof body.externalJobId === "string" ? body.externalJobId : "",
+          stage: typeof body.stage === "string" ? body.stage : undefined,
+          note: typeof body.note === "string" ? body.note : undefined,
+          dismissed: body.dismissed === true,
+          job: {
+            title: typeof rawJob.title === "string" ? rawJob.title : "",
+            company: typeof rawJob.company === "string" ? rawJob.company : "",
+            logoUrl: typeof rawJob.logoUrl === "string" ? rawJob.logoUrl : undefined,
+            location: typeof rawJob.location === "string" ? rawJob.location : "",
+            applyUrl: typeof rawJob.applyUrl === "string" ? rawJob.applyUrl : "",
+            source: typeof rawJob.source === "string" ? rawJob.source : "",
+            workMode: typeof rawJob.workMode === "string" ? rawJob.workMode : "",
+            salary: typeof rawJob.salary === "string" ? rawJob.salary : "",
+            employmentType: typeof rawJob.employmentType === "string" ? rawJob.employmentType : "",
+            seniority: typeof rawJob.seniority === "string" ? rawJob.seniority : "",
+            postedAt: typeof rawJob.postedAt === "string" ? rawJob.postedAt : undefined,
+          },
+        });
+        return b2cJsonResponse(result, 200, true);
+      }
+
+      return b2cJsonResponse({ error: "Unsupported tracking operation" }, 400, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update job activity";
+      return b2cJsonResponse({ error: message }, 400, true);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/freehire-tracking",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // ==================== Adoption Checklist ====================
 
 // POST /b2c/adoption-checklist — get checklist data for a user

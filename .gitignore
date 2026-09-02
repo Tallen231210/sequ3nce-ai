@@ -47,3 +47,7 @@ profile-*.png
 
 # Superpowers brainstorm scratch
 .superpowers/
+
+# Ad funnels — built here for context, hosted in GoHighLevel.
+# Never part of the app, never deployed. Local only.
+funnels/

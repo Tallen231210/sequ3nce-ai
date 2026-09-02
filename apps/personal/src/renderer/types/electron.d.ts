@@ -77,6 +77,69 @@ export interface DiagnosticsAPI {
   }>;
 }
 
+export interface FreeHireSearchParams {
+  lane: 'for-you' | 'sales' | 'closer' | 'account-executive' | 'high-ticket' | 'leadership';
+  sort?: 'newest' | 'relevance';
+  workMode?: 'remote' | 'hybrid' | 'onsite';
+  country?: string;
+  postedWithinDays?: 7 | 30;
+  limit?: number;
+  offset?: number;
+}
+
+export interface FreeHireJob {
+  id: string;
+  title: string;
+  company: string;
+  logoUrl: string;
+  location: string;
+  description: string;
+  descriptionBlocks: Array<{
+    type: 'heading' | 'paragraph' | 'bullet';
+    text: string;
+  }>;
+  applyUrl: string;
+  source: string;
+  workMode: 'remote' | 'hybrid' | 'onsite' | 'unknown';
+  skills: string[];
+  employmentType: string;
+  seniority: string;
+  salary: string;
+  postedAt: string | null;
+  lastSeenAt: string | null;
+  appliedCount: number;
+  domains: string[];
+  countries: string[];
+  reality: {
+    classification: string;
+    ageDays: number | null;
+    repostCount: number;
+    massPostingCount: number;
+    fakeFreshness: boolean;
+  } | null;
+}
+
+export interface FreeHireSearchResponse {
+  jobs: FreeHireJob[];
+  total: number;
+  limit: number;
+  offset: number;
+  fetchedAt: string;
+}
+
+export interface FreeHireJobDetail {
+  description: string;
+  descriptionBlocks: FreeHireJob['descriptionBlocks'];
+  salary: string;
+  employmentType: string;
+  seniority: string;
+}
+
+export interface FreeHireAPI {
+  search: (params: FreeHireSearchParams) => Promise<FreeHireSearchResponse>;
+  getJob: (slug: string) => Promise<FreeHireJobDetail>;
+}
+
 // Sequ3nce Stream (dictation) — see apps/personal/src/stream/
 export interface StreamPermissionsState {
   microphone: boolean;
@@ -101,6 +164,7 @@ export interface ElectronAPI {
   bot: BotAPI;
   diagnostics: DiagnosticsAPI;
   stream: StreamAPI;
+  freeHire: FreeHireAPI;
 }
 
 // Training playlist types (in-app Training tab)

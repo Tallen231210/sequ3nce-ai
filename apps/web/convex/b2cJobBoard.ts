@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
 // ==================== Validation Constants ====================
@@ -20,6 +20,138 @@ const VALID_INDUSTRIES = [
 const VALID_TICKET_RANGES = [
   "Under $1k", "$1k-$3k", "$3k-$10k", "$10k-$25k", "$25k-$50k", "$50k+",
 ];
+
+const FREEHIRE_STAGES = ["saved", "preparing", "applied", "interviewing"] as const;
+const MAX_EXTERNAL_JOB_ID = 240;
+const MAX_JOB_FIELD = 300;
+const MAX_JOB_URL = 2048;
+const MAX_NOTE = 2000;
+
+const freeHireJobSnapshotValidator = v.object({
+  title: v.string(),
+  company: v.string(),
+  logoUrl: v.optional(v.string()),
+  location: v.string(),
+  applyUrl: v.string(),
+  source: v.string(),
+  workMode: v.string(),
+  salary: v.string(),
+  employmentType: v.string(),
+  seniority: v.string(),
+  postedAt: v.optional(v.string()),
+});
+
+function cleanFreeHireText(value: string, field: string): string {
+  const cleaned = value.trim();
+  if (!cleaned || cleaned.length > MAX_JOB_FIELD) {
+    throw new Error(`${field} is required and must be ${MAX_JOB_FIELD} characters or fewer`);
+  }
+  return cleaned;
+}
+
+function cleanFreeHireUrl(value: string, field: string, optional = false): string | undefined {
+  const cleaned = value.trim();
+  if (!cleaned && optional) return undefined;
+  if (cleaned.length > MAX_JOB_URL) throw new Error(`${field} is too long`);
+  try {
+    const url = new URL(cleaned);
+    if (url.protocol !== "https:") throw new Error();
+  } catch {
+    throw new Error(`${field} must be a valid HTTPS URL`);
+  }
+  return cleaned;
+}
+
+// ==================== FreeHire development tracking ====================
+
+/** Only callable from authenticated HTTP actions; never exposed directly. */
+export const listFreeHireTracking = internalQuery({
+  args: { userId: v.id("b2cUsers") },
+  handler: async (ctx, { userId }) =>
+    ctx.db
+      .query("b2cFreeHireJobTracking")
+      .withIndex("by_user_updated", (q) => q.eq("userId", userId))
+      .order("desc")
+      .collect(),
+});
+
+/**
+ * Upsert one complete activity record. Sending no stage, no note and
+ * dismissed=false removes the record, making restore/remove idempotent.
+ */
+export const upsertFreeHireTracking = internalMutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    externalJobId: v.string(),
+    stage: v.optional(v.string()),
+    note: v.optional(v.string()),
+    dismissed: v.boolean(),
+    job: freeHireJobSnapshotValidator,
+  },
+  handler: async (ctx, args) => {
+    const externalJobId = args.externalJobId.trim();
+    if (!externalJobId || externalJobId.length > MAX_EXTERNAL_JOB_ID) {
+      throw new Error("Invalid external job identifier");
+    }
+    if (args.stage && !FREEHIRE_STAGES.includes(args.stage as typeof FREEHIRE_STAGES[number])) {
+      throw new Error("Invalid application stage");
+    }
+    const note = args.note?.trim() || undefined;
+    if (note && note.length > MAX_NOTE) throw new Error(`Notes must be ${MAX_NOTE} characters or fewer`);
+
+    const job = {
+      title: cleanFreeHireText(args.job.title, "Job title"),
+      company: cleanFreeHireText(args.job.company, "Company"),
+      logoUrl: cleanFreeHireUrl(args.job.logoUrl || "", "Logo URL", true),
+      location: cleanFreeHireText(args.job.location, "Location"),
+      applyUrl: cleanFreeHireUrl(args.job.applyUrl, "Apply URL")!,
+      source: cleanFreeHireText(args.job.source, "Source"),
+      workMode: cleanFreeHireText(args.job.workMode, "Work mode"),
+      salary: cleanFreeHireText(args.job.salary, "Salary"),
+      employmentType: cleanFreeHireText(args.job.employmentType, "Employment type"),
+      seniority: cleanFreeHireText(args.job.seniority, "Seniority"),
+      postedAt: args.job.postedAt
+        ? cleanFreeHireText(args.job.postedAt, "Posted date")
+        : undefined,
+    };
+
+    const current = await ctx.db
+      .query("b2cFreeHireJobTracking")
+      .withIndex("by_user_job", (q) =>
+        q.eq("userId", args.userId).eq("externalJobId", externalJobId),
+      )
+      .unique();
+
+    if (!args.stage && !note && !args.dismissed) {
+      if (current) await ctx.db.delete(current._id);
+      return { removed: true as const };
+    }
+
+    const now = Date.now();
+    const stageChangedAt = current && current.stage === args.stage
+      ? current.stageChangedAt
+      : now;
+    const value = {
+      userId: args.userId,
+      externalJobId,
+      stage: args.stage,
+      note,
+      dismissed: args.dismissed,
+      job,
+      updatedAt: now,
+      stageChangedAt,
+    };
+    if (current) {
+      await ctx.db.patch(current._id, value);
+      return { id: current._id, removed: false as const };
+    }
+    const id = await ctx.db.insert("b2cFreeHireJobTracking", {
+      ...value,
+      createdAt: now,
+    });
+    return { id, removed: false as const };
+  },
+});
 
 // ==================== Queries ====================
 

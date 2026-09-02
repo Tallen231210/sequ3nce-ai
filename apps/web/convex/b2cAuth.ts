@@ -33,6 +33,35 @@ const MAX_EMAIL_LENGTH = 254;
 const MAX_PASSWORD_LENGTH = 128;
 const MIN_PASSWORD_LENGTH = 8;
 
+async function hashSessionToken(sessionToken: string): Promise<string> {
+  const data = new TextEncoder().encode(sessionToken);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Resolve the Personal user from the bearer token minted by loginB2CUser.
+ * HTTP actions call this before touching private user data. The caller never
+ * supplies a user ID, so changing an ID in a request cannot cross accounts.
+ */
+export const resolveB2CSession = internalQuery({
+  args: { sessionToken: v.string() },
+  handler: async (ctx, { sessionToken }) => {
+    if (!/^[a-f0-9]{64}$/.test(sessionToken)) return null;
+    const sessionTokenHash = await hashSessionToken(sessionToken);
+    const user = await ctx.db
+      .query("b2cUsers")
+      .withIndex("by_session_token_hash", (q) =>
+        q.eq("sessionTokenHash", sessionTokenHash),
+      )
+      .unique();
+    if (!user) return null;
+    return { userId: user._id };
+  },
+});
+
 // Sign up a new B2C user
 // Creates 3 records: b2cUsers + teams (personal workspace) + closers (within workspace)
 export const signupB2CUser = mutation({

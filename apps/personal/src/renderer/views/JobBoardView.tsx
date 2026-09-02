@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { PlacementLineTab } from './PlacementLineTab';
 import type { CloserInfo, PublicJob } from '../convex';
+import { FreeHireJobBoardPreview } from './FreeHireJobBoardPreview';
 import { getPublicJobs, addPublicJob, closePublicJob, deletePublicJob, updateJobTracking } from '../convex';
 
 interface JobBoardViewProps {
@@ -8,6 +9,11 @@ interface JobBoardViewProps {
 }
 
 type Tab = 'public' | 'internal';
+
+// Development-only visual prototype. Production builds continue to render the
+// legacy job board below. Set this constant to false (or remove the preview
+// import + wrapper) to revoke the prototype without touching the old feature.
+const SHOW_FREEHIRE_JOB_BOARD_PREVIEW = process.env.NODE_ENV === 'development';
 
 const INDUSTRIES = [
   'Solar', 'Insurance', 'Real Estate', 'SaaS', 'Coaching',
@@ -34,7 +40,15 @@ function formatRelative(ts: number): string {
   return `${months}mo ago`;
 }
 
-export function JobBoardView({ closerInfo }: JobBoardViewProps) {
+export function JobBoardView(props: JobBoardViewProps) {
+  if (SHOW_FREEHIRE_JOB_BOARD_PREVIEW) {
+    return <FreeHireJobBoardPreview closerInfo={props.closerInfo} />;
+  }
+
+  return <LegacyJobBoardView closerInfo={props.closerInfo} />;
+}
+
+function LegacyJobBoardView({ closerInfo }: JobBoardViewProps) {
   const [activeTab, setActiveTab] = useState<Tab>('public');
   const [jobs, setJobs] = useState<PublicJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);

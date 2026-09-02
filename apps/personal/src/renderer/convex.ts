@@ -5,6 +5,8 @@ import * as Sentry from "@sentry/electron/renderer";
 
 // HTTP Action endpoint - hosted at .convex.site (not .convex.cloud)
 export const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
+const FREEHIRE_TRACKING_SITE_URL =
+  process.env.FREEHIRE_DEV_CONVEX_SITE_URL || CONVEX_SITE_URL;
 
 // ============================================================================
 // convexFetch — circuit-breaker wrapper around fetch()
@@ -82,6 +84,8 @@ export interface CloserInfo {
   trialExpiresAt?: number;
   onboardingCompleted?: boolean;
   pricingTier?: "early" | "standard";
+  /** Bearer token minted by B2C login; private APIs derive identity from it. */
+  sessionToken?: string;
 }
 
 export interface LoginResult {
@@ -4618,6 +4622,92 @@ export async function updateJobTracking(
     });
     return { error: "Network error" };
   }
+}
+
+// ==================== FreeHire development activity ====================
+
+export type FreeHireJobStage = "saved" | "preparing" | "applied" | "interviewing";
+
+export interface FreeHireTrackedJobSnapshot {
+  title: string;
+  company: string;
+  logoUrl?: string;
+  location: string;
+  applyUrl: string;
+  source: string;
+  workMode: string;
+  salary: string;
+  employmentType: string;
+  seniority: string;
+  postedAt?: string;
+}
+
+export interface FreeHireActivity {
+  _id: string;
+  externalJobId: string;
+  stage?: FreeHireJobStage;
+  note?: string;
+  dismissed: boolean;
+  job: FreeHireTrackedJobSnapshot;
+  createdAt: number;
+  updatedAt: number;
+  stageChangedAt: number;
+}
+
+type FreeHireTrackingResult =
+  | { activities: FreeHireActivity[] }
+  | { id?: string; removed?: boolean }
+  | { error: string; needsRelogin?: boolean };
+
+async function callFreeHireTracking(
+  sessionToken: string,
+  body: Record<string, unknown>,
+): Promise<FreeHireTrackingResult> {
+  if (!sessionToken) {
+    return { error: "Sign in again to sync job activity.", needsRelogin: true };
+  }
+  try {
+    const response = await convexFetch(`${FREEHIRE_TRACKING_SITE_URL}/b2c/freehire-tracking`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, sessionToken }),
+    });
+    const data = await safeJsonParse(response, "Failed to sync job activity") as FreeHireTrackingResult;
+    if (!response.ok && !("error" in data)) {
+      return { error: "Failed to sync job activity" };
+    }
+    return data;
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "freeHireTracking", integration: "convex" },
+    });
+    return { error: "Job activity could not sync. Your local preview is still available." };
+  }
+}
+
+export async function getFreeHireActivities(
+  sessionToken: string,
+): Promise<{ activities?: FreeHireActivity[]; error?: string; needsRelogin?: boolean }> {
+  const result = await callFreeHireTracking(sessionToken, { operation: "list" });
+  if ("error" in result) return result;
+  return "activities" in result ? { activities: result.activities } : { activities: [] };
+}
+
+export async function saveFreeHireActivity(args: {
+  sessionToken: string;
+  externalJobId: string;
+  stage?: FreeHireJobStage;
+  note?: string;
+  dismissed: boolean;
+  job: FreeHireTrackedJobSnapshot;
+}): Promise<{ success: boolean; error?: string; needsRelogin?: boolean }> {
+  const { sessionToken, ...activity } = args;
+  const result = await callFreeHireTracking(sessionToken, {
+    operation: "upsert",
+    ...activity,
+  });
+  if ("error" in result) return { success: false, ...result };
+  return { success: true };
 }
 
 // ==================== Money Bells ====================

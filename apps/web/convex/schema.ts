@@ -2697,6 +2697,39 @@ export default defineSchema({
     .index("by_user_job", ["userId", "jobId"])
     .index("by_user", ["userId"]),
 
+  // Development preview: private activity for jobs sourced from FreeHire.
+  // This is deliberately separate from b2cPublicJobTracking because those
+  // rows reference Sequ3nce-owned job IDs, while FreeHire jobs use stable
+  // external slugs and can disappear from the upstream catalogue.
+  b2cFreeHireJobTracking: defineTable({
+    userId: v.id("b2cUsers"),
+    externalJobId: v.string(),
+    stage: v.optional(v.string()), // "saved" | "preparing" | "applied" | "interviewing"
+    note: v.optional(v.string()),
+    dismissed: v.boolean(),
+    // A compact snapshot keeps an application recognizable even if the
+    // upstream listing later changes or disappears. Full descriptions are
+    // intentionally not duplicated into Convex.
+    job: v.object({
+      title: v.string(),
+      company: v.string(),
+      logoUrl: v.optional(v.string()),
+      location: v.string(),
+      applyUrl: v.string(),
+      source: v.string(),
+      workMode: v.string(),
+      salary: v.string(),
+      employmentType: v.string(),
+      seniority: v.string(),
+      postedAt: v.optional(v.string()),
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    stageChangedAt: v.number(),
+  })
+    .index("by_user_job", ["userId", "externalJobId"])
+    .index("by_user_updated", ["userId", "updatedAt"]),
+
   // ============================================
   // B2C COMMUNITY — Feature Requests, Bug Reports
   // ============================================

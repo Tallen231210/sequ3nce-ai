@@ -583,11 +583,240 @@ function handleCalendarConnected(url: string): void {
   }
 }
 
+type FreeHireDescriptionBlock = { type: 'heading' | 'paragraph' | 'bullet'; text: string };
+
+function decodeFreeHireEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => String.fromCharCode(parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number(code)))
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function parseFreeHireDescription(value: unknown): { text: string; blocks: FreeHireDescriptionBlock[] } {
+  const html = typeof value === 'string' ? value.trim() : '';
+  const plainText = decodeFreeHireEntities(html
+    .replace(/<br\s*\/?\s*>/gi, ' ')
+    .replace(/<\/p>/gi, ' ')
+    .replace(/<[^>]*>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+  const marked = html
+    .replace(/<p[^>]*>\s*<strong[^>]*>([\s\S]*?)<\/strong>\s*<\/p>/gi, '\n[[H]]$1\n')
+    .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '\n[[H]]$1\n')
+    .replace(/<li[^>]*>/gi, '\n[[LI]]')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<p[^>]*>/gi, '\n[[P]]')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<br\s*\/?\s*>/gi, '\n[[P]]')
+    .replace(/<[^>]*>/g, '');
+  const blocks = decodeFreeHireEntities(marked).split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line): FreeHireDescriptionBlock => {
+    if (line.startsWith('[[H]]')) return { type: 'heading', text: line.slice(5).trim() };
+    if (line.startsWith('[[LI]]')) return { type: 'bullet', text: line.slice(6).trim() };
+    const paragraph = line.startsWith('[[P]]') ? line.slice(5).trim() : line;
+    if (/^[•·▪◦-]\s*/.test(paragraph)) return { type: 'bullet', text: paragraph.replace(/^[•·▪◦-]\s*/, '') };
+    return { type: 'paragraph', text: paragraph };
+  }).filter((block) => block.text.length > 0);
+  return { text: plainText, blocks };
+}
+
+function extractFreeHireCompensation(description: string): string {
+  const candidates = description.match(/\$\s?\d[\d,.]*(?:k)?\s*(?:[–—-]\s*\$?\s?\d[\d,.]*(?:k)?\+?|\+)(?:\s*(?:\/\s*(?:month|year|yr|mo)|per\s+(?:month|year)))?(?:\s+OTE)?/gi) ?? [];
+  const likelyPay = candidates.find((candidate) => !/\d(?:\.\d+)?m\b/i.test(candidate));
+  return likelyPay ? likelyPay.replace(/\s+/g, ' ').replace(/k/gi, 'K').trim() : '';
+}
+
 // ==================== IPC Handlers ====================
 
 // Set up IPC handlers
 const setupIpcHandlers = (): void => {
   console.log('[Main] Setting up IPC handlers...');
+
+  // Development-only bridge to FreeHire's public catalogue. Keeping this in
+  // the main process avoids renderer CORS issues and prevents an arbitrary
+  // proxy from being exposed to the UI. Packaged builds remain on the legacy
+  // Sequ3nce job board and this handler refuses requests outside development.
+  ipcMain.handle('freehire:search', async (_event, rawParams: unknown) => {
+    if (process.env.NODE_ENV !== 'development' && !process.defaultApp) {
+      throw new Error('The FreeHire development feed is disabled in production builds.');
+    }
+
+    const params = rawParams && typeof rawParams === 'object'
+      ? rawParams as Record<string, unknown>
+      : {};
+    const allowedLanes = ['for-you', 'sales', 'closer', 'account-executive', 'high-ticket', 'leadership'];
+    const lane = typeof params.lane === 'string' && allowedLanes.includes(params.lane)
+      ? params.lane
+      : 'for-you';
+    const queryByLane: Record<string, string | undefined> = {
+      'for-you': undefined,
+      sales: 'sales',
+      closer: 'closer',
+      'account-executive': '"account executive"',
+      'high-ticket': 'high ticket',
+      leadership: '"sales manager"',
+    };
+    const limit = Math.min(50, Math.max(1, Number(params.limit) || 24));
+    const offset = Math.min(9950, Math.max(0, Number(params.offset) || 0));
+
+    const search = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (lane !== 'high-ticket' && lane !== 'sales' && lane !== 'closer') {
+      search.set('category', 'sales');
+    }
+    if (params.sort === 'newest') {
+      search.set('sort', 'posted_at');
+      search.set('order', 'desc');
+    }
+    const laneQuery = queryByLane[lane];
+    if (laneQuery) search.set('q', laneQuery);
+    if (params.workMode === 'remote' || params.workMode === 'hybrid' || params.workMode === 'onsite') {
+      search.set('work_mode', params.workMode);
+    }
+    if (typeof params.country === 'string' && /^[A-Z]{2}$/.test(params.country)) {
+      search.set('countries', params.country);
+    }
+    if (params.postedWithinDays === 7 || params.postedWithinDays === 30) {
+      search.set('posted_within_days', String(params.postedWithinDays));
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(`https://freehire.me/api/v1/jobs/search?${search.toString()}`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`FreeHire returned HTTP ${response.status}.`);
+      const payload = await response.json() as Record<string, unknown>;
+      const rawJobs = Array.isArray(payload.data)
+        ? payload.data
+        : Array.isArray(payload.jobs) ? payload.jobs : [];
+      const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+      const strings = (value: unknown): string[] => Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : [];
+      const label = (value: string): string => value
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+      const jobs = rawJobs.map((raw) => {
+        const job = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+        const enrichment = job.enrichment && typeof job.enrichment === 'object'
+          ? job.enrichment as Record<string, unknown>
+          : {};
+        const realityRaw = job.reality && typeof job.reality === 'object'
+          ? job.reality as Record<string, unknown>
+          : null;
+        const company = text(job.company) || label(text(job.company_slug)) || 'Company not listed';
+        const companySlug = text(job.company_slug);
+        const parsedDescription = parseFreeHireDescription(job.description);
+        const description = parsedDescription.text;
+        const descriptionBlocks = parsedDescription.blocks;
+        const salaryMin = Number(job.salary_min);
+        const salaryMax = Number(job.salary_max);
+        const currency = text(job.salary_currency) || 'USD';
+        const interval = text(job.salary_interval);
+        const salary = Number.isFinite(salaryMin) && salaryMin > 0
+          ? `${currency} ${Math.round(salaryMin).toLocaleString()}${Number.isFinite(salaryMax) && salaryMax > salaryMin ? `–${Math.round(salaryMax).toLocaleString()}` : '+'}${interval ? ` / ${label(interval)}` : ''}`
+          : extractFreeHireCompensation(description) || 'Compensation not listed';
+        const workMode = text(job.work_mode);
+        return {
+          id: text(job.public_slug) || `${text(job.source)}-${text(job.external_id)}`,
+          title: text(job.title) || 'Untitled sales role',
+          company,
+          logoUrl: companySlug ? `https://logo.freehire.me/${encodeURIComponent(companySlug)}` : '',
+          location: text(job.location) || strings(job.countries).join(', ') || 'Location not listed',
+          description,
+          descriptionBlocks,
+          applyUrl: text(job.url),
+          source: label(text(job.source)) || 'External source',
+          workMode: workMode === 'remote' || workMode === 'hybrid' || workMode === 'onsite' ? workMode : 'unknown',
+          skills: strings(job.skills).slice(0, 12).map(label),
+          employmentType: label(text(enrichment.employment_type) || text(job.employment_type)) || 'Not listed',
+          seniority: label(text(enrichment.seniority) || text(job.seniority)) || 'Not listed',
+          salary,
+          postedAt: text(job.posted_at) || null,
+          lastSeenAt: text(job.last_seen_at) || null,
+          appliedCount: Number(job.applied_count) || 0,
+          domains: strings(enrichment.domains).slice(0, 5).map(label),
+          countries: strings(job.countries),
+          reality: realityRaw ? {
+            classification: label(text(realityRaw.class)) || 'Unknown',
+            ageDays: Number.isFinite(Number(realityRaw.age_days)) ? Number(realityRaw.age_days) : null,
+            repostCount: Number(realityRaw.repost_count) || 0,
+            massPostingCount: Number(realityRaw.mass_posting_count) || 0,
+            fakeFreshness: realityRaw.fake_freshness === true,
+          } : null,
+        };
+      }).filter((job) => job.id && job.applyUrl);
+
+      const meta = payload.meta && typeof payload.meta === 'object'
+        ? payload.meta as Record<string, unknown>
+        : payload;
+      return {
+        jobs,
+        total: Number(meta.total) || jobs.length,
+        limit,
+        offset,
+        fetchedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('The FreeHire request timed out.');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+
+  ipcMain.handle('freehire:get-job', async (_event, rawSlug: unknown) => {
+    if (process.env.NODE_ENV !== 'development' && !process.defaultApp) {
+      throw new Error('The FreeHire development feed is disabled in production builds.');
+    }
+    const slug = typeof rawSlug === 'string' ? rawSlug.trim() : '';
+    if (!/^[a-z0-9-]{3,240}$/.test(slug)) throw new Error('Invalid FreeHire job identifier.');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(`https://freehire.me/api/v1/jobs/${encodeURIComponent(slug)}`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`FreeHire returned HTTP ${response.status}.`);
+      const payload = await response.json() as Record<string, unknown>;
+      const job = payload.data && typeof payload.data === 'object'
+        ? payload.data as Record<string, unknown>
+        : {};
+      const enrichment = job.enrichment && typeof job.enrichment === 'object'
+        ? job.enrichment as Record<string, unknown>
+        : {};
+      const parsed = parseFreeHireDescription(job.description);
+      const label = (value: unknown): string => typeof value === 'string'
+        ? value.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()).trim()
+        : '';
+      return {
+        description: parsed.text,
+        descriptionBlocks: parsed.blocks,
+        salary: extractFreeHireCompensation(parsed.text) || 'Compensation not listed',
+        employmentType: label(enrichment.employment_type) || label(job.employment_type) || 'Not listed',
+        seniority: label(enrichment.seniority) || label(job.seniority) || 'Not listed',
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw new Error('The FreeHire request timed out.');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
 
   // ---- Auth IPC Handlers ----
 

@@ -778,7 +778,7 @@ function MeetingBotHubInner({ closerInfo, onLogout }: MeetingBotHubProps) {
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className={`flex-1 min-w-0 w-full ${selectedItem === 'jobboard' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           {renderContent(selectedItem, closerInfo, setSelectedItem, onLogout, handleOpenQuestionnaire, {
             dmRecipientId: dmRecipient?.id ?? null,
             dmRecipientName: dmRecipient?.name,
