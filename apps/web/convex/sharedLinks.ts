@@ -65,6 +65,13 @@ export const createSharedLink = mutation({
     if (call.teamId !== args.teamId)
       throw new Error("Call does not belong to this team");
 
+    // Closers share only their OWN calls — team-calls visibility (the
+    // closer_team_calls flag) is watch-only, and a share link is an exit
+    // door for the recording. Managers keep team-wide sharing.
+    if (args.createdByType === "closer" && String(call.closerId) !== args.createdBy) {
+      throw new Error("Not your call");
+    }
+
     // Validate share type
     if (args.shareType !== "full" && args.shareType !== "clip") {
       throw new Error("Invalid share type (must be 'full' or 'clip')");

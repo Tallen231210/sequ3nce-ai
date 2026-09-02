@@ -6650,6 +6650,24 @@ http.route({
         });
       }
 
+      // Closer-type shares: identity comes from the session (or the legacy
+      // bare-id fallback), never from a client-typed createdBy — the
+      // mutation then insists the call is that closer's own.
+      const effectiveType = createdByType || "closer";
+      let effectiveCreatedBy = createdBy || "unknown";
+      if (effectiveType === "closer") {
+        const authedCloserId = await closerFromBody(ctx, {
+          sessionToken: body.sessionToken,
+          closerId: createdBy,
+        });
+        if (!authedCloserId) {
+          return new Response(JSON.stringify({ error: "Not signed in" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        effectiveCreatedBy = String(authedCloserId);
+      }
       const result = await ctx.runMutation(api.sharedLinks.createSharedLink, {
         callId: callId as Id<"calls">,
         teamId: teamId as Id<"teams">,
@@ -6657,8 +6675,8 @@ http.route({
         startSeconds: startSeconds ?? undefined,
         endSeconds: endSeconds ?? undefined,
         includeComments: includeComments ?? false,
-        createdBy: createdBy || "unknown",
-        createdByType: createdByType || "closer",
+        createdBy: effectiveCreatedBy,
+        createdByType: effectiveType,
         accessType: accessType ?? undefined,
         password: password ?? undefined,
       });
