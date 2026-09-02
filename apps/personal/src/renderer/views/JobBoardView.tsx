@@ -130,7 +130,7 @@ export function JobBoardView({ closerInfo }: JobBoardViewProps) {
 
       <div className="flex-1 overflow-y-auto px-6 pb-6">
         {activeTab === 'internal' ? (
-          <PlacementLineTab userId={userId ?? ''} />
+          <PlacementLineTab userId={userId ?? ''} isFounder={!!isFounder} />
         ) : (
           <>
             {/* Stat row — per-user totals for the currently-visible (filtered) set */}

@@ -88,6 +88,12 @@ export const listPlacementLineMembers = query({
           .query("b2cProfiles")
           .withIndex("by_user", (q: any) => q.eq("userId", u._id))
           .first();
+        // Everything a founder needs to reach the member OFF-app when a
+        // partner match lands: profile URL + every contact channel they
+        // chose to put on their (required-public) profile.
+        const photoUrl = profile?.photoStorageId
+          ? await ctx.storage.getUrl(profile.photoStorageId as any)
+          : null;
         return {
           userId: u._id,
           name: u.name,
@@ -95,6 +101,11 @@ export const listPlacementLineMembers = query({
           joinedAt: u.placementLineJoinedAt,
           headline: profile?.headline ?? null,
           verified: profile?.isManuallyVerified === true,
+          profileSlug: (u as any).profileSlug ?? null,
+          photoUrl,
+          location: profile?.location ?? null,
+          whatsappNumber: profile?.whatsappNumber ?? null,
+          socialLinks: profile?.socialLinks ?? null,
         };
       }),
     );

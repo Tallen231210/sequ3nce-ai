@@ -14214,6 +14214,25 @@ http.route({
 });
 http.route({ path: "/b2c/placement-line/join", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
 
+http.route({
+  path: "/b2c/placement-line/roster",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runQuery(api.b2cPlacementLine.listPlacementLineMembers, {
+        founderId: body.founderId,
+      });
+      return b2cJsonResponse(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Request failed";
+      const clean = msg.replace(/^[\s\S]*Uncaught Error:\s*/, "").split("\n")[0];
+      return b2cJsonResponse({ error: clean }, /Founder access/.test(clean) ? 403 : 500);
+    }
+  }),
+});
+http.route({ path: "/b2c/placement-line/roster", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
 export default http;
 
 // ============================================

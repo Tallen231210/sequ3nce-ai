@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   getPlacementLineStatus,
   joinPlacementLine,
+  getPlacementLineRoster,
   type PlacementLineStatus,
+  type PlacementLineMember,
 } from '../classroomApi';
 
 // ============================================================================
@@ -15,6 +17,7 @@ import {
 
 interface PlacementLineTabProps {
   userId: string;
+  isFounder?: boolean;
   onGoToProfile?: () => void;
 }
 
@@ -24,7 +27,7 @@ const CROWN = (
   </svg>
 );
 
-export function PlacementLineTab({ userId, onGoToProfile }: PlacementLineTabProps) {
+export function PlacementLineTab({ userId, isFounder, onGoToProfile }: PlacementLineTabProps) {
   const [status, setStatus] = useState<PlacementLineStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
@@ -60,6 +63,11 @@ export function PlacementLineTab({ userId, onGoToProfile }: PlacementLineTabProp
 
   if (loading) {
     return <div className="text-sm text-gray-400 text-center py-16">Loading…</div>;
+  }
+
+  // Founders see the roster — the working list when a partner calls.
+  if (isFounder) {
+    return <FounderRoster founderId={userId} />;
   }
 
   // ---- State 1: not VIP — the pitch ----
@@ -226,6 +234,83 @@ export function PlacementLineTab({ userId, onGoToProfile }: PlacementLineTabProp
             </button>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+
+/** Founder-only roster: everyone on the Line, with every way to reach them. */
+function FounderRoster({ founderId }: { founderId: string }) {
+  const [members, setMembers] = useState<PlacementLineMember[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    getPlacementLineRoster(founderId).then((m) => {
+      if (mountedRef.current) { setMembers(m); setLoading(false); }
+    });
+    return () => { mountedRef.current = false; };
+  }, [founderId]);
+
+  if (loading) return <div className="text-sm text-gray-400 text-center py-16">Loading the Line…</div>;
+  if (!members) return <div className="text-sm text-red-500 text-center py-16">Couldn&apos;t load the roster.</div>;
+
+  const contactChip = (label: string, href: string) => (
+    <a key={label} href={href} target="_blank" rel="noreferrer"
+      className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors">
+      {label}
+    </a>
+  );
+
+  return (
+    <div className="max-w-3xl mx-auto py-8 px-4">
+      <div className="flex items-baseline justify-between mb-5">
+        <h3 className="text-lg font-bold text-black dark:text-white">The Placement Line — roster</h3>
+        <span className="text-[12px] text-gray-500">{members.length} on the Line</span>
+      </div>
+      {members.length === 0 ? (
+        <div className="text-sm text-gray-400 dark:text-gray-500 py-10 text-center bg-gray-50 dark:bg-zinc-900/40 rounded-xl">
+          Nobody on the Line yet. VIP members join from this tab once their profile is complete and verified.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {members.map((m) => (
+            <div key={m.userId} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                {m.photoUrl ? (
+                  <img src={m.photoUrl} alt={m.name} className="w-11 h-11 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-gray-900 dark:bg-zinc-700 text-white flex items-center justify-center font-bold flex-shrink-0">
+                    {m.name.slice(0, 1)}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[14px] font-bold text-black dark:text-white">{m.name}</span>
+                    {m.verified && (
+                      <span className="text-[10px] font-bold uppercase bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400 px-1.5 py-0.5 rounded">Gold verified</span>
+                    )}
+                    <span className="text-[11px] text-gray-400">joined {new Date(m.joinedAt).toLocaleDateString()}</span>
+                  </div>
+                  {m.headline && <p className="text-[12.5px] text-gray-600 dark:text-gray-300 mt-0.5">{m.headline}</p>}
+                  {m.location && <p className="text-[11.5px] text-gray-400 mt-0.5">{m.location}</p>}
+                  <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+                    {m.profileSlug && contactChip("Profile ↗", `https://www.sequ3nce.ai/p/${m.profileSlug}`)}
+                    {contactChip("Email", `mailto:${m.email}`)}
+                    {m.whatsappNumber && contactChip("WhatsApp", `https://wa.me/${m.whatsappNumber.replace(/[^0-9]/g, "")}`)}
+                    {m.socialLinks?.instagram && contactChip("Instagram", m.socialLinks.instagram)}
+                    {m.socialLinks?.linkedin && contactChip("LinkedIn", m.socialLinks.linkedin)}
+                    {m.socialLinks?.twitter && contactChip("X", m.socialLinks.twitter)}
+                    {m.socialLinks?.calendly && contactChip("Calendly", m.socialLinks.calendly)}
+                    {m.socialLinks?.website && contactChip("Website", m.socialLinks.website)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

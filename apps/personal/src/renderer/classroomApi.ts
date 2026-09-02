@@ -170,3 +170,36 @@ export async function joinPlacementLine(userId: string): Promise<{ joined?: bool
     return { error: "Network error. Please check your connection." };
   }
 }
+
+export interface PlacementLineMember {
+  userId: string;
+  name: string;
+  email: string;
+  joinedAt: number;
+  headline: string | null;
+  verified: boolean;
+  profileSlug: string | null;
+  photoUrl: string | null;
+  location: string | null;
+  whatsappNumber: string | null;
+  socialLinks: {
+    instagram?: string; linkedin?: string; twitter?: string;
+    website?: string; calendly?: string;
+  } | null;
+}
+
+/** Founder-only: everyone on The Placement Line with their contact channels. */
+export async function getPlacementLineRoster(founderId: string): Promise<PlacementLineMember[] | null> {
+  try {
+    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/placement-line/roster`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ founderId }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) return null;
+    return data as PlacementLineMember[];
+  } catch {
+    return null;
+  }
+}
