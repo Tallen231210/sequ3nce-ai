@@ -155,6 +155,7 @@ export const createBroadcast = mutation({
     const callCloser = await ctx.db.get(callCloserId);
     if (!callCloser) throw new Error("Call's closer record not found");
     const userWithWorkspace = await ctx.db.get(args.userId);
+    if (userWithWorkspace?.isTestAccount === true) throw new Error("Demo accounts can't broadcast to Money Bells");
     const userWorkspaceId = (userWithWorkspace as { personalWorkspaceId?: Id<"teams"> } | null)?.personalWorkspaceId;
     const callTeamId = (callCloser as { teamId?: Id<"teams"> }).teamId;
     if (!userWorkspaceId || !callTeamId || userWorkspaceId !== callTeamId) {
