@@ -85,6 +85,14 @@ function normalizeRemote(raw) {
   return undefined;
 }
 
+function normalizeBoolean(raw) {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const value = String(raw).trim().toLowerCase();
+  if (["yes", "true", "1"].includes(value)) return true;
+  if (["no", "false", "0"].includes(value)) return false;
+  return undefined;
+}
+
 function normalizeApplyUrl(raw) {
   if (!raw) return null;
   const trimmed = String(raw).trim();
@@ -217,6 +225,7 @@ for (let i = 0; i < allRecords.length; i++) {
     jobType: cleanText(row["Job Type"], 50),
     experienceLevel: cleanText(row["Exp. Level"], 50),
     datePosted: parsePostedDate(row["Date Posted"]),
+    highTicket: normalizeBoolean(row["High Ticket"] ?? row.highTicket),
   });
 }
 

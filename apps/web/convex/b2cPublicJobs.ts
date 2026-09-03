@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 
 const MAX_TITLE = 200;
 const MAX_COMPANY = 100;
@@ -104,6 +104,7 @@ export const addJobsBulk = mutation({
         jobType: v.optional(v.string()),
         experienceLevel: v.optional(v.string()),
         datePosted: v.optional(v.number()),
+        highTicket: v.optional(v.boolean()),
         vipOnly: v.optional(v.boolean()),
       }),
     ),
@@ -172,6 +173,7 @@ export const addJobsBulk = mutation({
           jobType: j.jobType?.trim() || undefined,
           experienceLevel: j.experienceLevel?.trim() || undefined,
           datePosted: j.datePosted,
+          highTicket: j.highTicket,
           createdAt: now,
           updatedAt: now,
         });
@@ -201,6 +203,7 @@ export const editJob = mutation({
     description: v.optional(v.string()),
     applyUrl: v.optional(v.string()),
     source: v.optional(v.string()),
+    highTicket: v.optional(v.boolean()),
     vipOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -226,6 +229,7 @@ export const editJob = mutation({
       patch.applyUrl = url;
     }
     if (args.source !== undefined) patch.source = args.source.trim() || undefined;
+    if (args.highTicket !== undefined) patch.highTicket = args.highTicket;
     if (args.vipOnly !== undefined) patch.vipOnly = args.vipOnly;
 
     await ctx.db.patch(args.jobId, patch);
@@ -303,7 +307,180 @@ export const updateTracking = mutation({
   },
 });
 
+const FREEHIRE_BRIDGE_LANES = [
+  "sales",
+  "closer",
+  "account-executive",
+  "high-ticket",
+  "leadership",
+] as const;
+const FREEHIRE_BRIDGE_WORK_MODES = ["remote", "hybrid", "onsite"] as const;
+const FREEHIRE_BRIDGE_MIN_SALARIES = [75000, 100000, 150000, 200000] as const;
+const LEGACY_COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW".split(" ");
+const legacyRegionNames = new Intl.DisplayNames(["en"], { type: "region" });
+const LEGACY_COUNTRY_NAMES = LEGACY_COUNTRY_CODES.map((code) => ({
+  code,
+  name: normalizeLegacyWords(legacyRegionNames.of(code) ?? ""),
+})).filter(({ name }) => name.length > 2);
+const LEGACY_COUNTRY_ALIASES: Record<string, string[]> = {
+  US: ["us", "u s", "usa", "u s a", "united states", "united states of america"],
+  GB: ["uk", "u k", "united kingdom", "great britain", "england", "scotland", "wales"],
+  AE: ["uae", "u a e", "united arab emirates"],
+  KR: ["south korea", "republic of korea"],
+  TR: ["turkey", "turkiye"],
+  TW: ["taiwan"],
+};
+
+function normalizeLegacyWords(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function hasLegacyPhrase(haystack: string, phrase: string): boolean {
+  return ` ${haystack} `.includes(` ${phrase} `);
+}
+
+function inferLegacyCountry(location: string): string | null {
+  const normalized = normalizeLegacyWords(location);
+  if (!normalized || /^(remote|worldwide|global|anywhere)$/.test(normalized)) return null;
+  for (const [code, aliases] of Object.entries(LEGACY_COUNTRY_ALIASES)) {
+    if (aliases.some((alias) => hasLegacyPhrase(normalized, alias))) return code;
+  }
+  const matched = LEGACY_COUNTRY_NAMES.find(({ name }) => hasLegacyPhrase(normalized, name));
+  return matched?.code ?? null;
+}
+
+function legacySalaryFloor(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = value.replace(/,/g, "").match(/(?:\$|usd\s*)?\s*(\d+(?:\.\d+)?)\s*(k)?/i);
+  if (!match) return null;
+  const amount = Number(match[1]) * (match[2] ? 1000 : 1);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function legacyPostedTimestamp(job: { datePosted?: number }): number | null {
+  const timestamp = Number(job.datePosted);
+  const earliestReasonable = Date.UTC(2000, 0, 1);
+  const latestReasonable = Date.now() + 24 * 60 * 60 * 1000;
+  return Number.isFinite(timestamp) && timestamp >= earliestReasonable && timestamp <= latestReasonable
+    ? timestamp
+    : null;
+}
+
+function legacyJobLane(job: { title: string; description?: string; highTicket?: boolean }): typeof FREEHIRE_BRIDGE_LANES[number] {
+  const title = normalizeLegacyWords(job.title);
+  const searchable = normalizeLegacyWords(`${job.title} ${job.description ?? ""}`);
+  if (job.highTicket === true || hasLegacyPhrase(searchable, "high ticket")) return "high-ticket";
+  if (hasLegacyPhrase(title, "closer") || hasLegacyPhrase(title, "closing")) return "closer";
+  if (hasLegacyPhrase(title, "account executive")) return "account-executive";
+  if (hasLegacyPhrase(title, "sales manager")) return "leadership";
+  return "sales";
+}
+
+function legacyDescriptionBlocks(description: string): Array<{
+  type: "paragraph" | "bullet";
+  text: string;
+}> {
+  return description
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const bullet = /^[•·▪◦*-]\s*/.test(line);
+      return {
+        type: bullet ? "bullet" as const : "paragraph" as const,
+        text: bullet ? line.replace(/^[•·▪◦*-]\s*/, "") : line,
+      };
+    });
+}
+
 // ==================== Queries ====================
+
+/**
+ * Feed-safe view of the curated legacy board. This is intentionally internal:
+ * the HTTP bridge below is the only public surface and VIP rows are removed
+ * before any mapping or filtering occurs.
+ */
+export const listFreeHireSourceJobs = internalQuery({
+  args: {
+    lane: v.string(),
+    workMode: v.optional(v.string()),
+    country: v.optional(v.string()),
+    postedWithinDays: v.optional(v.number()),
+    minSalary: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const lane = FREEHIRE_BRIDGE_LANES.includes(args.lane as typeof FREEHIRE_BRIDGE_LANES[number])
+      ? args.lane as typeof FREEHIRE_BRIDGE_LANES[number]
+      : "sales";
+    const workMode = FREEHIRE_BRIDGE_WORK_MODES.includes(args.workMode as typeof FREEHIRE_BRIDGE_WORK_MODES[number])
+      ? args.workMode
+      : undefined;
+    const country = typeof args.country === "string" && /^[A-Z]{2}$/.test(args.country)
+      ? args.country
+      : undefined;
+    const postedWithinDays = args.postedWithinDays === 7 || args.postedWithinDays === 30
+      ? args.postedWithinDays
+      : undefined;
+    const minSalary = FREEHIRE_BRIDGE_MIN_SALARIES.includes(args.minSalary as typeof FREEHIRE_BRIDGE_MIN_SALARIES[number])
+      ? args.minSalary
+      : undefined;
+    const cutoff = postedWithinDays ? Date.now() - postedWithinDays * 24 * 60 * 60 * 1000 : null;
+
+    const active = await ctx.db
+      .query("b2cPublicJobs")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .collect();
+
+    const jobs = active
+      .filter((job) => job.vipOnly !== true && job.applyUrl.startsWith("https://"))
+      .filter((job) => lane === "sales" || legacyJobLane(job) === lane)
+      .filter((job) => {
+        if (workMode && job.remote === true && workMode !== "remote") return false;
+        const inferredCountry = inferLegacyCountry(job.location);
+        if (country && inferredCountry && inferredCountry !== country) return false;
+        const postedAt = legacyPostedTimestamp(job);
+        if (cutoff && postedAt && postedAt < cutoff) return false;
+        const salaryFloor = legacySalaryFloor(job.salaryRange);
+        if (minSalary && salaryFloor !== null && salaryFloor < minSalary) return false;
+        return true;
+      })
+      .sort((a, b) => (legacyPostedTimestamp(b) ?? b.createdAt) - (legacyPostedTimestamp(a) ?? a.createdAt))
+      .map((job) => {
+        const postedAt = legacyPostedTimestamp(job);
+        const inferredCountry = inferLegacyCountry(job.location);
+        const description = job.description?.trim() ?? "";
+        return {
+          id: `sequ3nce:${job._id}`,
+          title: job.title,
+          company: job.companyName,
+          logoUrl: "",
+          location: job.location,
+          description,
+          descriptionBlocks: legacyDescriptionBlocks(description),
+          applyUrl: job.applyUrl,
+          source: job.source?.trim() || "Sequ3nce",
+          workMode: job.remote === true ? "remote" as const : "unknown" as const,
+          skills: [],
+          employmentType: job.jobType?.trim() || "Not listed",
+          seniority: job.experienceLevel?.trim() || "Not listed",
+          salary: job.salaryRange?.trim() || "Compensation not listed",
+          postedAt: postedAt ? new Date(postedAt).toISOString() : null,
+          lastSeenAt: null,
+          appliedCount: 0,
+          domains: [],
+          countries: inferredCountry ? [inferredCountry.toLowerCase()] : [],
+          reality: null,
+        };
+      });
+
+    return { jobs, total: jobs.length, fetchedAt: new Date().toISOString() };
+  },
+});
 
 /** List active public jobs. Enriched with user's tracking status. */
 export const listJobs = query({

@@ -110,6 +110,7 @@ export interface FreeHireSearchParams {
   workMode?: 'remote' | 'hybrid' | 'onsite';
   country?: string;
   postedWithinDays?: 7 | 30;
+  minSalary?: 75000 | 100000 | 150000 | 200000;
   limit?: number;
   offset?: number;
 }
@@ -151,6 +152,7 @@ export interface FreeHireSearchResponse {
   total: number;
   limit: number;
   offset: number;
+  hasMore: boolean;
   fetchedAt: string;
 }
 

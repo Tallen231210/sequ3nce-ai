@@ -2683,6 +2683,7 @@ export default defineSchema({
     jobType: v.optional(v.string()),         // "Full-time" | "1099" | "Contract" | "Part-time"
     experienceLevel: v.optional(v.string()), // "Entry" | "Mid" | "Senior"
     datePosted: v.optional(v.number()),      // Unix ms — when the company posted, not when we imported
+    highTicket: v.optional(v.boolean()),     // Weekly curator's high-ticket classification
     createdAt: v.number(),
     updatedAt: v.number(),
     // VIP annual tier: partner roles — companies that came to Sequ3nce
@@ -2737,6 +2738,20 @@ export default defineSchema({
   })
     .index("by_user_job", ["userId", "externalJobId"])
     .index("by_user_updated", ["userId", "updatedAt"]),
+
+  // Private search preferences for the FreeHire-powered Personal job board.
+  // These describe what a member wants to browse, not qualifications they
+  // claim on their public sales profile.
+  b2cFreeHireJobPreferences: defineTable({
+    userId: v.id("b2cUsers"),
+    roleLane: v.string(),
+    sortMode: v.string(),
+    workMode: v.string(),
+    country: v.string(),
+    postedWindow: v.string(),
+    minSalary: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
 
   // Remote feature flags for the Personal app — flip features in shipped
   // builds without a release. Modes: "off" | "internal" (founders + test

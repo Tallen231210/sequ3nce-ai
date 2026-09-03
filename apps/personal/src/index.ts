@@ -584,6 +584,34 @@ function handleCalendarConnected(url: string): void {
 }
 
 type FreeHireDescriptionBlock = { type: 'heading' | 'paragraph' | 'bullet'; text: string };
+type FreeHireUnifiedJob = {
+  id: string;
+  title: string;
+  company: string;
+  logoUrl: string;
+  location: string;
+  description: string;
+  descriptionBlocks: FreeHireDescriptionBlock[];
+  applyUrl: string;
+  source: string;
+  workMode: 'remote' | 'hybrid' | 'onsite' | 'unknown';
+  skills: string[];
+  employmentType: string;
+  seniority: string;
+  salary: string;
+  postedAt: string | null;
+  lastSeenAt: string | null;
+  appliedCount: number;
+  domains: string[];
+  countries: string[];
+  reality: {
+    classification: string;
+    ageDays: number | null;
+    repostCount: number;
+    massPostingCount: number;
+    fakeFreshness: boolean;
+  } | null;
+};
 
 function decodeFreeHireEntities(value: string): string {
   return value
@@ -630,6 +658,29 @@ function extractFreeHireCompensation(description: string): string {
   return likelyPay ? likelyPay.replace(/\s+/g, ' ').replace(/k/gi, 'K').trim() : '';
 }
 
+function formatFreeHireCompensation(
+  job: Record<string, unknown>,
+  enrichment: Record<string, unknown>,
+  description: string,
+): string {
+  const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+  const label = (value: string): string => value
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const salaryMin = Number(enrichment.salary_min ?? job.salary_min);
+  const salaryMax = Number(enrichment.salary_max ?? job.salary_max);
+  const rawCurrency = text(enrichment.salary_currency) || text(job.salary_currency) || 'USD';
+  const currency = /^[a-z]{3}$/i.test(rawCurrency) ? rawCurrency.toUpperCase() : rawCurrency;
+  const interval = text(enrichment.salary_period) || text(job.salary_interval);
+  if (Number.isFinite(salaryMin) && salaryMin > 0) {
+    const maximum = Number.isFinite(salaryMax) && salaryMax > salaryMin
+      ? `–${Math.round(salaryMax).toLocaleString()}`
+      : '+';
+    return `${currency} ${Math.round(salaryMin).toLocaleString()}${maximum}${interval ? ` / ${label(interval)}` : ''}`;
+  }
+  return extractFreeHireCompensation(description) || 'Compensation not listed';
+}
+
 const FREEHIRE_LANES = ['for-you', 'sales', 'closer', 'account-executive', 'high-ticket', 'leadership'] as const;
 const FREEHIRE_QUERY_BY_LANE: Record<typeof FREEHIRE_LANES[number], string | undefined> = {
   'for-you': undefined,
@@ -638,6 +689,25 @@ const FREEHIRE_QUERY_BY_LANE: Record<typeof FREEHIRE_LANES[number], string | und
   'account-executive': '"account executive"',
   'high-ticket': 'high ticket',
   leadership: '"sales manager"',
+};
+const SEQU3NCE_LEGACY_JOBS_SITE_URL =
+  process.env.FREEHIRE_DEV_CONVEX_SITE_URL || 'https://ideal-ram-982.convex.site';
+const LEGACY_JOBS_CACHE_MS = 5 * 60 * 1000;
+const LEGACY_JOBS_CACHE_MAX = 100;
+const legacyJobsCache = new Map<string, { expiresAt: number; jobs: FreeHireUnifiedJob[] }>();
+const LEGACY_JOB_COUNTRY_CODES = 'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split(' ');
+const legacyJobRegionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+const LEGACY_JOB_COUNTRY_NAMES = LEGACY_JOB_COUNTRY_CODES.map((code) => ({
+  code,
+  name: normalizeLegacyJobWords(legacyJobRegionNames.of(code) ?? ''),
+})).filter(({ name }) => name.length > 2);
+const LEGACY_JOB_COUNTRY_ALIASES: Record<string, string[]> = {
+  US: ['us', 'u s', 'usa', 'u s a', 'united states', 'united states of america'],
+  GB: ['uk', 'u k', 'united kingdom', 'great britain', 'england', 'scotland', 'wales'],
+  AE: ['uae', 'u a e', 'united arab emirates'],
+  KR: ['south korea', 'republic of korea'],
+  TR: ['turkey', 'turkiye'],
+  TW: ['taiwan'],
 };
 
 function freeHireSearchQuery(rawParams: unknown, options: {
@@ -673,11 +743,285 @@ function freeHireSearchQuery(rawParams: unknown, options: {
   if (typeof params.country === 'string' && /^[A-Z]{2}$/.test(params.country)) {
     query.set('countries', params.country);
   }
+  const minSalary = Number(params.minSalary);
+  if ([75000, 100000, 150000, 200000].includes(minSalary)) {
+    query.set('salary_currency', 'USD');
+    query.set('salary_min', String(minSalary));
+  }
   const requestedWindow = options.postedWithinDays ?? params.postedWithinDays;
   if (requestedWindow === 7 || requestedWindow === 30) {
     query.set('posted_within_days', String(requestedWindow));
   }
   return { query, limit, offset };
+}
+
+function normalizeLegacyJobWords(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function hasLegacyJobPhrase(haystack: string, phrase: string): boolean {
+  return ` ${haystack} `.includes(` ${phrase} `);
+}
+
+function inferLegacyJobCountry(location: string): string | null {
+  const normalized = normalizeLegacyJobWords(location);
+  if (!normalized || /^(remote|worldwide|global|anywhere)$/.test(normalized)) return null;
+  for (const [code, aliases] of Object.entries(LEGACY_JOB_COUNTRY_ALIASES)) {
+    if (aliases.some((alias) => hasLegacyJobPhrase(normalized, alias))) return code;
+  }
+  const matched = LEGACY_JOB_COUNTRY_NAMES.find(({ name }) => hasLegacyJobPhrase(normalized, name));
+  return matched?.code ?? null;
+}
+
+function legacyJobSalaryFloor(value: string): number | null {
+  const match = value.replace(/,/g, '').match(/(?:\$|usd\s*)?\s*(\d+(?:\.\d+)?)\s*(k)?/i);
+  if (!match) return null;
+  const amount = Number(match[1]) * (match[2] ? 1000 : 1);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function validLegacyJobTimestamp(value: unknown): number | null {
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) && timestamp >= Date.UTC(2000, 0, 1) && timestamp <= Date.now() + 86_400_000
+    ? timestamp
+    : null;
+}
+
+function legacyJobLane(job: Record<string, unknown>): typeof FREEHIRE_LANES[number] {
+  const title = normalizeLegacyJobWords(typeof job.title === 'string' ? job.title : '');
+  const description = typeof job.description === 'string' ? job.description : '';
+  const searchable = normalizeLegacyJobWords(`${title} ${description}`);
+  if (job.highTicket === true || hasLegacyJobPhrase(searchable, 'high ticket')) return 'high-ticket';
+  if (hasLegacyJobPhrase(title, 'closer') || hasLegacyJobPhrase(title, 'closing')) return 'closer';
+  if (hasLegacyJobPhrase(title, 'account executive')) return 'account-executive';
+  if (hasLegacyJobPhrase(title, 'sales manager')) return 'leadership';
+  return 'sales';
+}
+
+function legacyJobSearchParams(rawParams: unknown): {
+  lane: typeof FREEHIRE_LANES[number];
+  workMode?: 'remote' | 'hybrid' | 'onsite';
+  country?: string;
+  postedWithinDays?: 7 | 30;
+  minSalary?: 75000 | 100000 | 150000 | 200000;
+} {
+  const params = rawParams && typeof rawParams === 'object'
+    ? rawParams as Record<string, unknown>
+    : {};
+  const lane = typeof params.lane === 'string' && FREEHIRE_LANES.includes(params.lane as typeof FREEHIRE_LANES[number])
+    ? params.lane as typeof FREEHIRE_LANES[number]
+    : 'for-you';
+  const workMode = params.workMode === 'remote' || params.workMode === 'hybrid' || params.workMode === 'onsite'
+    ? params.workMode
+    : undefined;
+  const country = typeof params.country === 'string' && /^[A-Z]{2}$/.test(params.country)
+    ? params.country
+    : undefined;
+  const postedWithinDays = params.postedWithinDays === 7 || params.postedWithinDays === 30
+    ? params.postedWithinDays
+    : undefined;
+  const numericSalary = Number(params.minSalary);
+  const minSalary = [75000, 100000, 150000, 200000].includes(numericSalary)
+    ? numericSalary as 75000 | 100000 | 150000 | 200000
+    : undefined;
+  return { lane, workMode, country, postedWithinDays, minSalary };
+}
+
+function mapLegacyPublicJob(job: Record<string, unknown>): FreeHireUnifiedJob | null {
+  const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+  const id = text(job._id);
+  const applyUrl = text(job.applyUrl);
+  if (!id || !applyUrl.startsWith('https://') || job.status !== 'active' || job.vipOnly === true) return null;
+  const description = text(job.description);
+  const parsedDescription = parseFreeHireDescription(description);
+  const postedTimestamp = validLegacyJobTimestamp(job.datePosted);
+  const country = inferLegacyJobCountry(text(job.location));
+  return {
+    id: `sequ3nce:${id}`,
+    title: text(job.title) || 'Untitled sales role',
+    company: text(job.companyName) || 'Company not listed',
+    logoUrl: '',
+    location: text(job.location) || 'Location not listed',
+    description: parsedDescription.text,
+    descriptionBlocks: parsedDescription.blocks,
+    applyUrl,
+    source: text(job.source) || 'Sequ3nce',
+    workMode: job.remote === true ? 'remote' : 'unknown',
+    skills: [],
+    employmentType: text(job.jobType) || 'Not listed',
+    seniority: text(job.experienceLevel) || 'Not listed',
+    salary: text(job.salaryRange) || 'Compensation not listed',
+    postedAt: postedTimestamp ? new Date(postedTimestamp).toISOString() : null,
+    lastSeenAt: null,
+    appliedCount: 0,
+    domains: [],
+    countries: country ? [country.toLowerCase()] : [],
+    reality: null,
+  };
+}
+
+function legacyRawJobMatches(job: Record<string, unknown>, params: ReturnType<typeof legacyJobSearchParams>): boolean {
+  if (job.status !== 'active' || job.vipOnly === true) return false;
+  const applyUrl = typeof job.applyUrl === 'string' ? job.applyUrl.trim() : '';
+  if (!applyUrl.startsWith('https://')) return false;
+  if (params.lane !== 'for-you' && params.lane !== 'sales' && legacyJobLane(job) !== params.lane) return false;
+  if (params.workMode && job.remote === true && params.workMode !== 'remote') return false;
+  const location = typeof job.location === 'string' ? job.location : '';
+  const country = inferLegacyJobCountry(location);
+  if (params.country && country && country !== params.country) return false;
+  const postedAt = validLegacyJobTimestamp(job.datePosted);
+  if (params.postedWithinDays && postedAt) {
+    const cutoff = Date.now() - params.postedWithinDays * 86_400_000;
+    if (postedAt < cutoff) return false;
+  }
+  const salary = typeof job.salaryRange === 'string' ? legacyJobSalaryFloor(job.salaryRange) : null;
+  if (params.minSalary && salary !== null && salary < params.minSalary) return false;
+  return true;
+}
+
+function normalizeLegacyBridgeJob(value: Record<string, unknown>): FreeHireUnifiedJob | null {
+  const text = (input: unknown): string => typeof input === 'string' ? input.trim() : '';
+  const id = text(value.id);
+  const applyUrl = text(value.applyUrl);
+  if (!id.startsWith('sequ3nce:') || !applyUrl.startsWith('https://')) return null;
+  const description = text(value.description);
+  const rawBlocks = Array.isArray(value.descriptionBlocks) ? value.descriptionBlocks : [];
+  const descriptionBlocks = rawBlocks.map((block) => {
+    const record = freeHireRecord(block);
+    const type = record.type === 'heading' || record.type === 'bullet' ? record.type : 'paragraph';
+    return { type, text: text(record.text) } as FreeHireDescriptionBlock;
+  }).filter((block) => block.text);
+  const workMode = value.workMode === 'remote' || value.workMode === 'hybrid' || value.workMode === 'onsite'
+    ? value.workMode
+    : 'unknown';
+  return {
+    id,
+    title: text(value.title) || 'Untitled sales role',
+    company: text(value.company) || 'Company not listed',
+    logoUrl: text(value.logoUrl),
+    location: text(value.location) || 'Location not listed',
+    description,
+    descriptionBlocks: descriptionBlocks.length > 0 ? descriptionBlocks : parseFreeHireDescription(description).blocks,
+    applyUrl,
+    source: text(value.source) || 'Sequ3nce',
+    workMode,
+    skills: Array.isArray(value.skills) ? value.skills.filter((item): item is string => typeof item === 'string') : [],
+    employmentType: text(value.employmentType) || 'Not listed',
+    seniority: text(value.seniority) || 'Not listed',
+    salary: text(value.salary) || 'Compensation not listed',
+    postedAt: text(value.postedAt) || null,
+    lastSeenAt: null,
+    appliedCount: 0,
+    domains: [],
+    countries: Array.isArray(value.countries) ? value.countries.filter((item): item is string => typeof item === 'string') : [],
+    reality: null,
+  };
+}
+
+async function fetchLegacySourceJobs(rawParams: unknown): Promise<FreeHireUnifiedJob[]> {
+  const params = legacyJobSearchParams(rawParams);
+  const cacheKey = JSON.stringify(params);
+  const cached = legacyJobsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.jobs;
+  const query = new URLSearchParams({ lane: params.lane === 'for-you' ? 'sales' : params.lane });
+  if (params.workMode) query.set('workMode', params.workMode);
+  if (params.country) query.set('country', params.country);
+  if (params.postedWithinDays) query.set('postedWithinDays', String(params.postedWithinDays));
+  if (params.minSalary) query.set('minSalary', String(params.minSalary));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const bridgeResponse = await fetch(`${SEQU3NCE_LEGACY_JOBS_SITE_URL}/b2c/freehire-legacy-jobs?${query}`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    let jobs: FreeHireUnifiedJob[];
+    if (bridgeResponse.ok) {
+      const payload = await bridgeResponse.json() as Record<string, unknown>;
+      jobs = freeHireRows(payload.jobs).map(normalizeLegacyBridgeJob).filter((job): job is FreeHireUnifiedJob => !!job);
+    } else {
+      // During the backend-first rollout, an older Convex deployment will not
+      // have the mapped bridge yet. Its existing public endpoint already
+      // removes VIP rows, and this local mapper preserves development testing.
+      const fallbackResponse = await fetch(`${SEQU3NCE_LEGACY_JOBS_SITE_URL}/b2c/public-jobs`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!fallbackResponse.ok) return [];
+      const payload = await fallbackResponse.json() as Record<string, unknown>;
+      jobs = freeHireRows(payload.jobs)
+        .filter((job) => legacyRawJobMatches(job, params))
+        .sort((a, b) => ((validLegacyJobTimestamp(b.datePosted) ?? Number(b.createdAt)) || 0) - ((validLegacyJobTimestamp(a.datePosted) ?? Number(a.createdAt)) || 0))
+        .map(mapLegacyPublicJob)
+        .filter((job): job is FreeHireUnifiedJob => !!job);
+    }
+    const now = Date.now();
+    for (const [key, value] of legacyJobsCache) {
+      if (value.expiresAt <= now) legacyJobsCache.delete(key);
+    }
+    while (legacyJobsCache.size >= LEGACY_JOBS_CACHE_MAX) {
+      const oldestKey = legacyJobsCache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      legacyJobsCache.delete(oldestKey);
+    }
+    legacyJobsCache.set(cacheKey, { expiresAt: now + LEGACY_JOBS_CACHE_MS, jobs });
+    return jobs;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizedJobIdentity(value: string): string {
+  return normalizeLegacyJobWords(value);
+}
+
+function normalizedJobUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^utm_/i.test(key) || /^(ref|source|src|gh_src|trk|tracking)$/i.test(key)) {
+        url.searchParams.delete(key);
+      }
+    }
+    url.searchParams.sort();
+    const pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol.toLowerCase()}//${url.host.toLowerCase()}${pathname}${url.search}`;
+  } catch {
+    return value.trim().toLowerCase().replace(/\/+$/, '');
+  }
+}
+
+function mergeLegacySourceJobs(
+  freeHireJobs: FreeHireUnifiedJob[],
+  legacyJobs: FreeHireUnifiedJob[],
+  offset: number,
+): { jobs: FreeHireUnifiedJob[]; legacyCount: number } {
+  const companyTitles = new Set<string>();
+  const urls = new Set<string>();
+  const uniqueLegacy = legacyJobs.filter((job) => {
+    const companyTitle = `${normalizedJobIdentity(job.company)}::${normalizedJobIdentity(job.title)}`;
+    const url = normalizedJobUrl(job.applyUrl);
+    if (companyTitles.has(companyTitle) || urls.has(url)) return false;
+    companyTitles.add(companyTitle);
+    urls.add(url);
+    return true;
+  });
+  const uniqueFreeHire = freeHireJobs.filter((job) => {
+    const companyTitle = `${normalizedJobIdentity(job.company)}::${normalizedJobIdentity(job.title)}`;
+    return !companyTitles.has(companyTitle) && !urls.has(normalizedJobUrl(job.applyUrl));
+  });
+  return {
+    jobs: offset === 0 ? [...uniqueLegacy, ...uniqueFreeHire] : uniqueFreeHire,
+    legacyCount: uniqueLegacy.length,
+  };
 }
 
 const FREEHIRE_ANALYTICS_CACHE_MS = 5 * 60 * 1000;
@@ -785,6 +1129,7 @@ const setupIpcHandlers = (): void => {
       throw new Error('The FreeHire job feed is not enabled on this build.');
     }
     const { query: search, limit, offset } = freeHireSearchQuery(rawParams);
+    const legacyJobsPromise = fetchLegacySourceJobs(rawParams);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -806,7 +1151,7 @@ const setupIpcHandlers = (): void => {
         .replace(/[-_]+/g, ' ')
         .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-      const jobs = rawJobs.map((raw) => {
+      const freeHireJobs: FreeHireUnifiedJob[] = rawJobs.map((raw): FreeHireUnifiedJob => {
         const job = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
         const enrichment = job.enrichment && typeof job.enrichment === 'object'
           ? job.enrichment as Record<string, unknown>
@@ -819,13 +1164,7 @@ const setupIpcHandlers = (): void => {
         const parsedDescription = parseFreeHireDescription(job.description);
         const description = parsedDescription.text;
         const descriptionBlocks = parsedDescription.blocks;
-        const salaryMin = Number(job.salary_min);
-        const salaryMax = Number(job.salary_max);
-        const currency = text(job.salary_currency) || 'USD';
-        const interval = text(job.salary_interval);
-        const salary = Number.isFinite(salaryMin) && salaryMin > 0
-          ? `${currency} ${Math.round(salaryMin).toLocaleString()}${Number.isFinite(salaryMax) && salaryMax > salaryMin ? `–${Math.round(salaryMax).toLocaleString()}` : '+'}${interval ? ` / ${label(interval)}` : ''}`
-          : extractFreeHireCompensation(description) || 'Compensation not listed';
+        const salary = formatFreeHireCompensation(job, enrichment, description);
         const workMode = text(job.work_mode);
         return {
           id: text(job.public_slug) || `${text(job.source)}-${text(job.external_id)}`,
@@ -860,11 +1199,15 @@ const setupIpcHandlers = (): void => {
       const meta = payload.meta && typeof payload.meta === 'object'
         ? payload.meta as Record<string, unknown>
         : payload;
+      const freeHireTotal = Number(meta.total) || freeHireJobs.length;
+      const legacyJobs = await legacyJobsPromise;
+      const merged = mergeLegacySourceJobs(freeHireJobs, legacyJobs, offset);
       return {
-        jobs,
-        total: Number(meta.total) || jobs.length,
+        jobs: merged.jobs,
+        total: freeHireTotal + merged.legacyCount,
         limit,
         offset,
+        hasMore: offset + limit < freeHireTotal,
         fetchedAt: new Date().toISOString(),
       };
     } catch (error) {
@@ -986,7 +1329,7 @@ const setupIpcHandlers = (): void => {
       return {
         description: parsed.text,
         descriptionBlocks: parsed.blocks,
-        salary: extractFreeHireCompensation(parsed.text) || 'Compensation not listed',
+        salary: formatFreeHireCompensation(job, enrichment, parsed.text),
         employmentType: label(enrichment.employment_type) || label(job.employment_type) || 'Not listed',
         seniority: label(enrichment.seniority) || label(job.seniority) || 'Not listed',
       };

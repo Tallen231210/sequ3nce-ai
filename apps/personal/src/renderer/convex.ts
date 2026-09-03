@@ -5,7 +5,7 @@ import * as Sentry from "@sentry/electron/renderer";
 
 // HTTP Action endpoint - hosted at .convex.site (not .convex.cloud)
 export const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
-const FREEHIRE_TRACKING_SITE_URL =
+const FREEHIRE_PERSONAL_SITE_URL =
   process.env.FREEHIRE_DEV_CONVEX_SITE_URL || CONVEX_SITE_URL;
 
 // ============================================================================
@@ -4679,6 +4679,15 @@ export interface FreeHireActivity {
   stageChangedAt: number;
 }
 
+export interface FreeHirePreferences {
+  roleLane: "sales" | "closer" | "account-executive" | "high-ticket" | "leadership";
+  sortMode: "relevance" | "newest";
+  workMode: "all" | "remote" | "hybrid" | "onsite";
+  country: string;
+  postedWindow: "any" | "7" | "30";
+  minSalary: 0 | 75000 | 100000 | 150000 | 200000;
+}
+
 type FreeHireTrackingResult =
   | { activities: FreeHireActivity[] }
   | { id?: string; removed?: boolean }
@@ -4692,7 +4701,7 @@ async function callFreeHireTracking(
     return { error: "Sign in again to sync job activity.", needsRelogin: true };
   }
   try {
-    const response = await convexFetch(`${FREEHIRE_TRACKING_SITE_URL}/b2c/freehire-tracking`, {
+    const response = await convexFetch(`${FREEHIRE_PERSONAL_SITE_URL}/b2c/freehire-tracking`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, sessionToken }),
@@ -4730,6 +4739,56 @@ export async function saveFreeHireActivity(args: {
   const result = await callFreeHireTracking(sessionToken, {
     operation: "upsert",
     ...activity,
+  });
+  if ("error" in result) return { success: false, ...result };
+  return { success: true };
+}
+
+type FreeHirePreferencesResult =
+  | { preferences: (FreeHirePreferences & { updatedAt?: number }) | null }
+  | { error: string; needsRelogin?: boolean };
+
+async function callFreeHirePreferences(
+  sessionToken: string,
+  body: Record<string, unknown>,
+): Promise<FreeHirePreferencesResult> {
+  if (!sessionToken) {
+    return { error: "Sign in again to sync job preferences.", needsRelogin: true };
+  }
+  try {
+    const response = await convexFetch(`${FREEHIRE_PERSONAL_SITE_URL}/b2c/freehire-preferences`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, sessionToken }),
+    });
+    const data = await safeJsonParse(response, "Failed to sync job preferences") as FreeHirePreferencesResult;
+    if (!response.ok && !("error" in data)) {
+      return { error: "Failed to sync job preferences" };
+    }
+    return data;
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "freeHirePreferences", integration: "convex" },
+    });
+    return { error: "Job preferences could not sync." };
+  }
+}
+
+export async function getFreeHirePreferences(
+  sessionToken: string,
+): Promise<{ preferences?: FreeHirePreferences | null; error?: string; needsRelogin?: boolean }> {
+  const result = await callFreeHirePreferences(sessionToken, { operation: "get" });
+  if ("error" in result) return result;
+  return { preferences: result.preferences };
+}
+
+export async function saveFreeHirePreferences(args: FreeHirePreferences & {
+  sessionToken: string;
+}): Promise<{ success: boolean; error?: string; needsRelogin?: boolean }> {
+  const { sessionToken, ...preferences } = args;
+  const result = await callFreeHirePreferences(sessionToken, {
+    operation: "set",
+    ...preferences,
   });
   if ("error" in result) return { success: false, ...result };
   return { success: true };

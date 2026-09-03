@@ -7,11 +7,18 @@ disabled without changing the legacy public board.
 
 - FreeHire's public job catalogue is fetched through a fixed Electron IPC
   handler. The renderer cannot turn it into an arbitrary web proxy.
-- The public board offers preset sales lanes, work-mode and freshness filters,
-  pagination, company logos, full listing details, extracted compensation,
-  source links, and catalogue reality signals.
-- Each preset lane can be narrowed by work mode, country, and posting date;
-  Best Match remains the default sort.
+- For You keeps role, work mode, location, disclosed target pay, posting date,
+  and sort in one compact, always-adjustable preference strip. Changes update
+  the feed immediately; Best Match remains the default sort.
+- The public board also provides pagination, company logos, full listing
+  details, extracted compensation, source links, and catalogue reality signals.
+- Active, non-VIP jobs from `b2cPublicJobs` are merged into the same feed as an
+  additional source. They retain their own `source` label, appear first on the
+  first page of the matching lane, and use the same save/stage/note flow.
+- Curated rows are deduplicated against FreeHire by normalized company + title,
+  then application URL. Rows with non-HTTPS application URLs are never exposed.
+- The weekly import preserves its `highTicket` classification; specialized
+  title lanes and that flag determine where curated rows appear.
 - Market Insights uses FreeHire's full-set facet counts plus its aggregated
   Sales role, skill, salary, and weekly catalogue rollups. It never derives
   market claims from only the jobs currently loaded in the renderer.
@@ -21,6 +28,10 @@ disabled without changing the legacy public board.
 - Saving, stages, private notes, dismissals, restores, and activity timestamps
   are wired to authenticated Convex persistence. The server resolves the user
   exclusively from the B2C session token; the endpoint accepts no user ID.
+- Search preferences use the same identity rule and live in their own private
+  one-row-per-user table. A per-user local fallback keeps them adjustable when
+  the backend is temporarily unavailable; unsynced changes remain marked for
+  upload and are retried on the next authenticated load.
 - A per-user local cache keeps the preview usable when the development backend
   is unavailable. A successful authenticated connection treats Convex as the
   source of truth and migrates local-only preview activity once.
@@ -38,8 +49,11 @@ The board is behind the remote flag `freehire_job_board` (2026-09-02):
 - The main-process FreeHire handler independently honors the global mode
   (cached 5 min) — setting `off` is a true kill switch even for running apps.
 
-The Convex additions are isolated to `b2cFreeHireJobTracking`, internal
-functions in `b2cJobBoard.ts`, a B2C session resolver, and one HTTP endpoint.
+The Convex additions are isolated to `b2cFreeHireJobTracking`,
+`b2cFreeHireJobPreferences`, a feed-safe internal query in `b2cPublicJobs.ts`,
+internal functions in `b2cJobBoard.ts`, a B2C session resolver, and three HTTP
+endpoints. The curated-source bridge enforces active + non-VIP filtering before
+mapping rows into the shared job shape.
 The existing login flow is reused unchanged. FreeHire market analytics are
 read-only, pass through guarded Electron IPC, and are cached for five minutes.
 
@@ -56,8 +70,8 @@ For a complete removal, also remove:
    `freehire:market-insights` handlers in `src/index.ts`
 3. the `FreeHire*` interfaces and `freeHire` bridge in `src/preload.ts`
 4. the matching declarations in `src/renderer/types/electron.d.ts`
-5. the FreeHire activity client helpers in `src/renderer/convex.ts`
-6. `b2cFreeHireJobTracking` and the FreeHire-only internal functions/routes in
+5. the FreeHire activity and preference client helpers in `src/renderer/convex.ts`
+6. `b2cFreeHireJobTracking`, `b2cFreeHireJobPreferences`, and the FreeHire-only internal functions/routes in
    `apps/web/convex/{schema,b2cJobBoard,b2cAuth,http}.ts`
 
 ## Development backend

@@ -12256,6 +12256,35 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// Read-only bridge that lets the FreeHire-powered Personal board treat the
+// legacy curated catalogue as one more ordinary source. The internal query
+// removes VIP/Placement Line rows before returning any data.
+http.route({
+  path: "/b2c/freehire-legacy-jobs",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const postedWithinDays = Number(url.searchParams.get("postedWithinDays"));
+      const minSalary = Number(url.searchParams.get("minSalary"));
+      const result = await ctx.runQuery(internal.b2cPublicJobs.listFreeHireSourceJobs, {
+        lane: url.searchParams.get("lane") || "sales",
+        workMode: url.searchParams.get("workMode") || undefined,
+        country: url.searchParams.get("country")?.toUpperCase() || undefined,
+        postedWithinDays: postedWithinDays === 7 || postedWithinDays === 30
+          ? postedWithinDays
+          : undefined,
+        minSalary: [75000, 100000, 150000, 200000].includes(minSalary)
+          ? minSalary
+          : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch {
+      return b2cJsonResponse({ error: "Failed to load curated jobs" }, 500, true);
+    }
+  }),
+});
+
 // Authenticated persistence for the development FreeHire catalogue. Identity
 // is derived exclusively from the B2C bearer token; this route intentionally
 // accepts no userId, preventing one member from requesting another's rows.
@@ -12321,6 +12350,62 @@ http.route({
 
 http.route({
   path: "/b2c/freehire-tracking",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
+// Private job-search preferences. As with tracking, the caller cannot provide
+// a user id: the B2C session is the sole source of row ownership.
+http.route({
+  path: "/b2c/freehire-preferences",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const sessionToken = typeof body?.sessionToken === "string"
+        ? body.sessionToken
+        : "";
+      const session = sessionToken
+        ? await ctx.runQuery(internal.b2cAuth.resolveB2CSession, { sessionToken })
+        : null;
+      if (!session) {
+        return b2cJsonResponse(
+          { error: "Your session has expired. Sign in again to sync job preferences.", needsRelogin: true },
+          401,
+          true,
+        );
+      }
+
+      if (body.operation === "get") {
+        const preferences = await ctx.runQuery(internal.b2cJobBoard.getFreeHirePreferences, {
+          userId: session.userId,
+        });
+        return b2cJsonResponse({ preferences }, 200, true);
+      }
+
+      if (body.operation === "set") {
+        const result = await ctx.runMutation(internal.b2cJobBoard.setFreeHirePreferences, {
+          userId: session.userId,
+          roleLane: typeof body.roleLane === "string" ? body.roleLane : "",
+          sortMode: typeof body.sortMode === "string" ? body.sortMode : "",
+          workMode: typeof body.workMode === "string" ? body.workMode : "",
+          country: typeof body.country === "string" ? body.country : "",
+          postedWindow: typeof body.postedWindow === "string" ? body.postedWindow : "",
+          minSalary: typeof body.minSalary === "number" ? body.minSalary : Number.NaN,
+        });
+        return b2cJsonResponse(result, 200, true);
+      }
+
+      return b2cJsonResponse({ error: "Unsupported preferences operation" }, 400, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update job preferences";
+      return b2cJsonResponse({ error: message }, 400, true);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/freehire-preferences",
   method: "OPTIONS",
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });

@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getFreeHireActivities,
+  getFreeHirePreferences,
   saveFreeHireActivity,
+  saveFreeHirePreferences,
   type CloserInfo,
   type FreeHireActivity,
   type FreeHireJobStage,
+  type FreeHirePreferences,
   type FreeHireTrackedJobSnapshot,
 } from '../convex';
 import type {
@@ -18,11 +21,12 @@ import { PlacementLineTab } from './PlacementLineTab';
 
 type TopTab = 'public' | 'internal';
 type PublicSection = 'discover' | 'applications' | 'insights';
-type RoleLane = 'for-you' | 'sales' | 'closer' | 'account-executive' | 'high-ticket' | 'leadership';
+type RoleLane = FreeHirePreferences['roleLane'];
 type JobStage = FreeHireJobStage;
-type WorkMode = 'all' | 'remote' | 'hybrid' | 'onsite';
-type PostedWindow = 'any' | '7' | '30';
-type SortMode = 'newest' | 'relevance';
+type WorkMode = FreeHirePreferences['workMode'];
+type PostedWindow = FreeHirePreferences['postedWindow'];
+type SortMode = FreeHirePreferences['sortMode'];
+type SalaryTarget = FreeHirePreferences['minSalary'];
 type CountryScope = string;
 
 interface TrackedJob {
@@ -34,17 +38,22 @@ interface TrackedJob {
   updatedAt: number;
   stageChangedAt: number;
 }
+interface PreferenceSaveRequest {
+  sessionToken: string;
+  storageKey: string;
+  preferences: FreeHirePreferences;
+  serialized: string;
+}
 type TrackingState = 'loading' | 'synced' | 'local' | 'needs-login';
 interface FreeHireJobBoardPreviewProps { closerInfo: CloserInfo }
-interface RoleDefinition { id: RoleLane; label: string; shortLabel: string; description: string }
+interface RoleDefinition { id: RoleLane; label: string }
 
 const ROLE_LANES: RoleDefinition[] = [
-  { id: 'for-you', label: 'For You', shortLabel: 'For You', description: 'The newest sales opportunities' },
-  { id: 'sales', label: 'Sales', shortLabel: 'Sales', description: 'Opportunities across every sales function' },
-  { id: 'closer', label: 'Closer', shortLabel: 'Closer', description: 'Dedicated closing opportunities' },
-  { id: 'account-executive', label: 'Account Executive', shortLabel: 'Account Executive', description: 'Full-cycle closing roles' },
-  { id: 'high-ticket', label: 'High-Ticket', shortLabel: 'High-Ticket', description: 'High-consideration offers' },
-  { id: 'leadership', label: 'Sales Leadership', shortLabel: 'Leadership', description: 'Manager and director roles' },
+  { id: 'sales', label: 'All Sales' },
+  { id: 'closer', label: 'Closer' },
+  { id: 'account-executive', label: 'Account Executive' },
+  { id: 'high-ticket', label: 'High-Ticket' },
+  { id: 'leadership', label: 'Sales Leadership' },
 ];
 
 const STAGE_META: Array<{ id: JobStage; label: string; description: string }> = [
@@ -62,17 +71,36 @@ const COUNTRY_OPTIONS: Array<[string, string]> = [
   ...COUNTRY_CODES.map((code): [string, string] => [code, regionNames.of(code) ?? code])
     .sort((a, b) => a[1].localeCompare(b[1])),
 ];
+const SALARY_OPTIONS: Array<[string, string]> = [
+  ['0', 'Any compensation'],
+  ['75000', '$75K+ disclosed'],
+  ['100000', '$100K+ disclosed'],
+  ['150000', '$150K+ disclosed'],
+  ['200000', '$200K+ disclosed'],
+];
+const DEFAULT_PREFERENCES: FreeHirePreferences = {
+  roleLane: 'sales',
+  sortMode: 'relevance',
+  workMode: 'all',
+  country: 'any',
+  postedWindow: 'any',
+  minSalary: 0,
+};
 
 export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewProps) {
   const [topTab, setTopTab] = useState<TopTab>('public');
   const [section, setSection] = useState<PublicSection>('discover');
-  const [roleLane, setRoleLane] = useState<RoleLane>('for-you');
+  const [roleLane, setRoleLane] = useState<RoleLane>(DEFAULT_PREFERENCES.roleLane);
   const [sortMode, setSortMode] = useState<SortMode>('relevance');
   const [workMode, setWorkMode] = useState<WorkMode>('all');
   const [countryScope, setCountryScope] = useState<CountryScope>('any');
   const [postedWindow, setPostedWindow] = useState<PostedWindow>('any');
+  const [minSalary, setMinSalary] = useState<SalaryTarget>(0);
+  const [preferencesReady, setPreferencesReady] = useState(false);
   const [jobs, setJobs] = useState<FreeHireJob[]>([]);
   const [total, setTotal] = useState(0);
+  const [nextOffset, setNextOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -83,11 +111,131 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   const [trackingReady, setTrackingReady] = useState(false);
   const [trackingState, setTrackingState] = useState<TrackingState>('loading');
   const [toast, setToast] = useState<string | null>(null);
+  const jobRequestRef = useRef(0);
+  const preferenceTouchedRef = useRef(false);
+  const lastSavedPreferencesRef = useRef('');
+  const skipPreferenceSaveRef = useRef(false);
+  const preferenceSaveQueueRef = useRef<{
+    inFlight: boolean;
+    pending: PreferenceSaveRequest | null;
+  }>({ inFlight: false, pending: null });
 
   const userId = closerInfo.b2cUserId ?? '';
   const isFounder = closerInfo.badges?.includes('founder') || closerInfo.badges?.includes('admin');
   const firstName = closerInfo.name?.trim().split(/\s+/)[0] || 'there';
   const storageKey = `sequ3nce:dev-job-board:${userId || 'anonymous'}`;
+  const preferenceStorageKey = `sequ3nce:job-preferences:${userId || 'anonymous'}`;
+
+  const currentPreferences = useMemo<FreeHirePreferences>(() => ({
+    roleLane,
+    sortMode,
+    workMode,
+    country: countryScope,
+    postedWindow,
+    minSalary,
+  }), [roleLane, sortMode, workMode, countryScope, postedWindow, minSalary]);
+
+  const queuePreferenceSave = useCallback((request: PreferenceSaveRequest) => {
+    const queue = preferenceSaveQueueRef.current;
+    queue.pending = request;
+    if (queue.inFlight) return;
+
+    const flush = async (): Promise<void> => {
+      const next = queue.pending;
+      if (!next) return;
+      queue.pending = null;
+      queue.inFlight = true;
+      const result = await saveFreeHirePreferences({
+        sessionToken: next.sessionToken,
+        ...next.preferences,
+      });
+      queue.inFlight = false;
+      if (result.success && !queue.pending && lastSavedPreferencesRef.current === next.serialized) {
+        writePreferenceCache(next.storageKey, next.preferences, false);
+      }
+      if (queue.pending) await flush();
+    };
+
+    void flush();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let localCache: LocalPreferenceCache = {
+      preferences: DEFAULT_PREFERENCES,
+      pendingSync: false,
+    };
+    preferenceTouchedRef.current = false;
+    skipPreferenceSaveRef.current = true;
+    try {
+      const saved = window.localStorage.getItem(preferenceStorageKey);
+      if (saved) localCache = normalizePreferenceCache(JSON.parse(saved));
+    } catch {
+      localCache = { preferences: DEFAULT_PREFERENCES, pendingSync: false };
+    }
+    const local = localCache.preferences;
+    applyPreferences(local, { setRoleLane, setSortMode, setWorkMode, setCountryScope, setPostedWindow, setMinSalary });
+    lastSavedPreferencesRef.current = JSON.stringify(local);
+    setPreferencesReady(true);
+
+    const sessionToken = closerInfo.sessionToken;
+    if (!sessionToken) return () => { active = false; };
+    void getFreeHirePreferences(sessionToken).then((result) => {
+      if (!active || result.error) return;
+      if (localCache.pendingSync) {
+        if (!preferenceTouchedRef.current) {
+          queuePreferenceSave({
+            sessionToken,
+            storageKey: preferenceStorageKey,
+            preferences: local,
+            serialized: JSON.stringify(local),
+          });
+        }
+        return;
+      }
+      if (result.preferences) {
+        const remote = normalizePreferences(result.preferences);
+        if (!preferenceTouchedRef.current) {
+          lastSavedPreferencesRef.current = JSON.stringify(remote);
+          applyPreferences(remote, { setRoleLane, setSortMode, setWorkMode, setCountryScope, setPostedWindow, setMinSalary });
+          writePreferenceCache(preferenceStorageKey, remote, false);
+        }
+        return;
+      }
+      if (!preferenceTouchedRef.current) {
+        queuePreferenceSave({
+          sessionToken,
+          storageKey: preferenceStorageKey,
+          preferences: local,
+          serialized: JSON.stringify(local),
+        });
+      }
+    });
+    return () => { active = false; };
+  }, [preferenceStorageKey, closerInfo.sessionToken, queuePreferenceSave]);
+
+  useEffect(() => {
+    if (!preferencesReady) return;
+    if (skipPreferenceSaveRef.current) {
+      skipPreferenceSaveRef.current = false;
+      return;
+    }
+    const serialized = JSON.stringify(currentPreferences);
+    if (serialized === lastSavedPreferencesRef.current) return;
+    writePreferenceCache(preferenceStorageKey, currentPreferences, true);
+    lastSavedPreferencesRef.current = serialized;
+    const timeout = window.setTimeout(() => {
+      if (closerInfo.sessionToken) {
+        queuePreferenceSave({
+          sessionToken: closerInfo.sessionToken,
+          storageKey: preferenceStorageKey,
+          preferences: currentPreferences,
+          serialized,
+        });
+      }
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [currentPreferences, preferenceStorageKey, preferencesReady, closerInfo.sessionToken, queuePreferenceSave]);
 
   useEffect(() => {
     let active = true;
@@ -148,6 +296,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   }, [storageKey, tracked, trackingReady]);
 
   const loadJobs = useCallback(async (offset: number, append: boolean) => {
+    const requestId = ++jobRequestRef.current;
     if (!window.electron?.freeHire) {
       setError('The job feed could not load. Quit and reopen the app, then try again.');
       setLoading(false);
@@ -163,23 +312,30 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
         workMode: workMode === 'all' ? undefined : workMode,
         country: countryScope === 'any' ? undefined : countryScope,
         postedWithinDays: postedWindow === 'any' ? undefined : Number(postedWindow) as 7 | 30,
+        minSalary: minSalary || undefined,
         limit: PAGE_SIZE,
         offset,
       });
+      if (requestId !== jobRequestRef.current) return;
       setJobs((current) => append ? mergeJobs(current, result.jobs) : result.jobs);
       setTotal(result.total);
+      setNextOffset(result.offset + result.limit);
+      setHasMore(result.hasMore ?? result.offset + result.limit < result.total);
       setSelectedJobId((current) => append && current ? current : result.jobs[0]?.id ?? null);
     } catch (requestError) {
+      if (requestId !== jobRequestRef.current) return;
       const message = requestError instanceof Error ? requestError.message : String(requestError);
       setError(message.replace(/^Error invoking remote method '[^']+':\s*/, ''));
-      if (!append) { setJobs([]); setTotal(0); }
+      if (!append) { setJobs([]); setTotal(0); setNextOffset(0); setHasMore(false); }
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (requestId === jobRequestRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [roleLane, sortMode, workMode, countryScope, postedWindow]);
+  }, [roleLane, sortMode, workMode, countryScope, postedWindow, minSalary]);
 
-  useEffect(() => { void loadJobs(0, false); }, [loadJobs, refreshToken]);
+  useEffect(() => { if (preferencesReady) void loadJobs(0, false); }, [loadJobs, refreshToken, preferencesReady]);
 
   const visibleJobs = useMemo(
     () => jobs.filter((job) => !tracked[job.id]?.dismissed),
@@ -261,7 +417,8 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
     setToast(message);
     window.setTimeout(() => setToast(null), 2500);
   }, []);
-  const selectRoleLane = useCallback((lane: RoleLane) => setRoleLane(lane), []);
+  const markPreferenceChanged = useCallback(() => { preferenceTouchedRef.current = true; }, []);
+  const selectRoleLane = useCallback((lane: RoleLane) => { markPreferenceChanged(); setRoleLane(lane); }, [markPreferenceChanged]);
 
   return (
     <div data-testid="freehire-job-board" className="h-full w-full min-w-0 flex flex-col overflow-hidden bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-gray-100">
@@ -292,15 +449,15 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
         <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
           <nav className="px-4 sm:px-5 xl:px-6 shrink-0 min-w-0">
             <div className="border-b border-gray-100 dark:border-zinc-800 flex items-center gap-5 overflow-x-auto overflow-y-hidden">
-              <SectionButton active={section === 'discover'} onClick={() => setSection('discover')}>Discover</SectionButton>
+              <SectionButton active={section === 'discover'} onClick={() => setSection('discover')}>For You</SectionButton>
               <SectionButton active={section === 'applications'} onClick={() => setSection('applications')}>Applications<span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${section === 'applications' ? 'bg-black dark:bg-white text-white dark:text-black' : 'bg-gray-100 dark:bg-zinc-800 text-gray-500'}`}>{Object.values(tracked).filter((activity) => activity.stage && !activity.dismissed).length}</span></SectionButton>
               <SectionButton active={section === 'insights'} onClick={() => setSection('insights')}>Market insights</SectionButton>
             </div>
           </nav>
 
-          {section === 'discover' && <DiscoverView firstName={firstName} roleLane={roleLane} onRoleChange={selectRoleLane} sortMode={sortMode} onSortModeChange={setSortMode} workMode={workMode} onWorkModeChange={setWorkMode} countryScope={countryScope} onCountryScopeChange={setCountryScope} postedWindow={postedWindow} onPostedWindowChange={setPostedWindow} jobs={visibleJobs} total={total} selectedJob={selectedJob} selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} tracked={tracked} onSetStage={setJobStage} onSetNote={setJobNote} onDismiss={dismissJob} onHydrateJob={hydrateJob} loading={loading} loadingMore={loadingMore} error={error} onRetry={() => setRefreshToken((value) => value + 1)} onLoadMore={() => void loadJobs(jobs.length, true)} onOpenApplications={() => setSection('applications')} onToast={showToast} />}
+          {section === 'discover' && <DiscoverView firstName={firstName} roleLane={roleLane} onRoleChange={selectRoleLane} sortMode={sortMode} onSortModeChange={(value) => { markPreferenceChanged(); setSortMode(value); }} workMode={workMode} onWorkModeChange={(value) => { markPreferenceChanged(); setWorkMode(value); }} countryScope={countryScope} onCountryScopeChange={(value) => { markPreferenceChanged(); setCountryScope(value); }} postedWindow={postedWindow} onPostedWindowChange={(value) => { markPreferenceChanged(); setPostedWindow(value); }} minSalary={minSalary} onMinSalaryChange={(value) => { markPreferenceChanged(); setMinSalary(value); }} onResetPreferences={() => { markPreferenceChanged(); applyPreferences(DEFAULT_PREFERENCES, { setRoleLane, setSortMode, setWorkMode, setCountryScope, setPostedWindow, setMinSalary }); }} jobs={visibleJobs} total={total} hasMore={hasMore} selectedJob={selectedJob} selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} tracked={tracked} onSetStage={setJobStage} onSetNote={setJobNote} onDismiss={dismissJob} onHydrateJob={hydrateJob} loading={loading} loadingMore={loadingMore} error={error} onRetry={() => setRefreshToken((value) => value + 1)} onLoadMore={() => void loadJobs(nextOffset, true)} onOpenApplications={() => setSection('applications')} onToast={showToast} />}
           {section === 'applications' && <ApplicationsView tracked={tracked} trackingState={trackingState} onSetStage={setJobStage} onRestore={restoreJob} onSelectJob={(job) => { if (!jobs.some((item) => item.id === job.id)) setJobs((current) => [job, ...current]); setSelectedJobId(job.id); setSection('discover'); }} />}
-          {section === 'insights' && <InsightsView roleLane={roleLane} workMode={workMode} countryScope={countryScope} postedWindow={postedWindow} />}
+          {section === 'insights' && <InsightsView roleLane={roleLane} workMode={workMode} countryScope={countryScope} postedWindow={postedWindow} minSalary={minSalary} />}
         </div>
       )}
 
@@ -323,7 +480,9 @@ interface DiscoverProps {
   workMode: WorkMode; onWorkModeChange: (mode: WorkMode) => void;
   countryScope: CountryScope; onCountryScopeChange: (country: CountryScope) => void;
   postedWindow: PostedWindow; onPostedWindowChange: (value: PostedWindow) => void;
-  jobs: FreeHireJob[]; total: number; selectedJob: FreeHireJob | null; selectedJobId: string | null;
+  minSalary: SalaryTarget; onMinSalaryChange: (value: SalaryTarget) => void;
+  onResetPreferences: () => void;
+  jobs: FreeHireJob[]; total: number; hasMore: boolean; selectedJob: FreeHireJob | null; selectedJobId: string | null;
   onSelectJob: (id: string) => void; tracked: Record<string, TrackedJob>;
   onSetStage: (job: FreeHireJob, stage: JobStage | undefined) => void;
   onSetNote: (job: FreeHireJob, note: string) => void;
@@ -334,34 +493,36 @@ interface DiscoverProps {
 }
 
 function DiscoverView(props: DiscoverProps) {
-  const { firstName, roleLane, onRoleChange, sortMode, onSortModeChange, workMode, onWorkModeChange, countryScope, onCountryScopeChange, postedWindow, onPostedWindowChange, jobs, total, selectedJob, selectedJobId, onSelectJob, tracked, onSetStage, onSetNote, onDismiss, onHydrateJob, loading, loadingMore, error, onRetry, onLoadMore, onOpenApplications, onToast } = props;
+  const { firstName, roleLane, onRoleChange, sortMode, onSortModeChange, workMode, onWorkModeChange, countryScope, onCountryScopeChange, postedWindow, onPostedWindowChange, minSalary, onMinSalaryChange, onResetPreferences, jobs, total, hasMore, selectedJob, selectedJobId, onSelectJob, tracked, onSetStage, onSetNote, onDismiss, onHydrateJob, loading, loadingMore, error, onRetry, onLoadMore, onOpenApplications, onToast } = props;
   const activeLane = ROLE_LANES.find((lane) => lane.id === roleLane) ?? ROLE_LANES[0];
-  const selectedCountry = COUNTRY_OPTIONS.find(([code]) => code === countryScope)?.[1] ?? countryScope;
-  const scopeLabel = `${selectedCountry} · ${sortMode === 'newest' ? 'newest first' : 'best match first'}`;
   return (
     <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto lg:overflow-hidden overflow-x-hidden px-4 sm:px-5 xl:px-6 pb-6">
       <div className="pt-4 pb-3 shrink-0">
-        <p className="text-[9px] font-medium uppercase tracking-[0.13em] text-gray-500 dark:text-gray-400">Curated sales catalogue</p>
+        <p className="text-[9px] font-medium uppercase tracking-[0.13em] text-gray-500 dark:text-gray-400">For You</p>
         <div className="flex flex-wrap items-end justify-between gap-3 mt-1.5">
-          <div><h3 className="text-[18px] font-semibold tracking-tight text-gray-950 dark:text-white">Find your next role, {firstName}</h3><p className="text-[11px] text-gray-400 mt-1">Choose a sales lane—general web search stays intentionally out of the experience.</p></div>
-          {!loading && !error && <div className="text-right shrink-0"><p className="text-[17px] font-bold tabular-nums">{formatCount(total)}</p><p className="text-[8px] font-mono uppercase tracking-wider text-gray-400">matching roles</p></div>}
+          <div><h3 className="text-[18px] font-semibold tracking-tight text-gray-950 dark:text-white">Jobs for you, {firstName}</h3><p className="text-[11px] text-gray-400 mt-1">Adjust what you are looking for at any time.</p></div>
+          {!loading && !error && <div className="text-right shrink-0"><p data-testid="matching-role-count" className="text-[17px] font-bold tabular-nums">{formatCount(total)}</p><p className="text-[8px] font-mono uppercase tracking-wider text-gray-400">matching roles</p></div>}
         </div>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,130px),1fr))] gap-2 mb-3 shrink-0">
-        {ROLE_LANES.map((lane) => <button key={lane.id} onClick={() => onRoleChange(lane.id)} className={`min-w-0 rounded-lg border p-3 text-left transition-all ${roleLane === lane.id ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black' : 'border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-gray-400 dark:hover:border-zinc-600'}`}><div className="flex items-center justify-between gap-2"><span className="text-[10.5px] font-bold truncate">{lane.shortLabel}</span>{roleLane === lane.id && <CheckIcon className="w-3.5 h-3.5 shrink-0" />}</div><p className={`text-[8.5px] leading-snug mt-1.5 ${roleLane === lane.id ? 'text-white/65 dark:text-black/60' : 'text-gray-400'}`}>{lane.description}</p></button>)}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-gray-200 dark:border-zinc-800 bg-[#fafafa] dark:bg-zinc-900/50 p-2.5 mb-3 shrink-0">
-        <div className="flex flex-wrap gap-2 min-w-0"><FilterSelect label="Sort" value={sortMode} onChange={(value) => onSortModeChange(value as SortMode)} options={[['newest', 'Newest'], ['relevance', 'Best match']]} /><FilterSelect label="Work mode" value={workMode} onChange={(value) => onWorkModeChange(value as WorkMode)} options={[['all', 'Any work mode'], ['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']]} /><FilterSelect label="Country" value={countryScope} onChange={onCountryScopeChange} options={COUNTRY_OPTIONS} /><FilterSelect label="Posted" value={postedWindow} onChange={(value) => onPostedWindowChange(value as PostedWindow)} options={[['any', 'Any time'], ['7', 'Past 7 days'], ['30', 'Past 30 days']]} /></div>
-        <p className="text-[8.5px] text-gray-400">{scopeLabel}</p>
+      <div data-testid="job-preferences" className="rounded-lg border border-gray-200 dark:border-zinc-800 bg-[#fafafa] dark:bg-zinc-900/50 p-2.5 mb-3 shrink-0">
+        <div className="flex items-center justify-between gap-3 mb-2"><div><p className="text-[9.5px] font-semibold">Your preferences</p><p className="text-[8px] text-gray-400 mt-0.5">Changes update this feed and save automatically.</p></div><button data-testid="reset-job-preferences" onClick={onResetPreferences} className="text-[8.5px] font-semibold text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">Reset</button></div>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,135px),1fr))] gap-2 min-w-0">
+          <FilterSelect label="Role" value={roleLane} onChange={(value) => onRoleChange(value as RoleLane)} options={ROLE_LANES.map((lane): [string, string] => [lane.id, lane.label])} />
+          <FilterSelect label="Work mode" value={workMode} onChange={(value) => onWorkModeChange(value as WorkMode)} options={[['all', 'Any work mode'], ['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']]} />
+          <FilterSelect label="Location" value={countryScope} onChange={onCountryScopeChange} options={COUNTRY_OPTIONS} />
+          <FilterSelect label="Target pay" value={String(minSalary)} onChange={(value) => onMinSalaryChange(Number(value) as SalaryTarget)} options={SALARY_OPTIONS} />
+          <FilterSelect label="Posted" value={postedWindow} onChange={(value) => onPostedWindowChange(value as PostedWindow)} options={[['any', 'Any time'], ['7', 'Past 7 days'], ['30', 'Past 30 days']]} />
+          <FilterSelect label="Sort" value={sortMode} onChange={(value) => onSortModeChange(value as SortMode)} options={[['relevance', 'Best match'], ['newest', 'Newest']]} />
+        </div>
+        {minSalary > 0 && <p data-testid="target-pay-disclosure" className="text-[8px] text-gray-400 mt-2">Target pay uses disclosed annual USD compensation when available; curated roles with unknown pay remain included.</p>}
       </div>
 
       {error ? <FeedError message={error} onRetry={onRetry} /> : loading ? <LoadingState /> : jobs.length === 0 ? <EmptyState lane={activeLane.label} /> : (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,0.8fr)_minmax(360px,1.2fr)] gap-3 items-start lg:items-stretch min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           <section className="min-w-0 lg:min-h-0 rounded-lg border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden lg:flex lg:flex-col">
             <div className="px-3 py-2.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between gap-3"><div className="min-w-0"><h4 className="text-[11px] font-semibold truncate">{activeLane.label}</h4><p className="text-[8.5px] text-gray-400 mt-0.5">Showing {jobs.length} of {formatCount(total)}</p></div><span className="inline-flex items-center gap-1.5 text-[8.5px] text-blue-600 dark:text-blue-300 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />Live feed</span></div>
-            <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto"><div className="divide-y divide-gray-100 dark:divide-zinc-800">{jobs.map((job) => <JobListCard key={job.id} job={job} roleLane={roleLane} active={job.id === selectedJobId} stage={tracked[job.id]?.stage} onSelect={() => onSelectJob(job.id)} onSave={() => { const currentStage = tracked[job.id]?.stage; if (!currentStage || currentStage === 'saved') onSetStage(job, currentStage === 'saved' ? undefined : 'saved'); }} />)}</div>{jobs.length < total && <div className="p-3 border-t border-gray-100 dark:border-zinc-800"><button onClick={onLoadMore} disabled={loadingMore} className="w-full rounded-lg border border-gray-200 dark:border-zinc-700 py-2 text-[10px] font-semibold text-gray-600 dark:text-gray-300 hover:border-gray-400 disabled:opacity-50">{loadingMore ? 'Loading more…' : 'Load more roles'}</button></div>}</div>
+            <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto"><div className="divide-y divide-gray-100 dark:divide-zinc-800">{jobs.map((job) => <JobListCard key={job.id} job={job} roleLane={roleLane} active={job.id === selectedJobId} stage={tracked[job.id]?.stage} onSelect={() => onSelectJob(job.id)} onSave={() => { const currentStage = tracked[job.id]?.stage; if (!currentStage || currentStage === 'saved') onSetStage(job, currentStage === 'saved' ? undefined : 'saved'); }} />)}</div>{hasMore && <div className="p-3 border-t border-gray-100 dark:border-zinc-800"><button onClick={onLoadMore} disabled={loadingMore} className="w-full rounded-lg border border-gray-200 dark:border-zinc-700 py-2 text-[10px] font-semibold text-gray-600 dark:text-gray-300 hover:border-gray-400 disabled:opacity-50">{loadingMore ? 'Loading more…' : 'Load more roles'}</button></div>}</div>
           </section>
           {selectedJob && <JobDetailPanel job={selectedJob} activity={tracked[selectedJob.id]} onSetStage={(stage) => onSetStage(selectedJob, stage)} onSetNote={(note) => onSetNote(selectedJob, note)} onDismiss={() => onDismiss(selectedJob)} onHydrateJob={onHydrateJob} onOpenApplications={onOpenApplications} onToast={onToast} />}
         </div>
@@ -371,13 +532,13 @@ function DiscoverView(props: DiscoverProps) {
 }
 
 function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<[string, string]> }) {
-  return <label className="flex items-center gap-2 rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2.5 py-1.5"><span className="text-[8px] font-mono uppercase tracking-wider text-gray-400">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="bg-transparent text-[9.5px] font-semibold text-gray-700 dark:text-gray-200 outline-none cursor-pointer">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label>;
+  return <label className="min-w-0 rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2.5 py-1.5"><span className="block text-[7.5px] font-mono uppercase tracking-wider text-gray-400 mb-0.5">{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="block w-full min-w-0 bg-transparent text-[9.5px] font-semibold text-gray-700 dark:text-gray-200 outline-none cursor-pointer truncate">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label>;
 }
 
 function JobListCard({ job, roleLane, active, stage, onSelect, onSave }: { job: FreeHireJob; roleLane: RoleLane; active: boolean; stage?: JobStage; onSelect: () => void; onSave: () => void }) {
   const matchedInDescription = roleLane === 'high-ticket' && !/high[ -]?ticket/i.test(job.title);
   const activelyTracked = !!stage;
-  return <div data-testid="freehire-job-card" className={`relative transition-colors ${active ? 'bg-gray-50 dark:bg-zinc-800/55' : 'hover:bg-gray-50/70 dark:hover:bg-zinc-800/30'}`}><button onClick={onSelect} className="w-full min-w-0 text-left p-3 pr-11"><div className="flex items-start gap-2.5 min-w-0"><CompanyMark job={job} /><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold leading-snug line-clamp-2">{job.title}</p><p className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-1 truncate">{job.company} · {job.location}</p><div className="flex items-center gap-1.5 mt-2 flex-wrap">{job.salary !== 'Compensation not listed' && <CompensationTag>{job.salary}</CompensationTag>}<Tag>{formatWorkMode(job.workMode)}</Tag>{matchedInDescription && <Tag>High-ticket match in description</Tag>}{realityLabel(job) && <RealityTag job={job} />}</div><div className="flex items-center justify-between gap-3 mt-2.5 text-[8.5px] text-gray-400"><span className="truncate">{postedLabel(job.postedAt)} · {job.source}</span>{stage && <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize shrink-0">{stage}</span>}</div></div></div></button><button onClick={onSave} disabled={activelyTracked && stage !== 'saved'} className={`absolute right-3 top-3 w-7 h-7 rounded-md border flex items-center justify-center ${activelyTracked ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black' : 'border-gray-200 dark:border-zinc-700 text-gray-400 hover:text-gray-700'} disabled:cursor-default`} title={stage === 'saved' ? 'Remove saved job' : activelyTracked ? `Tracked as ${stage}` : 'Save job'}><BookmarkIcon className="w-3.5 h-3.5" filled={activelyTracked} /></button></div>;
+  return <div data-testid="freehire-job-card" data-job-id={job.id} className={`relative transition-colors ${active ? 'bg-gray-50 dark:bg-zinc-800/55' : 'hover:bg-gray-50/70 dark:hover:bg-zinc-800/30'}`}><button onClick={onSelect} className="w-full min-w-0 text-left p-3 pr-11"><div className="flex items-start gap-2.5 min-w-0"><CompanyMark job={job} /><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold leading-snug line-clamp-2">{job.title}</p><p className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-1 truncate">{job.company} · {job.location}</p><div className="flex items-center gap-1.5 mt-2 flex-wrap">{job.salary !== 'Compensation not listed' && <CompensationTag>{job.salary}</CompensationTag>}<Tag>{formatWorkMode(job.workMode)}</Tag>{matchedInDescription && <Tag>High-ticket match in description</Tag>}{realityLabel(job) && <RealityTag job={job} />}</div><div className="flex items-center justify-between gap-3 mt-2.5 text-[8.5px] text-gray-400"><span className="truncate">{postedLabel(job.postedAt)} · {job.source}</span>{stage && <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize shrink-0">{stage}</span>}</div></div></div></button><button onClick={onSave} disabled={activelyTracked && stage !== 'saved'} className={`absolute right-3 top-3 w-7 h-7 rounded-md border flex items-center justify-center ${activelyTracked ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black' : 'border-gray-200 dark:border-zinc-700 text-gray-400 hover:text-gray-700'} disabled:cursor-default`} title={stage === 'saved' ? 'Remove saved job' : activelyTracked ? `Tracked as ${stage}` : 'Save job'}><BookmarkIcon className="w-3.5 h-3.5" filled={activelyTracked} /></button></div>;
 }
 
 function JobDetailPanel({ job, activity, onSetStage, onSetNote, onDismiss, onHydrateJob, onOpenApplications, onToast }: { job: FreeHireJob; activity?: TrackedJob; onSetStage: (stage: JobStage | undefined) => void; onSetNote: (note: string) => void; onDismiss: () => void; onHydrateJob: (job: FreeHireJob) => void; onOpenApplications: () => void; onToast: (message: string) => void }) {
@@ -387,6 +548,10 @@ function JobDetailPanel({ job, activity, onSetStage, onSetNote, onDismiss, onHyd
   const stage = activity?.stage;
   useEffect(() => {
     setDetailTab('overview');
+    if (job.id.startsWith('sequ3nce:')) {
+      setLoadingDetail(false);
+      return;
+    }
     setLoadingDetail(true);
     let active = true;
     void window.electron.freeHire.getJob(job.id).then((detail) => {
@@ -453,11 +618,12 @@ function ApplicationCard({ job, stage, note, updatedAt, onSetStage, onSelect }: 
   return <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.025)] min-w-0"><button onClick={onSelect} className="w-full text-left min-w-0"><div className="flex items-start gap-2.5 min-w-0"><CompanyMark job={job} /><div className="min-w-0"><p className="text-[10.5px] font-semibold leading-snug line-clamp-2">{job.title}</p><p className="text-[9px] text-gray-400 mt-1 truncate">{job.company}</p></div></div><div className="flex items-center justify-between gap-2 mt-3 text-[8.5px]"><span className="text-gray-600 dark:text-gray-300 truncate">{formatWorkMode(job.workMode)}</span><span className="text-gray-400 shrink-0">{relativeActivityTime(updatedAt)}</span></div>{note && <p className="mt-2 rounded-md bg-gray-50 dark:bg-zinc-800/60 p-2 text-[8.5px] leading-relaxed text-gray-500 dark:text-gray-400 line-clamp-2">{note}</p>}</button><div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gray-100 dark:border-zinc-800">{nextStage ? <button onClick={() => onSetStage(job, nextStage)} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Move to {STAGE_META[stageIndex + 1].label}</button> : <button onClick={() => window.open(job.applyUrl, '_blank', 'noopener,noreferrer')} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Open listing</button>}<button onClick={() => onSetStage(job, undefined)} className="rounded-md border border-gray-200 dark:border-zinc-700 px-2 text-[11px] text-gray-400 hover:text-gray-700" title="Remove from applications">×</button></div></div>;
 }
 
-function InsightsView({ roleLane, workMode, countryScope, postedWindow }: {
+function InsightsView({ roleLane, workMode, countryScope, postedWindow, minSalary }: {
   roleLane: RoleLane;
   workMode: WorkMode;
   countryScope: CountryScope;
   postedWindow: PostedWindow;
+  minSalary: SalaryTarget;
 }) {
   const [facets, setFacets] = useState<FreeHireFacetResponse | null>(null);
   const [market, setMarket] = useState<FreeHireMarketInsightsResponse | null>(null);
@@ -483,6 +649,7 @@ function InsightsView({ roleLane, workMode, countryScope, postedWindow }: {
         workMode: workMode === 'all' ? undefined : workMode,
         country: countryScope === 'any' ? undefined : countryScope,
         postedWithinDays: postedWindow === 'any' ? undefined : Number(postedWindow) as 7 | 30,
+        minSalary: minSalary || undefined,
       }),
       window.electron.freeHire.marketInsights({
         country: countryScope === 'any' ? undefined : countryScope,
@@ -499,13 +666,14 @@ function InsightsView({ roleLane, workMode, countryScope, postedWindow }: {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [roleLane, workMode, countryScope, postedWindow, refreshToken]);
+  }, [roleLane, workMode, countryScope, postedWindow, minSalary, refreshToken]);
 
   const scopeParts = [
     activeLane,
     countryName,
     workMode === 'all' ? 'Any work mode' : formatWorkMode(workMode),
     postedWindow === 'any' ? 'Any posting date' : `Past ${postedWindow} days`,
+    minSalary === 0 ? 'Any compensation' : `$${minSalary / 1000}K+ disclosed USD`,
   ];
 
   if (loading) return <MarketInsightsLoading scope={scopeParts.join(' · ')} />;
@@ -652,6 +820,78 @@ function SkillDemandList({ rows }: { rows: FreeHireMarketInsightsResponse['skill
 function VelocityChart({ rows, max }: { rows: FreeHireMarketInsightsResponse['velocity']; max: number }) {
   if (rows.length === 0) return <PanelEmpty>No completed weekly activity is available.</PanelEmpty>;
   return <div><div className="flex items-center gap-4 text-[8px] text-gray-400 mb-3"><span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-black dark:bg-white" />Added</span><span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-gray-300 dark:bg-zinc-600" />Removed</span></div><div className="space-y-2.5">{rows.map((row) => <div key={row.period} className="grid grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-2"><span className="text-[7.5px] font-mono text-gray-400">{shortDate(row.period)}</span><div className="space-y-1"><div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full rounded-full bg-black dark:bg-white" style={{ width: `${(row.added / max) * 100}%` }} /></div><div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full rounded-full bg-gray-300 dark:bg-zinc-600" style={{ width: `${(row.removed / max) * 100}%` }} /></div></div><span className="text-[7.5px] font-mono tabular-nums text-gray-400">+{formatCount(row.added)} / −{formatCount(row.removed)}</span></div>)}</div></div>;
+}
+
+type PreferenceSetters = {
+  setRoleLane: React.Dispatch<React.SetStateAction<RoleLane>>;
+  setSortMode: React.Dispatch<React.SetStateAction<SortMode>>;
+  setWorkMode: React.Dispatch<React.SetStateAction<WorkMode>>;
+  setCountryScope: React.Dispatch<React.SetStateAction<CountryScope>>;
+  setPostedWindow: React.Dispatch<React.SetStateAction<PostedWindow>>;
+  setMinSalary: React.Dispatch<React.SetStateAction<SalaryTarget>>;
+};
+
+interface LocalPreferenceCache {
+  preferences: FreeHirePreferences;
+  pendingSync: boolean;
+}
+
+function normalizePreferenceCache(value: unknown): LocalPreferenceCache {
+  const record = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  // Accept the first release's raw preference shape as a backwards-compatible
+  // local cache, then write the explicit envelope on the next user change.
+  if (!record.preferences) {
+    return { preferences: normalizePreferences(record), pendingSync: false };
+  }
+  return {
+    preferences: normalizePreferences(record.preferences),
+    pendingSync: record.pendingSync === true,
+  };
+}
+
+function writePreferenceCache(
+  storageKey: string,
+  preferences: FreeHirePreferences,
+  pendingSync: boolean,
+): void {
+  window.localStorage.setItem(storageKey, JSON.stringify({ preferences, pendingSync }));
+}
+
+function normalizePreferences(value: unknown): FreeHirePreferences {
+  const record = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const lane = ROLE_LANES.some((item) => item.id === record.roleLane)
+    ? record.roleLane as RoleLane
+    : DEFAULT_PREFERENCES.roleLane;
+  const sortMode = record.sortMode === 'newest' || record.sortMode === 'relevance'
+    ? record.sortMode
+    : DEFAULT_PREFERENCES.sortMode;
+  const workMode = ['all', 'remote', 'hybrid', 'onsite'].includes(String(record.workMode))
+    ? record.workMode as WorkMode
+    : DEFAULT_PREFERENCES.workMode;
+  const country = record.country === 'any' || (typeof record.country === 'string' && COUNTRY_CODES.includes(record.country))
+    ? record.country
+    : DEFAULT_PREFERENCES.country;
+  const postedWindow = ['any', '7', '30'].includes(String(record.postedWindow))
+    ? record.postedWindow as PostedWindow
+    : DEFAULT_PREFERENCES.postedWindow;
+  const rawSalary = Number(record.minSalary);
+  const minSalary = [0, 75000, 100000, 150000, 200000].includes(rawSalary)
+    ? rawSalary as SalaryTarget
+    : DEFAULT_PREFERENCES.minSalary;
+  return { roleLane: lane, sortMode, workMode, country, postedWindow, minSalary };
+}
+
+function applyPreferences(preferences: FreeHirePreferences, setters: PreferenceSetters): void {
+  setters.setRoleLane(preferences.roleLane);
+  setters.setSortMode(preferences.sortMode);
+  setters.setWorkMode(preferences.workMode);
+  setters.setCountryScope(preferences.country);
+  setters.setPostedWindow(preferences.postedWindow);
+  setters.setMinSalary(preferences.minSalary);
 }
 
 function jobSnapshot(job: FreeHireJob): FreeHireTrackedJobSnapshot {
@@ -829,7 +1069,6 @@ type IconProps = { className?: string };
 function RefreshIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 0-2.1 5" /></svg>; }
 function BookmarkIcon({ className, filled = false }: IconProps & { filled?: boolean }) { return <svg className={className} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M6.5 4.5h11v15l-5.5-3.5-5.5 3.5z" /></svg>; }
 function ShieldIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v5c0 4.5-2.8 8-7 10-4.2-2-7-5.5-7-10V6z" /><path d="M9 12l2 2 4-4" /></svg>; }
-function CheckIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l4 4L19 6" /></svg>; }
 function ExternalIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 5h5v5" /><path d="M10 14L19 5" /><path d="M19 14v5H5V5h5" /></svg>; }
 function InfoIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>; }
 function LockIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>; }

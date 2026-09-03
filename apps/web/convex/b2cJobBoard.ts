@@ -22,6 +22,11 @@ const VALID_TICKET_RANGES = [
 ];
 
 const FREEHIRE_STAGES = ["saved", "preparing", "applied", "interviewing"] as const;
+const FREEHIRE_ROLE_LANES = ["sales", "closer", "account-executive", "high-ticket", "leadership"] as const;
+const FREEHIRE_SORT_MODES = ["relevance", "newest"] as const;
+const FREEHIRE_WORK_MODES = ["all", "remote", "hybrid", "onsite"] as const;
+const FREEHIRE_POSTED_WINDOWS = ["any", "7", "30"] as const;
+const FREEHIRE_MIN_SALARIES = [0, 75000, 100000, 150000, 200000] as const;
 const MAX_EXTERNAL_JOB_ID = 240;
 const MAX_JOB_FIELD = 300;
 const MAX_JOB_URL = 2048;
@@ -150,6 +155,70 @@ export const upsertFreeHireTracking = internalMutation({
       createdAt: now,
     });
     return { id, removed: false as const };
+  },
+});
+
+/** Read the signed-in member's private job-search preferences. */
+export const getFreeHirePreferences = internalQuery({
+  args: { userId: v.id("b2cUsers") },
+  handler: async (ctx, { userId }) =>
+    ctx.db
+      .query("b2cFreeHireJobPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique(),
+});
+
+/** Replace the signed-in member's compact, validated preference record. */
+export const setFreeHirePreferences = internalMutation({
+  args: {
+    userId: v.id("b2cUsers"),
+    roleLane: v.string(),
+    sortMode: v.string(),
+    workMode: v.string(),
+    country: v.string(),
+    postedWindow: v.string(),
+    minSalary: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (!FREEHIRE_ROLE_LANES.includes(args.roleLane as typeof FREEHIRE_ROLE_LANES[number])) {
+      throw new Error("Invalid role preference");
+    }
+    if (!FREEHIRE_SORT_MODES.includes(args.sortMode as typeof FREEHIRE_SORT_MODES[number])) {
+      throw new Error("Invalid sort preference");
+    }
+    if (!FREEHIRE_WORK_MODES.includes(args.workMode as typeof FREEHIRE_WORK_MODES[number])) {
+      throw new Error("Invalid work-mode preference");
+    }
+    if (args.country !== "any" && !/^[A-Z]{2}$/.test(args.country)) {
+      throw new Error("Invalid country preference");
+    }
+    if (!FREEHIRE_POSTED_WINDOWS.includes(args.postedWindow as typeof FREEHIRE_POSTED_WINDOWS[number])) {
+      throw new Error("Invalid posting-date preference");
+    }
+    if (!FREEHIRE_MIN_SALARIES.includes(args.minSalary as typeof FREEHIRE_MIN_SALARIES[number])) {
+      throw new Error("Invalid compensation preference");
+    }
+
+    const current = await ctx.db
+      .query("b2cFreeHireJobPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    const value = {
+      userId: args.userId,
+      roleLane: args.roleLane,
+      sortMode: args.sortMode,
+      workMode: args.workMode,
+      country: args.country,
+      postedWindow: args.postedWindow,
+      minSalary: args.minSalary,
+      updatedAt: Date.now(),
+    };
+    if (current) {
+      await ctx.db.patch(current._id, value);
+      return { preferences: { ...current, ...value } };
+    }
+    const id = await ctx.db.insert("b2cFreeHireJobPreferences", value);
+    return { preferences: { _id: id, ...value } };
   },
 });
 

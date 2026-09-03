@@ -21,11 +21,17 @@ test.describe("FreeHire development job board", () => {
     await page.evaluate(() => {
       for (let index = localStorage.length - 1; index >= 0; index -= 1) {
         const key = localStorage.key(index);
-        if (key?.startsWith("sequ3nce:dev-job-board:")) localStorage.removeItem(key);
+        if (key?.startsWith("sequ3nce:dev-job-board:") || key?.startsWith("sequ3nce:job-preferences:")) {
+          localStorage.removeItem(key);
+        }
       }
     });
     await reloadApp(page);
     await openJobBoard(page);
+    await page.getByTestId("reset-job-preferences").click();
+    await expect(page.getByLabel("Role")).toHaveValue("sales");
+    await expect(page.getByLabel("Target pay")).toHaveValue("0");
+    await expect(page.getByTestId("freehire-job-card").first()).toBeVisible({ timeout: 20_000 });
   });
 
   test("saves, annotates, advances, reloads, hides, and restores a role", async ({ page }) => {
@@ -86,6 +92,37 @@ test.describe("FreeHire development job board", () => {
     await expect(page.getByText("No roles here yet")).toHaveCount(3);
   });
 
+  test("renders a curated legacy job in its lane with its source and saves it", async ({ page }) => {
+    await page.getByLabel("Role").selectOption("account-executive");
+    const searchResult = await page.evaluate(async () => {
+      const firstPage = await window.electron.freeHire.search({
+        lane: "account-executive",
+        limit: 1,
+      });
+      const nextPage = await window.electron.freeHire.search({
+        lane: "account-executive",
+        limit: 1,
+        offset: 1,
+      });
+      return {
+        legacy: firstPage.jobs.find((job) => job.id.startsWith("sequ3nce:")) ?? null,
+        laterPageHasLegacy: nextPage.jobs.some((job) => job.id.startsWith("sequ3nce:")),
+      };
+    });
+    const { legacy } = searchResult;
+    expect(legacy).not.toBeNull();
+    expect(searchResult.laterPageHasLegacy).toBe(false);
+    if (!legacy) return;
+
+    const card = page.locator(`[data-job-id="${legacy.id}"]`);
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toContainText(legacy.source);
+    await card.getByTitle("Save job").click();
+
+    await page.getByRole("button", { name: /^Applications/ }).click();
+    await expect(page.getByText(legacy.title, { exact: true }).first()).toBeVisible();
+  });
+
   test("fits narrow and wide windows without horizontal document overflow", async ({ page }) => {
     for (const viewport of [{ width: 780, height: 720 }, { width: 1600, height: 1000 }]) {
       await page.setViewportSize(viewport);
@@ -97,6 +134,65 @@ test.describe("FreeHire development job board", () => {
       expect(overflow.scroll).toBeLessThanOrEqual(overflow.client + 1);
       await expect(page.getByTestId("freehire-job-board")).toBeVisible();
     }
+  });
+
+  test("adjusts, applies, persists, and isolates the For You preferences", async ({ page }) => {
+    const preferences = page.getByTestId("job-preferences");
+    await expect(preferences).toBeVisible();
+    await expect(preferences.getByRole("combobox")).toHaveCount(6);
+    await expect(page.getByRole("button", { name: "For You", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Discover", exact: true })).toHaveCount(0);
+
+    const totals = await page.evaluate(async () => {
+      const [broad, highPay] = await Promise.all([
+        window.electron.freeHire.search({ lane: "sales", limit: 1 }),
+        window.electron.freeHire.search({ lane: "sales", minSalary: 150000, limit: 10 }),
+      ]);
+      const freeHireHighPayJob = highPay.jobs.find((job) => !job.id.startsWith("sequ3nce:"));
+      const detail = freeHireHighPayJob
+        ? await window.electron.freeHire.getJob(freeHireHighPayJob.id)
+        : null;
+      return {
+        broad: broad.total,
+        highPay: highPay.total,
+        displaysCompensation: highPay.jobs.some((job) => job.salary !== "Compensation not listed"),
+        detailDisplaysCompensation: detail?.salary !== "Compensation not listed",
+      };
+    });
+    expect(totals.highPay).toBeGreaterThan(0);
+    expect(totals.highPay).toBeLessThan(totals.broad);
+    expect(totals.displaysCompensation).toBe(true);
+    expect(totals.detailDisplaysCompensation).toBe(true);
+
+    const initialCount = await page.getByTestId("matching-role-count").textContent();
+    await page.getByLabel("Role").selectOption("closer");
+    await page.getByLabel("Target pay").selectOption("150000");
+    await expect(page.getByTestId("target-pay-disclosure")).toBeVisible();
+    await expect(page.getByTestId("matching-role-count")).not.toHaveText(initialCount ?? "", { timeout: 20_000 });
+    await page.waitForTimeout(500);
+
+    await reloadApp(page);
+    await openJobBoard(page);
+    await expect(page.getByLabel("Role")).toHaveValue("closer");
+    await expect(page.getByLabel("Target pay")).toHaveValue("150000");
+
+    await page.evaluate(({ key }) => {
+      const current = JSON.parse(localStorage.getItem(key) || "{}");
+      localStorage.setItem(key, JSON.stringify({ ...current, b2cUserId: "isolated-preference-user" }));
+    }, { key: SESSION_KEY });
+    await reloadApp(page);
+    await openJobBoard(page);
+    await expect(page.getByLabel("Role")).toHaveValue("sales");
+    await expect(page.getByLabel("Target pay")).toHaveValue("0");
+
+    await page.evaluate(({ key, user }) => {
+      const current = JSON.parse(localStorage.getItem(key) || "{}");
+      localStorage.setItem(key, JSON.stringify({ ...current, b2cUserId: user.b2cUserId }));
+    }, { key: SESSION_KEY, user: TEST_USER });
+    await reloadApp(page);
+    await openJobBoard(page);
+    await expect(page.getByLabel("Role")).toHaveValue("closer");
+    await expect(page.getByLabel("Target pay")).toHaveValue("150000");
   });
 
   test("loads full-set facets and real Sales market rollups", async ({ page }) => {
@@ -119,7 +215,7 @@ test.describe("FreeHire development job board", () => {
 
     await page.getByRole("button", { name: "Market insights", exact: true }).click();
     await expect(page.getByTestId("market-insights")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("market-insights-scope")).toContainText("For You");
+    await expect(page.getByTestId("market-insights-scope")).toContainText("All Sales");
     await expect(page.getByText("Current opportunity set", { exact: true })).toBeVisible();
     await expect(page.getByText("Broader Sales market", { exact: true })).toBeVisible();
     await expect(page.getByTestId("market-salary-median")).toBeVisible();
