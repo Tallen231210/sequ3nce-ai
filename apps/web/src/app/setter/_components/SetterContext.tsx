@@ -21,6 +21,8 @@ export interface SetterHome {
     note: string;
     submittedAt: number;
   } | null;
+  /** Today and the days a setter may still file for, newest first. */
+  recentDays: Array<{ dayKey: string; filed: boolean }>;
 }
 
 export const SetterContext = createContext<{

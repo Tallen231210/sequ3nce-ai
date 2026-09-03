@@ -262,6 +262,7 @@ export function NumbersView() {
       {section === "history" && (
         <PerformanceGrid
           rows={previous}
+          tierPrices={tierPrices}
           savingDay={savingDay}
           errors={errorDay}
           onCommit={(d, k, v) => void commitCell(d, k, v)}

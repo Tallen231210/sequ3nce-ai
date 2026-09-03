@@ -9,14 +9,31 @@ import { EditableCell } from "./EditableCell";
 import { fmtCurrency, fmtNum, fmtPct } from "../lib/format";
 import { MONO } from "@/components/analytics/primitives/typography";
 
-const FIELDS = [
+const BASE_FIELDS: Array<{ key: string; label: string; title?: string }> = [
  { key: "slots", label: "Slots" },
  { key: "booked", label: "Booked" },
  { key: "taken", label: "Taken" },
  { key: "offers", label: "Offers" },
  { key: "closes", label: "Closes" },
  { key: "cash", label: "Cash" },
-] as const;
+];
+
+/** Scorecard fields join the grid: follow-ups, plus one column per configured
+ *  tier price. Same set the closer's own Previous-days grid edits, so a
+ *  manager can correct exactly what a closer can enter. */
+function gridFields(tierPrices: number[] | undefined) {
+  const tiers = (tierPrices ?? []).slice(0, 3).map((price, i) => ({
+    key: `tier${i + 1}Pitched`,
+    label: `@ $${price >= 1000 ? `${Math.round(price / 100) / 10}k` : price}`,
+    title: `Calls where the $${price.toLocaleString()} tier was pitched`,
+  }));
+  return [
+    ...BASE_FIELDS,
+    { key: "fuBooked", label: "FU booked", title: "Follow-up calls scheduled" },
+    { key: "fuShown", label: "FU shown", title: "Follow-ups where the prospect showed" },
+    ...tiers,
+  ];
+}
 
 interface GridRow {
  dayKey: string;
@@ -63,6 +80,7 @@ export function DailyGrid({ monthKey }: { monthKey: string }) {
     api.closerPerformanceMutations.getDailyGrid,
     user ? { clerkId: user.id, monthKey } : "skip",
  );
+  const FIELDS = useMemo(() => gridFields(data?.tierPrices), [data?.tierPrices]);
   const setOverride = useMutation(
     api.closerPerformanceMutations.setDailyOverride,
   );

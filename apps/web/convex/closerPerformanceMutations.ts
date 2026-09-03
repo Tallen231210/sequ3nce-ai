@@ -229,6 +229,10 @@ export const getDailyGrid = query({
         const measured: Record<string, number> = {
           slots: st?.slots ?? 0, booked: st?.booked ?? 0, taken: st?.taken ?? 0,
           offers: st?.offers ?? 0, closes: st?.closes ?? 0, cash: st?.cash ?? 0,
+          // Scorecard fields: follow-ups are measured off titled calls; tier
+          // pitches have no measurement and only ever come from a human.
+          fuBooked: (st as any)?.fuBooked ?? 0, fuShown: (st as any)?.fuShown ?? 0,
+          tier1Pitched: 0, tier2Pitched: 0, tier3Pitched: 0,
         };
         const overridden: Record<string, number> = {};
         for (const f of OVERRIDE_FIELDS) {
@@ -264,6 +268,8 @@ export const getDailyGrid = query({
       timezone: tz,
       canEdit: canEdit(user),
       todayKey: dayKeyInTz(Date.now(), tz),
+      // Drives the tier-pitch columns; no prices configured = no columns.
+      tierPrices: (((team as any)?.closerTierPrices ?? []) as number[]).slice(0, 3),
       closers: activeClosers.map((c) => ({
         closerId: String(c._id),
         name: c.name ?? "Unknown",

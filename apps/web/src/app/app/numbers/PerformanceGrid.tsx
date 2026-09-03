@@ -10,7 +10,15 @@ import type { DailyEntryRow } from '@/lib/closer/client';
  * the column and rendered 11000 as "1100(" on a narrow window. The desktop app
  * never hit this because it controlled its own window size.
  */
-const COLUMNS = [
+interface GridColumn {
+  key: string;
+  label: string;
+  width: string;
+  money?: boolean;
+  title?: string;
+}
+
+const BASE_COLUMNS: GridColumn[] = [
   { key: 'slots', label: 'Slots', width: 'min-w-[64px]' },
   { key: 'booked', label: 'Booked', width: 'min-w-[72px]' },
   { key: 'taken', label: 'Taken', width: 'min-w-[68px]' },
@@ -18,7 +26,28 @@ const COLUMNS = [
   { key: 'closes', label: 'Closes', width: 'min-w-[68px]' },
   { key: 'cash', label: 'Cash', money: true, width: 'min-w-[104px]' },
   { key: 'contractValue', label: 'Contract', money: true, width: 'min-w-[104px]' },
-] as const;
+];
+
+/**
+ * The scorecard fields (follow-ups, tier pitches) were on the Today form but
+ * not here, so a closer going back to Monday had no box to put them in —
+ * E2's team hit exactly that. Tier columns follow the team's configured
+ * prices, same as the Today form; no prices, no tier columns.
+ */
+export function gridColumns(tierPrices: number[] | null | undefined): GridColumn[] {
+  const tiers: GridColumn[] = (tierPrices ?? []).slice(0, 3).map((price, i) => ({
+    key: `tier${i + 1}Pitched`,
+    label: `@ $${price >= 1000 ? `${Math.round(price / 100) / 10}k` : price}`,
+    title: `Calls where you pitched the $${price.toLocaleString()} tier`,
+    width: 'min-w-[76px]',
+  }));
+  return [
+    ...BASE_COLUMNS,
+    { key: 'fuBooked', label: 'FU booked', title: 'Follow-up calls you scheduled', width: 'min-w-[86px]' },
+    { key: 'fuShown', label: 'FU shown', title: 'Follow-ups where they showed', width: 'min-w-[84px]' },
+    ...tiers,
+  ];
+}
 
 const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n)}%`);
 
@@ -54,7 +83,7 @@ function Cell({
   row, col, disabled, onCommit,
 }: {
   row: DailyEntryRow;
-  col: (typeof COLUMNS)[number];
+  col: GridColumn;
   disabled: boolean;
   onCommit: (key: string, value: number | null) => void;
 }) {
@@ -129,16 +158,19 @@ export function PerformanceGrid({
   rows,
   savingDay,
   errors,
+  tierPrices,
   onCommit,
   onConfirm,
 }: {
   rows: DailyEntryRow[];
   savingDay: string | null;
   errors: Record<string, string | null>;
+  tierPrices?: number[] | null;
   onCommit: (dayKey: string, key: string, value: number | null) => void;
   onConfirm: (dayKey: string) => void;
 }) {
   const anyError = Object.entries(errors).find(([, e]) => !!e);
+  const COLUMNS = gridColumns(tierPrices);
 
   return (
     <div>
@@ -153,7 +185,7 @@ export function PerformanceGrid({
       </div>
 
       <div className="border border-gray-200/60 rounded-lg overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse">
+        <table className="w-full min-w-[1180px] border-collapse">
           <thead>
             <tr className="bg-[#fafafa] border-b border-gray-200">
               <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider w-[92px]">
@@ -162,6 +194,7 @@ export function PerformanceGrid({
               {COLUMNS.map((c) => (
                 <th
                   key={c.key}
+                  title={c.title}
                   className={
                     'px-2.5 py-2 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider border-l border-gray-100 ' +
                     c.width

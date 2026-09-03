@@ -12,6 +12,44 @@ import { validateEodNumbers, buildEodDoc } from "./setterEodShared";
 import { stripSetterToken } from "./lib/setterTitleMatch";
 import { getContentForCallTx } from "./callContent";
 
+/** How far back a setter may file. Two weeks covers "we changed the
+ *  definitions, go fix last week" without turning the form into a history
+ *  editor — older corrections are the manager's job. */
+export const SETTER_EOD_LOOKBACK_DAYS = 14;
+
+function addDaysKey(dayKey: string, days: number): string {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Validates a client-chosen day against the team's clock: today or up to
+ *  SETTER_EOD_LOOKBACK_DAYS back, never the future, never garbage. */
+function resolveFilingDay(today: string, requested: string | undefined): string {
+  if (requested === undefined) return today;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requested)) throw new ConvexError("Pick a valid day");
+  if (requested > today) throw new ConvexError("You can't file for a day that hasn't happened yet");
+  if (requested < addDaysKey(today, -SETTER_EOD_LOOKBACK_DAYS)) {
+    throw new ConvexError(`You can file up to ${SETTER_EOD_LOOKBACK_DAYS} days back — ask your manager for anything older`);
+  }
+  return requested;
+}
+
+function entryView(entry: any) {
+  return {
+    dials: entry.dials,
+    pickUps: entry.pickUps,
+    sets: entry.sets,
+    newLeadsHit: entry.newLeadsHit,
+    followUps: entry.followUps,
+    callsOnCalendar: entry.callsOnCalendar ?? null,
+    callsShown: entry.callsShown ?? null,
+    callsClosed: entry.callsClosed ?? null,
+    cashCollected: entry.cashCollected ?? null,
+    note: entry.note ?? "",
+    submittedAt: entry.submittedAt,
+  };
+}
+
 export const getSetterHome = query({
   args: { sessionToken: v.string() },
   handler: async (ctx, args) => {
@@ -29,28 +67,57 @@ export const getSetterHome = query({
       )
       .first();
 
+    // The days the setter may file for, newest first, with what's already
+    // there — the EOD tab's day picker. Team clock, never the browser's.
+    const recentDays: Array<{ dayKey: string; filed: boolean }> = [];
+    for (let back = 0; back <= SETTER_EOD_LOOKBACK_DAYS; back++) {
+      const dayKey = addDaysKey(today, -back);
+      const filed =
+        back === 0
+          ? !!entry
+          : !!(await ctx.db
+              .query("setterEodEntries")
+              .withIndex("by_roster_and_day", (q) =>
+                q.eq("rosterId", me.rosterId).eq("dayKey", dayKey),
+              )
+              .first());
+      recentDays.push({ dayKey, filed });
+    }
+
     return {
       name: me.name,
       pod: me.pod ?? null,
       teamName: (team as any)?.name ?? "your team",
       today,
       filedToday: !!entry,
-      todayEntry: entry
-        ? {
-            dials: entry.dials,
-            pickUps: entry.pickUps,
-            sets: entry.sets,
-            newLeadsHit: entry.newLeadsHit,
-            followUps: entry.followUps,
-            callsOnCalendar: entry.callsOnCalendar ?? null,
-            callsShown: entry.callsShown ?? null,
-            callsClosed: entry.callsClosed ?? null,
-            cashCollected: entry.cashCollected ?? null,
-            note: entry.note ?? "",
-            submittedAt: entry.submittedAt,
-          }
-        : null,
+      todayEntry: entry ? entryView(entry) : null,
+      recentDays,
     };
+  },
+});
+
+/** One past day's entry (or null) for the picker — same shape as todayEntry. */
+export const getEodForDay = query({
+  args: { sessionToken: v.string(), dayKey: v.string() },
+  handler: async (ctx, args) => {
+    const me = await resolveSetterSessionCtx(ctx, args.sessionToken);
+    if (!me) return null;
+    const team = await ctx.db.get(me.teamId);
+    const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
+    const today = dayKeyInTz(Date.now(), tz);
+    let dayKey: string;
+    try {
+      dayKey = resolveFilingDay(today, args.dayKey);
+    } catch {
+      return { dayKey: args.dayKey, allowed: false as const, entry: null };
+    }
+    const entry = await ctx.db
+      .query("setterEodEntries")
+      .withIndex("by_roster_and_day", (q) =>
+        q.eq("rosterId", me.rosterId).eq("dayKey", dayKey),
+      )
+      .first();
+    return { dayKey, allowed: true as const, entry: entry ? entryView(entry) : null };
   },
 });
 
@@ -67,6 +134,9 @@ export const submitEod = mutation({
     callsClosed: v.optional(v.number()),
     cashCollected: v.optional(v.number()),
     note: v.optional(v.string()),
+    /** Omitted = today. A past day (≤ SETTER_EOD_LOOKBACK_DAYS back) files
+     *  or replaces THAT day — the backfill path after a definitions change. */
+    dayKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const me = await resolveSetterSessionCtx(ctx, args.sessionToken);
@@ -77,21 +147,22 @@ export const submitEod = mutation({
     const team = await ctx.db.get(me.teamId);
     const tz = (team as any)?.timezone || DEFAULT_TIMEZONE;
     const today = dayKeyInTz(Date.now(), tz);
+    const dayKey = resolveFilingDay(today, args.dayKey);
 
     const existing = await ctx.db
       .query("setterEodEntries")
       .withIndex("by_roster_and_day", (q) =>
-        q.eq("rosterId", me.rosterId).eq("dayKey", today),
+        q.eq("rosterId", me.rosterId).eq("dayKey", dayKey),
       )
       .first();
 
-    const doc = buildEodDoc(me.teamId, me.rosterId, today, args, args.note);
+    const doc = buildEodDoc(me.teamId, me.rosterId, dayKey, args, args.note);
     if (existing) {
       await ctx.db.replace(existing._id, doc);
     } else {
       await ctx.db.insert("setterEodEntries", doc);
     }
-    return { ok: true, dayKey: today };
+    return { ok: true, dayKey };
   },
 });
 
