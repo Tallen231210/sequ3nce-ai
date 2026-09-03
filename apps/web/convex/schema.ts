@@ -2716,6 +2716,7 @@ export default defineSchema({
     stage: v.optional(v.string()), // "saved" | "preparing" | "applied" | "interviewing"
     note: v.optional(v.string()),
     dismissed: v.boolean(),
+    viewedAt: v.optional(v.number()),
     // A compact snapshot keeps an application recognizable even if the
     // upstream listing later changes or disappears. Full descriptions are
     // intentionally not duplicated into Convex.
@@ -2750,6 +2751,15 @@ export default defineSchema({
     country: v.string(),
     postedWindow: v.string(),
     minSalary: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // One private marker per member for the "new since last visit" window.
+  // Separate from preferences so recording a visit cannot overwrite or
+  // manufacture preference values while preference sync is in flight.
+  b2cFreeHireJobVisits: defineTable({
+    userId: v.id("b2cUsers"),
+    lastVisitedAt: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 

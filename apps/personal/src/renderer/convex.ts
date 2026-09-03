@@ -4675,6 +4675,7 @@ export interface FreeHireActivity {
   stage?: FreeHireJobStage;
   note?: string;
   dismissed: boolean;
+  viewedAt?: number;
   job: FreeHireTrackedJobSnapshot;
   createdAt: number;
   updatedAt: number;
@@ -4735,6 +4736,7 @@ export async function saveFreeHireActivity(args: {
   stage?: FreeHireJobStage;
   note?: string;
   dismissed: boolean;
+  viewedAt?: number;
   job: FreeHireTrackedJobSnapshot;
 }): Promise<{ success: boolean; error?: string; needsRelogin?: boolean }> {
   const { sessionToken, ...activity } = args;
@@ -4748,6 +4750,7 @@ export async function saveFreeHireActivity(args: {
 
 type FreeHirePreferencesResult =
   | { preferences: (FreeHirePreferences & { updatedAt?: number }) | null }
+  | { previousVisitedAt: number | null; visitedAt: number }
   | { error: string; needsRelogin?: boolean };
 
 async function callFreeHirePreferences(
@@ -4781,7 +4784,9 @@ export async function getFreeHirePreferences(
 ): Promise<{ preferences?: FreeHirePreferences | null; error?: string; needsRelogin?: boolean }> {
   const result = await callFreeHirePreferences(sessionToken, { operation: "get" });
   if ("error" in result) return result;
-  return { preferences: result.preferences };
+  return "preferences" in result
+    ? { preferences: result.preferences }
+    : { error: "Failed to load job preferences" };
 }
 
 export async function saveFreeHirePreferences(args: FreeHirePreferences & {
@@ -4793,7 +4798,22 @@ export async function saveFreeHirePreferences(args: FreeHirePreferences & {
     ...preferences,
   });
   if ("error" in result) return { success: false, ...result };
-  return { success: true };
+  return "preferences" in result
+    ? { success: true }
+    : { success: false, error: "Failed to save job preferences" };
+}
+
+export async function recordFreeHireJobBoardVisit(
+  sessionToken: string,
+): Promise<{
+  previousVisitedAt?: number | null;
+  visitedAt?: number;
+  error?: string;
+  needsRelogin?: boolean;
+}> {
+  const result = await callFreeHirePreferences(sessionToken, { operation: "visit" });
+  if ("error" in result) return result;
+  return "previousVisitedAt" in result ? result : { error: "Job-board visit could not sync." };
 }
 
 // ==================== Money Bells ====================

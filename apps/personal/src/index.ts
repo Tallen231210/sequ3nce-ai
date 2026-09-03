@@ -600,6 +600,7 @@ type FreeHireUnifiedJob = {
   seniority: string;
   salary: string;
   postedAt: string | null;
+  discoveredAt: string | null;
   lastSeenAt: string | null;
   appliedCount: number;
   domains: string[];
@@ -857,6 +858,9 @@ function mapLegacyPublicJob(job: Record<string, unknown>): FreeHireUnifiedJob | 
     seniority: text(job.experienceLevel) || 'Not listed',
     salary: text(job.salaryRange) || 'Compensation not listed',
     postedAt: postedTimestamp ? new Date(postedTimestamp).toISOString() : null,
+    discoveredAt: validLegacyJobTimestamp(job.createdAt)
+      ? new Date(Number(job.createdAt)).toISOString()
+      : null,
     lastSeenAt: null,
     appliedCount: 0,
     domains: [],
@@ -915,6 +919,7 @@ function normalizeLegacyBridgeJob(value: Record<string, unknown>): FreeHireUnifi
     seniority: text(value.seniority) || 'Not listed',
     salary: text(value.salary) || 'Compensation not listed',
     postedAt: text(value.postedAt) || null,
+    discoveredAt: text(value.discoveredAt) || null,
     lastSeenAt: null,
     appliedCount: 0,
     domains: [],
@@ -1182,6 +1187,7 @@ const setupIpcHandlers = (): void => {
           seniority: label(text(enrichment.seniority) || text(job.seniority)) || 'Not listed',
           salary,
           postedAt: text(job.posted_at) || null,
+          discoveredAt: text(job.created_at) || null,
           lastSeenAt: text(job.last_seen_at) || null,
           appliedCount: Number(job.applied_count) || 0,
           domains: strings(enrichment.domains).slice(0, 5).map(label),

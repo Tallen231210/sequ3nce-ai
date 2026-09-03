@@ -12323,6 +12323,7 @@ http.route({
           stage: typeof body.stage === "string" ? body.stage : undefined,
           note: typeof body.note === "string" ? body.note : undefined,
           dismissed: body.dismissed === true,
+          viewedAt: typeof body.viewedAt === "number" ? body.viewedAt : undefined,
           job: {
             title: typeof rawJob.title === "string" ? rawJob.title : "",
             company: typeof rawJob.company === "string" ? rawJob.company : "",
@@ -12392,6 +12393,13 @@ http.route({
           country: typeof body.country === "string" ? body.country : "",
           postedWindow: typeof body.postedWindow === "string" ? body.postedWindow : "",
           minSalary: typeof body.minSalary === "number" ? body.minSalary : Number.NaN,
+        });
+        return b2cJsonResponse(result, 200, true);
+      }
+
+      if (body.operation === "visit") {
+        const result = await ctx.runMutation(internal.b2cJobBoard.recordFreeHireJobBoardVisit, {
+          userId: session.userId,
         });
         return b2cJsonResponse(result, 200, true);
       }

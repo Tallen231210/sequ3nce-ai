@@ -91,6 +91,7 @@ export const upsertFreeHireTracking = internalMutation({
     stage: v.optional(v.string()),
     note: v.optional(v.string()),
     dismissed: v.boolean(),
+    viewedAt: v.optional(v.number()),
     job: freeHireJobSnapshotValidator,
   },
   handler: async (ctx, args) => {
@@ -103,6 +104,13 @@ export const upsertFreeHireTracking = internalMutation({
     }
     const note = args.note?.trim() || undefined;
     if (note && note.length > MAX_NOTE) throw new Error(`Notes must be ${MAX_NOTE} characters or fewer`);
+    if (args.viewedAt !== undefined && (
+      !Number.isFinite(args.viewedAt)
+      || args.viewedAt < Date.UTC(2020, 0, 1)
+      || args.viewedAt > Date.now() + 60_000
+    )) {
+      throw new Error("Invalid viewed timestamp");
+    }
 
     const job = {
       title: cleanFreeHireText(args.job.title, "Job title"),
@@ -127,7 +135,8 @@ export const upsertFreeHireTracking = internalMutation({
       )
       .unique();
 
-    if (!args.stage && !note && !args.dismissed) {
+    const viewedAt = args.viewedAt ?? current?.viewedAt;
+    if (!args.stage && !note && !args.dismissed && !viewedAt) {
       if (current) await ctx.db.delete(current._id);
       return { removed: true as const };
     }
@@ -142,6 +151,7 @@ export const upsertFreeHireTracking = internalMutation({
       stage: args.stage,
       note,
       dismissed: args.dismissed,
+      viewedAt,
       job,
       updatedAt: now,
       stageChangedAt,
@@ -219,6 +229,32 @@ export const setFreeHirePreferences = internalMutation({
     }
     const id = await ctx.db.insert("b2cFreeHireJobPreferences", value);
     return { preferences: { _id: id, ...value } };
+  },
+});
+
+/**
+ * Atomically advance the signed-in member's job-board visit marker while
+ * returning the previous marker for the current "new since last visit" view.
+ */
+export const recordFreeHireJobBoardVisit = internalMutation({
+  args: { userId: v.id("b2cUsers") },
+  handler: async (ctx, { userId }) => {
+    const current = await ctx.db
+      .query("b2cFreeHireJobVisits")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    const visitedAt = Date.now();
+    const previousVisitedAt = current?.lastVisitedAt ?? null;
+    if (current) {
+      await ctx.db.patch(current._id, { lastVisitedAt: visitedAt, updatedAt: visitedAt });
+    } else {
+      await ctx.db.insert("b2cFreeHireJobVisits", {
+        userId,
+        lastVisitedAt: visitedAt,
+        updatedAt: visitedAt,
+      });
+    }
+    return { previousVisitedAt, visitedAt };
   },
 });
 

@@ -21,7 +21,11 @@ test.describe("FreeHire development job board", () => {
     await page.evaluate(() => {
       for (let index = localStorage.length - 1; index >= 0; index -= 1) {
         const key = localStorage.key(index);
-        if (key?.startsWith("sequ3nce:dev-job-board:") || key?.startsWith("sequ3nce:job-preferences:")) {
+        if (
+          key?.startsWith("sequ3nce:dev-job-board:")
+          || key?.startsWith("sequ3nce:job-preferences:")
+          || key?.startsWith("sequ3nce:job-board-visit:")
+        ) {
           localStorage.removeItem(key);
         }
       }
@@ -90,6 +94,39 @@ test.describe("FreeHire development job board", () => {
     await openJobBoard(page);
     await page.getByRole("button", { name: /^Applications/ }).click();
     await expect(page.getByText("No roles here yet")).toHaveCount(3);
+  });
+
+  test("marks newly discovered roles viewed and keeps that state private per user", async ({ page }) => {
+    const count = page.getByTestId("new-job-count");
+    const initialCount = Number(await count.textContent());
+    expect(initialCount).toBeGreaterThan(0);
+
+    await page.getByTestId("new-since-last-visit").click();
+    const newCard = page.locator('[data-testid="freehire-job-card"][data-new="true"]').first();
+    await expect(newCard).toBeVisible();
+    const jobId = await newCard.getAttribute("data-job-id");
+    if (!jobId) throw new Error("New job card did not expose its stable id");
+
+    await newCard.getByTestId("open-job").click();
+    await expect(page.locator(`[data-job-id="${jobId}"]`)).toHaveAttribute("data-new", "false");
+    await expect(count).toHaveText(String(initialCount - 1));
+    await expect(page.getByText("Select a role to review it")).toHaveCount(0);
+
+    await page.evaluate(({ visitKey }) => {
+      localStorage.setItem(visitKey, String(Date.now() - 7 * 24 * 60 * 60 * 1000));
+    }, { visitKey: `sequ3nce:job-board-visit:${TEST_USER.b2cUserId}` });
+    await reloadApp(page);
+    await openJobBoard(page);
+    await expect(page.locator(`[data-job-id="${jobId}"]`)).toHaveAttribute("data-new", "false");
+
+    await page.evaluate(({ sessionKey }) => {
+      const current = JSON.parse(localStorage.getItem(sessionKey) || "{}");
+      localStorage.setItem(sessionKey, JSON.stringify({ ...current, b2cUserId: "isolated-viewed-user" }));
+      localStorage.removeItem("sequ3nce:job-board-visit:isolated-viewed-user");
+    }, { sessionKey: SESSION_KEY });
+    await reloadApp(page);
+    await openJobBoard(page);
+    await expect(page.locator(`[data-job-id="${jobId}"]`)).toHaveAttribute("data-new", "true");
   });
 
   test("renders a curated legacy job in its lane with its source and saves it", async ({ page }) => {

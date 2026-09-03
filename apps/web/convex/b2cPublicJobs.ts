@@ -494,6 +494,7 @@ export const listFreeHireSourceJobs = internalQuery({
           seniority: job.experienceLevel?.trim() || "Not listed",
           salary: job.salaryRange?.trim() || "Compensation not listed",
           postedAt: postedAt ? new Date(postedAt).toISOString() : null,
+          discoveredAt: new Date(job.createdAt).toISOString(),
           lastSeenAt: null,
           appliedCount: 0,
           domains: [],

@@ -134,6 +134,7 @@ export interface FreeHireJob {
   seniority: string;
   salary: string;
   postedAt: string | null;
+  discoveredAt: string | null;
   lastSeenAt: string | null;
   appliedCount: number;
   domains: string[];

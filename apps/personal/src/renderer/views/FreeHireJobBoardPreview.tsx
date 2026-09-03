@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getFreeHireActivities,
   getFreeHirePreferences,
+  recordFreeHireJobBoardVisit,
   saveFreeHireActivity,
   saveFreeHirePreferences,
   type CloserInfo,
@@ -34,6 +35,7 @@ interface TrackedJob {
   job: FreeHireJob;
   note?: string;
   dismissed: boolean;
+  viewedAt?: number;
   createdAt: number;
   updatedAt: number;
   stageChangedAt: number;
@@ -64,6 +66,7 @@ const STAGE_META: Array<{ id: JobStage; label: string; description: string }> = 
 ];
 
 const PAGE_SIZE = 24;
+const FIRST_VISIT_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const COUNTRY_CODES = 'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split(' ');
 const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
 const COUNTRY_OPTIONS: Array<[string, string]> = [
@@ -102,6 +105,8 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   const [nextOffset, setNextOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [newOnly, setNewOnly] = useState(false);
+  const [newSince, setNewSince] = useState(() => Date.now() - FIRST_VISIT_LOOKBACK_MS);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +130,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   const firstName = closerInfo.name?.trim().split(/\s+/)[0] || 'there';
   const storageKey = `sequ3nce:dev-job-board:${userId || 'anonymous'}`;
   const preferenceStorageKey = `sequ3nce:job-preferences:${userId || 'anonymous'}`;
+  const visitStorageKey = `sequ3nce:job-board-visit:${userId || 'anonymous'}`;
 
   const currentPreferences = useMemo<FreeHirePreferences>(() => ({
     roleLane,
@@ -215,6 +221,34 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   }, [preferenceStorageKey, closerInfo.sessionToken, queuePreferenceSave]);
 
   useEffect(() => {
+    const visitedAt = Date.now();
+    let previousLocalVisit: number | null = null;
+    try {
+      const cached = Number(window.localStorage.getItem(visitStorageKey));
+      if (Number.isFinite(cached) && cached > 0 && cached <= visitedAt) previousLocalVisit = cached;
+      window.localStorage.setItem(visitStorageKey, String(visitedAt));
+    } catch {
+      // The authenticated marker below remains the source of truth when local storage is unavailable.
+    }
+    const fallbackSince = previousLocalVisit ?? visitedAt - FIRST_VISIT_LOOKBACK_MS;
+    setNewSince(fallbackSince);
+
+    const sessionToken = closerInfo.sessionToken;
+    if (!sessionToken) return;
+    let active = true;
+    void recordFreeHireJobBoardVisit(sessionToken).then((result) => {
+      if (!active || result.error) return;
+      const remotePrevious = result.previousVisitedAt;
+      if (typeof remotePrevious === 'number' && Number.isFinite(remotePrevious)) {
+        setNewSince(previousLocalVisit === null
+          ? remotePrevious
+          : Math.max(previousLocalVisit, remotePrevious));
+      }
+    });
+    return () => { active = false; };
+  }, [visitStorageKey, closerInfo.sessionToken]);
+
+  useEffect(() => {
     if (!preferencesReady) return;
     if (skipPreferenceSaveRef.current) {
       skipPreferenceSaveRef.current = false;
@@ -268,20 +302,33 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
         result.activities.map((activity) => [activity.externalJobId, activityFromServer(activity)]),
       );
       const merged = { ...local, ...remote };
+      for (const [externalJobId, localActivity] of Object.entries(local)) {
+        const remoteActivity = remote[externalJobId];
+        if (remoteActivity && (localActivity.viewedAt ?? 0) > (remoteActivity.viewedAt ?? 0)) {
+          merged[externalJobId] = {
+            ...remoteActivity,
+            viewedAt: localActivity.viewedAt,
+            updatedAt: Math.max(remoteActivity.updatedAt, localActivity.updatedAt),
+          };
+        }
+      }
       trackedRef.current = merged;
       setTracked(merged);
       setTrackingState('synced');
 
-      // One-time migration for activity created in the earlier local preview.
-      // Remote records always win; only local-only records are uploaded.
-      const localOnly = Object.entries(local).filter(([id]) => !remote[id]);
-      await Promise.all(localOnly.map(([externalJobId, activity]) =>
+      // Migrate local-only preview activity and view timestamps recorded while
+      // offline. Server stages/notes remain authoritative for shared same-job rows.
+      const pendingUploads = Object.entries(merged).filter(([id, activity]) =>
+        !remote[id] || (activity.viewedAt ?? 0) > (remote[id].viewedAt ?? 0),
+      );
+      await Promise.all(pendingUploads.map(([externalJobId, activity]) =>
         saveFreeHireActivity({
           sessionToken,
           externalJobId,
           stage: activity.stage,
           note: activity.note,
           dismissed: activity.dismissed,
+          viewedAt: activity.viewedAt,
           job: jobSnapshot(activity.job),
         }),
       ));
@@ -321,7 +368,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
       setTotal(result.total);
       setNextOffset(result.offset + result.limit);
       setHasMore(result.hasMore ?? result.offset + result.limit < result.total);
-      setSelectedJobId((current) => append && current ? current : result.jobs[0]?.id ?? null);
+      setSelectedJobId((current) => append && current ? current : null);
     } catch (requestError) {
       if (requestId !== jobRequestRef.current) return;
       const message = requestError instanceof Error ? requestError.message : String(requestError);
@@ -341,16 +388,29 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
     () => jobs.filter((job) => !tracked[job.id]?.dismissed),
     [jobs, tracked],
   );
-  const selectedJob = visibleJobs.find((job) => job.id === selectedJobId) ?? visibleJobs[0] ?? null;
+  const newJobIds = useMemo(() => new Set(
+    visibleJobs
+      .filter((job) => isNewJob(job, tracked[job.id]?.viewedAt, newSince))
+      .map((job) => job.id),
+  ), [visibleJobs, tracked, newSince]);
+  const displayJobs = useMemo(
+    () => newOnly
+      ? visibleJobs.filter((job) => newJobIds.has(job.id) || job.id === selectedJobId)
+      : visibleJobs,
+    [newOnly, visibleJobs, newJobIds, selectedJobId],
+  );
+  const selectedJob = visibleJobs.find((job) => job.id === selectedJobId) ?? null;
   const commitActivity = useCallback((job: FreeHireJob, changes: {
     stage?: JobStage;
     note?: string;
     dismissed: boolean;
+    viewedAt?: number;
   }) => {
     const current = trackedRef.current[job.id];
     const now = Date.now();
     const note = changes.note?.trim() || undefined;
-    const shouldRemove = !changes.stage && !note && !changes.dismissed;
+    const viewedAt = changes.viewedAt ?? current?.viewedAt;
+    const shouldRemove = !changes.stage && !note && !changes.dismissed && !viewedAt;
     const next = { ...trackedRef.current };
     if (shouldRemove) {
       delete next[job.id];
@@ -359,10 +419,11 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
         stage: changes.stage,
         note,
         dismissed: changes.dismissed,
+        viewedAt,
         job,
         createdAt: current?.createdAt ?? now,
         updatedAt: now,
-        stageChangedAt: current?.stage === changes.stage ? current.stageChangedAt : now,
+        stageChangedAt: current && current.stage === changes.stage ? current.stageChangedAt : now,
       };
     }
     trackedRef.current = next;
@@ -375,6 +436,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
         stage: changes.stage,
         note,
         dismissed: changes.dismissed,
+        viewedAt,
         job: jobSnapshot(job),
       }).then((result) => {
         if (!result.success) setTrackingState(result.needsRelogin ? 'needs-login' : 'local');
@@ -403,6 +465,18 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   }, [commitActivity]);
   const restoreJob = useCallback((job: FreeHireJob) => {
     commitActivity(job, { stage: undefined, note: undefined, dismissed: false });
+  }, [commitActivity]);
+  const openJob = useCallback((job: FreeHireJob) => {
+    const current = trackedRef.current[job.id];
+    if (!current?.viewedAt) {
+      commitActivity(job, {
+        stage: current?.stage,
+        note: current?.note,
+        dismissed: current?.dismissed ?? false,
+        viewedAt: Date.now(),
+      });
+    }
+    setSelectedJobId(job.id);
   }, [commitActivity]);
   const hydrateJob = useCallback((job: FreeHireJob) => {
     setJobs((current) => current.map((item) => item.id === job.id ? job : item));
@@ -455,8 +529,8 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
             </div>
           </nav>
 
-          {section === 'discover' && <DiscoverView firstName={firstName} roleLane={roleLane} onRoleChange={selectRoleLane} sortMode={sortMode} onSortModeChange={(value) => { markPreferenceChanged(); setSortMode(value); }} workMode={workMode} onWorkModeChange={(value) => { markPreferenceChanged(); setWorkMode(value); }} countryScope={countryScope} onCountryScopeChange={(value) => { markPreferenceChanged(); setCountryScope(value); }} postedWindow={postedWindow} onPostedWindowChange={(value) => { markPreferenceChanged(); setPostedWindow(value); }} minSalary={minSalary} onMinSalaryChange={(value) => { markPreferenceChanged(); setMinSalary(value); }} onResetPreferences={() => { markPreferenceChanged(); applyPreferences(DEFAULT_PREFERENCES, { setRoleLane, setSortMode, setWorkMode, setCountryScope, setPostedWindow, setMinSalary }); }} jobs={visibleJobs} total={total} hasMore={hasMore} selectedJob={selectedJob} selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} tracked={tracked} onSetStage={setJobStage} onSetNote={setJobNote} onDismiss={dismissJob} onHydrateJob={hydrateJob} loading={loading} loadingMore={loadingMore} error={error} onRetry={() => setRefreshToken((value) => value + 1)} onLoadMore={() => void loadJobs(nextOffset, true)} onOpenApplications={() => setSection('applications')} onToast={showToast} />}
-          {section === 'applications' && <ApplicationsView tracked={tracked} trackingState={trackingState} onSetStage={setJobStage} onRestore={restoreJob} onSelectJob={(job) => { if (!jobs.some((item) => item.id === job.id)) setJobs((current) => [job, ...current]); setSelectedJobId(job.id); setSection('discover'); }} />}
+          {section === 'discover' && <DiscoverView firstName={firstName} roleLane={roleLane} onRoleChange={selectRoleLane} sortMode={sortMode} onSortModeChange={(value) => { markPreferenceChanged(); setSortMode(value); }} workMode={workMode} onWorkModeChange={(value) => { markPreferenceChanged(); setWorkMode(value); }} countryScope={countryScope} onCountryScopeChange={(value) => { markPreferenceChanged(); setCountryScope(value); }} postedWindow={postedWindow} onPostedWindowChange={(value) => { markPreferenceChanged(); setPostedWindow(value); }} minSalary={minSalary} onMinSalaryChange={(value) => { markPreferenceChanged(); setMinSalary(value); }} onResetPreferences={() => { markPreferenceChanged(); applyPreferences(DEFAULT_PREFERENCES, { setRoleLane, setSortMode, setWorkMode, setCountryScope, setPostedWindow, setMinSalary }); }} jobs={displayJobs} total={total} hasMore={hasMore} selectedJob={selectedJob} selectedJobId={selectedJobId} onSelectJob={openJob} tracked={tracked} newOnly={newOnly} newCount={newJobIds.size} newJobIds={newJobIds} onNewOnlyChange={setNewOnly} onSetStage={setJobStage} onSetNote={setJobNote} onDismiss={dismissJob} onHydrateJob={hydrateJob} loading={loading} loadingMore={loadingMore} error={error} onRetry={() => setRefreshToken((value) => value + 1)} onLoadMore={() => void loadJobs(nextOffset, true)} onOpenApplications={() => setSection('applications')} onToast={showToast} />}
+          {section === 'applications' && <ApplicationsView tracked={tracked} trackingState={trackingState} onSetStage={setJobStage} onRestore={restoreJob} onSelectJob={(job) => { if (!jobs.some((item) => item.id === job.id)) setJobs((current) => [job, ...current]); openJob(job); setSection('discover'); }} />}
           {section === 'insights' && <InsightsView roleLane={roleLane} workMode={workMode} countryScope={countryScope} postedWindow={postedWindow} minSalary={minSalary} />}
         </div>
       )}
@@ -483,7 +557,8 @@ interface DiscoverProps {
   minSalary: SalaryTarget; onMinSalaryChange: (value: SalaryTarget) => void;
   onResetPreferences: () => void;
   jobs: FreeHireJob[]; total: number; hasMore: boolean; selectedJob: FreeHireJob | null; selectedJobId: string | null;
-  onSelectJob: (id: string) => void; tracked: Record<string, TrackedJob>;
+  onSelectJob: (job: FreeHireJob) => void; tracked: Record<string, TrackedJob>;
+  newOnly: boolean; newCount: number; newJobIds: Set<string>; onNewOnlyChange: (value: boolean) => void;
   onSetStage: (job: FreeHireJob, stage: JobStage | undefined) => void;
   onSetNote: (job: FreeHireJob, note: string) => void;
   onDismiss: (job: FreeHireJob) => void;
@@ -493,7 +568,7 @@ interface DiscoverProps {
 }
 
 function DiscoverView(props: DiscoverProps) {
-  const { firstName, roleLane, onRoleChange, sortMode, onSortModeChange, workMode, onWorkModeChange, countryScope, onCountryScopeChange, postedWindow, onPostedWindowChange, minSalary, onMinSalaryChange, onResetPreferences, jobs, total, hasMore, selectedJob, selectedJobId, onSelectJob, tracked, onSetStage, onSetNote, onDismiss, onHydrateJob, loading, loadingMore, error, onRetry, onLoadMore, onOpenApplications, onToast } = props;
+  const { firstName, roleLane, onRoleChange, sortMode, onSortModeChange, workMode, onWorkModeChange, countryScope, onCountryScopeChange, postedWindow, onPostedWindowChange, minSalary, onMinSalaryChange, onResetPreferences, jobs, total, hasMore, selectedJob, selectedJobId, onSelectJob, tracked, newOnly, newCount, newJobIds, onNewOnlyChange, onSetStage, onSetNote, onDismiss, onHydrateJob, loading, loadingMore, error, onRetry, onLoadMore, onOpenApplications, onToast } = props;
   const activeLane = ROLE_LANES.find((lane) => lane.id === roleLane) ?? ROLE_LANES[0];
   return (
     <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto lg:overflow-hidden overflow-x-hidden px-4 sm:px-5 xl:px-6 pb-6">
@@ -518,13 +593,24 @@ function DiscoverView(props: DiscoverProps) {
         {minSalary > 0 && <p data-testid="target-pay-disclosure" className="text-[8px] text-gray-400 mt-2">Target pay uses disclosed annual USD compensation when available; curated roles with unknown pay remain included.</p>}
       </div>
 
-      {error ? <FeedError message={error} onRetry={onRetry} /> : loading ? <LoadingState /> : jobs.length === 0 ? <EmptyState lane={activeLane.label} /> : (
+      <div data-testid="new-job-controls" className="mb-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className="inline-flex rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-0.5">
+          <button onClick={() => onNewOnlyChange(false)} className={`rounded-md px-3 py-1.5 text-[9.5px] font-semibold transition-colors ${!newOnly ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-gray-500 hover:text-black dark:hover:text-white'}`}>All roles</button>
+          <button data-testid="new-since-last-visit" onClick={() => onNewOnlyChange(true)} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[9.5px] font-semibold transition-colors ${newOnly ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-gray-500 hover:text-black dark:hover:text-white'}`}>
+            New since last visit
+            <span data-testid="new-job-count" className={`min-w-5 rounded-full px-1.5 py-0.5 text-[8px] tabular-nums ${newOnly ? 'bg-white/20 dark:bg-black/15' : 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'}`}>{newCount}</span>
+          </button>
+        </div>
+        <p className="text-[8px] text-gray-400">Based on roles discovered since your previous visit.</p>
+      </div>
+
+      {error ? <FeedError message={error} onRetry={onRetry} /> : loading ? <LoadingState /> : jobs.length === 0 && !newOnly ? <EmptyState lane={activeLane.label} /> : (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,0.8fr)_minmax(360px,1.2fr)] gap-3 items-start lg:items-stretch min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           <section className="min-w-0 lg:min-h-0 rounded-lg border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden lg:flex lg:flex-col">
-            <div className="px-3 py-2.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between gap-3"><div className="min-w-0"><h4 className="text-[11px] font-semibold truncate">{activeLane.label}</h4><p className="text-[8.5px] text-gray-400 mt-0.5">Showing {jobs.length} of {formatCount(total)}</p></div><span className="inline-flex items-center gap-1.5 text-[8.5px] text-blue-600 dark:text-blue-300 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />Live feed</span></div>
-            <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto"><div className="divide-y divide-gray-100 dark:divide-zinc-800">{jobs.map((job) => <JobListCard key={job.id} job={job} roleLane={roleLane} active={job.id === selectedJobId} stage={tracked[job.id]?.stage} onSelect={() => onSelectJob(job.id)} onSave={() => { const currentStage = tracked[job.id]?.stage; if (!currentStage || currentStage === 'saved') onSetStage(job, currentStage === 'saved' ? undefined : 'saved'); }} />)}</div>{hasMore && <div className="p-3 border-t border-gray-100 dark:border-zinc-800"><button onClick={onLoadMore} disabled={loadingMore} className="w-full rounded-lg border border-gray-200 dark:border-zinc-700 py-2 text-[10px] font-semibold text-gray-600 dark:text-gray-300 hover:border-gray-400 disabled:opacity-50">{loadingMore ? 'Loading more…' : 'Load more roles'}</button></div>}</div>
+            <div className="px-3 py-2.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between gap-3"><div className="min-w-0"><h4 className="text-[11px] font-semibold truncate">{newOnly ? 'New since last visit' : activeLane.label}</h4><p className="text-[8.5px] text-gray-400 mt-0.5">{newOnly ? `${newCount} new in loaded roles` : `Showing ${jobs.length} of ${formatCount(total)}`}</p></div><span className="inline-flex items-center gap-1.5 text-[8.5px] text-blue-600 dark:text-blue-300 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />Live feed</span></div>
+            <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto"><div className="divide-y divide-gray-100 dark:divide-zinc-800">{jobs.length > 0 ? jobs.map((job) => <JobListCard key={job.id} job={job} roleLane={roleLane} active={job.id === selectedJobId} isNew={newJobIds.has(job.id)} stage={tracked[job.id]?.stage} onSelect={() => onSelectJob(job)} onSave={() => { const currentStage = tracked[job.id]?.stage; if (!currentStage || currentStage === 'saved') onSetStage(job, currentStage === 'saved' ? undefined : 'saved'); }} />) : <div className="px-4 py-12 text-center"><p className="text-[11px] font-semibold">You’re caught up</p><p className="mt-1 text-[9px] text-gray-400">No new roles are visible in the results loaded so far.</p></div>}</div>{hasMore && <div className="p-3 border-t border-gray-100 dark:border-zinc-800"><button onClick={onLoadMore} disabled={loadingMore} className="w-full rounded-lg border border-gray-200 dark:border-zinc-700 py-2 text-[10px] font-semibold text-gray-600 dark:text-gray-300 hover:border-gray-400 disabled:opacity-50">{loadingMore ? 'Loading more…' : newOnly ? 'Check more roles' : 'Load more roles'}</button></div>}</div>
           </section>
-          {selectedJob && <JobDetailPanel job={selectedJob} activity={tracked[selectedJob.id]} onSetStage={(stage) => onSetStage(selectedJob, stage)} onSetNote={(note) => onSetNote(selectedJob, note)} onDismiss={() => onDismiss(selectedJob)} onHydrateJob={onHydrateJob} onOpenApplications={onOpenApplications} onToast={onToast} />}
+          {selectedJob ? <JobDetailPanel job={selectedJob} activity={tracked[selectedJob.id]} onSetStage={(stage) => onSetStage(selectedJob, stage)} onSetNote={(note) => onSetNote(selectedJob, note)} onDismiss={() => onDismiss(selectedJob)} onHydrateJob={onHydrateJob} onOpenApplications={onOpenApplications} onToast={onToast} /> : <JobDetailPlaceholder />}
         </div>
       )}
     </div>
@@ -535,10 +621,42 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
   return <label className="min-w-0 rounded-md border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2.5 py-1.5"><span className="block text-[7.5px] font-mono uppercase tracking-wider text-gray-400 mb-0.5">{label}</span><select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="block w-full min-w-0 bg-transparent text-[9.5px] font-semibold text-gray-700 dark:text-gray-200 outline-none cursor-pointer truncate">{options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}</select></label>;
 }
 
-function JobListCard({ job, roleLane, active, stage, onSelect, onSave }: { job: FreeHireJob; roleLane: RoleLane; active: boolean; stage?: JobStage; onSelect: () => void; onSave: () => void }) {
+function JobListCard({ job, roleLane, active, isNew, stage, onSelect, onSave }: { job: FreeHireJob; roleLane: RoleLane; active: boolean; isNew: boolean; stage?: JobStage; onSelect: () => void; onSave: () => void }) {
   const matchedInDescription = roleLane === 'high-ticket' && !/high[ -]?ticket/i.test(job.title);
   const activelyTracked = !!stage;
-  return <div data-testid="freehire-job-card" data-job-id={job.id} className={`relative transition-colors ${active ? 'bg-gray-50 dark:bg-zinc-800/55' : 'hover:bg-gray-50/70 dark:hover:bg-zinc-800/30'}`}><button onClick={onSelect} className="w-full min-w-0 text-left p-3 pr-11"><div className="flex items-start gap-2.5 min-w-0"><CompanyMark job={job} /><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold leading-snug line-clamp-2">{job.title}</p><p className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-1 truncate">{job.company} · {job.location}</p><div className="flex items-center gap-1.5 mt-2 flex-wrap">{job.salary !== 'Compensation not listed' && <CompensationTag>{job.salary}</CompensationTag>}<Tag>{formatWorkMode(job.workMode)}</Tag>{matchedInDescription && <Tag>High-ticket match in description</Tag>}{realityLabel(job) && <RealityTag job={job} />}</div><div className="flex items-center justify-between gap-3 mt-2.5 text-[8.5px] text-gray-400"><span className="truncate">{postedLabel(job.postedAt)} · {job.source}</span>{stage && <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize shrink-0">{stage}</span>}</div></div></div></button><button onClick={onSave} disabled={activelyTracked && stage !== 'saved'} className={`absolute right-3 top-3 w-7 h-7 rounded-md border flex items-center justify-center ${activelyTracked ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black' : 'border-gray-200 dark:border-zinc-700 text-gray-400 hover:text-gray-700'} disabled:cursor-default`} title={stage === 'saved' ? 'Remove saved job' : activelyTracked ? `Tracked as ${stage}` : 'Save job'}><BookmarkIcon className="w-3.5 h-3.5" filled={activelyTracked} /></button></div>;
+  return (
+    <div data-testid="freehire-job-card" data-job-id={job.id} data-new={isNew ? 'true' : 'false'} className={`relative transition-colors ${active ? 'bg-gray-50 dark:bg-zinc-800/55' : 'hover:bg-gray-50/70 dark:hover:bg-zinc-800/30'}`}>
+      <button data-testid="open-job" onClick={onSelect} className="w-full min-w-0 text-left p-3 pr-11">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <CompanyMark job={job} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-2">
+              <p className="min-w-0 text-[11px] font-semibold leading-snug line-clamp-2">{job.title}</p>
+              {isNew && <span className="mt-px shrink-0 rounded-full bg-blue-50 px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-wide text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">New</span>}
+            </div>
+            <p className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-1 truncate">{job.company} · {job.location}</p>
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              {job.salary !== 'Compensation not listed' && <CompensationTag>{job.salary}</CompensationTag>}
+              <Tag>{formatWorkMode(job.workMode)}</Tag>
+              {matchedInDescription && <Tag>High-ticket match in description</Tag>}
+              {realityLabel(job) && <RealityTag job={job} />}
+            </div>
+            <div className="flex items-center justify-between gap-3 mt-2.5 text-[8.5px] text-gray-400">
+              <span className="truncate">{postedLabel(job.postedAt)} · {job.source}</span>
+              {stage && <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize shrink-0">{stage}</span>}
+            </div>
+          </div>
+        </div>
+      </button>
+      <button onClick={onSave} disabled={activelyTracked && stage !== 'saved'} className={`absolute right-3 top-3 w-7 h-7 rounded-md border flex items-center justify-center ${activelyTracked ? 'border-black dark:border-white bg-black dark:bg-white text-white dark:text-black' : 'border-gray-200 dark:border-zinc-700 text-gray-400 hover:text-gray-700'} disabled:cursor-default`} title={stage === 'saved' ? 'Remove saved job' : activelyTracked ? `Tracked as ${stage}` : 'Save job'}>
+        <BookmarkIcon className="w-3.5 h-3.5" filled={activelyTracked} />
+      </button>
+    </div>
+  );
+}
+
+function JobDetailPlaceholder() {
+  return <aside className="hidden lg:flex min-w-0 min-h-0 rounded-lg border border-dashed border-gray-200 dark:border-zinc-800 bg-gray-50/40 dark:bg-zinc-900/30 items-center justify-center p-8 text-center"><div><p className="text-[11px] font-semibold">Select a role to review it</p><p className="mt-1 text-[9px] leading-relaxed text-gray-400">Opening a role marks it as viewed and keeps your new-job list up to date.</p></div></aside>;
 }
 
 function JobDetailPanel({ job, activity, onSetStage, onSetNote, onDismiss, onHydrateJob, onOpenApplications, onToast }: { job: FreeHireJob; activity?: TrackedJob; onSetStage: (stage: JobStage | undefined) => void; onSetNote: (note: string) => void; onDismiss: () => void; onHydrateJob: (job: FreeHireJob) => void; onOpenApplications: () => void; onToast: (message: string) => void }) {
@@ -929,6 +1047,7 @@ function jobFromSnapshot(id: string, job: FreeHireTrackedJobSnapshot): FreeHireJ
     seniority: job.seniority,
     salary: job.salary,
     postedAt: job.postedAt ?? null,
+    discoveredAt: null,
     lastSeenAt: null,
     appliedCount: 0,
     domains: [],
@@ -942,6 +1061,7 @@ function activityFromServer(activity: FreeHireActivity): TrackedJob {
     stage: activity.stage,
     note: activity.note,
     dismissed: activity.dismissed,
+    viewedAt: activity.viewedAt,
     job: jobFromSnapshot(activity.externalJobId, activity.job),
     createdAt: activity.createdAt,
     updatedAt: activity.updatedAt,
@@ -963,6 +1083,9 @@ function normalizeLocalTracking(value: unknown): Record<string, TrackedJob> {
       stage,
       note: typeof candidate.note === 'string' ? candidate.note.slice(0, 2000) : undefined,
       dismissed: candidate.dismissed === true,
+      viewedAt: typeof candidate.viewedAt === 'number' && Number.isFinite(candidate.viewedAt)
+        ? candidate.viewedAt
+        : undefined,
       job: candidate.job,
       createdAt: typeof candidate.createdAt === 'number' ? candidate.createdAt : now,
       updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : now,
@@ -973,6 +1096,13 @@ function normalizeLocalTracking(value: unknown): Record<string, TrackedJob> {
 }
 
 function mergeJobs(current: FreeHireJob[], incoming: FreeHireJob[]): FreeHireJob[] { const merged = new Map(current.map((job) => [job.id, job])); incoming.forEach((job) => merged.set(job.id, job)); return Array.from(merged.values()); }
+function isNewJob(job: FreeHireJob, viewedAt: number | undefined, newSince: number): boolean {
+  if (viewedAt) return false;
+  const discoveredAt = job.discoveredAt ? new Date(job.discoveredAt).getTime() : Number.NaN;
+  const postedAt = job.postedAt ? new Date(job.postedAt).getTime() : Number.NaN;
+  const timestamp = Number.isFinite(discoveredAt) ? discoveredAt : postedAt;
+  return Number.isFinite(timestamp) && timestamp >= newSince && timestamp <= Date.now() + 86_400_000;
+}
 function companyInitials(company: string): string { const words = company.split(/\s+/).filter(Boolean); return words.slice(0, 2).map((word) => word[0]?.toUpperCase()).join('') || '?'; }
 function daysAgo(date: string | null): number { if (!date) return Number.POSITIVE_INFINITY; const timestamp = new Date(date).getTime(); if (!Number.isFinite(timestamp)) return Number.POSITIVE_INFINITY; return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000)); }
 function postedLabel(date: string | null): string { const days = daysAgo(date); if (!Number.isFinite(days)) return 'Date unknown'; if (days === 0) return 'Posted today'; if (days === 1) return 'Posted yesterday'; if (days < 30) return `Posted ${days}d ago`; return `Posted ${Math.floor(days / 30)}mo ago`; }
