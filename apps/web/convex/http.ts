@@ -1,4 +1,5 @@
 import { httpRouter } from "convex/server";
+import { validateLeadPhone, checkLeadEmail } from "./leadQuality";
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
@@ -10050,9 +10051,20 @@ http.route({
         return b2cJsonResponse({ error: "email and phone are required" }, 400);
       }
 
+      // Quality gate (2026-09-03): junk phones and fake/undeliverable emails
+      // bounce here with a human message the form shows inline.
+      const phoneCheck = validateLeadPhone(phone);
+      if (!phoneCheck.ok) {
+        return b2cJsonResponse({ error: phoneCheck.reason }, 400, true);
+      }
+      const emailCheck = await checkLeadEmail(email);
+      if (!emailCheck.ok) {
+        return b2cJsonResponse({ error: emailCheck.reason }, 400, true);
+      }
+
       const id = await ctx.runMutation(api.b2cLeads.saveLead, {
         email,
-        phone,
+        phone: phoneCheck.normalized,
         firstName: typeof firstName === "string" ? firstName : undefined,
         lastName: typeof lastName === "string" ? lastName : undefined,
         source: typeof source === "string" ? source : undefined,

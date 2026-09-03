@@ -51,6 +51,17 @@ export function LeadModal({ open, onClose, busy, error, onSubmit }: Props) {
       setLocalError("All three fields — that's how we call you.");
       return;
     }
+    // Instant sanity checks — the server enforces the real gate (including a
+    // live is-this-email-deliverable lookup); these just catch typos early.
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (phoneDigits.length < 10 || phoneDigits.length > 15 || /^(\d)\1+$/.test(phoneDigits)) {
+      setLocalError("That mobile number doesn't look complete — we need it to reach you.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) {
+      setLocalError("That email doesn't look right — double-check it.");
+      return;
+    }
     if (!consent) {
       setLocalError("Tick the box so we know you know the deal.");
       return;

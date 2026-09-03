@@ -29,7 +29,8 @@ export const saveLead = mutation({
     if (!email || !EMAIL_REGEX.test(email) || email.length > MAX_EMAIL_LENGTH) {
       throw new Error("Invalid email address");
     }
-    if (!phone || phone.length > MAX_PHONE_LENGTH) {
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (!phone || phone.length > MAX_PHONE_LENGTH || phoneDigits.length < 10 || phoneDigits.length > 15) {
       throw new Error("Invalid phone number");
     }
 
