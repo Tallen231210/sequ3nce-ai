@@ -76,6 +76,11 @@ export const joinMoneyBells = mutation({
 
     const user = await ctx.db.get(args.userId);
     if (!user) throw new Error("User not found");
+    // Cloaking (2026-09-03 demo-rep audit): demo/QA accounts must never enter
+    // the leaderboard, feed, or Hall of Fame — block at the door.
+    if (user.isTestAccount === true) {
+      throw new Error("Demo accounts can't join Money Bells");
+    }
 
     // Check idempotency — if already opted in, return existing row
     const existing = await ctx.db
