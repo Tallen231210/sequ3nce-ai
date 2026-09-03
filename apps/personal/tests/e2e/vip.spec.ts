@@ -61,8 +61,9 @@ test.describe("VIP tier", () => {
     await page.waitForTimeout(2500);
     await page.getByRole("button", { name: "The Placement Line" }).click();
     await page.waitForTimeout(2500);
-    await expect(page.getByText("You're on The Placement Line")).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText("Quiet weeks are normal")).toBeVisible();
+    await expect(page.getByText("You're represented.")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("There is no line to wait in.")).toBeVisible();
+    await expect(page.getByText(/Quiet weeks are normal/)).toBeVisible();
     await page.screenshot({ path: "test-results/vip-placement-line.png" });
   });
 

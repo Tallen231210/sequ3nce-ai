@@ -93,32 +93,53 @@ export function PlacementLineTab({ userId, isFounder, onGoToProfile }: Placement
   }
 
   // ---- State 4: on the Line — the waiting room ----
+  // This is the flagship VIP perk, and members can never see who else is on
+  // the Line or any position — matching is by FIT, not order. The room's one
+  // job is to make waiting feel like being represented, not queueing.
   if (status.joinedAt) {
     const joinedDate = new Date(status.joinedAt).toLocaleDateString(undefined, {
       month: 'long', day: 'numeric', year: 'numeric',
     });
     return (
       <div className="max-w-2xl mx-auto py-10 px-4">
-        <div className="rounded-2xl border-2 border-yellow-400/70 bg-yellow-50 dark:bg-yellow-900/10 p-6 text-center mb-8">
-          <div className="w-12 h-12 mx-auto rounded-full bg-yellow-400 text-black flex items-center justify-center mb-3">
+        {/* Hero */}
+        <div className="rounded-2xl border-2 border-yellow-400/70 bg-gradient-to-b from-yellow-50 to-white dark:from-yellow-900/15 dark:to-zinc-950 p-8 text-center mb-6">
+          <div className="w-14 h-14 mx-auto rounded-full bg-yellow-400 text-black flex items-center justify-center mb-4">
             {CROWN}
           </div>
-          <h3 className="text-lg font-bold text-black dark:text-white">
-            You&apos;re on The Placement Line
+          <h3 className="text-xl font-bold text-black dark:text-white">
+            You&apos;re represented.
           </h3>
-          <p className="text-[12.5px] text-gray-500 dark:text-gray-400 mt-1">
-            Since {joinedDate} · Profile live with our placement team
+          <p className="text-[13.5px] text-gray-600 dark:text-gray-300 mt-2 max-w-md mx-auto leading-relaxed">
+            Your profile is in front of our placement team, and it goes to work
+            every time a company comes to Sequ3nce looking for a closer.
+          </p>
+          <p className="text-[11.5px] text-gray-400 dark:text-gray-500 mt-3">
+            On the Line since {joinedDate}
+          </p>
+        </div>
+
+        {/* Not a queue — the one fear this page must kill */}
+        <div className="rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 px-5 py-4 mb-8">
+          <p className="text-[13px] font-semibold text-black dark:text-white mb-1">
+            There is no line to wait in.
+          </p>
+          <p className="text-[12.5px] text-gray-500 dark:text-gray-400 leading-relaxed">
+            Despite the name, this isn&apos;t first-come, first-served — nobody is
+            &ldquo;ahead of you.&rdquo; When a company tells us what seat they need,
+            we match on fit: your niche, your numbers, your style. Whether you
+            joined yesterday or last quarter changes nothing.
           </p>
         </div>
 
         <h4 className="text-[13px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">
-          How this works
+          How placements happen
         </h4>
         <div className="space-y-4 mb-8">
           {[
-            ['A partner asks us for closers', 'Companies we have direct relationships with tell us what seat they need filled — comp, offer, leads.'],
-            ['We match from the Line', 'Your profile and verified numbers are what we shop. The better they look, the more often you come up.'],
-            ['You get the intro', 'When it’s you, we reach out here in the app and make a warm, personal introduction. No cold applications, ever.'],
+            ['A company comes to us', 'Business owners we have direct relationships with ask Sequ3nce for closers — comp, offer, and leads already defined.'],
+            ['We match on fit', 'Our placement team reads profiles and verified numbers and picks the closers who genuinely fit that seat.'],
+            ['You walk into a warm intro', 'If it\u2019s you, we reach out in the app and personally introduce you. The conversation is already arranged — no cold applications, no competing in a stack of resumes.'],
           ].map(([title, body], i) => (
             <div key={title} className="flex gap-4">
               <div className="w-7 h-7 rounded-full bg-black dark:bg-white text-white dark:text-black text-[12px] font-bold flex items-center justify-center flex-shrink-0">
@@ -132,16 +153,25 @@ export function PlacementLineTab({ userId, isFounder, onGoToProfile }: Placement
           ))}
         </div>
 
+        {/* What moves the needle */}
         <div className="rounded-xl bg-gray-50 dark:bg-zinc-900/60 border border-gray-200 dark:border-zinc-800 px-5 py-4">
           <p className="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">
-            Quiet weeks are normal — and a good sign to keep closing.
+            Quiet weeks are normal — and the best use of them is closing.
           </p>
           <p className="text-[12.5px] text-gray-500 dark:text-gray-400 leading-relaxed">
             Placements move on partner timelines, not ours. Every call you record
-            and every dollar you verify while you wait makes your profile stronger
-            for the next match. When a partner wants you, you&apos;ll hear from us
-            directly — you don&apos;t need to do anything else here.
+            and every dollar you verify makes your profile an easier yes for the
+            next match. When a partner wants you, you&apos;ll hear from us directly —
+            there&apos;s nothing to check or refresh here.
           </p>
+          {onGoToProfile && (
+            <button
+              onClick={onGoToProfile}
+              className="mt-3 text-[12.5px] font-semibold text-black dark:text-white underline underline-offset-2 hover:opacity-70"
+            >
+              Keep your profile sharp →
+            </button>
+          )}
         </div>
       </div>
     );

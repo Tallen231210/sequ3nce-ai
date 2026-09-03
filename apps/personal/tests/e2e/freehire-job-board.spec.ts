@@ -36,7 +36,7 @@ test.describe("FreeHire development job board", () => {
     await firstCard.getByTitle("Save job").click();
     await page.getByRole("button", { name: /^Applications/ }).click();
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
-    await expect(page.getByTestId("freehire-tracking-status")).toContainText(/Re-login needed|Local fallback|Authenticated sync/);
+    await expect(page.getByTestId("freehire-tracking-status")).toContainText(/Synced|Sign in to sync|Offline/);
 
     await page.getByText(title, { exact: true }).first().click();
     const note = page.getByTestId("freehire-private-note");
