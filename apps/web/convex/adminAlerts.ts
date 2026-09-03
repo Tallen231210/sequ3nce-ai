@@ -20,7 +20,7 @@ const COOLDOWN_MS = 60 * 60 * 1000;
 /** Atomically decide whether this alert kind is off cooldown, recording the
  *  send in the same transaction so concurrent failures can't double-email. */
 export const claimAlertSlot = internalMutation({
-  args: { kind: v.string() },
+  args: { kind: v.string(), cooldownMs: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const last = await ctx.db
       .query("adminAlerts")
@@ -28,7 +28,7 @@ export const claimAlertSlot = internalMutation({
       .order("desc")
       .first();
     const now = Date.now();
-    if (last && now - last.sentAt < COOLDOWN_MS) return { send: false };
+    if (last && now - last.sentAt < (args.cooldownMs ?? COOLDOWN_MS)) return { send: false };
     await ctx.db.insert("adminAlerts", { kind: args.kind, sentAt: now });
     return { send: true };
   },
@@ -77,6 +77,63 @@ export const raiseRecallBillingAlert = internalAction({
       return { sent: false };
     }
     console.log("[adminAlerts] Recall billing alert emailed");
+    return { sent: true };
+  },
+});
+
+/**
+ * Auto-join churn: a team booking and cancelling bots far faster than any
+ * calendar changes. Born 2026-09-03: a title-vs-calendar mismatch had one
+ * meeting booked 99 times in a week, and the daily cap — which counted the
+ * junk — then stopped the team's REAL calls from getting bots. The cap now
+ * counts only bots that can cost money; churn is this alarm instead, so a
+ * loop reaches the founder without ever starving a customer.
+ */
+export const raiseAutoJoinChurnAlert = internalAction({
+  args: {
+    teamId: v.string(),
+    teamName: v.string(),
+    cancelledBeforeJoin: v.number(),
+    costable: v.number(),
+    cap: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const slot = await ctx.runMutation(internal.adminAlerts.claimAlertSlot, {
+      kind: `autojoin_churn_${args.teamId}`,
+      cooldownMs: 24 * 60 * 60 * 1000,
+    });
+    if (!slot.send) return { sent: false };
+
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("[adminAlerts] RESEND_API_KEY not configured — cannot send churn alert");
+      return { sent: false };
+    }
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: FROM_ADDRESS,
+        to: [ALERT_EMAIL],
+        subject: `⚠️ Auto-join churn on ${args.teamName} — bots booked and cancelled in a loop`,
+        text: [
+          `${args.teamName} has had ${args.cancelledBeforeJoin} bots booked and cancelled before joining in the last 24 hours.`,
+          `Bots that actually count toward the cap: ${args.costable} of ${args.cap}.`,
+          "",
+          "This usually means the sweep is booking a meeting and then deciding it no longer exists — a calendar/attribution mismatch, not a customer action.",
+          "Real calls are NOT blocked by this (the cap ignores cancelled-before-join bots), but the loop needs fixing.",
+          "",
+          "Where to look: meetingBots for the team, grouped by calendarEventId — the churning meetings have dozens of rows.",
+          "",
+          "At most one of these per team per day.",
+        ].join("\n"),
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[adminAlerts] Resend refused the churn alert: ${res.status}`);
+      return { sent: false };
+    }
+    console.log(`[adminAlerts] auto-join churn alert emailed for ${args.teamName}`);
     return { sent: true };
   },
 });

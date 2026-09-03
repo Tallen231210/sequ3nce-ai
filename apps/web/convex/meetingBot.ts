@@ -2439,7 +2439,10 @@ export const autoJoinSummary = internalQuery({
 /** How many bots has auto-join booked for this team in the last day? */
 export const countRecentAutoBots = internalQuery({
   args: { teamId: v.id("teams") },
-  handler: async (ctx, args): Promise<{ booked: number; cap: number }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ booked: number; cancelledBeforeJoin: number; cap: number }> => {
     const since = Date.now() - 24 * 60 * 60 * 1000;
     const bots = await ctx.db
       .query("meetingBots")
@@ -2448,14 +2451,32 @@ export const countRecentAutoBots = internalQuery({
       .take(500);
 
     const team = await ctx.db.get(args.teamId);
+    const recent = bots.filter(
+      (b) => b.source === "calendar" && (b.createdAt ?? 0) >= since,
+    );
+    // A bot cancelled before it ever joined cost nothing and recorded
+    // nothing — it must not eat the day's budget. (2026-09-03: a book-and-
+    // cancel loop filled E2's cap with 100+ such rows and the team's real
+    // calls stopped getting bots.) Failed-at-Recall bots likewise. Anything
+    // that joined, or is still waiting to, counts.
+    const costable = recent.filter(
+      (b) => !((b.status === "cancelled" && !b.joinedAt) || b.status === "failed"),
+    ).length;
+    const cancelledBeforeJoin = recent.filter(
+      (b) => b.status === "cancelled" && !b.joinedAt,
+    ).length;
     return {
-      booked: bots.filter(
-        (b) => b.source === "calendar" && (b.createdAt ?? 0) >= since,
-      ).length,
+      booked: costable,
+      cancelledBeforeJoin,
       cap: team?.autoJoinDailyCap ?? AUTO_JOIN_DEFAULT_DAILY_CAP,
     };
   },
 });
+
+/** Cancelled-before-join bookings per team per day beyond which the sweep
+ *  raises the churn alarm. A busy team legitimately sees a handful when
+ *  meetings move or get cancelled; dozens means a loop. */
+const AUTO_JOIN_CHURN_ALERT_THRESHOLD = 40;
 
 /**
  * Turn auto-join on or off for one closer.
@@ -2826,8 +2847,9 @@ export const autoScheduleBotsForAllClosers = internalAction({
     // ------------------------------------------------------------------
     // Spend so far today, per team. Read once per team per run rather than
     // per meeting, then counted forward as we book.
-    const budget = new Map<string, { booked: number; cap: number }>();
+    const budget = new Map<string, { booked: number; cancelledBeforeJoin: number; cap: number }>();
     const cappedTeams = new Set<string>();
+    const churnAlerted = new Set<string>();
 
     // Roster per team, read once per run — used to read the closer's name out
     // of the booking title, which is the one schedule-time signal that says
@@ -2873,6 +2895,26 @@ export const autoScheduleBotsForAllClosers = internalAction({
         );
       }
       const spend = budget.get(teamKey)!;
+
+      if (
+        spend.cancelledBeforeJoin >= AUTO_JOIN_CHURN_ALERT_THRESHOLD &&
+        !churnAlerted.has(teamKey)
+      ) {
+        churnAlerted.add(teamKey);
+        console.error(
+          `[autoSchedule] team ${teamKey}: ${spend.cancelledBeforeJoin} bots booked and ` +
+            `cancelled before joining in 24h — a book-and-cancel loop. Real calls ` +
+            `still book (cap counts ${spend.booked}/${spend.cap}); alerting.`,
+        );
+        const teamDoc = await ctx.runQuery(internal.meetingBot.getTeamById, { teamId: owner.teamId });
+        await ctx.scheduler.runAfter(0, internal.adminAlerts.raiseAutoJoinChurnAlert, {
+          teamId: teamKey,
+          teamName: teamDoc?.name ?? teamKey,
+          cancelledBeforeJoin: spend.cancelledBeforeJoin,
+          costable: spend.booked,
+          cap: spend.cap,
+        });
+      }
 
       if (spend.booked >= spend.cap) {
         // Loudly, once per team per run. A silent stop here means a customer's
