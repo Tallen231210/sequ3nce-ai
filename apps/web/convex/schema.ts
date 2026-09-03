@@ -1864,6 +1864,14 @@ export default defineSchema({
     joinedAt: v.optional(v.number()), // When bot actually joined
     endedAt: v.optional(v.number()), // When bot left/call ended
     calendarEventId: v.optional(v.string()), // Link to calendar event UID
+    /**
+     * The closer whose calendar the auto-join sweep found this meeting on.
+     * Can differ from closerId: the sweep hands a bot to whoever the TITLE
+     * names ("Tony and Joseph" → Joseph) even when the booking sits on a
+     * teammate's calendar. The orphan check must look for the meeting where
+     * it actually lives, or it cancels the bot it just booked, every sweep.
+     */
+    calendarOwnerCloserId: v.optional(v.id("closers")),
     recordingUrl: v.optional(v.string()), // Meeting BaaS video recording URL
     recordingDuration: v.optional(v.number()), // Duration in seconds
     questionnaireCompleted: v.optional(v.boolean()), // Whether closer filled post-call form

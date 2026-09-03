@@ -145,6 +145,7 @@ import type * as hyrosActions from "../hyrosActions.js";
 import type * as hyrosRead from "../hyrosRead.js";
 import type * as hyrosReadActions from "../hyrosReadActions.js";
 import type * as hyrosReadInternal from "../hyrosReadInternal.js";
+import type * as leadQuality from "../leadQuality.js";
 import type * as lib_audioDuration from "../lib/audioDuration.js";
 import type * as lib_callQualityAggregator from "../lib/callQualityAggregator.js";
 import type * as lib_closerTitleMatch from "../lib/closerTitleMatch.js";
@@ -397,6 +398,7 @@ declare const fullApi: ApiFromModules<{
   hyrosRead: typeof hyrosRead;
   hyrosReadActions: typeof hyrosReadActions;
   hyrosReadInternal: typeof hyrosReadInternal;
+  leadQuality: typeof leadQuality;
   "lib/audioDuration": typeof lib_audioDuration;
   "lib/callQualityAggregator": typeof lib_callQualityAggregator;
   "lib/closerTitleMatch": typeof lib_closerTitleMatch;

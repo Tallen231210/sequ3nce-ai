@@ -1,8 +1,8 @@
 import { v } from "convex/values";
 import { syncCallStats } from "./callStats";
-import { mutation, query, action, internalMutation, internalQuery, internalAction } from "./_generated/server";
+import { mutation, query, action, internalMutation, internalQuery, internalAction, QueryCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import type { Id, Doc } from "./_generated/dataModel";
 import { BOT_AVATAR_JPEG_B64 } from "./botAvatar";
 import { getContentForCallTx } from "./callContent";
 import { identifyProspect } from "./calls";
@@ -422,10 +422,12 @@ export const insertBot = internalMutation({
     source: v.string(),
     closerName: v.optional(v.string()),
     closerIsHost: v.optional(v.boolean()),
+    calendarOwnerCloserId: v.optional(v.id("closers")),
   },
   handler: async (ctx, args) => {
     const botId = await ctx.db.insert("meetingBots", {
       closerId: args.closerId,
+      ...(args.calendarOwnerCloserId ? { calendarOwnerCloserId: args.calendarOwnerCloserId } : {}),
       teamId: args.teamId,
       meetingUrl: args.meetingUrl,
       meetingTitle: args.meetingTitle,
@@ -592,6 +594,8 @@ export const createBot = action({
      * from the transcript afterwards either way.
      */
     neutralBotName: v.optional(v.boolean()),
+    /** Whose calendar the sweep found the meeting on (see schema). */
+    calendarOwnerCloserId: v.optional(v.id("closers")),
   },
   handler: async (ctx, args): Promise<{ botId: Id<"meetingBots">; recallBotId: string }> => {
     // 0. Dedup — is this meeting already covered?
@@ -624,6 +628,7 @@ export const createBot = action({
       scheduledAt: args.scheduledAt,
       source: "calendar",
       closerIsHost: true,
+      calendarOwnerCloserId: args.calendarOwnerCloserId,
     });
 
     // 2. Get team info for bot name configuration
@@ -2498,6 +2503,51 @@ export const setAutoJoin = internalMutation({
  * only ones still waiting to join. A bot already in a call is somebody's live
  * meeting and none of our business.
  */
+/**
+ * The calendar row behind a scheduled bot.
+ *
+ * Checked in order: the calendar the sweep booked it from, the bot's own
+ * closer, then every active closer on the team. The first two miss when the
+ * title handed the bot to a closer whose calendar never held the meeting —
+ * E2's "Tony and Joseph" sat on Ryleigh's calendar, the bot was Joseph's, and
+ * a lookup under Joseph found nothing, so the sweep cancelled its own booking
+ * every 15 minutes (99 bookings on one meeting) and the call went unrecorded.
+ * Bots booked before this field existed fall through to the team scan.
+ */
+async function findCalendarEventForBot(
+  ctx: QueryCtx,
+  bot: Doc<"meetingBots">,
+): Promise<Doc<"calendarEvents"> | null> {
+  const uid = bot.calendarEventId;
+  if (!uid) return null;
+  const tried = new Set<string>();
+  const lookup = async (closerId: Id<"closers">) => {
+    const key = String(closerId);
+    if (tried.has(key)) return null;
+    tried.add(key);
+    return await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_closer_and_uid", (q) => q.eq("closerId", closerId).eq("uid", uid))
+      .first();
+  };
+  if (bot.calendarOwnerCloserId) {
+    const hit = await lookup(bot.calendarOwnerCloserId);
+    if (hit) return hit;
+  }
+  const own = await lookup(bot.closerId);
+  if (own) return own;
+  const teammates = await ctx.db
+    .query("closers")
+    .withIndex("by_team", (q) => q.eq("teamId", bot.teamId))
+    .filter((q) => q.eq(q.field("status"), "active"))
+    .collect();
+  for (const c of teammates) {
+    const hit = await lookup(c._id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 export const findOrphanedScheduledBots = internalQuery({
   args: {},
   handler: async (
@@ -2540,12 +2590,7 @@ export const findOrphanedScheduledBots = internalQuery({
         continue;
       }
 
-      const event = await ctx.db
-        .query("calendarEvents")
-        .withIndex("by_closer_and_uid", (q) =>
-          q.eq("closerId", bot.closerId).eq("uid", bot.calendarEventId!),
-        )
-        .first();
+      const event = await findCalendarEventForBot(ctx, bot);
 
       if (!event) {
         orphans.push({
@@ -2794,6 +2839,9 @@ export const autoScheduleBotsForAllClosers = internalAction({
       if (candidates.some((c) => c.alreadyHasBot)) continue;
 
       let owner = pickMeetingOwner(candidates);
+      // Where the meeting actually lives. The title may hand the BOT to a
+      // different closer below; the orphan check keys on this, not on them.
+      const calendarOwnerCloserId = owner.closerId;
       const teamKey = String(owner.teamId);
 
       if (!rosters.has(teamKey)) {
@@ -2861,6 +2909,7 @@ export const autoScheduleBotsForAllClosers = internalAction({
           calendarEventId: owner.uid,
           scheduledAt: owner.startTime,
           neutralBotName: !confidentName,
+          calendarOwnerCloserId,
         });
 
         totalScheduled++;
