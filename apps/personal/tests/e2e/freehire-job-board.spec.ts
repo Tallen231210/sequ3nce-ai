@@ -98,4 +98,41 @@ test.describe("FreeHire development job board", () => {
       await expect(page.getByTestId("freehire-job-board")).toBeVisible();
     }
   });
+
+  test("loads full-set facets and real Sales market rollups", async ({ page }) => {
+    const response = await page.evaluate(async () => {
+      const [facets, market] = await Promise.all([
+        window.electron.freeHire.facets({ lane: "for-you" }),
+        window.electron.freeHire.marketInsights({}),
+      ]);
+      return { facets, market };
+    });
+
+    expect(response.facets.total).toBeGreaterThan(24);
+    expect(response.facets.pastSevenDaysTotal).toBeGreaterThan(0);
+    expect(response.facets.pastSevenDaysTotal).toBeLessThanOrEqual(response.facets.total);
+    expect(Object.keys(response.facets.facets.source ?? {}).length).toBeGreaterThan(1);
+    expect(response.market.roles.length).toBeGreaterThan(0);
+    expect(response.market.skills.length).toBeGreaterThan(0);
+    expect(response.market.salary.some((band) => band.sampleSize >= 5)).toBe(true);
+    expect(response.market.velocity.length).toBeGreaterThan(1);
+
+    await page.getByRole("button", { name: "Market insights", exact: true }).click();
+    await expect(page.getByTestId("market-insights")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("market-insights-scope")).toContainText("For You");
+    await expect(page.getByText("Current opportunity set", { exact: true })).toBeVisible();
+    await expect(page.getByText("Broader Sales market", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("market-salary-median")).toBeVisible();
+    await expect(page.getByText("Loaded this week", { exact: true })).toHaveCount(0);
+
+    for (const viewport of [{ width: 780, height: 720 }, { width: 1600, height: 1000 }]) {
+      await page.setViewportSize(viewport);
+      await page.waitForTimeout(200);
+      const overflow = await page.evaluate(() => ({
+        client: document.documentElement.clientWidth,
+        scroll: document.documentElement.scrollWidth,
+      }));
+      expect(overflow.scroll).toBeLessThanOrEqual(overflow.client + 1);
+    }
+  });
 });

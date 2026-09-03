@@ -7,7 +7,13 @@ import {
   type FreeHireJobStage,
   type FreeHireTrackedJobSnapshot,
 } from '../convex';
-import type { FreeHireJob, FreeHireSearchResponse } from '../types/electron';
+import type {
+  FreeHireFacetResponse,
+  FreeHireJob,
+  FreeHireMarketInsightsResponse,
+  FreeHireSalaryInsight,
+  FreeHireSearchResponse,
+} from '../types/electron';
 import { PlacementLineTab } from './PlacementLineTab';
 
 type TopTab = 'public' | 'internal';
@@ -294,7 +300,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
 
           {section === 'discover' && <DiscoverView firstName={firstName} roleLane={roleLane} onRoleChange={selectRoleLane} sortMode={sortMode} onSortModeChange={setSortMode} workMode={workMode} onWorkModeChange={setWorkMode} countryScope={countryScope} onCountryScopeChange={setCountryScope} postedWindow={postedWindow} onPostedWindowChange={setPostedWindow} jobs={visibleJobs} total={total} selectedJob={selectedJob} selectedJobId={selectedJobId} onSelectJob={setSelectedJobId} tracked={tracked} onSetStage={setJobStage} onSetNote={setJobNote} onDismiss={dismissJob} onHydrateJob={hydrateJob} loading={loading} loadingMore={loadingMore} error={error} onRetry={() => setRefreshToken((value) => value + 1)} onLoadMore={() => void loadJobs(jobs.length, true)} onOpenApplications={() => setSection('applications')} onToast={showToast} />}
           {section === 'applications' && <ApplicationsView tracked={tracked} trackingState={trackingState} onSetStage={setJobStage} onRestore={restoreJob} onSelectJob={(job) => { if (!jobs.some((item) => item.id === job.id)) setJobs((current) => [job, ...current]); setSelectedJobId(job.id); setSection('discover'); }} />}
-          {section === 'insights' && <InsightsView jobs={jobs} total={total} roleLane={roleLane} />}
+          {section === 'insights' && <InsightsView roleLane={roleLane} workMode={workMode} countryScope={countryScope} postedWindow={postedWindow} />}
         </div>
       )}
 
@@ -404,7 +410,7 @@ function JobDetailPanel({ job, activity, onSetStage, onSetNote, onDismiss, onHyd
 
 function JobSignals({ job }: { job: FreeHireJob }) {
   const reality = job.reality;
-  return <div><div className="flex items-start gap-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50 p-3"><ShieldIcon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" /><div><p className="text-[11px] font-semibold">{realityLabel(job) || 'No catalogue signal available'}</p><p className="text-[9.5px] text-gray-400 mt-1 leading-relaxed">These signals come from listing age and reposting behavior. They are useful context, not proof that a job is real or inactive.</p></div></div><div className="grid grid-cols-2 gap-2 mt-3"><SignalCell label="Listing age" value={reality?.ageDays !== null && reality?.ageDays !== undefined ? `${reality.ageDays} days` : 'Unknown'} /><SignalCell label="Reposts detected" value={String(reality?.repostCount ?? 0)} /><SignalCell label="Similar postings" value={String(reality?.massPostingCount ?? 0)} /><SignalCell label="Last observed" value={postedLabel(job.lastSeenAt)} /></div>{reality?.fakeFreshness && <p className="mt-3 text-[9.5px] leading-relaxed text-gray-500 dark:text-gray-400">The catalogue detected a possible refreshed posting date. Review the employer page before investing significant time.</p>}</div>;
+  return <div><div className="flex items-start gap-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50 p-3"><ShieldIcon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" /><div><p className="text-[11px] font-semibold">{realityLabel(job) || 'No warning signal'}</p><p className="text-[9.5px] text-gray-400 mt-1 leading-relaxed">This is FreeHire's final classification, derived from listing age, historical reposting, concurrent copies, and evergreen language. It is context—not proof of employer intent.</p></div></div><div className="grid grid-cols-2 gap-2 mt-3"><SignalCell label="Listing age" value={reality?.ageDays !== null && reality?.ageDays !== undefined ? `${reality.ageDays} days` : 'Unknown'} /><SignalCell label="Reposts detected" value={String(reality?.repostCount ?? 0)} /><SignalCell label="Similar postings" value={String(reality?.massPostingCount ?? 0)} /><SignalCell label="Last observed" value={postedLabel(job.lastSeenAt)} /></div>{reality?.fakeFreshness && <p className="mt-3 text-[9.5px] leading-relaxed text-gray-500 dark:text-gray-400">The catalogue detected a possible refreshed posting date. Review the employer page before investing significant time.</p>}</div>;
 }
 
 function DescriptionContent({ job }: { job: FreeHireJob }) {
@@ -447,13 +453,141 @@ function ApplicationCard({ job, stage, note, updatedAt, onSetStage, onSelect }: 
   return <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.025)] min-w-0"><button onClick={onSelect} className="w-full text-left min-w-0"><div className="flex items-start gap-2.5 min-w-0"><CompanyMark job={job} /><div className="min-w-0"><p className="text-[10.5px] font-semibold leading-snug line-clamp-2">{job.title}</p><p className="text-[9px] text-gray-400 mt-1 truncate">{job.company}</p></div></div><div className="flex items-center justify-between gap-2 mt-3 text-[8.5px]"><span className="text-gray-600 dark:text-gray-300 truncate">{formatWorkMode(job.workMode)}</span><span className="text-gray-400 shrink-0">{relativeActivityTime(updatedAt)}</span></div>{note && <p className="mt-2 rounded-md bg-gray-50 dark:bg-zinc-800/60 p-2 text-[8.5px] leading-relaxed text-gray-500 dark:text-gray-400 line-clamp-2">{note}</p>}</button><div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gray-100 dark:border-zinc-800">{nextStage ? <button onClick={() => onSetStage(job, nextStage)} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Move to {STAGE_META[stageIndex + 1].label}</button> : <button onClick={() => window.open(job.applyUrl, '_blank', 'noopener,noreferrer')} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Open listing</button>}<button onClick={() => onSetStage(job, undefined)} className="rounded-md border border-gray-200 dark:border-zinc-700 px-2 text-[11px] text-gray-400 hover:text-gray-700" title="Remove from applications">×</button></div></div>;
 }
 
-function InsightsView({ jobs, total, roleLane }: { jobs: FreeHireJob[]; total: number; roleLane: RoleLane }) {
+function InsightsView({ roleLane, workMode, countryScope, postedWindow }: {
+  roleLane: RoleLane;
+  workMode: WorkMode;
+  countryScope: CountryScope;
+  postedWindow: PostedWindow;
+}) {
+  const [facets, setFacets] = useState<FreeHireFacetResponse | null>(null);
+  const [market, setMarket] = useState<FreeHireMarketInsightsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
   const activeLane = ROLE_LANES.find((lane) => lane.id === roleLane)?.label ?? 'Sales';
-  const freshThisWeek = jobs.filter((job) => daysAgo(job.postedAt) <= 7).length;
-  const remoteCount = jobs.filter((job) => job.workMode === 'remote').length;
-  const watchCount = jobs.filter((job) => job.reality?.fakeFreshness || (job.reality?.repostCount ?? 0) >= 3).length;
-  const sourceCounts = useMemo(() => { const counts = new Map<string, number>(); jobs.forEach((job) => counts.set(job.source, (counts.get(job.source) ?? 0) + 1)); return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5); }, [jobs]);
-  return <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 sm:px-5 xl:px-6 pb-6"><div className="pt-4 pb-4"><p className="text-[9px] font-medium uppercase tracking-[0.13em] text-gray-500">Current feed snapshot</p><h3 className="text-[18px] font-semibold tracking-tight mt-1.5">Market insights</h3><p className="text-[11px] text-gray-400 mt-1">A factual summary of the currently loaded {activeLane} catalogue—no AI or fabricated benchmarks.</p></div><div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,190px),1fr))] gap-2.5 mb-3"><InsightMetric label="Matching roles" value={formatCount(total)} note="Reported by the live catalogue" /><InsightMetric label="Loaded this week" value={String(freshThisWeek)} note={`Of ${jobs.length} roles loaded`} /><InsightMetric label="Remote roles" value={String(remoteCount)} note="In the current page" /><InsightMetric label="Needs review" value={String(watchCount)} note="Repost or freshness signal" /></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-3"><section className="rounded-lg border border-gray-200 dark:border-zinc-800 p-4"><h4 className="text-[12px] font-semibold">Source mix</h4><p className="text-[9.5px] text-gray-400 mt-1">Where the currently loaded listings originated</p><div className="mt-4 space-y-3">{sourceCounts.map(([source, count]) => <div key={source}><div className="flex justify-between text-[9.5px] mb-1.5"><span className="text-gray-600 dark:text-gray-300">{source}</span><span className="font-bold">{count}</span></div><div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full bg-black dark:bg-white rounded-full" style={{ width: `${Math.max(6, (count / Math.max(1, jobs.length)) * 100)}%` }} /></div></div>)}{sourceCounts.length === 0 && <p className="text-[10px] text-gray-400">Load jobs to populate this view.</p>}</div></section><section className="rounded-lg border border-gray-200 dark:border-zinc-800 p-4"><div className="flex items-center gap-2"><ShieldIcon className="w-4 h-4 text-gray-500" /><h4 className="text-[12px] font-semibold">Listing transparency</h4></div><p className="text-[9.5px] text-gray-400 mt-1">How Sequ3nce presents catalogue reality signals</p><div className="mt-4 space-y-2"><TransparencyRow label="Fresh" note="Recently observed with no strong warning signal" /><TransparencyRow label="Review" note="Repeated or refreshed enough to warrant a second look" /><TransparencyRow label="Unknown" note="The catalogue did not return a reality classification" /></div><p className="text-[8.5px] text-gray-400 mt-4 leading-relaxed">Signals are presented as evidence, never as a definitive claim that an employer is or is not hiring.</p></section></div></div>;
+  const countryName = COUNTRY_OPTIONS.find(([code]) => code === countryScope)?.[1] ?? countryScope;
+
+  useEffect(() => {
+    let active = true;
+    if (!window.electron?.freeHire?.facets || !window.electron.freeHire.marketInsights) {
+      setError('Market analytics are unavailable in this build.');
+      setLoading(false);
+      return () => { active = false; };
+    }
+
+    setLoading(true);
+    setError(null);
+    void Promise.all([
+      window.electron.freeHire.facets({
+        lane: roleLane,
+        workMode: workMode === 'all' ? undefined : workMode,
+        country: countryScope === 'any' ? undefined : countryScope,
+        postedWithinDays: postedWindow === 'any' ? undefined : Number(postedWindow) as 7 | 30,
+      }),
+      window.electron.freeHire.marketInsights({
+        country: countryScope === 'any' ? undefined : countryScope,
+      }),
+    ]).then(([facetResult, marketResult]) => {
+      if (!active) return;
+      setFacets(facetResult);
+      setMarket(marketResult);
+    }).catch((requestError) => {
+      if (!active) return;
+      const message = requestError instanceof Error ? requestError.message : String(requestError);
+      setError(message.replace(/^Error invoking remote method '[^']+':\s*/, ''));
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [roleLane, workMode, countryScope, postedWindow, refreshToken]);
+
+  const scopeParts = [
+    activeLane,
+    countryName,
+    workMode === 'all' ? 'Any work mode' : formatWorkMode(workMode),
+    postedWindow === 'any' ? 'Any posting date' : `Past ${postedWindow} days`,
+  ];
+
+  if (loading) return <MarketInsightsLoading scope={scopeParts.join(' · ')} />;
+  if (error || !facets || !market) {
+    return <div data-testid="market-insights-error" className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 xl:px-6 pb-6"><div className="pt-4"><FeedError message={error ?? 'Market analytics could not be loaded.'} onRetry={() => setRefreshToken((value) => value + 1)} /></div></div>;
+  }
+
+  const workModes = facets.facets.work_mode ?? {};
+  const remoteCount = workModes.remote ?? 0;
+  const salaryDisclosed = sumCounts(facets.facets.salary_currency);
+  const seniorityRows = distributionRows(facets.facets.seniority, facets.total, 7, true);
+  const sourceRows = distributionRows(facets.facets.source, facets.total, 6, false);
+  const salaryBand = selectSalaryBand(market.salary, countryScope);
+  const completedVelocity = completedWeeklyVelocity(market.velocity).slice(-7);
+  const velocityMax = Math.max(1, ...completedVelocity.flatMap((point) => [point.added, point.removed]));
+  const roleCoverage = market.roles.reduce((sum, row) => sum + row.openCount, 0);
+  const roleGrowth = market.roles.reduce((sum, row) => sum + row.growth, 0);
+  const refreshedAt = new Date(Math.max(new Date(facets.fetchedAt).getTime(), new Date(market.fetchedAt).getTime()));
+
+  return (
+    <div data-testid="market-insights" className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 sm:px-5 xl:px-6 pb-6">
+      <div className="pt-4 pb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[9px] font-medium uppercase tracking-[0.13em] text-gray-500">Full-set catalogue analytics</p>
+          <h3 className="text-[18px] font-semibold tracking-tight mt-1.5">Market insights</h3>
+          <p className="text-[11px] text-gray-400 mt-1">Complete filtered-set counts plus periodically aggregated Sales market benchmarks.</p>
+          <div data-testid="market-insights-scope" className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 px-2.5 py-1.5 text-[8.5px] text-gray-500 dark:text-gray-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 shrink-0" />
+            <span className="truncate">{scopeParts.join(' · ')}</span>
+          </div>
+        </div>
+        <button onClick={() => setRefreshToken((value) => value + 1)} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-zinc-700 px-3 py-2 text-[9.5px] font-semibold text-gray-600 dark:text-gray-300 hover:border-gray-400">
+          <RefreshIcon className="w-3.5 h-3.5" /> Refresh
+        </button>
+      </div>
+
+      <section aria-labelledby="opportunity-set-heading">
+        <MarketSectionHeader id="opportunity-set-heading" title="Current opportunity set" note="Every metric below uses the same lane and filters shown above—not the 24 jobs loaded on screen." />
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-2.5 mt-3">
+          <InsightMetric label="Matching roles" value={`≈${formatCount(facets.total)}`} note="Estimated across the full filtered set" />
+          <InsightMetric label="Posted past 7 days" value={`≈${formatCount(facets.pastSevenDaysTotal)}`} note="Same lane and location scope" />
+          <InsightMetric label="Remote share" value={formatPercent(remoteCount, facets.total)} note={`${formatCount(remoteCount)} matching remote roles`} />
+          <InsightMetric label="Pay disclosed" value={formatPercent(salaryDisclosed, facets.total)} note={`${formatCount(salaryDisclosed)} listings include currency data`} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+          <MarketPanel title="Seniority mix" note="Across the complete filtered result set">
+            <DistributionList rows={seniorityRows} total={facets.total} />
+          </MarketPanel>
+          <MarketPanel title="Source mix" note="Top sources across the complete filtered result set">
+            <DistributionList rows={sourceRows} total={facets.total} />
+          </MarketPanel>
+        </div>
+      </section>
+
+      <section aria-labelledby="sales-market-heading" className="mt-5">
+        <MarketSectionHeader id="sales-market-heading" title="Broader Sales market" note={`${countryScope === 'any' ? 'Worldwide' : countryName} role and salary rollups. Skills and weekly activity are global Sales data because FreeHire does not combine those rollups with country.`} />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 mt-3">
+          <MarketPanel title="Compensation benchmark" note="Only disclosed compensation; currencies and pay periods are never mixed">
+            {salaryBand ? <SalaryBenchmark band={salaryBand} /> : <PanelEmpty>No reliable salary band is available for this scope.</PanelEmpty>}
+          </MarketPanel>
+          <MarketPanel title="Openings by seniority" note={`${formatCount(roleCoverage)} classified Sales openings · ${formatSignedCount(roleGrowth)} versus 30 days ago`}>
+            <RoleDemandList rows={market.roles.slice(0, 7)} />
+          </MarketPanel>
+          <MarketPanel title="Most requested Sales skills" note="Worldwide Sales postings; skills can overlap within one job">
+            <SkillDemandList rows={market.skills.slice(0, 7)} />
+          </MarketPanel>
+          <MarketPanel title="Weekly catalogue activity" note="Completed UTC weeks only; additions can include newly onboarded sources">
+            <VelocityChart rows={completedVelocity} max={velocityMax} />
+          </MarketPanel>
+        </div>
+      </section>
+
+      <div className="mt-3 rounded-lg border border-gray-200 dark:border-zinc-800 bg-gray-50/70 dark:bg-zinc-900/60 p-3 flex items-start gap-2.5">
+        <InfoIcon className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[9.5px] font-semibold">How to read these numbers</p>
+          <p className="text-[8.5px] leading-relaxed text-gray-400 mt-1">Search totals are estimates from FreeHire's index. Thirty-day change means open listings now minus listings open 30 days earlier; it is catalogue movement, not a claim about employer revenue or intent. Salary cards always show their disclosed-salary sample.</p>
+          <p className="text-[8px] text-gray-400 mt-1.5">Fetched {Number.isNaN(refreshedAt.getTime()) ? 'just now' : refreshedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · No AI used</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function FeedError({ message, onRetry }: { message: string; onRetry: () => void }) { return <div className="rounded-lg border border-gray-200 dark:border-zinc-800 p-8 text-center"><div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mx-auto"><InfoIcon className="w-4 h-4 text-gray-500" /></div><h4 className="text-[12px] font-semibold mt-3">The live feed could not load</h4><p className="text-[10px] text-gray-400 mt-1.5 max-w-md mx-auto leading-relaxed">{message}</p><button onClick={onRetry} className="mt-4 rounded-lg bg-black dark:bg-white text-white dark:text-black px-4 py-2 text-[10px] font-semibold">Try again</button></div>; }
@@ -473,7 +607,52 @@ function DetailHeading({ children, className = '' }: { children: React.ReactNode
 function SignalCell({ label, value }: { label: string; value: string }) { return <div className="rounded-lg bg-gray-50 dark:bg-zinc-800/70 p-2.5 min-w-0"><div className="text-[8px] font-mono uppercase tracking-wider text-gray-400">{label}</div><div className="text-[9.5px] font-semibold text-gray-700 dark:text-gray-300 mt-1 truncate">{value}</div></div>; }
 function ApplicationMetric({ label, value }: { label: string; value: number }) { return <div className="text-right"><div className="text-[15px] font-bold tabular-nums">{value}</div><div className="text-[8px] font-mono uppercase tracking-wider text-gray-400 mt-0.5">{label}</div></div>; }
 function InsightMetric({ label, value, note }: { label: string; value: string; note: string }) { return <div className="rounded-lg border border-gray-200 dark:border-zinc-800 p-4"><p className="text-[8.5px] font-mono uppercase tracking-wider text-gray-400">{label}</p><p className="text-[20px] font-bold tracking-tight mt-1.5">{value}</p><p className="text-[9px] text-gray-400 mt-1">{note}</p></div>; }
-function TransparencyRow({ label, note }: { label: string; note: string }) { return <div className="rounded-lg bg-gray-50 dark:bg-zinc-800/60 p-2.5"><p className="text-[10px] font-semibold">{label}</p><p className="text-[8.5px] text-gray-400 mt-0.5">{note}</p></div>; }
+
+type DistributionDatum = { label: string; count: number };
+
+function MarketInsightsLoading({ scope }: { scope: string }) {
+  return <div data-testid="market-insights-loading" className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 xl:px-6 pb-6"><div className="pt-4"><p className="text-[9px] font-medium uppercase tracking-[0.13em] text-gray-500">Full-set catalogue analytics</p><h3 className="text-[18px] font-semibold tracking-tight mt-1.5">Market insights</h3><p className="text-[10px] text-gray-400 mt-1">{scope}</p></div><div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,180px),1fr))] gap-2.5 mt-4">{[0, 1, 2, 3].map((item) => <div key={item} className="h-24 rounded-lg border border-gray-200 dark:border-zinc-800 p-4 animate-pulse"><div className="h-2 rounded bg-gray-100 dark:bg-zinc-800 w-1/2" /><div className="h-5 rounded bg-gray-100 dark:bg-zinc-800 w-2/3 mt-3" /></div>)}</div><div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">{[0, 1].map((item) => <div key={item} className="h-52 rounded-lg border border-gray-200 dark:border-zinc-800 p-4 animate-pulse"><div className="h-3 rounded bg-gray-100 dark:bg-zinc-800 w-1/3" /><div className="h-32 rounded bg-gray-100 dark:bg-zinc-800 mt-5" /></div>)}</div></div>;
+}
+
+function MarketSectionHeader({ id, title, note }: { id: string; title: string; note: string }) {
+  return <div><h4 id={id} className="text-[12px] font-semibold">{title}</h4><p className="text-[9.5px] leading-relaxed text-gray-400 mt-1 max-w-3xl">{note}</p></div>;
+}
+
+function MarketPanel({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return <section className="rounded-lg border border-gray-200 dark:border-zinc-800 p-4 min-w-0"><h4 className="text-[11.5px] font-semibold">{title}</h4><p className="text-[8.5px] leading-relaxed text-gray-400 mt-1 min-h-[22px]">{note}</p><div className="mt-4">{children}</div></section>;
+}
+
+function PanelEmpty({ children }: { children: React.ReactNode }) {
+  return <p className="rounded-lg bg-gray-50 dark:bg-zinc-800/60 p-4 text-[9.5px] text-gray-400">{children}</p>;
+}
+
+function DistributionList({ rows, total }: { rows: DistributionDatum[]; total: number }) {
+  if (rows.length === 0) return <PanelEmpty>No classified data is available for this scope.</PanelEmpty>;
+  return <div className="space-y-3">{rows.map((row) => {
+    const percentage = total > 0 ? (row.count / total) * 100 : 0;
+    return <div key={row.label}><div className="flex items-center justify-between gap-3 text-[9px] mb-1.5"><span className="text-gray-600 dark:text-gray-300 truncate">{row.label}</span><span className="font-semibold tabular-nums shrink-0">{formatCount(row.count)} <span className="font-normal text-gray-400">· {percentage.toFixed(percentage >= 10 ? 0 : 1)}%</span></span></div><div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full rounded-full bg-black dark:bg-white" style={{ width: `${Math.min(100, percentage)}%` }} /></div></div>;
+  })}</div>;
+}
+
+function SalaryBenchmark({ band }: { band: FreeHireSalaryInsight }) {
+  return <div><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[8px] font-mono uppercase tracking-wider text-gray-400">Median</p><p data-testid="market-salary-median" className="text-[24px] font-bold tracking-tight mt-1">{formatMoney(band.p50, band.currency)}</p></div><span className="rounded-md border border-gray-200 dark:border-zinc-700 px-2 py-1 text-[8px] font-semibold text-gray-500">{band.currency} / {payPeriodLabel(band.period)}</span></div><div className="mt-4"><div className="flex items-center justify-between text-[8.5px] text-gray-400"><span>25th percentile</span><span>75th percentile</span></div><div className="relative h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 mt-2"><div className="absolute inset-y-0 left-[25%] right-[25%] rounded-full bg-blue-600 dark:bg-blue-400" /><span className="absolute left-1/2 top-1/2 w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black dark:bg-white border-2 border-white dark:border-black" /></div><div className="flex items-center justify-between text-[9px] font-semibold mt-2"><span>{formatMoney(band.p25, band.currency)}</span><span>{formatMoney(band.p75, band.currency)}</span></div></div><p className="text-[8.5px] leading-relaxed text-gray-400 mt-4">Based on {formatCount(band.sampleSize)} disclosed {band.currency} {payPeriodLabel(band.period)} salaries. FreeHire uses each listing's stated range midpoint, or its single available bound.</p></div>;
+}
+
+function RoleDemandList({ rows }: { rows: FreeHireMarketInsightsResponse['roles'] }) {
+  if (rows.length === 0) return <PanelEmpty>No classified seniority rollup is available.</PanelEmpty>;
+  const max = Math.max(1, ...rows.map((row) => row.openCount));
+  return <div className="space-y-2.5">{rows.map((row) => <div key={row.seniority} className="grid grid-cols-[minmax(78px,0.8fr)_minmax(90px,1.4fr)_auto] items-center gap-2"><span className="text-[9px] text-gray-600 dark:text-gray-300 truncate">{facetLabel(row.seniority)}</span><div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full rounded-full bg-black dark:bg-white" style={{ width: `${(row.openCount / max) * 100}%` }} /></div><div className="text-right"><span className="text-[9px] font-semibold tabular-nums">{formatCount(row.openCount)}</span><span className={`ml-1.5 text-[7.5px] font-semibold ${row.growth >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-gray-400'}`}>{formatSignedCount(row.growth)}</span></div></div>)}</div>;
+}
+
+function SkillDemandList({ rows }: { rows: FreeHireMarketInsightsResponse['skills'] }) {
+  if (rows.length === 0) return <PanelEmpty>No skill rollup is available.</PanelEmpty>;
+  return <div className="divide-y divide-gray-100 dark:divide-zinc-800">{rows.map((row, index) => <div key={row.skill} className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 py-2 first:pt-0 last:pb-0"><span className="text-[8px] font-mono text-gray-400">{String(index + 1).padStart(2, '0')}</span><span className="text-[9.5px] font-medium truncate">{facetLabel(row.skill)}</span><span className="text-[8.5px] font-semibold tabular-nums">{formatCount(row.openCount)} <span className={`ml-1 ${row.growth >= 0 ? 'text-blue-600 dark:text-blue-300' : 'text-gray-400'}`}>{formatSignedCount(row.growth)}</span></span></div>)}</div>;
+}
+
+function VelocityChart({ rows, max }: { rows: FreeHireMarketInsightsResponse['velocity']; max: number }) {
+  if (rows.length === 0) return <PanelEmpty>No completed weekly activity is available.</PanelEmpty>;
+  return <div><div className="flex items-center gap-4 text-[8px] text-gray-400 mb-3"><span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-black dark:bg-white" />Added</span><span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-gray-300 dark:bg-zinc-600" />Removed</span></div><div className="space-y-2.5">{rows.map((row) => <div key={row.period} className="grid grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-2"><span className="text-[7.5px] font-mono text-gray-400">{shortDate(row.period)}</span><div className="space-y-1"><div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full rounded-full bg-black dark:bg-white" style={{ width: `${(row.added / max) * 100}%` }} /></div><div className="h-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full rounded-full bg-gray-300 dark:bg-zinc-600" style={{ width: `${(row.removed / max) * 100}%` }} /></div></div><span className="text-[7.5px] font-mono tabular-nums text-gray-400">+{formatCount(row.added)} / −{formatCount(row.removed)}</span></div>)}</div></div>;
+}
 
 function jobSnapshot(job: FreeHireJob): FreeHireTrackedJobSnapshot {
   return {
@@ -558,9 +737,93 @@ function companyInitials(company: string): string { const words = company.split(
 function daysAgo(date: string | null): number { if (!date) return Number.POSITIVE_INFINITY; const timestamp = new Date(date).getTime(); if (!Number.isFinite(timestamp)) return Number.POSITIVE_INFINITY; return Math.max(0, Math.floor((Date.now() - timestamp) / 86_400_000)); }
 function postedLabel(date: string | null): string { const days = daysAgo(date); if (!Number.isFinite(days)) return 'Date unknown'; if (days === 0) return 'Posted today'; if (days === 1) return 'Posted yesterday'; if (days < 30) return `Posted ${days}d ago`; return `Posted ${Math.floor(days / 30)}mo ago`; }
 function formatWorkMode(mode: FreeHireJob['workMode']): string { if (mode === 'onsite') return 'On-site'; if (mode === 'unknown') return 'Work mode not listed'; return mode.charAt(0).toUpperCase() + mode.slice(1); }
-function realityLabel(job: FreeHireJob): string { const reality = job.reality; if (!reality) return ''; if (reality.fakeFreshness || reality.repostCount >= 3) return 'Review signal'; if (reality.classification && reality.classification !== 'Unknown') return reality.classification; return 'Fresh'; }
+function realityLabel(job: FreeHireJob): string {
+  const reality = job.reality;
+  if (!reality) return '';
+  const classification = reality.classification.toLowerCase();
+  if (classification === 'likely evergreen') return 'Likely evergreen';
+  if (classification === 'stale') return reality.ageDays === null ? 'Stale listing' : `Open ${reality.ageDays}d`;
+  return '';
+}
 function formatCount(value: number): string { return new Intl.NumberFormat('en-US', { notation: value >= 1000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value); }
 function relativeActivityTime(timestamp: number): string { const elapsed = Math.max(0, Date.now() - timestamp); const minutes = Math.floor(elapsed / 60_000); if (minutes < 1) return 'Updated now'; if (minutes < 60) return `Updated ${minutes}m ago`; const hours = Math.floor(minutes / 60); if (hours < 24) return `Updated ${hours}h ago`; const days = Math.floor(hours / 24); return `Updated ${days}d ago`; }
+
+function sumCounts(counts?: Record<string, number>): number {
+  return Object.values(counts ?? {}).reduce((sum, count) => sum + count, 0);
+}
+
+function distributionRows(counts: Record<string, number> | undefined, total: number, limit: number, includeUnclassified: boolean): DistributionDatum[] {
+  const entries = Object.entries(counts ?? {})
+    .filter(([, count]) => Number.isFinite(count) && count > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const rows = entries.slice(0, limit).map(([key, count]) => ({ label: facetLabel(key), count }));
+  const remaining = entries.slice(limit).reduce((sum, [, count]) => sum + count, 0);
+  if (remaining > 0) rows.push({ label: includeUnclassified ? 'Other classified' : 'Other sources', count: remaining });
+  if (includeUnclassified) {
+    const unclassified = Math.max(0, total - entries.reduce((sum, [, count]) => sum + count, 0));
+    if (unclassified > 0) rows.push({ label: 'Not classified', count: unclassified });
+  }
+  return rows;
+}
+
+function facetLabel(value: string): string {
+  if (value === 'c_level') return 'C-level';
+  return value.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatPercent(part: number, total: number): string {
+  if (total <= 0) return '—';
+  const percentage = (part / total) * 100;
+  return `${percentage.toFixed(percentage >= 10 ? 0 : 1)}%`;
+}
+
+function formatSignedCount(value: number): string {
+  if (value === 0) return '0';
+  return `${value > 0 ? '+' : '−'}${formatCount(Math.abs(value))}`;
+}
+
+function selectSalaryBand(rows: FreeHireSalaryInsight[], countryScope: CountryScope): FreeHireSalaryInsight | null {
+  const annualOverall = rows.filter((row) => !row.seniority && row.period === 'year' && row.p50 > 0);
+  if (annualOverall.length === 0) return null;
+  if (countryScope === 'any' || countryScope === 'US') {
+    const usd = annualOverall.find((row) => row.currency === 'USD');
+    if (usd) return usd;
+  }
+  return [...annualOverall].sort((a, b) => b.sampleSize - a.sampleSize)[0] ?? null;
+}
+
+function formatMoney(value: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
+  } catch {
+    return `${currency} ${Math.round(value).toLocaleString()}`;
+  }
+}
+
+function payPeriodLabel(period: string): string {
+  const labels: Record<string, string> = { year: 'year', month: 'month', day: 'day', hour: 'hour' };
+  return labels[period] ?? period;
+}
+
+function utcWeekStart(value: Date): number {
+  const date = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() - day + 1);
+  return date.getTime();
+}
+
+function completedWeeklyVelocity(rows: FreeHireMarketInsightsResponse['velocity']): FreeHireMarketInsightsResponse['velocity'] {
+  const thisWeek = utcWeekStart(new Date());
+  return rows.filter((row) => {
+    const timestamp = new Date(`${row.period}T00:00:00Z`).getTime();
+    return Number.isFinite(timestamp) && timestamp < thisWeek;
+  });
+}
+
+function shortDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
 
 type IconProps = { className?: string };
 function RefreshIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 0-2.1 5" /></svg>; }

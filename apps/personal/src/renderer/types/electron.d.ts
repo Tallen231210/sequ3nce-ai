@@ -135,9 +135,55 @@ export interface FreeHireJobDetail {
   seniority: string;
 }
 
+export interface FreeHireFacetResponse {
+  total: number;
+  pastSevenDaysTotal: number;
+  facets: Record<string, Record<string, number>>;
+  fetchedAt: string;
+}
+
+export interface FreeHireRoleInsight {
+  category: string;
+  seniority: string;
+  openCount: number;
+  growth: number;
+}
+
+export interface FreeHireSkillInsight {
+  skill: string;
+  openCount: number;
+  growth: number;
+}
+
+export interface FreeHireSalaryInsight {
+  seniority: string;
+  currency: string;
+  period: string;
+  sampleSize: number;
+  p25: number;
+  p50: number;
+  p75: number;
+}
+
+export interface FreeHireVelocityInsight {
+  period: string;
+  added: number;
+  removed: number;
+}
+
+export interface FreeHireMarketInsightsResponse {
+  roles: FreeHireRoleInsight[];
+  skills: FreeHireSkillInsight[];
+  salary: FreeHireSalaryInsight[];
+  velocity: FreeHireVelocityInsight[];
+  fetchedAt: string;
+}
+
 export interface FreeHireAPI {
   search: (params: FreeHireSearchParams) => Promise<FreeHireSearchResponse>;
   getJob: (slug: string) => Promise<FreeHireJobDetail>;
+  facets: (params: FreeHireSearchParams) => Promise<FreeHireFacetResponse>;
+  marketInsights: (params: { country?: string }) => Promise<FreeHireMarketInsightsResponse>;
 }
 
 // Sequ3nce Stream (dictation) — see apps/personal/src/stream/

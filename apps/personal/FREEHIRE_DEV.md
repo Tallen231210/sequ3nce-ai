@@ -1,24 +1,30 @@
-# FreeHire job board development integration
+# FreeHire job board integration
 
-This integration is intentionally a development-only experiment inside
-Sequ3nce Personal.
+This integration is isolated inside Sequ3nce Personal and can be rolled out or
+disabled without changing the legacy public board.
 
-## What is live in development
+## What is included
 
 - FreeHire's public job catalogue is fetched through a fixed Electron IPC
   handler. The renderer cannot turn it into an arbitrary web proxy.
 - The public board offers preset sales lanes, work-mode and freshness filters,
   pagination, company logos, full listing details, extracted compensation,
   source links, and catalogue reality signals.
-- High-Ticket mirrors FreeHire's broad worldwide relevance search. The other
-  sales lanes remain scoped to U.S. sales roles and sort newest first.
+- Each preset lane can be narrowed by work mode, country, and posting date;
+  Best Match remains the default sort.
+- Market Insights uses FreeHire's full-set facet counts plus its aggregated
+  Sales role, skill, salary, and weekly catalogue rollups. It never derives
+  market claims from only the jobs currently loaded in the renderer.
+- The tab labels its scope and known boundaries: skills and weekly activity are
+  global Sales rollups, salary currencies and pay periods are kept separate,
+  the current partial week is omitted, and no AI is used.
 - Saving, stages, private notes, dismissals, restores, and activity timestamps
   are wired to authenticated Convex persistence. The server resolves the user
   exclusively from the B2C session token; the endpoint accepts no user ID.
 - A per-user local cache keeps the preview usable when the development backend
   is unavailable. A successful authenticated connection treats Convex as the
   source of truth and migrates local-only preview activity once.
-- The Internal / Placement Line tab continues to use its existing implementation.
+- The Placement Line tab continues to use its existing implementation.
 
 ## Production safety
 
@@ -34,8 +40,8 @@ The board is behind the remote flag `freehire_job_board` (2026-09-02):
 
 The Convex additions are isolated to `b2cFreeHireJobTracking`, internal
 functions in `b2cJobBoard.ts`, a B2C session resolver, and one HTTP endpoint.
-No deployment or production-data mutation is part of this development change.
-The existing login flow is reused unchanged.
+The existing login flow is reused unchanged. FreeHire market analytics are
+read-only, pass through guarded Electron IPC, and are cached for five minutes.
 
 ## Fast rollback
 
@@ -46,7 +52,8 @@ without deleting any code.
 For a complete removal, also remove:
 
 1. `src/renderer/views/FreeHireJobBoardPreview.tsx`
-2. the `freehire:search` handler in `src/index.ts`
+2. the `freehire:search`, `freehire:facets`, and
+   `freehire:market-insights` handlers in `src/index.ts`
 3. the `FreeHire*` interfaces and `freeHire` bridge in `src/preload.ts`
 4. the matching declarations in `src/renderer/types/electron.d.ts`
 5. the FreeHire activity client helpers in `src/renderer/convex.ts`
@@ -67,11 +74,9 @@ to that development deployment before authenticated sync can succeed. Cached
 sessions created before `sessionToken` shipped show a re-login notice and never
 fall back to trusting a client-provided user ID.
 
-## Work required before production
+## Operational follow-up
 
-- Add server-side catalogue caching, source monitoring, observability, and a
-  provider-failure fallback.
+- Add source monitoring, observability, and a provider-failure fallback before
+  widening the rollout.
 - Review FreeHire API/license terms and upstream availability before relying on
   its hosted endpoint in a paid product.
-- Add a production rollout migration and operational monitoring after the
-  development deployment has been reviewed.

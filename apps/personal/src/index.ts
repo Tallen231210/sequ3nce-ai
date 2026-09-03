@@ -630,6 +630,122 @@ function extractFreeHireCompensation(description: string): string {
   return likelyPay ? likelyPay.replace(/\s+/g, ' ').replace(/k/gi, 'K').trim() : '';
 }
 
+const FREEHIRE_LANES = ['for-you', 'sales', 'closer', 'account-executive', 'high-ticket', 'leadership'] as const;
+const FREEHIRE_QUERY_BY_LANE: Record<typeof FREEHIRE_LANES[number], string | undefined> = {
+  'for-you': undefined,
+  sales: 'sales',
+  closer: 'closer',
+  'account-executive': '"account executive"',
+  'high-ticket': 'high ticket',
+  leadership: '"sales manager"',
+};
+
+function freeHireSearchQuery(rawParams: unknown, options: {
+  pagination?: boolean;
+  postedWithinDays?: 7;
+} = {}): { query: URLSearchParams; limit: number; offset: number } {
+  const params = rawParams && typeof rawParams === 'object'
+    ? rawParams as Record<string, unknown>
+    : {};
+  const lane = typeof params.lane === 'string' && FREEHIRE_LANES.includes(params.lane as typeof FREEHIRE_LANES[number])
+    ? params.lane as typeof FREEHIRE_LANES[number]
+    : 'for-you';
+  const limit = Math.min(50, Math.max(1, Number(params.limit) || 24));
+  const offset = Math.min(9950, Math.max(0, Number(params.offset) || 0));
+  const query = new URLSearchParams();
+
+  if (options.pagination !== false) {
+    query.set('limit', String(limit));
+    query.set('offset', String(offset));
+  }
+  if (lane !== 'high-ticket' && lane !== 'sales' && lane !== 'closer') {
+    query.set('category', 'sales');
+  }
+  if (options.pagination !== false && params.sort === 'newest') {
+    query.set('sort', 'posted_at');
+    query.set('order', 'desc');
+  }
+  const laneQuery = FREEHIRE_QUERY_BY_LANE[lane];
+  if (laneQuery) query.set('q', laneQuery);
+  if (params.workMode === 'remote' || params.workMode === 'hybrid' || params.workMode === 'onsite') {
+    query.set('work_mode', params.workMode);
+  }
+  if (typeof params.country === 'string' && /^[A-Z]{2}$/.test(params.country)) {
+    query.set('countries', params.country);
+  }
+  const requestedWindow = options.postedWithinDays ?? params.postedWithinDays;
+  if (requestedWindow === 7 || requestedWindow === 30) {
+    query.set('posted_within_days', String(requestedWindow));
+  }
+  return { query, limit, offset };
+}
+
+const FREEHIRE_ANALYTICS_CACHE_MS = 5 * 60 * 1000;
+const FREEHIRE_ANALYTICS_CACHE_MAX = 100;
+const freeHireAnalyticsCache = new Map<string, { expiresAt: number; payload: Record<string, unknown> }>();
+
+async function fetchFreeHireJSON(path: string, cache = false): Promise<Record<string, unknown>> {
+  const url = `https://freehire.me/api/v1/${path}`;
+  const cached = cache ? freeHireAnalyticsCache.get(url) : undefined;
+  if (cached && cached.expiresAt > Date.now()) return cached.payload;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
+    if (!response.ok) throw new Error(`FreeHire returned HTTP ${response.status}.`);
+    const payload = await response.json() as Record<string, unknown>;
+    if (cache) {
+      const now = Date.now();
+      for (const [key, entry] of freeHireAnalyticsCache) {
+        if (entry.expiresAt <= now) freeHireAnalyticsCache.delete(key);
+      }
+      while (freeHireAnalyticsCache.size >= FREEHIRE_ANALYTICS_CACHE_MAX) {
+        const oldest = freeHireAnalyticsCache.keys().next().value as string | undefined;
+        if (!oldest) break;
+        freeHireAnalyticsCache.delete(oldest);
+      }
+      freeHireAnalyticsCache.set(url, { expiresAt: now + FREEHIRE_ANALYTICS_CACHE_MS, payload });
+    }
+    return payload;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw new Error('The FreeHire request timed out.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function freeHireRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function freeHireRows(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.map(freeHireRecord) : [];
+}
+
+function freeHireCount(value: unknown): number {
+  return Math.max(0, freeHireNumber(value));
+}
+
+function freeHireNumber(value: unknown): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function normalizeFreeHireFacets(value: unknown): Record<string, Record<string, number>> {
+  const normalized: Record<string, Record<string, number>> = {};
+  for (const [facet, rawCounts] of Object.entries(freeHireRecord(value))) {
+    const counts: Record<string, number> = {};
+    for (const [key, rawCount] of Object.entries(freeHireRecord(rawCounts))) {
+      const count = freeHireCount(rawCount);
+      if (count > 0) counts[key] = count;
+    }
+    normalized[facet] = counts;
+  }
+  return normalized;
+}
+
 // FreeHire availability for packaged builds: the remote flag's global mode
 // ("off" | "internal" | "all") is the kill switch. Cached for 5 minutes;
 // unreachable config counts as "off" — packaged builds fail closed. Dev
@@ -668,47 +784,7 @@ const setupIpcHandlers = (): void => {
     if (!(await freeHireAllowed())) {
       throw new Error('The FreeHire job feed is not enabled on this build.');
     }
-
-    const params = rawParams && typeof rawParams === 'object'
-      ? rawParams as Record<string, unknown>
-      : {};
-    const allowedLanes = ['for-you', 'sales', 'closer', 'account-executive', 'high-ticket', 'leadership'];
-    const lane = typeof params.lane === 'string' && allowedLanes.includes(params.lane)
-      ? params.lane
-      : 'for-you';
-    const queryByLane: Record<string, string | undefined> = {
-      'for-you': undefined,
-      sales: 'sales',
-      closer: 'closer',
-      'account-executive': '"account executive"',
-      'high-ticket': 'high ticket',
-      leadership: '"sales manager"',
-    };
-    const limit = Math.min(50, Math.max(1, Number(params.limit) || 24));
-    const offset = Math.min(9950, Math.max(0, Number(params.offset) || 0));
-
-    const search = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (lane !== 'high-ticket' && lane !== 'sales' && lane !== 'closer') {
-      search.set('category', 'sales');
-    }
-    if (params.sort === 'newest') {
-      search.set('sort', 'posted_at');
-      search.set('order', 'desc');
-    }
-    const laneQuery = queryByLane[lane];
-    if (laneQuery) search.set('q', laneQuery);
-    if (params.workMode === 'remote' || params.workMode === 'hybrid' || params.workMode === 'onsite') {
-      search.set('work_mode', params.workMode);
-    }
-    if (typeof params.country === 'string' && /^[A-Z]{2}$/.test(params.country)) {
-      search.set('countries', params.country);
-    }
-    if (params.postedWithinDays === 7 || params.postedWithinDays === 30) {
-      search.set('posted_within_days', String(params.postedWithinDays));
-    }
+    const { query: search, limit, offset } = freeHireSearchQuery(rawParams);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -799,6 +875,86 @@ const setupIpcHandlers = (): void => {
     } finally {
       clearTimeout(timeout);
     }
+  });
+
+  ipcMain.handle('freehire:facets', async (_event, rawParams: unknown) => {
+    if (!(await freeHireAllowed())) {
+      throw new Error('The FreeHire job feed is not enabled on this build.');
+    }
+
+    const current = freeHireSearchQuery(rawParams, { pagination: false }).query;
+    const pastSevenDays = freeHireSearchQuery(rawParams, { pagination: false, postedWithinDays: 7 }).query;
+    const requestedFacets = 'work_mode,seniority,source,salary_currency';
+    current.set('facets', requestedFacets);
+    pastSevenDays.set('facets', requestedFacets);
+
+    const [currentPayload, recentPayload] = await Promise.all([
+      fetchFreeHireJSON(`jobs/facets?${current.toString()}`, true),
+      fetchFreeHireJSON(`jobs/facets?${pastSevenDays.toString()}`, true),
+    ]);
+    const currentData = freeHireRecord(currentPayload.data);
+    const recentData = freeHireRecord(recentPayload.data);
+    return {
+      total: freeHireCount(currentData.total),
+      pastSevenDaysTotal: freeHireCount(recentData.total),
+      facets: normalizeFreeHireFacets(currentData.facets),
+      fetchedAt: new Date().toISOString(),
+    };
+  });
+
+  ipcMain.handle('freehire:market-insights', async (_event, rawParams: unknown) => {
+    if (!(await freeHireAllowed())) {
+      throw new Error('The FreeHire job feed is not enabled on this build.');
+    }
+
+    const params = freeHireRecord(rawParams);
+    const country = typeof params.country === 'string' && /^[A-Z]{2}$/.test(params.country)
+      ? params.country.toLowerCase()
+      : '';
+    const countryQuery = country ? `&country=${encodeURIComponent(country)}` : '';
+    const today = new Date();
+    const from = new Date(today.getTime() - 11 * 7 * 86_400_000);
+    const date = (value: Date) => value.toISOString().slice(0, 10);
+
+    const [rolesPayload, skillsPayload, salaryPayload, velocityPayload] = await Promise.all([
+      fetchFreeHireJSON(`insights/roles?category=sales&sort=open&limit=20${countryQuery}`, true),
+      fetchFreeHireJSON('insights/skills?category=sales&sort=open&limit=10', true),
+      fetchFreeHireJSON(`insights/salary?category=sales${countryQuery}`, true),
+      fetchFreeHireJSON(`insights/velocity?granularity=week&category=sales&from=${date(from)}&to=${date(today)}`, true),
+    ]);
+    const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+
+    return {
+      roles: freeHireRows(rolesPayload.data).map((row) => ({
+        category: text(row.category),
+        seniority: text(row.seniority),
+        openCount: freeHireCount(row.open_count ?? row.open),
+        growth: freeHireNumber(row.growth ?? row.growth_pct),
+      })).filter((row) => row.seniority && row.openCount > 0),
+      // FreeHire cannot combine category and country on skill rollups. Skills are
+      // therefore deliberately global Sales data even when the opportunity set is
+      // country-scoped; the renderer labels that distinction.
+      skills: freeHireRows(skillsPayload.data).map((row) => ({
+        skill: text(row.skill),
+        openCount: freeHireCount(row.open_count ?? row.open),
+        growth: freeHireNumber(row.growth ?? row.growth_pct),
+      })).filter((row) => row.skill && row.openCount > 0),
+      salary: freeHireRows(salaryPayload.data).map((row) => ({
+        seniority: text(row.seniority),
+        currency: text(row.currency).toUpperCase(),
+        period: text(row.period),
+        sampleSize: freeHireCount(row.sample_size ?? row.samples),
+        p25: freeHireCount(row.p25),
+        p50: freeHireCount(row.p50),
+        p75: freeHireCount(row.p75),
+      })).filter((row) => row.currency && row.period && row.sampleSize > 0),
+      velocity: freeHireRows(velocityPayload.data).map((row) => ({
+        period: text(row.period),
+        added: freeHireCount(row.added),
+        removed: freeHireCount(row.removed),
+      })).filter((row) => row.period),
+      fetchedAt: new Date().toISOString(),
+    };
   });
 
   ipcMain.handle('freehire:get-job', async (_event, rawSlug: unknown) => {
