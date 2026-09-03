@@ -3,6 +3,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { Id, Doc } from "./_generated/dataModel";
 import { api } from "./_generated/api";
 import { issueSession } from "./closerSession";
+import { offboardCloserTx } from "./closerOffboarding";
 
 // Simple password hashing using Web Crypto API (available in Convex runtime)
 // In production, you might want to use a more robust solution
@@ -298,6 +299,14 @@ export const updateCloserStatus = mutation({
     }
 
     await ctx.db.patch(args.closerId, updates);
+
+    // Leaving the team means leaving the bot pipeline: auto-join off,
+    // calendar disconnected, queued bots called off. Re-activating later
+    // means reconnecting — deliberately, so a departed diary never feeds
+    // anything by accident. See closerOffboarding.ts.
+    if (args.status === "deactivated" && closer.status !== "deactivated") {
+      await offboardCloserTx(ctx, args.closerId);
+    }
 
     return { success: true };
   },

@@ -94,6 +94,7 @@ import type * as closerCalendarSubscriptions from "../closerCalendarSubscription
 import type * as closerCapacitySettings from "../closerCapacitySettings.js";
 import type * as closerEmailChange from "../closerEmailChange.js";
 import type * as closerMagicLink from "../closerMagicLink.js";
+import type * as closerOffboarding from "../closerOffboarding.js";
 import type * as closerPerformance from "../closerPerformance.js";
 import type * as closerPerformanceAttribution from "../closerPerformanceAttribution.js";
 import type * as closerPerformanceConfig from "../closerPerformanceConfig.js";
@@ -347,6 +348,7 @@ declare const fullApi: ApiFromModules<{
   closerCapacitySettings: typeof closerCapacitySettings;
   closerEmailChange: typeof closerEmailChange;
   closerMagicLink: typeof closerMagicLink;
+  closerOffboarding: typeof closerOffboarding;
   closerPerformance: typeof closerPerformance;
   closerPerformanceAttribution: typeof closerPerformanceAttribution;
   closerPerformanceConfig: typeof closerPerformanceConfig;

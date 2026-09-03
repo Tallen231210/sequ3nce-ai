@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, action, internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query, action, internalMutation, internalQuery, MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 
 // ============================================
@@ -98,6 +99,57 @@ export const saveMicrosoftCalendarConnection = mutation({
  * Disconnect calendar integration from a closer.
  * Clears all calendar OAuth fields (refresh tokens, provider, onboarding).
  */
+/**
+ * Everything "disconnect this closer's calendar" means, as one transaction
+ * step — shared by the closer-facing disconnect and by deactivation (a
+ * departed closer's calendar must stop feeding the bot sweep).
+ */
+export async function disconnectCloserCalendarTx(
+  ctx: MutationCtx,
+  closerId: Id<"closers">,
+): Promise<{ eventsRemoved: number; calendarsRemoved: number; subscriptionsRemoved: number }> {
+  await ctx.db.patch(closerId, {
+    googleCalendarRefreshToken: undefined,
+    microsoftCalendarRefreshToken: undefined,
+    calendarProvider: undefined,
+    calendarConnectedAt: undefined,
+    calendarOnboardingCompleted: undefined,
+    // A deliberate disconnect is not an expiry.
+    calendarDisconnectReason: undefined,
+  });
+
+  // Disconnect means the schedule EMPTIES. Clearing only the tokens leaves
+  // ghosts (bitten 2026-09-02): b2cCalendars rows carry their OWN OAuth
+  // tokens, so the 15-min sync cron re-imports the old account's events
+  // right after this runs unless the rows themselves are deleted. B2B
+  // sub-calendar rows share the closer token we just cleared, so their
+  // events would go permanently stale — wipe those too. Coaching-call
+  // schedule rows are in-app references, not calendar-synced: keep them.
+  const b2cCals = await ctx.db
+    .query("b2cCalendars")
+    .withIndex("by_closer", (q) => q.eq("closerId", closerId))
+    .collect();
+  for (const c of b2cCals) await ctx.db.delete(c._id);
+
+  const subs = await ctx.db
+    .query("closerCalendarSubscriptions")
+    .withIndex("by_closer", (q) => q.eq("closerId", closerId))
+    .collect();
+  for (const sub of subs) await ctx.db.delete(sub._id);
+
+  const events = await ctx.db
+    .query("calendarEvents")
+    .withIndex("by_closer", (q) => q.eq("closerId", closerId))
+    .collect();
+  let removed = 0;
+  for (const e of events) {
+    if (e.coachingCallId) continue;
+    await ctx.db.delete(e._id);
+    removed++;
+  }
+  return { eventsRemoved: removed, calendarsRemoved: b2cCals.length, subscriptionsRemoved: subs.length };
+}
+
 export const disconnectCalendar = mutation({
   args: {
     closerId: v.id("closers"),
@@ -107,48 +159,8 @@ export const disconnectCalendar = mutation({
     if (!closer) {
       throw new Error("Closer not found");
     }
-
-    await ctx.db.patch(args.closerId, {
-      googleCalendarRefreshToken: undefined,
-      microsoftCalendarRefreshToken: undefined,
-      calendarProvider: undefined,
-      calendarConnectedAt: undefined,
-      calendarOnboardingCompleted: undefined,
-      // A deliberate disconnect is not an expiry.
-      calendarDisconnectReason: undefined,
-    });
-
-    // Disconnect means the schedule EMPTIES. Clearing only the tokens leaves
-    // ghosts (bitten 2026-09-02): b2cCalendars rows carry their OWN OAuth
-    // tokens, so the 15-min sync cron re-imports the old account's events
-    // right after this runs unless the rows themselves are deleted. B2B
-    // sub-calendar rows share the closer token we just cleared, so their
-    // events would go permanently stale — wipe those too. Coaching-call
-    // schedule rows are in-app references, not calendar-synced: keep them.
-    const b2cCals = await ctx.db
-      .query("b2cCalendars")
-      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
-      .collect();
-    for (const c of b2cCals) await ctx.db.delete(c._id);
-
-    const subs = await ctx.db
-      .query("closerCalendarSubscriptions")
-      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
-      .collect();
-    for (const sub of subs) await ctx.db.delete(sub._id);
-
-    const events = await ctx.db
-      .query("calendarEvents")
-      .withIndex("by_closer", (q) => q.eq("closerId", args.closerId))
-      .collect();
-    let removed = 0;
-    for (const e of events) {
-      if (e.coachingCallId) continue;
-      await ctx.db.delete(e._id);
-      removed++;
-    }
-
-    return { success: true, eventsRemoved: removed, calendarsRemoved: b2cCals.length };
+    const r = await disconnectCloserCalendarTx(ctx, args.closerId);
+    return { success: true, eventsRemoved: r.eventsRemoved, calendarsRemoved: r.calendarsRemoved };
   },
 });
 
