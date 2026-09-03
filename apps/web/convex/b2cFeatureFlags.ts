@@ -65,7 +65,15 @@ export const evaluateFlagsForSession = internalQuery({
   args: { sessionToken: v.string() },
   handler: async (ctx, { sessionToken }) => {
     const flags: Record<string, boolean> = {};
-    for (const key of KNOWN_FLAGS) flags[key] = false;
+    // "all" needs no identity — a long-lived session from before login
+    // tokens existed (most users, 2026-09-03) must still get the feature.
+    // Only "internal" needs to know who is asking.
+    const modes: Record<string, Mode> = {};
+    for (const key of KNOWN_FLAGS) {
+      modes[key] = await flagMode(ctx, key);
+      flags[key] = modes[key] === "all";
+    }
+    if (Object.values(modes).every((m) => m !== "internal")) return { flags };
 
     if (!/^[a-f0-9]{64}$/.test(sessionToken)) return { flags };
     const data = new TextEncoder().encode(sessionToken);
@@ -86,8 +94,7 @@ export const evaluateFlagsForSession = internalQuery({
       (user.badges ?? []).includes("founder");
 
     for (const key of KNOWN_FLAGS) {
-      const mode = await flagMode(ctx, key);
-      flags[key] = mode === "all" || (mode === "internal" && isInternal);
+      flags[key] = modes[key] === "all" || (modes[key] === "internal" && isInternal);
     }
     return { flags };
   },

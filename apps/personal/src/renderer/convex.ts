@@ -4634,12 +4634,14 @@ export async function updateJobTracking(
 export async function getFeatureFlags(
   sessionToken: string | undefined,
 ): Promise<Record<string, boolean> | null> {
-  if (!sessionToken) return null;
+  // Always ask, even with no token: flags in "all" mode need no identity,
+  // and sessions from before login tokens existed would otherwise be stuck
+  // on legacy UI forever (bitten 2026-09-03 — the co-founder's session).
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/feature-flags`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionToken }),
+      body: JSON.stringify({ sessionToken: sessionToken ?? "" }),
     });
     if (!response.ok) return null;
     const data = await response.json();
