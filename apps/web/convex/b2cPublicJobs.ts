@@ -381,6 +381,30 @@ function legacyJobLane(job: { title: string; description?: string; highTicket?: 
   return "sales";
 }
 
+/**
+ * Customer-facing source label. The scraper's raw values include wrappers
+ * like "SerpJob (Monster)" and the odd column slip ("true", "Remote");
+ * FreeHire cards show plain names ("Greenhouse"), so match that.
+ */
+function cleanLegacySource(raw: string | undefined): string {
+  let label = (raw ?? "").trim();
+  const wrapped = label.match(/^SerpJob\s*\((.+)\)$/i);
+  if (wrapped) label = wrapped[1].trim();
+  label = label.replace(/\s+(Jobs|Careers)$/i, "").trim();
+  const known: Record<string, string> = {
+    linkedin: "LinkedIn",
+    weworkremotely: "We Work Remotely",
+    remoteok: "Remote OK",
+    ziprecruiter: "ZipRecruiter",
+    simplyhired: "SimplyHired",
+    indeed: "Indeed",
+  };
+  const key = label.toLowerCase();
+  if (known[key]) return known[key];
+  if (!label || /^(true|false|yes|no|remote)$/i.test(label)) return "Job board";
+  return label;
+}
+
 function legacyDescriptionBlocks(description: string): Array<{
   type: "paragraph" | "bullet";
   text: string;
@@ -463,7 +487,7 @@ export const listFreeHireSourceJobs = internalQuery({
           description,
           descriptionBlocks: legacyDescriptionBlocks(description),
           applyUrl: job.applyUrl,
-          source: job.source?.trim() || "Sequ3nce",
+          source: cleanLegacySource(job.source),
           workMode: job.remote === true ? "remote" as const : "unknown" as const,
           skills: [],
           employmentType: job.jobType?.trim() || "Not listed",
