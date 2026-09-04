@@ -12418,6 +12418,23 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// Sales-call trial code lookup (public, read-only). Used by the checkout page
+// to show "$0 today" before the buyer clicks, and by the checkout route to
+// decide whether to attach a trial to the Polar session.
+http.route({
+  path: "/b2c/trial-code",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const code = new URL(request.url).searchParams.get("code") ?? "";
+    try {
+      const result = await ctx.runQuery(api.b2cTrialCodes.lookupTrialCode, { code: code.slice(0, 40) });
+      return b2cJsonResponse(result, 200, true);
+    } catch {
+      return b2cJsonResponse({ valid: false }, 200, true);
+    }
+  }),
+});
+
 // Per-user feature-flag decisions. Bearer-token identity only; failures and
 // unknown sessions return all-off so the app falls back to the legacy UI.
 http.route({

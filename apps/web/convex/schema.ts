@@ -2763,6 +2763,18 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 
+  // Sales-call trial codes: entering one on /personal/checkout turns the
+  // monthly plan into a Polar per-checkout free trial (card on file,
+  // auto-billed after trialDays). CLI-managed via b2cTrialCodes:setTrialCode.
+  b2cTrialCodes: defineTable({
+    code: v.string(),
+    trialDays: v.number(),
+    label: v.optional(v.string()),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_code", ["code"]),
+
   // Remote feature flags for the Personal app — flip features in shipped
   // builds without a release. Modes: "off" | "internal" (founders + test
   // accounts) | "all". Missing row = off (fail closed).

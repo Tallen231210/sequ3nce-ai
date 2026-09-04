@@ -66,6 +66,7 @@ import type * as b2cStatsVerification from "../b2cStatsVerification.js";
 import type * as b2cStripe from "../b2cStripe.js";
 import type * as b2cTeamNotifications from "../b2cTeamNotifications.js";
 import type * as b2cTraining from "../b2cTraining.js";
+import type * as b2cTrialCodes from "../b2cTrialCodes.js";
 import type * as b2cWeeklyContest from "../b2cWeeklyContest.js";
 import type * as billing from "../billing.js";
 import type * as botAvatar from "../botAvatar.js";
@@ -320,6 +321,7 @@ declare const fullApi: ApiFromModules<{
   b2cStripe: typeof b2cStripe;
   b2cTeamNotifications: typeof b2cTeamNotifications;
   b2cTraining: typeof b2cTraining;
+  b2cTrialCodes: typeof b2cTrialCodes;
   b2cWeeklyContest: typeof b2cWeeklyContest;
   billing: typeof billing;
   botAvatar: typeof botAvatar;

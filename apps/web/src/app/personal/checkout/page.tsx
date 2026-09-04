@@ -71,6 +71,36 @@ const INCLUDED = [
 export default function PersonalCheckoutPage() {
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Sales-call trial code: valid → the Monthly card becomes "$0 today, then
+  // $150/mo after N days". The server re-validates on purchase; this is the
+  // honest preview so nobody is surprised at Polar's checkout.
+  const [code, setCode] = useState("");
+  const [trial, setTrial] = useState<{ code: string; trialDays: number } | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [checkingCode, setCheckingCode] = useState(false);
+
+  async function applyCode() {
+    const cleaned = code.trim().toUpperCase();
+    setCodeError(null);
+    if (!cleaned) return;
+    setCheckingCode(true);
+    try {
+      const res = await fetch(
+        `https://ideal-ram-982.convex.site/b2c/trial-code?code=${encodeURIComponent(cleaned)}`,
+        { cache: "no-store" },
+      );
+      const data = (await res.json()) as { valid?: boolean; trialDays?: number };
+      if (data.valid && typeof data.trialDays === "number") {
+        setTrial({ code: cleaned, trialDays: data.trialDays });
+      } else {
+        setTrial(null);
+        setCodeError("That code isn't valid — check with your rep.");
+      }
+    } catch {
+      setCodeError("Couldn't check that code — try again.");
+    }
+    setCheckingCode(false);
+  }
 
   async function buy(plan: string) {
     setBusyPlan(plan);
@@ -95,7 +125,12 @@ export default function PersonalCheckoutPage() {
       const res = await fetch("/api/polar/b2c-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, fbp, fbc }),
+        body: JSON.stringify({
+          plan,
+          fbp,
+          fbc,
+          ...(trial && plan === "monthly" ? { code: trial.code } : {}),
+        }),
       });
       const data = await res.json();
       if (res.ok && data.url) {
@@ -148,7 +183,37 @@ export default function PersonalCheckoutPage() {
           app — you&apos;ll be recording calls in five minutes.
         </p>
 
-        <div className="mt-10 grid gap-4 md:grid-cols-4">
+        <div className="mx-auto mt-8 max-w-md">
+          <form
+            onSubmit={(e) => { e.preventDefault(); void applyCode(); }}
+            className="flex items-center gap-2"
+          >
+            <input
+              value={code}
+              onChange={(e) => { setCode(e.target.value); if (trial) setTrial(null); }}
+              placeholder="Have a code from your call?"
+              autoComplete="off"
+              spellCheck={false}
+              className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm uppercase tracking-wide text-zinc-900 placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={checkingCode || !code.trim()}
+              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-900 hover:border-zinc-900 disabled:opacity-50"
+            >
+              {checkingCode ? "…" : "Apply"}
+            </button>
+          </form>
+          {codeError && <p className="mt-2 text-sm text-rose-600">{codeError}</p>}
+          {trial && (
+            <p className="mt-2 text-sm text-emerald-700">
+              Code applied — Monthly starts with a {trial.trialDays}-day free trial.
+              Your card is saved today and billed $150 when the trial ends.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-8 grid gap-4 md:grid-cols-4">
           {PLANS.map((p) => (
             <div
               key={p.key}
@@ -178,11 +243,26 @@ export default function PersonalCheckoutPage() {
               <span className={"text-sm font-semibold " + (p.vip ? "text-amber-600" : "text-zinc-500")}>
                 {p.label}
               </span>
-              <span className="mt-2 text-5xl font-semibold tracking-[-0.04em] leading-none text-zinc-900">
-                {p.perMonth}
-                <span className="text-lg font-medium tracking-tight text-zinc-400">/mo</span>
-              </span>
-              <span className="mt-1 text-[12px] text-zinc-500">{p.charged}</span>
+              {trial && p.key === "monthly" ? (
+                <>
+                  <span className="mt-2 text-5xl font-semibold tracking-[-0.04em] leading-none text-zinc-900">
+                    $0
+                    <span className="text-lg font-medium tracking-tight text-zinc-400"> today</span>
+                  </span>
+                  <span className="mt-1 text-[12px] text-zinc-500">
+                    {trial.trialDays}-day free trial, then $150 every month. Cancel before it
+                    ends and you won&apos;t be charged.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="mt-2 text-5xl font-semibold tracking-[-0.04em] leading-none text-zinc-900">
+                    {p.perMonth}
+                    <span className="text-lg font-medium tracking-tight text-zinc-400">/mo</span>
+                  </span>
+                  <span className="mt-1 text-[12px] text-zinc-500">{p.charged}</span>
+                </>
+              )}
               {p.vip && (
                 <ul className="mt-4 space-y-1.5">
                   {VIP_PERKS.map((perk) => (
@@ -207,6 +287,8 @@ export default function PersonalCheckoutPage() {
               >
                 {busyPlan === p.key ? (
                   <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                ) : trial && p.key === "monthly" ? (
+                  `Start ${trial.trialDays}-day free trial`
                 ) : (
                   "Get started"
                 )}

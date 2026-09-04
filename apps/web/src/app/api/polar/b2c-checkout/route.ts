@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { polarFetch } from "@/lib/polar";
 
+const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ============================================================================
@@ -25,13 +27,41 @@ export async function POST(req: NextRequest) {
   let plan: unknown;
   let fbpRaw: unknown;
   let fbcRaw: unknown;
+  let codeRaw: unknown;
   try {
-    ({ plan, fbp: fbpRaw, fbc: fbcRaw } = await req.json());
+    ({ plan, fbp: fbpRaw, fbc: fbcRaw, code: codeRaw } = await req.json());
   } catch {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
   if (typeof plan !== "string" || !VALID_PLANS.has(plan)) {
     return NextResponse.json({ error: "Unknown plan" }, { status: 400 });
+  }
+
+  // Sales-call trial code (2026-09-03): a valid code turns the MONTHLY plan
+  // into a Polar per-checkout free trial — card collected, $0 today, auto-
+  // billed when the trial ends. Validated server-side against Convex; the
+  // page's preview is cosmetic. Never trusted for any other plan.
+  let trialDays: number | null = null;
+  let trialCode: string | null = null;
+  if (typeof codeRaw === "string" && codeRaw.trim()) {
+    const code = codeRaw.trim().toUpperCase().slice(0, 20);
+    if (!/^[A-Z0-9]{3,20}$/.test(code)) {
+      return NextResponse.json({ error: "That code isn't valid — check with your rep." }, { status: 400 });
+    }
+    try {
+      const res = await fetch(`${CONVEX_SITE_URL}/b2c/trial-code?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+      const lookup = (await res.json()) as { valid?: boolean; trialDays?: number };
+      if (!lookup.valid || typeof lookup.trialDays !== "number") {
+        return NextResponse.json({ error: "That code isn't valid — check with your rep." }, { status: 400 });
+      }
+      if (plan !== "monthly") {
+        return NextResponse.json({ error: "That code applies to the Monthly plan." }, { status: 400 });
+      }
+      trialDays = lookup.trialDays;
+      trialCode = code;
+    } catch {
+      return NextResponse.json({ error: "Couldn't verify that code — try again." }, { status: 502 });
+    }
   }
 
   try {
@@ -69,6 +99,7 @@ export async function POST(req: NextRequest) {
     if (userAgent) metadata.user_agent = userAgent.slice(0, 500);
     const referer = req.headers.get("referer");
     if (referer) metadata.landing_url = referer.slice(0, 500);
+    if (trialCode) metadata.trial_code = trialCode;
 
     const origin = req.nextUrl.origin;
     const checkout = await polarFetch<{ url?: string }>("/v1/checkouts/", {
@@ -76,6 +107,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         products: [product.id],
         success_url: `${origin}/personal/activate?checkout_id={CHECKOUT_ID}`,
+        ...(trialDays ? { trial_interval: "day", trial_interval_count: trialDays } : {}),
         ...(Object.keys(metadata).length ? { metadata } : {}),
       }),
     });
