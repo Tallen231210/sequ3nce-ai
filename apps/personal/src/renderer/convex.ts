@@ -4624,6 +4624,34 @@ export async function updateJobTracking(
   }
 }
 
+// ==================== App-version telemetry ====================
+
+/**
+ * Tell the server which app version + platform this session runs. Fired
+ * after login, signup, and session restore. Fire-and-forget: it can never
+ * block the app, and it grants nothing server-side.
+ */
+export async function reportAppVersion(info: CloserInfo): Promise<void> {
+  try {
+    const [appVersion, platformInfo] = await Promise.all([
+      window.electron.app.getVersion(),
+      window.electron.app.getPlatform(),
+    ]);
+    await convexFetch(`${CONVEX_SITE_URL}/b2c/app-version`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionToken: (info as { sessionToken?: string }).sessionToken,
+        userId: info.b2cUserId,
+        appVersion,
+        platform: platformInfo.platform,
+      }),
+    });
+  } catch {
+    // Telemetry only — never surface.
+  }
+}
+
 // ==================== Remote feature flags ====================
 
 /**

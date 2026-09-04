@@ -2012,6 +2012,12 @@ export default defineSchema({
     emailVerificationLastSent: v.optional(v.number()),     // For 60s resend cooldown
     lastSeenAt: v.optional(v.number()),                    // Online presence heartbeat timestamp
     isTestAccount: v.optional(v.boolean()),                // Playwright/QA accounts — hidden from community + presence
+    // App-version telemetry (2026-09-04): reported by the desktop app on login
+    // and session restore so "did the auto-update land?" is a query, not a
+    // stakeout. Never used for entitlement.
+    appVersion: v.optional(v.string()),
+    appPlatform: v.optional(v.string()),   // "darwin" | "win32" | "linux"
+    appVersionSeenAt: v.optional(v.number()),
     // The Placement Line (VIP): when the member entered the internal
     // priority list. Eligibility (VIP + complete verified profile) is
     // re-checked server-side at join time; unset = not on the Line.

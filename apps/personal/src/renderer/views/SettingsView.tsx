@@ -17,6 +17,10 @@ interface SettingsViewProps {
 
 export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
   // Calendar
+  const [appVersion, setAppVersion] = useState<string>('');
+  useEffect(() => {
+    window.electron.app.getVersion().then(setAppVersion).catch(() => {});
+  }, []);
   const [calStatus, setCalStatus] = useState<CalendarStatus | null>(null);
   // Meeting bot auto-join
   const [autoJoin, setAutoJoinState] = useState<AutoJoinState | null>(null);
@@ -419,6 +423,11 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
             Sign Out
           </button>
         </SettingsSection>
+
+        {/* Which build am I on? Support asks this constantly on Windows. */}
+        <p className="pt-2 text-center text-[11px] text-gray-400">
+          Sequ3nce Personal {appVersion ? `v${appVersion}` : ''}
+        </p>
       </div>
     </div>
   );

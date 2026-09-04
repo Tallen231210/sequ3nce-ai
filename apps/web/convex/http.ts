@@ -12418,6 +12418,27 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// App-version telemetry from the desktop app (login + session restore).
+http.route({
+  path: "/b2c/app-version",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      const result = await ctx.runMutation(internal.b2cAuth.recordAppVersion, {
+        sessionToken: typeof body?.sessionToken === "string" ? body.sessionToken : undefined,
+        userId: typeof body?.userId === "string" ? (body.userId as Id<"b2cUsers">) : undefined,
+        appVersion: typeof body?.appVersion === "string" ? body.appVersion : "",
+        platform: typeof body?.platform === "string" ? body.platform : "",
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch {
+      return b2cJsonResponse({ recorded: false }, 200, true);
+    }
+  }),
+});
+http.route({ path: "/b2c/app-version", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
 // Sales-call trial code lookup (public, read-only). Used by the checkout page
 // to show "$0 today" before the buyer clicks, and by the checkout route to
 // decide whether to attach a trial to the Polar session.

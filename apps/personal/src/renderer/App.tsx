@@ -12,6 +12,7 @@ import {
   getSubscriptionStatus,
   resolveSessionByEmail,
   type CloserInfo,
+  reportAppVersion,
 } from './convex';
 import { MeetingBotHub } from './views/MeetingBotHub';
 import { EmailVerificationScreen } from './views/EmailVerificationScreen';
@@ -114,6 +115,9 @@ function AppContent() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(info));
     setCloserInfo(info);
     setAuthState('authenticated');
+    // Version telemetry: which build is this account running on? (login,
+    // signup, and session restore all pass through here.)
+    void reportAppVersion(info);
 
     // Tag every subsequent Sentry event with which closer is logged in.
     // Single biggest debugging force-multiplier — when an error fires,

@@ -62,6 +62,61 @@ export const resolveB2CSession = internalQuery({
   },
 });
 
+/**
+ * App-version telemetry. Identity: session token when present, else the
+ * b2cUserId (pre-token sessions). This writes three cosmetic fields and
+ * grants nothing, so the weaker fallback is acceptable — coverage matters
+ * more than proof here.
+ */
+export const recordAppVersion = internalMutation({
+  args: {
+    sessionToken: v.optional(v.string()),
+    userId: v.optional(v.id("b2cUsers")),
+    appVersion: v.string(),
+    platform: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const appVersion = args.appVersion.trim().slice(0, 32);
+    const platform = args.platform.trim().slice(0, 16);
+    if (!/^\d+\.\d+\.\d+/.test(appVersion)) return { recorded: false as const };
+
+    let user = null;
+    if (args.sessionToken && /^[a-f0-9]{64}$/.test(args.sessionToken)) {
+      const hash = await hashSessionToken(args.sessionToken);
+      user = await ctx.db
+        .query("b2cUsers")
+        .withIndex("by_session_token_hash", (q) => q.eq("sessionTokenHash", hash))
+        .unique();
+    }
+    if (!user && args.userId) user = await ctx.db.get(args.userId);
+    if (!user) return { recorded: false as const };
+
+    if (user.appVersion !== appVersion || user.appPlatform !== platform) {
+      await ctx.db.patch(user._id, { appVersion, appPlatform: platform, appVersionSeenAt: Date.now() });
+    } else {
+      await ctx.db.patch(user._id, { appVersionSeenAt: Date.now() });
+    }
+    return { recorded: true as const };
+  },
+});
+
+/** CLI: who is on which version. npx convex run b2cAuth:appVersionReport --prod */
+export const appVersionReport = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("b2cUsers").collect();
+    return users
+      .filter((u) => u.appVersion && u.isTestAccount !== true)
+      .sort((a, b) => (b.appVersionSeenAt ?? 0) - (a.appVersionSeenAt ?? 0))
+      .map((u) => ({
+        email: u.email,
+        version: u.appVersion,
+        platform: u.appPlatform,
+        seenAt: u.appVersionSeenAt ? new Date(u.appVersionSeenAt).toISOString() : null,
+      }));
+  },
+});
+
 // Sign up a new B2C user
 // Creates 3 records: b2cUsers + teams (personal workspace) + closers (within workspace)
 export const signupB2CUser = mutation({
