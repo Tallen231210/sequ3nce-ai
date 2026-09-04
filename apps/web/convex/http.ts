@@ -10045,7 +10045,18 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { email, phone, firstName, lastName, source, refParam } = body ?? {};
+      const { email, phone, firstName, lastName, source, refParam, attribution: rawAttr } = body ?? {};
+      // First-touch attribution from the landing cookie — strings only, capped.
+      const ATTR_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid", "landed_at"] as const;
+      let attribution: Record<string, string> | undefined;
+      if (rawAttr && typeof rawAttr === "object") {
+        const cleaned: Record<string, string> = {};
+        for (const k of ATTR_KEYS) {
+          const v = (rawAttr as Record<string, unknown>)[k];
+          if (typeof v === "string" && v.trim()) cleaned[k] = v.trim().slice(0, 200);
+        }
+        if (Object.keys(cleaned).length) attribution = cleaned;
+      }
 
       if (typeof email !== "string" || typeof phone !== "string") {
         return b2cJsonResponse({ error: "email and phone are required" }, 400);
@@ -10069,6 +10080,7 @@ http.route({
         lastName: typeof lastName === "string" ? lastName : undefined,
         source: typeof source === "string" ? source : undefined,
         refParam: typeof refParam === "string" ? refParam : undefined,
+        ...(attribution ? { attribution } : {}),
       });
 
       return b2cJsonResponse({ id }, 200, true);

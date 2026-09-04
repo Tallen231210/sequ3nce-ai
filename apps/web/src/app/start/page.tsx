@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { captureFirstTouch, readAttribution } from "@/lib/attribution";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { VslPlayer } from "./VslPlayer";
@@ -153,6 +154,8 @@ function OptInInner() {
   const params = useSearchParams();
 
   const [variant, setVariant] = useState<"a" | "b" | null>(null);
+  // First-touch ad attribution → 90-day cookie (utm_*, gclid, fbclid).
+  useEffect(() => { captureFirstTouch(); }, []);
   useEffect(() => {
     const forced = params.get("v");
     if (forced === "a" || forced === "b") {
@@ -230,6 +233,7 @@ function OptInInner() {
           email: fields.email,
           phone: fields.phone,
           source: `start-funnel-${variant ?? "a"}`,
+          attribution: readAttribution() ?? undefined,
         }),
       });
       if (!res.ok) {

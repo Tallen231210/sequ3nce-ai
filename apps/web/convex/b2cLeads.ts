@@ -19,6 +19,16 @@ export const saveLead = mutation({
     lastName: v.optional(v.string()),
     source: v.optional(v.string()),
     refParam: v.optional(v.string()),
+    attribution: v.optional(v.object({
+      utm_source: v.optional(v.string()),
+      utm_medium: v.optional(v.string()),
+      utm_campaign: v.optional(v.string()),
+      utm_content: v.optional(v.string()),
+      utm_term: v.optional(v.string()),
+      gclid: v.optional(v.string()),
+      fbclid: v.optional(v.string()),
+      landed_at: v.optional(v.string()),
+    })),
   },
   handler: async (ctx, args) => {
     const email = args.email.trim().toLowerCase();
@@ -48,6 +58,7 @@ export const saveLead = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         phone,
+        ...(!existing.attribution && args.attribution ? { attribution: args.attribution } : {}),
         firstName: firstName || existing.firstName,
         lastName: lastName || existing.lastName,
         source: args.source ?? existing.source,
@@ -60,6 +71,7 @@ export const saveLead = mutation({
       leadId = await ctx.db.insert("b2cLeads", {
         email,
         phone,
+        ...(args.attribution ? { attribution: args.attribution } : {}),
         firstName,
         lastName,
         source: args.source,

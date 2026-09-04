@@ -9,6 +9,34 @@ import type { Id } from "./_generated/dataModel";
 
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
+
+// ---- First-touch attribution → GHL (2026-09-04) ----
+// Our PIT token only has contact scopes, so no custom fields: the campaign
+// rides on the contact's `source` string and on low-cardinality tags
+// (utm_source/medium/campaign) that Pedro can branch automations on.
+type LeadAttribution = {
+  utm_source?: string; utm_medium?: string; utm_campaign?: string;
+  utm_content?: string; utm_term?: string; gclid?: string; fbclid?: string;
+};
+function tagSafe(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+}
+function utmTags(lead: { attribution?: LeadAttribution | null }): string[] {
+  const a = lead.attribution;
+  if (!a) return [];
+  const tags: string[] = [];
+  if (a.utm_source) tags.push(`utm_source:${tagSafe(a.utm_source)}`);
+  if (a.utm_medium) tags.push(`utm_medium:${tagSafe(a.utm_medium)}`);
+  if (a.utm_campaign) tags.push(`utm_campaign:${tagSafe(a.utm_campaign)}`);
+  return tags.filter((t) => !t.endsWith(":"));
+}
+function ghlSourceLabel(lead: { source?: string | null; attribution?: LeadAttribution | null }): string {
+  const base = lead.source ? `sequ3nce.ai landing — ${lead.source}` : "sequ3nce.ai landing";
+  const a = lead.attribution;
+  if (!a) return base;
+  const bits = [a.utm_source, a.utm_medium, a.utm_campaign].filter(Boolean).join(" / ");
+  return bits ? `${base} | ${bits}`.slice(0, 250) : base;
+}
 const TAG_LEAD_CAPTURED = "b2c-lead-captured";
 // Funnel-audience tag for the co-founder's GHL automations — every lead the
 // funnel captures carries it (requested 2026-08-31).
@@ -128,7 +156,7 @@ export const syncLeadToGHL = action({
     const upsertBody: Record<string, unknown> = {
       locationId: env.locationId,
       email: lead.email,
-      source: lead.source ? `sequ3nce.ai landing — ${lead.source}` : "sequ3nce.ai landing",
+      source: ghlSourceLabel(lead),
     };
     if (e164) upsertBody.phone = e164;
     if (lead.firstName) upsertBody.firstName = lead.firstName;
@@ -166,7 +194,7 @@ export const syncLeadToGHL = action({
     // rather than replacing it — safe for returning users.
     const tagRes = await ghlFetch(`/contacts/${contactId}/tags`, {
       method: "POST",
-      body: { tags: [TAG_LEAD_CAPTURED, TAG_CASH_COLLECTORS] },
+      body: { tags: [TAG_LEAD_CAPTURED, TAG_CASH_COLLECTORS, ...utmTags(lead)] },
       token: env.token,
     });
     if (!tagRes.ok) {

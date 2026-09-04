@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { polarFetch } from "@/lib/polar";
+import { ATTRIBUTION_COOKIE, ATTRIBUTION_KEYS, parseAttributionCookie } from "@/lib/attribution";
 
 const CONVEX_SITE_URL = "https://ideal-ram-982.convex.site";
 
@@ -100,6 +101,16 @@ export async function POST(req: NextRequest) {
     const referer = req.headers.get("referer");
     if (referer) metadata.landing_url = referer.slice(0, 500);
     if (trialCode) metadata.trial_code = trialCode;
+    // First-touch ad attribution from the 90-day landing cookie. Polar copies
+    // checkout metadata onto the order, so revenue joins back to campaign in
+    // the CAPI worker and in Pedro's Zapier/GHL flows.
+    const attribution = parseAttributionCookie(req.cookies.get(ATTRIBUTION_COOKIE)?.value);
+    if (attribution) {
+      for (const key of ATTRIBUTION_KEYS) {
+        const v = attribution[key];
+        if (v) metadata[key] = v.slice(0, 200);
+      }
+    }
 
     const origin = req.nextUrl.origin;
     const checkout = await polarFetch<{ url?: string }>("/v1/checkouts/", {

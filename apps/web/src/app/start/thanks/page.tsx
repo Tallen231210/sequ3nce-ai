@@ -1,9 +1,12 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { attributionQueryString, readAttribution } from "@/lib/attribution";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Check, Loader2, X } from "lucide-react";
 import { VslPlayer } from "../VslPlayer";
+
+const BOOKING_WIDGET_URL = "https://booking.sequ3nce.com/widget/bookings/cash-collectors-onboarding-cal";
 
 // ============================================================================
 // Confirmation: "keep your phone close." The number shown is the LEAD'S own
@@ -19,6 +22,13 @@ const GROUND: React.CSSProperties = {
 };
 
 function ThanksInner() {
+  // GHL's calendar widget attributes bookings from its own URL params — feed
+  // it the first-touch cookie so the booked call carries the campaign.
+  const [bookingSrc, setBookingSrc] = useState(BOOKING_WIDGET_URL);
+  useEffect(() => {
+    const qs = attributionQueryString(readAttribution());
+    if (qs) setBookingSrc(`${BOOKING_WIDGET_URL}?${qs}`);
+  }, []);
   const params = useSearchParams();
   const [showBooking, setShowBooking] = useState(false);
   const phone = params.get("p") || "your number";
@@ -127,7 +137,7 @@ function ThanksInner() {
               </button>
             </div>
             <iframe
-              src="https://booking.sequ3nce.com/widget/bookings/cash-collectors-onboarding-cal"
+              src={bookingSrc}
               title="Book a call"
               className="h-full w-full flex-1 border-0"
             />

@@ -2876,6 +2876,18 @@ export default defineSchema({
     lastName: v.optional(v.string()),
     source: v.optional(v.string()),   // which button: "hero", "nav", "pricing", "cta"
     refParam: v.optional(v.string()), // raw ?ref= value from affiliate link
+    // First-touch ad attribution (2026-09-04): captured from the landing URL
+    // into a 90-day cookie; forwarded to GHL (tags/source) + Polar metadata.
+    attribution: v.optional(v.object({
+      utm_source: v.optional(v.string()),
+      utm_medium: v.optional(v.string()),
+      utm_campaign: v.optional(v.string()),
+      utm_content: v.optional(v.string()),
+      utm_term: v.optional(v.string()),
+      gclid: v.optional(v.string()),
+      fbclid: v.optional(v.string()),
+      landed_at: v.optional(v.string()),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
     // GHL (GoHighLevel) sync state — set by the b2cGhl.syncLeadToGHL action.

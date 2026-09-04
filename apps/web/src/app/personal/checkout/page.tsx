@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { captureFirstTouch } from "@/lib/attribution";
 import { Logo } from "@/components/ui/logo";
 import { Check, Loader2 } from "lucide-react";
 import { trackMetaEvent } from "@/lib/meta-pixel";
@@ -77,6 +78,7 @@ export default function PersonalCheckoutPage() {
   // /personal/checkout?code=XXXX to a lead they could not close. The server
   // re-validates on purchase; this preview is the honest "$0 today" framing.
   const [trial, setTrial] = useState<{ code: string; trialDays: number } | null>(null);
+  useEffect(() => { captureFirstTouch(); }, []);
   // The promo-code field is deliberately generic furniture: a collapsed
   // "Have a promo code?" link like every checkout has. It never mentions
   // calls, reps, trials, or "free" until a valid code is actually applied.
