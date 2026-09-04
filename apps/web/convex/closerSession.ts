@@ -291,6 +291,8 @@ export const me = mutation({
         status: closer.status,
         teamName: team?.name,
         productTier: team?.productTier ?? "bot",
+        dealValueLabel: (team as any)?.dealValueLabel,
+        dealValueShortLabel: (team as any)?.dealValueShortLabel,
       },
       // Kept for the client's benefit but no longer gates anything: the
       // staged rollout ended once the app was verified end to end. Reported

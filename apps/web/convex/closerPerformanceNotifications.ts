@@ -138,7 +138,7 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
         { type: "mrkdwn", text: `*Offers*\n${t.offers}${delta(t.offers, p?.offers)}` },
         {
           type: "mrkdwn",
-          text: `*Contract*\n${money(t.contractValue)}${delta(t.contractValue, p?.contractValue, money)}`,
+          text: `*${data.dealValueShortLabel ?? "Contract"}*\n${money(t.contractValue)}${delta(t.contractValue, p?.contractValue, money)}`,
         },
       ],
     },
@@ -186,7 +186,7 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
           { type: "mrkdwn", text: `*Closes*\n${r.closes}${delta(r.closes, r.prev?.closes)}` },
           {
             type: "mrkdwn",
-            text: `*Contract*\n${money(r.contractValue)}${delta(r.contractValue, r.prev?.contractValue, money)}`,
+            text: `*${data.dealValueShortLabel ?? "Contract"}*\n${money(r.contractValue)}${delta(r.contractValue, r.prev?.contractValue, money)}`,
           },
         ],
       });
@@ -259,7 +259,7 @@ function buildDiscordEmbed(data: any, zd: ZonedDate): any {
     { name: "Taken", value: `${t.taken}${dDelta(t.taken, p?.taken)}`, inline: true },
     { name: "Offers", value: `${t.offers}${dDelta(t.offers, p?.offers)}`, inline: true },
     {
-      name: "Contract",
+      name: data.dealValueShortLabel ?? "Contract",
       value: `${money(t.contractValue)}${dDelta(t.contractValue, p?.contractValue, money)}`,
       inline: true,
     },
@@ -368,6 +368,8 @@ export async function maybeSendForTeam(
     internal.closerScorecardData.getCloserScorecardData,
     { teamId: team._id, dayKey, monthKey },
   );
+  // Team's own name for the contract-value field (E2: "Deal total").
+  data.dealValueShortLabel = (team as any).dealValueShortLabel || (team as any).dealValueLabel || "Contract";
 
   // A post saying "0 booked, 0 taken" every weekend teaches the channel to
   // ignore the bot. Silence on a dead day is the correct message.

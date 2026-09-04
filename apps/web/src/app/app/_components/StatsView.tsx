@@ -16,6 +16,10 @@ import {
   getObjectionAnalysis,
 } from '@/lib/closer/client';
 import { DateRangePicker } from './DateRangePicker';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 interface StatsViewProps {
   closerInfo: CloserInfo;
@@ -135,7 +139,7 @@ export function StatsView({ closerInfo }: StatsViewProps) {
         />
         <StatCard icon={<TargetIcon />} title="Close Rate" value={`${Math.round(stats?.closeRate ?? 0)}%`} />
         <StatCard icon={<DollarIcon />} title="Cash Collected" value={formatCurrency(stats?.cashCollected ?? 0)} />
-        <StatCard icon={<DocIcon />} title="Contract Value" value={formatCurrency(stats?.totalContractValue ?? 0)} />
+        <StatCard icon={<DocIcon />} title={dealLabels().long} value={formatCurrency(stats?.totalContractValue ?? 0)} />
         <StatCard icon={<ClockIcon />} title="Avg Call Duration" value={formatDuration(stats?.avgCallDuration ?? 0)} />
         {/* Talk ratio is measured from the recording's audio. With no
             recording it is permanently 0%, which reads as "you never speak"

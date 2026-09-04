@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { DailyEntryRow } from '@/lib/closer/client';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 /**
  * `width` matters more than it looks. Each cell holds an <input>, and an input
@@ -41,8 +45,9 @@ export function gridColumns(tierPrices: number[] | null | undefined): GridColumn
     title: `Calls where you pitched the $${price.toLocaleString()} tier`,
     width: 'min-w-[76px]',
   }));
+  const labels = dealLabels();
   return [
-    ...BASE_COLUMNS,
+    ...BASE_COLUMNS.map((c) => (c.key === 'contractValue' ? { ...c, label: labels.short, title: labels.long } : c)),
     { key: 'fuBooked', label: 'FU booked', title: 'Follow-up calls you scheduled', width: 'min-w-[86px]' },
     { key: 'fuShown', label: 'FU shown', title: 'Follow-ups where they showed', width: 'min-w-[84px]' },
     ...tiers,

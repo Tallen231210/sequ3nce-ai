@@ -24,6 +24,31 @@ export interface CloserInfo {
    * in the room aren't part of what that team bought.
    */
   productTier?: string;
+  /** Team's display name for the contract-value field; absent = default. */
+  dealValueLabel?: string;
+  dealValueShortLabel?: string;
+}
+
+export const DEFAULT_DEAL_VALUE_LABEL = "Contract value";
+export const DEFAULT_DEAL_VALUE_SHORT = "Contract";
+
+/**
+ * What to call the contract-value field for this closer's team. Some teams
+ * don't know the phrase "contract value" (E2 asked for "Total deal value"),
+ * so every label, hint, and column header goes through here.
+ */
+export function dealValueLabels(info?: CloserInfo | null): {
+  long: string;
+  short: string;
+  hint: string;
+} {
+  const long = info?.dealValueLabel?.trim() || DEFAULT_DEAL_VALUE_LABEL;
+  const short = info?.dealValueShortLabel?.trim() || (info?.dealValueLabel?.trim() ? long : DEFAULT_DEAL_VALUE_SHORT);
+  return {
+    long,
+    short,
+    hint: "the full price the customer agreed to — deposit plus everything still owed",
+  };
 }
 
 export const CONVEX_SITE_URL =

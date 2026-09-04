@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ExternalLink, TrendingUp, TrendingDown } from "lucide-react";
 import Link from "next/link";
+import { useDealValueLabels } from "@/app/dashboard/lib/useDealValueLabels";
 
 const ROI_WINDOW_DAYS = 90;
 
@@ -25,6 +26,7 @@ const ROI_WINDOW_DAYS = 90;
  */
 export function RoiTab() {
   const { clerkId } = useTeam();
+  const dealLabels = useDealValueLabels();
 
   /**
    * Pinned once, on mount.
@@ -146,7 +148,7 @@ export function RoiTab() {
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Stat label="Calls in window" value={String(data.teamWide.callsTotal)} hint={`${ROI_WINDOW_DAYS} days`} />
             <Stat label="Cash collected" value={fmtCurrency(data.teamWide.totalCashCollected)} hint="From post-call forms" />
-            <Stat label="Contract value" value={fmtCurrency(data.teamWide.totalContractValue)} hint="Future commitments" />
+            <Stat label={dealLabels.long} value={fmtCurrency(data.teamWide.totalContractValue)} hint="Future commitments" />
             <Stat label="Closers" value={String(data.rowsByCloser.length)} hint="With activity" />
           </div>
         </div>

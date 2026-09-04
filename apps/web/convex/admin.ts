@@ -1,6 +1,6 @@
 // Admin-only operations for configuring ammo settings per team
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 
 // Find a team by the owner's (admin user's) email
 export const findTeamByOwnerEmail = query({
@@ -181,5 +181,28 @@ export const setBetaFeatures = mutation({
     });
 
     return { success: true, features: args.features };
+  },
+});
+
+
+/**
+ * Per-team display name for the contract-value field (closer app + Slack).
+ * null clears back to the default "Contract value" / "Contract".
+ */
+export const setDealValueLabels = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    label: v.union(v.string(), v.null()),
+    shortLabel: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.teamId);
+    if (!team) throw new Error("Team not found");
+    const clean = (x: string | null) => (x && x.trim().length > 0 && x.trim().length <= 40 ? x.trim() : undefined);
+    await ctx.db.patch(args.teamId, {
+      dealValueLabel: clean(args.label),
+      dealValueShortLabel: clean(args.shortLabel),
+    } as any);
+    return { team: team.name, label: clean(args.label) ?? "(default)", shortLabel: clean(args.shortLabel) ?? "(default)" };
   },
 });

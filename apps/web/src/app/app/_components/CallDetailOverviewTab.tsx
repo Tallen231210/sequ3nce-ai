@@ -3,6 +3,10 @@
 import React from 'react';
 import type { CallHistoryItem, AmmoItem } from '@/lib/closer/client';
 import { CallFactsInlineEditor } from './CallFactsInlineEditor';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 interface CallDetailOverviewTabProps {
   call: CallHistoryItem;
@@ -62,7 +66,7 @@ export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId
             <DataRow label="Talk Ratio" value={`${talkPercent}% closer / ${100 - talkPercent}% prospect`} />
           )}
           {call.contractValue != null && call.contractValue > 0 && (
-            <DataRow label="Contract Value" value={`$${call.contractValue.toLocaleString()}`} />
+            <DataRow label={dealLabels().long} value={`$${call.contractValue.toLocaleString()}`} />
           )}
           {call.cashCollected != null && call.cashCollected > 0 && (
             <DataRow label="Cash Collected" value={`$${call.cashCollected.toLocaleString()}`} />

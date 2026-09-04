@@ -958,3 +958,21 @@ export const deleteTeam = mutation({
     return { success: true };
   },
 });
+
+
+/** Display names for the contract-value field, for the manager dashboard.
+ *  Mirrors what the closer app receives on /closer/me. */
+export const getDealValueLabels = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user?.teamId) return null;
+    const team: any = await ctx.db.get(user.teamId);
+    const long = (team?.dealValueLabel as string | undefined)?.trim() || "Contract value";
+    const short = (team?.dealValueShortLabel as string | undefined)?.trim() || (team?.dealValueLabel ? long : "Contract");
+    return { long, short };
+  },
+});

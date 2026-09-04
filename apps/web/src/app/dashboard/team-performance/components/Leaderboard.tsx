@@ -11,6 +11,7 @@ import {
   type Rag,
 } from "../lib/format";
 import { MONO } from "@/components/analytics/primitives/typography";
+import { useDealValueLabels } from "@/app/dashboard/lib/useDealValueLabels";
 
 export interface CloserRow {
  closerId: string;
@@ -232,6 +233,7 @@ export function Leaderboard({
   /** Clicking a row focuses the whole board on that rep. */
   onSelectCloser?: (closerId: string | null) => void;
 }) {
+  const dealLabels = useDealValueLabels();
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-card px-5 py-10 text-center">
@@ -274,7 +276,7 @@ export function Leaderboard({
               </th>
               <th
                 className={TH + " text-right"}
- title="Contract value per close — the size of the deal signed, before payment terms"
+ title={`${dealLabels.long} per close — the size of the deal signed, before payment terms`}
  >
                 Avg deal
               </th>

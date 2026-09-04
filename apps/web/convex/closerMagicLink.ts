@@ -393,6 +393,8 @@ type CloserAuthInfo = {
   email: string;
   status: string;
   teamName?: string;
+  dealValueLabel?: string;
+  dealValueShortLabel?: string;
 };
 
 type TeamChoice = {
@@ -573,6 +575,8 @@ export const verifyCloserMagicLink = mutation({
           email: matched.email,
           status: loginUpdates.status ?? matched.status,
           teamName: team?.name,
+          dealValueLabel: (team as any)?.dealValueLabel,
+          dealValueShortLabel: (team as any)?.dealValueShortLabel,
         },
       };
     }
@@ -707,6 +711,8 @@ export const pickCloserTeam = mutation({
         email: closer.email,
         status: loginUpdates.status ?? closer.status,
         teamName: team?.name,
+        dealValueLabel: (team as any)?.dealValueLabel,
+        dealValueShortLabel: (team as any)?.dealValueShortLabel,
       },
     };
   },

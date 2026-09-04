@@ -2,6 +2,10 @@
 
 import React from 'react';
 import type { SelfYearPerformance, YearMonthRow } from '@/lib/closer/client';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -153,7 +157,7 @@ export function PerformanceYear({
           sub={`${yearTotals.closes} close${yearTotals.closes === 1 ? '' : 's'}`}
         />
         <Tile
-          label="Contract value"
+          label={dealLabels().long}
           value={fullMoney(yearTotals.contractValue)}
           sub={
             yearTotals.closes > 0

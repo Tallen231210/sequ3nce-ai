@@ -7,6 +7,10 @@
 
 import React, { useState } from 'react';
 import { addManualCall } from '@/lib/closer/client';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 const MANUAL_OUTCOMES = [
   ['closed', 'Closed'],
@@ -130,7 +134,7 @@ export function AddMissedCallRow({
             />
           </div>
           <div className="w-24">
-            <label className="mb-1 block text-[10px] text-gray-500">Contract</label>
+            <label className="mb-1 block text-[10px] text-gray-500">{dealLabels().short}</label>
             <input
               type="number"
               inputMode="decimal"

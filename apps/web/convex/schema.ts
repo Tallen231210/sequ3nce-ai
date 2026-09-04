@@ -133,6 +133,12 @@ export default defineSchema({
     setterEodMissingDays: v.optional(v.array(v.union(v.literal("Sun"), v.literal("Mon"), v.literal("Tue"), v.literal("Wed"), v.literal("Thu"), v.literal("Fri"), v.literal("Sat")))),
     setterEodMissingSlackChannelId: v.optional(v.string()),
     setterEodMissingSlackChannelName: v.optional(v.string()),
+    // Per-team display name for the "contract value" field, closer-facing
+    // and in Slack. E2 (2026-09-04): closers didn't understand "contract
+    // value", so theirs reads "Total deal value" / "Deal total". Display
+    // only — the field itself is contractValue everywhere.
+    dealValueLabel: v.optional(v.string()),
+    dealValueShortLabel: v.optional(v.string()),
     // Daily setter EOD scorecard post (NOT the GHL-driven setterDailyScorecard
     // below — that one is the Setter Data leaderboard) — yesterday's (or, for evening hours,
     // today's) filed EOD numbers per setter plus week-to-date, where the

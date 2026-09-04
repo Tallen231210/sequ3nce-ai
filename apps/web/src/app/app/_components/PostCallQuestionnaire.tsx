@@ -3,6 +3,10 @@
 import React, { useState } from 'react';
 import type { CloserInfo } from '@/lib/closer/client';
 import { completeCallWithOutcome } from '@/lib/closer/client';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 type CallOutcome = 'closed' | 'follow_up' | 'lost' | 'no_show';
 
@@ -79,7 +83,7 @@ export function PostCallQuestionnaire({
 
     if (outcome === 'closed') {
       if (!((parseInt(cashCollected) || 0) > 0)) gaps.push('cash collected');
-      if (!((parseInt(contractValue) || 0) > 0)) gaps.push('contract value');
+      if (!((parseInt(contractValue) || 0) > 0)) gaps.push(dealLabels().long.toLowerCase());
       if (leadQualityScore === null) gaps.push('lead quality');
       if (prospectWasDecisionMaker === null) gaps.push('decision maker');
       if (objectionsOvercome === null) gaps.push('objections overcome');
@@ -302,7 +306,7 @@ export function PostCallQuestionnaire({
                   presets={[1000, 3000, 5000, 10000, 15000]}
                 />
                 <ValueField
-                  label="Contract value"
+                  label={dealLabels().long}
                   value={contractValue}
                   onChange={setContractValue}
                   presets={[3000, 5000, 10000, 15000, 25000]}

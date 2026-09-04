@@ -15,6 +15,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { updateOwnCallFacts } from '@/lib/closer/client';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 const OUTCOMES = [
   { value: 'closed', label: 'Closed' },
@@ -169,7 +173,7 @@ export function CallFactsInlineEditor({
           />
         </label>
         <label className="flex-1 min-w-[100px]">
-          <span className="text-[11px] font-medium text-gray-500">Contract value</span>
+          <span className="text-[11px] font-medium text-gray-500">{dealLabels().long}</span>
           <input
             value={contract}
             disabled={busy}

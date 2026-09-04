@@ -28,6 +28,8 @@ import { GoogleReconnectModal } from "./_components/GoogleReconnectModal";
 import { QuickBotModal } from "./_components/QuickBotModal";
 import {
   getCloserInfo,
+  getToken,
+  saveSession,
   fetchMe,
   signOut,
   type CloserInfo,
@@ -98,7 +100,13 @@ export function CloserShell({ children }: { children: React.ReactNode }) {
         router.replace("/app/login");
         return;
       }
-      if (me.closer) setCloser(me.closer);
+      if (me.closer) {
+        setCloser(me.closer);
+        // Refresh what's stored, too: team-level settings (display labels,
+        // tier) ride on this object and must not wait for a re-login.
+        const token = getToken();
+        if (token) saveSession(token, me.closer);
+      }
       setChecked(true);
 
       // A closer with no calendar connected generates no schedule, no slots

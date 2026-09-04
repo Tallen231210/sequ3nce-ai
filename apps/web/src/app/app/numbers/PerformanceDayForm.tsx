@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import type { DailyEntryRow } from '@/lib/closer/client';
+import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
+
+/** Team-specific name for the contract-value field (see session.ts). */
+const dealLabels = () => dealValueLabels(getCloserInfo());
 
 interface DayField {
   key: string;
@@ -136,7 +140,7 @@ export function PerformanceDayForm({
     return (
       <div key={f.key}>
         <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1">
-          {f.label}
+          {f.key === 'contractValue' ? dealLabels().long : f.label}
         </label>
         <div className="relative">
           {f.money && (
@@ -165,7 +169,7 @@ export function PerformanceDayForm({
           </p>
         )}
         {!compact && !f.money && (
-          <p className="mt-1 text-[10px] text-gray-400">{f.hint}</p>
+          <p className="mt-1 text-[10px] text-gray-400">{f.key === 'contractValue' ? dealLabels().hint : f.hint}</p>
         )}
       </div>
     );

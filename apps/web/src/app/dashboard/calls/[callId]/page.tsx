@@ -58,6 +58,7 @@ import { AmmoV2Panel, type AmmoV2Analysis } from "@/components/AmmoV2Panel";
 import { CallCompliancePanel } from "@/components/compliance/CallCompliancePanel";
 import { SalesCallToggle } from "@/components/calls/SalesCallToggle";
 import { CallFactsEditor } from "@/components/calls/CallFactsEditor";
+import { useDealValueLabels } from "@/app/dashboard/lib/useDealValueLabels";
 
 // Types
 interface AmmoItem {
@@ -1543,6 +1544,7 @@ export default function CallDetailPage() {
   const params = useParams();
   const callId = params.callId as string;
   const { clerkId, user } = useTeam();
+  const dealLabels = useDealValueLabels();
   // The mutation enforces this server-side too; this only decides whether to
   // draw a control the viewer can't use.
   const canEditClassification =
@@ -2261,9 +2263,9 @@ export default function CallDetailPage() {
                   {/* Contract Value */}
                   <div>
                     <Label htmlFor="editContractValue" className="text-sm font-medium">
-                      Contract Value
+                      {dealLabels.long}
                     </Label>
-                    <p className="text-xs text-zinc-500 mt-0.5 mb-2">Total contract commitment</p>
+                    <p className="text-xs text-zinc-500 mt-0.5 mb-2">The full price the customer agreed to — deposit plus everything still owed</p>
                     {/* Quick select buttons */}
                     <div className="flex flex-wrap gap-2 mb-3">
                       {DEAL_VALUE_PRESETS.map((preset) => (
