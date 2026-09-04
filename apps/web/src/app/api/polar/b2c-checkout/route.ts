@@ -106,6 +106,9 @@ export async function POST(req: NextRequest) {
       method: "POST",
       body: JSON.stringify({
         products: [product.id],
+        // No discount-code box on Polar's page either — the trial is the
+        // rep's tool, not something the page should invite asking about.
+        allow_discount_codes: false,
         success_url: `${origin}/personal/activate?checkout_id={CHECKOUT_ID}`,
         ...(trialDays ? { trial_interval: "day", trial_interval_count: trialDays } : {}),
         ...(Object.keys(metadata).length ? { metadata } : {}),
