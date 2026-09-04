@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/ui/logo";
 import { Check, Loader2 } from "lucide-react";
 import { trackMetaEvent } from "@/lib/meta-pixel";
@@ -71,36 +71,28 @@ const INCLUDED = [
 export default function PersonalCheckoutPage() {
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Sales-call trial code: valid → the Monthly card becomes "$0 today, then
-  // $150/mo after N days". The server re-validates on purchase; this is the
-  // honest preview so nobody is surprised at Polar's checkout.
-  const [code, setCode] = useState("");
+  // Sales-call trial (rep-controlled, 2026-09-04): there is deliberately NO
+  // code field on this page — a visible one invites "do you have a code?"
+  // mid-close. The trial exists only when the rep sends
+  // /personal/checkout?code=XXXX to a lead they could not close. The server
+  // re-validates on purchase; this preview is the honest "$0 today" framing.
   const [trial, setTrial] = useState<{ code: string; trialDays: number } | null>(null);
-  const [codeError, setCodeError] = useState<string | null>(null);
-  const [checkingCode, setCheckingCode] = useState(false);
 
-  async function applyCode() {
-    const cleaned = code.trim().toUpperCase();
-    setCodeError(null);
-    if (!cleaned) return;
-    setCheckingCode(true);
-    try {
-      const res = await fetch(
-        `https://ideal-ram-982.convex.site/b2c/trial-code?code=${encodeURIComponent(cleaned)}`,
-        { cache: "no-store" },
-      );
-      const data = (await res.json()) as { valid?: boolean; trialDays?: number };
-      if (data.valid && typeof data.trialDays === "number") {
-        setTrial({ code: cleaned, trialDays: data.trialDays });
-      } else {
-        setTrial(null);
-        setCodeError("That code isn't valid — check with your rep.");
-      }
-    } catch {
-      setCodeError("Couldn't check that code — try again.");
-    }
-    setCheckingCode(false);
-  }
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("code");
+    const code = raw?.trim().toUpperCase() ?? "";
+    if (!/^[A-Z0-9]{3,20}$/.test(code)) return;
+    let cancelled = false;
+    fetch(`https://ideal-ram-982.convex.site/b2c/trial-code?code=${encodeURIComponent(code)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { valid?: boolean; trialDays?: number }) => {
+        if (!cancelled && data.valid && typeof data.trialDays === "number") {
+          setTrial({ code, trialDays: data.trialDays });
+        }
+      })
+      .catch(() => { /* no trial shown; the normal checkout stands */ });
+    return () => { cancelled = true; };
+  }, []);
 
   async function buy(plan: string) {
     setBusyPlan(plan);
@@ -183,35 +175,12 @@ export default function PersonalCheckoutPage() {
           app — you&apos;ll be recording calls in five minutes.
         </p>
 
-        <div className="mx-auto mt-8 max-w-md">
-          <form
-            onSubmit={(e) => { e.preventDefault(); void applyCode(); }}
-            className="flex items-center gap-2"
-          >
-            <input
-              value={code}
-              onChange={(e) => { setCode(e.target.value); if (trial) setTrial(null); }}
-              placeholder="Have a code from your call?"
-              autoComplete="off"
-              spellCheck={false}
-              className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm uppercase tracking-wide text-zinc-900 placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={checkingCode || !code.trim()}
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-900 hover:border-zinc-900 disabled:opacity-50"
-            >
-              {checkingCode ? "…" : "Apply"}
-            </button>
-          </form>
-          {codeError && <p className="mt-2 text-sm text-rose-600">{codeError}</p>}
-          {trial && (
-            <p className="mt-2 text-sm text-emerald-700">
-              Code applied — Monthly starts with a {trial.trialDays}-day free trial.
-              Your card is saved today and billed $150 when the trial ends.
-            </p>
-          )}
-        </div>
+        {trial && (
+          <p className="mx-auto mt-6 max-w-md text-center text-sm text-emerald-700">
+            Your rep applied a {trial.trialDays}-day free trial to the Monthly plan.
+            Your card is saved today and billed $150 when the trial ends.
+          </p>
+        )}
 
         <div className="mt-8 grid gap-4 md:grid-cols-4">
           {PLANS.map((p) => (
