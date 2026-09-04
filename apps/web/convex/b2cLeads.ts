@@ -28,6 +28,7 @@ export const saveLead = mutation({
       gclid: v.optional(v.string()),
       fbclid: v.optional(v.string()),
       landed_at: v.optional(v.string()),
+      landing_page: v.optional(v.string()),
     })),
   },
   handler: async (ctx, args) => {

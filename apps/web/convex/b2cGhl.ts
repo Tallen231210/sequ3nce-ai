@@ -24,12 +24,41 @@ function tagSafe(value: string): string {
 function utmTags(lead: { attribution?: LeadAttribution | null }): string[] {
   const a = lead.attribution;
   if (!a) return [];
+  // Pedro's convention (2026-09-04): prefixed, lowercase, hyphenated so they
+  // sit apart from the recruiting tags and never duplicate on GHL's
+  // lowercase-on-write.
   const tags: string[] = [];
-  if (a.utm_source) tags.push(`utm_source:${tagSafe(a.utm_source)}`);
-  if (a.utm_medium) tags.push(`utm_medium:${tagSafe(a.utm_medium)}`);
-  if (a.utm_campaign) tags.push(`utm_campaign:${tagSafe(a.utm_campaign)}`);
-  return tags.filter((t) => !t.endsWith(":"));
+  if (a.utm_source) tags.push(`utm-src-${tagSafe(a.utm_source)}`);
+  if (a.utm_medium) tags.push(`utm-med-${tagSafe(a.utm_medium)}`);
+  if (a.utm_campaign) tags.push(`utm-camp-${tagSafe(a.utm_campaign)}`);
+  return tags.filter((t) => !t.endsWith("-"));
 }
+/**
+ * Unbounded attribution (content/term/gclid/fbclid/landing/first-touch) goes
+ * to GHL custom fields, NOT tags. Pedro creates the fields and confirms the
+ * keys; until `GHL_UTM_FIELDS_READY=1` is set we send none, because GHL
+ * rejects upserts that reference fields that don't exist yet.
+ */
+function utmCustomFields(lead: { attribution?: (LeadAttribution & { landing_page?: string; landed_at?: string }) | null }): Array<{ key: string; field_value: string }> {
+  if (process.env.GHL_UTM_FIELDS_READY !== "1") return [];
+  const a = lead.attribution;
+  if (!a) return [];
+  const pairs: Array<[string, string | undefined]> = [
+    ["contact.utm_source", a.utm_source],
+    ["contact.utm_medium", a.utm_medium],
+    ["contact.utm_campaign", a.utm_campaign],
+    ["contact.utm_content", a.utm_content],
+    ["contact.utm_term", a.utm_term],
+    ["contact.gclid", a.gclid],
+    ["contact.fbclid", a.fbclid],
+    ["contact.landing_page", a.landing_page],
+    ["contact.first_touch", a.landed_at],
+  ];
+  return pairs
+    .filter(([, v]) => typeof v === "string" && v.trim())
+    .map(([key, v]) => ({ key, field_value: (v as string).slice(0, 250) }));
+}
+
 function ghlSourceLabel(lead: { source?: string | null; attribution?: LeadAttribution | null }): string {
   const base = lead.source ? `sequ3nce.ai landing — ${lead.source}` : "sequ3nce.ai landing";
   const a = lead.attribution;
@@ -159,6 +188,8 @@ export const syncLeadToGHL = action({
       source: ghlSourceLabel(lead),
     };
     if (e164) upsertBody.phone = e164;
+    const customFields = utmCustomFields(lead);
+    if (customFields.length) upsertBody.customFields = customFields;
     if (lead.firstName) upsertBody.firstName = lead.firstName;
     if (lead.lastName) upsertBody.lastName = lead.lastName;
 

@@ -19,7 +19,7 @@ export const ATTRIBUTION_KEYS = [
   "fbclid",
 ] as const;
 export type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
-export type Attribution = Partial<Record<AttributionKey, string>> & { landed_at?: string };
+export type Attribution = Partial<Record<AttributionKey, string>> & { landed_at?: string; landing_page?: string };
 
 const MAX_VALUE = 200;
 const NINETY_DAYS = 90 * 24 * 60 * 60;
@@ -47,6 +47,7 @@ export function parseAttributionCookie(raw: string | undefined): Attribution | n
       if (typeof v === "string" && v.trim()) out[key] = v.trim().slice(0, MAX_VALUE);
     }
     if (typeof parsed.landed_at === "string") out.landed_at = parsed.landed_at.slice(0, 40);
+    if (typeof parsed.landing_page === "string") out.landing_page = parsed.landing_page.slice(0, 300);
     return Object.keys(out).some((k) => k !== "landed_at") ? out : null;
   } catch {
     return null;
@@ -68,6 +69,7 @@ export function captureFirstTouch(): void {
   }
   if (Object.keys(captured).length === 0) return;
   captured.landed_at = new Date().toISOString();
+  captured.landing_page = (window.location.pathname + window.location.search).slice(0, 300);
 
   const host = window.location.hostname;
   const domain = host.endsWith("sequ3nce.ai") ? "; domain=.sequ3nce.ai" : "";
