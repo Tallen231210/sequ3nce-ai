@@ -49,7 +49,7 @@ function utmCustomFields(lead: { attribution?: (LeadAttribution & { landing_page
     ["contact.utm_campaign", a.utm_campaign],
     ["contact.utm_content", a.utm_content],
     ["contact.utm_term", a.utm_term],
-    ["contact.gclid", a.gclid],
+    ["contact.google_click_id", a.gclid], // GHL rejected "gclid" as a field name (Pedro)
     ["contact.fbclid", a.fbclid],
     ["contact.landing_page", a.landing_page],
     ["contact.first_touch", a.landed_at],
