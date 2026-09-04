@@ -85,6 +85,11 @@ export function GoogleReconnectModal({ closerInfo }: { closerInfo: CloserInfo })
           seconds, and you&apos;ll never see a Google warning screen again.
           Your calendars, settings, and history stay exactly as they are.
         </p>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+          <span className="font-medium text-foreground">This is a one-time step, not a daily login.</span>{" "}
+          Until you reconnect, this reminder comes back every time you open the
+          app. Do it once and it&apos;s gone for good.
+        </p>
         <div className="mt-6 flex items-center gap-3">
           <a
             href={`https://sequ3nce.ai/api/auth/google/authorize?closerId=${closerInfo.closerId}`}
@@ -99,7 +104,7 @@ export function GoogleReconnectModal({ closerInfo }: { closerInfo: CloserInfo })
             onClick={dismiss}
             className="rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            Later
+            Remind me next time
           </button>
         </div>
       </div>
