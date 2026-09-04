@@ -228,6 +228,20 @@ export const updateCoachProfile = mutation({
  * Coach pushes one of THEIR replays to the house Training tab, making it
  * visible to every Sequ3nce member. Founder may also feature any replay.
  */
+/**
+ * Admin: set a coach's classroom avatar from an already-uploaded storage id.
+ * (Coaches have no in-app avatar editor yet — 2026-09-04, Ben's logo.)
+ */
+export const setCoachAvatar = internalMutation({
+  args: { coachId: v.id("b2cCoaches"), storageId: v.string() },
+  handler: async (ctx, args) => {
+    const coach = await ctx.db.get(args.coachId);
+    if (!coach) throw new Error("Coach not found");
+    await ctx.db.patch(args.coachId, { avatarStorageId: args.storageId });
+    return { coachId: args.coachId, avatarStorageId: args.storageId };
+  },
+});
+
 export const pushReplayToTraining = mutation({
   args: { userId: v.id("b2cUsers"), callId: v.id("b2cCoachingCalls") },
   handler: async (ctx, args) => {
