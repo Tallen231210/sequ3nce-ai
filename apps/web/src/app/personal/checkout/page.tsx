@@ -77,6 +77,36 @@ export default function PersonalCheckoutPage() {
   // /personal/checkout?code=XXXX to a lead they could not close. The server
   // re-validates on purchase; this preview is the honest "$0 today" framing.
   const [trial, setTrial] = useState<{ code: string; trialDays: number } | null>(null);
+  // The promo-code field is deliberately generic furniture: a collapsed
+  // "Have a promo code?" link like every checkout has. It never mentions
+  // calls, reps, trials, or "free" until a valid code is actually applied.
+  const [showCode, setShowCode] = useState(false);
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [checkingCode, setCheckingCode] = useState(false);
+
+  async function applyCode() {
+    const cleaned = code.trim().toUpperCase();
+    setCodeError(null);
+    if (!cleaned) return;
+    setCheckingCode(true);
+    try {
+      const res = await fetch(
+        `https://ideal-ram-982.convex.site/b2c/trial-code?code=${encodeURIComponent(cleaned)}`,
+        { cache: "no-store" },
+      );
+      const data = (await res.json()) as { valid?: boolean; trialDays?: number };
+      if (data.valid && typeof data.trialDays === "number") {
+        setTrial({ code: cleaned, trialDays: data.trialDays });
+      } else {
+        setTrial(null);
+        setCodeError("That code isn't valid.");
+      }
+    } catch {
+      setCodeError("Couldn't check that code — try again.");
+    }
+    setCheckingCode(false);
+  }
 
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("code");
@@ -177,8 +207,8 @@ export default function PersonalCheckoutPage() {
 
         {trial && (
           <p className="mx-auto mt-6 max-w-md text-center text-sm text-emerald-700">
-            Your rep applied a {trial.trialDays}-day free trial to the Monthly plan.
-            Your card is saved today and billed $150 when the trial ends.
+            Code {trial.code} applied — Monthly starts with a {trial.trialDays}-day free
+            trial. Your card is saved today and billed $150 when the trial ends.
           </p>
         )}
 
@@ -269,6 +299,41 @@ export default function PersonalCheckoutPage() {
         {error && (
           <p className="mt-4 text-center text-sm text-rose-600">{error}</p>
         )}
+
+        <div className="mx-auto mt-8 max-w-md text-center">
+          {!showCode && !trial ? (
+            <button
+              type="button"
+              onClick={() => setShowCode(true)}
+              className="text-[12px] text-zinc-400 underline underline-offset-2 hover:text-zinc-600"
+            >
+              Have a promo code?
+            </button>
+          ) : !trial ? (
+            <form
+              onSubmit={(e) => { e.preventDefault(); void applyCode(); }}
+              className="mx-auto flex max-w-xs items-center gap-2"
+            >
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="Promo code"
+                autoComplete="off"
+                spellCheck={false}
+                autoFocus
+                className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm uppercase tracking-wide text-zinc-900 placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={checkingCode || !code.trim()}
+                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-900 hover:border-zinc-900 disabled:opacity-50"
+              >
+                {checkingCode ? "…" : "Apply"}
+              </button>
+            </form>
+          ) : null}
+          {codeError && <p className="mt-2 text-sm text-rose-600">{codeError}</p>}
+        </div>
 
         <div className="mx-auto mt-12 max-w-md">
           <p className="text-sm font-semibold text-zinc-700">
