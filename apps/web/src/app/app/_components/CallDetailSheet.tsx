@@ -300,6 +300,17 @@ export function CallDetailSheet({
             classifiedBy={call.classifiedBy}
             countsTowardStats={call.countsTowardStats}
             isHistorical={call.isHistorical}
+            onChanged={(isSalesCall) =>
+              // Mirror exactly what applyClassification writes, so the cached
+              // call and the server agree without a refetch.
+              onCallUpdated({
+                ...call,
+                classifiedAs: isSalesCall ? 'sales' : 'internal',
+                classifiedBy: 'closer',
+                countsTowardStats: isSalesCall,
+                status: isSalesCall ? 'completed' : 'unclassified',
+              })
+            }
           />
         )}
 
@@ -409,6 +420,16 @@ export function CallDetailSheet({
                 ammoItems={ammoItems}
                 isLoadingAmmo={isLoadingAmmo}
                 readOnly={readOnly}
+                onFactsSaved={(facts) =>
+                  // Same shape updateOwnCallFacts leaves behind.
+                  onCallUpdated({
+                    ...call,
+                    outcome: facts.outcome,
+                    cashCollected: facts.cashCollected,
+                    contractValue: facts.contractValue,
+                    outcomeSource: 'closer',
+                  })
+                }
                 closerId={closerInfo.closerId}
               />
             )}

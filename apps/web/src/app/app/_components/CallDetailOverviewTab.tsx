@@ -2,7 +2,7 @@
 
 import React from 'react';
 import type { CallHistoryItem, AmmoItem } from '@/lib/closer/client';
-import { CallFactsInlineEditor } from './CallFactsInlineEditor';
+import { CallFactsInlineEditor, type SavedFacts } from './CallFactsInlineEditor';
 import { dealValueLabels, getCloserInfo } from "@/lib/closer/session";
 
 /** Team-specific name for the contract-value field (see session.ts). */
@@ -15,9 +15,11 @@ interface CallDetailOverviewTabProps {
   closerId: string;
   /** Teammate's call — the facts editor only makes sense on your own. */
   readOnly?: boolean;
+  /** The closer saved new figures; the sheet updates the call it holds. */
+  onFactsSaved?: (facts: SavedFacts) => void;
 }
 
-export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId, readOnly = false }: CallDetailOverviewTabProps) {
+export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId, readOnly = false, onFactsSaved }: CallDetailOverviewTabProps) {
   const talkPercent = (() => {
     const closer = call.closerTalkTime || 0;
     const prospect = call.prospectTalkTime || 0;
@@ -85,6 +87,7 @@ export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId
             cashCollected={call.cashCollected}
             contractValue={call.contractValue}
             outcomeSource={call.outcomeSource}
+            onSaved={onFactsSaved}
           />
         )}
       </DetailSection>
