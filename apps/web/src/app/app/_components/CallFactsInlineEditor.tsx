@@ -43,7 +43,19 @@ interface Props {
   cashCollected?: number | null;
   contractValue?: number | null;
   outcomeSource?: string | null;
-  onSaved?: () => void;
+  /**
+   * Fires with what the server now holds, so the parent can update the copy
+   * of the call it draws the list and this sheet from. Without this the
+   * figures were saved but the sheet, reopened from the cached list, showed
+   * the old ones — which read as "nothing saved" (E2, 2026-09-04).
+   */
+  onSaved?: (facts: SavedFacts) => void;
+}
+
+export interface SavedFacts {
+  outcome?: string;
+  cashCollected?: number;
+  contractValue?: number;
 }
 
 export function CallFactsInlineEditor({
@@ -72,6 +84,13 @@ export function CallFactsInlineEditor({
     setCash(initialCash != null ? String(initialCash) : '');
     setContract(initialContract != null ? String(initialContract) : '');
   }, [initialOutcome, initialCash, initialContract]);
+
+  // "Saved" stays put until they open the panel again. A two-second flash was
+  // easy to miss, and a closer who missed it and then saw stale figures on
+  // reopen had every reason to believe nothing had saved.
+  useEffect(() => {
+    if (open) setSaved(false);
+  }, [open]);
 
   const isAi = outcomeSource === 'ai';
 
@@ -110,9 +129,12 @@ export function CallFactsInlineEditor({
       return;
     }
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
     setOpen(false);
-    onSaved?.();
+    onSaved?.({
+      outcome: outcome === '' ? undefined : outcome,
+      cashCollected: cashValue ?? undefined,
+      contractValue: contractValue ?? undefined,
+    });
   }
 
   if (!open) {
@@ -124,7 +146,7 @@ export function CallFactsInlineEditor({
         >
           {isAi ? 'Check these figures' : 'Edit figures'}
         </button>
-        {saved && <span className="text-[12px] text-green-600">Saved</span>}
+        {saved && <span className="text-[12px] text-green-600">Saved ✓</span>}
       </div>
     );
   }

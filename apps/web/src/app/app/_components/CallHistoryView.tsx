@@ -119,6 +119,21 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
     setSelectedCall(updatedCall);
   }
 
+  // Closing a sheet re-reads the lists quietly (no spinner). The sheet keeps
+  // the cache honest for its own edits; this covers anything that landed
+  // server-side meanwhile — an extraction finishing, a manager's correction.
+  function closeSheet() {
+    setSelectedCall(null);
+    void getCallHistory(closerInfo.closerId, HISTORY_LIMIT).then((result) => {
+      if (result.length > 0) setCalls(result);
+    });
+    if (team.enabled) {
+      void getTeamCallHistory(closerInfo.closerId, HISTORY_LIMIT).then((result) => {
+        if (result.enabled) setTeam(result);
+      });
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
@@ -138,7 +153,7 @@ export function CallHistoryView({ closerInfo, onOpenQuestionnaire }: CallHistory
           <CallDetailSheet
             closerInfo={closerInfo}
             call={selectedCall}
-            onClose={() => setSelectedCall(null)}
+            onClose={closeSheet}
             onCallUpdated={handleCallUpdated}
             readOnly={foreign}
             ownerName={foreign ? (selectedCall as TeamCallItem).closerName : undefined}

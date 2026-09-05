@@ -27,8 +27,9 @@ interface Props {
   countsTowardStats?: boolean;
   /** Came from the backfill at connect time, so it has no outcome recorded. */
   isHistorical?: boolean;
-  /** So the parent can refresh its list once the answer changes the numbers. */
-  onChanged?: () => void;
+  /** The answer, so the parent can update the copy of the call it holds —
+   *  otherwise the sheet, reopened from the cached list, asks again. */
+  onChanged?: (isSalesCall: boolean) => void;
 }
 
 export function CallClassificationBanner({
@@ -57,7 +58,7 @@ export function CallClassificationBanner({
       return;
     }
     setAnswered(isSalesCall);
-    onChanged?.();
+    onChanged?.(isSalesCall);
   };
 
   // Already settled by a person — a single quiet line with a way back.

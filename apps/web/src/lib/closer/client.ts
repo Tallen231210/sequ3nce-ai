@@ -1439,6 +1439,8 @@ export interface CallAnalysis {
 
 // Call history
 export interface CallHistoryItem {
+  /** "completed" | "no_show" | "unclassified" — the server sends it; the sheet mirrors classification into it. */
+  status?: string;
   _id: string;
   prospectName: string;
   duration: number;
