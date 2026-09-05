@@ -21,6 +21,24 @@ type LeadAttribution = {
 function tagSafe(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
+// Ad URLs are inconsistent (utm_source=fb vs facebook, ig vs instagram).
+// Tags get canonical values so one smart list catches them all; the custom
+// FIELDS keep the raw value for fidelity.
+const SOURCE_ALIASES: Record<string, string> = {
+  fb: "facebook", "facebook.com": "facebook", meta: "facebook", fbig: "facebook",
+  ig: "instagram", insta: "instagram", "instagram.com": "instagram",
+  yt: "youtube", "youtube.com": "youtube",
+  adwords: "google", "google.com": "google", gads: "google",
+  tt: "tiktok", "tiktok.com": "tiktok",
+  li: "linkedin", "linkedin.com": "linkedin",
+};
+const MEDIUM_ALIASES: Record<string, string> = {
+  "paid-social": "paid", paidsocial: "paid", "paid-social-media": "paid",
+  ppc: "cpc", "paid-search": "cpc",
+  social: "organic-social",
+};
+function canonicalSource(v: string): string { const k = tagSafe(v); return SOURCE_ALIASES[k] ?? k; }
+function canonicalMedium(v: string): string { const k = tagSafe(v); return MEDIUM_ALIASES[k] ?? k; }
 function utmTags(lead: { attribution?: LeadAttribution | null }): string[] {
   const a = lead.attribution;
   if (!a) return [];
@@ -28,8 +46,8 @@ function utmTags(lead: { attribution?: LeadAttribution | null }): string[] {
   // sit apart from the recruiting tags and never duplicate on GHL's
   // lowercase-on-write.
   const tags: string[] = [];
-  if (a.utm_source) tags.push(`utm-src-${tagSafe(a.utm_source)}`);
-  if (a.utm_medium) tags.push(`utm-med-${tagSafe(a.utm_medium)}`);
+  if (a.utm_source) tags.push(`utm-src-${canonicalSource(a.utm_source)}`);
+  if (a.utm_medium) tags.push(`utm-med-${canonicalMedium(a.utm_medium)}`);
   if (a.utm_campaign) tags.push(`utm-camp-${tagSafe(a.utm_campaign)}`);
   return tags.filter((t) => !t.endsWith("-"));
 }
@@ -51,7 +69,7 @@ function utmCustomFields(lead: { attribution?: (LeadAttribution & { landing_page
     ["contact.utm_term", a.utm_term],
     ["contact.google_click_id", a.gclid], // GHL rejected "gclid" as a field name (Pedro)
     ["contact.fbclid", a.fbclid],
-    ["contact.landing_page", a.landing_page],
+    ["contact.utm_landing_page", a.landing_page], // NOT landing_page — that key is the lead's own website (Pedro)
     ["contact.first_touch", a.landed_at],
   ];
   return pairs
@@ -188,6 +206,11 @@ export const syncLeadToGHL = action({
       source: ghlSourceLabel(lead),
     };
     if (e164) upsertBody.phone = e164;
+    // Lead's own timezone from the browser at opt-in → GHL send windows can
+    // run in the CONTACT's zone instead of the account's (Pedro audit #4).
+    if (typeof (lead as { timezone?: string }).timezone === "string" && /^[A-Za-z_]+\/[A-Za-z_\/+-]+$/.test((lead as { timezone?: string }).timezone as string)) {
+      upsertBody.timezone = (lead as { timezone?: string }).timezone;
+    }
     const customFields = utmCustomFields(lead);
     if (customFields.length) upsertBody.customFields = customFields;
     if (lead.firstName) upsertBody.firstName = lead.firstName;

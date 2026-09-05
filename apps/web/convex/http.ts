@@ -10045,7 +10045,8 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { email, phone, firstName, lastName, source, refParam, attribution: rawAttr } = body ?? {};
+      const { email, phone, firstName, lastName, source, refParam, attribution: rawAttr, timezone: rawTz } = body ?? {};
+      const timezone = typeof rawTz === "string" && /^[A-Za-z_]+\/[A-Za-z_\/+-]+$/.test(rawTz) ? rawTz.slice(0, 64) : undefined;
       // First-touch attribution from the landing cookie — strings only, capped.
       const ATTR_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid", "fbclid", "landed_at", "landing_page"] as const;
       let attribution: Record<string, string> | undefined;
@@ -10081,6 +10082,7 @@ http.route({
         source: typeof source === "string" ? source : undefined,
         refParam: typeof refParam === "string" ? refParam : undefined,
         ...(attribution ? { attribution } : {}),
+        ...(timezone ? { timezone } : {}),
       });
 
       return b2cJsonResponse({ id }, 200, true);

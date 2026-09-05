@@ -234,6 +234,7 @@ function OptInInner() {
           phone: fields.phone,
           source: `start-funnel-${variant ?? "a"}`,
           attribution: readAttribution() ?? undefined,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
       });
       if (!res.ok) {

@@ -2895,6 +2895,7 @@ export default defineSchema({
       landed_at: v.optional(v.string()),
       landing_page: v.optional(v.string()),
     })),
+    timezone: v.optional(v.string()),   // IANA zone from the browser at opt-in (GHL send windows)
     createdAt: v.number(),
     updatedAt: v.number(),
     // GHL (GoHighLevel) sync state — set by the b2cGhl.syncLeadToGHL action.

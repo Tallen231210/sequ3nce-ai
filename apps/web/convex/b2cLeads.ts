@@ -30,6 +30,7 @@ export const saveLead = mutation({
       landed_at: v.optional(v.string()),
       landing_page: v.optional(v.string()),
     })),
+    timezone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const email = args.email.trim().toLowerCase();
@@ -60,6 +61,7 @@ export const saveLead = mutation({
       await ctx.db.patch(existing._id, {
         phone,
         ...(!existing.attribution && args.attribution ? { attribution: args.attribution } : {}),
+        ...(args.timezone ? { timezone: args.timezone } : {}),
         firstName: firstName || existing.firstName,
         lastName: lastName || existing.lastName,
         source: args.source ?? existing.source,
@@ -72,6 +74,7 @@ export const saveLead = mutation({
       leadId = await ctx.db.insert("b2cLeads", {
         email,
         phone,
+        ...(args.timezone ? { timezone: args.timezone } : {}),
         ...(args.attribution ? { attribution: args.attribution } : {}),
         firstName,
         lastName,
