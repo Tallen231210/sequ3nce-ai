@@ -19,7 +19,7 @@ type LeadAttribution = {
   utm_content?: string; utm_term?: string; gclid?: string; fbclid?: string;
 };
 function tagSafe(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return value.toLowerCase().replace(/[^a-z0-9.-]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
 // Ad URLs are inconsistent (utm_source=fb vs facebook, ig vs instagram).
 // Tags get canonical values so one smart list catches them all; the custom
