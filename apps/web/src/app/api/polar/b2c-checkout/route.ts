@@ -29,8 +29,10 @@ export async function POST(req: NextRequest) {
   let fbpRaw: unknown;
   let fbcRaw: unknown;
   let codeRaw: unknown;
+  let agreementAccepted: unknown;
+  let agreementText: unknown;
   try {
-    ({ plan, fbp: fbpRaw, fbc: fbcRaw, code: codeRaw } = await req.json());
+    ({ plan, fbp: fbpRaw, fbc: fbcRaw, code: codeRaw, agreementAccepted, agreementText } = await req.json());
   } catch {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
@@ -109,6 +111,29 @@ export async function POST(req: NextRequest) {
       for (const key of ATTRIBUTION_KEYS) {
         const v = attribution[key];
         if (v) metadata[key] = v.slice(0, 200);
+      }
+    }
+
+    // $150/mo commitment agreement (2026-09-06): the /personal/commit page sends
+    // agreementAccepted=true + the exact terms text. Record it and stamp the id
+    // onto the order metadata for chargeback evidence. Monthly only.
+    if (plan === "monthly" && agreementAccepted === true && typeof agreementText === "string" && agreementText.trim()) {
+      try {
+        const agRes = await fetch(`${CONVEX_SITE_URL}/b2c/monthly-agreement`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            termsText: agreementText,
+            ipAddress: clientIp || undefined,
+            userAgent: userAgent || undefined,
+            landingUrl: referer || undefined,
+          }),
+        });
+        const ag = (await agRes.json()) as { agreementId?: string };
+        if (ag.agreementId) metadata.monthly_agreement_id = ag.agreementId;
+      } catch {
+        // Recording failed — do NOT block the sale, but leave a breadcrumb.
+        metadata.monthly_agreement_error = "record_failed";
       }
     }
 

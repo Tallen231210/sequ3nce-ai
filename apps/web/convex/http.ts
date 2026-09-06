@@ -12464,6 +12464,32 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// Record a $150/mo commitment agreement (the /personal/commit checkbox).
+// Returns the agreementId, which the checkout route stamps onto Polar metadata.
+http.route({
+  path: "/b2c/monthly-agreement",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (typeof body?.termsText !== "string" || !body.termsText.trim()) {
+        return b2cJsonResponse({ error: "termsText required" }, 400, true);
+      }
+      const result = await ctx.runMutation(internal.b2cMonthlyAgreements.recordMonthlyAgreement, {
+        termsText: body.termsText,
+        ipAddress: typeof body.ipAddress === "string" ? body.ipAddress : undefined,
+        userAgent: typeof body.userAgent === "string" ? body.userAgent : undefined,
+        landingUrl: typeof body.landingUrl === "string" ? body.landingUrl : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400, true);
+    }
+  }),
+});
+http.route({ path: "/b2c/monthly-agreement", method: "OPTIONS", handler: b2cCorsPreflightHandler("POST, OPTIONS") });
+
 // App-version telemetry from the desktop app (login + session restore).
 http.route({
   path: "/b2c/app-version",

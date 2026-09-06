@@ -2787,6 +2787,17 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_code", ["code"]),
 
+  // $150/mo commitment agreements (2026-09-06): the checkbox a prospect ticks
+  // on /personal/commit agreeing to a 3-month minimum. The id is stamped on the
+  // Polar order metadata → chargeback evidence. See b2cMonthlyAgreements.ts.
+  b2cMonthlyAgreements: defineTable({
+    termsText: v.string(),
+    ipAddress: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    landingUrl: v.optional(v.string()),
+    acceptedAt: v.number(),
+  }),
+
   // Remote feature flags for the Personal app — flip features in shipped
   // builds without a release. Modes: "off" | "internal" (founders + test
   // accounts) | "all". Missing row = off (fail closed).

@@ -78,6 +78,12 @@ export default function PersonalCheckoutPage() {
   // /personal/checkout?code=XXXX to a lead they could not close. The server
   // re-validates on purchase; this preview is the honest "$0 today" framing.
   const [trial, setTrial] = useState<{ code: string; trialDays: number } | null>(null);
+
+  // The $150/mo plan is hidden by default (Tyler 2026-09-06: reps push the
+  // three commitment plans; monthly is a last resort via /personal/commit or
+  // the trial link). It reappears only when a valid trial code is active, so
+  // the ?code= trial flow still works.
+  const visiblePlans = trial ? PLANS : PLANS.filter((p) => p.key !== "monthly");
   useEffect(() => { captureFirstTouch(); }, []);
   // The promo-code field is deliberately generic furniture: a collapsed
   // "Have a promo code?" link like every checkout has. It never mentions
@@ -214,8 +220,8 @@ export default function PersonalCheckoutPage() {
           </p>
         )}
 
-        <div className="mt-8 grid gap-4 md:grid-cols-4">
-          {PLANS.map((p) => (
+        <div className={`mt-8 grid gap-4 ${visiblePlans.length === 4 ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+          {visiblePlans.map((p) => (
             <div
               key={p.key}
               className={
