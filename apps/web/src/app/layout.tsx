@@ -8,7 +8,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Sequ3nce.ai - Sales Call Intelligence",
-  description: "AI-powered sales call intelligence for high-ticket sales teams",
+  description: "AI-powered sales call intelligence for online sales teams",
 };
 
 // Force dynamic rendering so Next.js doesn't try to prerender pages at build time.

@@ -61,7 +61,7 @@ export const SLIDES: Slide[] = [
         <div className="text-4xl md:text-5xl font-bold tracking-tight text-white leading-[1.05]">
           The operating system
           <br />
-          for high-ticket closers.
+          for closers.
         </div>
       </div>
     ),
@@ -205,11 +205,10 @@ export const SLIDES: Slide[] = [
   // 11 — Sequ3nce pricing
   {
     kicker: "Membership",
-    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Four ways in. <span className="text-amber-300">One obvious one.</span></h1>,
+    title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">Three ways in. <span className="text-amber-300">One obvious one.</span></h1>,
     body: (
-      <div className="grid grid-cols-4 gap-4 w-full max-w-5xl items-stretch">
+      <div className="grid grid-cols-3 gap-4 w-full max-w-5xl items-stretch">
         {[
-          { label: "Monthly", per: "$150", charged: "Billed monthly", note: null },
           { label: "3 Months", per: "$133", charged: "Billed $400 / 3 mo", note: null },
           { label: "6 Months", per: "$100", charged: "Billed $600 / 6 mo", note: "Save 33%" },
         ].map((pl) => (
@@ -425,12 +424,12 @@ export const SLIDES: Slide[] = [
       <div className="grid grid-cols-2 gap-6 w-full max-w-4xl items-stretch">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-7 flex flex-col">
           <div className="text-zinc-400 text-[12px] font-bold uppercase tracking-[0.2em] mb-2">Path A — Starter</div>
-          <div className="text-white font-bold text-xl mb-4">Dip your toes in.</div>
+          <div className="text-white font-bold text-xl mb-4">Ease in on a shorter term.</div>
           <div className="space-y-2 text-[13px] text-zinc-300">
-            <div>Sequ3nce monthly — $150/mo</div>
-            <div>Churp monthly — $24.99/mo</div>
+            <div>Sequ3nce &mdash; $133/mo &middot; 3-month</div>
+            <div>Churp &mdash; $23.33/mo &middot; 3-month</div>
           </div>
-          <p className="text-zinc-500 text-[12px] mt-auto pt-5">Full platform, full tool. Cancel anytime.</p>
+          <p className="text-zinc-500 text-[12px] mt-auto pt-5">Full platform, full tool. Step up to yearly anytime.</p>
         </div>
         <div className="rounded-2xl border-2 border-amber-400/70 bg-amber-400/[0.07] p-7 flex flex-col relative">
           <span className="absolute -top-3 left-6 bg-amber-400 text-zinc-950 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">The move</span>
@@ -450,3 +449,83 @@ export const SLIDES: Slide[] = [
     wide: true,
   },
 ];
+
+// ============================================================================
+// Two-track opening sections.
+//
+// A rep already knows the prospect's box by the time the deck goes up, so each
+// track is a SEPARATE URL — /pitch/expno (no experience, "break in") and
+// /pitch/expyes (experienced, "fast track"). Each opens with a track headline
+// and a three-move framing, then flows into the shared body (SLIDES minus its
+// cover). Copy + numbers are the co-founder's Notion draft; treat the outcome
+// figures ($4–8k, $500k, 10–15) as placeholders until he signs off.
+// ============================================================================
+
+const trackHeadline = (title: React.ReactNode, sub: string): Slide => ({
+  kicker: "Your path",
+  title: (
+    <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-center leading-[1.05]">{title}</h1>
+  ),
+  body: (
+    <p className="text-zinc-300 text-xl md:text-2xl leading-relaxed max-w-[44ch] text-center">{sub}</p>
+  ),
+  wide: true,
+});
+
+const trackPillars = (
+  kicker: string,
+  title: React.ReactNode,
+  pillars: { n: string; name: string; lead: string }[],
+): Slide => ({
+  kicker,
+  title: <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center">{title}</h1>,
+  body: (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-5xl items-stretch">
+      {pillars.map((p) => (
+        <div key={p.n} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col">
+          <div className="text-amber-300 text-[12px] font-black tracking-[0.25em] mb-3">{p.n}</div>
+          <div className="text-white font-bold text-[18px] mb-2">{p.name}</div>
+          <p className="text-zinc-400 text-[13.5px] leading-relaxed">{p.lead}</p>
+        </div>
+      ))}
+    </div>
+  ),
+  wide: true,
+});
+
+// Track 1 — no experience: break in.
+const EXPNO_HEADLINE = trackHeadline(
+  <>From nothing to your <span className="text-amber-300">first role in six weeks.</span></>,
+  "SDR, part-time closer, or account manager — $4–8k a month, following the process.",
+);
+const EXPNO_PILLARS = trackPillars(
+  "How you break in",
+  <>Three moves. <span className="text-amber-300">That&apos;s the whole game.</span></>,
+  [
+    { n: "01", name: "Practice", lead: "Roleplay and drill inside the app until you sound like a closer, not a beginner. Every rep filmed and reviewed." },
+    { n: "02", name: "Scoring", lead: "Your calls scored automatically, so you can prove you're ready before anyone hires you." },
+    { n: "03", name: "Placement", lead: "When your numbers say you're ready, the job board and our team put you in front of real seats." },
+  ],
+);
+
+// Track 2 — experienced: fast track.
+const EXPYES_HEADLINE = trackHeadline(
+  <>Already collected $500k? <span className="text-amber-300">Here&apos;s the ten-to-fifteen path.</span></>,
+  "You don't need to get better at selling. You need a better room.",
+);
+const EXPYES_PILLARS = trackPillars(
+  "How you level up",
+  <>The move isn&apos;t more effort. <span className="text-amber-300">It&apos;s a better room.</span></>,
+  [
+    { n: "01", name: "Network", lead: "The private board sends $10k–$30k/mo seats to you directly — companies that come to us for proven closers." },
+    { n: "02", name: "Skill", lead: "8-figure coaches review your real calls. At your level, one small tweak is worth six figures." },
+    { n: "03", name: "Profile", lead: "Gold-verified numbers do the talking. Your rep card gets the intro — no cold applications." },
+  ],
+);
+
+// The shared cover, then the shared body (everything after the cover).
+const COVER = SLIDES[0];
+const BODY_SLIDES = SLIDES.slice(1);
+
+export const SLIDES_EXPNO: Slide[] = [COVER, EXPNO_HEADLINE, EXPNO_PILLARS, ...BODY_SLIDES];
+export const SLIDES_EXPYES: Slide[] = [COVER, EXPYES_HEADLINE, EXPYES_PILLARS, ...BODY_SLIDES];
