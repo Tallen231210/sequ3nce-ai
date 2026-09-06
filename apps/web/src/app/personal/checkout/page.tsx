@@ -85,6 +85,25 @@ export default function PersonalCheckoutPage() {
   // the ?code= trial flow still works.
   const visiblePlans = trial ? PLANS : PLANS.filter((p) => p.key !== "monthly");
   useEffect(() => { captureFirstTouch(); }, []);
+
+  // Direct-to-plan deep link (2026-09-06): a closer can send
+  // /personal/checkout?plan=yearly to drop the prospect straight into one
+  // plan's checkout instead of showing the grid. ?plan=monthly routes to the
+  // commit agreement gate. Unknown/absent param = the normal page.
+  const [autoStarting, setAutoStarting] = useState(false);
+  useEffect(() => {
+    const planParam = new URLSearchParams(window.location.search).get("plan");
+    if (!planParam) return;
+    if (planParam === "monthly") {
+      window.location.replace("/personal/commit");
+      return;
+    }
+    if (["3month", "6month", "yearly"].includes(planParam)) {
+      setAutoStarting(true);
+      void buy(planParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // The promo-code field is deliberately generic furniture: a collapsed
   // "Have a promo code?" link like every checkout has. It never mentions
   // calls, reps, trials, or "free" until a valid code is actually applied.
@@ -172,6 +191,16 @@ export default function PersonalCheckoutPage() {
       setError("Something went wrong — try again.");
     }
     setBusyPlan(null);
+  }
+
+  if (autoStarting) {
+    return (
+      <div className="min-h-screen bg-white text-zinc-900 flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+        <p className="text-sm text-zinc-500">Taking you to secure checkout…</p>
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+      </div>
+    );
   }
 
   return (
