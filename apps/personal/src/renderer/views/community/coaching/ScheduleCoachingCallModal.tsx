@@ -1,33 +1,50 @@
 import React, { useMemo, useState } from 'react';
-import { createCoachingCall } from '../../../convex';
+import { createCoachingCall, rescheduleCoachingCall } from '../../../convex';
 
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
+
+interface EditableCall {
+  _id: string;
+  title: string;
+  description?: string;
+  scheduledStartTime: number;
+  scheduledDurationMin: number;
+}
 
 interface ScheduleCoachingCallModalProps {
   coachUserId: string;
   onClose: () => void;
   onSaved: () => void;
+  /** When provided, the modal edits/reschedules this call instead of creating one. */
+  editCall?: EditableCall;
 }
 
 // Build an ISO date string suitable for <input type="datetime-local">. The
 // input stores local time without timezone info; we convert to UTC ms at save.
-function defaultStartTimeLocalISO(): string {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() + 60); // default to 1 hour from now
+function toLocalISO(ms: number): string {
+  const d = new Date(ms);
   d.setSeconds(0, 0);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultStartTimeLocalISO(): string {
+  return toLocalISO(Date.now() + 60 * 60_000); // 1 hour from now
 }
 
 export function ScheduleCoachingCallModal({
   coachUserId,
   onClose,
   onSaved,
+  editCall,
 }: ScheduleCoachingCallModalProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [startLocal, setStartLocal] = useState(defaultStartTimeLocalISO());
-  const [duration, setDuration] = useState<number>(60);
+  const isEdit = !!editCall;
+  const [title, setTitle] = useState(editCall?.title ?? '');
+  const [description, setDescription] = useState(editCall?.description ?? '');
+  const [startLocal, setStartLocal] = useState(
+    editCall ? toLocalISO(editCall.scheduledStartTime) : defaultStartTimeLocalISO()
+  );
+  const [duration, setDuration] = useState<number>(editCall?.scheduledDurationMin ?? 60);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,6 +66,21 @@ export function ScheduleCoachingCallModal({
     if (!canSubmit || scheduledStartMs === null) return;
     setSubmitting(true);
     setError(null);
+    if (isEdit && editCall) {
+      const res = await rescheduleCoachingCall(editCall._id, coachUserId, {
+        scheduledStartTime: scheduledStartMs,
+        scheduledDurationMin: duration,
+        title: title.trim(),
+        description: description.trim(),
+      });
+      setSubmitting(false);
+      if (res.error || !res.success) {
+        setError(res.error || 'Failed to update call');
+        return;
+      }
+      onSaved();
+      return;
+    }
     const res = await createCoachingCall(coachUserId, {
       title: title.trim(),
       description: description.trim() || undefined,
@@ -74,14 +106,15 @@ export function ScheduleCoachingCallModal({
       >
         <div className="px-5 pt-5 pb-3 border-b border-gray-100 dark:border-zinc-800">
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            New coaching call
+            {isEdit ? 'Edit coaching call' : 'New coaching call'}
           </p>
           <h2 className="text-base font-bold text-gray-900 dark:text-white mt-1">
-            Schedule a coaching session
+            {isEdit ? 'Update your coaching session' : 'Schedule a coaching session'}
           </h2>
           <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-snug">
-            All active subscribers will see this on their Schedule with a Join
-            button. The session auto-adds to everyone's calendar.
+            {isEdit
+              ? "Changes update everyone's calendar automatically — the new time replaces the old one."
+              : "All active subscribers will see this on their Schedule with a Join button. The session auto-adds to everyone's calendar."}
           </p>
         </div>
 
@@ -169,7 +202,7 @@ export function ScheduleCoachingCallModal({
             disabled={!canSubmit}
             className="px-4 py-2 text-xs font-semibold bg-black text-white dark:bg-white dark:text-black rounded-lg hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Scheduling…' : 'Schedule call'}
+            {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Schedule call'}
           </button>
         </div>
       </div>

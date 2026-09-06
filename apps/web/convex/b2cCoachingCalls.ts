@@ -322,6 +322,128 @@ export const cancelCoachingCall = mutation({
   },
 });
 
+export const rescheduleCoachingCall = mutation({
+  args: {
+    callId: v.id("b2cCoachingCalls"),
+    callerId: v.id("b2cUsers"),
+    scheduledStartTime: v.number(),
+    scheduledDurationMin: v.optional(v.number()),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call) throw new Error("Call not found");
+    // Only a call that hasn't started can be moved. Live/ended/cancelled are
+    // out — you can't reschedule something already happening or done.
+    if (call.status !== "scheduled") {
+      throw new Error(`Cannot reschedule a call that is ${call.status}`);
+    }
+    const caller = await ctx.db.get(args.callerId);
+    const isOwner = call.coachUserId === args.callerId;
+    if (!isOwner && !isFounderOrAdmin(caller)) {
+      throw new Error("Only the coach or a founder can reschedule this call");
+    }
+
+    if (args.scheduledStartTime <= Date.now() - 60_000) {
+      throw new Error("New start time must be in the future");
+    }
+    const patch: Record<string, unknown> = {
+      scheduledStartTime: args.scheduledStartTime,
+      updatedAt: Date.now(),
+    };
+    if (args.scheduledDurationMin !== undefined) {
+      if (!VALID_DURATIONS.has(args.scheduledDurationMin)) {
+        throw new Error("Duration must be 15, 30, 45, 60, 90, or 120 minutes");
+      }
+      patch.scheduledDurationMin = args.scheduledDurationMin;
+    }
+    if (args.title !== undefined) {
+      const title = args.title.trim();
+      if (!title) throw new Error("Title is required");
+      if (title.length > MAX_TITLE_LENGTH) {
+        throw new Error(`Title must be ${MAX_TITLE_LENGTH} characters or less`);
+      }
+      patch.title = title;
+    }
+    if (args.description !== undefined) {
+      const description = args.description.trim();
+      if (description.length > MAX_DESCRIPTION_LENGTH) {
+        throw new Error(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`);
+      }
+      patch.description = description || undefined;
+    }
+
+    await ctx.db.patch(args.callId, patch);
+
+    // Every user got a fanned-out calendar event at the OLD time — they must
+    // all move too, or the Schedule tab lies. Paginated like the fan-out.
+    await ctx.scheduler.runAfter(0, api.b2cCoachingCalls.resyncCoachingCallEvents, {
+      callId: args.callId,
+      cursor: null,
+    });
+
+    return { success: true };
+  },
+});
+
+// Update the fanned-out calendar events after a reschedule/edit. Reads the
+// (already-patched) call row and rewrites each event's time + copy. Paginated
+// by the by_coaching_call index so a large fan-out can't blow the budget.
+export const resyncCoachingCallEvents = mutation({
+  args: {
+    callId: v.id("b2cCoachingCalls"),
+    cursor: v.union(v.null(), v.number()),
+  },
+  handler: async (ctx, args) => {
+    const call = await ctx.db.get(args.callId);
+    if (!call || call.status === "cancelled") return { done: true as const };
+
+    const events = await ctx.db
+      .query("calendarEvents")
+      .withIndex("by_coaching_call", (q) => q.eq("coachingCallId", args.callId))
+      .collect();
+    events.sort((a, b) => a._creationTime - b._creationTime);
+
+    const startIdx = args.cursor == null
+      ? 0
+      : events.findIndex((e) => e._creationTime > args.cursor!);
+    const from = startIdx < 0 ? events.length : startIdx;
+    const slice = events.slice(from, from + FAN_OUT_BATCH_SIZE);
+
+    const startTime = call.scheduledStartTime;
+    const endTime = startTime + call.scheduledDurationMin * 60_000;
+    const coach = await ctx.db.get(call.coachUserId);
+    const coachName = (coach as { name?: string } | null)?.name ?? "Coach";
+    const eventTitle = `Sequ3nce Coaching: ${call.title}`;
+    const eventDescription = call.description
+      ? `Hosted by Coach ${coachName}
+
+${call.description}`
+      : `Hosted by Coach ${coachName}`;
+    const now = Date.now();
+
+    for (const e of slice) {
+      await ctx.db.patch(e._id, {
+        startTime,
+        endTime,
+        title: eventTitle,
+        description: eventDescription,
+        fetchedAt: now,
+      });
+    }
+
+    if (slice.length === FAN_OUT_BATCH_SIZE) {
+      await ctx.scheduler.runAfter(0, api.b2cCoachingCalls.resyncCoachingCallEvents, {
+        callId: args.callId,
+        cursor: slice[slice.length - 1]._creationTime,
+      });
+      return { done: false as const, processed: slice.length };
+    }
+    return { done: true as const, processed: slice.length };
+  },
+});
+
 // ==================== Internal DB helpers (non-node runtime) ====================
 
 export const _patchCallLive = internalMutation({

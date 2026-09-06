@@ -36,6 +36,7 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
   const [calls, setCalls] = useState<CoachingCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [editCall, setEditCall] = useState<CoachingCall | null>(null);
   const [replayCall, setReplayCall] = useState<CoachingCall | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
@@ -246,6 +247,7 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
                       currentUserId={userId}
                       onStart={handleStart}
                       onCancel={handleCancel}
+                      onReschedule={setEditCall}
                     />
                   ))}
                 </div>
@@ -281,12 +283,14 @@ export function CoachingView({ closerInfo }: CoachingViewProps) {
       </div>
 
       {/* Modals */}
-      {showScheduleModal && (
+      {(showScheduleModal || editCall) && (
         <ScheduleCoachingCallModal
           coachUserId={userId}
-          onClose={() => setShowScheduleModal(false)}
+          editCall={editCall ?? undefined}
+          onClose={() => { setShowScheduleModal(false); setEditCall(null); }}
           onSaved={() => {
             setShowScheduleModal(false);
+            setEditCall(null);
             void load();
           }}
         />

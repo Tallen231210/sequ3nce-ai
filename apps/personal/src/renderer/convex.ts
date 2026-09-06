@@ -5221,6 +5221,31 @@ export async function createCoachingCall(
   }
 }
 
+export async function rescheduleCoachingCall(
+  callId: string,
+  callerId: string,
+  payload: {
+    scheduledStartTime: number;
+    scheduledDurationMin?: number;
+    title?: string;
+    description?: string;
+  }
+): Promise<{ success?: boolean; error?: string }> {
+  try {
+    const res = await convexFetch(`${CONVEX_SITE_URL}/b2c/coaching-calls/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, callerId, ...payload }),
+    });
+    return await res.json();
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { feature: "rescheduleCoachingCall", integration: "convex" },
+    });
+    return { error: 'Network error' };
+  }
+}
+
 export async function cancelCoachingCall(
   callId: string,
   callerId: string,

@@ -9,6 +9,7 @@ interface CoachingCallCardProps {
   onStart?: (call: CoachingCall) => void;
   onEnd?: (call: CoachingCall) => void;
   onCancel?: (call: CoachingCall) => void;
+  onReschedule?: (call: CoachingCall) => void;
   onWatchReplay?: (call: CoachingCall) => void;
   onDeleteRecording?: (call: CoachingCall) => void;
 }
@@ -57,6 +58,7 @@ export function CoachingCallCard({
   onStart,
   onEnd,
   onCancel,
+  onReschedule,
   onWatchReplay,
   onDeleteRecording,
 }: CoachingCallCardProps) {
@@ -139,6 +141,12 @@ export function CoachingCallCard({
                   className="px-4 py-2 text-[13px] font-semibold bg-black text-white dark:bg-white dark:text-black rounded-lg hover:opacity-80 transition-opacity"
                 >
                   Start call
+                </button>
+                <button
+                  onClick={() => onReschedule?.(call)}
+                  className="px-2 py-2 text-[11px] font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  Edit
                 </button>
                 <button
                   onClick={() => onCancel?.(call)}

@@ -11053,6 +11053,38 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+// POST /b2c/coaching-calls/reschedule — coach/founder moves a scheduled call
+http.route({
+  path: "/b2c/coaching-calls/reschedule",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const body = await request.json();
+      if (!body.callId || !body.callerId || typeof body.scheduledStartTime !== "number") {
+        return b2cJsonResponse({ error: "callId, callerId and scheduledStartTime required" }, 400);
+      }
+      const result = await ctx.runMutation(api.b2cCoachingCalls.rescheduleCoachingCall, {
+        callId: body.callId as Id<"b2cCoachingCalls">,
+        callerId: body.callerId as Id<"b2cUsers">,
+        scheduledStartTime: body.scheduledStartTime,
+        scheduledDurationMin: typeof body.scheduledDurationMin === "number" ? body.scheduledDurationMin : undefined,
+        title: typeof body.title === "string" ? body.title : undefined,
+        description: typeof body.description === "string" ? body.description : undefined,
+      });
+      return b2cJsonResponse(result, 200, true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed";
+      return b2cJsonResponse({ error: msg }, 400);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/coaching-calls/reschedule",
+  method: "OPTIONS",
+  handler: b2cCorsPreflightHandler("POST, OPTIONS"),
+});
+
 // POST /b2c/coaching-calls/start — coach starts the call
 http.route({
   path: "/b2c/coaching-calls/start",
