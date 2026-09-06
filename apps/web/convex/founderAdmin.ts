@@ -377,3 +377,33 @@ export const getCloserStatsForTeam = query({
     return rows;
   },
 });
+
+/**
+ * Re-point a manager login at a different team (founder CLI only).
+ *
+ * A manager login belongs to exactly one team, and the invite flow refuses
+ * an email that already has one — so a founder whose every address is
+ * already a manager somewhere can't be invited to a customer's team. When
+ * the old team is dead (ManyJobs, disabled 2026-09-02), moving the login is
+ * the honest fix: no throwaway email, no untested sign-up hop.
+ */
+export const moveManagerToTeam = internalMutation({
+  args: { clerkId: v.string(), teamId: v.id("teams") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+    if (!user) throw new Error("No manager login with that clerkId");
+    const from = user.teamId ? await ctx.db.get(user.teamId as any) : null;
+    const to = await ctx.db.get(args.teamId);
+    if (!to) throw new Error("Target team not found");
+    await ctx.db.patch(user._id, { teamId: args.teamId });
+    return {
+      email: user.email,
+      role: user.role,
+      from: (from as any)?.name ?? "(none)",
+      to: (to as any).name,
+    };
+  },
+});
