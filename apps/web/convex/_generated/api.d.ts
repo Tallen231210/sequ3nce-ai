@@ -46,6 +46,7 @@ import type * as b2cDispositions from "../b2cDispositions.js";
 import type * as b2cEmailVerification from "../b2cEmailVerification.js";
 import type * as b2cFeatureFlags from "../b2cFeatureFlags.js";
 import type * as b2cFeatureRequests from "../b2cFeatureRequests.js";
+import type * as b2cFreeHireProxy from "../b2cFreeHireProxy.js";
 import type * as b2cFriendships from "../b2cFriendships.js";
 import type * as b2cGhl from "../b2cGhl.js";
 import type * as b2cGhlInternal from "../b2cGhlInternal.js";
@@ -302,6 +303,7 @@ declare const fullApi: ApiFromModules<{
   b2cEmailVerification: typeof b2cEmailVerification;
   b2cFeatureFlags: typeof b2cFeatureFlags;
   b2cFeatureRequests: typeof b2cFeatureRequests;
+  b2cFreeHireProxy: typeof b2cFreeHireProxy;
   b2cFriendships: typeof b2cFriendships;
   b2cGhl: typeof b2cGhl;
   b2cGhlInternal: typeof b2cGhlInternal;

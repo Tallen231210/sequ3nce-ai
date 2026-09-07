@@ -11,6 +11,7 @@ import WebSocket from 'ws';
 import * as os from 'os';
 import { initializeStream, shutdownStream } from './stream';
 import { getStreamOverlay } from './stream/overlay-window';
+import { consolidateDuplicateJobs } from './freehire-dedupe';
 
 // ============================================
 // macOS Version Detection (MUST be before app.ready)
@@ -594,6 +595,8 @@ type FreeHireUnifiedJob = {
   descriptionBlocks: FreeHireDescriptionBlock[];
   applyUrl: string;
   source: string;
+  sources: string[];
+  duplicateIds: string[];
   workMode: 'remote' | 'hybrid' | 'onsite' | 'unknown';
   skills: string[];
   employmentType: string;
@@ -691,8 +694,10 @@ const FREEHIRE_QUERY_BY_LANE: Record<typeof FREEHIRE_LANES[number], string | und
   'high-ticket': 'high ticket',
   leadership: '"sales manager"',
 };
-const SEQU3NCE_LEGACY_JOBS_SITE_URL =
-  process.env.FREEHIRE_DEV_CONVEX_SITE_URL || 'https://ideal-ram-982.convex.site';
+const SEQU3NCE_LEGACY_JOBS_SITE_URL = process.defaultApp
+  && process.env.FREEHIRE_TEST_SEQU3NCE_SITE_URL
+  ? process.env.FREEHIRE_TEST_SEQU3NCE_SITE_URL.replace(/\/+$/, '')
+  : process.env.FREEHIRE_DEV_CONVEX_SITE_URL || 'https://ideal-ram-982.convex.site';
 const LEGACY_JOBS_CACHE_MS = 5 * 60 * 1000;
 const LEGACY_JOBS_CACHE_MAX = 100;
 const legacyJobsCache = new Map<string, { expiresAt: number; jobs: FreeHireUnifiedJob[] }>();
@@ -852,6 +857,8 @@ function mapLegacyPublicJob(job: Record<string, unknown>): FreeHireUnifiedJob | 
     descriptionBlocks: parsedDescription.blocks,
     applyUrl,
     source: text(job.source) || 'Sequ3nce',
+    sources: [text(job.source) || 'Sequ3nce'],
+    duplicateIds: [],
     workMode: job.remote === true ? 'remote' : 'unknown',
     skills: [],
     employmentType: text(job.jobType) || 'Not listed',
@@ -913,6 +920,8 @@ function normalizeLegacyBridgeJob(value: Record<string, unknown>): FreeHireUnifi
     descriptionBlocks: descriptionBlocks.length > 0 ? descriptionBlocks : parseFreeHireDescription(description).blocks,
     applyUrl,
     source: text(value.source) || 'Sequ3nce',
+    sources: [text(value.source) || 'Sequ3nce'],
+    duplicateIds: [],
     workMode,
     skills: Array.isArray(value.skills) ? value.skills.filter((item): item is string => typeof item === 'string') : [],
     employmentType: text(value.employmentType) || 'Not listed',
@@ -983,25 +992,61 @@ async function fetchLegacySourceJobs(rawParams: unknown): Promise<FreeHireUnifie
   }
 }
 
-function normalizedJobIdentity(value: string): string {
-  return normalizeLegacyJobWords(value);
-}
-
-function normalizedJobUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.hash = '';
-    for (const key of [...url.searchParams.keys()]) {
-      if (/^utm_/i.test(key) || /^(ref|source|src|gh_src|trk|tracking)$/i.test(key)) {
-        url.searchParams.delete(key);
-      }
-    }
-    url.searchParams.sort();
-    const pathname = url.pathname.replace(/\/+$/, '') || '/';
-    return `${url.protocol.toLowerCase()}//${url.host.toLowerCase()}${pathname}${url.search}`;
-  } catch {
-    return value.trim().toLowerCase().replace(/\/+$/, '');
-  }
+function mapFreeHireSearchJob(raw: unknown): FreeHireUnifiedJob | null {
+  const job = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+  const enrichment = job.enrichment && typeof job.enrichment === 'object'
+    ? job.enrichment as Record<string, unknown>
+    : {};
+  const realityRaw = job.reality && typeof job.reality === 'object'
+    ? job.reality as Record<string, unknown>
+    : null;
+  const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
+  const strings = (value: unknown): string[] => Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const label = (value: string): string => value
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const id = text(job.public_slug) || `${text(job.source)}-${text(job.external_id)}`;
+  const applyUrl = text(job.url);
+  if (!id || !applyUrl.startsWith('http')) return null;
+  const company = text(job.company) || label(text(job.company_slug)) || 'Company not listed';
+  const companySlug = text(job.company_slug);
+  const parsedDescription = parseFreeHireDescription(job.description);
+  const description = parsedDescription.text;
+  const source = label(text(job.source)) || 'External source';
+  const workMode = text(job.work_mode);
+  return {
+    id,
+    title: text(job.title) || 'Untitled sales role',
+    company,
+    logoUrl: companySlug ? `https://logo.freehire.me/${encodeURIComponent(companySlug)}` : '',
+    location: text(job.location) || strings(job.countries).join(', ') || 'Location not listed',
+    description,
+    descriptionBlocks: parsedDescription.blocks,
+    applyUrl,
+    source,
+    sources: [source],
+    duplicateIds: [],
+    workMode: workMode === 'remote' || workMode === 'hybrid' || workMode === 'onsite' ? workMode : 'unknown',
+    skills: strings(job.skills).slice(0, 12).map(label),
+    employmentType: label(text(enrichment.employment_type) || text(job.employment_type)) || 'Not listed',
+    seniority: label(text(enrichment.seniority) || text(job.seniority)) || 'Not listed',
+    salary: formatFreeHireCompensation(job, enrichment, description),
+    postedAt: text(job.posted_at) || null,
+    discoveredAt: text(job.created_at) || null,
+    lastSeenAt: text(job.last_seen_at) || null,
+    appliedCount: Number(job.applied_count) || 0,
+    domains: strings(enrichment.domains).slice(0, 5).map(label),
+    countries: strings(job.countries),
+    reality: realityRaw ? {
+      classification: label(text(realityRaw.class)) || 'Unknown',
+      ageDays: Number.isFinite(Number(realityRaw.age_days)) ? Number(realityRaw.age_days) : null,
+      repostCount: Number(realityRaw.repost_count) || 0,
+      massPostingCount: Number(realityRaw.mass_posting_count) || 0,
+      fakeFreshness: realityRaw.fake_freshness === true,
+    } : null,
+  };
 }
 
 function mergeLegacySourceJobs(
@@ -1009,41 +1054,55 @@ function mergeLegacySourceJobs(
   legacyJobs: FreeHireUnifiedJob[],
   offset: number,
 ): { jobs: FreeHireUnifiedJob[]; legacyCount: number } {
-  const companyTitles = new Set<string>();
-  const urls = new Set<string>();
-  const uniqueLegacy = legacyJobs.filter((job) => {
-    const companyTitle = `${normalizedJobIdentity(job.company)}::${normalizedJobIdentity(job.title)}`;
-    const url = normalizedJobUrl(job.applyUrl);
-    if (companyTitles.has(companyTitle) || urls.has(url)) return false;
-    companyTitles.add(companyTitle);
-    urls.add(url);
-    return true;
-  });
-  const uniqueFreeHire = freeHireJobs.filter((job) => {
-    const companyTitle = `${normalizedJobIdentity(job.company)}::${normalizedJobIdentity(job.title)}`;
-    return !companyTitles.has(companyTitle) && !urls.has(normalizedJobUrl(job.applyUrl));
-  });
+  const uniqueLegacy = consolidateDuplicateJobs(legacyJobs);
+  const merged = consolidateDuplicateJobs([...uniqueLegacy, ...freeHireJobs], { preserveFirstId: true });
+  const legacyIds = new Set(uniqueLegacy.map((job) => job.id));
+  const uniqueFreeHire = merged.filter((job) => !legacyIds.has(job.id));
   return {
-    jobs: offset === 0 ? [...uniqueLegacy, ...uniqueFreeHire] : uniqueFreeHire,
+    jobs: offset === 0 ? merged : uniqueFreeHire,
     legacyCount: uniqueLegacy.length,
   };
 }
 
 const FREEHIRE_ANALYTICS_CACHE_MS = 5 * 60 * 1000;
 const FREEHIRE_ANALYTICS_CACHE_MAX = 100;
+const FREEHIRE_API_BASE_URL = process.defaultApp
+  && process.env.FREEHIRE_TEST_API_BASE_URL
+  ? process.env.FREEHIRE_TEST_API_BASE_URL.replace(/\/+$/, '')
+  : 'https://freehire.me/api/v1';
 const freeHireAnalyticsCache = new Map<string, { expiresAt: number; payload: Record<string, unknown> }>();
 
-async function fetchFreeHireJSON(path: string, cache = false): Promise<Record<string, unknown>> {
-  const url = `https://freehire.me/api/v1/${path}`;
+async function fetchFreeHireJSON(path: string, cache = false, sessionToken = ''): Promise<Record<string, unknown>> {
+  const url = `${FREEHIRE_API_BASE_URL}/${path}`;
   const cached = cache ? freeHireAnalyticsCache.get(url) : undefined;
   if (cached && cached.expiresAt > Date.now()) return cached.payload;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const request = async (requestUrl: string, headers: Record<string, string>): Promise<Record<string, unknown>> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(requestUrl, { headers, signal: controller.signal });
+      if (!response.ok) throw new Error(`catalogue request returned ${response.status}`);
+      return await response.json() as Record<string, unknown>;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  let payload: Record<string, unknown> | null = null;
+  if (sessionToken) {
+    try {
+      payload = await request(
+        `${SEQU3NCE_LEGACY_JOBS_SITE_URL}/b2c/freehire-proxy?path=${encodeURIComponent(path)}`,
+        { Accept: 'application/json', Authorization: `Bearer ${sessionToken}` },
+      );
+    } catch (error) {
+      console.warn('[Job Board] Backend catalogue proxy unavailable; trying the direct read path.', error);
+    }
+  }
+
   try {
-    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
-    if (!response.ok) throw new Error(`FreeHire returned HTTP ${response.status}.`);
-    const payload = await response.json() as Record<string, unknown>;
+    payload ??= await request(url, { Accept: 'application/json' });
     if (cache) {
       const now = Date.now();
       for (const [key, entry] of freeHireAnalyticsCache) {
@@ -1058,10 +1117,8 @@ async function fetchFreeHireJSON(path: string, cache = false): Promise<Record<st
     }
     return payload;
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('The FreeHire request timed out.');
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+    console.warn('[Job Board] Direct catalogue read unavailable.', error);
+    throw new Error('The job catalogue is temporarily unavailable.');
   }
 }
 
@@ -1125,87 +1182,45 @@ async function freeHireAllowed(): Promise<boolean> {
 const setupIpcHandlers = (): void => {
   console.log('[Main] Setting up IPC handlers...');
 
-  // Development-only bridge to FreeHire's public catalogue. Keeping this in
-  // the main process avoids renderer CORS issues and prevents an arbitrary
-  // proxy from being exposed to the UI. Packaged builds remain on the legacy
-  // Sequ3nce job board and this handler refuses requests outside development.
+  // Fixed catalogue bridge for the Personal job board. Signed-in clients use
+  // Sequ3nce's authenticated, cached backend proxy first; the direct public
+  // read remains a rollout fallback. The renderer cannot choose arbitrary
+  // upstream paths or hosts.
   ipcMain.handle('freehire:search', async (_event, rawParams: unknown) => {
     if (!(await freeHireAllowed())) {
       throw new Error('The FreeHire job feed is not enabled on this build.');
     }
-    const { query: search, limit, offset } = freeHireSearchQuery(rawParams);
+    const params = rawParams && typeof rawParams === 'object'
+      ? rawParams as Record<string, unknown>
+      : {};
+    const sessionToken = typeof params.sessionToken === 'string' ? params.sessionToken.trim() : '';
+    const { limit, offset } = freeHireSearchQuery(params);
     const legacyJobsPromise = fetchLegacySourceJobs(rawParams);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(`https://freehire.me/api/v1/jobs/search?${search.toString()}`, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`FreeHire returned HTTP ${response.status}.`);
-      const payload = await response.json() as Record<string, unknown>;
-      const rawJobs = Array.isArray(payload.data)
-        ? payload.data
-        : Array.isArray(payload.jobs) ? payload.jobs : [];
-      const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
-      const strings = (value: unknown): string[] => Array.isArray(value)
-        ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-        : [];
-      const label = (value: string): string => value
-        .replace(/[-_]+/g, ' ')
-        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+      let cursor = offset;
+      let freeHireTotal = 0;
+      let freeHireJobs: FreeHireUnifiedJob[] = [];
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const remaining = Math.max(1, limit - freeHireJobs.length);
+        const requestLimit = attempt === 0
+          ? Math.min(50, limit + Math.min(4, Math.max(1, Math.ceil(limit / 6))))
+          : Math.min(50, remaining + 2);
+        const { query: search } = freeHireSearchQuery({ ...params, limit: requestLimit, offset: cursor });
+        const payload = await fetchFreeHireJSON(`jobs/search?${search.toString()}`, false, sessionToken);
+        const rawJobs = Array.isArray(payload.data)
+          ? payload.data
+          : Array.isArray(payload.jobs) ? payload.jobs : [];
+        const mapped = rawJobs.map(mapFreeHireSearchJob).filter((job): job is FreeHireUnifiedJob => !!job);
+        freeHireJobs = consolidateDuplicateJobs([...freeHireJobs, ...mapped], { preserveFirstId: true });
+        const meta = payload.meta && typeof payload.meta === 'object'
+          ? payload.meta as Record<string, unknown>
+          : payload;
+        freeHireTotal = Number(meta.total) || freeHireTotal || freeHireJobs.length;
+        cursor += rawJobs.length;
+        if (freeHireJobs.length >= limit || rawJobs.length < requestLimit || cursor >= Math.min(freeHireTotal, 10_000)) break;
+      }
 
-      const freeHireJobs: FreeHireUnifiedJob[] = rawJobs.map((raw): FreeHireUnifiedJob => {
-        const job = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
-        const enrichment = job.enrichment && typeof job.enrichment === 'object'
-          ? job.enrichment as Record<string, unknown>
-          : {};
-        const realityRaw = job.reality && typeof job.reality === 'object'
-          ? job.reality as Record<string, unknown>
-          : null;
-        const company = text(job.company) || label(text(job.company_slug)) || 'Company not listed';
-        const companySlug = text(job.company_slug);
-        const parsedDescription = parseFreeHireDescription(job.description);
-        const description = parsedDescription.text;
-        const descriptionBlocks = parsedDescription.blocks;
-        const salary = formatFreeHireCompensation(job, enrichment, description);
-        const workMode = text(job.work_mode);
-        return {
-          id: text(job.public_slug) || `${text(job.source)}-${text(job.external_id)}`,
-          title: text(job.title) || 'Untitled sales role',
-          company,
-          logoUrl: companySlug ? `https://logo.freehire.me/${encodeURIComponent(companySlug)}` : '',
-          location: text(job.location) || strings(job.countries).join(', ') || 'Location not listed',
-          description,
-          descriptionBlocks,
-          applyUrl: text(job.url),
-          source: label(text(job.source)) || 'External source',
-          workMode: workMode === 'remote' || workMode === 'hybrid' || workMode === 'onsite' ? workMode : 'unknown',
-          skills: strings(job.skills).slice(0, 12).map(label),
-          employmentType: label(text(enrichment.employment_type) || text(job.employment_type)) || 'Not listed',
-          seniority: label(text(enrichment.seniority) || text(job.seniority)) || 'Not listed',
-          salary,
-          postedAt: text(job.posted_at) || null,
-          discoveredAt: text(job.created_at) || null,
-          lastSeenAt: text(job.last_seen_at) || null,
-          appliedCount: Number(job.applied_count) || 0,
-          domains: strings(enrichment.domains).slice(0, 5).map(label),
-          countries: strings(job.countries),
-          reality: realityRaw ? {
-            classification: label(text(realityRaw.class)) || 'Unknown',
-            ageDays: Number.isFinite(Number(realityRaw.age_days)) ? Number(realityRaw.age_days) : null,
-            repostCount: Number(realityRaw.repost_count) || 0,
-            massPostingCount: Number(realityRaw.mass_posting_count) || 0,
-            fakeFreshness: realityRaw.fake_freshness === true,
-          } : null,
-        };
-      }).filter((job) => job.id && job.applyUrl);
-
-      const meta = payload.meta && typeof payload.meta === 'object'
-        ? payload.meta as Record<string, unknown>
-        : payload;
-      const freeHireTotal = Number(meta.total) || freeHireJobs.length;
       const legacyJobs = await legacyJobsPromise;
       const merged = mergeLegacySourceJobs(freeHireJobs, legacyJobs, offset);
       return {
@@ -1213,16 +1228,26 @@ const setupIpcHandlers = (): void => {
         total: freeHireTotal + merged.legacyCount,
         limit,
         offset,
-        hasMore: offset + limit < freeHireTotal,
+        nextOffset: cursor,
+        hasMore: cursor < Math.min(freeHireTotal, 10_000),
+        limited: false,
         fetchedAt: new Date().toISOString(),
       };
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('The FreeHire request timed out.');
+    } catch {
+      const legacyJobs = await legacyJobsPromise;
+      if (legacyJobs.length > 0) {
+        return {
+          jobs: offset === 0 ? consolidateDuplicateJobs(legacyJobs) : [],
+          total: Math.max(offset, legacyJobs.length),
+          limit,
+          offset,
+          nextOffset: offset,
+          hasMore: false,
+          limited: true,
+          fetchedAt: new Date().toISOString(),
+        };
       }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+      throw new Error('The job board is temporarily unavailable. Please check back soon.');
     }
   });
 
@@ -1231,15 +1256,17 @@ const setupIpcHandlers = (): void => {
       throw new Error('The FreeHire job feed is not enabled on this build.');
     }
 
-    const current = freeHireSearchQuery(rawParams, { pagination: false }).query;
-    const pastSevenDays = freeHireSearchQuery(rawParams, { pagination: false, postedWithinDays: 7 }).query;
+    const params = freeHireRecord(rawParams);
+    const sessionToken = typeof params.sessionToken === 'string' ? params.sessionToken.trim() : '';
+    const current = freeHireSearchQuery(params, { pagination: false }).query;
+    const pastSevenDays = freeHireSearchQuery(params, { pagination: false, postedWithinDays: 7 }).query;
     const requestedFacets = 'work_mode,seniority,source,salary_currency';
     current.set('facets', requestedFacets);
     pastSevenDays.set('facets', requestedFacets);
 
     const [currentPayload, recentPayload] = await Promise.all([
-      fetchFreeHireJSON(`jobs/facets?${current.toString()}`, true),
-      fetchFreeHireJSON(`jobs/facets?${pastSevenDays.toString()}`, true),
+      fetchFreeHireJSON(`jobs/facets?${current.toString()}`, true, sessionToken),
+      fetchFreeHireJSON(`jobs/facets?${pastSevenDays.toString()}`, true, sessionToken),
     ]);
     const currentData = freeHireRecord(currentPayload.data);
     const recentData = freeHireRecord(recentPayload.data);
@@ -1257,6 +1284,7 @@ const setupIpcHandlers = (): void => {
     }
 
     const params = freeHireRecord(rawParams);
+    const sessionToken = typeof params.sessionToken === 'string' ? params.sessionToken.trim() : '';
     const country = typeof params.country === 'string' && /^[A-Z]{2}$/.test(params.country)
       ? params.country.toLowerCase()
       : '';
@@ -1266,10 +1294,10 @@ const setupIpcHandlers = (): void => {
     const date = (value: Date) => value.toISOString().slice(0, 10);
 
     const [rolesPayload, skillsPayload, salaryPayload, velocityPayload] = await Promise.all([
-      fetchFreeHireJSON(`insights/roles?category=sales&sort=open&limit=20${countryQuery}`, true),
-      fetchFreeHireJSON('insights/skills?category=sales&sort=open&limit=10', true),
-      fetchFreeHireJSON(`insights/salary?category=sales${countryQuery}`, true),
-      fetchFreeHireJSON(`insights/velocity?granularity=week&category=sales&from=${date(from)}&to=${date(today)}`, true),
+      fetchFreeHireJSON(`insights/roles?category=sales&sort=open&limit=20${countryQuery}`, true, sessionToken),
+      fetchFreeHireJSON('insights/skills?category=sales&sort=open&limit=10', true, sessionToken),
+      fetchFreeHireJSON(`insights/salary?category=sales${countryQuery}`, true, sessionToken),
+      fetchFreeHireJSON(`insights/velocity?granularity=week&category=sales&from=${date(from)}&to=${date(today)}`, true, sessionToken),
     ]);
     const text = (value: unknown): string => typeof value === 'string' ? value.trim() : '';
 
@@ -1306,22 +1334,16 @@ const setupIpcHandlers = (): void => {
     };
   });
 
-  ipcMain.handle('freehire:get-job', async (_event, rawSlug: unknown) => {
+  ipcMain.handle('freehire:get-job', async (_event, rawSlug: unknown, rawSessionToken: unknown) => {
     if (!(await freeHireAllowed())) {
       throw new Error('The FreeHire job feed is not enabled on this build.');
     }
     const slug = typeof rawSlug === 'string' ? rawSlug.trim() : '';
+    const sessionToken = typeof rawSessionToken === 'string' ? rawSessionToken.trim() : '';
     if (!/^[a-z0-9-]{3,240}$/.test(slug)) throw new Error('Invalid FreeHire job identifier.');
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(`https://freehire.me/api/v1/jobs/${encodeURIComponent(slug)}`, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(`FreeHire returned HTTP ${response.status}.`);
-      const payload = await response.json() as Record<string, unknown>;
+      const payload = await fetchFreeHireJSON(`jobs/${encodeURIComponent(slug)}`, true, sessionToken);
       const job = payload.data && typeof payload.data === 'object'
         ? payload.data as Record<string, unknown>
         : {};
@@ -1339,11 +1361,8 @@ const setupIpcHandlers = (): void => {
         employmentType: label(enrichment.employment_type) || label(job.employment_type) || 'Not listed',
         seniority: label(enrichment.seniority) || label(job.seniority) || 'Not listed',
       };
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') throw new Error('The FreeHire request timed out.');
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+    } catch {
+      throw new Error('Full job details are temporarily unavailable.');
     }
   });
 

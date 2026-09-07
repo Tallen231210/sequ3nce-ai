@@ -18,6 +18,7 @@ import type {
   FreeHireSalaryInsight,
   FreeHireSearchResponse,
 } from '../types/electron';
+import { consolidateDuplicateJobs } from '../../freehire-dedupe';
 import { PlacementLineTab } from './PlacementLineTab';
 
 type TopTab = 'public' | 'internal';
@@ -102,6 +103,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [jobs, setJobs] = useState<FreeHireJob[]>([]);
   const [total, setTotal] = useState(0);
+  const [limited, setLimited] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -355,6 +357,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
     try {
       const result: FreeHireSearchResponse = await window.electron.freeHire.search({
         lane: roleLane,
+        sessionToken: closerInfo.sessionToken,
         sort: sortMode,
         workMode: workMode === 'all' ? undefined : workMode,
         country: countryScope === 'any' ? undefined : countryScope,
@@ -366,21 +369,33 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
       if (requestId !== jobRequestRef.current) return;
       setJobs((current) => append ? mergeJobs(current, result.jobs) : result.jobs);
       setTotal(result.total);
-      setNextOffset(result.offset + result.limit);
+      setLimited((current) => append ? current || result.limited === true : result.limited === true);
+      setNextOffset(result.nextOffset ?? result.offset + result.limit);
       setHasMore(result.hasMore ?? result.offset + result.limit < result.total);
       setSelectedJobId((current) => append && current ? current : null);
-    } catch (requestError) {
+    } catch {
       if (requestId !== jobRequestRef.current) return;
-      const message = requestError instanceof Error ? requestError.message : String(requestError);
-      setError(message.replace(/^Error invoking remote method '[^']+':\s*/, ''));
-      if (!append) { setJobs([]); setTotal(0); setNextOffset(0); setHasMore(false); }
+      // Never replace already-visible jobs with a full-page error because an
+      // optional next page failed. Initial-load errors use neutral product copy
+      // below rather than exposing an upstream supplier or transport status.
+      if (append) {
+        setHasMore(false);
+        setLimited(true);
+      } else {
+        setError('temporarily-unavailable');
+        setJobs([]);
+        setTotal(0);
+        setLimited(false);
+        setNextOffset(0);
+        setHasMore(false);
+      }
     } finally {
       if (requestId === jobRequestRef.current) {
         setLoading(false);
         setLoadingMore(false);
       }
     }
-  }, [roleLane, sortMode, workMode, countryScope, postedWindow, minSalary]);
+  }, [roleLane, sortMode, workMode, countryScope, postedWindow, minSalary, closerInfo.sessionToken]);
 
   useEffect(() => { if (preferencesReady) void loadJobs(0, false); }, [loadJobs, refreshToken, preferencesReady]);
 
@@ -529,9 +544,9 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
             </div>
           </nav>
 
-          {section === 'discover' && <DiscoverView firstName={firstName} roleLane={roleLane} onRoleChange={selectRoleLane} sortMode={sortMode} onSortModeChange={(value) => { markPreferenceChanged(); setSortMode(value); }} workMode={workMode} onWorkModeChange={(value) => { markPreferenceChanged(); setWorkMode(value); }} countryScope={countryScope} onCountryScopeChange={(value) => { markPreferenceChanged(); setCountryScope(value); }} postedWindow={postedWindow} onPostedWindowChange={(value) => { markPreferenceChanged(); setPostedWindow(value); }} minSalary={minSalary} onMinSalaryChange={(value) => { markPreferenceChanged(); setMinSalary(value); }} onResetPreferences={() => { markPreferenceChanged(); applyPreferences(DEFAULT_PREFERENCES, { setRoleLane, setSortMode, setWorkMode, setCountryScope, setPostedWindow, setMinSalary }); }} jobs={displayJobs} total={total} hasMore={hasMore} selectedJob={selectedJob} selectedJobId={selectedJobId} onSelectJob={openJob} tracked={tracked} newOnly={newOnly} newCount={newJobIds.size} newJobIds={newJobIds} onNewOnlyChange={setNewOnly} onSetStage={setJobStage} onSetNote={setJobNote} onDismiss={dismissJob} onHydrateJob={hydrateJob} loading={loading} loadingMore={loadingMore} error={error} onRetry={() => setRefreshToken((value) => value + 1)} onLoadMore={() => void loadJobs(nextOffset, true)} onOpenApplications={() => setSection('applications')} onToast={showToast} />}
+          {section === 'discover' && <DiscoverView sessionToken={closerInfo.sessionToken} firstName={firstName} roleLane={roleLane} onRoleChange={selectRoleLane} sortMode={sortMode} onSortModeChange={(value) => { markPreferenceChanged(); setSortMode(value); }} workMode={workMode} onWorkModeChange={(value) => { markPreferenceChanged(); setWorkMode(value); }} countryScope={countryScope} onCountryScopeChange={(value) => { markPreferenceChanged(); setCountryScope(value); }} postedWindow={postedWindow} onPostedWindowChange={(value) => { markPreferenceChanged(); setPostedWindow(value); }} minSalary={minSalary} onMinSalaryChange={(value) => { markPreferenceChanged(); setMinSalary(value); }} onResetPreferences={() => { markPreferenceChanged(); applyPreferences(DEFAULT_PREFERENCES, { setRoleLane, setSortMode, setWorkMode, setCountryScope, setPostedWindow, setMinSalary }); }} jobs={displayJobs} total={total} limited={limited} hasMore={hasMore} selectedJob={selectedJob} selectedJobId={selectedJobId} onSelectJob={openJob} tracked={tracked} newOnly={newOnly} newCount={newJobIds.size} newJobIds={newJobIds} onNewOnlyChange={setNewOnly} onSetStage={setJobStage} onSetNote={setJobNote} onDismiss={dismissJob} onHydrateJob={hydrateJob} loading={loading} loadingMore={loadingMore} error={error} onRetry={() => setRefreshToken((value) => value + 1)} onLoadMore={() => void loadJobs(nextOffset, true)} onOpenApplications={() => setSection('applications')} onToast={showToast} />}
           {section === 'applications' && <ApplicationsView tracked={tracked} trackingState={trackingState} onSetStage={setJobStage} onRestore={restoreJob} onSelectJob={(job) => { if (!jobs.some((item) => item.id === job.id)) setJobs((current) => [job, ...current]); openJob(job); setSection('discover'); }} />}
-          {section === 'insights' && <InsightsView roleLane={roleLane} workMode={workMode} countryScope={countryScope} postedWindow={postedWindow} minSalary={minSalary} />}
+          {section === 'insights' && <InsightsView sessionToken={closerInfo.sessionToken} roleLane={roleLane} workMode={workMode} countryScope={countryScope} postedWindow={postedWindow} minSalary={minSalary} />}
         </div>
       )}
 
@@ -549,6 +564,7 @@ function SectionButton({ active, onClick, children }: { active: boolean; onClick
 }
 
 interface DiscoverProps {
+  sessionToken?: string;
   firstName: string; roleLane: RoleLane; onRoleChange: (lane: RoleLane) => void;
   sortMode: SortMode; onSortModeChange: (sort: SortMode) => void;
   workMode: WorkMode; onWorkModeChange: (mode: WorkMode) => void;
@@ -556,19 +572,20 @@ interface DiscoverProps {
   postedWindow: PostedWindow; onPostedWindowChange: (value: PostedWindow) => void;
   minSalary: SalaryTarget; onMinSalaryChange: (value: SalaryTarget) => void;
   onResetPreferences: () => void;
-  jobs: FreeHireJob[]; total: number; hasMore: boolean; selectedJob: FreeHireJob | null; selectedJobId: string | null;
+  jobs: FreeHireJob[]; total: number; limited: boolean; hasMore: boolean; selectedJob: FreeHireJob | null; selectedJobId: string | null;
   onSelectJob: (job: FreeHireJob) => void; tracked: Record<string, TrackedJob>;
   newOnly: boolean; newCount: number; newJobIds: Set<string>; onNewOnlyChange: (value: boolean) => void;
   onSetStage: (job: FreeHireJob, stage: JobStage | undefined) => void;
   onSetNote: (job: FreeHireJob, note: string) => void;
   onDismiss: (job: FreeHireJob) => void;
   onHydrateJob: (job: FreeHireJob) => void;
+  onPractice?: (job: FreeHireJob) => void;
   loading: boolean; loadingMore: boolean; error: string | null; onRetry: () => void; onLoadMore: () => void;
   onOpenApplications: () => void; onToast: (message: string) => void;
 }
 
 function DiscoverView(props: DiscoverProps) {
-  const { firstName, roleLane, onRoleChange, sortMode, onSortModeChange, workMode, onWorkModeChange, countryScope, onCountryScopeChange, postedWindow, onPostedWindowChange, minSalary, onMinSalaryChange, onResetPreferences, jobs, total, hasMore, selectedJob, selectedJobId, onSelectJob, tracked, newOnly, newCount, newJobIds, onNewOnlyChange, onSetStage, onSetNote, onDismiss, onHydrateJob, loading, loadingMore, error, onRetry, onLoadMore, onOpenApplications, onToast } = props;
+  const { sessionToken, firstName, roleLane, onRoleChange, sortMode, onSortModeChange, workMode, onWorkModeChange, countryScope, onCountryScopeChange, postedWindow, onPostedWindowChange, minSalary, onMinSalaryChange, onResetPreferences, jobs, total, limited, hasMore, selectedJob, selectedJobId, onSelectJob, tracked, newOnly, newCount, newJobIds, onNewOnlyChange, onSetStage, onSetNote, onDismiss, onHydrateJob, loading, loadingMore, error, onRetry, onLoadMore, onOpenApplications, onPractice, onToast } = props;
   const activeLane = ROLE_LANES.find((lane) => lane.id === roleLane) ?? ROLE_LANES[0];
   return (
     <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto lg:overflow-hidden overflow-x-hidden px-4 sm:px-5 xl:px-6 pb-6">
@@ -576,7 +593,7 @@ function DiscoverView(props: DiscoverProps) {
         <p className="text-[9px] font-medium uppercase tracking-[0.13em] text-gray-500 dark:text-gray-400">For You</p>
         <div className="flex flex-wrap items-end justify-between gap-3 mt-1.5">
           <div><h3 className="text-[18px] font-semibold tracking-tight text-gray-950 dark:text-white">Jobs for you, {firstName}</h3><p className="text-[11px] text-gray-400 mt-1">Adjust what you are looking for at any time.</p></div>
-          {!loading && !error && <div className="text-right shrink-0"><p data-testid="matching-role-count" className="text-[17px] font-bold tabular-nums">{formatCount(total)}</p><p className="text-[8px] font-mono uppercase tracking-wider text-gray-400">matching roles</p></div>}
+          {!loading && !error && <div className="text-right shrink-0"><p data-testid="matching-role-count" className="text-[17px] font-bold tabular-nums">{formatCount(total)}</p><p data-testid="matching-role-count-label" className="text-[8px] font-mono uppercase tracking-wider text-gray-400">{limited ? 'available now' : 'matching roles'}</p></div>}
         </div>
       </div>
 
@@ -593,6 +610,8 @@ function DiscoverView(props: DiscoverProps) {
         {minSalary > 0 && <p data-testid="target-pay-disclosure" className="text-[8px] text-gray-400 mt-2">Target pay uses disclosed annual USD compensation when available; curated roles with unknown pay remain included.</p>}
       </div>
 
+      {limited && !error && !loading && <div data-testid="limited-catalogue-notice" role="status" className="mb-3 flex shrink-0 items-start gap-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-[#fafafa] dark:bg-zinc-900/60 px-3 py-2.5"><div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-900"><InfoIcon className="h-3 w-3 text-gray-600 dark:text-gray-300" /></div><div className="min-w-0"><p className="text-[9.5px] font-semibold text-gray-900 dark:text-gray-100">Some job listings are temporarily unavailable</p><p className="mt-0.5 text-[8.5px] leading-relaxed text-gray-500 dark:text-gray-400">We’re performing maintenance on the job board. You can still browse available opportunities—full results should return soon.</p></div></div>}
+
       <div data-testid="new-job-controls" className="mb-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="inline-flex rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-0.5">
           <button onClick={() => onNewOnlyChange(false)} className={`rounded-md px-3 py-1.5 text-[9.5px] font-semibold transition-colors ${!newOnly ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-gray-500 hover:text-black dark:hover:text-white'}`}>All roles</button>
@@ -604,13 +623,13 @@ function DiscoverView(props: DiscoverProps) {
         <p className="text-[8px] text-gray-400">Based on roles discovered since your previous visit.</p>
       </div>
 
-      {error ? <FeedError message={error} onRetry={onRetry} /> : loading ? <LoadingState /> : jobs.length === 0 && !newOnly ? <EmptyState lane={activeLane.label} /> : (
+      {error ? <FeedError onRetry={onRetry} /> : loading ? <LoadingState /> : jobs.length === 0 && !newOnly ? <EmptyState lane={activeLane.label} /> : (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,0.8fr)_minmax(360px,1.2fr)] gap-3 items-start lg:items-stretch min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           <section className="min-w-0 lg:min-h-0 rounded-lg border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden lg:flex lg:flex-col">
-            <div className="px-3 py-2.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between gap-3"><div className="min-w-0"><h4 className="text-[11px] font-semibold truncate">{newOnly ? 'New since last visit' : activeLane.label}</h4><p className="text-[8.5px] text-gray-400 mt-0.5">{newOnly ? `${newCount} new in loaded roles` : `Showing ${jobs.length} of ${formatCount(total)}`}</p></div><span className="inline-flex items-center gap-1.5 text-[8.5px] text-blue-600 dark:text-blue-300 shrink-0"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />Live feed</span></div>
+            <div className="px-3 py-2.5 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between gap-3"><div className="min-w-0"><h4 className="text-[11px] font-semibold truncate">{newOnly ? 'New since last visit' : activeLane.label}</h4><p className="text-[8.5px] text-gray-400 mt-0.5">{newOnly ? `${newCount} new in loaded roles` : limited ? `${jobs.length} roles available right now` : `Showing ${jobs.length} of ${formatCount(total)}`}</p></div><span className={`inline-flex items-center gap-1.5 text-[8.5px] shrink-0 ${limited ? 'text-gray-500 dark:text-gray-400' : 'text-blue-600 dark:text-blue-300'}`}><span className={`w-1.5 h-1.5 rounded-full ${limited ? 'bg-gray-400 dark:bg-gray-500' : 'bg-blue-600 dark:bg-blue-400'}`} />{limited ? 'Limited results' : 'Live feed'}</span></div>
             <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto"><div className="divide-y divide-gray-100 dark:divide-zinc-800">{jobs.length > 0 ? jobs.map((job) => <JobListCard key={job.id} job={job} roleLane={roleLane} active={job.id === selectedJobId} isNew={newJobIds.has(job.id)} stage={tracked[job.id]?.stage} onSelect={() => onSelectJob(job)} onSave={() => { const currentStage = tracked[job.id]?.stage; if (!currentStage || currentStage === 'saved') onSetStage(job, currentStage === 'saved' ? undefined : 'saved'); }} />) : <div className="px-4 py-12 text-center"><p className="text-[11px] font-semibold">You’re caught up</p><p className="mt-1 text-[9px] text-gray-400">No new roles are visible in the results loaded so far.</p></div>}</div>{hasMore && <div className="p-3 border-t border-gray-100 dark:border-zinc-800"><button onClick={onLoadMore} disabled={loadingMore} className="w-full rounded-lg border border-gray-200 dark:border-zinc-700 py-2 text-[10px] font-semibold text-gray-600 dark:text-gray-300 hover:border-gray-400 disabled:opacity-50">{loadingMore ? 'Loading more…' : newOnly ? 'Check more roles' : 'Load more roles'}</button></div>}</div>
           </section>
-          {selectedJob ? <JobDetailPanel job={selectedJob} activity={tracked[selectedJob.id]} onSetStage={(stage) => onSetStage(selectedJob, stage)} onSetNote={(note) => onSetNote(selectedJob, note)} onDismiss={() => onDismiss(selectedJob)} onHydrateJob={onHydrateJob} onOpenApplications={onOpenApplications} onToast={onToast} /> : <JobDetailPlaceholder />}
+          {selectedJob ? <JobDetailPanel sessionToken={sessionToken} job={selectedJob} activity={tracked[selectedJob.id]} onSetStage={(stage) => onSetStage(selectedJob, stage)} onSetNote={(note) => onSetNote(selectedJob, note)} onDismiss={() => onDismiss(selectedJob)} onHydrateJob={onHydrateJob} onOpenApplications={onOpenApplications} onPractice={onPractice ? () => onPractice(selectedJob) : undefined} onToast={onToast} /> : <JobDetailPlaceholder />}
         </div>
       )}
     </div>
@@ -642,7 +661,7 @@ function JobListCard({ job, roleLane, active, isNew, stage, onSelect, onSave }: 
               {realityLabel(job) && <RealityTag job={job} />}
             </div>
             <div className="flex items-center justify-between gap-3 mt-2.5 text-[8.5px] text-gray-400">
-              <span className="truncate">{postedLabel(job.postedAt)} · {job.source}</span>
+              <span className="truncate" title={jobSources(job).join(', ')}>{postedLabel(job.postedAt)} · {sourceSummary(job)}</span>
               {stage && <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize shrink-0">{stage}</span>}
             </div>
           </div>
@@ -659,7 +678,7 @@ function JobDetailPlaceholder() {
   return <aside className="hidden lg:flex min-w-0 min-h-0 rounded-lg border border-dashed border-gray-200 dark:border-zinc-800 bg-gray-50/40 dark:bg-zinc-900/30 items-center justify-center p-8 text-center"><div><p className="text-[11px] font-semibold">Select a role to review it</p><p className="mt-1 text-[9px] leading-relaxed text-gray-400">Opening a role marks it as viewed and keeps your new-job list up to date.</p></div></aside>;
 }
 
-function JobDetailPanel({ job, activity, onSetStage, onSetNote, onDismiss, onHydrateJob, onOpenApplications, onToast }: { job: FreeHireJob; activity?: TrackedJob; onSetStage: (stage: JobStage | undefined) => void; onSetNote: (note: string) => void; onDismiss: () => void; onHydrateJob: (job: FreeHireJob) => void; onOpenApplications: () => void; onToast: (message: string) => void }) {
+function JobDetailPanel({ sessionToken, job, activity, onSetStage, onSetNote, onDismiss, onHydrateJob, onOpenApplications, onPractice, onToast }: { sessionToken?: string; job: FreeHireJob; activity?: TrackedJob; onSetStage: (stage: JobStage | undefined) => void; onSetNote: (note: string) => void; onDismiss: () => void; onHydrateJob: (job: FreeHireJob) => void; onOpenApplications: () => void; onPractice?: () => void; onToast: (message: string) => void }) {
   const [detailTab, setDetailTab] = useState<'overview' | 'signals'>('overview');
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [noteDraft, setNoteDraft] = useState(activity?.note ?? '');
@@ -672,21 +691,21 @@ function JobDetailPanel({ job, activity, onSetStage, onSetNote, onDismiss, onHyd
     }
     setLoadingDetail(true);
     let active = true;
-    void window.electron.freeHire.getJob(job.id).then((detail) => {
+    void window.electron.freeHire.getJob(job.id, sessionToken).then((detail) => {
       if (active) onHydrateJob({ ...job, ...detail });
     }).catch(() => {
       // The search excerpt remains usable when the optional detail request fails.
     }).finally(() => { if (active) setLoadingDetail(false); });
     return () => { active = false; };
-  }, [job.id, onHydrateJob]);
+  }, [job.id, onHydrateJob, sessionToken]);
   useEffect(() => setNoteDraft(activity?.note ?? ''), [job.id, activity?.note]);
   const openApplication = () => { window.open(job.applyUrl, '_blank', 'noopener,noreferrer'); if (!stage) onSetStage('preparing'); onToast('Application page opened in your browser'); };
   return (
     <aside className="min-w-0 lg:min-h-0 rounded-lg border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden lg:overflow-y-auto">
-      <div className="p-4 border-b border-gray-100 dark:border-zinc-800"><div className="flex items-start gap-3"><CompanyMark job={job} size="lg" /><div className="min-w-0 flex-1"><h3 className="text-[14px] font-semibold leading-tight">{job.title}</h3><p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{job.company} · {job.location}</p><div className="flex flex-wrap gap-1.5 mt-2.5"><Tag>{job.salary}</Tag><Tag>{job.employmentType}</Tag><Tag>{job.seniority}</Tag></div></div></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3"><SignalCell label="Posted" value={postedLabel(job.postedAt)} /><SignalCell label="Work mode" value={formatWorkMode(job.workMode)} /><SignalCell label="Listing signal" value={realityLabel(job) || 'No signal'} /></div></div>
+      <div className="p-4 border-b border-gray-100 dark:border-zinc-800"><div className="flex items-start gap-3"><CompanyMark job={job} size="lg" /><div className="min-w-0 flex-1"><h3 className="text-[14px] font-semibold leading-tight">{job.title}</h3><p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{job.company} · {job.location}</p><div className="flex flex-wrap gap-1.5 mt-2.5"><Tag>{job.salary}</Tag><Tag>{job.employmentType}</Tag><Tag>{job.seniority}</Tag></div>{jobSources(job).length > 1 && <p data-testid="duplicate-source-summary" className="mt-2 text-[8.5px] text-gray-400">Found through {formatSourceList(jobSources(job))}; showing one consolidated opportunity.</p>}</div></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3"><SignalCell label="Posted" value={postedLabel(job.postedAt)} /><SignalCell label="Work mode" value={formatWorkMode(job.workMode)} /><SignalCell label="Listing signal" value={realityLabel(job) || 'No signal'} /></div></div>
       <div className="flex items-center gap-4 px-4 border-b border-gray-100 dark:border-zinc-800"><DetailTab active={detailTab === 'overview'} onClick={() => setDetailTab('overview')}>Overview</DetailTab><DetailTab active={detailTab === 'signals'} onClick={() => setDetailTab('signals')}>Job signals</DetailTab></div>
       <div className="p-4">{detailTab === 'overview' ? <><div className="flex items-center justify-between gap-3"><DetailHeading>About the opportunity</DetailHeading>{loadingDetail && <span className="text-[8px] text-blue-600 dark:text-blue-300">Loading full description…</span>}</div><DescriptionContent job={job} /><DetailHeading className="mt-5">Skills and keywords</DetailHeading>{job.skills.length > 0 ? <div className="flex flex-wrap gap-1.5">{job.skills.map((skill) => <Tag key={skill}>{skill}</Tag>)}</div> : <p className="text-[10px] text-gray-400">No structured skills were supplied by the source.</p>}{stage && <div className="mt-5 pt-4 border-t border-gray-100 dark:border-zinc-800"><div className="flex items-center justify-between gap-3"><DetailHeading>Private note</DetailHeading><span className="text-[8px] text-gray-400">Only visible to you</span></div><textarea data-testid="freehire-private-note" value={noteDraft} onChange={(event) => setNoteDraft(event.target.value.slice(0, 2000))} placeholder="Add interview context, a recruiter name, or a follow-up reminder…" className="w-full min-h-[74px] resize-y rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 text-[10px] leading-relaxed outline-none focus:border-gray-400 dark:focus:border-zinc-500" /><div className="flex items-center justify-between mt-2"><span className="text-[8px] text-gray-400 tabular-nums">{noteDraft.length}/2000</span><button onClick={() => { onSetNote(noteDraft); onToast('Private note saved'); }} disabled={noteDraft.trim() === (activity?.note ?? '')} className="rounded-md border border-gray-200 dark:border-zinc-700 px-2.5 py-1.5 text-[8.5px] font-semibold disabled:opacity-40">Save note</button></div></div>}</> : <JobSignals job={job} />}</div>
-      <div className="p-3 border-t border-gray-100 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900"><div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2"><button onClick={() => { if (!stage || stage === 'saved') { onSetStage(stage === 'saved' ? undefined : 'saved'); if (stage !== 'saved') onToast('Job saved to your private application board'); } else { onOpenApplications(); } }} className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-[10.5px] font-semibold hover:border-gray-400">{stage === 'saved' ? 'Remove from saved' : stage ? `View ${stage} application` : 'Save for later'}</button><button onClick={openApplication} className="flex items-center justify-center gap-1.5 rounded-lg bg-black dark:bg-white text-white dark:text-black px-3 py-2 text-[10.5px] font-semibold hover:opacity-85">Apply on source site <ExternalIcon className="w-3 h-3" /></button></div><div className="flex items-center justify-between gap-3 mt-2">{stage ? <button onClick={onOpenApplications} className="text-[9px] font-semibold text-gray-500 hover:text-black dark:hover:text-white">View in Applications →</button> : <span />}<button onClick={() => { onDismiss(); onToast('Job hidden from your feed'); }} className="text-[9px] font-semibold text-gray-400 hover:text-black dark:hover:text-white">Not interested</button></div><p className="text-[8.5px] text-gray-400 text-center mt-2">Sequ3nce opens the source listing; it does not submit an application for you.</p></div>
+      <div className="p-3 border-t border-gray-100 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-900"><div className={`grid grid-cols-1 gap-2 ${onPractice ? 'sm:grid-cols-3' : 'sm:grid-cols-[1fr_auto]'}`}><button onClick={() => { if (!stage || stage === 'saved') { onSetStage(stage === 'saved' ? undefined : 'saved'); if (stage !== 'saved') onToast('Job saved to your private application board'); } else { onOpenApplications(); } }} className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-[10.5px] font-semibold hover:border-gray-400">{stage === 'saved' ? 'Remove from saved' : stage ? `View ${stage} application` : 'Save for later'}</button>{onPractice && <button data-testid="practice-interview" onClick={onPractice} className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-[10.5px] font-semibold hover:border-black dark:hover:border-white"><InterviewIcon className="w-3.5 h-3.5" /> Practice interview</button>}<button onClick={openApplication} className="flex items-center justify-center gap-1.5 rounded-lg bg-black dark:bg-white text-white dark:text-black px-3 py-2 text-[10.5px] font-semibold hover:opacity-85">Apply on source site <ExternalIcon className="w-3 h-3" /></button></div><div className="flex items-center justify-between gap-3 mt-2">{stage ? <button onClick={onOpenApplications} className="text-[9px] font-semibold text-gray-500 hover:text-black dark:hover:text-white">View in Applications →</button> : <span />}<button onClick={() => { onDismiss(); onToast('Job hidden from your feed'); }} className="text-[9px] font-semibold text-gray-400 hover:text-black dark:hover:text-white">Not interested</button></div><p className="text-[8.5px] text-gray-400 text-center mt-2">Sequ3nce opens the source listing; it does not submit an application for you.</p></div>
     </aside>
   );
 }
@@ -715,7 +734,7 @@ function DescriptionContent({ job }: { job: FreeHireJob }) {
   );
 }
 
-function ApplicationsView({ tracked, trackingState, onSetStage, onRestore, onSelectJob }: { tracked: Record<string, TrackedJob>; trackingState: TrackingState; onSetStage: (job: FreeHireJob, stage: JobStage | undefined) => void; onRestore: (job: FreeHireJob) => void; onSelectJob: (job: FreeHireJob) => void }) {
+function ApplicationsView({ tracked, trackingState, onSetStage, onRestore, onSelectJob, onPractice }: { tracked: Record<string, TrackedJob>; trackingState: TrackingState; onSetStage: (job: FreeHireJob, stage: JobStage | undefined) => void; onRestore: (job: FreeHireJob) => void; onSelectJob: (job: FreeHireJob) => void; onPractice?: (job: FreeHireJob) => void }) {
   const entries = Object.values(tracked).filter((activity): activity is TrackedJob & { stage: JobStage } => !!activity.stage && !activity.dismissed);
   const hidden = Object.values(tracked).filter((activity) => activity.dismissed);
   const applied = entries.filter(({ stage }) => stage === 'applied' || stage === 'interviewing').length;
@@ -723,20 +742,21 @@ function ApplicationsView({ tracked, trackingState, onSetStage, onRestore, onSel
   return (
     <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-4 sm:px-5 xl:px-6 pb-6">
       <div className="pt-4 pb-4 flex flex-wrap items-end justify-between gap-4"><div className="min-w-0 flex-1 basis-[280px]"><h3 className="text-[16px] font-semibold tracking-tight">Your applications</h3><p className="text-[11px] text-gray-400 mt-1">Every role you save, private to your account.</p></div><div className="flex items-center gap-5"><ApplicationMetric label="Tracked" value={entries.length} /><ApplicationMetric label="Applied" value={applied} /><ApplicationMetric label="Interviewing" value={interviewing} /></div></div>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-3 items-start min-w-0">{STAGE_META.map((meta) => { const stageJobs = entries.filter((entry) => entry.stage === meta.id); return <section key={meta.id} className="rounded-lg bg-gray-50 dark:bg-zinc-900/70 border border-gray-100 dark:border-zinc-800 p-2.5 min-w-0"><header className="flex items-start justify-between gap-2 px-1 pb-2.5"><div><h4 className="text-[10.5px] font-bold">{meta.label}</h4><p className="text-[8.5px] text-gray-400 mt-0.5">{meta.description}</p></div><span className="w-5 h-5 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 flex items-center justify-center text-[9px] font-bold text-gray-500">{stageJobs.length}</span></header><div className="space-y-2">{stageJobs.map(({ job, stage, note, updatedAt }) => <ApplicationCard key={job.id} job={job} stage={stage} note={note} updatedAt={updatedAt} onSetStage={onSetStage} onSelect={() => onSelectJob(job)} />)}{stageJobs.length === 0 && <div className="rounded-lg border border-dashed border-gray-200 dark:border-zinc-700 py-7 px-2 text-center"><p className="text-[9.5px] text-gray-400">No roles here yet</p></div>}</div></section>; })}</div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-3 items-start min-w-0">{STAGE_META.map((meta) => { const stageJobs = entries.filter((entry) => entry.stage === meta.id); return <section key={meta.id} className="rounded-lg bg-gray-50 dark:bg-zinc-900/70 border border-gray-100 dark:border-zinc-800 p-2.5 min-w-0"><header className="flex items-start justify-between gap-2 px-1 pb-2.5"><div><h4 className="text-[10.5px] font-bold">{meta.label}</h4><p className="text-[8.5px] text-gray-400 mt-0.5">{meta.description}</p></div><span className="w-5 h-5 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 flex items-center justify-center text-[9px] font-bold text-gray-500">{stageJobs.length}</span></header><div className="space-y-2">{stageJobs.map(({ job, stage, note, updatedAt }) => <ApplicationCard key={job.id} job={job} stage={stage} note={note} updatedAt={updatedAt} onSetStage={onSetStage} onSelect={() => onSelectJob(job)} onPractice={stage === 'interviewing' && onPractice ? () => onPractice(job) : undefined} />)}{stageJobs.length === 0 && <div className="rounded-lg border border-dashed border-gray-200 dark:border-zinc-700 py-7 px-2 text-center"><p className="text-[9.5px] text-gray-400">No roles here yet</p></div>}</div></section>; })}</div>
       {hidden.length > 0 && <details className="mt-4 rounded-lg border border-gray-200 dark:border-zinc-800"><summary className="cursor-pointer list-none flex items-center justify-between gap-3 p-3 text-[10px] font-semibold"><span>Hidden roles</span><span className="rounded-full border border-gray-200 dark:border-zinc-700 px-2 py-0.5 text-[8.5px] text-gray-500">{hidden.length}</span></summary><div className="border-t border-gray-100 dark:border-zinc-800 divide-y divide-gray-100 dark:divide-zinc-800">{hidden.map(({ job }) => <div key={job.id} className="flex items-center justify-between gap-3 p-3"><div className="min-w-0"><p className="text-[10px] font-semibold truncate">{job.title}</p><p className="text-[8.5px] text-gray-400 mt-0.5 truncate">{job.company}</p></div><button onClick={() => onRestore(job)} className="shrink-0 rounded-md border border-gray-200 dark:border-zinc-700 px-2.5 py-1.5 text-[8.5px] font-semibold">Restore</button></div>)}</div></details>}
       <div data-testid="freehire-tracking-status" className="mt-4 rounded-lg border border-gray-200 dark:border-zinc-800 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div className="flex items-start gap-3"><div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-zinc-800 flex items-center justify-center text-gray-500 shrink-0"><LockIcon className="w-4 h-4" /></div><div><p className="text-[11px] font-semibold">Private application tracking</p><p className="text-[9.5px] text-gray-400 mt-1">{trackingState === 'synced' ? 'Saved securely to your account — only you can see your applications and notes.' : trackingState === 'needs-login' ? 'Sign out and back in once to sync your applications across devices. Everything here is safe in the meantime.' : trackingState === 'loading' ? 'Loading your applications…' : 'You\u2019re offline — changes are saved on this device and will sync when you reconnect.'}</p></div></div><span className="text-[8.5px] font-mono uppercase tracking-wider text-gray-400 shrink-0">{trackingState === 'synced' ? 'Synced' : trackingState === 'needs-login' ? 'Sign in to sync' : trackingState === 'loading' ? 'Loading' : 'Offline'}</span></div>
     </div>
   );
 }
 
-function ApplicationCard({ job, stage, note, updatedAt, onSetStage, onSelect }: { job: FreeHireJob; stage: JobStage; note?: string; updatedAt: number; onSetStage: (job: FreeHireJob, stage: JobStage | undefined) => void; onSelect: () => void }) {
+function ApplicationCard({ job, stage, note, updatedAt, onSetStage, onSelect, onPractice }: { job: FreeHireJob; stage: JobStage; note?: string; updatedAt: number; onSetStage: (job: FreeHireJob, stage: JobStage | undefined) => void; onSelect: () => void; onPractice?: () => void }) {
   const stageIndex = STAGE_META.findIndex((item) => item.id === stage);
   const nextStage = STAGE_META[stageIndex + 1]?.id;
-  return <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.025)] min-w-0"><button onClick={onSelect} className="w-full text-left min-w-0"><div className="flex items-start gap-2.5 min-w-0"><CompanyMark job={job} /><div className="min-w-0"><p className="text-[10.5px] font-semibold leading-snug line-clamp-2">{job.title}</p><p className="text-[9px] text-gray-400 mt-1 truncate">{job.company}</p></div></div><div className="flex items-center justify-between gap-2 mt-3 text-[8.5px]"><span className="text-gray-600 dark:text-gray-300 truncate">{formatWorkMode(job.workMode)}</span><span className="text-gray-400 shrink-0">{relativeActivityTime(updatedAt)}</span></div>{note && <p className="mt-2 rounded-md bg-gray-50 dark:bg-zinc-800/60 p-2 text-[8.5px] leading-relaxed text-gray-500 dark:text-gray-400 line-clamp-2">{note}</p>}</button><div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gray-100 dark:border-zinc-800">{nextStage ? <button onClick={() => onSetStage(job, nextStage)} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Move to {STAGE_META[stageIndex + 1].label}</button> : <button onClick={() => window.open(job.applyUrl, '_blank', 'noopener,noreferrer')} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Open listing</button>}<button onClick={() => onSetStage(job, undefined)} className="rounded-md border border-gray-200 dark:border-zinc-700 px-2 text-[11px] text-gray-400 hover:text-gray-700" title="Remove from applications">×</button></div></div>;
+  return <div className="rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.025)] min-w-0"><button onClick={onSelect} className="w-full text-left min-w-0"><div className="flex items-start gap-2.5 min-w-0"><CompanyMark job={job} /><div className="min-w-0"><p className="text-[10.5px] font-semibold leading-snug line-clamp-2">{job.title}</p><p className="text-[9px] text-gray-400 mt-1 truncate">{job.company}</p></div></div><div className="flex items-center justify-between gap-2 mt-3 text-[8.5px]"><span className="text-gray-600 dark:text-gray-300 truncate">{formatWorkMode(job.workMode)}</span><span className="text-gray-400 shrink-0">{relativeActivityTime(updatedAt)}</span></div>{note && <p className="mt-2 rounded-md bg-gray-50 dark:bg-zinc-800/60 p-2 text-[8.5px] leading-relaxed text-gray-500 dark:text-gray-400 line-clamp-2">{note}</p>}</button>{onPractice && <button onClick={onPractice} className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-gray-300 dark:border-zinc-600 py-1.5 px-2 text-[8.5px] font-semibold hover:border-black dark:hover:border-white"><InterviewIcon className="w-3 h-3" /> Practice interview</button>}<div className="flex gap-1.5 mt-2.5 pt-2.5 border-t border-gray-100 dark:border-zinc-800">{nextStage ? <button onClick={() => onSetStage(job, nextStage)} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Move to {STAGE_META[stageIndex + 1].label}</button> : <button onClick={() => window.open(job.applyUrl, '_blank', 'noopener,noreferrer')} className="flex-1 rounded-md bg-black dark:bg-white text-white dark:text-black py-1.5 px-2 text-[8.5px] font-semibold hover:opacity-80">Open listing</button>}<button onClick={() => onSetStage(job, undefined)} className="rounded-md border border-gray-200 dark:border-zinc-700 px-2 text-[11px] text-gray-400 hover:text-gray-700" title="Remove from applications">×</button></div></div>;
 }
 
-function InsightsView({ roleLane, workMode, countryScope, postedWindow, minSalary }: {
+function InsightsView({ sessionToken, roleLane, workMode, countryScope, postedWindow, minSalary }: {
+  sessionToken?: string;
   roleLane: RoleLane;
   workMode: WorkMode;
   countryScope: CountryScope;
@@ -764,6 +784,7 @@ function InsightsView({ roleLane, workMode, countryScope, postedWindow, minSalar
     void Promise.all([
       window.electron.freeHire.facets({
         lane: roleLane,
+        sessionToken,
         workMode: workMode === 'all' ? undefined : workMode,
         country: countryScope === 'any' ? undefined : countryScope,
         postedWithinDays: postedWindow === 'any' ? undefined : Number(postedWindow) as 7 | 30,
@@ -771,6 +792,7 @@ function InsightsView({ roleLane, workMode, countryScope, postedWindow, minSalar
       }),
       window.electron.freeHire.marketInsights({
         country: countryScope === 'any' ? undefined : countryScope,
+        sessionToken,
       }),
     ]).then(([facetResult, marketResult]) => {
       if (!active) return;
@@ -784,7 +806,7 @@ function InsightsView({ roleLane, workMode, countryScope, postedWindow, minSalar
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [roleLane, workMode, countryScope, postedWindow, minSalary, refreshToken]);
+  }, [roleLane, workMode, countryScope, postedWindow, minSalary, refreshToken, sessionToken]);
 
   const scopeParts = [
     activeLane,
@@ -796,7 +818,7 @@ function InsightsView({ roleLane, workMode, countryScope, postedWindow, minSalar
 
   if (loading) return <MarketInsightsLoading scope={scopeParts.join(' · ')} />;
   if (error || !facets || !market) {
-    return <div data-testid="market-insights-error" className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 xl:px-6 pb-6"><div className="pt-4"><FeedError message={error ?? 'Market analytics could not be loaded.'} onRetry={() => setRefreshToken((value) => value + 1)} /></div></div>;
+    return <div data-testid="market-insights-error" className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-5 xl:px-6 pb-6"><div className="pt-4"><FeedError onRetry={() => setRefreshToken((value) => value + 1)} /></div></div>;
   }
 
   const workModes = facets.facets.work_mode ?? {};
@@ -876,7 +898,7 @@ function InsightsView({ roleLane, workMode, countryScope, postedWindow, minSalar
   );
 }
 
-function FeedError({ message, onRetry }: { message: string; onRetry: () => void }) { return <div className="rounded-lg border border-gray-200 dark:border-zinc-800 p-8 text-center"><div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mx-auto"><InfoIcon className="w-4 h-4 text-gray-500" /></div><h4 className="text-[12px] font-semibold mt-3">The live feed could not load</h4><p className="text-[10px] text-gray-400 mt-1.5 max-w-md mx-auto leading-relaxed">{message}</p><button onClick={onRetry} className="mt-4 rounded-lg bg-black dark:bg-white text-white dark:text-black px-4 py-2 text-[10px] font-semibold">Try again</button></div>; }
+function FeedError({ onRetry }: { onRetry: () => void }) { return <div className="rounded-lg border border-gray-200 dark:border-zinc-800 p-8 text-center"><div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mx-auto"><InfoIcon className="w-4 h-4 text-gray-500" /></div><h4 className="text-[12px] font-semibold mt-3">Job board temporarily unavailable</h4><p className="text-[10px] text-gray-400 mt-1.5 max-w-md mx-auto leading-relaxed">We’re making a few improvements. Please check back soon.</p><button onClick={onRetry} className="mt-4 rounded-lg bg-black dark:bg-white text-white dark:text-black px-4 py-2 text-[10px] font-semibold">Try again</button></div>; }
 function EmptyState({ lane }: { lane: string }) { return <div className="rounded-lg border border-dashed border-gray-200 dark:border-zinc-800 p-10 text-center"><h4 className="text-[12px] font-semibold">No {lane} roles match these filters</h4><p className="text-[10px] text-gray-400 mt-1.5">Try a wider posting window or a different work mode.</p></div>; }
 function LoadingState() { return <div className="grid grid-cols-1 xl:grid-cols-2 gap-3"><div className="rounded-lg border border-gray-200 dark:border-zinc-800 overflow-hidden">{[0, 1, 2, 3].map((item) => <div key={item} className="p-4 border-b last:border-0 border-gray-100 dark:border-zinc-800 animate-pulse"><div className="h-3 rounded bg-gray-100 dark:bg-zinc-800 w-2/3" /><div className="h-2 rounded bg-gray-100 dark:bg-zinc-800 w-1/2 mt-2" /><div className="h-6 rounded bg-gray-100 dark:bg-zinc-800 w-full mt-3" /></div>)}</div><div className="rounded-lg border border-gray-200 dark:border-zinc-800 p-5 animate-pulse"><div className="h-4 rounded bg-gray-100 dark:bg-zinc-800 w-3/4" /><div className="h-2 rounded bg-gray-100 dark:bg-zinc-800 w-1/2 mt-3" /><div className="h-32 rounded bg-gray-100 dark:bg-zinc-800 w-full mt-5" /></div></div>; }
 function CompanyMark({ job, size = 'md' }: { job: FreeHireJob; size?: 'md' | 'lg' }) {
@@ -1039,6 +1061,8 @@ function jobFromSnapshot(id: string, job: FreeHireTrackedJobSnapshot): FreeHireJ
     descriptionBlocks: [],
     applyUrl: job.applyUrl,
     source: job.source,
+    sources: [job.source],
+    duplicateIds: [],
     workMode: job.workMode === 'remote' || job.workMode === 'hybrid' || job.workMode === 'onsite'
       ? job.workMode
       : 'unknown',
@@ -1095,7 +1119,19 @@ function normalizeLocalTracking(value: unknown): Record<string, TrackedJob> {
   return normalized;
 }
 
-function mergeJobs(current: FreeHireJob[], incoming: FreeHireJob[]): FreeHireJob[] { const merged = new Map(current.map((job) => [job.id, job])); incoming.forEach((job) => merged.set(job.id, job)); return Array.from(merged.values()); }
+function mergeJobs(current: FreeHireJob[], incoming: FreeHireJob[]): FreeHireJob[] {
+  return consolidateDuplicateJobs([...current, ...incoming], { preserveFirstId: true });
+}
+function jobSources(job: FreeHireJob): string[] { return Array.isArray(job.sources) && job.sources.length > 0 ? job.sources : [job.source]; }
+function sourceSummary(job: FreeHireJob): string {
+  const sources = jobSources(job);
+  return sources.length > 1 ? `${sources[0]} + ${sources.length - 1} more` : sources[0];
+}
+function formatSourceList(sources: string[]): string {
+  if (sources.length < 2) return sources[0] ?? 'the source listing';
+  if (sources.length === 2) return `${sources[0]} and ${sources[1]}`;
+  return `${sources.slice(0, -1).join(', ')}, and ${sources[sources.length - 1]}`;
+}
 function isNewJob(job: FreeHireJob, viewedAt: number | undefined, newSince: number): boolean {
   if (viewedAt) return false;
   const discoveredAt = job.discoveredAt ? new Date(job.discoveredAt).getTime() : Number.NaN;
@@ -1202,3 +1238,4 @@ function ShieldIcon({ className }: IconProps) { return <svg className={className
 function ExternalIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 5h5v5" /><path d="M10 14L19 5" /><path d="M19 14v5H5V5h5" /></svg>; }
 function InfoIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>; }
 function LockIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>; }
+function InterviewIcon({ className }: IconProps) { return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 5h8M6 9h12v8H6z" /><path d="M9 17v2M15 17v2M10 13h4" /></svg>; }

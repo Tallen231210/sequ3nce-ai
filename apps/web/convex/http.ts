@@ -12302,6 +12302,143 @@ http.route({
   handler: b2cCorsPreflightHandler("POST, OPTIONS"),
 });
 
+const FREEHIRE_PROXY_CACHE_MS = 5 * 60 * 1000;
+const FREEHIRE_PROXY_STALE_MS = 24 * 60 * 60 * 1000;
+const FREEHIRE_PROXY_ALLOWED_QUERY: Record<string, Set<string>> = {
+  "jobs/search": new Set([
+    "q", "category", "limit", "offset", "sort", "order", "work_mode",
+    "countries", "salary_currency", "salary_min", "posted_within_days",
+  ]),
+  "jobs/facets": new Set([
+    "q", "category", "facets", "work_mode", "countries", "salary_currency",
+    "salary_min", "posted_within_days",
+  ]),
+  "insights/roles": new Set(["category", "sort", "limit", "country"]),
+  "insights/skills": new Set(["category", "sort", "limit"]),
+  "insights/salary": new Set(["category", "country"]),
+  "insights/velocity": new Set(["granularity", "category", "from", "to"]),
+};
+
+function normalizedFreeHireProxyPath(rawPath: string): string | null {
+  if (!rawPath || rawPath.length > 1200) return null;
+  const separator = rawPath.indexOf("?");
+  const pathname = separator >= 0 ? rawPath.slice(0, separator) : rawPath;
+  const rawQuery = separator >= 0 ? rawPath.slice(separator + 1) : "";
+  const allowed = FREEHIRE_PROXY_ALLOWED_QUERY[pathname];
+  if (!allowed) {
+    return /^jobs\/[a-z0-9-]{3,240}$/.test(pathname) && !rawQuery
+      ? pathname
+      : null;
+  }
+
+  const source = new URLSearchParams(rawQuery);
+  const entries = Array.from(source.entries());
+  if (entries.length > 20) return null;
+  const normalized = new URLSearchParams();
+  for (const [key, value] of entries.sort(([aKey, aValue], [bKey, bValue]) =>
+    aKey.localeCompare(bKey) || aValue.localeCompare(bValue))) {
+    if (!allowed.has(key) || value.length > 240) return null;
+    normalized.append(key, value);
+  }
+  const query = normalized.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
+function freeHireProxyResponse(payload: string, cacheState: "hit" | "miss" | "stale") {
+  return new Response(payload, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "private, no-store",
+      "X-Sequ3nce-Cache": cacheState,
+    },
+  });
+}
+
+// Authenticated, allowlisted read proxy for the Personal job board. It removes
+// residential/VPN egress variability without becoming an open general-purpose
+// proxy. Successful responses are shared briefly across every signed-in member;
+// a recently expired response can cover a short upstream outage.
+http.route({
+  path: "/b2c/freehire-proxy",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const authorization = request.headers.get("Authorization") || "";
+    const sessionToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
+    const session = sessionToken
+      ? await ctx.runQuery(internal.b2cAuth.resolveB2CSession, { sessionToken })
+      : null;
+    if (!session) {
+      return b2cJsonResponse({ error: "Authentication required" }, 401, true);
+    }
+
+    const requestUrl = new URL(request.url);
+    const path = normalizedFreeHireProxyPath(requestUrl.searchParams.get("path") || "");
+    if (!path) {
+      return b2cJsonResponse({ error: "Invalid catalogue request" }, 400, true);
+    }
+
+    const now = Date.now();
+    const cached = await ctx.runQuery(internal.b2cFreeHireProxy.read, { key: path });
+    if (cached && cached.expiresAt > now) {
+      return freeHireProxyResponse(cached.payload, "hit");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await fetch(`https://freehire.me/api/v1/${path}`, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`catalogue upstream status ${response.status}`);
+      const payload = await response.text();
+      JSON.parse(payload);
+      try {
+        await ctx.runMutation(internal.b2cFreeHireProxy.write, {
+          key: path,
+          payload,
+          expiresAt: now + FREEHIRE_PROXY_CACHE_MS,
+          updatedAt: now,
+        });
+      } catch (cacheError) {
+        // Caching improves availability but must never become a dependency for
+        // a successful catalogue read.
+        console.error("B2C catalogue proxy cache write failed", {
+          path,
+          error: cacheError instanceof Error ? cacheError.message : String(cacheError),
+        });
+      }
+      return freeHireProxyResponse(payload, "miss");
+    } catch (error) {
+      console.error("B2C catalogue proxy request failed", {
+        path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (cached && cached.expiresAt > now - FREEHIRE_PROXY_STALE_MS) {
+        return freeHireProxyResponse(cached.payload, "stale");
+      }
+      return b2cJsonResponse({ error: "Catalogue temporarily unavailable" }, 502, true);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }),
+});
+
+http.route({
+  path: "/b2c/freehire-proxy",
+  method: "OPTIONS",
+  handler: httpAction(async () => new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    },
+  })),
+});
+
 // Read-only bridge that lets the FreeHire-powered Personal board treat the
 // legacy curated catalogue as one more ordinary source. The internal query
 // removes VIP/Placement Line rows before returning any data.

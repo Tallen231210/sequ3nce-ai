@@ -2775,6 +2775,18 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 
+  // Shared response cache for the authenticated FreeHire catalogue proxy.
+  // Keeping this in Convex (instead of module memory) lets separate action
+  // instances and every Personal client reuse the same short-lived response.
+  b2cFreeHireProxyCache: defineTable({
+    key: v.string(),
+    payload: v.string(),
+    expiresAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_expiry", ["expiresAt"]),
+
   // Sales-call trial codes: entering one on /personal/checkout turns the
   // monthly plan into a Polar per-checkout free trial (card on file,
   // auto-billed after trialDays). CLI-managed via b2cTrialCodes:setTrialCode.

@@ -106,6 +106,7 @@ export interface DiagnosticsAPI {
 
 export interface FreeHireSearchParams {
   lane: 'for-you' | 'sales' | 'closer' | 'account-executive' | 'high-ticket' | 'leadership';
+  sessionToken?: string;
   sort?: 'newest' | 'relevance';
   workMode?: 'remote' | 'hybrid' | 'onsite';
   country?: string;
@@ -128,6 +129,8 @@ export interface FreeHireJob {
   }>;
   applyUrl: string;
   source: string;
+  sources: string[];
+  duplicateIds: string[];
   workMode: 'remote' | 'hybrid' | 'onsite' | 'unknown';
   skills: string[];
   employmentType: string;
@@ -153,7 +156,9 @@ export interface FreeHireSearchResponse {
   total: number;
   limit: number;
   offset: number;
+  nextOffset?: number;
   hasMore: boolean;
+  limited: boolean;
   fetchedAt: string;
 }
 
@@ -211,9 +216,9 @@ export interface FreeHireMarketInsightsResponse {
 
 export interface FreeHireAPI {
   search: (params: FreeHireSearchParams) => Promise<FreeHireSearchResponse>;
-  getJob: (slug: string) => Promise<FreeHireJobDetail>;
+  getJob: (slug: string, sessionToken?: string) => Promise<FreeHireJobDetail>;
   facets: (params: FreeHireSearchParams) => Promise<FreeHireFacetResponse>;
-  marketInsights: (params: { country?: string }) => Promise<FreeHireMarketInsightsResponse>;
+  marketInsights: (params: { country?: string; sessionToken?: string }) => Promise<FreeHireMarketInsightsResponse>;
 }
 
 // Sequ3nce Stream (dictation) — see apps/personal/src/stream/
@@ -324,9 +329,9 @@ contextBridge.exposeInMainWorld('electron', {
   },
   freeHire: {
     search: (params: FreeHireSearchParams) => ipcRenderer.invoke('freehire:search', params),
-    getJob: (slug: string) => ipcRenderer.invoke('freehire:get-job', slug),
+    getJob: (slug: string, sessionToken?: string) => ipcRenderer.invoke('freehire:get-job', slug, sessionToken),
     facets: (params: FreeHireSearchParams) => ipcRenderer.invoke('freehire:facets', params),
-    marketInsights: (params: { country?: string }) => ipcRenderer.invoke('freehire:market-insights', params),
+    marketInsights: (params: { country?: string; sessionToken?: string }) => ipcRenderer.invoke('freehire:market-insights', params),
   },
 } as ElectronAPI);
 
