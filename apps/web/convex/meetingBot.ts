@@ -2197,15 +2197,12 @@ export const getClosersWithCalendars = internalQuery({
 
     // A pinned tier wins over the billed one, exactly as it does everywhere
     // else: comped and internal accounts rely on the override.
-    const botTeams = allTeams.filter(
-      (t) =>
-        (t.productTierOverride ?? t.productTier) === "overwatch" ||
-        // Personal (B2C) workspaces: auto-join opened to individual users
-        // 2026-09-01 (lead-with-value call by Tyler; credits/limits may come
-        // later). Still gated per-closer by autoJoinEnabled below, and by
-        // having a live b2cCalendars connection.
-        t.type === "personal",
-    );
+    // One rule for who gets bots, shared with the orphan sweep. When the
+    // scheduler and the sweep disagreed (the sweep still demanded Overwatch
+    // after Personal workspaces were opened up on 2026-09-01), every Personal
+    // auto-join bot was booked and cancelled again 15 minutes later — 105
+    // times a day on one calendar — and no Personal call ever got recorded.
+    const botTeams = allTeams.filter(teamAllowsAutoJoin);
 
     if (botTeams.length === 0) return [];
 
@@ -2525,6 +2522,20 @@ export const setAutoJoin = internalMutation({
  * meeting and none of our business.
  */
 /**
+ * Which teams may have bots sent to their calendar meetings.
+ *
+ * Overwatch is the paid tier that includes the bot. Personal (B2C)
+ * workspaces were opened to auto-join on 2026-09-01. The scheduler and the
+ * orphan sweep MUST share this one definition — see autoScheduleBotsForAllClosers.
+ */
+export function teamAllowsAutoJoin(team: Doc<"teams">): boolean {
+  return (
+    (team.productTierOverride ?? team.productTier) === "overwatch" ||
+    team.type === "personal"
+  );
+}
+
+/**
  * The calendar row behind a scheduled bot.
  *
  * Checked in order: the calendar the sweep booked it from, the bot's own
@@ -2592,8 +2603,7 @@ export const findOrphanedScheduledBots = internalQuery({
       const cached = tierCache.get(key);
       if (cached !== undefined) return cached;
       const team = await ctx.db.get(teamId);
-      const ok =
-        (team?.productTierOverride ?? team?.productTier) === "overwatch";
+      const ok = !!team && teamAllowsAutoJoin(team);
       tierCache.set(key, ok);
       return ok;
     };
@@ -2793,7 +2803,13 @@ export const autoScheduleBotsForAllClosers = internalAction({
         });
 
         const eligibleEvents = events.filter(
-          (event: { uid: string; title?: string; isAllDay?: boolean }) => {
+          (event: {
+            uid: string;
+            title?: string;
+            isAllDay?: boolean;
+            meetingUrl?: string;
+            coachingCallId?: unknown;
+          }) => {
             if (excludedEventIds.includes(event.uid)) return false;
 
             // Google leaves cancelled meetings on the calendar with a
@@ -2806,6 +2822,13 @@ export const autoScheduleBotsForAllClosers = internalAction({
             // An all-day entry with a link is a placeholder, not a meeting at
             // a time. Sending a bot to one means a bot at midnight.
             if (event.isAllDay === true) return false;
+
+            // Our own in-app coaching calls carry a sequ3nce-coaching:// link.
+            // Recall rejects anything that isn't a web meeting (400, "meeting_url
+            // is malformed"), and a rejected booking was retried every sweep —
+            // 96 failures per calendar before anyone noticed.
+            if (event.coachingCallId) return false;
+            if (!/^https?:\/\//i.test(event.meetingUrl ?? "")) return false;
 
             return true;
           },
