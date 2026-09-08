@@ -3,6 +3,11 @@ import { action, internalAction, internalMutation, internalQuery } from "./_gene
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { resolveEventColor } from "./lib/googleCalendarPalette";
+import {
+  colorFieldsForInsert,
+  colorPatchForExisting,
+  recordInsertedColor,
+} from "./calendarColorHistory";
 
 // ============================================
 // INTERNAL QUERIES
@@ -314,6 +319,12 @@ export const fetchGoogleCalendarEvents = internalAction({
           calendarColor:
             resolveEventColor(item.colorId, effectiveBackgroundColor) ??
             undefined,
+          // The raw color and Google's last-modified stamp, kept separately
+          // from the resolved hex above so a color RULEBOOK can be read off
+          // the event (was it recolored after the call?). See
+          // calendarColorHistory.ts for what the upsert does with them.
+          eventColorId: item.colorId || undefined,
+          googleUpdatedAt: parseGoogleInstant(item.updated),
         }));
 
       await ctx.runMutation(
@@ -379,6 +390,8 @@ export const upsertSubscriptionEvents = internalMutation({
           ),
         ),
         calendarColor: v.optional(v.string()),
+        eventColorId: v.optional(v.string()),
+        googleUpdatedAt: v.optional(v.number()),
       }),
     ),
   },
@@ -411,8 +424,16 @@ export const upsertSubscriptionEvents = internalMutation({
       processedUids.add(event.uid);
 
       const existing = existingByUid.get(event.uid);
+      const home = {
+        closerId: args.closerId,
+        teamId: args.teamId,
+        subscriptionId: args.subscriptionId,
+        eventUid: event.uid,
+      };
       if (existing) {
         matchedExistingIds.add(existing._id);
+        // Compare colors BEFORE the patch below overwrites the old one.
+        const colorPatch = await colorPatchForExisting(ctx, existing, home, event, now);
         await ctx.db.patch(existing._id, {
           uid: event.uid,
           title: event.title,
@@ -430,9 +451,10 @@ export const upsertSubscriptionEvents = internalMutation({
           // Only ever set, never cleared — losing a booking time we already
           // captured would silently break speed-from-booking.
           ...(event.bookedAt !== undefined ? { bookedAt: event.bookedAt } : {}),
+          ...colorPatch,
         });
       } else {
-        await ctx.db.insert("calendarEvents", {
+        const insertedId = await ctx.db.insert("calendarEvents", {
           closerId: args.closerId,
           teamId: args.teamId,
           uid: event.uid,
@@ -449,7 +471,9 @@ export const upsertSubscriptionEvents = internalMutation({
           calendarColor: event.calendarColor,
           calendarLabel: args.subscriptionLabel,
           fetchedAt: now,
+          ...colorFieldsForInsert(event, now),
         });
+        await recordInsertedColor(ctx, home, event, insertedId, now);
       }
     }
 
@@ -536,6 +560,8 @@ interface GoogleCalendarEvent {
   status: string;
   /** RFC3339 creation time — when the booking was made. */
   created?: string;
+  /** RFC3339 last-modified time. Bumps on ANY edit, RSVPs included. */
+  updated?: string;
   summary?: string;
   description?: string;
   location?: string;
@@ -553,6 +579,13 @@ interface GoogleCalendarEvent {
     organizer?: boolean;
     responseStatus?: string;
   }>;
+}
+
+/** An RFC3339 instant → ms, or undefined when absent or unparseable. */
+function parseGoogleInstant(iso: string | undefined): number | undefined {
+  if (!iso) return undefined;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : undefined;
 }
 
 /** Parse Google Calendar datetime object to Unix timestamp. */

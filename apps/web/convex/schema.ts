@@ -830,6 +830,29 @@ export default defineSchema({
     // Sequ3nce coaching call. The Schedule Join handler routes to the in-app
     // CoachingCallRoom overlay instead of opening meetingUrl externally.
     coachingCallId: v.optional(v.id("b2cCoachingCalls")),
+    /**
+     * The event's own Google color ("1"–"11"), as the closer set it. Absent =
+     * uncolored. Distinct from calendarColor above, which is a resolved hex
+     * that falls back to the calendar's default and so cannot say whether
+     * anyone touched the event. Teams that run a color rulebook (recolor the
+     * booking after the call to show / no-show / rescheduled) are read
+     * through this field — see lib/calendarColorRules.ts.
+     */
+    eventColorId: v.optional(v.string()),
+    /** Google's `updated` (last-modified) on the event, ms. */
+    googleUpdatedAt: v.optional(v.number()),
+    /**
+     * First time the color-aware sync saw this row. Set once. A color seen at
+     * first observation is a fact about the present, not a change we watched
+     * happen — so it never counts as a recolor.
+     */
+    colorFirstObservedAt: v.optional(v.number()),
+    /**
+     * Sync time of the last color transition we actually observed (previous
+     * sync had a different eventColorId). Compared against startTime this is
+     * the honest answer to "did the closer recolor it after the call".
+     */
+    colorChangedAt: v.optional(v.number()),
   })
     .index("by_closer", ["closerId"])
     .index("by_team_and_time", ["teamId", "startTime"])
@@ -838,6 +861,47 @@ export default defineSchema({
     // Used by per-subscription upsert / cleanup / cascade-delete so we don't
     // scan the entire closer's event set just to find one sub's events.
     .index("by_subscription", ["subscriptionId"]),
+
+  // Every color change we observed on a calendar event, append-only. Google
+  // keeps no color history, and a team running a color rulebook loses the
+  // pre-call color (confirmation status) the moment the closer recolors the
+  // outcome after the call. Rows are written only when the color differs from
+  // the last sync, so steady-state cost is ~0. Keyed by the provider uid
+  // (a string), not the event row id, so the trail survives the sync's
+  // delete-and-reinsert of cancelled/restored events and calendar disconnects.
+  // Nothing user-facing depends on this table: the check-ins card reads the
+  // two timestamps on calendarEvents. This is the audit trail behind them.
+  calendarEventColorHistory: defineTable({
+    teamId: v.id("teams"),
+    closerId: v.id("closers"),
+    subscriptionId: v.optional(v.id("closerCalendarSubscriptions")),
+    eventUid: v.string(),
+    calendarEventId: v.optional(v.id("calendarEvents")),
+    /** Title at the time, so a trail still reads after the event row is gone. */
+    title: v.optional(v.string()),
+    /** The event's start when observed — informational; a reschedule moves it. */
+    eventStartTime: v.number(),
+    /** New color ("1"–"11"); absent = the closer cleared it. */
+    colorId: v.optional(v.string()),
+    /** Color before this change; absent = was uncolored (or first sighting). */
+    previousColorId: v.optional(v.string()),
+    /** Our sync time. The change happened somewhere in the 15 min before it. */
+    observedAt: v.number(),
+    googleUpdatedAt: v.optional(v.number()),
+    /**
+     * "sync"     — a transition we watched happen (previous sync differed).
+     * "initial"  — the color the row carried the first time the color-aware
+     *              sync saw it (pre-deploy history; no transition observed).
+     * "backfill" — same, stamped by the one-off backfill of older events.
+     */
+    source: v.union(
+      v.literal("sync"),
+      v.literal("initial"),
+      v.literal("backfill"),
+    ),
+  })
+    .index("by_closer_and_uid", ["closerId", "eventUid"])
+    .index("by_team_and_observed", ["teamId", "observedAt"]),
 
   // B2B multi-calendar subscriptions — one row per sub-calendar the closer
   // wants to sync from their one connected Google account. Many subscriptions

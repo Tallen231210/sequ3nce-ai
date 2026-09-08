@@ -74,6 +74,14 @@ const MAX_CLOSERS_SHOWN = 20;
 const shown = (rows: any[]) => rows.slice(0, MAX_CLOSERS_SHOWN);
 
 /**
+ * " · Not recolored 3" for teams running the calendar color rulebook, nothing
+ * for everyone else (the field is absent) and nothing when it's zero — a
+ * clean day shouldn't carry a reminder of the rule.
+ */
+const notRecolored = (n: number | undefined) =>
+  typeof n === "number" && n > 0 ? ` · Not recolored ${n}` : "";
+
+/**
  * " (+3)" / " (-$400)" — or nothing at all.
  *
  * Absent when there's no previous day and when the number didn't move, because
@@ -197,6 +205,7 @@ function buildSlackBlocks(data: any, zd: ZonedDate): any[] {
             type: "mrkdwn",
             text:
               `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)} · $/live call ${perLive(r.cash, r.taken)}` +
+              notRecolored(r.notRecolored) +
               (r.prev ? "" : "  ·  _first day with numbers, nothing to compare_"),
           },
         ],
@@ -284,7 +293,8 @@ function buildDiscordEmbed(data: any, zd: ZonedDate): any {
         `Taken ${r.taken}${dDelta(r.taken, r.prev?.taken)} · $/live call ${perLive(r.cash, r.taken)} · ` +
         `Offers ${r.offers}${dDelta(r.offers, r.prev?.offers)} · ` +
         `Closes ${r.closes}${dDelta(r.closes, r.prev?.closes)}\n` +
-        `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)}`;
+        `Show ${pct(r.showPct)} · Offer→Close ${pct(r.offerClosePct)} · Close ${pct(r.closePct)}` +
+        notRecolored(r.notRecolored);
       if (used + line.length + 1 > 1000) break;
       lines.push(line);
       used += line.length + 1;

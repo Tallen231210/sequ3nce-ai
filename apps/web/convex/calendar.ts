@@ -287,6 +287,16 @@ export const disconnectCalendarByEmail = mutation({
       deletedEvents++;
     }
 
+    // The color trail is keyed by event uid and would otherwise outlive the
+    // events it describes. Capped so a huge calendar can't blow the mutation.
+    const colorHistory = await ctx.db
+      .query("calendarEventColorHistory")
+      .withIndex("by_closer_and_uid", (q) => q.eq("closerId", closer._id))
+      .take(5000);
+    for (const row of colorHistory) {
+      await ctx.db.delete(row._id);
+    }
+
     // B2C multi-calendar rows carry their OWN OAuth tokens — if they survive
     // the disconnect, the 15-min sync cron re-imports the old account's
     // events as ghosts (bitten 2026-09-02). Delete the connections outright.

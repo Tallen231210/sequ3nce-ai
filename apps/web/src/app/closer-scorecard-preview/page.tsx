@@ -12,6 +12,7 @@ import { useState } from "react";
 import { notFound } from "next/navigation";
 import { CloserScorecard } from "@/components/closer-scorecard/CloserScorecard";
 import { EodFilingCard } from "@/components/closer-scorecard/EodFilingCard";
+import { CalendarCheckinsCard } from "@/components/closer-scorecard/CalendarCheckinsCard";
 import type { CloserLedgerRow } from "@/components/closer-scorecard/engine";
 import type { RowExtras } from "@/components/closer-scorecard/CloserLedgerTable";
 import type { ScorecardSettings } from "@/components/closer-scorecard/SettingsRow";
@@ -54,6 +55,43 @@ export default function CloserScorecardPreview() {
         notYetToday={["Closer 2", "Closer 4"]}
         missedYesterday={["Closer 4"]}
         filedYesterday={["Closer 1", "Closer 2", "Closer 3"]}
+      />
+      <CalendarCheckinsCard
+        closers={[
+          {
+            closerId: "1",
+            name: "Closer 1",
+            yesterday: { due: 12, done: 12, unverified: 0, pending: [] },
+            today: { due: 5, done: 5, unverified: 0, pending: [] },
+          },
+          {
+            closerId: "2",
+            name: "Closer 2",
+            yesterday: {
+              due: 9,
+              done: 6,
+              unverified: 1,
+              pending: [
+                { title: "Diana and Closer 2", startTime: noon.getTime() - 86_400_000, label: "uncolored" },
+                { title: "(s) Ragha and Closer 2 - AI Implementation", startTime: later.getTime() - 86_400_000, label: "left light green" },
+              ],
+            },
+            today: {
+              due: 4,
+              done: 3,
+              unverified: 0,
+              pending: [
+                { title: "Kirill B and Closer 2", startTime: later.getTime(), label: "no-show — set before the call" },
+              ],
+            },
+          },
+          {
+            closerId: "3",
+            name: "Closer 3",
+            yesterday: { due: 8, done: 7, unverified: 1, pending: [] },
+            today: { due: 3, done: 2, unverified: 1, pending: [] },
+          },
+        ]}
       />
       <CloserScorecard
         actualRows={SEED}

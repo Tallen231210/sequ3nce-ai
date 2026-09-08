@@ -15,6 +15,7 @@ import {
 } from "@/components/scorecard/RangeControl";
 import { CloserScorecard } from "./CloserScorecard";
 import { EodFilingCard } from "./EodFilingCard";
+import { CalendarCheckinsCard } from "./CalendarCheckinsCard";
 import type { CloserLedgerRow } from "./engine";
 import type { RowExtras } from "./CloserLedgerTable";
 
@@ -53,6 +54,11 @@ export function CloserScorecardSection() {
   );
   const filing = useQuery(
     api.closerScorecardSupport.getEodFilingStatus,
+    clerkId ? { clerkId } : "skip",
+  );
+  // Null for teams without the calendar_color_tracking flag — card stays hidden.
+  const checkins = useQuery(
+    api.calendarColorCheckins.getCalendarCheckins,
     clerkId ? { clerkId } : "skip",
   );
   const [settingsState, setSettingsState] = useState<"idle" | "saved" | "error">("idle");
@@ -101,6 +107,7 @@ export function CloserScorecardSection() {
           filedYesterday={filing.filedYesterday}
         />
       )}
+      {checkins && <CalendarCheckinsCard closers={checkins.closers} />}
       <div className="mb-2 flex items-center justify-end">
         <RangeControl
           weeks={weeks.weeks}

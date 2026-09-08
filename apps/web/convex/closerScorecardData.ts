@@ -10,6 +10,13 @@ import {
   mergeDailyRows,
   type FunnelTotals,
 } from "./closerPerformanceMetrics";
+import { DEFAULT_TIMEZONE } from "./closerPerformance";
+import { getLocalDateRangeUtc } from "./setterDataNotifications";
+import { needsRecolor } from "./lib/calendarColorRules";
+import {
+  collectRecolorStates,
+  teamHasColorTracking,
+} from "./calendarColorCheckinsCore";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -47,7 +54,13 @@ function shiftDayKey(dayKey: string, days: number): string {
 }
 
 export interface CloserScorecardRow {
+  closerId: string;
   name: string;
+  /**
+   * Bookings that day the closer did not recolor after the call (calendar
+   * color rulebook, flag-gated). Absent for teams without the flag.
+   */
+  notRecolored?: number;
   slots: number;
   booked: number;
   taken: number;
@@ -249,6 +262,21 @@ export const getCloserScorecardData = internalQuery({
     let monthTotals = emptyTotals();
     for (const [, t] of month.byCloser) monthTotals = addTotals(monthTotals, t);
 
+    // Calendar color rulebook, for the teams that run one: how many of the
+    // day's bookings the closer left with the pre-call color. A statistic
+    // beside the others, nothing more.
+    const notRecoloredBy = new Map<string, number>();
+    const team = await ctx.db.get(teamId);
+    if (teamHasColorTracking(team)) {
+      const tz = team?.timezone || DEFAULT_TIMEZONE;
+      const { startMs, endMs } = getLocalDateRangeUtc(args.dayKey, tz);
+      const verdicts = await collectRecolorStates(ctx, teamId, startMs, endMs, Date.now());
+      for (const b of verdicts) {
+        if (!needsRecolor(b.state)) continue;
+        notRecoloredBy.set(b.closerId, (notRecoloredBy.get(b.closerId) ?? 0) + 1);
+      }
+    }
+
     // Only reps who actually did something appear. A daily post listing every
     // rep with a row of zeros trains people to ignore it.
     const rows: CloserScorecardRow[] = Array.from(day.byCloser.entries())
@@ -257,7 +285,11 @@ export const getCloserScorecardData = internalQuery({
         const rates = computeRates(t);
         const p = previousFor(closerId);
         return {
+          closerId,
           name: nameById.get(closerId) ?? "Unknown",
+          ...(teamHasColorTracking(team)
+            ? { notRecolored: notRecoloredBy.get(closerId) ?? 0 }
+            : {}),
           slots: t.slots,
           booked: t.booked,
           taken: t.taken,
