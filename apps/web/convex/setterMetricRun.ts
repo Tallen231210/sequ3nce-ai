@@ -102,6 +102,12 @@ export async function loadWindow(
     leadId: l.ghlContactId,
     arrivedAt: l.dateAdded,
     ownerId: l.assignedToGhlUserId ?? l.firstDialByUserId ?? null,
+    // A stub lead created by its own first dial: speed would be 0 by
+    // construction. Flagged rows, plus legacy rows where the stamps coincide.
+    arrivedAtInferred:
+      (l as any).dateAddedInferred === true ||
+      (typeof l.firstDialAt === "number" && l.firstDialAt === l.dateAdded) ||
+      undefined,
   }));
 
   // One range-scan per outbound type, not a blind take from the index.
@@ -182,7 +188,11 @@ export function runMetric(
     // set of pairs guarantees they can never disagree about WHICH touches
     // counted — only about how the waiting time is counted.
     case "speed_to_lead_working": {
-      const pairs = firstTouchPerLead(input.leads, input.events, touches);
+      const pairs = firstTouchPerLead(
+        input.leads.filter((l) => !l.arrivedAtInferred),
+        input.events,
+        touches,
+      );
       const hours = workingHoursFor(funnel, team);
       const result = computeDistribution(pairs, { ...funnel, businessHours: hours });
       return {
@@ -195,7 +205,11 @@ export function runMetric(
       };
     }
     case "speed_to_lead_elapsed": {
-      const pairs = firstTouchPerLead(input.leads, input.events, touches);
+      const pairs = firstTouchPerLead(
+        input.leads.filter((l) => !l.arrivedAtInferred),
+        input.events,
+        touches,
+      );
       return {
         ok: true,
         shape: "distribution",

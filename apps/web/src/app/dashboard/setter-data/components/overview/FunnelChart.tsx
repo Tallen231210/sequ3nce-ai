@@ -18,6 +18,7 @@ interface FunnelChartProps {
     connectedLeads: number;
     totalAppointments: number;
     totalShowed: number;
+    totalNoShow?: number;
     bookings?: {
       source: "setterAppointments" | "calendarEvents" | "none";
       total: number;
@@ -39,6 +40,10 @@ export function FunnelChart({ data, insight }: FunnelChartProps) {
     data.bookings.source !== "none" &&
     data.bookings.total > 0;
   const thirdStageLabel = useBookings ? "Bookings" : "Appointments";
+  const showsUnverified =
+    data.totalAppointments > 0 &&
+    data.totalShowed === 0 &&
+    (data.totalNoShow ?? 0) === 0;
   const thirdStageCount = useBookings
     ? data.bookings!.total
     : data.totalAppointments;
@@ -60,7 +65,10 @@ export function FunnelChart({ data, insight }: FunnelChartProps) {
       fill: "hsl(var(--primary) / 0.56)",
     },
     {
-      stage: "Showed",
+      // A CRM that never records "showed" (Close only knows confirmed /
+      // cancelled) leaves this stage at 0. That is "unverified", not "nobody
+      // showed" — say which.
+      stage: showsUnverified ? "Showed (unverified)" : "Showed",
       count: data.totalShowed,
       fill: "hsl(var(--primary) / 0.34)",
     },
@@ -131,7 +139,7 @@ function ConversionRates({ data }: FunnelChartProps) {
       ? data.totalAppointments / data.connectedLeads
       : null;
   const showRate =
-    data.totalAppointments > 0
+    data.totalAppointments > 0 && data.totalShowed + (data.totalNoShow ?? 0) > 0
       ? data.totalShowed / data.totalAppointments
       : null;
 

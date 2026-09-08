@@ -240,7 +240,7 @@ function ScorecardRow({ row }: { row: ScorecardRowData }) {
         <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
           <KpiCell label="Dials/day" cell={row.kpis.dialsPerDay} unit="" />
           <KpiCell
-            label="Contacts/day"
+            label="Leads/day"
             cell={row.kpis.contactsPerDay}
             unit=""
           />

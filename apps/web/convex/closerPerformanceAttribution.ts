@@ -147,6 +147,20 @@ function nameMatchesCloser(repName: string, closerName: string): boolean {
   return first.length > 2 && rep.split(/\s+/)[0] === first;
 }
 
+/**
+ * Does the title mention this closer, as a whole word, anywhere? Full name
+ * first; then the first name alone when it is long enough not to be a
+ * common word (three letters or more).
+ */
+function titleMentionsCloser(title: string | undefined, closerName: string): boolean {
+  if (!title) return false;
+  const full = closerName.trim();
+  if (full.length < 3) return false;
+  if (new RegExp(`\\b${escapeRe(full)}\\b`, "i").test(title)) return true;
+  const first = full.split(/\s+/)[0] ?? "";
+  return first.length >= 3 && new RegExp(`\\b${escapeRe(first)}\\b`, "i").test(title);
+}
+
 export interface BookingAttribution {
   /** The closer who owns this booking, or null if we can't say. */
   closerId: string | null;
@@ -182,13 +196,23 @@ export function attributeBooking(
 ): BookingAttribution {
   if (closerIdFromCall) return { closerId: closerIdFromCall, unknownRep: null };
 
-  const repName = repNameFromTitle(copies[0]?.title);
+  const title = copies[0]?.title;
+  const repName = repNameFromTitle(title);
   if (repName) {
     const hits = closerNames.filter((c) => nameMatchesCloser(repName, c.name));
     if (hits.length === 1) return { closerId: hits[0].id, unknownRep: null };
-    // Named a rep we don't recognise: attributable to a person, just not to
-    // anyone with a seat. Report who, so the manager can act on it.
-    if (hits.length === 0) return { closerId: null, unknownRep: repName };
+    if (hits.length === 0) {
+      // "Prospect and Rep" is the booking-tool convention, but some teams
+      // write it the other way round ("Karl and Darrell (e)") — the half
+      // after "and" is then the PROSPECT. Before reporting an unknown rep,
+      // look for exactly one roster closer anywhere in the title. E2: 15 of
+      // 333 bookings in two weeks were going unattributed this way.
+      const mentioned = closerNames.filter((c) => titleMentionsCloser(title, c.name));
+      if (mentioned.length === 1) return { closerId: mentioned[0].id, unknownRep: null };
+      // Named a rep we don't recognise: attributable to a person, just not to
+      // anyone with a seat. Report who, so the manager can act on it.
+      if (mentioned.length === 0) return { closerId: null, unknownRep: repName };
+    }
     // Ambiguous name (two closers match) — fall through to calendar evidence.
   }
 

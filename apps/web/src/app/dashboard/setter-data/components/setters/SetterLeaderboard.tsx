@@ -40,8 +40,11 @@ export function SetterLeaderboard({
             <TableHead className="w-[22%]">Setter</TableHead>
             <TableHead className="w-[10%] text-right tabular-nums">Leads</TableHead>
             <TableHead className="w-[10%] text-right tabular-nums">Dials</TableHead>
-            <TableHead className="w-[14%] text-right tabular-nums">
-              Connect rate
+            <TableHead
+              className="w-[14%] text-right tabular-nums"
+              title="Calls of at least the connect threshold (60s by default) ÷ leads assigned. Not pick-ups: any answered call counts as a pick-up on a setter's EOD."
+            >
+              Connects / lead
             </TableHead>
             <TableHead className="w-[12%] text-right tabular-nums">
               Appts

@@ -233,12 +233,10 @@ export const applyLeadEnrichment = internalMutation({
         patch.emailNorm = item.email.trim().toLowerCase();
       }
       if (lead.phone === undefined && item.phone) patch.phone = item.phone;
-      if (
-        item.dateAdded !== undefined &&
-        Number.isFinite(item.dateAdded) &&
-        item.dateAdded !== lead.dateAdded
-      ) {
-        patch.dateAdded = item.dateAdded;
+      if (item.dateAdded !== undefined && Number.isFinite(item.dateAdded)) {
+        if (item.dateAdded !== lead.dateAdded) patch.dateAdded = item.dateAdded;
+        // Close's real creation time is here now; the stub's guess is retired.
+        if ((lead as any).dateAddedInferred) patch.dateAddedInferred = undefined;
       }
       // Always stamp the marker — processed leads (including 404s marked
       // upstream) leave the candidate set for good.

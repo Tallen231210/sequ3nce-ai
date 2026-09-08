@@ -19,6 +19,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import { DEFAULT_TIMEZONE, dayKeyInTz } from "./closerPerformance";
 import { getLocalDateRangeUtc } from "./setterDataNotifications";
+import { isTakenCall } from "./closerPerformanceMetrics";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -176,7 +177,8 @@ export const getRange = query({
     const completedBy = new Map<string, number>();
     const confirmedBy = new Map<string, number>();
     for (const c of confCalls as any[]) {
-      if (c.status !== "completed" || c.countsTowardStats === false) continue;
+      // Same definition of "taken" as the recount, so this chip and Live agree.
+      if (!isTakenCall(c)) continue;
       const k = String(c.closerId);
       completedBy.set(k, (completedBy.get(k) ?? 0) + 1);
       if (

@@ -3,6 +3,7 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { buildMatcherIndex, findCallsForLead } from "./setterCloserMatcher";
 import { readDailyStatsRange, dayKeyOf, DAY_MS } from "./setterRollups";
+import { setterIdsFor } from "./setterRoster";
 import {
   buildBookingMatcherIndex,
   type MatchedBooking,
@@ -143,6 +144,14 @@ export interface ScorecardData {
   /** Leads first-touched more than 7 days after arriving — excluded from the
    *  speed stats as revivals, and counted here so the trim is visible. */
   revivedLeadCount: number;
+  /** Leads skipped from speed-to-lead because their creation time was really their first dial. */
+  inferredExcluded: number;
+  /** Dials by non-setters kept out of the per-setter rows; null until roles exist. */
+  droppedDials: {
+    dials: number;
+    connects: number;
+    users: Array<{ ghlUserId: string; name: string; dials: number }>;
+  } | null;
   /** Speed to lead split by channel — a DM-first funnel's response is a
    *  message, a phone-first funnel's is a call; show both, guess neither. */
   speedByChannel: {
@@ -261,14 +270,26 @@ async function readDialConnectCounts(
     rangeStart: number;
     rangeEnd: number;
     rollupsReady: boolean;
+    /**
+     * CRM user ids that count (the team's setters, from setterRoleAssignments).
+     * Null = nobody assigned roles → count everyone, as before. When set,
+     * dials by anyone else — closers, managers, the nameless integration
+     * user, departed reps — land in `dropped` instead, so the drop is
+     * visible rather than silent.
+     */
+    allowed?: Set<string> | null;
+    dropped?: Map<string, { dials: number; connects: number }>;
   },
 ): Promise<Map<string, { dials: number; connects: number }>> {
   const counts = new Map<string, { dials: number; connects: number }>();
   const bump = (sid: string, kind: "dials" | "connects", n: number) => {
     if (n === 0) return;
-    const row = counts.get(sid) ?? { dials: 0, connects: 0 };
+    const target =
+      args.allowed && !args.allowed.has(sid) ? args.dropped : counts;
+    if (!target) return;
+    const row = target.get(sid) ?? { dials: 0, connects: 0 };
     row[kind] += n;
-    counts.set(sid, row);
+    target.set(sid, row);
   };
 
   const scanEvents = async (winStart: number, winEnd: number) => {
@@ -336,6 +357,8 @@ export async function computeCadence(
     rangeEnd: number;
     clampDays: number;
     cap: number;
+    /** Setter ids that count; null = everyone (see readDialConnectCounts). */
+    allowed?: Set<string> | null;
   },
 ): Promise<{
   bySetter: Map<string, ScorecardSetterCadence>;
@@ -367,6 +390,7 @@ export async function computeCadence(
   const map = new Map<string, Map<string, PerLead>>();
   for (const ev of events) {
     if (!ev.ghlUserId) continue;
+    if (args.allowed && !args.allowed.has(ev.ghlUserId)) continue;
     let leadMap = map.get(ev.ghlUserId);
     if (!leadMap) {
       leadMap = new Map();
@@ -446,6 +470,11 @@ export async function computeScorecard(
       | null;
     const flowTypeResolved = resolveFlowType(team);
     const rollupsReady = team?.setterRollupsBackfilledAt !== undefined;
+    // Who counts as a setter. Null until a manager assigns roles; then only
+    // those ids feed dials, connects and cadence (see readDialConnectCounts).
+    const setterIds = await setterIdsFor(ctx, args.teamId as Id<"teams">);
+    const allowedSetters = setterIds ? new Set(setterIds) : null;
+    const droppedCounts = new Map<string, { dials: number; connects: number }>();
 
     // Pull every lead whose dateAdded falls in [rangeStart, rangeEnd) —
     // unless the caller already read them (getOverview passes its copy so
@@ -480,10 +509,18 @@ export async function computeScorecard(
     // from everything.
     const prospects = prospectLeads;
 
+    // A stub lead created by its own first dial carries dateAdded = that
+    // dial's time, so its speed is 0 by construction. Skip those (flagged
+    // rows, and legacy rows where the two stamps coincide) and count them.
+    const hasInferredDate = (l: any, key: string) =>
+      l.dateAddedInferred === true || l[key] === l.dateAdded;
+    let inferredExcluded = 0;
     const speedStats = (key: "firstDialAt" | "firstSmsOutboundAt") => {
-      const touched = prospects.filter(
+      const touchedAll = prospects.filter(
         (l) => typeof (l as any)[key] === "number",
       );
+      const touched = touchedAll.filter((l) => !hasInferredDate(l, key));
+      if (key === "firstDialAt") inferredExcluded = touchedAll.length - touched.length;
       const speeds = touched
         .map((l) => normalizeSpeedToLeadMs((l as any)[key], l.dateAdded))
         .filter((ms): ms is number => ms !== null)
@@ -593,6 +630,8 @@ export async function computeScorecard(
       rangeStart: args.rangeStart,
       rangeEnd: args.rangeEnd,
       rollupsReady,
+      allowed: allowedSetters,
+      dropped: droppedCounts,
     });
     for (const [setterId, c] of counts) {
       if (setterId === "") continue; // unattributed — excluded from per-setter rows (as before)
@@ -614,6 +653,7 @@ export async function computeScorecard(
         lead.firstDialAt < args.rangeEnd
       ) {
         // Same treatment as the team-level figure above.
+        if (hasInferredDate(lead, "firstDialAt")) continue;
         const speed = normalizeSpeedToLeadMs(lead.firstDialAt, lead.dateAdded);
         if (speed !== null) ensureRow(by)._speeds.push(speed);
       }
@@ -627,6 +667,7 @@ export async function computeScorecard(
     let cadenceBySetter = new Map<string, ScorecardSetterCadence>();
     if (cadenceOpt !== "none") {
       const cadence = await computeCadence(ctx, {
+        allowed: allowedSetters,
         teamId: args.teamId,
         rangeStart: args.rangeStart,
         rangeEnd: args.rangeEnd,
@@ -774,6 +815,25 @@ export async function computeScorecard(
       rangeEnd: args.rangeEnd,
     });
 
+    // What the roster filter kept out, named, so a manager can see a new hire
+    // who was never given a role rather than wonder where the dials went.
+    let droppedDialSum = 0;
+    let droppedConnectSum = 0;
+    const droppedUsers: Array<{ ghlUserId: string; name: string; dials: number }> = [];
+    for (const [id, c] of droppedCounts) {
+      droppedDialSum += c.dials;
+      droppedConnectSum += c.connects;
+      droppedUsers.push({
+        ghlUserId: id,
+        name: id === "" ? "unnamed user" : repNameByGhlUserId.get(id) ?? id,
+        dials: c.dials,
+      });
+    }
+    droppedUsers.sort((a, b) => b.dials - a.dials);
+    const droppedDials = allowedSetters
+      ? { dials: droppedDialSum, connects: droppedConnectSum, users: droppedUsers }
+      : null;
+
     const bookings = await computeBookings(ctx, {
       teamId: args.teamId,
       rangeStart: args.rangeStart,
@@ -796,6 +856,10 @@ export async function computeScorecard(
       p50SpeedMs,
       p90SpeedMs,
       revivedLeadCount,
+      // Speed-to-lead: leads whose creation time was really their first dial.
+      inferredExcluded,
+      // Dials by people who aren't this team's setters (only once roles exist).
+      droppedDials,
       speedByChannel: {
         dial: dialSpeed,
         sms: smsSpeed,
@@ -1210,16 +1274,10 @@ async function computeCloserSideShowRate(
     });
     if (calls.length === 0) continue;
     matched += 1;
-    // Showed = at least one settled call that wasn't a no-show or reschedule.
-    if (
-      calls.some(
-        (c) =>
-          c.status === "completed" &&
-          c.outcome != null &&
-          c.outcome !== "no_show" &&
-          c.outcome !== "rescheduled",
-      )
-    ) {
+    // Showed = the platform's own show classifier says so (outcome beats
+    // presence beats duration). Requiring a logged outcome here made a team
+    // whose closers never fill the form read as 0% showed.
+    if (calls.some((c) => classifyMatchedCall(c) === "showed")) {
       showed += 1;
     }
     if (calls.some((c) => c.outcome === "closed")) closed += 1;
@@ -1355,6 +1413,11 @@ export async function computeShowRateEvidence(
   const preresolved = new Set<string>();
   for (const a of candidates) {
     if (a.attendance === undefined) continue;
+    // A persisted "assumed" verdict is a guess the sweep wrote down, not
+    // evidence. Reading it as a real no-show printed 0% show rates for a team
+    // whose bookings were merely unverified (E2, Sep 2026). Leave it to the
+    // tiers below, which will find no evidence and call it unknown.
+    if (a.attendanceSource === "assumed") continue;
     if (a.attendance === "showed") {
       resolution.set(a._id, "showed");
       breakdown.fromPersisted++;
@@ -1368,7 +1431,9 @@ export async function computeShowRateEvidence(
       breakdown.unknown++;
     }
     preresolved.add(a._id);
-    if (a.attendanceSource !== "assumed" && a.attendance !== "unverifiable") {
+    // Assumed rows never get here (skipped above), so evidence = everything
+    // that isn't an explicit "unverifiable".
+    if (a.attendance !== "unverifiable") {
       evidenceResolved++;
     }
   }
@@ -1491,16 +1556,17 @@ export async function computeShowRateEvidence(
   // excluding persisted "assumed" verdicts — see the counter above).
   const coverage = evidenceResolved / candidates.length;
 
-  // ---- Tier 3: no evidence → assumed no-show (coverage-gated) ---------
+  // ---- Tier 3: no evidence → unknown ----------------------------------
+  // This used to assume a no-show once coverage reached 60%. An assumption
+  // is not a verdict: it went into "settled" and dragged the rate toward 0%
+  // for every unverified booking. Unknown now reads as unknown, and the UI
+  // says how many. (`assumedNoShow` stays in the shape for callers; it is
+  // always 0 now.)
+  void activeClosers;
   for (const a of candidates) {
     if (resolution.has(a._id)) continue;
-    if (activeClosers > 0 && coverage >= SHOW_ASSUME_COVERAGE) {
-      resolution.set(a._id, "noShow");
-      breakdown.assumedNoShow++;
-    } else {
-      resolution.set(a._id, "unknown");
-      breakdown.unknown++;
-    }
+    resolution.set(a._id, "unknown");
+    breakdown.unknown++;
   }
 
   // ---- Rollup ----------------------------------------------------------

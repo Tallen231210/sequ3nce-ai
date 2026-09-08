@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { setterIdsFor } from "./setterRoster";
 import { internalQuery, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -757,12 +758,14 @@ export const getCadence = query({
     if (!user) return null;
     const teamId = user.teamId as Id<"teams">;
 
+    const setterIds = await setterIdsFor(ctx, teamId);
     const cadence = await computeCadence(ctx, {
       teamId,
       rangeStart: args.rangeStart,
       rangeEnd: args.rangeEnd,
       clampDays: 30,
       cap: 25_000,
+      allowed: setterIds ? new Set(setterIds) : null,
     });
 
     const reps = (await ctx.db
@@ -914,6 +917,12 @@ export const getAttendanceFunnel = query({
       // point at later slots, so the latest startTime row IS the end of the
       // chain whenever the rebook made it into the read window.
       const terminal = list[list.length - 1];
+      // The sweep's "assumed" verdicts are guesses, not proof. The panel says
+      // "only proven outcomes count" — make that true.
+      if (terminal.attendanceSource === "assumed") {
+        unverifiable++;
+        continue;
+      }
       switch (terminal.attendance) {
         case "showed":
           showed++;
@@ -1901,7 +1910,13 @@ export const getBestTimeToCallHeatmap = query({
     // Fetch dial + connected events in parallel using the type-and-time index.
     // Each query is bounded by HEATMAP_EVENT_TAKE; we surface sampleCapHit so
     // the UI can show a "trimmed" warning if a high-volume team blows the cap.
-    const [dials, connects] = await Promise.all([
+    // Same roster scope as the leaderboard: once roles exist, only setters'
+    // dials shape the heatmap (this query was the source of a 12,389-dial
+    // total that included closers, managers and a nameless integration user).
+    const allowedIds = await setterIdsFor(ctx, teamId);
+    const onlySetters = <T extends { ghlUserId?: string }>(rows: T[]): T[] =>
+      allowedIds ? rows.filter((r) => allowedIds.includes(r.ghlUserId ?? "")) : rows;
+    const [dialsRaw, connectsRaw] = await Promise.all([
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ctx.db
         .query("setterLeadEvents")
@@ -1925,6 +1940,8 @@ export const getBestTimeToCallHeatmap = query({
         )
         .take(HEATMAP_EVENT_TAKE),
     ]);
+    const dials = onlySetters(dialsRaw as Array<{ occurredAt: number; ghlUserId?: string }>);
+    const connects = onlySetters(connectsRaw as Array<{ occurredAt: number; ghlUserId?: string }>);
 
     const grid = emptyHeatmapGrid();
     for (const ev of dials as Array<{ occurredAt: number }>) {
@@ -2022,7 +2039,10 @@ export const getConnectRateAnomaly = query({
     // Pull dial + connected events for the full 5-week window in a single
     // pass per event type — cheaper than two separate queries.
     const fullWindowStart = baselineStart;
-    const [allDials, allConnects] = await Promise.all([
+    const allowedIds = await setterIdsFor(ctx, teamId);
+    const onlySetters = <T extends { ghlUserId?: string }>(rows: T[]): T[] =>
+      allowedIds ? rows.filter((r) => allowedIds.includes(r.ghlUserId ?? "")) : rows;
+    const [allDialsRaw, allConnectsRaw] = await Promise.all([
       ctx.db
         .query("setterLeadEvents")
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2046,6 +2066,8 @@ export const getConnectRateAnomaly = query({
         )
         .take(25_000),
     ]);
+    const allDials = onlySetters(allDialsRaw as Array<{ occurredAt: number; ghlUserId?: string }>);
+    const allConnects = onlySetters(allConnectsRaw as Array<{ occurredAt: number; ghlUserId?: string }>);
 
     let thisWeekDials = 0;
     let thisWeekConnects = 0;

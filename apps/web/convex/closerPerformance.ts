@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { isFollowUpTitle } from "./lib/followUpTitle";
 import { classifyMatchedCall } from "./setterDataMetrics";
 import { isSalesBooking, groupBookingCopies } from "./calendarBookings";
+import { classifyExcludedTitle, isExcludedBookingTitle } from "./lib/bookingExclusions";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -9,6 +10,7 @@ import {
   getLocalDateRangeUtc,
   pad2,
 } from "./setterDataNotifications";
+import { countsContractValue, isTakenCall } from "./closerPerformanceMetrics";
 import {
   MIN_BLOCKED_MS_FOR_CAPACITY,
   attributeBooking,
@@ -143,14 +145,20 @@ async function recountDayImpl(
   });
   for (const c of tallyClosers) byCloser.set(String(c._id), blank());
 
+  // Whether an AI-read contract value counts before a human confirms it.
+  // Default yes; E2 opted out (closerPerformanceConfig.setAccuracyFlags).
+  const countAiContractValue = team.closerCountAiContractValue ?? true;
+
   for (const call of calls) {
     const row = byCloser.get(String(call.closerId));
     if (!row) continue; // closer not on this team's roster at all
     // "Taken" = a call actually happened, which we know because we recorded
     // it. Deliberately NOT gated on the post-call form: form completion
     // ranges 6-100% across teams, and a call is no less taken because
-    // nobody logged its outcome.
-    if (call.status !== "completed") continue;
+    // nobody logged its outcome. What does NOT count: a recording nobody
+    // joined, a call the closer logged as a no-show, or one marked "not a
+    // sales call" — see isTakenCall.
+    if (!isTakenCall(call)) continue;
     row.taken += 1;
     if (call.outcome == null) {
       row.missingOutcomes += 1;
@@ -168,13 +176,17 @@ async function recountDayImpl(
     if (call.outcomeSource === "ai") {
       row.missingOutcomes += 1;
     }
-    // A pitched amount means a price was actually presented on the call.
-    if ((call.contractValue ?? 0) > 0) row.offers += 1;
+    // A pitched amount means a price was actually presented on the call —
+    // unless it is the AI's guess and this team doesn't count those.
+    const contractValue = countsContractValue(call, countAiContractValue)
+      ? (call.contractValue ?? 0)
+      : 0;
+    if (contractValue > 0) row.offers += 1;
     if (call.outcome === "closed") {
       row.closes += 1;
       row.cash += call.cashCollected ?? 0;
     }
-    row.contractValue += call.contractValue ?? 0;
+    row.contractValue += contractValue;
   }
 
   // --- Calendar: booked calls + remaining capacity -------------------------
@@ -272,9 +284,18 @@ async function recountDayImpl(
     id: String(c._id),
     name: c.name ?? "",
   }));
+  // Titles that are never sales calls on this team's calendars (generic list
+  // plus the team's own words). See lib/bookingExclusions.ts.
+  const teamTitlePatterns = team.closerExcludedBookingTitles ?? [];
+  const excludedTitle = (title: string | undefined) =>
+    isExcludedBookingTitle(title, teamTitlePatterns);
 
   for (const [, copies] of copiesByUid) {
     const ev = copies[0];
+    // The booking tool's "Canceled: …" copy is neither a booking nor a block:
+    // the slot is free again. Before this it fell through to the block branch
+    // and ate capacity the closer actually had.
+    if (classifyExcludedTitle(ev.title, teamTitlePatterns) === "cancelled") continue;
     const linkedCloser =
       copies
         .map((c) => closerIdByEventId.get(String(c._id)))
@@ -284,6 +305,7 @@ async function recountDayImpl(
     // more booked calls than the queue asks about reads as broken numbers.
     const isCall = isSalesBooking(copies, {
       producedARecordedCall: !!linkedCloser,
+      excludedTitle,
     });
 
     // An all-day event (OOO, a holiday) covers the entire day.

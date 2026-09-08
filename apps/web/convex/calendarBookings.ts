@@ -40,8 +40,23 @@ export interface BookingCandidate {
  */
 export function isSalesBooking(
   copies: BookingCandidate[],
-  opts: { producedARecordedCall?: boolean } = {},
+  opts: {
+    producedARecordedCall?: boolean;
+    /**
+     * Titles that are never sales calls even with an outsider invited — the
+     * booking tool's cancelled copies, standups, blocks (lib/bookingExclusions).
+     * Checked first: a bot that recorded the standup does not make it a booking.
+     */
+    excludedTitle?: (title: string | undefined) => boolean;
+  } = {},
 ): boolean {
+  if (
+    opts.excludedTitle &&
+    copies.length > 0 &&
+    copies.every((c) => opts.excludedTitle!(c.title))
+  ) {
+    return false;
+  }
   if (opts.producedARecordedCall) return true;
   return copies.some((c) =>
     (c.attendees ?? []).some((a) => a.isOrganizer !== true && !!a.email),

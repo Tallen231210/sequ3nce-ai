@@ -72,7 +72,8 @@ export async function collectRecolorStates(
   endMs: number,
   nowMs: number,
 ): Promise<BookingRecolor[]> {
-  const [events, calls, closers, subs] = await Promise.all([
+  const [team, events, calls, closers, subs] = await Promise.all([
+    ctx.db.get(teamId),
     ctx.db
       .query("calendarEvents")
       .withIndex("by_team_and_time", (q) =>
@@ -120,7 +121,7 @@ export async function collectRecolorStates(
   for (const [, copies] of groupBookingCopies(events)) {
     const recorded = copies.some((c) => eventIdsWithCalls.has(String(c._id)));
     if (!isSalesBooking(copies, { producedARecordedCall: recorded })) continue;
-    if (isExcludedBookingTitle(copies[0]?.title)) continue;
+    if (isExcludedBookingTitle(copies[0]?.title, team?.closerExcludedBookingTitles)) continue;
 
     const ownByCloser = new Map<string, Doc<"calendarEvents">[]>();
     for (const c of copies) {

@@ -297,7 +297,7 @@ async function handleContactUpsert(
       tags: contact.tags ?? existing.tags,
       assignedToGhlUserId: nnStr(contact.assignedTo) ?? existing.assignedToGhlUserId,
       ...(authoritativeDateAdded !== undefined
-        ? { dateAdded: authoritativeDateAdded }
+        ? { dateAdded: authoritativeDateAdded, dateAddedInferred: undefined }
         : {}),
       lastSyncedAt: now,
     });
@@ -1273,6 +1273,9 @@ export async function ensureLead(
     email: undefined,
     phone: undefined,
     dateAdded: Math.min(knownActivityAt ?? now, now),
+    // Not the CRM's creation time — the time of the activity that made us
+    // notice the lead. Speed-to-lead skips these until a real date arrives.
+    dateAddedInferred: true,
     source: undefined,
     sourceDetail: undefined,
     tags: undefined,

@@ -22,6 +22,7 @@ import {
   groupBookingCopies,
   prospectFromBooking,
 } from "./calendarBookings";
+import { isExcludedBookingTitle } from "./lib/bookingExclusions";
 
 /**
  * How close in time two records must be to be the same meeting.
@@ -71,6 +72,11 @@ export const ingestTeamBookings = internalMutation({
   ): Promise<{ created: number; skipped: number }> => {
     const now = Date.now();
     const since = now - (args.windowDays ?? 3) * 24 * 60 * 60 * 1000;
+    // The team's own never-a-sales-call titles, same as the recount uses.
+    const team = await ctx.db.get(args.teamId);
+    const teamTitlePatterns = team?.closerExcludedBookingTitles ?? [];
+    const excludedTitle = (title: string | undefined) =>
+      isExcludedBookingTitle(title, teamTitlePatterns);
 
     const closers = await ctx.db
       .query("closers")
@@ -117,7 +123,7 @@ export const ingestTeamBookings = internalMutation({
     for (const [, copies] of grouped) {
       // Same rule Team Performance uses to call this "Booked". If it isn't a
       // sales call there, it must not become a call here.
-      if (!isSalesBooking(copies)) {
+      if (!isSalesBooking(copies, { excludedTitle })) {
         skipped++;
         continue;
       }

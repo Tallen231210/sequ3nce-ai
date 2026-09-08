@@ -59,7 +59,7 @@ export function ConnectRateAnomalyBanner() {
             <TrendingDown className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-500" />
             <div className="space-y-1.5">
               <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                Connect rate dropped {dropPct}% this week
+                Connect rate (calls ≥ 60s) dropped {dropPct}% this week
               </div>
               <div className="text-xs text-amber-800/80 dark:text-amber-100/80">
                 Last 7 days: <span className="font-medium">{thisWeekPct}%</span>{" "}

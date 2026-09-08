@@ -88,9 +88,12 @@ export function KpiStrip({ data, onUntouchedClick }: KpiStripProps) {
           return revived > 0 ? `${base} · ${revived} revived excluded` : base;
         })()}
       />
+      {/* "Connect" here means a call of at least the team's threshold (60s
+          by default). Setters' own "pick-ups" count any answer and run 2–3×
+          this, which is why the two must never share a name. */}
       <KpiCard
         icon={Phone}
-        label="Connections"
+        label={`Connects (calls ≥ ${(data as any).connectionThresholdSec ?? 60}s)`}
         value={`${data.connectedLeads} / ${data.totalLeads}`}
         sub={
           data.connectedRate !== null
@@ -186,14 +189,17 @@ function pickShowRateDisplay(data: KpiStripData): {
   sub: string;
 } {
   const ev = data.showRateEvidence;
+  // Still loading the evidence: say so rather than fall back to a weaker
+  // rate for a second and then jump.
+  if (ev === undefined) {
+    return { value: "—", sub: "Checking call evidence…" };
+  }
   if (ev?.available && ev.showRate !== null) {
-    const evidenced =
-      ev.breakdown.fromStatus + ev.breakdown.fromForm + ev.breakdown.fromRecording;
     return {
       value: `${Math.round(ev.showRate * 100)}%`,
       sub:
-        ev.breakdown.assumedNoShow > 0
-          ? `${ev.showed} of ${ev.settled} showed · ${evidenced} evidenced`
+        ev.breakdown.unknown > 0
+          ? `${ev.showed} of ${ev.settled} verified showed · ${ev.breakdown.unknown} unverified`
           : `${ev.showed} of ${ev.settled} showed`,
     };
   }

@@ -112,6 +112,7 @@ import type * as closerPerformanceMetrics from "../closerPerformanceMetrics.js";
 import type * as closerPerformanceMutations from "../closerPerformanceMutations.js";
 import type * as closerPerformanceNotifications from "../closerPerformanceNotifications.js";
 import type * as closerPerformanceQueries from "../closerPerformanceQueries.js";
+import type * as closerPerformanceSnapshot from "../closerPerformanceSnapshot.js";
 import type * as closerPerformanceSweep from "../closerPerformanceSweep.js";
 import type * as closerPerformanceYear from "../closerPerformanceYear.js";
 import type * as closerScorecard from "../closerScorecard.js";
@@ -378,6 +379,7 @@ declare const fullApi: ApiFromModules<{
   closerPerformanceMutations: typeof closerPerformanceMutations;
   closerPerformanceNotifications: typeof closerPerformanceNotifications;
   closerPerformanceQueries: typeof closerPerformanceQueries;
+  closerPerformanceSnapshot: typeof closerPerformanceSnapshot;
   closerPerformanceSweep: typeof closerPerformanceSweep;
   closerPerformanceYear: typeof closerPerformanceYear;
   closerScorecard: typeof closerScorecard;

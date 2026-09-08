@@ -8,7 +8,7 @@
 
 import { internalQuery } from "./_generated/server";
 import { COLOR, recolorState, type ColorTrackedEvent, type RecolorState } from "./lib/calendarColorRules";
-import { isExcludedBookingTitle } from "./lib/bookingExclusions";
+import { classifyExcludedTitle, isExcludedBookingTitle } from "./lib/bookingExclusions";
 
 const H = 60 * 60 * 1000;
 const D = 24 * H;
@@ -54,32 +54,41 @@ export const colorRulesBench = internalQuery({
 export const bookingExclusionsBench = internalQuery({
   args: {},
   handler: async () => {
-    const cases: Array<{ title: string; expect: boolean }> = [
-      { title: "Canceled: Carter Motz and Karl Dargan", expect: true },
-      { title: "Cancelled: Andy and Ryleigh Harris", expect: true },
-      { title: "Block", expect: true },
-      { title: "Ai Implementation STM", expect: true },
-      { title: "Call Confirmations + Follow Up", expect: true },
-      { title: "follow ups, confirmations", expect: true },
-      { title: "Follow ups", expect: true },
-      { title: "Zion 1on1", expect: true },
-      { title: "Weekly 1:1 with Karl", expect: true },
-      { title: "NY Session", expect: true },
-      { title: "Prayer, Meditation & Bible", expect: true },
-      { title: "Daily standup", expect: true },
-      { title: "(M) Guneet and Joseph | AIM Follow up call", expect: false },
-      { title: "Jody and Ryleigh - Follow Up", expect: false },
-      { title: "Shannon and Brittany Thatcher", expect: false },
-      { title: "AI Implementation Consult: Karl and Darrell (e)", expect: false },
-      { title: "Reading with Rob and Karl", expect: false },
-      { title: "", expect: false },
+    // E2's own words live in the team list; the generic rule must not know them.
+    const E2 = ["read", "gym", "prayer", "trading", "ny session", "meditation", "sonia session"];
+    const cases: Array<{ title: string; team?: string[]; expect: ReturnType<typeof classifyExcludedTitle> }> = [
+      { title: "Canceled: Carter Motz and Karl Dargan", expect: "cancelled" },
+      { title: "Cancelled: Andy and Ryleigh Harris", expect: "cancelled" },
+      { title: "Block", expect: "non_sales" },
+      { title: "Ai Implementation STM", expect: "non_sales" },
+      { title: "Call Confirmations + Follow Up", expect: "non_sales" },
+      { title: "follow ups, confirmations", expect: "non_sales" },
+      { title: "Follow ups", expect: "non_sales" },
+      { title: "Zion 1on1", expect: "non_sales" },
+      { title: "Weekly 1:1 with Karl", expect: "non_sales" },
+      { title: "Daily standup", expect: "non_sales" },
+      { title: "Do not book — training", expect: "non_sales" },
+      // Team words: excluded only when the team lists them.
+      { title: "NY Session", expect: null },
+      { title: "NY Session", team: E2, expect: "non_sales" },
+      { title: "Prayer, Meditation & Bible", expect: null },
+      { title: "Prayer, Meditation & Bible", team: E2, expect: "non_sales" },
+      { title: "Gym", team: E2, expect: "non_sales" },
+      // A team word must match at the START of the title, on a word boundary.
+      { title: "Reading with Rob and Karl", team: E2, expect: null },
+      { title: "Read Smith and Karl", expect: null },
+      { title: "Andrew Gymer and Karl", team: E2, expect: null },
+      // Real bookings stay bookings.
+      { title: "(M) Guneet and Joseph | AIM Follow up call", team: E2, expect: null },
+      { title: "Jody and Ryleigh - Follow Up", team: E2, expect: null },
+      { title: "Shannon and Brittany Thatcher", team: E2, expect: null },
+      { title: "AI Implementation Consult: Karl and Darrell (e)", team: E2, expect: null },
+      { title: "", expect: null },
     ];
-    const results = cases.map((c) => ({
-      title: c.title,
-      got: isExcludedBookingTitle(c.title),
-      expect: c.expect,
-      pass: isExcludedBookingTitle(c.title) === c.expect,
-    }));
+    const results = cases.map((c) => {
+      const got = classifyExcludedTitle(c.title, c.team);
+      return { title: c.title, team: !!c.team, got, expect: c.expect, pass: got === c.expect && isExcludedBookingTitle(c.title, c.team) === (c.expect !== null) };
+    });
     return { allPass: results.every((r) => r.pass), results };
   },
 });

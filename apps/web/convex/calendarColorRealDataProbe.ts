@@ -12,7 +12,8 @@
 // ============================================================================
 
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { collectRecolorStates } from "./calendarColorCheckinsCore";
 import type { RecolorState } from "./lib/calendarColorRules";
 
@@ -104,10 +105,29 @@ export const summarize = internalQuery({
 });
 
 export const teardown = internalMutation({
-  args: { closerIds: v.array(v.id("closers")) },
+  args: { closerIds: v.array(v.id("closers")), teamId: v.optional(v.id("teams")) },
   handler: async (ctx, args) => {
     let events = 0;
     let history = 0;
+    if (args.teamId) {
+      // The recount rehearsal writes measured rows for the dev team; clear
+      // them so the next run starts clean.
+      const teamId = args.teamId;
+      for (const table of ["closerDailyStats", "closerDailyTeamStats"] as const) {
+        const rows = await ctx.db
+          .query(table)
+          .withIndex("by_team_and_day", (q) => q.eq("teamId", teamId))
+          .collect();
+        for (const r of rows) await ctx.db.delete(r._id);
+      }
+      for (const table of ["calls"] as const) {
+        const rows = await ctx.db
+          .query(table)
+          .withIndex("by_team_and_date", (q) => q.eq("teamId", teamId))
+          .collect();
+        for (const r of rows) if (String(r.prospectName ?? "").startsWith("rp-")) await ctx.db.delete(r._id);
+      }
+    }
     for (const closerId of args.closerIds) {
       const evs = await ctx.db
         .query("calendarEvents")
@@ -133,5 +153,105 @@ export const teardown = internalMutation({
       await ctx.db.delete(closerId);
     }
     return { closers: args.closerIds.length, events, history };
+  },
+});
+
+
+// ---------------------------------------------------------------------------
+// Recount rehearsal: run the REAL Team Performance recount over the seeded
+// rows and read back what the board would say.
+// ---------------------------------------------------------------------------
+
+/** Give the dev team the settings the real team runs with. */
+export const configureTeam = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    timezone: v.optional(v.string()),
+    excludedBookingTitles: v.optional(v.array(v.string())),
+    countAiContractValue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.teamId, {
+      ...(args.timezone ? { timezone: args.timezone } : {}),
+      ...(args.excludedBookingTitles ? { closerExcludedBookingTitles: args.excludedBookingTitles } : {}),
+      ...(args.countAiContractValue === false ? { closerCountAiContractValue: false } : {}),
+    });
+    return { ok: true };
+  },
+});
+
+/** Synthetic calls for the taken / contract-value rules (prospectName rp-*). */
+export const seedCalls = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    calls: v.array(
+      v.object({
+        closerId: v.id("closers"),
+        label: v.string(),
+        createdAt: v.number(),
+        status: v.string(),
+        duration: v.optional(v.number()),
+        outcome: v.optional(v.string()),
+        outcomeSource: v.optional(v.string()),
+        contractValue: v.optional(v.number()),
+        cashCollected: v.optional(v.number()),
+        prospectJoined: v.optional(v.boolean()),
+        countsTowardStats: v.optional(v.boolean()),
+        factsConfirmedAt: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    for (const c of args.calls) {
+      const { label, ...rest } = c;
+      await ctx.db.insert("calls", {
+        teamId: args.teamId,
+        speakerCount: 2,
+        prospectName: "rp-" + label,
+        ...rest,
+      } as never);
+    }
+    return { inserted: args.calls.length };
+  },
+});
+
+export const recountDays = internalAction({
+  args: { teamId: v.id("teams"), dayKeys: v.array(v.string()) },
+  handler: async (ctx, args): Promise<{ days: number }> => {
+    for (const dayKey of args.dayKeys) {
+      await ctx.runMutation(internal.closerPerformance.recountCloserDay, {
+        teamId: args.teamId,
+        dayKey,
+      });
+    }
+    return { days: args.dayKeys.length };
+  },
+});
+
+export const readMeasured = internalQuery({
+  args: { teamId: v.id("teams"), startDayKey: v.string(), endDayKey: v.string() },
+  handler: async (ctx, args) => {
+    const stats = await ctx.db
+      .query("closerDailyStats")
+      .withIndex("by_team_and_day", (q) =>
+        q.eq("teamId", args.teamId).gte("dayKey", args.startDayKey).lte("dayKey", args.endDayKey),
+      )
+      .collect();
+    const teamStats = await ctx.db
+      .query("closerDailyTeamStats")
+      .withIndex("by_team_and_day", (q) =>
+        q.eq("teamId", args.teamId).gte("dayKey", args.startDayKey).lte("dayKey", args.endDayKey),
+      )
+      .collect();
+    return {
+      stats: stats.map((r) => ({
+        closerId: String(r.closerId), dayKey: r.dayKey, booked: r.booked, taken: r.taken,
+        offers: r.offers, closes: r.closes, cash: r.cash, contractValue: r.contractValue,
+        missingOutcomes: r.missingOutcomes ?? 0,
+      })),
+      teamStats: teamStats.map((r) => ({
+        dayKey: r.dayKey, bookedUnattributed: r.bookedUnattributed, unknownReps: r.unknownReps ?? [],
+      })),
+    };
   },
 });

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveAuthUser } from "./setterGhlOauth";
 import {
@@ -108,6 +108,9 @@ export const getConfig = query({
       typicalCallLengthMin:
         team.closerTypicalCallLengthMin ?? DEFAULT_CALL_LENGTH_MIN,
       bookingsPerSlot: team.closerBookingsPerSlot ?? 1,
+      // Measured-number accuracy (see lib/bookingExclusions.ts).
+      excludedBookingTitles: team.closerExcludedBookingTitles ?? [],
+      countAiContractValue: team.closerCountAiContractValue ?? true,
       teamCashGoalOverride: team.closerTeamCashGoalOverride ?? null,
       prize: {
         name: team.closerPrizeName ?? null,
@@ -141,6 +144,8 @@ export const updateConfig = mutation({
     prizeName: v.optional(v.union(v.string(), v.null())),
     prizeEmoji: v.optional(v.union(v.string(), v.null())),
     prizeTarget: v.optional(v.union(v.number(), v.null())),
+    excludedBookingTitles: v.optional(v.array(v.string())),
+    countAiContractValue: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const user = await resolveAuthUser(ctx, args.clerkId);
@@ -220,8 +225,65 @@ export const updateConfig = mutation({
       }
     }
 
+    applyAccuracyArgs(patch, args);
+
     await ctx.db.patch(teamId, patch);
     return { success: true };
+  },
+});
+
+const MAX_EXCLUDED_TITLES = 20;
+const MAX_EXCLUDED_TITLE_LENGTH = 60;
+
+/**
+ * The two accuracy settings, validated once for both writers. An empty list
+ * clears the field so the generic rule alone applies.
+ */
+function applyAccuracyArgs(
+  patch: Record<string, unknown>,
+  args: { excludedBookingTitles?: string[]; countAiContractValue?: boolean },
+): void {
+  if (args.excludedBookingTitles !== undefined) {
+    const list = args.excludedBookingTitles
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    if (list.length > MAX_EXCLUDED_TITLES) {
+      throw new Error(`At most ${MAX_EXCLUDED_TITLES} excluded titles`);
+    }
+    if (list.some((t) => t.length > MAX_EXCLUDED_TITLE_LENGTH)) {
+      throw new Error(`Excluded titles must be ${MAX_EXCLUDED_TITLE_LENGTH} characters or fewer`);
+    }
+    patch.closerExcludedBookingTitles = list.length > 0 ? list : undefined;
+  }
+  if (args.countAiContractValue !== undefined) {
+    // true is the default, so store only the opt-out.
+    patch.closerCountAiContractValue = args.countAiContractValue ? undefined : false;
+  }
+}
+
+/**
+ * Founder-side writer for the accuracy settings (no manager login needed):
+ *   npx convex run --prod closerPerformanceConfig:setAccuracyFlags \
+ *     '{"teamId":"…","countAiContractValue":false,"excludedBookingTitles":["NY Session"]}'
+ */
+export const setAccuracyFlags = internalMutation({
+  args: {
+    teamId: v.id("teams"),
+    excludedBookingTitles: v.optional(v.array(v.string())),
+    countAiContractValue: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const team = await ctx.db.get(args.teamId);
+    if (!team) throw new Error("Team not found");
+    const patch: Record<string, unknown> = {};
+    applyAccuracyArgs(patch, args);
+    if (Object.keys(patch).length === 0) return { saved: false };
+    await ctx.db.patch(args.teamId, patch);
+    return {
+      saved: true,
+      excludedBookingTitles: (patch.closerExcludedBookingTitles as string[] | undefined) ?? [],
+      countAiContractValue: patch.closerCountAiContractValue !== false,
+    };
   },
 });
 

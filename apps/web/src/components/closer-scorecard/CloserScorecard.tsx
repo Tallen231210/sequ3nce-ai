@@ -8,6 +8,7 @@
 // keystroke reads rates off the half-typed row and cascades zeros (the live
 // bug found in the setter build; do not regress it).
 
+import { COLUMN_DEFINITIONS } from "./definitions";
 import React, { useEffect, useRef, useState } from "react";
 import {
   cascadeWith,
@@ -162,12 +163,35 @@ export function CloserScorecard({
         target={settings.targetCdpbc}
       />
 
+      <details className={s.foot}>
+        <summary style={{ cursor: "pointer" }}>
+          <strong>What each column counts.</strong> Hover any header for the
+          same text.
+        </summary>
+        <dl
+          style={{
+            display: "grid",
+            gridTemplateColumns: "max-content 1fr",
+            gap: "4px 12px",
+            marginTop: 8,
+          }}
+        >
+          {COLUMN_DEFINITIONS.map((d) => (
+            <React.Fragment key={d.key}>
+              <dt style={{ fontWeight: 600 }}>{d.label}</dt>
+              <dd style={{ margin: 0 }}>{d.definition}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+      </details>
+
       <p className={s.foot}>
-        <strong>Where these numbers come from.</strong> Measured figures are
-        what the bot recorded, follow-ups come from &ldquo;follow up&rdquo; in
-        the call title, and closer-reported numbers arrive through the daily
-        EOD form. A manager correction always wins, a closer&apos;s entry
-        beats the measurement, and none of the three are ever blended
+        <strong>Where these numbers come from.</strong> Measured figures come
+        from the recordings and the AI&apos;s read of them until a closer
+        confirms or corrects a call; follow-ups come from &ldquo;follow
+        up&rdquo; in the call title; closer-reported numbers arrive through the
+        daily EOD form. A manager correction always wins, a closer&apos;s
+        entry beats the measurement, and none of the three are ever blended
         silently. Rounding compounds down the cascade, so a big scale-up can
         land a unit or two off a hand calc — directional, not penny-exact.
       </p>

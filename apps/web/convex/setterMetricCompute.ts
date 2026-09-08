@@ -30,6 +30,8 @@ export interface MetricLead {
   leadId: string;
   arrivedAt: number;
   ownerId: string | null;
+  /** arrivedAt is the first activity we saw, not the CRM's creation time. */
+  arrivedAtInferred?: boolean;
 }
 
 /**

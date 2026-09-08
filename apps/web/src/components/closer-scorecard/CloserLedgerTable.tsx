@@ -4,6 +4,7 @@
 // editable; rates are derived and never editable. Mirrors the setter
 // LedgerTable's structure and the reference HTML's columns.
 
+import { definitionFor } from "./definitions";
 import React from "react";
 import {
   FIELDS,
@@ -151,12 +152,26 @@ export function CloserLedgerTable({
         <thead>
           <tr>
             <th className={s.left}>Closer</th>
-            <th>Booked</th><th>Live</th><th>Closes</th><th>Gross $</th><th>Collected $</th>
-            <th>FU bkd</th><th>FU shown</th>
-            <th className={s.sep}>Show</th><th>Live close</th><th>Bkd close</th>
-            <th>AOV</th><th>Collect</th><th>GDPBC</th><th>CDPBC</th>
-            <th title="Cash collected per live call — collected ÷ live">CDPLC</th><th>ROAS</th>
-            <th>FU show</th><th>Gap $</th>
+            {/* Every header carries its definition (definitions.ts), the
+                same text the legend under the table shows. */}
+            <th title={definitionFor("booked")}>Booked</th>
+            <th title={definitionFor("live")}>Live</th>
+            <th title={definitionFor("closes")}>Closes</th>
+            <th title={definitionFor("gross")}>Gross $</th>
+            <th title={definitionFor("collected")}>Collected $</th>
+            <th title={definitionFor("fub")}>FU bkd</th>
+            <th title={definitionFor("fus")}>FU shown</th>
+            <th className={s.sep} title={definitionFor("show")}>Show</th>
+            <th title={definitionFor("liveClose")}>Live close</th>
+            <th title={definitionFor("bkdClose")}>Bkd close</th>
+            <th title={definitionFor("aov")}>AOV</th>
+            <th title={definitionFor("collect")}>Collect</th>
+            <th title={definitionFor("gdpbc")}>GDPBC</th>
+            <th title={definitionFor("cdpbc")}>CDPBC</th>
+            <th title={definitionFor("cdplc")}>CDPLC</th>
+            <th title={definitionFor("roas")}>ROAS</th>
+            <th title={definitionFor("fuShow")}>FU show</th>
+            <th title={definitionFor("gap")}>Gap $</th>
           </tr>
         </thead>
         <tbody>

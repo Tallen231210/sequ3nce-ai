@@ -551,6 +551,21 @@ export default defineSchema({
     // performance delta $ column.
     closerTargetCdpbc: v.optional(v.number()),
 
+    // ---- Measured-number accuracy (per team) ----
+    /**
+     * Titles that are never sales calls on THIS team's calendars, matched at
+     * the start of the title ("NY Session", "Prayer"). The generic junk
+     * (cancelled copies, Block, standups, 1:1s) is excluded for everyone —
+     * see lib/bookingExclusions.ts. Absent = generic rule only.
+     */
+    closerExcludedBookingTitles: v.optional(v.array(v.string())),
+    /**
+     * Whether an AI-read contract value counts toward Gross $ / offers before
+     * a human confirms it. Absent = true (unchanged). E2 turned it off: the
+     * AI's guesses summed to more than the team collected.
+     */
+    closerCountAiContractValue: v.optional(v.boolean()),
+
     // Post-signup onboarding pack — drives welcome email idempotency,
     // dashboard banner visibility, and the /dashboard/onboarding checklist.
     // All optional + additive; null/undefined means "not yet" for each.
@@ -3222,6 +3237,13 @@ export default defineSchema({
     // inferring "needs enrichment" from a missing name breaks when the
     // meetings backpatch names a lead first. Unset on GHL leads.
     enrichedAt: v.optional(v.number()),
+    /**
+     * True when dateAdded was not the CRM's creation time but the time of the
+     * first activity we saw (a stub lead created by its own dial). Speed-to-
+     * lead must skip these — the delta is zero by construction, not because
+     * anyone was fast. Cleared when a real creation time arrives.
+     */
+    dateAddedInferred: v.optional(v.boolean()),
     lastDialAt: v.optional(v.number()),
     // Chronologically-first outbound SMS (min-time semantics, like
     // firstDialAt). Powers pre-call qualification from snapshots instead of

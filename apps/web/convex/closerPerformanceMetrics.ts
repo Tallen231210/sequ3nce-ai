@@ -498,3 +498,55 @@ export function wow(thisWeekCash: number, lastWeekCash: number): number | null {
   if (lastWeekCash <= 0) return null;
   return ((thisWeekCash - lastWeekCash) / lastWeekCash) * 100;
 }
+
+// ============================================================================
+// Which recorded calls count as "taken", and which contract values count.
+//
+// One definition, shared by the recount (Team Performance) and the closer
+// scorecard's confirmation chip, so "Live" and "calls completed" never
+// disagree. Found on E2 (Sep 2026): bots recording an empty room for four
+// minutes, closers logging "no show" on a bot call that kept status
+// "completed", and AI-guessed contract values ($24k, sixteen times) summing
+// to more than the team collected.
+// ============================================================================
+
+/** A completed recording shorter than this with no outcome is nobody showing up. */
+export const SHORT_CALL_NO_OUTCOME_SEC = 300;
+
+export function isTakenCall(call: {
+  status?: string;
+  outcome?: string | null;
+  duration?: number | null;
+  prospectJoined?: boolean;
+  countsTowardStats?: boolean;
+}): boolean {
+  if (call.status !== "completed") return false;
+  // Explicitly marked "not a sales call" (a closer's control, or a Fathom
+  // import that shouldn't count).
+  if (call.countsTowardStats === false) return false;
+  // The closer said nobody came. A no-show is not a call taken.
+  if (call.outcome === "no_show") return false;
+  // Nothing logged and nobody heard: a bot alone in a room, or the closer
+  // waiting. Presence evidence (prospectJoined) beats the duration rule.
+  if (
+    call.outcome == null &&
+    call.prospectJoined !== true &&
+    (call.duration ?? 0) < SHORT_CALL_NO_OUTCOME_SEC
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Does this call's contract value belong in Gross $ and "offers"?
+ * With the team's opt-out, an AI-read figure counts only once a human
+ * confirmed it (factsConfirmedAt) or entered it (outcomeSource ≠ "ai").
+ */
+export function countsContractValue(
+  call: { outcomeSource?: string | null; factsConfirmedAt?: number | null },
+  countAiContractValue: boolean,
+): boolean {
+  if (countAiContractValue) return true;
+  return call.outcomeSource !== "ai" || call.factsConfirmedAt != null;
+}

@@ -71,6 +71,21 @@ export function SettersTab({
         />
       )}
 
+      {/* Dials the roster filter kept out. Named, so a new hire nobody gave a
+          role to shows up here instead of vanishing. */}
+      {data && (data as any).droppedDials && (data as any).droppedDials.dials > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {(data as any).droppedDials.dials.toLocaleString()} dials by people who
+          aren&apos;t on the setter roster are not shown:{" "}
+          {((data as any).droppedDials.users as Array<{ name: string; dials: number }>)
+            .slice(0, 6)
+            .map((u) => `${u.name} (${u.dials.toLocaleString()})`)
+            .join(", ")}
+          {(data as any).droppedDials.users.length > 6 ? ", …" : ""}. Assign
+          roles in Settings to change who counts.
+        </p>
+      )}
+
       <SetterDrillPanel
         ghlUserId={selectedSetterId}
         rangeStart={rangeStart}
