@@ -51,37 +51,35 @@ export const PRICING_SLIDES: TeamSlide[] = [
       </div>
     ),
   },
-  // Manager compensation
+  // Manager compensation — the manager's 7–10% of cash collected is paid by the client
+  // straight to the manager; the $3,000/mo is Sequ3nce's software-and-systems
+  // fee, not a manager base (Tyler's correction 2026-09-09; the brief had this wrong).
   {
     bar: "Manager compensation",
-    pill: "$3,000 base + 7%",
+    pill: "7–10% of cash collected",
     body: (
       <div className="w-full">
         <Mono className="mb-4">09 · Manager compensation</Mono>
         <H size="md" className="max-w-[30ch]">
-          Paid by you, directly to the manager: <Accent>$3,000 base + 7%</Accent> of cash collected.
+          Paid by you, directly to the manager: <Accent><span className="whitespace-nowrap">7–10% of cash collected.</span></Accent>
         </H>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-8 max-w-4xl items-stretch">
           <Stat
-            value={
-              <>
-                $10,000<span className="text-base text-[#4b5a58] font-semibold">/mo</span>
-              </>
-            }
-            label="At a $100k/mo client — the floor that keeps a good manager in the seat. The base protects them in a soft month, which is the single biggest cause of manager churn in this model."
+            value="7–10%"
+            label="Of cash collected, paid by you straight to the manager. At a $100k/mo client that is $7,000–$10,000 a month, which keeps a good manager in the seat."
           />
           <Stat
             value={
               <>
-                12%<span className="text-base text-[#4b5a58] font-semibold"> + $3,000 base</span>
+                12–15%<span className="text-base text-[#4b5a58] font-semibold"> under Option B</span>
               </>
             }
-            label="Total sales load under Option B. One number: a sales department, not a stack of fees."
+            label="Total sales load: our 5% plus the manager's 7–10%, with Sequ3nce included. One number: a sales department, not a stack of fees."
             accent
           />
         </div>
         <Spec className="mt-5 max-w-4xl">
-          <Mono className="mb-4">Where the 12% goes</Mono>
+          <Mono className="mb-4">Where the money goes</Mono>
           <LoadBar />
         </Spec>
       </div>

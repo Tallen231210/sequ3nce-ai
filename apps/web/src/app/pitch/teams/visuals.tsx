@@ -165,18 +165,18 @@ export function TotalsBars({ rows }: { rows: { label: string; value: number; acc
   );
 }
 
-/** The sales load under Option B as one dimensioned bar. */
+/** Where the money goes: the manager's share and ours, drawn as one dimensioned bar. */
 export function LoadBar() {
   return (
     <div className="w-full">
-      <Dim ink label="12% of cash collected, as one number" className="mb-3" />
+      <Dim ink label="Option B · 12–15% of cash collected, as one number" className="mb-3" />
       <div className="flex h-12 w-full border-2 border-[#0b1f1d]" style={{ fontFamily: MONO_FONT }}>
-        <div className="flex items-center justify-center bg-[#0d9488] text-white text-[13px] font-semibold tracking-[0.08em]" style={{ width: "41.6%" }}>5% SEQU3NCE</div>
-        <div className="flex items-center justify-center bg-white text-[#0b1f1d] text-[13px] font-semibold tracking-[0.08em] border-l-2 border-[#0b1f1d]" style={{ width: "58.4%" }}>7% MANAGER</div>
+        <div className="flex items-center justify-center bg-[#0d9488] text-white text-[13px] font-semibold tracking-[0.08em]" style={{ width: "36%" }}>5% SEQU3NCE</div>
+        <div className="flex items-center justify-center bg-white text-[#0b1f1d] text-[13px] font-semibold tracking-[0.08em] border-l-2 border-[#0b1f1d]" style={{ width: "64%" }}>7–10% MANAGER</div>
       </div>
-      <div className="mt-2 flex items-center justify-between">
-        <Mono ink caps={false}>Paid to Sequ3nce · paid to the manager</Mono>
-        <Mono caps={false} className="font-semibold">+ $3,000/mo manager base</Mono>
+      <div className="mt-2 flex items-start justify-between gap-6">
+        <Mono ink caps={false}>Option A · the manager&apos;s 7–10%, plus $3,000/mo to Sequ3nce for the software and systems.</Mono>
+        <Mono caps={false} className="font-semibold whitespace-nowrap">The $3,000/mo never goes to the manager.</Mono>
       </div>
     </div>
   );
