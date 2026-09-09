@@ -55,6 +55,8 @@ export const listRoster = query({
         email: r.email ?? null,
         pod: r.pod ?? null,
         tag: r.tag ?? null,
+        role: r.role ?? "booking",
+        crmUserId: r.crmUserId ?? null,
         active: r.active,
         filedToday: !!todayEntry,
       });

@@ -139,6 +139,8 @@ export default function SetterEodsPage() {
                     email={r.email}
                     pod={r.pod}
                     tag={r.tag}
+                    role={(r as { role?: "booking" | "confirmation" }).role}
+                    crmUserId={(r as { crmUserId?: string | null }).crmUserId ?? null}
                   />
                 )}
                 <span

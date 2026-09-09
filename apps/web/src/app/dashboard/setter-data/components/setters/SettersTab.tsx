@@ -7,6 +7,7 @@ import { useTeam } from "@/hooks/useTeam";
 import { DateRangeSelect } from "../DateRangeSelect";
 import { SetterLeaderboard } from "./SetterLeaderboard";
 import { SetterDrillPanel } from "./SetterDrillPanel";
+import { SetterTeamsSection } from "./SetterTeamsSection";
 import { Loader2 } from "lucide-react";
 
 interface SettersTabProps {
@@ -47,6 +48,10 @@ export function SettersTab({
           onChange={onRangeChange}
         />
       </div>
+
+      {/* Per-team lanes (DM / outbound / confirmation / untouched). Renders
+          nothing for teams without the setter_teams flag. */}
+      <SetterTeamsSection rangeStart={rangeStart} rangeEnd={rangeEnd} />
 
       {data === undefined && (
         <div className="flex items-center justify-center py-16">
