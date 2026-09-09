@@ -119,12 +119,12 @@ export const PRICING_SLIDES: TeamSlide[] = [
       </div>
     ),
   },
-  // Close
+  // Two ways to start (prospect-facing; never "the close" — that is our language, not theirs)
   {
-    bar: "The close",
+    bar: "Two ways to start",
     body: (
       <div className="w-full">
-        <Mono className="mb-4">11 · The close</Mono>
+        <Mono className="mb-4">11 · Two ways to start</Mono>
         <H>
           Which structure <Accent>fits your business?</Accent>
         </H>
