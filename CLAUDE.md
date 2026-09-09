@@ -125,10 +125,56 @@ npx convex deploy --yes                         # Deploy to production
 
 ## Convex Deployments
 
-- **Production:** `ideal-ram-982` (used by macOS app and Vercel)
-- **Dev:** `fastidious-dragon-782` (local development)
+- **Production:** `ideal-ram-982` (used by every app and by Vercel) — shared by B2B and B2C
+- **B2C dev:** `fastidious-dragon-782` (the shared checkout's `.env.local` points here)
+- **B2B dev:** `judicious-impala-85` (project `sequ3nce-b2b-dev`; the B2B worktree's `.env.local` points here)
 
 When debugging production issues, ALWAYS use `--prod` flag with Convex CLI commands.
+
+## Two-Agent Working Agreement (B2B and B2C in parallel)
+
+Two coding agents work at the same time in separate terminals: one on B2B, one on B2C. The Convex
+backend is shared by design and cannot be split, so the separation is by lane, not by backend.
+Goal: either lane can ship to production at any time without carrying the other lane's unfinished work.
+
+**Lanes by folder — know whose work a change is before you touch it**
+- `apps/personal/**` → B2C only.
+- `apps/desktop/**` → B2B only.
+- `apps/web/src/**` → B2B, except the B2C web surfaces (the Personal funnel at `/start` and `/subscribe`,
+  the closer deck at `/pitch`, and the public job board), which B2C owns.
+- `apps/web/convex/**` → shared seam, the only place the two lanes coordinate. **Additive only:** never
+  rename or remove an existing field, table, or function; add new optional fields and new functions.
+  Regenerate and commit `_generated/api.d.ts` whenever a convex file is added (or the Vercel build fails).
+  Give Tyler a heads-up when touching `schema.ts`, `http.ts`, or `meetingBot.ts`.
+
+**Branches and worktrees**
+- Branch names start with `b2b/` or `b2c/`, so `git branch --show-current` says whose work it is.
+- Each agent works only in its own worktree (B2B: `/Users/tylerallen/Desktop/sequ3nce-ai-b2b`). The shared
+  checkout `/Users/tylerallen/Desktop/sequ3nce-ai` stays on a clean `main`, used only to pull and to deploy
+  prod. Never check out a feature branch there.
+- Commit only your own files, by name — never `git add -A`. Never force-push `main`. If both lanes pushed,
+  rebase your own commits on top of `main`.
+- Never run `convex dev` or `convex deploy` against the other lane's dev deployment.
+
+**What goes live, and when**
+- The website: every push to `main`. Vercel builds all of `apps/web`, both products' pages included.
+- The backend: only `npx convex deploy`. It pushes the ENTIRE `apps/web/convex` folder and removes any
+  function that is not in it. Deploying from a branch that is behind `main` deletes the other lane's work.
+- The desktop and Personal apps: only when a release tag is cut (`/release-desktop`, `/release-personal`).
+
+**Shipping rules**
+1. **`main` is always shippable.** Unfinished work stays on a `b2b/…` or `b2c/…` branch and merges to
+   `main` only when it is ready for customers.
+2. **Deploy the backend only from the shared checkout on a freshly pulled `main`:**
+   `git pull` → `npx convex codegen` → `npx convex deploy --yes`. Never from a worktree or a feature
+   branch. One deploy at a time; tell Tyler before running it.
+3. **Merged but not ready to be seen → behind a beta feature flag** (the `setBetaFeatures` pattern used
+   for E2).
+4. **Tag every backend deploy** so the next one shows exactly what is about to go live:
+   after a deploy, `git tag convex-prod-YYYY-MM-DD <deployed commit> && git push origin convex-prod-YYYY-MM-DD`.
+   Before the next deploy, list the backend changes since the last tag:
+   `git log --oneline $(git describe --tags --match 'convex-prod-*' --abbrev=0 origin/main)..origin/main -- apps/web/convex`.
+   If anything in that list is not ready, stop and say so.
 
 ## Documentation
 
