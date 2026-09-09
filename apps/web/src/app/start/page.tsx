@@ -247,7 +247,9 @@ function OptInInner() {
         { product: "b2c", contentIds: [`start-funnel-${variant ?? "a"}`] },
         { email: fields.email, phone: fields.phone, firstName: fields.firstName },
       );
-      router.push(`/start/thanks?p=${encodeURIComponent(fields.phone)}`);
+      // Forced booking step next — the thank-you page now lives on the far
+      // side of a completed booking.
+      router.push(`/start/book?p=${encodeURIComponent(fields.phone)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "That didn't save — try again.");
       setBusy(false);
