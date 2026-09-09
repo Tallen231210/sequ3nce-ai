@@ -57,6 +57,19 @@ function allFields(tierPrices: number[] | null | undefined): DayField[] {
   return [...FIELDS, ...FU_FIELDS, ...tierFields(tierPrices)];
 }
 
+/**
+ * What we pre-filled a box with from our own reading (never from their entry).
+ * Used at submit time to tell "left as we filled it" from "typed".
+ */
+export function measuredSeed(row: DailyEntryRow, f: DayField): string {
+  const measured = row.measured[f.key] ?? 0;
+  return !f.noMeasured &&
+    row.measuredExists &&
+    (!f.seedNonzeroOnly || measured > 0)
+    ? String(measured)
+    : '';
+}
+
 /** What the field should show: their entry if they made one, else our reading. */
 export function initialValues(
   row: DailyEntryRow,
@@ -97,6 +110,7 @@ export function PerformanceDayForm({
   onSubmit,
   compact,
   tierPrices,
+  unconfirmedCalls,
 }: {
   row: DailyEntryRow;
   saving: boolean;
@@ -104,6 +118,8 @@ export function PerformanceDayForm({
   onSubmit: (values: Record<string, number | null>) => void;
   compact?: boolean;
   tierPrices?: number[] | null;
+  /** Calls listed above that nobody has confirmed yet — a nudge, not a gate. */
+  unconfirmedCalls?: number;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     initialValues(row, tierPrices),
@@ -125,10 +141,33 @@ export function PerformanceDayForm({
       const raw = (values[f.key] ?? '').trim();
       // Empty means "I'm not reporting this" — clears back to our reading
       // rather than asserting a zero.
-      out[f.key] = raw === '' ? null : Number(raw.replace(/[$,\s]/g, ''));
+      if (raw === '') {
+        out[f.key] = null;
+        continue;
+      }
+      // Left exactly as we pre-filled it, and they never typed their own
+      // number for it: that is not their figure, it is ours. Save nothing for
+      // it, so our reading keeps winning — and a call they fix later flows to
+      // the board instead of being outranked by a copy of the old reading.
+      const untouched =
+        typeof row.reported?.[f.key] !== 'number' && raw === measuredSeed(row, f);
+      out[f.key] = untouched ? null : Number(raw.replace(/[$,\s]/g, ''));
     }
     onSubmit(out);
   };
+
+  /**
+   * They typed a total, then the calls underneath changed (a fix on the
+   * Calls tab, a confirmed row above). Their typed total still wins, so say
+   * so and offer the one-click way back to the calls.
+   */
+  const driftedFields = FIELDS.filter((f) => {
+    const typed = row.reported?.[f.key];
+    if (typeof typed !== 'number' || !row.measuredExists) return false;
+    return typed !== (row.measured[f.key] ?? 0);
+  });
+  const fmt = (f: DayField, n: number) =>
+    f.money ? `$${n.toLocaleString()}` : String(n);
 
   const submitted = !!row.confirmedAt;
 
@@ -191,6 +230,34 @@ export function PerformanceDayForm({
           {extraFields.map(renderField)}
         </div>
       </div>
+      {driftedFields.length > 0 && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          {driftedFields.map((f) => (
+            <p key={f.key} className="flex flex-wrap items-center gap-x-2">
+              <span>
+                Your {f.key === 'contractValue' ? dealLabels().long.toLowerCase() : f.label.toLowerCase()} total is{' '}
+                <span className="font-mono">{fmt(f, row.reported?.[f.key] ?? 0)}</span>; your calls add up to{' '}
+                <span className="font-mono">{fmt(f, row.measured[f.key] ?? 0)}</span>.
+              </span>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => onSubmit({ [f.key]: null })}
+                className="font-medium underline underline-offset-2 hover:text-amber-950 disabled:opacity-50"
+              >
+                Use my calls
+              </button>
+            </p>
+          ))}
+        </div>
+      )}
+      {(unconfirmedCalls ?? 0) > 0 && (
+        <p className="mt-3 text-[12px] text-gray-600">
+          {unconfirmedCalls} recorded {unconfirmedCalls === 1 ? 'call' : 'calls'} above still{' '}
+          {unconfirmedCalls === 1 ? 'needs' : 'need'} a look — confirm or fix{' '}
+          {unconfirmedCalls === 1 ? 'it' : 'them'} so today&apos;s numbers are right.
+        </p>
+      )}
 
       {error && (
         <p className="mt-3 text-[12px] text-red-600">{error}</p>

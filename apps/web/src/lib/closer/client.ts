@@ -1460,6 +1460,8 @@ export interface CallHistoryItem {
   contractValue?: number;
   /** "ai" | "closer" | "manager" — absent on anything predating extraction. */
   outcomeSource?: string;
+  /** Paid through a lender — counts as paid in full. */
+  financed?: boolean;
   callAnalysis?: CallAnalysis;
   endedAt?: number;
   /** "bot" or "fathom" — absent on everything recorded before Fathom existed. */
@@ -2487,6 +2489,8 @@ export interface ConfirmCall {
   contractValue: number | null;
   outcomeSource: string | null;
   factsConfirmedAt: number | null;
+  /** Paid through a lender — counts as paid in full. */
+  financed?: boolean;
 }
 
 /** The closer's recent completed calls, for the EOD confirm strip. */
@@ -2676,6 +2680,7 @@ export async function updateOwnCallFacts(
     outcome?: string | null;
     cashCollected?: number | null;
     contractValue?: number | null;
+    financed?: boolean;
   },
 ): Promise<{ success: boolean; error?: string }> {
   try {

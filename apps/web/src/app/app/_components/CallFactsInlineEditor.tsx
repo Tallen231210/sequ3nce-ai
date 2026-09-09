@@ -43,6 +43,8 @@ interface Props {
   cashCollected?: number | null;
   contractValue?: number | null;
   outcomeSource?: string | null;
+  /** Paid through a lender (Klarna, a financing firm) — counts as paid in full. */
+  financed?: boolean;
   /**
    * Fires with what the server now holds, so the parent can update the copy
    * of the call it draws the list and this sheet from. Without this the
@@ -56,6 +58,7 @@ export interface SavedFacts {
   outcome?: string;
   cashCollected?: number;
   contractValue?: number;
+  financed?: boolean;
 }
 
 export function CallFactsInlineEditor({
@@ -65,6 +68,7 @@ export function CallFactsInlineEditor({
   cashCollected: initialCash,
   contractValue: initialContract,
   outcomeSource,
+  financed: initialFinanced,
   onSaved,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -74,6 +78,7 @@ export function CallFactsInlineEditor({
   const [contract, setContract] = useState(
     initialContract != null ? String(initialContract) : '',
   );
+  const [financed, setFinanced] = useState(initialFinanced === true);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +88,8 @@ export function CallFactsInlineEditor({
     setOutcome(initialOutcome ?? '');
     setCash(initialCash != null ? String(initialCash) : '');
     setContract(initialContract != null ? String(initialContract) : '');
-  }, [initialOutcome, initialCash, initialContract]);
+    setFinanced(initialFinanced === true);
+  }, [initialOutcome, initialCash, initialContract, initialFinanced]);
 
   // "Saved" stays put until they open the panel again. A two-second flash was
   // easy to miss, and a closer who missed it and then saw stale figures on
@@ -107,7 +113,8 @@ export function CallFactsInlineEditor({
   const dirty =
     outcome !== (initialOutcome ?? '') ||
     cash !== (initialCash != null ? String(initialCash) : '') ||
-    contract !== (initialContract != null ? String(initialContract) : '');
+    contract !== (initialContract != null ? String(initialContract) : '') ||
+    financed !== (initialFinanced === true);
 
   async function save() {
     const cashValue = toNumberOrNull(cash);
@@ -122,6 +129,7 @@ export function CallFactsInlineEditor({
       outcome: outcome === '' ? null : outcome,
       cashCollected: cashValue,
       contractValue,
+      financed,
     });
     setBusy(false);
     if (!res.success) {
@@ -134,6 +142,7 @@ export function CallFactsInlineEditor({
       outcome: outcome === '' ? undefined : outcome,
       cashCollected: cashValue ?? undefined,
       contractValue: contractValue ?? undefined,
+      financed,
     });
   }
 
@@ -206,6 +215,32 @@ export function CallFactsInlineEditor({
           />
         </label>
       </div>
+
+      {/* Financing through a lender is paid in full from the company's side:
+          the lender pays the whole amount now and collects from the client.
+          Closers were entering the deposit as cash and leaving the rest as
+          "owed", which then showed up in Collections as a balance to chase. */}
+      <label className="flex items-start gap-2 text-[12px] text-gray-700">
+        <input
+          type="checkbox"
+          checked={financed}
+          disabled={busy}
+          onChange={(e) => {
+            const on = e.target.checked;
+            setFinanced(on);
+            // The lender pays the full deal value now, so cash collected is
+            // the whole amount. Pre-fill it; the closer can still edit.
+            if (on && contract.trim() !== '') setCash(contract);
+          }}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="font-medium">Paid through financing</span> (Klarna, a
+          lender). Counts as paid in full: the company receives the whole
+          amount now, so cash collected is the full {dealLabels().long.toLowerCase()}.
+          Only payment plans handled by us leave cash below the deal value.
+        </span>
+      </label>
 
       <div className="flex items-center gap-3">
         <button

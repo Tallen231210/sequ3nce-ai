@@ -57,9 +57,12 @@ function whenLabel(startedAt: number): string {
 export function ConfirmStrip({
   closerId,
   onDataChanged,
+  onUnconfirmedChange,
 }: {
   closerId: string;
   onDataChanged?: () => void;
+  /** How many listed calls still lack a confirmation — the day form nudges on it. */
+  onUnconfirmedChange?: (count: number) => void;
 }) {
   const [calls, setCalls] = useState<ConfirmCall[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -74,6 +77,9 @@ export function ConfirmStrip({
   useEffect(() => {
     void refetch();
   }, [refetch]);
+  useEffect(() => {
+    if (calls) onUnconfirmedChange?.(calls.filter((c) => !c.factsConfirmedAt).length);
+  }, [calls, onUnconfirmedChange]);
 
   if (!calls) return null; // still loading
 
@@ -157,6 +163,11 @@ export function ConfirmStrip({
                   <span className="text-gray-400">—</span>
                 )}
               </span>
+              {c.financed && (
+                <span className="text-[11px] text-gray-500" title="Paid through a lender — counts as paid in full">
+                  Financed
+                </span>
+              )}
               {c.outcomeSource === 'ai' && !c.factsConfirmedAt && (
                 <span className="text-[11px] text-gray-400" title="Read by AI from the recording — check it">
                   AI-read
@@ -183,6 +194,7 @@ export function ConfirmStrip({
                 cashCollected={c.cashCollected}
                 contractValue={c.contractValue}
                 outcomeSource={c.outcomeSource}
+                financed={c.financed}
                 onSaved={() => {
                   void refetch();
                   onDataChanged?.();

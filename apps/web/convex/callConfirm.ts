@@ -73,6 +73,7 @@ export const getCallsToConfirm = internalQuery({
         contractValue: c.contractValue ?? null,
         outcomeSource: c.outcomeSource ?? null,
         factsConfirmedAt: c.factsConfirmedAt ?? null,
+        financed: c.financed ?? false,
       }))
       .sort((a, b) => a.startedAt - b.startedAt) // oldest first — clear those out
       .slice(-60); // and if somehow over 60 real calls, keep the newest

@@ -3186,6 +3186,7 @@ export const getCallHistoryForCloser = query({
       // call sheet. Explicit field list here, so omitting it would leave the
       // editor permanently claiming a human entered these.
       outcomeSource: call.outcomeSource,
+      financed: call.financed,
       meetingBotId: call.meetingBotId,
       closerTalkTime: call.closerTalkTime,
       prospectTalkTime: call.prospectTalkTime,

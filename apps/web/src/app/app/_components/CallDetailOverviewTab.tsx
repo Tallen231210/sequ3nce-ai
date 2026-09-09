@@ -87,6 +87,7 @@ export function CallDetailOverviewTab({ call, ammoItems, isLoadingAmmo, closerId
             cashCollected={call.cashCollected}
             contractValue={call.contractValue}
             outcomeSource={call.outcomeSource}
+            financed={call.financed}
             onSaved={onFactsSaved}
           />
         )}

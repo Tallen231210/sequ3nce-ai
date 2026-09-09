@@ -1175,6 +1175,14 @@ export default defineSchema({
      * human-CONFIRMED without becoming closer-SOURCED.
      */
     factsConfirmedAt: v.optional(v.number()),
+    /**
+     * The client paid through a lender (Klarna, a financing firm). The
+     * company receives the full amount, so cash collected equals the deal
+     * value even though the client is paying over time. Recorded so the
+     * board can tell paid-in-full, financed and payment-plan deals apart, and
+     * so Collections never chases a balance a lender already covered.
+     */
+    financed: v.optional(v.boolean()),
     /** Claimed before extraction runs, so two triggers can't both do the work. */
     extractionStartedAt: v.optional(v.number()),
     /** Why the last extraction attempt failed, cleared when one succeeds. */

@@ -69,6 +69,7 @@ export function NumbersView() {
   const [yearLoading, setYearLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingDay, setSavingDay] = useState<string | null>(null);
+  const [unconfirmedCalls, setUnconfirmedCalls] = useState(0);
   const [errorDay, setErrorDay] = useState<Record<string, string | null>>({});
 
   const closerId = getCloserInfo()?.closerId ?? "";
@@ -233,6 +234,7 @@ export function NumbersView() {
 
           <ConfirmStrip
             closerId={closerId}
+            onUnconfirmedChange={setUnconfirmedCalls}
             onDataChanged={() => {
               // Twice: now for the strip, and again after the ~5s scheduled
               // recount so the day form's prefill picks up the change.
@@ -255,6 +257,7 @@ export function NumbersView() {
             error={errorDay[today.dayKey] ?? null}
             onSubmit={(v) => void submitDay(today.dayKey, v)}
             tierPrices={tierPrices}
+            unconfirmedCalls={unconfirmedCalls}
           />
         </div>
       )}

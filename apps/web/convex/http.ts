@@ -14366,7 +14366,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     try {
       const body = await request.json();
-      const { callId, closerId, outcome, cashCollected, contractValue } = body;
+      const { callId, closerId, outcome, cashCollected, contractValue, financed } = body;
 
       if (!callId || !closerId) {
         return new Response(
@@ -14387,6 +14387,7 @@ http.route({
         outcome,
         cashCollected,
         contractValue,
+        ...(typeof financed === "boolean" ? { financed } : {}),
       });
 
       return new Response(JSON.stringify(result), {

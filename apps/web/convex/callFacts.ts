@@ -33,6 +33,8 @@ interface FactsInput {
   outcome?: string | null;
   cashCollected?: number | null;
   contractValue?: number | null;
+  /** Paid through a lender: the company has the full amount now. */
+  financed?: boolean;
 }
 
 /**
@@ -70,6 +72,10 @@ function buildFactsPatch(
       return { ok: false, error: "That amount looks like a typo." };
     }
     patch[field] = Math.round(value);
+  }
+  if (typeof args.financed === "boolean") {
+    // Stored only when true, so an unfinanced call carries no field at all.
+    patch.financed = args.financed ? true : undefined;
   }
 
   return { ok: true, patch };
@@ -125,6 +131,7 @@ export const updateCallFacts = mutation({
     outcome: v.optional(v.union(v.string(), v.null())),
     cashCollected: v.optional(v.union(v.number(), v.null())),
     contractValue: v.optional(v.union(v.number(), v.null())),
+    financed: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
     const user = await resolveAuthUser(ctx, args.clerkId);
@@ -189,6 +196,7 @@ export const updateOwnCallFacts = mutation({
     outcome: v.optional(v.union(v.string(), v.null())),
     cashCollected: v.optional(v.union(v.number(), v.null())),
     contractValue: v.optional(v.union(v.number(), v.null())),
+    financed: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
     const call = await ctx.db.get(args.callId);
