@@ -3,6 +3,12 @@ import { PlacementLineTab } from './PlacementLineTab';
 import type { CloserInfo, PublicJob } from '../convex';
 import { FreeHireJobBoardPreview } from './FreeHireJobBoardPreview';
 import { getPublicJobs, addPublicJob, closePublicJob, deletePublicJob, updateJobTracking, getFeatureFlags } from '../convex';
+import {
+  applyFreeHireBoardFlag,
+  initialFreeHireBoardDecision,
+  shouldRenderFreeHireBoard,
+  type FreeHireBoardDecision,
+} from '../lib/freehire-board-gate';
 
 interface JobBoardViewProps {
   closerInfo: CloserInfo;
@@ -12,9 +18,32 @@ type Tab = 'public' | 'internal';
 
 // The FreeHire board is remotely flagged: dev builds always show it; packaged
 // builds ask the server (flag "freehire_job_board" — off / internal / all,
-// flip via b2cFeatureFlags:setFlag). Any fetch failure falls back to the
-// legacy board, so the flag can only ever ADD the new UI.
+// flip via b2cFeatureFlags:setFlag). The legacy board is reserved for an
+// explicit server-side "off" decision, never a transient network failure.
 const FREEHIRE_ALWAYS_ON = process.env.NODE_ENV === 'development';
+const FREEHIRE_FLAG_TIMEOUT_MS = 8_000;
+const FREEHIRE_SEEN_STORAGE_PREFIX = 'sequ3nce:freehire-job-board:enabled:';
+
+function freeHireSeenStorageKey(userId: string | undefined): string {
+  return `${FREEHIRE_SEEN_STORAGE_PREFIX}${userId || 'anonymous'}`;
+}
+
+function hasSeenFreeHireBoard(storageKey: string): boolean {
+  try {
+    return window.localStorage.getItem(storageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function persistFreeHireDecision(storageKey: string, enabled: boolean): void {
+  try {
+    if (enabled) window.localStorage.setItem(storageKey, 'true');
+    else window.localStorage.removeItem(storageKey);
+  } catch {
+    // Storage is only an extra resilience layer; the optimistic default remains.
+  }
+}
 
 const INDUSTRIES = [
   'Solar', 'Insurance', 'Real Estate', 'SaaS', 'Coaching',
@@ -42,33 +71,56 @@ function formatRelative(ts: number): string {
 }
 
 export function JobBoardView(props: JobBoardViewProps) {
-  // null = still asking the server; resolves fast, and a 2.5s cap guarantees
-  // the board never hangs on a slow flag check.
-  const [freeHireEnabled, setFreeHireEnabled] = useState<boolean | null>(
-    FREEHIRE_ALWAYS_ON ? true : null,
+  const userId = props.closerInfo.b2cUserId;
+  const sessionToken = props.closerInfo.sessionToken;
+  const flagStorageKey = freeHireSeenStorageKey(userId);
+  // null = the remote decision is pending/unknown. That state intentionally
+  // renders the new board; only a successful false response renders legacy.
+  const [freeHireDecision, setFreeHireDecision] = useState<FreeHireBoardDecision>(() =>
+    initialFreeHireBoardDecision(
+      FREEHIRE_ALWAYS_ON,
+      hasSeenFreeHireBoard(flagStorageKey),
+    ),
   );
 
   useEffect(() => {
     if (FREEHIRE_ALWAYS_ON) return;
-    let settled = false;
-    const decide = (enabled: boolean) => {
-      if (!settled) { settled = true; setFreeHireEnabled(enabled); }
-    };
-    const cap = setTimeout(() => decide(false), 2500);
-    getFeatureFlags((props.closerInfo as { sessionToken?: string }).sessionToken)
-      .then((flags) => decide(!!flags?.freehire_job_board))
-      .catch(() => decide(false));
-    return () => clearTimeout(cap);
-  }, [props.closerInfo]);
+    const controller = new AbortController();
+    let active = true;
 
-  if (freeHireEnabled === null) {
-    return (
-      <div className="flex-1 flex items-center justify-center h-full">
-        <span className="w-6 h-6 border-2 border-gray-300 border-t-black dark:border-zinc-600 dark:border-t-white rounded-full animate-spin" />
-      </div>
+    // Re-initialize when the signed-in user changes. A cached known-good value
+    // prevents a previously enabled user from ever flashing back to legacy.
+    setFreeHireDecision(initialFreeHireBoardDecision(
+      false,
+      hasSeenFreeHireBoard(flagStorageKey),
+    ));
+
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      FREEHIRE_FLAG_TIMEOUT_MS,
     );
-  }
-  if (freeHireEnabled) {
+
+    void getFeatureFlags(sessionToken, controller.signal).then((flags) => {
+      if (!active) return;
+      setFreeHireDecision((current) => {
+        const next = applyFreeHireBoardFlag(current, flags);
+        if (next !== current && next !== null) {
+          persistFreeHireDecision(flagStorageKey, next);
+        } else if (next === true) {
+          persistFreeHireDecision(flagStorageKey, true);
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [flagStorageKey, sessionToken]);
+
+  if (shouldRenderFreeHireBoard(freeHireDecision)) {
     return <FreeHireJobBoardPreview closerInfo={props.closerInfo} />;
   }
 
@@ -146,7 +198,7 @@ function LegacyJobBoardView({ closerInfo }: JobBoardViewProps) {
   }), [visibleJobs]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div data-testid="legacy-job-board" className="h-full flex flex-col">
       <div className="px-6 pt-6 pb-0">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Job Board</h2>
         <div className="flex gap-1 bg-gray-100 dark:bg-zinc-800 rounded-lg p-1 w-fit mb-4">

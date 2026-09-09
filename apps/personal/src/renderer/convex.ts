@@ -4654,29 +4654,60 @@ export async function reportAppVersion(info: CloserInfo): Promise<void> {
 
 // ==================== Remote feature flags ====================
 
+const FEATURE_FLAG_RETRY_DELAY_MS = 250;
+
+function waitForFeatureFlagRetry(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const timeout = globalThis.setTimeout(resolve, FEATURE_FLAG_RETRY_DELAY_MS);
+    signal?.addEventListener('abort', () => {
+      globalThis.clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+  });
+}
+
 /**
- * Per-user flag decisions from the server. Any failure returns null and the
- * caller falls back to the legacy experience — flags can only ever ADD the
- * new UI, never take the app down.
+ * Per-user flag decisions from the server. This control-plane request bypasses
+ * convexFetch's shared 429 circuit breaker so unrelated API throttling cannot
+ * delay board selection. A transient failure is retried once and returns null;
+ * callers must distinguish that unknown state from an explicit false flag.
  */
 export async function getFeatureFlags(
   sessionToken: string | undefined,
+  signal?: AbortSignal,
 ): Promise<Record<string, boolean> | null> {
   // Always ask, even with no token: flags in "all" mode need no identity,
   // and sessions from before login tokens existed would otherwise be stuck
   // on legacy UI forever (bitten 2026-09-03 — the co-founder's session).
-  try {
-    const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/feature-flags`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionToken: sessionToken ?? "" }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data && typeof data.flags === "object" ? data.flags : null;
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal?.aborted) return null;
+    try {
+      const response = await globalThis.fetch(`${CONVEX_SITE_URL}/b2c/feature-flags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionToken: sessionToken ?? "" }),
+        signal,
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const flags = data && typeof data.flags === "object"
+          ? data.flags as Record<string, boolean>
+          : null;
+        return typeof flags?.freehire_job_board === 'boolean' ? flags : null;
+      }
+      // Authentication/client failures are authoritative responses, not
+      // transient transport failures worth retrying.
+      if (response.status < 500 && response.status !== 429) return null;
+    } catch {
+      if (signal?.aborted) return null;
+    }
+    if (attempt === 0) await waitForFeatureFlagRetry(signal);
   }
+  return null;
 }
 
 // ==================== FreeHire development activity ====================
