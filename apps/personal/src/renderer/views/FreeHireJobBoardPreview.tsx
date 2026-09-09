@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getFreeHireActivities,
   getFreeHirePreferences,
+  getMyProfile,
   recordFreeHireJobBoardVisit,
   saveFreeHireActivity,
   saveFreeHirePreferences,
@@ -20,6 +21,8 @@ import type {
 } from '../types/electron';
 import { consolidateDuplicateJobs } from '../../freehire-dedupe';
 import { PlacementLineTab } from './PlacementLineTab';
+import { ProfileNudge, isProfileNudgeSnoozed, snoozeProfileNudge } from './jobboard/ProfileNudge';
+import { profileCompletion, PROFILE_NUDGE_THRESHOLD_PCT } from '../lib/profile-completeness';
 
 type TopTab = 'public' | 'internal';
 type PublicSection = 'discover' | 'applications' | 'insights';
@@ -48,7 +51,7 @@ interface PreferenceSaveRequest {
   serialized: string;
 }
 type TrackingState = 'loading' | 'synced' | 'local' | 'needs-login';
-interface FreeHireJobBoardPreviewProps { closerInfo: CloserInfo }
+interface FreeHireJobBoardPreviewProps { closerInfo: CloserInfo; onNavigate?: (item: string) => void }
 interface RoleDefinition { id: RoleLane; label: string }
 
 const ROLE_LANES: RoleDefinition[] = [
@@ -91,7 +94,7 @@ const DEFAULT_PREFERENCES: FreeHirePreferences = {
   minSalary: 0,
 };
 
-export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewProps) {
+export function FreeHireJobBoardPreview({ closerInfo, onNavigate }: FreeHireJobBoardPreviewProps) {
   const [topTab, setTopTab] = useState<TopTab>('public');
   const [section, setSection] = useState<PublicSection>('discover');
   const [roleLane, setRoleLane] = useState<RoleLane>(DEFAULT_PREFERENCES.roleLane);
@@ -118,6 +121,31 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
   const [trackingReady, setTrackingReady] = useState(false);
   const [trackingState, setTrackingState] = useState<TrackingState>('loading');
   const [toast, setToast] = useState<string | null>(null);
+  // Profile nudge: appears once a member tracks or applies to a role while
+  // their profile is under the completeness threshold. "Not now" = a week.
+  const [profilePct, setProfilePct] = useState<number | null>(null);
+  const [nudgeArmed, setNudgeArmed] = useState(false);
+  const [nudgeSnoozed, setNudgeSnoozed] = useState(() => isProfileNudgeSnoozed(closerInfo.b2cUserId));
+  useEffect(() => {
+    if (!closerInfo.b2cUserId) return;
+    let active = true;
+    void getMyProfile(closerInfo.b2cUserId).then((profile) => {
+      if (!active) return;
+      setProfilePct(profileCompletion({
+        photo: profile?.photoUrl,
+        headline: profile?.headline,
+        bio: profile?.bio,
+        location: profile?.location,
+        industries: profile?.industries,
+        ticketRange: profile?.ticketRange,
+        skills: profile?.skills,
+        socialLinks: profile?.socialLinks,
+        profileSlug: profile?.profileSlug,
+      }).pct);
+    });
+    return () => { active = false; };
+  }, [closerInfo.b2cUserId]);
+  const showProfileNudge = nudgeArmed && !nudgeSnoozed && profilePct !== null && profilePct < PROFILE_NUDGE_THRESHOLD_PCT;
   const jobRequestRef = useRef(0);
   const preferenceTouchedRef = useRef(false);
   const lastSavedPreferencesRef = useRef('');
@@ -465,6 +493,7 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
       note: stage ? current?.note : undefined,
       dismissed: false,
     });
+    if (stage) setNudgeArmed(true);
   }, [commitActivity]);
   const setJobNote = useCallback((job: FreeHireJob, note: string) => {
     const current = trackedRef.current[job.id];
@@ -511,6 +540,13 @@ export function FreeHireJobBoardPreview({ closerInfo }: FreeHireJobBoardPreviewP
 
   return (
     <div data-testid="freehire-job-board" className="h-full w-full min-w-0 flex flex-col overflow-hidden bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-gray-100">
+      {showProfileNudge && (
+        <ProfileNudge
+          pct={profilePct ?? 0}
+          onFinish={() => onNavigate?.('profile')}
+          onDismiss={() => { snoozeProfileNudge(closerInfo.b2cUserId); setNudgeSnoozed(true); }}
+        />
+      )}
       <header className="px-4 sm:px-5 xl:px-6 pt-5 sm:pt-6 shrink-0 min-w-0">
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div className="min-w-0 flex-1 basis-[280px]">

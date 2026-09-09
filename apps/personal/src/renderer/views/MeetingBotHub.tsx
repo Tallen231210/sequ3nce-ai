@@ -890,7 +890,7 @@ function renderContent(
     case 'community':
       return <CommunityView closerInfo={closerInfo} onNavigateToMessage={extras?.onNavigateToMessage} />;
     case 'jobboard':
-      return <JobBoardView closerInfo={closerInfo} />;
+      return <JobBoardView closerInfo={closerInfo} onNavigate={(id) => onNavigate(id as SidebarItem)} />;
     case 'messages':
       return (
         <DirectMessagesView

@@ -2204,6 +2204,44 @@ export async function getMyProfile(userId: string): Promise<B2CProfile | null> {
   }
 }
 
+// ==================== "This week" (dashboard card) ====================
+
+export interface ThisWeekData {
+  nextCoachingCall: {
+    callId: string;
+    title: string;
+    scheduledStartTime: number;
+    scheduledDurationMin: number;
+    status: "scheduled" | "live" | "ended" | "cancelled";
+    coachName: string;
+  } | null;
+  rolesThisWeek: { count: number; topIndustries: string[] };
+  onlineCount: number;
+  latestPosts: Array<{
+    postId: string;
+    authorName: string;
+    channelName: string;
+    createdAt: number;
+    snippet: string;
+  }>;
+}
+
+/** What's alive right now — one round-trip for the dashboard's top card. */
+export async function getThisWeek(userId: string): Promise<ThisWeekData | null> {
+  try {
+    const url = `${CONVEX_SITE_URL}/b2c/this-week?userId=${encodeURIComponent(userId)}&_=${Date.now()}`;
+    const response = await convexFetch(url);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.error("[Convex] Failed to get this-week data:", error);
+    Sentry.captureException(error, {
+      tags: { feature: "getThisWeek", integration: "convex" },
+    });
+    return null;
+  }
+}
+
 export async function upsertProfile(args: ProfileUpdateArgs): Promise<{ success: boolean; error?: string }> {
   try {
     const response = await convexFetch(`${CONVEX_SITE_URL}/b2c/profile?_=${Date.now()}`, {

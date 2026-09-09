@@ -12,6 +12,8 @@ import {
 
 interface JobBoardViewProps {
   closerInfo: CloserInfo;
+  /** Sidebar navigation (e.g. the profile nudge's "Finish it" → Profile). */
+  onNavigate?: (item: string) => void;
 }
 
 type Tab = 'public' | 'internal';
@@ -121,7 +123,7 @@ export function JobBoardView(props: JobBoardViewProps) {
   }, [flagStorageKey, sessionToken]);
 
   if (shouldRenderFreeHireBoard(freeHireDecision)) {
-    return <FreeHireJobBoardPreview closerInfo={props.closerInfo} />;
+    return <FreeHireJobBoardPreview closerInfo={props.closerInfo} onNavigate={props.onNavigate} />;
   }
 
   return <LegacyJobBoardView closerInfo={props.closerInfo} />;

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import type { CloserInfo, CalendarStatus } from '../convex';
 import { getAutoJoinState, setAutoJoin, type AutoJoinState } from '../autoJoinApi';
+import { getEmailPrefs, setEmailPrefs, type EmailPrefsState } from '../emailPrefsApi';
 import {
   getCalendarStatus,
   syncCalendar,
@@ -25,6 +26,9 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
   // Meeting bot auto-join
   const [autoJoin, setAutoJoinState] = useState<AutoJoinState | null>(null);
   const [autoJoinBusy, setAutoJoinBusy] = useState(false);
+  // Email updates (Monday roles, coaching reminders)
+  const [emailPrefs, setEmailPrefsState] = useState<EmailPrefsState | null>(null);
+  const [emailPrefsBusy, setEmailPrefsBusy] = useState(false);
   const [isLoadingCal, setIsLoadingCal] = useState(true);
   const [isWaitingOAuth, setIsWaitingOAuth] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -58,6 +62,7 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
   useEffect(() => {
     setIsLoadingCal(true);
     getAutoJoinState((closerInfo as any).sessionToken).then(setAutoJoinState);
+    getEmailPrefs(closerInfo.sessionToken).then((s) => { if (mountedRef.current) setEmailPrefsState(s); });
     getCalendarStatus(closerInfo.email, closerInfo.teamId).then((s) => {
       setCalStatus(s);
       setIsLoadingCal(false);
@@ -344,6 +349,46 @@ export function SettingsView({ closerInfo, onLogout }: SettingsViewProps) {
               <span
                 className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white dark:bg-zinc-900 shadow transition-transform ${
                   autoJoin?.enabled ? 'translate-x-5' : ''
+                }`}
+              />
+            </button>
+          </div>
+        </SettingsSection>
+
+        {/* Notifications */}
+        <SettingsSection title="Notifications">
+          <div className="flex items-start justify-between gap-4" data-testid="email-prefs">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-gray-900 dark:text-white">Email me updates</p>
+              <p className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                Monday&apos;s new roles, coaching-call reminders, and the occasional note from us.
+                Account emails (password, receipts) always send.
+              </p>
+              {emailPrefs?.needsRelogin && (
+                <p className="text-[12px] text-amber-600 dark:text-amber-400 mt-1.5">
+                  Log out and back in once to enable this switch.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={async () => {
+                if (!emailPrefs?.ok || emailPrefsBusy) return;
+                setEmailPrefsBusy(true);
+                const next = await setEmailPrefs(closerInfo.sessionToken, !emailPrefs.enabled);
+                if (!mountedRef.current) return;
+                setEmailPrefsState(next);
+                setEmailPrefsBusy(false);
+              }}
+              disabled={!emailPrefs?.ok || emailPrefsBusy}
+              aria-label="Toggle email updates"
+              data-testid="email-prefs-toggle"
+              className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 mt-0.5 ${
+                emailPrefs?.enabled ? 'bg-black dark:bg-white' : 'bg-gray-300 dark:bg-zinc-700'
+              } ${!emailPrefs?.ok ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white dark:bg-zinc-900 shadow transition-transform ${
+                  emailPrefs?.enabled ? 'translate-x-5' : ''
                 }`}
               />
             </button>

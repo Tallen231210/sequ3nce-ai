@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem, CoachingCall } from '../convex';
-import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting, joinCoachingCall } from '../convex';
+import type { CloserInfo, CloserStats, CalendarEvent, CallHistoryItem, CoachingCall, ThisWeekData } from '../convex';
+import { getCloserStats, getCalendarEvents, getCallHistory, createBotForMeeting, joinCoachingCall, getThisWeek } from '../convex';
 import { extractProspectName } from './schedule/scheduleUtils';
 import { ScheduleMeetingModal } from './schedule/ScheduleMeetingModal';
 import { PersonalGoalWidget } from './dashboard/PersonalGoalWidget';
+import { ThisWeekCard } from './dashboard/ThisWeekCard';
 import { JoinCoachingCallModal } from './community/coaching/JoinCoachingCallModal';
 import { useCoachingSession } from './community/coaching/CoachingSessionContext';
 
@@ -16,6 +17,7 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
   const [stats, setStats] = useState<CloserStats | null>(null);
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([]);
   const [recentCalls, setRecentCalls] = useState<CallHistoryItem[]>([]);
+  const [thisWeek, setThisWeek] = useState<ThisWeekData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [coachingDetailsCallId, setCoachingDetailsCallId] = useState<string | null>(null);
@@ -33,15 +35,17 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
   async function loadAllData() {
     setIsLoading(true);
     try {
-      const [statsResult, , callsResult] = await Promise.all([
+      const [statsResult, , callsResult, thisWeekResult] = await Promise.all([
         getCloserStats(closerInfo.closerId, 'week'),
         loadTodayEvents(),
         getCallHistory(closerInfo.closerId, 5),
+        closerInfo.b2cUserId ? getThisWeek(closerInfo.b2cUserId) : Promise.resolve(null),
       ]);
 
       if (!mountedRef.current) return;
       setStats(statsResult);
       setRecentCalls(callsResult);
+      setThisWeek(thisWeekResult);
     } catch (error) {
       console.error('[Dashboard] Failed to load data:', error);
     }
@@ -113,6 +117,14 @@ export function DashboardView({ closerInfo, onNavigate }: DashboardViewProps) {
         <h1 className="text-2xl font-bold text-black">{greeting}</h1>
         <p className="text-sm text-gray-500 mt-1">{dateStr}</p>
       </div>
+
+      {/* What's alive right now — next call, new roles, who's online, newest post */}
+      <ThisWeekCard
+        data={thisWeek}
+        loading={isLoading}
+        onNavigate={onNavigate}
+        onOpenCoachingCall={(callId) => setCoachingDetailsCallId(callId)}
+      />
 
       {/* Personal goal tracker — identity-anchored motivation widget */}
       <div className="mb-8">

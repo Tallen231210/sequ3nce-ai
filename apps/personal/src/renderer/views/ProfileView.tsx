@@ -14,6 +14,8 @@ import {
 import { ProfileVideoInputs } from './ProfileVideoInputs';
 import { HighlightReelEditor } from './HighlightReelEditor';
 import { TaskHintBanner } from './adoption-checklist/TaskHintBanner';
+import { ProfileHowToUse } from './profile/ProfileHowToUse';
+import { profileCompletion } from '../lib/profile-completeness';
 
 interface ProfileViewProps {
   closerInfo: CloserInfo;
@@ -134,14 +136,10 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
     }
   }
 
-  // Compute completeness
-  const completionSteps = [
-    !!photoUrl, !!headline, !!bio, !!location,
-    industries.length > 0, !!ticketRange, skills.length > 0,
-    Object.values(socialLinks).some((v) => !!v), !!profileSlug,
-  ];
-  const completedSteps = completionSteps.filter(Boolean).length;
-  const completionPct = Math.round((completedSteps / completionSteps.length) * 100);
+  // Completeness — shared with the job board's nudge (lib/profile-completeness)
+  const { pct: completionPct } = profileCompletion({
+    photo: photoUrl, headline, bio, location, industries, ticketRange, skills, socialLinks, profileSlug,
+  });
 
   if (!closerInfo.b2cUserId) {
     return (
@@ -187,6 +185,9 @@ export function ProfileView({ closerInfo }: ProfileViewProps) {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
+        {/* What the profile is for, and the link to hand out */}
+        <ProfileHowToUse profileSlug={profileSlug} />
+
         {/* Completeness bar */}
         {completionPct < 100 && (
           <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
