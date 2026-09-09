@@ -5,5 +5,5 @@ import { TEAMS_SLIDES } from "./slides";
 // Presented on video calls to business owners; same renderer as the closer
 // deck at /pitch. Noindex, unlisted.
 export default function PitchTeams() {
-  return <Deck slides={TEAMS_SLIDES} />;
+  return <Deck slides={TEAMS_SLIDES} variant="light" />;
 }
